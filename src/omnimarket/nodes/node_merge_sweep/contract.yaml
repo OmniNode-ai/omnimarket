@@ -1,13 +1,15 @@
 ---
 name: merge_sweep
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: orchestrator
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
-  Org-wide PR sweep. Classifies open PRs into merge-ready (Track A) and
-  needs-polish (Track B) queues. Enables GitHub auto-merge on ready PRs
-  and dispatches polish work on fixable PRs.
+  Org-wide PR sweep. Classifies open PRs into merge-ready (Track A),
+  thread-resolution (Track A-resolve), and needs-polish (Track B) queues.
+  Enables GitHub auto-merge on ready PRs, resolves review threads, and
+  dispatches polish work on fixable PRs. Tracks cross-run failure history
+  with escalation thresholds (STUCK, CHRONIC, RECIDIVIST).
 
 handler_routing:
   default_handler: handler:NodeMergeSweep
