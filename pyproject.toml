@@ -30,9 +30,10 @@ classifiers = [
 ]
 dependencies = [
     "omnibase_core>=0.39.0",
+    "omnibase_infra>=0.39.0",
     "pydantic>=2.12.5,<3.0.0",
     "pyyaml>=6.0.2,<7.0.0",
-    "aiokafka>=0.12.0",
+    "aiokafka>=0.11.0",
     "asyncpg>=0.30.0",
     "python-dateutil>=2.9.0",
     "psycopg2-binary>=2.9.10",
@@ -76,8 +77,12 @@ node_projection_baselines = "omnimarket.nodes.node_projection_baselines"
 node_projection_registration = "omnimarket.nodes.node_projection_registration"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
 
+[project.entry-points."onex.domain_plugins"]
+omnimarket = "omnimarket.runtime.plugin:PluginMarket"
+
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
+omnibase-infra = { path = "../omnibase_infra", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
