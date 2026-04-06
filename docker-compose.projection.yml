@@ -1,0 +1,62 @@
+###############################################################################
+# docker-compose.projection.yml — OMN-7610 projection nodes
+#
+# Deploys all 6 critical Kafka→DB projection consumers as independent
+# Docker services on .201 server. Each service is a standalone Python
+# process consuming from its Kafka topic(s) and projecting into the
+# omnidash_analytics PostgreSQL database.
+#
+# Usage:
+#   docker compose -f docker-compose.projection.yml up -d
+#   docker compose -f docker-compose.projection.yml logs -f
+#   docker compose -f docker-compose.projection.yml down
+###############################################################################
+
+x-projection-defaults: &projection-defaults
+  build:
+    context: .
+    dockerfile: Dockerfile.projection
+  restart: unless-stopped
+  network_mode: host
+  env_file: .env
+  environment:
+    KAFKA_BROKERS: ${KAFKA_BROKERS:-192.168.86.201:19092}
+    OMNIDASH_ANALYTICS_DB_URL: ${OMNIDASH_ANALYTICS_DB_URL}
+    KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-omnimarket-projections-v1}
+    PYTHONUNBUFFERED: "1"
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  projection-session-outcome:
+    <<: *projection-defaults
+    container_name: omnimarket-projection-session-outcome
+    command: ["python", "-m", "omnimarket.nodes.node_projection_session_outcome.handlers.handler_session_outcome"]
+
+  projection-llm-cost:
+    <<: *projection-defaults
+    container_name: omnimarket-projection-llm-cost
+    command: ["python", "-m", "omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost"]
+
+  projection-savings:
+    <<: *projection-defaults
+    container_name: omnimarket-projection-savings
+    command: ["python", "-m", "omnimarket.nodes.node_projection_savings.handlers.handler_savings"]
+
+  projection-delegation:
+    <<: *projection-defaults
+    container_name: omnimarket-projection-delegation
+    command: ["python", "-m", "omnimarket.nodes.node_projection_delegation.handlers.handler_delegation"]
+
+  projection-baselines:
+    <<: *projection-defaults
+    container_name: omnimarket-projection-baselines
+    command: ["python", "-m", "omnimarket.nodes.node_projection_baselines.handlers.handler_baselines"]
+
+  projection-registration:
+    <<: *projection-defaults
+    container_name: omnimarket-projection-registration
+    command: ["python", "-m", "omnimarket.nodes.node_projection_registration.handlers.handler_registration"]
