@@ -1,0 +1,21 @@
+---
+name: projection_delegation
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Projects task-delegated events into the delegation_events table.
+  Dedup by correlation_id. Source topic:
+  onex.evt.omniclaude.task-delegated.v1.
+
+handler:
+  module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
+  class: HandlerProjectionDelegation
+
+terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.task-delegated.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-delegation-applied.v1

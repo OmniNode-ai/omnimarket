@@ -1,0 +1,17 @@
+name: projection_registration
+version: "1.0.0"
+description: >
+  Projects node introspection and heartbeat events into
+  node_service_registry table.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - registration
+  - service-discovery
+  - reducer

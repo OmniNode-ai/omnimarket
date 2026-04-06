@@ -1,0 +1,21 @@
+---
+name: projection_session_outcome
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Projects session-outcome events into the session_outcomes table.
+  UPSERT by session_id (latest-state-wins). Source topic:
+  onex.evt.omniclaude.session-outcome.v1.
+
+handler:
+  module: omnimarket.nodes.node_projection_session_outcome.handlers.handler_projection_session_outcome
+  class: HandlerProjectionSessionOutcome
+
+terminal_event: onex.evt.omnimarket.projection-session-outcome-applied.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.session-outcome.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-session-outcome-applied.v1

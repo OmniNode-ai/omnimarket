@@ -1,0 +1,22 @@
+---
+name: projection_baselines
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Projects baselines-computed events into 4 baselines tables
+  (baselines_snapshots, baselines_comparisons, baselines_recommendations,
+  baselines_retry_counts) as a single transactional unit.
+  Source topic: onex.evt.omnibase-infra.baselines-computed.v1.
+
+handler:
+  module: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines
+  class: HandlerProjectionBaselines
+
+terminal_event: onex.evt.omnimarket.projection-baselines-applied.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.baselines-computed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-baselines-applied.v1

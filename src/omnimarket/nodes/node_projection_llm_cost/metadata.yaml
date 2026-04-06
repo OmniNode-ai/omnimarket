@@ -1,0 +1,17 @@
+name: projection_llm_cost
+version: "1.0.0"
+description: >
+  Projects llm-call-completed events into llm_cost_aggregates.
+  SOW WARN blocker for budget compliance.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - llm-cost
+  - sow-blocker
+  - reducer

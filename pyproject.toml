@@ -67,6 +67,12 @@ node_redeploy = "omnimarket.nodes.node_redeploy"
 node_log_projection = "omnimarket.nodes.node_log_projection"
 node_data_verification = "omnimarket.nodes.node_data_verification"
 node_process_watchdog = "omnimarket.nodes.node_process_watchdog"
+node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
+node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
+node_projection_savings = "omnimarket.nodes.node_projection_savings"
+node_projection_delegation = "omnimarket.nodes.node_projection_delegation"
+node_projection_baselines = "omnimarket.nodes.node_projection_baselines"
+node_projection_registration = "omnimarket.nodes.node_projection_registration"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }

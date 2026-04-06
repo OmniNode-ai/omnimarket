@@ -1,0 +1,21 @@
+---
+name: projection_savings
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Projects savings-estimated events into the savings_estimates table.
+  SOW WARN blocker — savings attribution must be operational.
+  Source topic: onex.evt.omnibase-infra.savings-estimated.v1.
+
+handler:
+  module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
+  class: HandlerProjectionSavings
+
+terminal_event: onex.evt.omnimarket.projection-savings-applied.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.savings-estimated.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-savings-applied.v1

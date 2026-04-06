@@ -1,0 +1,16 @@
+name: projection_delegation
+version: "1.0.0"
+description: >
+  Projects task-delegated events into delegation_events table.
+  Dedup by correlation_id.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - delegation
+  - reducer

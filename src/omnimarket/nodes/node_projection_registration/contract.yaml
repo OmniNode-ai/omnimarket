@@ -1,0 +1,23 @@
+---
+name: projection_registration
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Projects node introspection and heartbeat events into
+  the node_service_registry table. Source topics:
+  onex.evt.platform.node-introspection.v1 and
+  onex.evt.platform.node-heartbeat.v1.
+
+handler:
+  module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
+  class: HandlerProjectionRegistration
+
+terminal_event: onex.evt.omnimarket.projection-registration-applied.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-introspection.v1
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-registration-applied.v1
