@@ -39,6 +39,12 @@ jobs:
           repository: OmniNode-ai/onex_change_control
           path: onex_change_control
 
+      - name: Checkout omnibase_core
+        uses: actions/checkout@v6
+        with:
+          repository: OmniNode-ai/omnibase_core
+          path: ../omnibase_core
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
