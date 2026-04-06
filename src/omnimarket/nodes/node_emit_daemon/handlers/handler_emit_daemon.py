@@ -46,14 +46,10 @@ class HandlerEmitDaemon:
     def phase(self) -> EnumEmitDaemonPhase:
         return self._state.phase
 
-    def transition_to_binding(
-        self, socket_path: str, pid: int
-    ) -> ModelEmitDaemonState:
+    def transition_to_binding(self, socket_path: str, pid: int) -> ModelEmitDaemonState:
         """Transition from IDLE to BINDING."""
         if self._state.phase != EnumEmitDaemonPhase.IDLE:
-            raise ValueError(
-                f"Cannot transition to BINDING from {self._state.phase}"
-            )
+            raise ValueError(f"Cannot transition to BINDING from {self._state.phase}")
         self._state = ModelEmitDaemonState(
             phase=EnumEmitDaemonPhase.BINDING,
             socket_path=socket_path,
@@ -65,9 +61,7 @@ class HandlerEmitDaemon:
     def transition_to_listening(self) -> ModelEmitDaemonState:
         """Transition from BINDING to LISTENING."""
         if self._state.phase != EnumEmitDaemonPhase.BINDING:
-            raise ValueError(
-                f"Cannot transition to LISTENING from {self._state.phase}"
-            )
+            raise ValueError(f"Cannot transition to LISTENING from {self._state.phase}")
         self._state = ModelEmitDaemonState(
             phase=EnumEmitDaemonPhase.LISTENING,
             socket_path=self._state.socket_path,
@@ -80,9 +74,7 @@ class HandlerEmitDaemon:
     def transition_to_draining(self) -> ModelEmitDaemonState:
         """Transition from LISTENING to DRAINING."""
         if self._state.phase != EnumEmitDaemonPhase.LISTENING:
-            raise ValueError(
-                f"Cannot transition to DRAINING from {self._state.phase}"
-            )
+            raise ValueError(f"Cannot transition to DRAINING from {self._state.phase}")
         self._state = ModelEmitDaemonState(
             phase=EnumEmitDaemonPhase.DRAINING,
             socket_path=self._state.socket_path,
@@ -106,9 +98,7 @@ class HandlerEmitDaemon:
             EnumEmitDaemonPhase.BINDING,
             EnumEmitDaemonPhase.LISTENING,
         ):
-            raise ValueError(
-                f"Cannot transition to STOPPED from {self._state.phase}"
-            )
+            raise ValueError(f"Cannot transition to STOPPED from {self._state.phase}")
         previous_phase = self._state.phase
         self._state = ModelEmitDaemonState(
             phase=EnumEmitDaemonPhase.STOPPED,

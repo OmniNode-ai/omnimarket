@@ -16,6 +16,7 @@ Protocol: newline-delimited JSON over Unix domain socket.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -149,10 +150,8 @@ class EmitClient:
     def close(self) -> None:
         """Close the socket connection."""
         if self._sock is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self._sock.close()
-            except OSError:
-                pass
             self._sock = None
             self._buf = bytearray()
 
@@ -164,10 +163,8 @@ class EmitClient:
 
     def __del__(self) -> None:
         """Best-effort cleanup of open socket on garbage collection."""
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass
 
 
 __all__ = ["EmitClient", "default_socket_path"]

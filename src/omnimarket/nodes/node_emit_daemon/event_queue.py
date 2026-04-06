@@ -20,6 +20,7 @@ Concurrency: coroutine-safe using asyncio.Lock (not thread-safe).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections import deque
 from datetime import UTC, datetime, timedelta
@@ -219,10 +220,8 @@ class BoundedEventQueue:
             self._spool_bytes = max(0, self._spool_bytes - file_size)
         except OSError:
             logger.exception("Failed to read spool file %s", filepath)
-            try:
+            with contextlib.suppress(OSError):
                 filepath.unlink()
-            except OSError:
-                pass
             return None
         except Exception:
             logger.exception("Failed to parse spool file %s", filepath)
@@ -231,10 +230,8 @@ class BoundedEventQueue:
             except OSError:
                 file_size = 0
             self._spool_bytes = max(0, self._spool_bytes - file_size)
-            try:
+            with contextlib.suppress(OSError):
                 filepath.unlink()
-            except OSError:
-                pass
             return None
 
         try:

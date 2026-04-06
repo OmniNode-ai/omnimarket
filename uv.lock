@@ -468,7 +468,7 @@ wheels = [
 [[package]]
 name = "omnibase-core"
 version = "0.39.0"
-source = { editable = "../../../../../../Users/jonah/Code/omni_home/omnibase_core" }
+source = { editable = "../omnibase_core" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -553,7 +553,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "omnibase-core", editable = "../../../../../../Users/jonah/Code/omni_home/omnibase_core" },
+    { name = "omnibase-core", editable = "../omnibase_core" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
     { name = "pyyaml", specifier = ">=6.0.2,<7.0.0" },
 ]

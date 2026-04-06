@@ -170,9 +170,7 @@ class KafkaPublisherLoop:
 
                         requeue_success = await self._queue.enqueue(event)
                         if not requeue_success:
-                            logger.error(
-                                f"Failed to re-enqueue event {event.event_id}"
-                            )
+                            logger.error(f"Failed to re-enqueue event {event.event_id}")
                             self._retry_counts.pop(event.event_id, None)
                             self.events_dropped += 1
 

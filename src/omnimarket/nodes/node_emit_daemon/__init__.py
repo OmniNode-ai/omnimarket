@@ -54,4 +54,6 @@ def __getattr__(name: str) -> object:
         )
 
         return KafkaPublisherLoop
-    raise AttributeError(f"module 'omnimarket.nodes.node_emit_daemon' has no attribute {name!r}")
+    raise AttributeError(
+        f"module 'omnimarket.nodes.node_emit_daemon' has no attribute {name!r}"
+    )

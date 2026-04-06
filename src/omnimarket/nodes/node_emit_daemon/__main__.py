@@ -127,7 +127,6 @@ def _do_start(args: argparse.Namespace) -> int:
         try:
             pid = int(pid_path.read_text().strip())
             os.kill(pid, 0)
-            print(f"Daemon already running (PID {pid})")
             return 1
         except (ProcessLookupError, ValueError):
             pid_path.unlink(missing_ok=True)
@@ -142,14 +141,10 @@ def _do_start(args: argparse.Namespace) -> int:
         )
     else:
         # Try default registry location
-        default_registry = (
-            Path(__file__).parent / "registries" / "claude_code.yaml"
-        )
+        default_registry = Path(__file__).parent / "registries" / "claude_code.yaml"
         if default_registry.exists():
             registry = EventRegistry.from_yaml(default_registry)
-            logger.info(
-                f"Loaded default event registry ({len(registry)} event types)"
-            )
+            logger.info(f"Loaded default event registry ({len(registry)} event types)")
         else:
             registry = EventRegistry()
             logger.warning("No event registry found, starting with empty registry")
@@ -174,9 +169,7 @@ def _do_start(args: argparse.Namespace) -> int:
 
     publish_fn = _noop_publish
     if args.kafka_bootstrap_servers:
-        logger.info(
-            f"Kafka publishing enabled: {args.kafka_bootstrap_servers}"
-        )
+        logger.info(f"Kafka publishing enabled: {args.kafka_bootstrap_servers}")
         # Kafka integration will be wired here when available
 
     publisher = KafkaPublisherLoop(queue=queue, publish_fn=publish_fn)
@@ -232,26 +225,21 @@ def _do_start(args: argparse.Namespace) -> int:
 def _do_stop(args: argparse.Namespace) -> int:
     pid_path = Path(_resolve_pid_path(args.pid_path))
     if not pid_path.exists():
-        print("Daemon is not running (no PID file)")
         return 0
 
     try:
         pid = int(pid_path.read_text().strip())
     except (OSError, ValueError):
-        print("Corrupt PID file, cleaning up")
         pid_path.unlink(missing_ok=True)
         return 0
 
     try:
         os.kill(pid, signal.SIGTERM)
-        print(f"Sent SIGTERM to daemon (PID {pid})")
         return 0
     except ProcessLookupError:
-        print("Daemon process not found, cleaning up stale PID file")
         pid_path.unlink(missing_ok=True)
         return 0
-    except Exception as e:
-        print(f"Error stopping daemon: {e}", file=sys.stderr)
+    except Exception:
         return 1
 
 
@@ -262,12 +250,9 @@ def _do_health(args: argparse.Namespace) -> int:
     client = EmitClient(socket_path=socket_path, timeout=2.0)
     try:
         if client.is_daemon_running_sync():
-            print("Daemon is healthy")
             return 0
-        print("Daemon is not responding")
         return 1
-    except Exception as e:
-        print(f"Health check failed: {e}")
+    except Exception:
         return 1
     finally:
         client.close()
@@ -287,7 +272,6 @@ def main(argv: list[str] | None = None) -> int:
         return _do_stop(args)
     if args.command == "health":
         return _do_health(args)
-    print(f"Unknown command: {args.command}", file=sys.stderr)
     return 1
 
 

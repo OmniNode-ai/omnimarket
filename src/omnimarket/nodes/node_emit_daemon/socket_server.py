@@ -239,7 +239,7 @@ class EmitSocketServer:
                 reason="'payload' must be a JSON object"
             ).model_dump_json()
 
-        payload: dict[str, object] = cast("dict[str, object]", raw_payload)
+        payload: dict[str, object] = raw_payload
 
         # Look up registration from registry
         registration = self._registry.get_registration(event_type)

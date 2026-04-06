@@ -50,7 +50,6 @@ from omnimarket.nodes.node_emit_daemon.models.model_protocol import (
 from omnimarket.nodes.node_emit_daemon.publisher_loop import KafkaPublisherLoop
 from omnimarket.nodes.node_emit_daemon.socket_server import EmitSocketServer
 
-
 # =============================================================================
 # Contract Tests
 # =============================================================================
@@ -156,9 +155,7 @@ class TestBoundedEventQueue:
     @pytest.mark.asyncio
     async def test_enqueue_dequeue_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue = BoundedEventQueue(
-                max_memory_queue=10, spool_dir=Path(tmpdir)
-            )
+            queue = BoundedEventQueue(max_memory_queue=10, spool_dir=Path(tmpdir))
             event = self._make_event()
             assert await queue.enqueue(event)
             assert queue.memory_size() == 1
@@ -194,17 +191,17 @@ class TestBoundedEventQueue:
             await queue.enqueue(self._make_event("evt-2"))
 
             e1 = await queue.dequeue()
-            assert e1 is not None and e1.event_id == "evt-1"
+            assert e1 is not None
+            assert e1.event_id == "evt-1"
 
             e2 = await queue.dequeue()
-            assert e2 is not None and e2.event_id == "evt-2"
+            assert e2 is not None
+            assert e2.event_id == "evt-2"
 
     @pytest.mark.asyncio
     async def test_drain_to_spool(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            queue = BoundedEventQueue(
-                max_memory_queue=10, spool_dir=Path(tmpdir)
-            )
+            queue = BoundedEventQueue(max_memory_queue=10, spool_dir=Path(tmpdir))
             await queue.enqueue(self._make_event("evt-1"))
             await queue.enqueue(self._make_event("evt-2"))
 
@@ -217,15 +214,11 @@ class TestBoundedEventQueue:
     async def test_load_spool_on_restart(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             spool_dir = Path(tmpdir)
-            queue1 = BoundedEventQueue(
-                max_memory_queue=10, spool_dir=spool_dir
-            )
+            queue1 = BoundedEventQueue(max_memory_queue=10, spool_dir=spool_dir)
             await queue1.enqueue(self._make_event("evt-1"))
             await queue1.drain_to_spool()
 
-            queue2 = BoundedEventQueue(
-                max_memory_queue=10, spool_dir=spool_dir
-            )
+            queue2 = BoundedEventQueue(max_memory_queue=10, spool_dir=spool_dir)
             count = await queue2.load_spool()
             assert count == 1
 
@@ -273,9 +266,7 @@ class TestEventRegistry:
             required_fields=["session_id", "name"],
         )
         registry = EventRegistry.from_dict({"test.event": reg})
-        missing = registry.validate_payload(
-            "test.event", {"session_id": "abc"}
-        )
+        missing = registry.validate_payload("test.event", {"session_id": "abc"})
         assert missing == ["name"]
 
     def test_validate_payload_unknown_type(self) -> None:
@@ -289,9 +280,7 @@ class TestEventRegistry:
             partition_key_field="session_id",
         )
         registry = EventRegistry.from_dict({"test.event": reg})
-        key = registry.get_partition_key(
-            "test.event", {"session_id": "abc123"}
-        )
+        key = registry.get_partition_key("test.event", {"session_id": "abc123"})
         assert key == "abc123"
 
     def test_from_yaml(self) -> None:
@@ -373,7 +362,7 @@ class TestHandlerEmitDaemon:
 
     def test_full_lifecycle(self) -> None:
         handler = HandlerEmitDaemon()
-        handler.transition_to_binding("/tmp/test.sock", 12345)  # noqa: S108
+        handler.transition_to_binding("/tmp/test.sock", 12345)
         assert handler.phase == EnumEmitDaemonPhase.BINDING
 
         handler.transition_to_listening()
@@ -401,7 +390,7 @@ class TestHandlerEmitDaemon:
 
     def test_reset(self) -> None:
         handler = HandlerEmitDaemon()
-        handler.transition_to_binding("/tmp/test.sock", 123)  # noqa: S108
+        handler.transition_to_binding("/tmp/test.sock", 123)
         handler.reset()
         assert handler.phase == EnumEmitDaemonPhase.IDLE
 
@@ -428,9 +417,7 @@ class TestKafkaPublisherLoop:
         with tempfile.TemporaryDirectory() as tmpdir:
             queue = BoundedEventQueue(spool_dir=Path(tmpdir))
             mock_publish = AsyncMock()
-            publisher = KafkaPublisherLoop(
-                queue=queue, publish_fn=mock_publish
-            )
+            publisher = KafkaPublisherLoop(queue=queue, publish_fn=mock_publish)
 
             await queue.enqueue(self._make_event())
             await publisher.start()
@@ -716,7 +703,9 @@ class TestEmitClient:
         monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
         assert default_socket_path() == "/run/user/1000/onex/emit.sock"
 
-    def test_default_socket_path_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_socket_path_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("ONEX_EMIT_SOCKET_PATH", raising=False)
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
         assert default_socket_path() == "/tmp/onex-emit.sock"

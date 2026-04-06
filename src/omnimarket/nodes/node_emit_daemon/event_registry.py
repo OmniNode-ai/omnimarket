@@ -140,7 +140,9 @@ class EventRegistry:
         reg = registry.get_registration("prompt.submitted")
     """
 
-    def __init__(self, registrations: dict[str, EventRegistration] | None = None) -> None:
+    def __init__(
+        self, registrations: dict[str, EventRegistration] | None = None
+    ) -> None:
         self._registrations: dict[str, EventRegistration] = registrations or {}
 
     @classmethod
@@ -205,7 +207,9 @@ class EventRegistry:
         """List all registered event types."""
         return list(self._registrations.keys())
 
-    def validate_payload(self, event_type: str, payload: dict[str, object]) -> list[str]:
+    def validate_payload(
+        self, event_type: str, payload: dict[str, object]
+    ) -> list[str]:
         """Validate that a payload has all required fields.
 
         Returns list of missing field names (empty if valid).
