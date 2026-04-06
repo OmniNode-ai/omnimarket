@@ -1,0 +1,24 @@
+---
+name: emit_daemon
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: service
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Portable event publishing daemon. Accepts events via Unix domain socket,
+  validates against a pluggable per-platform event registry, queues with
+  disk spool durability, and publishes to Kafka. Supports standalone CLI,
+  platform wrapper, and kernel plugin runtime modes.
+
+handler_routing:
+  default_handler: handler:HandlerEmitDaemon
+
+descriptor:
+  node_archetype: service
+  purity: effectful
+  idempotent: false
+  timeout_ms: 0  # long-running daemon, no timeout
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []  # topics are dynamic, driven by the event registry YAML

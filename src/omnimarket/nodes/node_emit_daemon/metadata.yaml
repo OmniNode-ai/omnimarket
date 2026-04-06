@@ -1,0 +1,20 @@
+name: node_emit_daemon
+version: "1.0.0"
+description: "Portable event publishing daemon with pluggable registry and Kafka publisher"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_emit_daemon: "omnimarket.nodes.node_emit_daemon"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: network_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["daemon", "event-publishing", "kafka", "socket", "service"]
