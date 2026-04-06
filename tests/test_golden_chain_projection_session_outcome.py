@@ -70,10 +70,15 @@ class TestSessionOutcomeProjection:
         assert event.session_id == "sess-003"
 
     def test_event_bus_wiring(self) -> None:
-        contract_path = "src/omnimarket/nodes/node_projection_session_outcome/contract.yaml"
+        contract_path = (
+            "src/omnimarket/nodes/node_projection_session_outcome/contract.yaml"
+        )
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
-        assert "onex.evt.omniclaude.session-outcome.v1" in contract["event_bus"]["subscribe_topics"]
+        assert (
+            "onex.evt.omniclaude.session-outcome.v1"
+            in contract["event_bus"]["subscribe_topics"]
+        )
         assert len(contract["event_bus"]["publish_topics"]) >= 1
 
 
@@ -83,9 +88,7 @@ class TestSessionOutcomeProjectionQuery:
         HANDLER.project(
             ModelSessionOutcomeEvent(session_id="s1", outcome="success"), db
         )
-        HANDLER.project(
-            ModelSessionOutcomeEvent(session_id="s2", outcome="failed"), db
-        )
+        HANDLER.project(ModelSessionOutcomeEvent(session_id="s2", outcome="failed"), db)
         results = db.query("session_outcomes", {"outcome": "failed"})
         assert len(results) == 1
         assert results[0]["session_id"] == "s2"

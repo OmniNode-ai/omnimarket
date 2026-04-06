@@ -99,7 +99,9 @@ class TestRegistrationProjection:
         assert rows[0]["service_name"] == "new-svc"
 
     def test_event_bus_wiring(self) -> None:
-        contract_path = "src/omnimarket/nodes/node_projection_registration/contract.yaml"
+        contract_path = (
+            "src/omnimarket/nodes/node_projection_registration/contract.yaml"
+        )
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
         topics = contract["event_bus"]["subscribe_topics"]

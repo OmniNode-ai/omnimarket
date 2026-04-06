@@ -80,4 +80,7 @@ class TestSavingsProjection:
         contract_path = "src/omnimarket/nodes/node_projection_savings/contract.yaml"
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
-        assert "onex.evt.omnibase-infra.savings-estimated.v1" in contract["event_bus"]["subscribe_topics"]
+        assert (
+            "onex.evt.omnibase-infra.savings-estimated.v1"
+            in contract["event_bus"]["subscribe_topics"]
+        )

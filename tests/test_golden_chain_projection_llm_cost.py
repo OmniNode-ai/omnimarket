@@ -72,4 +72,7 @@ class TestLlmCostProjection:
         contract_path = "src/omnimarket/nodes/node_projection_llm_cost/contract.yaml"
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
-        assert "onex.evt.omniintelligence.llm-call-completed.v1" in contract["event_bus"]["subscribe_topics"]
+        assert (
+            "onex.evt.omniintelligence.llm-call-completed.v1"
+            in contract["event_bus"]["subscribe_topics"]
+        )

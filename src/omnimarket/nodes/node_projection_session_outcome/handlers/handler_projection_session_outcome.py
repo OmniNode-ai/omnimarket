@@ -28,7 +28,9 @@ class ModelSessionOutcomeEvent(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     session_id: str = Field(..., description="Unique session identifier.")
-    outcome: str = Field(..., description="Session outcome: success, failed, abandoned, unknown.")
+    outcome: str = Field(
+        ..., description="Session outcome: success, failed, abandoned, unknown."
+    )
     emitted_at: str | None = Field(default=None, description="ISO 8601 timestamp.")
 
 

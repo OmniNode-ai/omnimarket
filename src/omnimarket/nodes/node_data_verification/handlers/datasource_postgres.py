@@ -115,7 +115,10 @@ class PostgresDataSource:
                 return []
             columns = [desc[0] for desc in cur.description]
             rows = cur.fetchall()
-            return [{col: str(val) for col, val in zip(columns, row, strict=True)} for row in rows]
+            return [
+                {col: str(val) for col, val in zip(columns, row, strict=True)}
+                for row in rows
+            ]
 
     def get_columns(self, table_name: str) -> list[str]:
         """Get column names for a table."""

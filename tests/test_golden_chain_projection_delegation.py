@@ -82,4 +82,7 @@ class TestDelegationProjection:
         contract_path = "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
-        assert "onex.evt.omniclaude.task-delegated.v1" in contract["event_bus"]["subscribe_topics"]
+        assert (
+            "onex.evt.omniclaude.task-delegated.v1"
+            in contract["event_bus"]["subscribe_topics"]
+        )
