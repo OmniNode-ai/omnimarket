@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import os
 import signal
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from aiokafka import AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer  # type: ignore[import-untyped]
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.projection.envelope import unwrap_envelope
@@ -59,13 +60,13 @@ def deterministic_correlation_id(topic: str, partition: int, offset: int) -> str
 def safe_parse_date(value: Any) -> datetime:
     """Parse a date string, falling back to current wall-clock time."""
     if not value:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     if isinstance(value, datetime):
         return value
     try:
-        from dateutil.parser import isoparse
+        from dateutil.parser import isoparse  # type: ignore[import-untyped]
 
-        dt = isoparse(str(value))
+        dt: datetime = isoparse(str(value))
         return dt
     except Exception:
         pass
@@ -73,8 +74,10 @@ def safe_parse_date(value: Any) -> datetime:
         dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         return dt
     except (ValueError, TypeError):
-        logger.warning("safe_parse_date: malformed timestamp %r, using wall-clock", value)
-        return datetime.now(timezone.utc)
+        logger.warning(
+            "safe_parse_date: malformed timestamp %r, using wall-clock", value
+        )
+        return datetime.now(UTC)
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
@@ -83,7 +86,7 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
     try:
         f = float(value)
-        if not (f == f):  # NaN check
+        if f != f:  # NaN check
             return default
         return f
     except (ValueError, TypeError):
@@ -122,7 +125,9 @@ class BaseProjectionRunner(ABC):
         group_id: str | None = None,
         client_id: str | None = None,
     ) -> None:
-        self._group_id = group_id or os.environ.get("KAFKA_CONSUMER_GROUP", DEFAULT_GROUP_ID)
+        self._group_id = group_id or os.environ.get(
+            "KAFKA_CONSUMER_GROUP", DEFAULT_GROUP_ID
+        )
         self._client_id = client_id or DEFAULT_CLIENT_ID
         self._db = AsyncpgAdapter()
         self._stats = ProjectionStats()
@@ -200,10 +205,8 @@ class BaseProjectionRunner(ABC):
                     delay,
                 )
                 if self._consumer:
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._consumer.stop()
-                    except Exception:
-                        pass
                     self._consumer = None
                 await asyncio.sleep(delay)
 
@@ -215,10 +218,8 @@ class BaseProjectionRunner(ABC):
         logger.info("Shutting down...")
         self._running = False
         if self._consumer:
-            try:
+            with contextlib.suppress(Exception):
                 await self._consumer.stop()
-            except Exception:
-                pass
         await self._db.close()
 
     async def _handle_message(self, msg: Any) -> None:
@@ -243,14 +244,18 @@ class BaseProjectionRunner(ABC):
 
             if projected:
                 self._stats.events_projected += 1
-                self._stats.last_projected_at = datetime.now(timezone.utc)
-                ts = self._stats.topic_stats.setdefault(topic, {"projected": 0, "errors": 0})
+                self._stats.last_projected_at = datetime.now(UTC)
+                ts = self._stats.topic_stats.setdefault(
+                    topic, {"projected": 0, "errors": 0}
+                )
                 ts["projected"] += 1
                 await self._update_watermark(f"{topic}:{msg.partition}", msg.offset)
 
         except Exception as err:
             self._stats.errors_count += 1
-            ts = self._stats.topic_stats.setdefault(topic, {"projected": 0, "errors": 0})
+            ts = self._stats.topic_stats.setdefault(
+                topic, {"projected": 0, "errors": 0}
+            )
             ts["errors"] += 1
             logger.error("Error projecting %s: %s", topic, err)
 

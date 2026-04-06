@@ -12,7 +12,9 @@ class DatabaseAdapter(Protocol):
         """Execute a parameterized query and return rows as dicts."""
         ...
 
-    async def execute_many(self, query: str, params_list: list[tuple[Any, ...]]) -> None:
+    async def execute_many(
+        self, query: str, params_list: list[tuple[Any, ...]]
+    ) -> None:
         """Execute a parameterized query for each set of params."""
         ...
 

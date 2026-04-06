@@ -65,7 +65,7 @@ class TestLocalReviewGoldenChain:
         handler = HandlerLocalReview()
         command = _make_command()
 
-        state, events, completed = handler.run_full_pipeline(
+        state, events, _completed = handler.run_full_pipeline(
             command, check_clean_results=[False, True]
         )
 
@@ -104,7 +104,7 @@ class TestLocalReviewGoldenChain:
         handler = HandlerLocalReview()
         command = _make_command(max_iterations=2)
 
-        state, _events, completed = handler.run_full_pipeline(
+        state, _events, _completed = handler.run_full_pipeline(
             command, check_clean_results=[False, False, False]
         )
 

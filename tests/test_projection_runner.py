@@ -1,15 +1,13 @@
 """Tests for BaseProjectionRunner helper functions."""
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from omnimarket.projection.runner import (
+    coalesce,
     deterministic_correlation_id,
     safe_float,
     safe_int,
     safe_parse_date,
-    coalesce,
 )
 
 
@@ -45,7 +43,7 @@ class TestSafeParseDate:
         result = safe_parse_date(None)
         assert isinstance(result, datetime)
         # Should be approximately now
-        delta = abs((datetime.now(timezone.utc) - result).total_seconds())
+        delta = abs((datetime.now(UTC) - result).total_seconds())
         assert delta < 5
 
     def test_empty_string(self) -> None:
@@ -53,7 +51,7 @@ class TestSafeParseDate:
         assert isinstance(result, datetime)
 
     def test_datetime_passthrough(self) -> None:
-        dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2026, 1, 1, tzinfo=UTC)
         result = safe_parse_date(dt)
         assert result == dt
 

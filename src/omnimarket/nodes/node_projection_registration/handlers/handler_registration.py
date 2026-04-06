@@ -51,7 +51,9 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         node_id = data.get("node_id") or data.get("nodeId") or None
         service_name = data.get("service_name") or node_name or node_id
         if not service_name:
-            logger.warning("node-introspection missing service_name/node_name/node_id -- skipping")
+            logger.warning(
+                "node-introspection missing service_name/node_name/node_id -- skipping"
+            )
             return True
 
         service_url = data.get("service_url") or data.get("serviceUrl") or ""
@@ -118,7 +120,9 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
             logger.warning("node-heartbeat missing service_name/node_id -- skipping")
             return True
 
-        health_status = data.get("health_status") or data.get("healthStatus") or "healthy"
+        health_status = (
+            data.get("health_status") or data.get("healthStatus") or "healthy"
+        )
 
         await self.db.execute(
             """
@@ -169,6 +173,8 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
     runner = RegistrationProjectionRunner()
     asyncio.run(runner.run())

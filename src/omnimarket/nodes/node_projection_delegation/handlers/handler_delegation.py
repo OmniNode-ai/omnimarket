@@ -44,9 +44,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
         correlation_id = (
-            data.get("correlation_id")
-            or data.get("correlationId")
-            or meta.fallback_id
+            data.get("correlation_id") or data.get("correlationId") or meta.fallback_id
         )
 
         task_type = data.get("task_type") or data.get("taskType")
@@ -80,8 +78,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
 
         import json
 
-        quality_gates_checked = data.get("quality_gates_checked") or data.get("qualityGatesChecked")
-        quality_gates_failed = data.get("quality_gates_failed") or data.get("qualityGatesFailed")
+        quality_gates_checked = data.get("quality_gates_checked") or data.get(
+            "qualityGatesChecked"
+        )
+        quality_gates_failed = data.get("quality_gates_failed") or data.get(
+            "qualityGatesFailed"
+        )
         qgc_json = json.dumps(quality_gates_checked) if quality_gates_checked else None
         qgf_json = json.dumps(quality_gates_failed) if quality_gates_failed else None
 
@@ -143,9 +145,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
         correlation_id = (
-            data.get("correlation_id")
-            or data.get("correlationId")
-            or meta.fallback_id
+            data.get("correlation_id") or data.get("correlationId") or meta.fallback_id
         )
 
         task_type = data.get("task_type") or data.get("taskType")
@@ -181,9 +181,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             data.get("shadow_cost_usd") or data.get("shadowCostUsd")
         )
         divergence_reason = (
-            data.get("divergence_reason")
-            or data.get("divergenceReason")
-            or None
+            data.get("divergence_reason") or data.get("divergenceReason") or None
         )
 
         await self.db.execute(
@@ -243,6 +241,8 @@ def _safe_int_or_none(value: Any) -> int | None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
     runner = DelegationProjectionRunner()
     asyncio.run(runner.run())

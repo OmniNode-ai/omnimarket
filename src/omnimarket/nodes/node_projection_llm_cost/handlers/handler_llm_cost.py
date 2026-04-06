@@ -44,7 +44,11 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
         # usage_source normalization
         usage_normalized = data.get("usage_normalized") or {}
         usage_source_raw = (
-            (usage_normalized.get("source") if isinstance(usage_normalized, dict) else None)
+            (
+                usage_normalized.get("source")
+                if isinstance(usage_normalized, dict)
+                else None
+            )
             or data.get("usage_source")
             or data.get("usageSource")
             or ("ESTIMATED" if data.get("usage_is_estimated") else "API")
@@ -62,7 +66,9 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
         granularity = granularity_raw if granularity_raw in ("hour", "day") else "hour"
 
         prompt_tokens = _safe_int(data.get("prompt_tokens") or data.get("promptTokens"))
-        completion_tokens = _safe_int(data.get("completion_tokens") or data.get("completionTokens"))
+        completion_tokens = _safe_int(
+            data.get("completion_tokens") or data.get("completionTokens")
+        )
         raw_total = _safe_int(data.get("total_tokens") or data.get("totalTokens"))
         derived_total = prompt_tokens + completion_tokens
 
@@ -79,14 +85,18 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
                 )
             total_tokens = raw_total
 
-        estimated_cost_usd = _safe_cost(data.get("estimated_cost_usd") or data.get("estimatedCostUsd"))
+        estimated_cost_usd = _safe_cost(
+            data.get("estimated_cost_usd") or data.get("estimatedCostUsd")
+        )
         total_cost_usd = _safe_cost(
             data.get("total_cost_usd")
             or data.get("totalCostUsd")
             or data.get("estimated_cost_usd")
             or data.get("estimatedCostUsd")
         )
-        reported_cost_usd = _safe_cost(data.get("reported_cost_usd") or data.get("reportedCostUsd"))
+        reported_cost_usd = _safe_cost(
+            data.get("reported_cost_usd") or data.get("reportedCostUsd")
+        )
 
         model_name = (
             data.get("model_id")
@@ -99,17 +109,25 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
         explicit_repo = data.get("repo_name") or data.get("repoName")
         repo_name = explicit_repo or (
             reporting_source
-            if (reporting_source and len(str(reporting_source)) < 64 and " " not in str(reporting_source))
+            if (
+                reporting_source
+                and len(str(reporting_source)) < 64
+                and " " not in str(reporting_source)
+            )
             else None
         )
 
         session_id = data.get("session_id") or data.get("sessionId") or None
         pattern_id = data.get("pattern_id") or data.get("patternId") or None
         pattern_name = data.get("pattern_name") or data.get("patternName") or None
-        request_count = _safe_int(data.get("request_count") or data.get("requestCount") or 1)
+        request_count = _safe_int(
+            data.get("request_count") or data.get("requestCount") or 1
+        )
 
         if model_name == "unknown":
-            logger.warning("LLM cost event missing model_id/model_name -- inserting as 'unknown'")
+            logger.warning(
+                "LLM cost event missing model_id/model_name -- inserting as 'unknown'"
+            )
 
         await self.db.execute(
             """
@@ -164,6 +182,8 @@ def _safe_cost(value: Any) -> float:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
     runner = LlmCostProjectionRunner()
     asyncio.run(runner.run())

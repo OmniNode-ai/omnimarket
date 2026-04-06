@@ -7,9 +7,7 @@ and verify the handler calls execute() with the correct arguments.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -17,7 +15,9 @@ from omnimarket.projection.runner import MessageMeta
 
 
 def _make_meta(partition: int = 0, offset: int = 0) -> MessageMeta:
-    return MessageMeta(partition=partition, offset=offset, fallback_id="fallback-id-1234")
+    return MessageMeta(
+        partition=partition, offset=offset, fallback_id="fallback-id-1234"
+    )
 
 
 @pytest.fixture
@@ -48,7 +48,9 @@ class TestSessionOutcomeHandler:
             "emitted_at": "2026-04-06T12:00:00Z",
         }
 
-        result = await runner.project_event("onex.evt.omniclaude.session-outcome.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniclaude.session-outcome.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
         args = mock_db.execute.call_args
@@ -65,7 +67,9 @@ class TestSessionOutcomeHandler:
         runner._db = mock_db
 
         data = {"outcome": "success"}
-        result = await runner.project_event("onex.evt.omniclaude.session-outcome.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniclaude.session-outcome.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_not_called()
 
@@ -79,7 +83,9 @@ class TestSessionOutcomeHandler:
         runner._db = mock_db
 
         data = {"correlation_id": "corr-123", "outcome": "failure"}
-        result = await runner.project_event("onex.evt.omniclaude.session-outcome.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniclaude.session-outcome.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
         args = mock_db.execute.call_args
@@ -105,7 +111,9 @@ class TestLlmCostHandler:
             "timestamp": "2026-04-06T12:00:00Z",
         }
 
-        result = await runner.project_event("onex.evt.omniintelligence.llm-call-completed.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniintelligence.llm-call-completed.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
 
@@ -124,7 +132,9 @@ class TestLlmCostHandler:
             "timestamp": "2026-04-06T12:00:00Z",
         }
 
-        result = await runner.project_event("onex.evt.omniintelligence.llm-call-completed.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniintelligence.llm-call-completed.v1", data, _make_meta()
+        )
         assert result is True
         # Should default to API for unrecognized source
         call_args = mock_db.execute.call_args[0]
@@ -149,7 +159,9 @@ class TestDelegationHandler:
             "timestamp": "2026-04-06T12:00:00Z",
         }
 
-        result = await runner.project_event("onex.evt.omniclaude.task-delegated.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniclaude.task-delegated.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
 
@@ -170,7 +182,9 @@ class TestDelegationHandler:
             "divergence_detected": True,
         }
 
-        result = await runner.project_event("onex.evt.omniclaude.delegation-shadow-comparison.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniclaude.delegation-shadow-comparison.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
 
@@ -184,7 +198,9 @@ class TestDelegationHandler:
         runner._db = mock_db
 
         data = {"correlation_id": "corr-1"}  # missing task_type, delegated_to
-        result = await runner.project_event("onex.evt.omniclaude.task-delegated.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omniclaude.task-delegated.v1", data, _make_meta()
+        )
         assert result is True  # skip, don't error
         mock_db.execute.assert_not_called()
 
@@ -207,7 +223,9 @@ class TestRegistrationHandler:
             "metadata": {"version": "1.0"},
         }
 
-        result = await runner.project_event("onex.evt.platform.node-introspection.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.platform.node-introspection.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
 
@@ -222,7 +240,9 @@ class TestRegistrationHandler:
 
         data = {"node_name": "node_build_loop", "health_status": "healthy"}
 
-        result = await runner.project_event("onex.evt.platform.node-heartbeat.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.platform.node-heartbeat.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
 
@@ -237,7 +257,9 @@ class TestRegistrationHandler:
 
         data = {"node_name": "node_build_loop", "new_state": "active"}
 
-        result = await runner.project_event("onex.evt.platform.node-state-change.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.platform.node-state-change.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
 
@@ -274,12 +296,12 @@ class TestBaselinesHandler:
                     "avg_outcome_improvement": 0.2,
                 }
             ],
-            "breakdown": [
-                {"action": "promote", "count": 5, "avg_confidence": 0.8}
-            ],
+            "breakdown": [{"action": "promote", "count": 5, "avg_confidence": 0.8}],
         }
 
-        result = await runner.project_event("onex.evt.omnibase-infra.baselines-computed.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omnibase-infra.baselines-computed.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute_in_transaction.assert_called_once()
 
@@ -310,7 +332,9 @@ class TestSavingsHandler:
             "timestamp": "2026-04-06T12:00:00Z",
         }
 
-        result = await runner.project_event("onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_called_once()
 
@@ -324,6 +348,8 @@ class TestSavingsHandler:
         runner._db = mock_db
 
         data = {"actual_total_tokens": 100}
-        result = await runner.project_event("onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta())
+        result = await runner.project_event(
+            "onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta()
+        )
         assert result is True
         mock_db.execute.assert_not_called()

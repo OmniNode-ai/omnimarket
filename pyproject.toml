@@ -108,7 +108,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["T201"]
+"tests/**/*.py" = ["T201", "SLF001"]
 
 [tool.mypy]
 strict = true

@@ -2,14 +2,14 @@
 
 import json
 
-import pytest
-
 from omnimarket.projection.envelope import unwrap_envelope
 
 
 class TestUnwrapEnvelope:
     def test_payload_envelope(self) -> None:
-        raw = json.dumps({"payload": {"session_id": "abc", "outcome": "success"}}).encode()
+        raw = json.dumps(
+            {"payload": {"session_id": "abc", "outcome": "success"}}
+        ).encode()
         result = unwrap_envelope(raw)
         assert result is not None
         assert result["session_id"] == "abc"
@@ -17,11 +17,13 @@ class TestUnwrapEnvelope:
         assert "_envelope" in result
 
     def test_data_envelope(self) -> None:
-        raw = json.dumps({
-            "event_type": "session-outcome.v1",
-            "correlation_id": "corr-123",
-            "data": {"session_id": "xyz", "outcome": "failure"},
-        }).encode()
+        raw = json.dumps(
+            {
+                "event_type": "session-outcome.v1",
+                "correlation_id": "corr-123",
+                "data": {"session_id": "xyz", "outcome": "failure"},
+            }
+        ).encode()
         result = unwrap_envelope(raw)
         assert result is not None
         assert result["session_id"] == "xyz"

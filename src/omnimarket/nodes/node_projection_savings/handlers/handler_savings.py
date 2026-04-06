@@ -38,7 +38,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             logger.warning("savings-estimated event missing session_id")
             return True
 
-        correlation_id = str(data.get("correlation_id") or data.get("correlationId") or "").strip()
+        correlation_id = str(
+            data.get("correlation_id") or data.get("correlationId") or ""
+        ).strip()
         source_event_id = correlation_id or deterministic_correlation_id(
             TOPIC, meta.partition, meta.offset
         )
@@ -47,32 +49,52 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             data.get("timestamp_iso") or data.get("timestamp") or data.get("emitted_at")
         )
 
-        actual_total_tokens = _safe_int(data.get("actual_total_tokens") or data.get("actualTotalTokens"))
-        actual_cost_usd = _safe_cost_str(data.get("actual_cost_usd") or data.get("actualCostUsd"))
-        actual_model_id = _str_or_none(data.get("actual_model_id") or data.get("actualModelId"))
+        actual_total_tokens = _safe_int(
+            data.get("actual_total_tokens") or data.get("actualTotalTokens")
+        )
+        actual_cost_usd = _safe_cost_str(
+            data.get("actual_cost_usd") or data.get("actualCostUsd")
+        )
+        actual_model_id = _str_or_none(
+            data.get("actual_model_id") or data.get("actualModelId")
+        )
         counterfactual_model_id = _str_or_none(
             data.get("counterfactual_model_id") or data.get("counterfactualModelId")
         )
-        direct_savings_usd = _safe_cost_str(data.get("direct_savings_usd") or data.get("directSavingsUsd"))
-        direct_tokens_saved = _safe_int(data.get("direct_tokens_saved") or data.get("directTokensSaved"))
+        direct_savings_usd = _safe_cost_str(
+            data.get("direct_savings_usd") or data.get("directSavingsUsd")
+        )
+        direct_tokens_saved = _safe_int(
+            data.get("direct_tokens_saved") or data.get("directTokensSaved")
+        )
         estimated_total_savings_usd = _safe_cost_str(
-            data.get("estimated_total_savings_usd") or data.get("estimatedTotalSavingsUsd")
+            data.get("estimated_total_savings_usd")
+            or data.get("estimatedTotalSavingsUsd")
         )
         estimated_total_tokens_saved = _safe_int(
-            data.get("estimated_total_tokens_saved") or data.get("estimatedTotalTokensSaved")
+            data.get("estimated_total_tokens_saved")
+            or data.get("estimatedTotalTokensSaved")
         )
         categories = data.get("categories") or []
-        direct_confidence = _safe_float(data.get("direct_confidence") or data.get("directConfidence"))
+        direct_confidence = _safe_float(
+            data.get("direct_confidence") or data.get("directConfidence")
+        )
         heuristic_confidence_avg = _safe_float(
             data.get("heuristic_confidence_avg") or data.get("heuristicConfidenceAvg")
         )
         estimation_method = str(
-            data.get("estimation_method") or data.get("estimationMethod") or "tiered_attribution_v1"
+            data.get("estimation_method")
+            or data.get("estimationMethod")
+            or "tiered_attribution_v1"
         )
-        treatment_group = _str_or_none(data.get("treatment_group") or data.get("treatmentGroup"))
+        treatment_group = _str_or_none(
+            data.get("treatment_group") or data.get("treatmentGroup")
+        )
         is_measured = bool(data.get("is_measured") or data.get("isMeasured") or False)
         completeness_status = str(
-            data.get("completeness_status") or data.get("completenessStatus") or "complete"
+            data.get("completeness_status")
+            or data.get("completenessStatus")
+            or "complete"
         )
         pricing_manifest_version = _str_or_none(
             data.get("pricing_manifest_version") or data.get("pricingManifestVersion")
@@ -176,6 +198,8 @@ def _str_or_none(value: Any) -> str | None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
     runner = SavingsProjectionRunner()
     asyncio.run(runner.run())
