@@ -100,4 +100,4 @@ jobs:
             dist/*.tar.gz
             dist/SHA256SUMS.txt
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, 'rc') }}
+          prerelease: ${{ contains(steps.tag.outputs.tag, 'rc') }}

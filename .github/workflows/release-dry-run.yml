@@ -19,6 +19,20 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.12'
+      - name: Validate tag matches pyproject.toml version
+        run: |
+          TAG="${{ inputs.tag }}"
+          TAG="${TAG#v}"
+          PKG_VERSION=$(python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "ERROR: input tag v${TAG} does not match pyproject.toml version $PKG_VERSION"
+            exit 1
+          fi
+          echo "Version validated: $PKG_VERSION"
       - name: Build only (no publish)
         run: uv build
       - name: Verify artifacts
