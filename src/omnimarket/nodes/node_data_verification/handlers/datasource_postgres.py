@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class PostgresDataSource:
             "user": user,
             "password": password,
         }
-        self._conn: object | None = None
+        self._conn: Any = None
 
     @classmethod
     def from_env(cls) -> PostgresDataSource:
@@ -83,17 +84,17 @@ class PostgresDataSource:
             password=os.environ.get("PGPASSWORD", ""),
         )
 
-    def _get_conn(self) -> object:
+    def _get_conn(self) -> Any:
         """Get or create a database connection."""
         if self._conn is None:
-            self._conn = psycopg2.connect(**self._conn_params)  # type: ignore[union-attr]
+            self._conn = psycopg2.connect(**self._conn_params)
         return self._conn
 
     def get_row_count(self, table_name: str) -> int:
         """Get total row count for a table."""
         conn = self._get_conn()
         # Use identifier quoting to prevent SQL injection
-        with conn.cursor() as cur:  # type: ignore[union-attr]
+        with conn.cursor() as cur:
             cur.execute(
                 "SELECT COUNT(*) FROM %s" % _quote_ident(table_name)  # noqa: UP031
             )
@@ -105,7 +106,7 @@ class PostgresDataSource:
     ) -> list[dict[str, str]]:
         """Get sample rows from a table."""
         conn = self._get_conn()
-        with conn.cursor() as cur:  # type: ignore[union-attr]
+        with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM %s LIMIT %%s" % _quote_ident(table_name),  # noqa: UP031
                 (sample_size,),
@@ -119,7 +120,7 @@ class PostgresDataSource:
     def get_columns(self, table_name: str) -> list[str]:
         """Get column names for a table."""
         conn = self._get_conn()
-        with conn.cursor() as cur:  # type: ignore[union-attr]
+        with conn.cursor() as cur:
             cur.execute(
                 "SELECT column_name FROM information_schema.columns "
                 "WHERE table_name = %s ORDER BY ordinal_position",
@@ -130,7 +131,7 @@ class PostgresDataSource:
     def close(self) -> None:
         """Close the database connection."""
         if self._conn is not None:
-            self._conn.close()  # type: ignore[union-attr]
+            self._conn.close()
             self._conn = None
 
 
