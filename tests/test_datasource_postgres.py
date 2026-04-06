@@ -26,7 +26,6 @@ from omnimarket.nodes.node_data_verification.models.model_data_verification_stat
     EnumVerificationStatus,
 )
 
-
 # ---------------------------------------------------------------------------
 # Unit tests (mocked psycopg2)
 # ---------------------------------------------------------------------------
@@ -36,9 +35,11 @@ from omnimarket.nodes.node_data_verification.models.model_data_verification_stat
 class TestPostgresDataSourceUnit:
     def test_raises_without_dsn(self) -> None:
         """Should raise RuntimeError if no DSN is provided and env var is unset."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(RuntimeError, match="OMNIDASH_ANALYTICS_DB_URL"):
-                PostgresDataSource(dsn="")
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            pytest.raises(RuntimeError, match="OMNIDASH_ANALYTICS_DB_URL"),
+        ):
+            PostgresDataSource(dsn="")
 
     def test_get_row_count(self) -> None:
         mock_conn = MagicMock()
@@ -133,7 +134,7 @@ class TestPostgresDataSourceUnit:
 
         call_count = 0
 
-        def cursor_factory(**kwargs):  # noqa: ANN003, ANN001
+        def cursor_factory(**kwargs):
             nonlocal call_count
             call_count += 1
             if "cursor_factory" in kwargs:
