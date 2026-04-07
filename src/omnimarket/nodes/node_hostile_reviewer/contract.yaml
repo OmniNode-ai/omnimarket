@@ -11,9 +11,9 @@
 #   - OMN-7781: Unified LLM Workflow Migration epic
 ---
 name: hostile_reviewer
-contract_version: {major: 2, minor: 0, patch: 0}
-node_type: compute
-node_version: {major: 2, minor: 0, patch: 0}
+contract_version: {major: 3, minor: 0, patch: 0}
+node_type: workflow
+node_version: {major: 3, minor: 0, patch: 0}
 
 description: >
   Multi-model adversarial code review WorkflowPackage. Coordinates dispatch of
@@ -61,6 +61,12 @@ handler_routing:
         module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_hostile_reviewer"
       description: "FSM state machine — phase transitions, circuit breaker, terminal detection."
 
+    - operation: "aggregate_findings"
+      handler:
+        name: "HandlerFindingAggregator"
+        module: "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator"
+      description: "Pure COMPUTE — weighted-union dedup of findings from N models, verdict computation."
+
   adapters:
     - name: "AdapterInferenceBridge"
       module: "omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge"
@@ -77,7 +83,7 @@ output_model:
   description: "Completed event with verdict, findings, and phase history."
 
 descriptor:
-  node_archetype: compute
+  node_archetype: workflow
   purity: side_effect
   idempotent: true
   timeout_ms: 600000
