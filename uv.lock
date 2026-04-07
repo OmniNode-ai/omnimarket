@@ -649,9 +649,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
     { name = "asyncpg" },
-=======
     { name = "omnibase-compat" },
->>>>>>> f7a05d8 (refactor: replace local protocol violations with omnibase_compat imports [OMN-7749])
     { name = "omnibase-core" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
@@ -672,7 +670,6 @@ dev = [
 requires-dist = [
     { name = "aiokafka", specifier = ">=0.12.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
-<<<<<<< HEAD
     { name = "omnibase-compat", editable = "../omnibase_compat" },
     { name = "omnibase-core", editable = "../omnibase_core" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
