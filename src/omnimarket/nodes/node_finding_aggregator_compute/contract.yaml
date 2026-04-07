@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Finding Aggregator Compute
+#
+# Pure computation: merges findings from N models via weighted-union dedup
+# using Jaccard similarity with configurable threshold.
+#
+# Related Tickets:
+#   - OMN-7795: Finding Aggregator COMPUTE node
+#   - OMN-7781: Unified LLM Workflow Migration epic
+name: "node_finding_aggregator_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: merges findings from N models via weighted-union dedup (Jaccard similarity)."
+input_model:
+  name: "ModelFindingAggregatorInput"
+  module: "omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input"
+  description: "Findings grouped by source model with aggregation config."
+output_model:
+  name: "ModelFindingAggregatorOutput"
+  module: "omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_output"
+  description: "Merged findings with weighted scores and verdict."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "aggregate_findings"
+      handler:
+        name: "HandlerFindingAggregator"
+        module: "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator"
+metadata:
+  description: "Finding aggregator compute node for multi-model review dedup"
+  author: "OmniNode Team"
+  created: "2026-04-07"
+  tags:
+    - "compute"
+    - "review"
+    - "aggregation"
+    - "dedup"
+    - "llm-workflow"
+    - "OMN-7781"
+  related_tickets:
+    - "OMN-7795"
+    - "OMN-7781"
