@@ -44,6 +44,28 @@ class HandlerBuildLoop:
     event bus publish/subscribe.
     """
 
+    def handle(
+        self,
+        command: ModelLoopStartCommand,
+        phase_results: dict[EnumBuildLoopPhase, bool] | None = None,
+    ) -> tuple[
+        ModelLoopState, list[ModelPhaseTransitionEvent], ModelLoopCompletedEvent
+    ]:
+        """Primary entry point for RuntimeLocal handler protocol.
+
+        Dispatches a full cycle through the FSM based on the command's mode.
+        Delegates to run_full_cycle() which drives phase transitions according
+        to the mode (BUILD, CLOSE_OUT, FULL, OBSERVE).
+
+        Args:
+            command: Start command with mode, correlation_id, and config.
+            phase_results: Optional per-phase success/failure overrides.
+
+        Returns:
+            (final_state, transition_events, completed_event).
+        """
+        return self.run_full_cycle(command, phase_results=phase_results)
+
     def start(self, command: ModelLoopStartCommand) -> ModelLoopState:
         """Initialize loop state from a start command.
 

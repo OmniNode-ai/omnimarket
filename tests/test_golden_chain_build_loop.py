@@ -381,3 +381,55 @@ class TestBuildLoopGoldenChain:
             EnumBuildLoopPhase.POST_VERIFY,
             EnumBuildLoopPhase.COMPLETE,
         ]
+
+    async def test_handle_dispatches_build_mode(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """handle() delegates to run_full_cycle() for BUILD mode."""
+        handler = HandlerBuildLoop()
+        command = _make_command(mode="build")
+
+        state, events, completed = handler.handle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert completed.cycles_completed == 1
+        assert len(events) == 6
+
+    async def test_handle_dispatches_observe_mode(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """handle() delegates to run_full_cycle() for OBSERVE mode."""
+        handler = HandlerBuildLoop()
+        command = _make_command(mode="observe")
+
+        state, events, completed = handler.handle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert len(events) == 2
+
+    async def test_handle_dispatches_close_out_mode(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """handle() delegates to run_full_cycle() for CLOSE_OUT mode."""
+        handler = HandlerBuildLoop()
+        command = _make_command(mode="close_out")
+
+        state, events, completed = handler.handle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert len(events) == 6
+
+    async def test_handle_with_phase_failure(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """handle() passes phase_results through to run_full_cycle()."""
+        handler = HandlerBuildLoop()
+        command = _make_command()
+
+        state, _events, completed = handler.handle(
+            command,
+            phase_results={EnumBuildLoopPhase.VERIFYING: False},
+        )
+
+        assert state.consecutive_failures == 1
+        assert completed.final_phase == EnumBuildLoopPhase.CLOSING_OUT
