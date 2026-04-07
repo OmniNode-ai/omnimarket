@@ -32,10 +32,12 @@ def _make_command(
     skip_closeout: bool = False,
     dry_run: bool = False,
     max_cycles: int = 1,
+    mode: str = "build",
 ) -> ModelLoopStartCommand:
     return ModelLoopStartCommand(
         correlation_id=uuid4(),
         max_cycles=max_cycles,
+        mode=mode,
         skip_closeout=skip_closeout,
         dry_run=dry_run,
         requested_at=datetime.now(tz=UTC),
@@ -295,3 +297,87 @@ class TestBuildLoopGoldenChain:
         state, _ = handler.advance(state, phase_success=True, tickets_dispatched=2)
         assert state.tickets_dispatched == 2
         assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+
+    async def test_close_out_mode_skips_filling_building(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """CLOSE_OUT mode: CLOSING_OUT -> VERIFYING -> RELEASING -> DEPLOYING -> POST_VERIFY -> COMPLETE."""
+        handler = HandlerBuildLoop()
+        command = _make_command(mode="close_out")
+
+        state, events, _completed = handler.run_full_cycle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert state.cycle_count == 1
+        # 6 transitions: IDLE->CLOSING_OUT, CLOSING_OUT->VERIFYING,
+        # VERIFYING->RELEASING, RELEASING->DEPLOYING, DEPLOYING->POST_VERIFY,
+        # POST_VERIFY->COMPLETE
+        assert len(events) == 6
+        phase_names = [e.to_phase for e in events]
+        assert EnumBuildLoopPhase.FILLING not in phase_names
+        assert EnumBuildLoopPhase.CLASSIFYING not in phase_names
+        assert EnumBuildLoopPhase.BUILDING not in phase_names
+        assert EnumBuildLoopPhase.RELEASING in phase_names
+        assert EnumBuildLoopPhase.DEPLOYING in phase_names
+        assert EnumBuildLoopPhase.POST_VERIFY in phase_names
+
+    async def test_build_mode_skips_releasing_deploying(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """BUILD mode: CLOSING_OUT -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE."""
+        handler = HandlerBuildLoop()
+        command = _make_command(mode="build")
+
+        state, events, _completed = handler.run_full_cycle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert state.cycle_count == 1
+        assert len(events) == 6
+        phase_names = [e.to_phase for e in events]
+        assert EnumBuildLoopPhase.RELEASING not in phase_names
+        assert EnumBuildLoopPhase.DEPLOYING not in phase_names
+        assert EnumBuildLoopPhase.POST_VERIFY not in phase_names
+        assert EnumBuildLoopPhase.FILLING in phase_names
+        assert EnumBuildLoopPhase.BUILDING in phase_names
+
+    async def test_observe_mode_only_verifies(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OBSERVE mode: VERIFYING -> COMPLETE (2 transitions)."""
+        handler = HandlerBuildLoop()
+        command = _make_command(mode="observe")
+
+        state, events, _completed = handler.run_full_cycle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert state.cycle_count == 1
+        # 2 transitions: IDLE->VERIFYING, VERIFYING->COMPLETE
+        assert len(events) == 2
+        assert events[0].from_phase == EnumBuildLoopPhase.IDLE
+        assert events[0].to_phase == EnumBuildLoopPhase.VERIFYING
+        assert events[1].from_phase == EnumBuildLoopPhase.VERIFYING
+        assert events[1].to_phase == EnumBuildLoopPhase.COMPLETE
+
+    async def test_full_mode_runs_all_phases(self, event_bus: EventBusInmemory) -> None:
+        """FULL mode runs all 8 phases: CLOSING_OUT through POST_VERIFY -> COMPLETE."""
+        handler = HandlerBuildLoop()
+        command = _make_command(mode="full")
+
+        state, events, _completed = handler.run_full_cycle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert state.cycle_count == 1
+        # 9 transitions: IDLE->CLOSING_OUT, ..., POST_VERIFY->COMPLETE
+        assert len(events) == 9
+        phase_names = [e.to_phase for e in events]
+        assert phase_names == [
+            EnumBuildLoopPhase.CLOSING_OUT,
+            EnumBuildLoopPhase.VERIFYING,
+            EnumBuildLoopPhase.FILLING,
+            EnumBuildLoopPhase.CLASSIFYING,
+            EnumBuildLoopPhase.BUILDING,
+            EnumBuildLoopPhase.RELEASING,
+            EnumBuildLoopPhase.DEPLOYING,
+            EnumBuildLoopPhase.POST_VERIFY,
+            EnumBuildLoopPhase.COMPLETE,
+        ]
