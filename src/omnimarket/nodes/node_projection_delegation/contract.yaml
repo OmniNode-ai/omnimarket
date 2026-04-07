@@ -14,6 +14,15 @@ handler:
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 
+# Golden path: delegation chain (task delegated -> delegation_events table)
+golden_path:
+  - "Consume task-delegated event from onex.evt.omniclaude.task-delegated.v1"
+  - "Projection handler upserts row into delegation_events table"
+  - "Dedup by correlation_id (UPSERT semantics)"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-delegation-applied.v1"
+  - "Verify row exists with correlation_id, task_type, delegated_to fields"
+  - "Golden chain test: omnimarket/tests/test_golden_chain_projection_delegation.py"
+
 event_bus:
   subscribe_topics:
     - onex.evt.omniclaude.task-delegated.v1

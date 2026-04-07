@@ -15,6 +15,15 @@ handler:
 
 terminal_event: onex.evt.omnimarket.projection-registration-applied.v1
 
+# Golden path: registration chain (node introspection -> node_service_registry table)
+golden_path:
+  - "Consume node-introspection event from onex.evt.platform.node-introspection.v1"
+  - "Consume node-heartbeat event from onex.evt.platform.node-heartbeat.v1"
+  - "Projection handler upserts row into node_service_registry table"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-registration-applied.v1"
+  - "Verify row exists with service_name, health_status fields"
+  - "Golden chain test: omnimarket/tests/test_golden_chain_projection_registration.py"
+
 event_bus:
   subscribe_topics:
     - onex.evt.platform.node-introspection.v1
