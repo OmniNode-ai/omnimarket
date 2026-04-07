@@ -69,7 +69,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Topics declared in contract.yaml -- referenced here for event publishing
-TOPIC_PHASE_TRANSITION = "onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1"
+TOPIC_PHASE_TRANSITION = (
+    "onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1"
+)
 TOPIC_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"
 
 
@@ -288,9 +290,7 @@ class HandlerBuildLoopOrchestrator:
                         await self._event_bus.publish(
                             topic=dp.topic,
                             key=None,
-                            value=json.dumps(
-                                dp.payload, default=str
-                            ).encode(),
+                            value=json.dumps(dp.payload, default=str).encode(),
                         )
 
                 metrics["tickets_dispatched"] = dispatch_result.total_dispatched
