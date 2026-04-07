@@ -106,9 +106,7 @@ class TestVerifyEffectGoldenChain:
 
     async def test_critical_failure_blocks(self) -> None:
         """A critical check failure sets all_critical_passed=False."""
-        handler = HandlerVerify(
-            checkers=[_PassingChecker(), _FailingCriticalChecker()]
-        )
+        handler = HandlerVerify(checkers=[_PassingChecker(), _FailingCriticalChecker()])
         cid = uuid4()
 
         result = await handler.handle(correlation_id=cid)
@@ -134,9 +132,7 @@ class TestVerifyEffectGoldenChain:
 
     async def test_checker_exception_is_non_critical_warning(self) -> None:
         """If a checker raises, it produces a non-critical failure + warning."""
-        handler = HandlerVerify(
-            checkers=[_PassingChecker(), _ExplodingChecker()]
-        )
+        handler = HandlerVerify(checkers=[_PassingChecker(), _ExplodingChecker()])
         cid = uuid4()
 
         result = await handler.handle(correlation_id=cid)

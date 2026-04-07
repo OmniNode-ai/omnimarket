@@ -172,7 +172,7 @@ class HandlerVerify:
                 checks.append(result)
                 if not result.passed and not result.critical:
                     warnings.append(result.message)
-            except Exception as exc:  # noqa: BLE001 — boundary: catch-all for health check resilience
+            except Exception as exc:
                 # Determine criticality from the checker's default check
                 # If we can't determine, assume non-critical to avoid blocking
                 msg = f"Health check failed: {exc}"
