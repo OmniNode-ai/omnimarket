@@ -1,0 +1,20 @@
+name: node_verify_effect
+version: "1.0.0"
+description: "System health verification effect — dashboard, runtime, data flow checks with critical vs non-critical distinction"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_verify_effect: "omnimarket.nodes.node_verify_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "build-loop", "health-check", "verification"]
