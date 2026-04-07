@@ -69,9 +69,7 @@ _MODE_PHASE_SEQUENCES: dict[EnumBuildLoopMode, tuple[EnumBuildLoopPhase, ...]] =
         EnumBuildLoopPhase.DEPLOYING,
         EnumBuildLoopPhase.POST_VERIFY,
     ),
-    EnumBuildLoopMode.OBSERVE: (
-        EnumBuildLoopPhase.VERIFYING,
-    ),
+    EnumBuildLoopMode.OBSERVE: (EnumBuildLoopPhase.VERIFYING,),
 }
 
 TERMINAL_PHASES: frozenset[EnumBuildLoopPhase] = frozenset(

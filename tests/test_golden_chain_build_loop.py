@@ -358,9 +358,7 @@ class TestBuildLoopGoldenChain:
         assert events[1].from_phase == EnumBuildLoopPhase.VERIFYING
         assert events[1].to_phase == EnumBuildLoopPhase.COMPLETE
 
-    async def test_full_mode_runs_all_phases(
-        self, event_bus: EventBusInmemory
-    ) -> None:
+    async def test_full_mode_runs_all_phases(self, event_bus: EventBusInmemory) -> None:
         """FULL mode runs all 8 phases: CLOSING_OUT through POST_VERIFY -> COMPLETE."""
         handler = HandlerBuildLoop()
         command = _make_command(mode="full")
