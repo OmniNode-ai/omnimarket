@@ -1,6 +1,6 @@
 name: node_hostile_reviewer
-version: "1.0.0"
-description: "Multi-model adversarial code review — weighted-union aggregation FSM"
+version: "3.0.0"
+description: "Multi-model adversarial code review WorkflowPackage — unified LLM pipeline with convergence tracking"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -8,13 +8,14 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read_only
+  side_effect_class: write
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["review", "adversarial", "multi-model", "fsm", "convergence"]
+tags: ["review", "adversarial", "multi-model", "fsm", "convergence", "llm-workflow", "training-data"]

@@ -125,6 +125,9 @@ outputs:
   verdict:
     type: str
     description: "Overall verdict (clean, risks_noted, blocking_issue)"
+  training_records_stored:
+    type: int
+    description: "Number of training data records stored for convergence tracking"
 
 terminal_event: onex.evt.omnimarket.hostile-reviewer-completed.v1
 
@@ -138,6 +141,7 @@ event_bus:
     - onex.evt.omnimarket.hostile-reviewer-response-parsed.v1
     - onex.evt.omnimarket.hostile-reviewer-convergence-reduced.v1
     - onex.evt.omnimarket.hostile-reviewer-inference-dispatched.v1
+    - onex.evt.omnimarket.hostile-reviewer-training-data-stored.v1
 
 dependencies:
   nodes:
