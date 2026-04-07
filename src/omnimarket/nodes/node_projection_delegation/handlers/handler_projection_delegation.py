@@ -17,6 +17,7 @@ Target table schema (from omnidash, OMN-2284):
   delegation_latency_ms INT
   repo TEXT
   is_shadow BOOLEAN DEFAULT false
+  llm_call_id TEXT
 """
 
 from __future__ import annotations
@@ -47,6 +48,10 @@ class ModelTaskDelegatedEvent(BaseModel):
     delegation_latency_ms: int | None = Field(default=None, ge=0)
     repo: str | None = Field(default=None)
     is_shadow: bool = Field(default=False)
+    llm_call_id: str = Field(
+        default="",
+        description="Upstream LLM call ID for JOIN with llm_cost_aggregates.",
+    )
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
 
 
@@ -82,6 +87,7 @@ class HandlerProjectionDelegation:
             "delegation_latency_ms": event.delegation_latency_ms,
             "repo": event.repo,
             "is_shadow": event.is_shadow,
+            "llm_call_id": event.llm_call_id or None,
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)

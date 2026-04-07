@@ -66,6 +66,31 @@ class TestDelegationProjection:
         result = HANDLER.project_batch(events, db)
         assert result.rows_upserted == 3
 
+    def test_llm_call_id_projected(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-llm",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+            llm_call_id="chatcmpl-abc123",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["llm_call_id"] == "chatcmpl-abc123"
+
+    def test_llm_call_id_defaults_empty(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-no-llm",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["llm_call_id"] is None
+
     def test_shadow_delegation(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
