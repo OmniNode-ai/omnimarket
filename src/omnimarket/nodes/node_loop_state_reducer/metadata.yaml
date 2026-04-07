@@ -1,0 +1,20 @@
+name: node_loop_state_reducer
+version: "1.0.0"
+description: "Build loop FSM reducer — pure state machine with circuit breaker for autonomous build loop"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_loop_state_reducer: "omnimarket.nodes.node_loop_state_reducer"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "fsm", "build-loop", "circuit-breaker"]

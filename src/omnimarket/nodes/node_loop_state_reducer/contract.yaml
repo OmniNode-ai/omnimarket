@@ -1,0 +1,151 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Build Loop State Reducer
+#
+# FSM-based state tracking for the autonomous build loop.
+# ONLY authority for phase transitions. Circuit breaker after 3 consecutive failures.
+#
+# Migrated from omnibase_infra [OMN-7577].
+#
+# Related Tickets:
+#   - OMN-7577: Migrate node_loop_state_reducer to omnimarket
+#   - OMN-7313: node_loop_state_reducer
+#   - OMN-5113: Autonomous Build Loop epic
+name: node_loop_state_reducer
+node_type: reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  FSM-based state tracking for the autonomous build loop with circuit breaker.
+  Pure reducer: delta(state, event) -> (new_state, intents[]).
+
+input_model:
+  name: ModelBuildLoopEvent
+  module: omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_event
+  description: "Event from a completed build loop phase."
+
+output_model:
+  name: ModelBuildLoopState
+  module: omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_state
+  description: "New FSM state after applying the event."
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reduce_loop_state
+      handler:
+        name: HandlerLoopState
+        module: omnimarket.nodes.node_loop_state_reducer.handlers.handler_loop_state
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+state_machine:
+  state_machine_name: build_loop_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "Waiting for build loop start command"
+      required_data: []
+    - state_name: closing_out
+      description: "Closing out pending work (merge-sweep, quality gates)"
+      required_data: [correlation_id]
+    - state_name: verifying
+      description: "Verifying system health (dashboard, runtime, data flow)"
+      required_data: [correlation_id]
+    - state_name: filling
+      description: "Filling sprint backlog via RSD scoring"
+      required_data: [correlation_id]
+    - state_name: classifying
+      description: "Classifying tickets by buildability"
+      required_data: [correlation_id]
+    - state_name: building
+      description: "Dispatching builds for auto-buildable tickets"
+      required_data: [correlation_id]
+    - state_name: complete
+      description: "Build loop cycle completed successfully"
+      required_data: [correlation_id, tickets_dispatched]
+    - state_name: failed
+      description: "Build loop cycle failed"
+      is_terminal: true
+      required_data: [error_message]
+  transitions:
+    - from_state: idle
+      to_state: closing_out
+      trigger: start_received
+      description: "Build loop command received, start close-out"
+    - from_state: idle
+      to_state: verifying
+      trigger: start_received_skip_closeout
+      description: "Build loop started with skip_closeout=true"
+    - from_state: closing_out
+      to_state: verifying
+      trigger: closeout_complete
+      description: "Close-out done, verify system health"
+    - from_state: verifying
+      to_state: filling
+      trigger: verify_complete
+      description: "Verification passed, fill sprint"
+    - from_state: filling
+      to_state: classifying
+      trigger: fill_complete
+      description: "Sprint filled, classify tickets"
+    - from_state: classifying
+      to_state: building
+      trigger: classify_complete
+      description: "Classification done, dispatch builds"
+    - from_state: building
+      to_state: complete
+      trigger: build_complete
+      description: "All builds dispatched"
+    - from_state: closing_out
+      to_state: failed
+      trigger: error
+    - from_state: verifying
+      to_state: failed
+      trigger: error
+    - from_state: filling
+      to_state: failed
+      trigger: error
+    - from_state: classifying
+      to_state: failed
+      trigger: error
+    - from_state: building
+      to_state: failed
+      trigger: error
+  terminal_states: [complete, failed]
+  persistence_enabled: false
+
+terminal_event: onex.evt.omnimarket.build-loop-state-reduced.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.build-loop-started.v1
+    - onex.evt.omnimarket.build-loop-closeout-completed.v1
+    - onex.evt.omnimarket.build-loop-verify-completed.v1
+    - onex.evt.omnimarket.build-loop-fill-completed.v1
+    - onex.evt.omnimarket.build-loop-classify-completed.v1
+    - onex.evt.omnimarket.build-loop-build-completed.v1
+    - onex.evt.omnimarket.build-loop-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.build-loop-state-reduced.v1
+
+metadata:
+  description: "Build loop FSM reducer for the autonomous build loop"
+  author: "OmniNode Team"
+  created: "2026-04-02"
+  tags:
+    - reducer
+    - fsm
+    - build-loop
+    - circuit-breaker
+    - OMN-5113
+  related_tickets:
+    - OMN-7577
+    - OMN-7313
+    - OMN-5113
