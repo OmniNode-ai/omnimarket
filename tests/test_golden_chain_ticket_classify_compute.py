@@ -48,7 +48,7 @@ class TestTicketClassifyComputeGoldenChain:
         assert len(result.classifications) == 1
         assert result.classifications[0].buildability == EnumBuildability.AUTO_BUILDABLE
         assert result.total_auto_buildable == 1
-        assert result.total_skipped == 0
+        assert result.total_non_buildable == 0
 
     async def test_skip_terminal_state(self, event_bus: EventBusInmemory) -> None:
         """Ticket in terminal state should be SKIP."""
@@ -66,7 +66,7 @@ class TestTicketClassifyComputeGoldenChain:
 
         assert len(result.classifications) == 1
         assert result.classifications[0].buildability == EnumBuildability.SKIP
-        assert result.total_skipped == 1
+        assert result.total_non_buildable == 1
 
     async def test_skip_keyword_match(self, event_bus: EventBusInmemory) -> None:
         """Ticket with skip keywords should be SKIP."""
@@ -100,7 +100,7 @@ class TestTicketClassifyComputeGoldenChain:
         result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
 
         assert result.classifications[0].buildability == EnumBuildability.BLOCKED
-        assert result.total_skipped == 1
+        assert result.total_non_buildable == 1
 
     async def test_needs_arch_decision(self, event_bus: EventBusInmemory) -> None:
         """Ticket requiring architecture decisions should be NEEDS_ARCH_DECISION."""
@@ -147,7 +147,7 @@ class TestTicketClassifyComputeGoldenChain:
 
         assert len(result.classifications) == 3
         assert result.total_auto_buildable == 1
-        assert result.total_skipped == 2
+        assert result.total_non_buildable == 2
 
     async def test_default_auto_buildable(self, event_bus: EventBusInmemory) -> None:
         """Ticket with no matching keywords defaults to AUTO_BUILDABLE."""
@@ -185,7 +185,7 @@ class TestTicketClassifyComputeGoldenChain:
             )
             completion = {
                 "total_auto_buildable": result.total_auto_buildable,
-                "total_skipped": result.total_skipped,
+                "total_non_buildable": result.total_non_buildable,
                 "count": len(result.classifications),
             }
             completions.append(completion)

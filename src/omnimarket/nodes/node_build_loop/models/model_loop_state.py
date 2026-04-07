@@ -11,14 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 class EnumBuildLoopPhase(StrEnum):
     """FSM phases for the autonomous build loop.
 
-    Phase Transitions:
-        IDLE -> CLOSING_OUT: Build loop started
-        IDLE -> VERIFYING: Build loop started with skip_closeout
-        CLOSING_OUT -> VERIFYING: Close-out complete
-        VERIFYING -> FILLING: Verification passed
-        FILLING -> CLASSIFYING: Backlog filled
-        CLASSIFYING -> BUILDING: Tickets classified
-        BUILDING -> COMPLETE: All builds dispatched
+    Phase Transitions (mode-dependent):
+        IDLE -> first phase per mode
+        ...sequence per mode...
+        last phase -> COMPLETE
         Any -> FAILED: Circuit breaker tripped or unrecoverable error
     """
 
@@ -28,18 +24,53 @@ class EnumBuildLoopPhase(StrEnum):
     FILLING = "filling"
     CLASSIFYING = "classifying"
     BUILDING = "building"
+    RELEASING = "releasing"
+    DEPLOYING = "deploying"
+    POST_VERIFY = "post_verify"
     COMPLETE = "complete"
     FAILED = "failed"
 
 
-# Ordered phase progression (excluding IDLE, COMPLETE, FAILED which are control states)
-_PHASE_ORDER: tuple[EnumBuildLoopPhase, ...] = (
-    EnumBuildLoopPhase.CLOSING_OUT,
-    EnumBuildLoopPhase.VERIFYING,
-    EnumBuildLoopPhase.FILLING,
-    EnumBuildLoopPhase.CLASSIFYING,
-    EnumBuildLoopPhase.BUILDING,
-)
+class EnumBuildLoopMode(StrEnum):
+    """Execution modes for the build loop.
+
+    Each mode defines a different subset and ordering of phases.
+    """
+
+    BUILD = "build"
+    CLOSE_OUT = "close_out"
+    FULL = "full"
+    OBSERVE = "observe"
+
+
+# Phase sequences by mode (excluding IDLE and COMPLETE which are control states)
+_MODE_PHASE_SEQUENCES: dict[EnumBuildLoopMode, tuple[EnumBuildLoopPhase, ...]] = {
+    EnumBuildLoopMode.BUILD: (
+        EnumBuildLoopPhase.CLOSING_OUT,
+        EnumBuildLoopPhase.VERIFYING,
+        EnumBuildLoopPhase.FILLING,
+        EnumBuildLoopPhase.CLASSIFYING,
+        EnumBuildLoopPhase.BUILDING,
+    ),
+    EnumBuildLoopMode.CLOSE_OUT: (
+        EnumBuildLoopPhase.CLOSING_OUT,
+        EnumBuildLoopPhase.VERIFYING,
+        EnumBuildLoopPhase.RELEASING,
+        EnumBuildLoopPhase.DEPLOYING,
+        EnumBuildLoopPhase.POST_VERIFY,
+    ),
+    EnumBuildLoopMode.FULL: (
+        EnumBuildLoopPhase.CLOSING_OUT,
+        EnumBuildLoopPhase.VERIFYING,
+        EnumBuildLoopPhase.FILLING,
+        EnumBuildLoopPhase.CLASSIFYING,
+        EnumBuildLoopPhase.BUILDING,
+        EnumBuildLoopPhase.RELEASING,
+        EnumBuildLoopPhase.DEPLOYING,
+        EnumBuildLoopPhase.POST_VERIFY,
+    ),
+    EnumBuildLoopMode.OBSERVE: (EnumBuildLoopPhase.VERIFYING,),
+}
 
 TERMINAL_PHASES: frozenset[EnumBuildLoopPhase] = frozenset(
     {EnumBuildLoopPhase.COMPLETE, EnumBuildLoopPhase.FAILED}
@@ -47,30 +78,41 @@ TERMINAL_PHASES: frozenset[EnumBuildLoopPhase] = frozenset(
 
 
 def next_phase(
-    current: EnumBuildLoopPhase, skip_closeout: bool = False
+    current: EnumBuildLoopPhase,
+    skip_closeout: bool = False,
+    mode: EnumBuildLoopMode = EnumBuildLoopMode.BUILD,
 ) -> EnumBuildLoopPhase:
     """Return the next phase in the build loop progression.
 
-    Returns COMPLETE after BUILDING. Raises ValueError for terminal phases.
+    Uses mode-aware phase sequences. Returns COMPLETE after the last phase
+    in the mode's sequence. Raises ValueError for terminal phases.
     """
-    if current == EnumBuildLoopPhase.IDLE:
-        return (
-            EnumBuildLoopPhase.VERIFYING
-            if skip_closeout
-            else EnumBuildLoopPhase.CLOSING_OUT
-        )
-    if current == EnumBuildLoopPhase.BUILDING:
-        return EnumBuildLoopPhase.COMPLETE
     if current in TERMINAL_PHASES:
         msg = f"No next phase from terminal state: {current}"
         raise ValueError(msg)
 
-    idx = _PHASE_ORDER.index(current)
-    # Skip CLOSING_OUT if skip_closeout and we're transitioning from it
+    sequence = _MODE_PHASE_SEQUENCES[mode]
+
+    if current == EnumBuildLoopPhase.IDLE:
+        first = sequence[0]
+        if skip_closeout and first == EnumBuildLoopPhase.CLOSING_OUT:
+            return sequence[1]
+        return first
+
+    idx = sequence.index(current)
     next_idx = idx + 1
-    if skip_closeout and _PHASE_ORDER[next_idx] == EnumBuildLoopPhase.CLOSING_OUT:
+
+    if next_idx >= len(sequence):
+        return EnumBuildLoopPhase.COMPLETE
+
+    next_candidate = sequence[next_idx]
+    if skip_closeout and next_candidate == EnumBuildLoopPhase.CLOSING_OUT:
         next_idx += 1
-    return _PHASE_ORDER[next_idx]
+        if next_idx >= len(sequence):
+            return EnumBuildLoopPhase.COMPLETE
+        return sequence[next_idx]
+
+    return next_candidate
 
 
 class ModelLoopState(BaseModel):
@@ -86,6 +128,9 @@ class ModelLoopState(BaseModel):
     correlation_id: UUID = Field(..., description="Root correlation ID.")
     current_phase: EnumBuildLoopPhase = Field(
         default=EnumBuildLoopPhase.IDLE, description="Current FSM phase."
+    )
+    mode: EnumBuildLoopMode = Field(
+        default=EnumBuildLoopMode.BUILD, description="Execution mode."
     )
     cycle_count: int = Field(default=0, ge=0, description="Completed cycles.")
     consecutive_failures: int = Field(
@@ -104,6 +149,7 @@ class ModelLoopState(BaseModel):
 
 __all__: list[str] = [
     "TERMINAL_PHASES",
+    "EnumBuildLoopMode",
     "EnumBuildLoopPhase",
     "ModelLoopState",
     "next_phase",

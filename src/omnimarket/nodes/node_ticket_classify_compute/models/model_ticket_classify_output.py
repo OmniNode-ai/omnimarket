@@ -31,7 +31,7 @@ class ModelTicketClassifyOutput(BaseModel):
     total_auto_buildable: int = Field(
         default=0, ge=0, description="Count of AUTO_BUILDABLE tickets."
     )
-    total_skipped: int = Field(
+    total_non_buildable: int = Field(
         default=0,
         ge=0,
         description="Count of SKIP + BLOCKED + NEEDS_ARCH_DECISION tickets.",

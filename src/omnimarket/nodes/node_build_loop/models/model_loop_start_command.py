@@ -15,6 +15,9 @@ class ModelLoopStartCommand(BaseModel):
 
     correlation_id: UUID = Field(..., description="Unique cycle ID.")
     max_cycles: int = Field(default=1, ge=1, description="Max cycles to run.")
+    mode: str = Field(
+        default="build", description="Execution mode: build, close_out, full, observe."
+    )
     skip_closeout: bool = Field(
         default=False, description="Skip the CLOSING_OUT phase."
     )
