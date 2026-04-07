@@ -41,7 +41,9 @@ class ModelTaskDelegatedEvent(BaseModel):
     session_id: str | None = Field(default=None)
     task_type: str = Field(..., description="Task type (e.g. code-review, refactor).")
     delegated_to: str = Field(..., description="Agent that received the task.")
-    model_name: str = Field(default="", description="LLM model name used for inference.")
+    model_name: str = Field(
+        default="", description="LLM model name used for inference."
+    )
     delegated_by: str | None = Field(default=None)
     quality_gate_passed: bool = Field(default=False)
     quality_gates_checked: list[str] | None = Field(default=None)
