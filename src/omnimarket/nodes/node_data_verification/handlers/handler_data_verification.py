@@ -244,6 +244,22 @@ class HandlerDataVerification:
             dry_run=command.dry_run,
         )
 
+    def handle(self, input_data: dict) -> dict:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to run_verification with a ModelDataVerificationStartCommand
+        and an InmemoryDataSource constructed from input_data.
+        """
+        rows = input_data.pop("rows", [])
+        event_landed = input_data.pop("event_landed", None)
+        latency_ms = input_data.pop("latency_ms", None)
+        command = ModelDataVerificationStartCommand(**input_data)
+        data_source = InmemoryDataSource(rows=rows)
+        result, _completed = self.run_verification(
+            command, data_source, event_landed=event_landed, latency_ms=latency_ms
+        )
+        return result.model_dump(mode="json")
+
     def make_completed_event(
         self,
         result: ModelDataVerificationResult,

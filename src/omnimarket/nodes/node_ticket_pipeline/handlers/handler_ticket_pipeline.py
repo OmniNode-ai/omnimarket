@@ -146,6 +146,16 @@ class HandlerTicketPipeline:
         """Serialize a completed event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
+    def handle(self, input_data: dict) -> dict:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to run_full_pipeline with a ModelPipelineStartCommand
+        constructed from input_data.
+        """
+        command = ModelPipelineStartCommand(**input_data)
+        state, _events, completed = self.run_full_pipeline(command)
+        return completed.model_dump(mode="json")
+
     def run_full_pipeline(
         self,
         command: ModelPipelineStartCommand,

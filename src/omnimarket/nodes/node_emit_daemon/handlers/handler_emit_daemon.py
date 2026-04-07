@@ -133,6 +133,28 @@ class HandlerEmitDaemon:
             error=error,
         )
 
+    def handle(self, input_data: dict) -> dict:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to the appropriate lifecycle transition based on the
+        'action' field in input_data.
+        """
+        action = input_data.get("action", "status")
+        if action == "start":
+            socket_path = input_data.get("socket_path", "/tmp/omni-emit.sock")
+            pid = input_data.get("pid", 0)
+            self.transition_to_binding(socket_path, pid)
+            self.transition_to_listening()
+            return self._state.model_dump(mode="json")
+        elif action == "stop":
+            completed = self.transition_to_stopped(
+                events_published=input_data.get("events_published", 0),
+                events_dropped=input_data.get("events_dropped", 0),
+            )
+            return completed.model_dump(mode="json")
+        else:
+            return self._state.model_dump(mode="json")
+
     def record_event_queued(self) -> None:
         """Increment queued counter."""
         if self._state.phase == EnumEmitDaemonPhase.LISTENING:

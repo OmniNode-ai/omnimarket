@@ -152,6 +152,23 @@ class NodeLogProjection:
         )
 
     @staticmethod
+    def handle(input_data: dict) -> dict:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to project() with a ModelLogEntry and empty initial state,
+        returning the updated projection state.
+        """
+        state_data = input_data.pop("state", None)
+        state = (
+            ModelLogProjectionState(**state_data)
+            if state_data
+            else ModelLogProjectionState()
+        )
+        entry = ModelLogEntry(**input_data)
+        new_state = NodeLogProjection.project(entry, state)
+        return new_state.model_dump(mode="json")
+
+    @staticmethod
     def query(
         state: ModelLogProjectionState, query: ModelLogQuery
     ) -> list[ModelLogEntry]:

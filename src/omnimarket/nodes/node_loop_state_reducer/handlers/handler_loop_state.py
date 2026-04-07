@@ -93,6 +93,22 @@ class HandlerLoopState:
     def handler_category(self) -> HandlerCategory:
         return "COMPUTE"
 
+    def handle(self, input_data: dict) -> dict:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to delta() with a ModelBuildLoopState and ModelBuildLoopEvent
+        constructed from input_data.
+        """
+        state_data = input_data.get("state", {})
+        event_data = input_data.get("event", {})
+        state = ModelBuildLoopState(**state_data)
+        event = ModelBuildLoopEvent(**event_data)
+        new_state, intents = self.delta(state, event)
+        return {
+            "state": new_state.model_dump(mode="json"),
+            "intents": [i.model_dump(mode="json") for i in intents],
+        }
+
     def delta(
         self,
         state: ModelBuildLoopState,
