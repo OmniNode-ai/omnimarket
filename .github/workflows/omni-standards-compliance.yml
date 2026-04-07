@@ -1,0 +1,175 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: Omni* Ecosystem Standards Compliance
+
+# Validates omnimarket-specific structural and ecosystem standards.
+# Adapted from the omniclaude standard template for Python/uv repos.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+env:
+  REPO_NAME: 'omnimarket'
+
+jobs:
+  structure-validation:
+    name: Repository Structure Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Validate omnimarket directory structure
+        run: |
+          MISSING=0
+
+          for dir in \
+            src/omnimarket \
+            tests; do
+            if [ ! -d "$dir" ]; then
+              echo "ERROR: Required directory missing: $dir"
+              MISSING=1
+            else
+              echo "OK: $dir"
+            fi
+          done
+
+          if [ $MISSING -ne 0 ]; then
+            echo "Structure validation failed — required directories are missing."
+            exit 1
+          fi
+
+          echo "All required omnimarket directories present."
+
+  ecosystem-validation:
+    name: Ecosystem Integration Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Validate CLAUDE.md exists
+        run: |
+          if [ ! -f "CLAUDE.md" ]; then
+            echo "ERROR: CLAUDE.md is required — project instructions are missing."
+            exit 1
+          fi
+          echo "OK: CLAUDE.md found"
+
+      - name: Validate pyproject.toml exists
+        run: |
+          if [ ! -f "pyproject.toml" ]; then
+            echo "ERROR: pyproject.toml is required."
+            exit 1
+          fi
+          echo "OK: pyproject.toml found"
+
+  legacy-compatibility-check:
+    name: Legacy Compatibility Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Check for forbidden legacy patterns
+        run: |
+          ERRORS=0
+
+          # Check for /model/ directory alongside /models/ (ambiguous dual layout)
+          if [ -d "src/${{ env.REPO_NAME }}/model" ] && [ -d "src/${{ env.REPO_NAME }}/models" ]; then
+            echo "ERROR: Both src/${{ env.REPO_NAME }}/model/ and src/${{ env.REPO_NAME }}/models/ exist — remove /model/"
+            ERRORS=1
+          elif [ -d "src/${{ env.REPO_NAME }}/model" ]; then
+            echo "WARNING: src/${{ env.REPO_NAME }}/model/ found — prefer /models/ for consistency"
+          fi
+
+          # Check that no Poetry lock file has crept in (omnimarket uses uv)
+          if [ -f "poetry.lock" ]; then
+            echo "ERROR: poetry.lock found — omnimarket uses uv, not Poetry"
+            ERRORS=1
+          fi
+
+          if [ $ERRORS -ne 0 ]; then
+            echo "Legacy compatibility check failed."
+            exit 1
+          fi
+
+          echo "Legacy compatibility check passed."
+
+  ci-naming-convention:
+    name: CI Naming Convention
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Verify CI workflow naming convention
+        run: |
+          if [ ! -f .github/workflows/ci.yml ]; then
+            echo "::error::Missing .github/workflows/ci.yml"
+            exit 1
+          fi
+          CI_NAME=$(grep -m1 "^name:" .github/workflows/ci.yml | sed "s/name: *//")
+          if [ "$CI_NAME" != "CI" ]; then
+            echo "::error::ci.yml has name '$CI_NAME' — must be 'CI'"
+            exit 1
+          fi
+          for legacy in test.yml ci.yaml; do
+            if [ -f ".github/workflows/$legacy" ]; then
+              echo "::error::Legacy workflow .github/workflows/$legacy exists"
+              exit 1
+            fi
+          done
+          echo "CI naming convention: PASS"
+
+  # ============================================================================
+  # GATE AGGREGATOR
+  # ============================================================================
+
+  omni-standards-gate:
+    name: Omni Standards Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - structure-validation
+      - ecosystem-validation
+      - legacy-compatibility-check
+      - ci-naming-convention
+    if: always()
+    steps:
+      - name: Check standards results
+        run: |
+          echo "=== Omni Standards Gate ==="
+          FAILED=false
+
+          for check in \
+            "structure-validation=${{ needs.structure-validation.result }}" \
+            "ecosystem-validation=${{ needs.ecosystem-validation.result }}" \
+            "legacy-compatibility-check=${{ needs.legacy-compatibility-check.result }}" \
+            "ci-naming-convention=${{ needs.ci-naming-convention.result }}"; do
+            NAME="${check%%=*}"
+            RESULT="${check##*=}"
+            if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
+              echo "::error::$NAME failed (result: $RESULT)"
+              FAILED=true
+            else
+              echo "$NAME: $RESULT"
+            fi
+          done
+
+          if [ "$FAILED" = "true" ]; then
+            echo ""
+            echo "Omni Standards Gate FAILED"
+            exit 1
+          fi
+          echo ""
+          echo "Omni Standards Gate PASSED"
