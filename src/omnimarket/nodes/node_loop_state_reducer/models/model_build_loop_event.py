@@ -12,13 +12,13 @@ Related:
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class EnumBuildLoopPhase(str, Enum):
+class EnumBuildLoopPhase(StrEnum):
     """FSM phases for the autonomous build loop.
 
     Phase Transitions:

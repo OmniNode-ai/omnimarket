@@ -79,9 +79,7 @@ class TestCloseoutEffectGoldenChain:
         """Dry run returns synthetic success without calling protocols."""
         sweeper = MockMergeSweeper()
         checker = MockQualityGateChecker()
-        handler = HandlerCloseout(
-            merge_sweeper=sweeper, quality_gate_checker=checker
-        )
+        handler = HandlerCloseout(merge_sweeper=sweeper, quality_gate_checker=checker)
         inp = _make_input(dry_run=True)
 
         result = await handler.handle(
@@ -103,9 +101,7 @@ class TestCloseoutEffectGoldenChain:
         """Both protocols succeed -> release_ready=True."""
         sweeper = MockMergeSweeper(prs_merged=5)
         checker = MockQualityGateChecker(passes=True)
-        handler = HandlerCloseout(
-            merge_sweeper=sweeper, quality_gate_checker=checker
-        )
+        handler = HandlerCloseout(merge_sweeper=sweeper, quality_gate_checker=checker)
         inp = _make_input()
 
         result = await handler.handle(
@@ -126,9 +122,7 @@ class TestCloseoutEffectGoldenChain:
         """Merge sweep failure -> release_ready=False, warning captured."""
         sweeper = MockMergeSweeper(should_fail=True)
         checker = MockQualityGateChecker(passes=True)
-        handler = HandlerCloseout(
-            merge_sweeper=sweeper, quality_gate_checker=checker
-        )
+        handler = HandlerCloseout(merge_sweeper=sweeper, quality_gate_checker=checker)
         inp = _make_input()
 
         result = await handler.handle(
@@ -145,9 +139,7 @@ class TestCloseoutEffectGoldenChain:
         """Quality gate failure -> release_ready=False, warning captured."""
         sweeper = MockMergeSweeper(prs_merged=2)
         checker = MockQualityGateChecker(should_fail=True)
-        handler = HandlerCloseout(
-            merge_sweeper=sweeper, quality_gate_checker=checker
-        )
+        handler = HandlerCloseout(merge_sweeper=sweeper, quality_gate_checker=checker)
         inp = _make_input()
 
         result = await handler.handle(
@@ -165,9 +157,7 @@ class TestCloseoutEffectGoldenChain:
         """Quality gate returns False (no exception) -> release not ready."""
         sweeper = MockMergeSweeper(prs_merged=1)
         checker = MockQualityGateChecker(passes=False)
-        handler = HandlerCloseout(
-            merge_sweeper=sweeper, quality_gate_checker=checker
-        )
+        handler = HandlerCloseout(merge_sweeper=sweeper, quality_gate_checker=checker)
         inp = _make_input()
 
         result = await handler.handle(
@@ -178,9 +168,7 @@ class TestCloseoutEffectGoldenChain:
         assert result.release_ready is False
         assert len(result.warnings) == 0  # No exception, no warning
 
-    async def test_no_protocols_injected(
-        self, event_bus: EventBusInmemory
-    ) -> None:
+    async def test_no_protocols_injected(self, event_bus: EventBusInmemory) -> None:
         """Handler works with no protocols injected (graceful degradation)."""
         handler = HandlerCloseout()
         inp = _make_input()
@@ -258,9 +246,7 @@ class TestCloseoutEffectGoldenChain:
         checker: ProtocolQualityGateChecker = MockQualityGateChecker()
 
         # If this assignment works without type errors, protocols are satisfied
-        handler = HandlerCloseout(
-            merge_sweeper=sweeper, quality_gate_checker=checker
-        )
+        handler = HandlerCloseout(merge_sweeper=sweeper, quality_gate_checker=checker)
         result = await handler.handle(correlation_id=uuid4())
 
         assert isinstance(result, ModelCloseoutResult)
