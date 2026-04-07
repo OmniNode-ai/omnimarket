@@ -13,11 +13,25 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_state 
     EnumHostileReviewerPhase,
     ModelHostileReviewerState,
 )
+from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
+    EnumFindingCategory,
+    EnumFindingSeverity,
+    EnumReviewConfidence,
+    EnumReviewVerdict,
+    ModelFindingEvidence,
+    ModelReviewFinding,
+)
 
 __all__ = [
+    "EnumFindingCategory",
+    "EnumFindingSeverity",
     "EnumHostileReviewerPhase",
+    "EnumReviewConfidence",
+    "EnumReviewVerdict",
+    "ModelFindingEvidence",
     "ModelHostileReviewerCompletedEvent",
     "ModelHostileReviewerPhaseEvent",
     "ModelHostileReviewerStartCommand",
     "ModelHostileReviewerState",
+    "ModelReviewFinding",
 ]
