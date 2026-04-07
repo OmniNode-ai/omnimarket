@@ -139,9 +139,7 @@ def _aggregate_findings(
                     location=existing.location,
                 )
             else:
-                location = (
-                    finding.evidence.file_path if finding.evidence else None
-                )
+                location = finding.evidence.file_path if finding.evidence else None
                 title_clusters[key] = ModelMergedFinding(
                     title=finding.title,
                     description=finding.description,
@@ -173,7 +171,9 @@ async def _dispatch_single_model(
 ) -> tuple[str, str | None, str | None]:
     """Dispatch to a single model. Returns (model_key, raw_response, error)."""
     try:
-        raw = await adapter.infer(model_key, system_prompt, user_prompt, timeout_seconds)
+        raw = await adapter.infer(
+            model_key, system_prompt, user_prompt, timeout_seconds
+        )
         return model_key, raw, None
     except Exception as e:
         logger.warning("Model %s failed: %s", model_key, e)
