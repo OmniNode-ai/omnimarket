@@ -1,0 +1,133 @@
+---
+name: build_loop_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Top-level orchestrator composing 6 sub-handlers via FSM reducer. Takes
+  protocol-based ProtocolCloseoutHandler, ProtocolVerifyHandler,
+  ProtocolRsdFillHandler, ProtocolTicketClassifyHandler,
+  ProtocolBuildDispatchHandler, plus the HandlerBuildLoop FSM. Emits phase
+  transition events. Synchronous sub-handler calls, in-process state ownership.
+
+  FSM: IDLE -> CLOSING_OUT -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE
+  Circuit breaker trips after 3 consecutive failures -> FAILED.
+
+handler_routing:
+  default_handler: handler:HandlerBuildLoopOrchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Unique cycle ID"
+    required: true
+  max_cycles:
+    type: int
+    description: "Maximum number of build loop cycles to run"
+    required: false
+    default: 1
+  skip_closeout:
+    type: bool
+    description: "Skip the CLOSING_OUT phase"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Run without side effects"
+    required: false
+    default: false
+
+outputs:
+  cycles_completed:
+    type: int
+    description: "Number of cycles that completed successfully"
+  cycles_failed:
+    type: int
+    description: "Number of cycles that failed"
+  total_tickets_dispatched:
+    type: int
+    description: "Total tickets dispatched across all cycles"
+
+terminal_event: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.build-loop-orchestrator-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1
+    - onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+
+fsm:
+  states:
+    - IDLE
+    - CLOSING_OUT
+    - VERIFYING
+    - FILLING
+    - CLASSIFYING
+    - BUILDING
+    - COMPLETE
+    - FAILED
+  initial_state: IDLE
+  terminal_states:
+    - COMPLETE
+    - FAILED
+  transitions:
+    - from: IDLE
+      to: CLOSING_OUT
+      trigger: "start command received"
+    - from: IDLE
+      to: VERIFYING
+      trigger: "start command with skip_closeout"
+    - from: CLOSING_OUT
+      to: VERIFYING
+      trigger: "closeout completed"
+    - from: VERIFYING
+      to: FILLING
+      trigger: "verification passed"
+    - from: FILLING
+      to: CLASSIFYING
+      trigger: "fill completed"
+    - from: CLASSIFYING
+      to: BUILDING
+      trigger: "classification completed"
+    - from: BUILDING
+      to: COMPLETE
+      trigger: "build dispatch completed"
+    - from: CLOSING_OUT
+      to: FAILED
+      trigger: "error"
+    - from: VERIFYING
+      to: FAILED
+      trigger: "error"
+    - from: FILLING
+      to: FAILED
+      trigger: "error"
+    - from: CLASSIFYING
+      to: FAILED
+      trigger: "error"
+    - from: BUILDING
+      to: FAILED
+      trigger: "error"
+
+metadata:
+  description: "Build loop orchestrator composing 6 sub-handlers via FSM reducer"
+  author: "OmniNode Platform Team"
+  created: "2026-04-07"
+  tags:
+    - "orchestrator"
+    - "build-loop"
+    - "fsm"
+    - "workflow"
+    - "OMN-7583"
+    - "OMN-7575"
+  related_tickets:
+    - "OMN-7583"
+    - "OMN-7575"
+    - "OMN-5113"

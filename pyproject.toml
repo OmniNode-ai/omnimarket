@@ -76,6 +76,7 @@ node_projection_baselines = "omnimarket.nodes.node_projection_baselines"
 node_projection_registration = "omnimarket.nodes.node_projection_registration"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
 node_verify_effect = "omnimarket.nodes.node_verify_effect"
+node_build_loop_orchestrator = "omnimarket.nodes.node_build_loop_orchestrator"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
