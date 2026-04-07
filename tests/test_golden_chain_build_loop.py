@@ -305,7 +305,7 @@ class TestBuildLoopGoldenChain:
         handler = HandlerBuildLoop()
         command = _make_command(mode="close_out")
 
-        state, events, completed = handler.run_full_cycle(command)
+        state, events, _completed = handler.run_full_cycle(command)
 
         assert state.current_phase == EnumBuildLoopPhase.COMPLETE
         assert state.cycle_count == 1
@@ -328,7 +328,7 @@ class TestBuildLoopGoldenChain:
         handler = HandlerBuildLoop()
         command = _make_command(mode="build")
 
-        state, events, completed = handler.run_full_cycle(command)
+        state, events, _completed = handler.run_full_cycle(command)
 
         assert state.current_phase == EnumBuildLoopPhase.COMPLETE
         assert state.cycle_count == 1
@@ -347,7 +347,7 @@ class TestBuildLoopGoldenChain:
         handler = HandlerBuildLoop()
         command = _make_command(mode="observe")
 
-        state, events, completed = handler.run_full_cycle(command)
+        state, events, _completed = handler.run_full_cycle(command)
 
         assert state.current_phase == EnumBuildLoopPhase.COMPLETE
         assert state.cycle_count == 1
@@ -365,7 +365,7 @@ class TestBuildLoopGoldenChain:
         handler = HandlerBuildLoop()
         command = _make_command(mode="full")
 
-        state, events, completed = handler.run_full_cycle(command)
+        state, events, _completed = handler.run_full_cycle(command)
 
         assert state.current_phase == EnumBuildLoopPhase.COMPLETE
         assert state.cycle_count == 1
