@@ -18,7 +18,9 @@ class ModelConsumedProtocol(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    protocol: str = Field(..., description="Protocol class name (e.g. ProtocolEventBus).")
+    protocol: str = Field(
+        ..., description="Protocol class name (e.g. ProtocolEventBus)."
+    )
     module: str = Field(..., description="Python module path for the protocol.")
     mock_available: bool = Field(
         default=False,
@@ -40,8 +42,12 @@ class ModelSeamTopics(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    subscribe: tuple[str, ...] = Field(default_factory=tuple, description="Topics consumed.")
-    publish: tuple[str, ...] = Field(default_factory=tuple, description="Topics produced.")
+    subscribe: tuple[str, ...] = Field(
+        default_factory=tuple, description="Topics consumed."
+    )
+    publish: tuple[str, ...] = Field(
+        default_factory=tuple, description="Topics produced."
+    )
 
 
 class ModelSeamBoundaries(BaseModel):

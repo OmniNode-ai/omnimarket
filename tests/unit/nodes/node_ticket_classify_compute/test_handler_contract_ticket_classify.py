@@ -47,9 +47,7 @@ class TestContractDrivenClassification:
                 ),
             ),
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.AUTO_BUILDABLE
         assert result.classifications[0].confidence >= 0.8
         assert result.classifications[0].seam_source == "contract"
@@ -71,9 +69,7 @@ class TestContractDrivenClassification:
                 ),
             ),
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.BLOCKED
         assert result.classifications[0].seam_source == "contract"
 
@@ -86,9 +82,7 @@ class TestContractDrivenClassification:
             title="Pure refactor",
             seam_boundaries=ModelSeamBoundaries(),
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.AUTO_BUILDABLE
         assert result.classifications[0].confidence == 0.7
         assert result.classifications[0].seam_source == "contract"
@@ -113,9 +107,7 @@ seam_boundaries:
             title="This depends on blocked external team",
             contract_yaml=yaml_str,
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.AUTO_BUILDABLE
         assert result.classifications[0].seam_source == "contract"
 
@@ -131,9 +123,7 @@ class TestKeywordFallback:
             ticket_id="OMN-5200",
             title="Implement user auth handler",
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.AUTO_BUILDABLE
         assert result.classifications[0].confidence <= 0.6
         assert result.classifications[0].seam_source == "keyword_fallback"
@@ -147,24 +137,18 @@ class TestKeywordFallback:
             title="Integrate with vendor API",
             description="Blocked waiting on vendor credentials",
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.BLOCKED
         assert result.classifications[0].confidence <= 0.6
 
     @pytest.mark.asyncio
-    async def test_skip_keywords(
-        self, handler: HandlerTicketClassify
-    ) -> None:
+    async def test_skip_keywords(self, handler: HandlerTicketClassify) -> None:
         ticket = ModelTicketForClassification(
             ticket_id="OMN-5202",
             title="Old task",
             state="Done",
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.SKIP
 
 
@@ -190,9 +174,7 @@ class TestContractOverridesKeywords:
                 ),
             ),
         )
-        result = await handler.handle(
-            correlation_id=uuid4(), tickets=(ticket,)
-        )
+        result = await handler.handle(correlation_id=uuid4(), tickets=(ticket,))
         assert result.classifications[0].buildability == EnumBuildability.AUTO_BUILDABLE
         assert "contract" in result.classifications[0].reason.lower()
         assert result.classifications[0].seam_source == "contract"
