@@ -178,9 +178,7 @@ class TrainingDataStore:
 class TestGoldenChainLlmWorkflow:
     """End-to-end golden chain: review request through full pipeline to DONE."""
 
-    async def test_full_chain_field_by_field(
-        self, event_bus: EventBusInmemory
-    ) -> None:
+    async def test_full_chain_field_by_field(self, event_bus: EventBusInmemory) -> None:
         """Full chain: command -> prompts -> inference -> parse -> aggregate ->
         convergence -> training data -> FSM DONE. Assert field-by-field."""
         correlation_id = uuid4()
@@ -259,8 +257,12 @@ class TestGoldenChainLlmWorkflow:
         assert set(orch_output.models_succeeded) == {"model-a", "model-b"}
         assert len(orch_output.models_failed) == 0
         assert orch_output.total_input_findings == 4  # 2 from A + 2 from B
-        assert len(orch_output.merged_findings) == 3  # security deduped, logic + style unique
-        assert orch_output.verdict == EnumReviewVerdict.BLOCKING_ISSUE  # critical finding
+        assert (
+            len(orch_output.merged_findings) == 3
+        )  # security deduped, logic + style unique
+        assert (
+            orch_output.verdict == EnumReviewVerdict.BLOCKING_ISSUE
+        )  # critical finding
 
         # Verify per-model results
         assert len(orch_output.per_model_results) == 2
@@ -279,21 +281,24 @@ class TestGoldenChainLlmWorkflow:
 
         # Verify merged findings field-by-field
         security_finding = next(
-            f for f in orch_output.merged_findings
+            f
+            for f in orch_output.merged_findings
             if f.title == "SQL injection in user query builder"
         )
         assert security_finding.severity == EnumFindingSeverity.CRITICAL
         assert set(security_finding.source_models) == {"model-a", "model-b"}
 
         logic_finding = next(
-            f for f in orch_output.merged_findings
+            f
+            for f in orch_output.merged_findings
             if f.title == "Off-by-one in pagination boundary"
         )
         assert logic_finding.severity == EnumFindingSeverity.MAJOR
         assert logic_finding.source_models == ("model-a",)
 
         style_finding = next(
-            f for f in orch_output.merged_findings
+            f
+            for f in orch_output.merged_findings
             if f.title == "Inconsistent import ordering"
         )
         assert style_finding.severity == EnumFindingSeverity.NIT
@@ -353,10 +358,13 @@ class TestGoldenChainLlmWorkflow:
                             "rule_id": f.title[:40],
                             "file_path": f.evidence.file_path or "unknown",
                             "line_start": 10,
-                            "severity": "error" if f.severity in (
+                            "severity": "error"
+                            if f.severity
+                            in (
                                 EnumFindingSeverity.CRITICAL,
                                 EnumFindingSeverity.MAJOR,
-                            ) else "warning",
+                            )
+                            else "warning",
                             "normalized_message": f.description,
                         }
                         for f in parse_a.findings
@@ -369,10 +377,13 @@ class TestGoldenChainLlmWorkflow:
                             "rule_id": f.title[:40],
                             "file_path": f.evidence.file_path or "unknown",
                             "line_start": 10,
-                            "severity": "error" if f.severity in (
+                            "severity": "error"
+                            if f.severity
+                            in (
                                 EnumFindingSeverity.CRITICAL,
                                 EnumFindingSeverity.MAJOR,
-                            ) else "warning",
+                            )
+                            else "warning",
                             "normalized_message": f.description,
                         }
                         for f in parse_b.findings
@@ -470,7 +481,9 @@ class TestGoldenChainLlmWorkflow:
         )
 
         assert len(training_store.records) == 2
-        record_a = next(r for r in training_store.records if r["model_key"] == "model-a")
+        record_a = next(
+            r for r in training_store.records if r["model_key"] == "model-a"
+        )
         assert record_a["correlation_id"] == str(correlation_id)
         assert record_a["parse_status"] == "success"
         assert record_a["findings_count"] == 2
@@ -480,7 +493,9 @@ class TestGoldenChainLlmWorkflow:
         assert record_a["raw_response_len"] == len(_MODEL_A_RESPONSE)
         assert record_a["truncated"] is False
 
-        record_b = next(r for r in training_store.records if r["model_key"] == "model-b")
+        record_b = next(
+            r for r in training_store.records if r["model_key"] == "model-b"
+        )
         assert record_b["findings_count"] == 2
         assert record_b["convergence_f1"] is None
 
