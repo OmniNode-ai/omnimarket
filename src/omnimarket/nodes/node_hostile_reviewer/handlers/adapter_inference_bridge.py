@@ -63,8 +63,12 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
 
         transport = str(model_cfg.get("transport", "http"))
         if transport == "cli":
-            return await self._call_cli_model(model_key, model_cfg, system_prompt, user_prompt, timeout_seconds)
-        return await self._call_http_model(model_key, model_cfg, system_prompt, user_prompt, timeout_seconds)
+            return await self._call_cli_model(
+                model_key, model_cfg, system_prompt, user_prompt, timeout_seconds
+            )
+        return await self._call_http_model(
+            model_key, model_cfg, system_prompt, user_prompt, timeout_seconds
+        )
 
     async def _call_http_model(
         self,
