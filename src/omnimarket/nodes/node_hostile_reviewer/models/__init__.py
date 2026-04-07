@@ -21,11 +21,16 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
     ModelFindingEvidence,
     ModelReviewFinding,
 )
+from omnimarket.nodes.node_hostile_reviewer.models.model_training_data import (
+    EnumLabelSource,
+    ModelTrainingDataRecord,
+)
 
 __all__ = [
     "EnumFindingCategory",
     "EnumFindingSeverity",
     "EnumHostileReviewerPhase",
+    "EnumLabelSource",
     "EnumReviewConfidence",
     "EnumReviewVerdict",
     "ModelFindingEvidence",
@@ -34,4 +39,5 @@ __all__ = [
     "ModelHostileReviewerStartCommand",
     "ModelHostileReviewerState",
     "ModelReviewFinding",
+    "ModelTrainingDataRecord",
 ]
