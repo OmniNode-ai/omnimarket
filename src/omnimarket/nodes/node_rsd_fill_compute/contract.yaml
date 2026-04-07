@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - RSD Fill Compute
+#
+# Pure computation: selects top-N tickets by RSD score with deterministic tie-break.
+#
+# Related Tickets:
+#   - OMN-7315: node_rsd_fill_compute
+#   - OMN-7578: Migration to omnimarket
+#   - OMN-5113: Autonomous Build Loop epic
+name: "node_rsd_fill_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: selects top-N tickets by RSD score with deterministic tie-break."
+input_model:
+  name: "ModelRsdFillInput"
+  module: "omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill"
+  description: "Scored tickets and selection parameters."
+output_model:
+  name: "ModelRsdFillOutput"
+  module: "omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill"
+  description: "Selected top-N tickets."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "rsd_fill"
+      handler:
+        name: "HandlerRsdFill"
+        module: "omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill"
+metadata:
+  description: "RSD fill compute node for autonomous build loop"
+  author: "OmniNode Team"
+  created: "2026-04-02"
+  tags:
+    - "compute"
+    - "build-loop"
+    - "rsd"
+    - "OMN-5113"
+  related_tickets:
+    - "OMN-7315"
+    - "OMN-7578"
+    - "OMN-5113"
