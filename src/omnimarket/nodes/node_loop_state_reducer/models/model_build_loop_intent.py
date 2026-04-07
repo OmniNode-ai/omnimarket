@@ -11,7 +11,7 @@ Related:
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,7 +21,7 @@ from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_event impo
 )
 
 
-class EnumBuildLoopIntentType(StrEnum):
+class EnumBuildLoopIntentType(str, Enum):
     """Intent types emitted by the build loop reducer.
 
     Each intent type maps to a specific downstream node invocation

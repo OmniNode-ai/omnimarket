@@ -12,10 +12,10 @@ Related:
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
 
 
-class EnumBuildability(StrEnum):
+class EnumBuildability(str, Enum):
     """Classification of a ticket's buildability by the autonomous loop.
 
     Values:
