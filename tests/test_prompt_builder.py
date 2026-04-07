@@ -52,7 +52,9 @@ def test_plan_template():
             model_context_window=128_000,
         )
     )
-    assert "plan" in result.user_prompt.lower() or "plan" in result.system_prompt.lower()
+    assert (
+        "plan" in result.user_prompt.lower() or "plan" in result.system_prompt.lower()
+    )
 
 
 def test_unknown_template_raises():
