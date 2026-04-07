@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command import (
     EnumOrchestratorMode,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_state import (
+    TERMINAL_ORCHESTRATOR_PHASES,
     EnumOrchestratorPhase,
 )
 
@@ -29,6 +30,16 @@ class ModelOrchestratorCompletedEvent(BaseModel):
     started_at: datetime = Field(..., description="Orchestration start time.")
     completed_at: datetime = Field(..., description="Orchestration completion time.")
     error_message: str | None = Field(default=None)
+
+    @field_validator("final_phase")
+    @classmethod
+    def validate_terminal_final_phase(
+        cls, value: EnumOrchestratorPhase,
+    ) -> EnumOrchestratorPhase:
+        if value not in TERMINAL_ORCHESTRATOR_PHASES:
+            msg = f"final_phase must be a terminal phase (COMPLETE or FAILED), got {value}"
+            raise ValueError(msg)
+        return value
 
 
 __all__: list[str] = ["ModelOrchestratorCompletedEvent"]

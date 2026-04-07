@@ -2,8 +2,7 @@
 
 Receives a start command with a mode (build/close-out/full/observe), creates
 initial FSM state, and drives through the mode's phase sequence. For each
-phase it emits a phase command intent and collects the result. Feeds results
-back through the build loop FSM via HandlerBuildLoop.advance().
+phase it emits a phase command intent and collects the result.
 
 ORCHESTRATOR output constraint: emits events[] and intents[], never result.
 """
@@ -14,9 +13,6 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
-    HandlerBuildLoop,
-)
 from omnimarket.nodes.node_build_loop.models.model_loop_state import (
     EnumBuildLoopPhase,
 )
@@ -46,11 +42,7 @@ class HandlerBuildLoopOrchestrator:
     """Orchestrator that drives the build loop FSM through mode-specific phases.
 
     Pure orchestration logic. Emits events[] and intents[], never result.
-    Uses HandlerBuildLoop as the inner FSM engine.
     """
-
-    def __init__(self) -> None:
-        self._build_loop = HandlerBuildLoop()
 
     def start(self, command: ModelOrchestratorStartCommand) -> ModelOrchestratorState:
         """Initialize orchestrator state from a start command."""
