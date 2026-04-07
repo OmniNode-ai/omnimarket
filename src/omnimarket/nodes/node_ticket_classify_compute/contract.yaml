@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ticket Classify Compute
+#
+# Pure computation: classifies tickets using keyword heuristics into
+# buildability categories (AUTO_BUILDABLE, NEEDS_ARCH_DECISION, BLOCKED, SKIP).
+#
+# Related Tickets:
+#   - OMN-7314: node_ticket_classify_compute
+#   - OMN-7579: Migration to omnimarket
+#   - OMN-5113: Autonomous Build Loop epic
+name: "node_ticket_classify_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: classifies tickets using keyword heuristics into buildability categories."
+input_model:
+  name: "ModelTicketClassifyInput"
+  module: "omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_input"
+  description: "Tickets to classify."
+output_model:
+  name: "ModelTicketClassifyOutput"
+  module: "omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_output"
+  description: "Classification results with buildability assessments."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "classify_tickets"
+      handler:
+        name: "HandlerTicketClassify"
+        module: "omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify"
+metadata:
+  description: "Ticket classify compute node for autonomous build loop"
+  author: "OmniNode Team"
+  created: "2026-04-02"
+  tags:
+    - "compute"
+    - "build-loop"
+    - "classification"
+    - "OMN-5113"
+  related_tickets:
+    - "OMN-7314"
+    - "OMN-7579"
+    - "OMN-5113"
