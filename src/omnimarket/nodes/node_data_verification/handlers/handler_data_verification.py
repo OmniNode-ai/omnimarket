@@ -11,6 +11,7 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 from omnibase_compat.protocols.protocol_data_source import (
     ProtocolDataSource as DataSource,
@@ -244,7 +245,7 @@ class HandlerDataVerification:
             dry_run=command.dry_run,
         )
 
-    def handle(self, input_data: dict) -> dict:
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to run_verification with a ModelDataVerificationStartCommand

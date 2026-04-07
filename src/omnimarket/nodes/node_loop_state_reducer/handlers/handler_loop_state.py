@@ -15,7 +15,7 @@ Related:
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_event import (
     EnumBuildLoopPhase,
@@ -93,7 +93,7 @@ class HandlerLoopState:
     def handler_category(self) -> HandlerCategory:
         return "COMPUTE"
 
-    def handle(self, input_data: dict) -> dict:
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to delta() with a ModelBuildLoopState and ModelBuildLoopEvent

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
@@ -99,7 +100,7 @@ class HandlerDodVerify:
         """Serialize a completed event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
-    def handle(self, input_data: dict) -> dict:
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to run_verification with a ModelDodVerifyStartCommand
