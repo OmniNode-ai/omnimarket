@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -289,7 +288,7 @@ def main() -> None:
     created = generate_node(name, args.node_type)
     print(f"\nGenerated {len(created)} files. Next steps:")
     print(f"  1. Edit handler: src/omnimarket/nodes/node_{name}/handlers/handler_{name}.py")
-    print(f"  2. Add entry point to pyproject.toml:")
+    print("  2. Add entry point to pyproject.toml:")
     print(f'     node_{name} = "omnimarket.nodes.node_{name}"')
     print(f"  3. Run tests: uv run pytest tests/test_golden_chain_{name}.py -v")
 

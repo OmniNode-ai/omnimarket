@@ -1,0 +1,53 @@
+---
+name: closeout_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Close-out effect node. Executes merge-sweep, quality gates, and release
+  readiness checks via protocol-based dependency injection.
+
+handler:
+  module: omnimarket.nodes.node_closeout_effect.handlers.handler_closeout
+  class: HandlerCloseout
+  input_model: omnimarket.nodes.node_closeout_effect.models.model_closeout_input.ModelCloseoutInput
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 300000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Build loop cycle correlation ID"
+    required: true
+  dry_run:
+    type: bool
+    description: "Skip actual side effects"
+    required: false
+    default: false
+
+outputs:
+  merge_sweep_completed:
+    type: bool
+    description: "Whether merge-sweep ran successfully"
+  prs_merged:
+    type: int
+    description: "Number of PRs auto-merged"
+  quality_gates_passed:
+    type: bool
+    description: "Whether quality gates passed"
+  release_ready:
+    type: bool
+    description: "Whether release readiness check passed"
+
+terminal_event: onex.evt.omnimarket.closeout-effect-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.closeout-effect-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.closeout-effect-completed.v1

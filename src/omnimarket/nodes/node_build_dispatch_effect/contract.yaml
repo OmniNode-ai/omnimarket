@@ -1,0 +1,57 @@
+---
+name: build_dispatch_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Dispatches ticket-pipeline builds via delegation for AUTO_BUILDABLE tickets.
+  Builds ModelDelegationPayload objects for the orchestrator to publish to Kafka.
+  Filesystem fallback intentionally removed — Kafka is the canonical transport.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dispatch_builds
+      handler:
+        name: HandlerBuildDispatch
+        module: omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch
+
+input_model:
+  name: ModelBuildDispatchInput
+  module: omnimarket.nodes.node_build_dispatch_effect.models.model_build_dispatch_input
+  description: "Build targets to dispatch."
+
+output_model:
+  name: ModelBuildDispatchResult
+  module: omnimarket.nodes.node_build_dispatch_effect.models.model_build_dispatch_result
+  description: "Per-ticket dispatch outcomes."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 60000
+
+terminal_event: onex.evt.omnimarket.build-dispatch-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.build-loop-build.v1
+  publish_topics:
+    - onex.evt.omnimarket.build-dispatch-completed.v1
+    - onex.cmd.omnimarket.delegation-request.v1
+
+metadata:
+  description: "Build dispatch effect node for autonomous build loop"
+  author: "OmniNode Team"
+  created: "2026-04-02"
+  tags:
+    - effect
+    - build-loop
+    - delegation
+    - dispatch
+    - OMN-5113
+  related_tickets:
+    - OMN-7582
+    - OMN-5113

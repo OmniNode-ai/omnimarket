@@ -42,6 +42,10 @@ class ModelTicketClassification(BaseModel):
     reason: str = Field(
         default="", description="Human-readable classification rationale."
     )
+    seam_source: str = Field(
+        default="keyword_fallback",
+        description="Classification source: 'contract' or 'keyword_fallback'.",
+    )
 
 
 __all__: list[str] = ["ModelTicketClassification"]
