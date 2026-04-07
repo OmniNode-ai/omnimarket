@@ -71,8 +71,8 @@ def _extract_finding_fields(raw: dict[str, object]) -> dict[str, object] | None:
     return {
         "rule_id": str(raw["rule_id"]),
         "file_path": str(raw["file_path"]),
-        "line_start": int(raw["line_start"]),  # type: ignore[arg-type]
-        "line_end": int(raw["line_end"]) if raw.get("line_end") is not None else None,  # type: ignore[arg-type]
+        "line_start": int(str(raw["line_start"])),
+        "line_end": int(str(raw["line_end"])) if raw.get("line_end") is not None else None,
         "severity": str(raw["severity"]).lower(),
         "normalized_message": str(raw["normalized_message"]),
     }
@@ -89,10 +89,10 @@ class _FindingCluster:
     def __init__(self, fields: dict[str, object], model_name: str) -> None:
         self.rule_id: str = str(fields["rule_id"])
         self.file_path: str = str(fields["file_path"])
-        self.line_start: int = int(fields["line_start"])  # type: ignore[arg-type]
+        self.line_start: int = int(str(fields["line_start"]))
         self.line_end: int | None = (
-            fields["line_end"] if fields.get("line_end") is not None else None
-        )  # type: ignore[assignment]
+            int(str(fields["line_end"])) if fields.get("line_end") is not None else None
+        )
         self.severity: str = str(fields["severity"])
         self.normalized_message: str = str(fields["normalized_message"])
         self.tokens: set[str] = _tokenize(self.normalized_message)
