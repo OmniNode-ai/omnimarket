@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from enum import StrEnum
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -79,7 +80,7 @@ def _strip_markdown_fences(text: str) -> str:
     return text
 
 
-def _extract_json_array(text: str) -> list[dict] | None:
+def _extract_json_array(text: str) -> list[dict[str, Any]] | None:
     text = _strip_markdown_fences(text)
     try:
         parsed = json.loads(text)
@@ -116,13 +117,16 @@ def _extract_json_array(text: str) -> list[dict] | None:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(text[start : i + 1])
+                        result: list[dict[str, Any]] = json.loads(text[start : i + 1])
+                        return result
                     except json.JSONDecodeError:
                         return None
         return None
 
 
-def _normalize_finding(raw: dict, source_model: str) -> ModelReviewFinding | None:
+def _normalize_finding(
+    raw: dict[str, Any], source_model: str
+) -> ModelReviewFinding | None:
     desc = raw.get("description", "")
     if not isinstance(desc, str) or not desc.strip():
         return None

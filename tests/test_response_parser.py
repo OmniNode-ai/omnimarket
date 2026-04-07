@@ -12,17 +12,19 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
 
 
 def test_valid_json_array():
-    raw = json.dumps([
-        {
-            "category": "security",
-            "severity": "critical",
-            "title": "SQL injection",
-            "description": "Unsanitized input",
-            "evidence": "line 42",
-            "proposed_fix": "Use parameterized queries",
-            "location": "src/db.py",
-        }
-    ])
+    raw = json.dumps(
+        [
+            {
+                "category": "security",
+                "severity": "critical",
+                "title": "SQL injection",
+                "description": "Unsanitized input",
+                "evidence": "line 42",
+                "proposed_fix": "Use parameterized queries",
+                "location": "src/db.py",
+            }
+        ]
+    )
     result = parse_model_response(raw, source_model="test-model")
     assert result.status == EnumParseStatus.SUCCESS
     assert len(result.findings) == 1
@@ -49,9 +51,17 @@ def test_json_wrapped_in_markdown_fences():
 
 def test_legacy_findings_format():
     """The legacy format from aggregate_reviews.py uses description/confidence/detection."""
-    raw = json.dumps({"findings": [
-        {"description": "Some issue", "confidence": "high", "detection": "review"}
-    ]})
+    raw = json.dumps(
+        {
+            "findings": [
+                {
+                    "description": "Some issue",
+                    "confidence": "high",
+                    "detection": "review",
+                }
+            ]
+        }
+    )
     result = parse_model_response(raw, source_model="legacy-model")
     assert result.status == EnumParseStatus.SUCCESS
     assert len(result.findings) == 1
