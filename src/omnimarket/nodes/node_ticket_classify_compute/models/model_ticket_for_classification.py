@@ -12,6 +12,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_ticket_classify_compute.models.model_seam_boundaries import (
+    ModelSeamBoundaries,
+)
+
 
 class ModelTicketForClassification(BaseModel):
     """A single ticket to be classified."""
@@ -27,6 +31,14 @@ class ModelTicketForClassification(BaseModel):
     state: str = Field(default="", description="Current ticket state.")
     priority: int = Field(
         default=0, ge=0, le=4, description="Priority (0=none, 1=urgent, 4=low)."
+    )
+    seam_boundaries: ModelSeamBoundaries | None = Field(
+        default=None,
+        description="Contract-declared seam boundaries for buildability analysis.",
+    )
+    contract_yaml: str | None = Field(
+        default=None,
+        description="Raw contract YAML string; parsed for seam_boundaries if present.",
     )
 
 
