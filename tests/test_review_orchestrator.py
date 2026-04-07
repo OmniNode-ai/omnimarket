@@ -31,24 +31,30 @@ class FakeInferenceAdapter(ModelInferenceAdapter):
         self._responses = responses
 
     async def infer(
-        self, model_key: str, system_prompt: str, user_prompt: str, timeout_seconds: float
+        self,
+        model_key: str,
+        system_prompt: str,
+        user_prompt: str,
+        timeout_seconds: float,
     ) -> str:
         return self._responses.get(model_key, "[]")
 
 
 @pytest.mark.asyncio
 async def test_orchestration_happy_path():
-    canned = json.dumps([
-        {
-            "category": "security",
-            "severity": "major",
-            "title": "XSS in template",
-            "description": "Unescaped HTML output",
-            "evidence": "line 10",
-            "proposed_fix": "Escape output",
-            "location": "template.html",
-        }
-    ])
+    canned = json.dumps(
+        [
+            {
+                "category": "security",
+                "severity": "major",
+                "title": "XSS in template",
+                "description": "Unescaped HTML output",
+                "evidence": "line 10",
+                "proposed_fix": "Escape output",
+                "location": "template.html",
+            }
+        ]
+    )
     adapter = FakeInferenceAdapter({"qwen3-coder": canned, "deepseek-r1": canned})
 
     result = await run_review_orchestration(
@@ -89,7 +95,11 @@ async def test_orchestration_partial_failure():
 async def test_orchestration_all_models_fail():
     class FailAdapter(ModelInferenceAdapter):
         async def infer(
-            self, model_key: str, system_prompt: str, user_prompt: str, timeout_seconds: float
+            self,
+            model_key: str,
+            system_prompt: str,
+            user_prompt: str,
+            timeout_seconds: float,
         ) -> str:
             raise RuntimeError("connection refused")
 
