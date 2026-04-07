@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Build loop workflow contract.
+# Declares the workflow that orchestrates the autonomous build loop
+# through 7 phases: CLOSING_OUT -> DEPLOYING -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE
+#
+# See: OMN-5113 — Autonomous Build Loop
+# Migrated from omnibase_infra: OMN-7752
+workflow_id: build_loop
+contract_version: {major: 2, minor: 0, patch: 0}
+node_type: workflow
+description: >
+  Autonomous build loop 7-phase orchestration. Coordinates close-out, deploy, verification, sprint fill, ticket classification, and build dispatch through a reducer-driven FSM with circuit breaker protection.
+
+initial_command: onex.cmd.omnimarket.build-loop-start.v1
+terminal_event: onex.evt.omnimarket.build-loop-cycle-completed.v1
+handler:
+  class: HandlerBuildLoopOrchestrator
+  module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
+  input_model:
+    class: ModelLoopStartCommand
+    module: omnimarket.nodes.node_build_loop.models.model_loop_start_command
+nodes:
+  - node_build_loop_orchestrator
+  - node_loop_state_reducer
+  - node_closeout_effect
+  - node_verify_effect
+  - node_rsd_fill_compute
+  - node_ticket_classify_compute
+  - node_build_dispatch_effect
+event_flow:
+  - source: initial_command
+    target: node_build_loop_orchestrator
+    topic: onex.cmd.omnimarket.build-loop-start.v1
+  - source: node_build_loop_orchestrator
+    target: node_loop_state_reducer
+    topic: internal
+  - source: node_build_loop_orchestrator
+    target: node_closeout_effect
+    topic: internal
+  - source: node_build_loop_orchestrator
+    target: node_verify_effect
+    topic: internal
+  - source: node_build_loop_orchestrator
+    target: node_rsd_fill_compute
+    topic: internal
+  - source: node_build_loop_orchestrator
+    target: node_ticket_classify_compute
+    topic: internal
+  - source: node_build_loop_orchestrator
+    target: node_build_dispatch_effect
+    topic: internal
+  - source: node_build_loop_orchestrator
+    target: terminal
+    topic: onex.evt.omnimarket.build-loop-cycle-completed.v1
