@@ -546,6 +546,36 @@ wheels = [
 ]
 
 [[package]]
+name = "omnibase-compat"
+version = "0.3.1"
+source = { editable = "../omnibase_compat" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9" },
+    { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+    { name = "typing-extensions", specifier = ">=4.5.0" },
+]
+provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.9" },
+    { name = "pre-commit" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-cov" },
+    { name = "ruff", specifier = ">=0.4" },
+]
+
+[[package]]
 name = "omnibase-core"
 version = "0.39.0"
 source = { editable = "../omnibase_core" }
@@ -619,6 +649,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
     { name = "asyncpg" },
+    { name = "omnibase-compat" },
     { name = "omnibase-core" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
@@ -639,6 +670,7 @@ dev = [
 requires-dist = [
     { name = "aiokafka", specifier = ">=0.12.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "omnibase-compat", editable = "../omnibase_compat" },
     { name = "omnibase-core", editable = "../omnibase_core" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },

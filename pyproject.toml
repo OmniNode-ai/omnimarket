@@ -81,11 +81,8 @@ node_build_loop_orchestrator = "omnimarket.nodes.node_build_loop_orchestrator"
 node_rsd_fill_compute = "omnimarket.nodes.node_rsd_fill_compute"
 node_loop_state_reducer = "omnimarket.nodes.node_loop_state_reducer"
 node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute"
-<<<<<<< HEAD
-=======
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect"
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect"
->>>>>>> 2cf83ab (feat: register all 7 build loop nodes in entry points and verify runtime instantiation [OMN-7584])
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
