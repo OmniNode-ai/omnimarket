@@ -1,0 +1,63 @@
+---
+# ONEX Pre-commit Configuration — omnimarket
+#
+# Hooks:
+#   - ruff format + lint (auto-fix)
+#   - Stub implementation detection (from omnibase_core)
+#   - TODO format enforcement (from onex_change_control)
+#   - Hardcoded topic string prevention (from onex_change_control)
+#
+# Usage:
+#   pre-commit install
+#   pre-commit run --all-files
+
+repos:
+  # Stub implementation detection — sourced from omnibase_core (OMN-5599)
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: 458f44ef24564956c6430ae7671570aed035c853 # pragma: allowlist secret
+    hooks:
+      - id: check-stub-implementations
+
+  # Shared ONEX governance hooks (onex_change_control)
+  - repo: https://github.com/OmniNode-ai/onex_change_control
+    rev: 8d7e85bc00e7f1b1306d1cb40949be1ab6e7e91a  # pragma: allowlist secret
+    hooks:
+      - id: no-hardcoded-topics
+        stages: [pre-commit]
+      - id: no-untracked-todos
+        stages: [pre-commit]
+
+  # Essential file formatting
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format (auto-format)
+        entry: uv run ruff format src/ tests/
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: ruff-fix
+        name: ruff check (auto-fix)
+        entry: uv run ruff check --fix --exit-non-zero-on-fix src/ tests/
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+# Configuration
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+fail_fast: false

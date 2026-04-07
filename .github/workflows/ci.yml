@@ -26,6 +26,19 @@ jobs:
         run: uv run ruff check src/ tests/
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/
+      - name: Stub implementation check
+        run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
+      - name: TODO format check
+        run: |
+          pip install onex-change-control 2>/dev/null || pip install ../onex_change_control 2>/dev/null || true
+          # Inline check: all TODO/FIXME/HACK must have (OMN-XXXX) ticket reference
+          find src/ -name '*.py' -not -path '*/tests/*' | while read -r f; do
+            grep -nE '#.*\b(TODO|FIXME|HACK)\b' "$f" 2>/dev/null | grep -vE '\b(TODO|FIXME|HACK)\(OMN-[0-9]+\)' | while read -r line; do
+              echo "::error file=${f}::${line} -- bare TODO/FIXME/HACK without ticket reference (use: # TODO(OMN-XXXX): description)"
+              echo "FAIL" > /tmp/todo_check_failed
+            done
+          done
+          if [ -f /tmp/todo_check_failed ]; then exit 1; fi
 
   typecheck:
     runs-on: ubuntu-latest
