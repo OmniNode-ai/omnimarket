@@ -52,9 +52,7 @@ class HandlerBuildLoopOrchestrator:
     def __init__(self) -> None:
         self._build_loop = HandlerBuildLoop()
 
-    def start(
-        self, command: ModelOrchestratorStartCommand
-    ) -> ModelOrchestratorState:
+    def start(self, command: ModelOrchestratorStartCommand) -> ModelOrchestratorState:
         """Initialize orchestrator state from a start command."""
         return ModelOrchestratorState(
             correlation_id=command.correlation_id,
@@ -261,7 +259,10 @@ class HandlerBuildLoopOrchestrator:
                 events.append(event)
 
             # If failure under threshold, break to avoid infinite loop
-            if not success and state.orchestrator_phase not in TERMINAL_ORCHESTRATOR_PHASES:
+            if (
+                not success
+                and state.orchestrator_phase not in TERMINAL_ORCHESTRATOR_PHASES
+            ):
                 break
 
         completed = self.make_completed_event(state, started_at)

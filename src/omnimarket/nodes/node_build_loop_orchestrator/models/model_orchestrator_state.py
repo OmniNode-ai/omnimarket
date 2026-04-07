@@ -47,9 +47,7 @@ MODE_PHASE_SEQUENCES: dict[EnumOrchestratorMode, tuple[EnumBuildLoopPhase, ...]]
         EnumBuildLoopPhase.CLASSIFYING,
         EnumBuildLoopPhase.BUILDING,
     ),
-    EnumOrchestratorMode.OBSERVE: (
-        EnumBuildLoopPhase.VERIFYING,
-    ),
+    EnumOrchestratorMode.OBSERVE: (EnumBuildLoopPhase.VERIFYING,),
 }
 
 
