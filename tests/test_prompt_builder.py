@@ -79,7 +79,9 @@ def test_persona_markdown_prepended():
 
 
 def test_context_window_minimum_enforced():
-    with pytest.raises(Exception):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="greater than or equal to 1024"):
         ModelPromptBuilderInput(
             prompt_template_id="adversarial_reviewer_pr",
             context_content="content",
