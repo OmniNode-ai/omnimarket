@@ -36,7 +36,9 @@ class ModelTrainingDataRecord(BaseModel):
     severity: EnumFindingSeverity = Field(...)
     code_diff_hash: str = Field(..., description="SHA256 of the code diff content.")
     prompt_hash: str = Field(..., description="SHA256 of the prompt sent.")
-    model_response_hash: str = Field(..., description="SHA256 of the raw model response.")
+    model_response_hash: str = Field(
+        ..., description="SHA256 of the raw model response."
+    )
     local_detected: bool = Field(...)
     frontier_detected: bool = Field(...)
     label_source: EnumLabelSource = Field(...)
