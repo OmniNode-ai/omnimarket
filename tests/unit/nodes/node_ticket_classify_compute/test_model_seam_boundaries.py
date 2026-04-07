@@ -9,9 +9,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_ticket_classify_compute.models.model_seam_boundaries import (
     ModelConsumedProtocol,
-    ModelProducedProtocol,
     ModelSeamBoundaries,
-    ModelSeamTopics,
 )
 
 

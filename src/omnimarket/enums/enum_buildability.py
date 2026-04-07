@@ -4,10 +4,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class EnumBuildability(str, Enum):
+class EnumBuildability(StrEnum):
     """Classification of a ticket's buildability by the autonomous loop.
 
     Values:

@@ -7,18 +7,14 @@ from __future__ import annotations
 from uuid import uuid4
 
 from omnimarket.enums.enum_buildability import EnumBuildability
-
-from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_for_classification import (
-    ModelTicketForClassification,
-)
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classification import (
     ModelTicketClassification,
 )
-from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_input import (
-    ModelTicketClassifyInput,
-)
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_output import (
     ModelTicketClassifyOutput,
+)
+from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_for_classification import (
+    ModelTicketForClassification,
 )
 
 

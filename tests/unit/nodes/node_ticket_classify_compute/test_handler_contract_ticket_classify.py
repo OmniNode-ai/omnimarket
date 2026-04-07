@@ -7,8 +7,8 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from omnimarket.enums.enum_buildability import EnumBuildability
 
+from omnimarket.enums.enum_buildability import EnumBuildability
 from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify import (
     HandlerTicketClassify,
 )
