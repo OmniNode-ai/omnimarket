@@ -10,6 +10,7 @@ Target table schema (from omnidash, OMN-2284):
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
   task_type TEXT NOT NULL
   delegated_to TEXT NOT NULL
+  model_name TEXT DEFAULT ''
   delegated_by TEXT
   quality_gate_passed BOOLEAN DEFAULT false
   quality_gates_checked JSONB
@@ -40,6 +41,7 @@ class ModelTaskDelegatedEvent(BaseModel):
     session_id: str | None = Field(default=None)
     task_type: str = Field(..., description="Task type (e.g. code-review, refactor).")
     delegated_to: str = Field(..., description="Agent that received the task.")
+    model_name: str = Field(default="", description="LLM model name used for inference.")
     delegated_by: str | None = Field(default=None)
     quality_gate_passed: bool = Field(default=False)
     quality_gates_checked: list[str] | None = Field(default=None)
@@ -75,6 +77,7 @@ class HandlerProjectionDelegation:
             "timestamp": event.timestamp or now,
             "task_type": event.task_type,
             "delegated_to": event.delegated_to,
+            "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
             "quality_gates_checked": event.quality_gates_checked,
