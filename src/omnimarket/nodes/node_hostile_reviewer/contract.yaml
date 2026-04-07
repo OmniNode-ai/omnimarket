@@ -1,8 +1,19 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Hostile Reviewer WorkflowPackage
+#
+# Multi-model adversarial code review. Coordinates dispatch of reviews to
+# multiple models, aggregates findings via weighted-union, checks convergence,
+# and produces a report.
+#
+# Related Tickets:
+#   - OMN-7802: Update contract for new handler routing
+#   - OMN-7781: Unified LLM Workflow Migration epic
 ---
 name: hostile_reviewer
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 2, minor: 0, patch: 0}
 node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 2, minor: 0, patch: 0}
 
 description: >
   Multi-model adversarial code review WorkflowPackage. Coordinates dispatch of
@@ -11,14 +22,63 @@ description: >
   AGGREGATE -> CONVERGENCE_CHECK -> REPORT -> DONE.
   Circuit breaker trips after 3 consecutive failures.
 
-handler:
-  module: omnimarket.nodes.node_hostile_reviewer.handlers.handler_hostile_reviewer
-  class: HandlerHostileReviewer
-  input_model: omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_start_command.ModelHostileReviewerStartCommand
+handler_routing:
+  routing_strategy: "phase_dispatch"
+  handlers:
+    - operation: "orchestrate"
+      handler:
+        name: "HandlerReviewOrchestrator"
+        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_review_orchestrator"
+      description: "Top-level orchestrator — fans out prompts to N models, collects responses, parses, aggregates."
+
+    - operation: "build_prompt"
+      handler:
+        name: "HandlerPromptBuilder"
+        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder"
+      description: "Pure COMPUTE — builds (system_prompt, user_prompt) with head+tail truncation."
+
+    - operation: "parse_response"
+      handler:
+        name: "HandlerResponseParser"
+        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_response_parser"
+      description: "Pure COMPUTE — normalizes raw LLM output into ModelReviewFinding instances."
+
+    - operation: "reduce_convergence"
+      handler:
+        name: "HandlerConvergenceReducer"
+        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_convergence_reducer"
+      description: "Pure COMPUTE — per-model F1 vs frontier tracking."
+
+    - operation: "run_workflow"
+      handler:
+        name: "HandlerWorkflowRunner"
+        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_workflow_runner"
+      description: "Drives the FSM through its phases, wiring orchestrator to FSM transitions."
+
+    - operation: "fsm_transition"
+      handler:
+        name: "HandlerHostileReviewer"
+        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_hostile_reviewer"
+      description: "FSM state machine — phase transitions, circuit breaker, terminal detection."
+
+  adapters:
+    - name: "AdapterInferenceBridge"
+      module: "omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge"
+      description: "Bridges orchestrator to inference endpoints (HTTP/CLI). Implements ModelInferenceAdapter ABC."
+
+input_model:
+  name: "ModelHostileReviewerStartCommand"
+  module: "omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_start_command"
+  description: "Start command for hostile reviewer workflow."
+
+output_model:
+  name: "ModelHostileReviewerCompletedEvent"
+  module: "omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_completed_event"
+  description: "Completed event with verdict, findings, and phase history."
 
 descriptor:
   node_archetype: compute
-  purity: pure
+  purity: side_effect
   idempotent: true
   timeout_ms: 600000
 
@@ -56,6 +116,9 @@ outputs:
   total_findings:
     type: int
     description: "Total findings across all passes"
+  verdict:
+    type: str
+    description: "Overall verdict (clean, risks_noted, blocking_issue)"
 
 terminal_event: onex.evt.omnimarket.hostile-reviewer-completed.v1
 
@@ -65,3 +128,41 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.hostile-reviewer-phase-transition.v1
     - onex.evt.omnimarket.hostile-reviewer-completed.v1
+    - onex.evt.omnimarket.hostile-reviewer-prompt-built.v1
+    - onex.evt.omnimarket.hostile-reviewer-response-parsed.v1
+    - onex.evt.omnimarket.hostile-reviewer-convergence-reduced.v1
+    - onex.evt.omnimarket.hostile-reviewer-inference-dispatched.v1
+
+dependencies:
+  nodes:
+    - name: "node_finding_aggregator_compute"
+      reason: "Weighted-union dedup of findings from N models"
+      required: true
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "httpx>=0.27.0"
+
+metadata:
+  description: "Multi-model adversarial code review WorkflowPackage"
+  author: "OmniNode Team"
+  created: "2026-04-06"
+  updated: "2026-04-07"
+  tags:
+    - "review"
+    - "adversarial"
+    - "multi-model"
+    - "fsm"
+    - "convergence"
+    - "llm-workflow"
+    - "OMN-7781"
+  related_tickets:
+    - "OMN-7781"
+    - "OMN-7794"
+    - "OMN-7795"
+    - "OMN-7796"
+    - "OMN-7797"
+    - "OMN-7798"
+    - "OMN-7799"
+    - "OMN-7800"
+    - "OMN-7801"
+    - "OMN-7802"
