@@ -11,7 +11,10 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
-from typing import Protocol
+
+from omnibase_compat.protocols.protocol_data_source import (
+    ProtocolDataSource as DataSource,
+)
 
 from omnimarket.nodes.node_data_verification.models.model_data_verification_completed_event import (
     ModelDataVerificationCompletedEvent,
@@ -43,18 +46,6 @@ _GARBAGE_UUIDS = frozenset(
         "ffffffff-ffff-ffff-ffff-ffffffffffff",
     }
 )
-
-
-class DataSource(Protocol):
-    """Protocol for querying table data. Enables mock injection for tests."""
-
-    def get_row_count(self, table_name: str) -> int: ...
-
-    def get_sample_rows(
-        self, table_name: str, sample_size: int
-    ) -> list[dict[str, str]]: ...
-
-    def get_columns(self, table_name: str) -> list[str]: ...
 
 
 class InmemoryDataSource:

@@ -11,7 +11,10 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Protocol
+
+from omnibase_compat.protocols.protocol_health_check import (
+    ProtocolHealthCheck as CheckTarget,
+)
 
 from omnimarket.nodes.node_process_watchdog.models.model_watchdog_completed_event import (
     ModelWatchdogCompletedEvent,
@@ -35,32 +38,6 @@ _STATUS_SEVERITY: dict[EnumCheckStatus, int] = {
     EnumCheckStatus.DEGRADED: 2,
     EnumCheckStatus.DOWN: 3,
 }
-
-
-class CheckTarget(Protocol):
-    """Protocol for a single health check target.
-
-    Implementations provide the actual check logic (HTTP call, socket probe,
-    Docker API query, etc.). Tests use mock implementations.
-    """
-
-    @property
-    def name(self) -> str:
-        """Unique identifier for this check target."""
-        ...
-
-    @property
-    def category(self) -> EnumCheckTarget:
-        """Which category this target belongs to."""
-        ...
-
-    def check(self) -> ModelWatchdogCheckResult:
-        """Execute the health check and return a result."""
-        ...
-
-    def restart(self) -> bool:
-        """Attempt to restart the target. Returns True if restart succeeded."""
-        ...
 
 
 class InmemoryCheckTarget:
