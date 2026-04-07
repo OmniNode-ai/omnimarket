@@ -72,7 +72,9 @@ def _extract_finding_fields(raw: dict[str, object]) -> dict[str, object] | None:
         "rule_id": str(raw["rule_id"]),
         "file_path": str(raw["file_path"]),
         "line_start": int(str(raw["line_start"])),
-        "line_end": int(str(raw["line_end"])) if raw.get("line_end") is not None else None,
+        "line_end": int(str(raw["line_end"]))
+        if raw.get("line_end") is not None
+        else None,
         "severity": str(raw["severity"]).lower(),
         "normalized_message": str(raw["normalized_message"]),
     }
