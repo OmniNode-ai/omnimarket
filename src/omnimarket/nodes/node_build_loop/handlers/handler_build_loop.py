@@ -5,9 +5,9 @@ callers feeding phase completion results. The handler does not perform
 external I/O — it only manages state transitions, emits phase transition
 events, and enforces the circuit breaker.
 
-FSM: IDLE -> CLOSING_OUT -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE
-     Any phase failure increments consecutive_failures.
-     3 consecutive failures -> FAILED (circuit breaker).
+FSM phases and sequences are mode-dependent (BUILD, CLOSE_OUT, FULL, OBSERVE).
+Any phase failure increments consecutive_failures.
+3 consecutive failures -> FAILED (circuit breaker).
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
 )
 from omnimarket.nodes.node_build_loop.models.model_loop_state import (
     TERMINAL_PHASES,
+    EnumBuildLoopMode,
     EnumBuildLoopPhase,
     ModelLoopState,
     next_phase,
@@ -38,9 +39,9 @@ logger = logging.getLogger(__name__)
 class HandlerBuildLoop:
     """FSM handler for the autonomous build loop.
 
-    Manages state transitions through the 6-phase cycle. Pure logic —
-    no external I/O. Callers are responsible for wiring event bus
-    publish/subscribe.
+    Manages state transitions through mode-dependent phase sequences.
+    Pure logic — no external I/O. Callers are responsible for wiring
+    event bus publish/subscribe.
     """
 
     def start(self, command: ModelLoopStartCommand) -> ModelLoopState:
@@ -51,6 +52,7 @@ class HandlerBuildLoop:
         return ModelLoopState(
             correlation_id=command.correlation_id,
             current_phase=EnumBuildLoopPhase.IDLE,
+            mode=EnumBuildLoopMode(command.mode),
             skip_closeout=command.skip_closeout,
             dry_run=command.dry_run,
             max_consecutive_failures=3,
@@ -114,8 +116,10 @@ class HandlerBuildLoop:
             )
             return new_state, event
 
-        # Success path — advance to next phase
-        to_phase = next_phase(from_phase, skip_closeout=state.skip_closeout)
+        # Success path — advance to next phase (mode-aware)
+        to_phase = next_phase(
+            from_phase, skip_closeout=state.skip_closeout, mode=state.mode
+        )
         new_state = state.model_copy(
             update={
                 "current_phase": to_phase,
@@ -187,13 +191,12 @@ class HandlerBuildLoop:
         events: list[ModelPhaseTransitionEvent] = []
         results = phase_results or {}
 
-        # Advance through the FSM until we reach a terminal state.
-        # Each call to advance() transitions from the current phase to the next.
-        # We use the phase we're about to enter (via next_phase) to look up
-        # success/failure in phase_results.
         while state.current_phase not in TERMINAL_PHASES:
-            # Determine which phase we'll transition INTO
-            target = next_phase(state.current_phase, skip_closeout=state.skip_closeout)
+            target = next_phase(
+                state.current_phase,
+                skip_closeout=state.skip_closeout,
+                mode=state.mode,
+            )
             success = results.get(target, True)
             error_msg = None if success else f"Phase {target.value} failed"
 
