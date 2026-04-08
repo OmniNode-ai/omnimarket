@@ -632,7 +632,8 @@ class LiveBuildDispatchHandler:
                 if think_end >= 0:
                     raw = raw[think_end + len("</think>") :].strip()
 
-            return json.loads(raw)
+            result: dict[str, str] = json.loads(raw)
+            return result
 
         except (json.JSONDecodeError, httpx.HTTPError, KeyError) as exc:
             logger.warning("[DISPATCH] LLM call failed (%s): %s", url[:50], exc)
