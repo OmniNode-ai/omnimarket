@@ -158,7 +158,7 @@ def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
     if not os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""):
         return
     try:
-        from omnibase_infra.bus.kafka_producer import (
+        from omnibase_infra.bus.kafka_producer import (  # type: ignore[import-not-found]
             KafkaProducerClient,
         )
 
@@ -335,7 +335,7 @@ def _emit_metrics_to_bus(metrics: ModelDispatchMetrics) -> None:
     if not os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""):
         return
     try:
-        from omnibase_infra.bus.kafka_producer import (
+        from omnibase_infra.bus.kafka_producer import (  # type: ignore[import-not-found]
             KafkaProducerClient,
         )
 
