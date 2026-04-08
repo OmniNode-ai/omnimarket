@@ -108,9 +108,7 @@ class HandlerDodVerify:
         """
         evidence_results_raw = input_data.pop("evidence_results", [])
         command = ModelDodVerifyStartCommand(**input_data)
-        evidence_results = [
-            ModelEvidenceCheckResult(**r) for r in evidence_results_raw
-        ]
+        evidence_results = [ModelEvidenceCheckResult(**r) for r in evidence_results_raw]
         state, _completed = self.run_verification(command, evidence_results)
         return state.model_dump(mode="json")
 
