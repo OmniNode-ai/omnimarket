@@ -33,6 +33,7 @@ class EnumModelTier(StrEnum):
     """Model tier for delegation routing."""
 
     FRONTIER_GLM = "frontier_glm"  # GLM-4.5 — primary code gen (Zhipu API)
+    FRONTIER_REVIEW = "frontier_review"  # GLM-4.7-Flash — cheap frontier code reviewer
     LOCAL_FAST = "local_fast"  # Qwen3-14B — classification, simple tasks
     LOCAL_CODER = "local_coder"  # Qwen3-Coder-30B — medium code tasks
     LOCAL_REASONING = "local_reasoning"  # DeepSeek-R1 — review, reasoning
@@ -114,6 +115,23 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             timeout_seconds=120.0,
         )
         logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
+
+    # Frontier review: GLM-4.7-Flash — cheap frontier code reviewer (203K ctx)
+    glm_review_key = os.environ.get("LLM_GLM_API_KEY", "")
+    glm_review_url = os.environ.get(
+        "LLM_GLM_URL", "https://open.bigmodel.cn/api/paas/v4"
+    )
+    if glm_review_key:
+        configs[EnumModelTier.FRONTIER_REVIEW] = ModelEndpointConfig(
+            tier=EnumModelTier.FRONTIER_REVIEW,
+            base_url=glm_review_url,
+            model_id="glm-4.7-flash",
+            api_key=glm_review_key,
+            max_tokens=2048,
+            context_window=203000,
+            timeout_seconds=30.0,
+        )
+        logger.info("GLM reviewer configured: %s (model=glm-4.7-flash)", glm_review_url)
 
     # Local fast: Qwen3-14B on .201:8001
     local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "http://192.168.86.201:8001")
