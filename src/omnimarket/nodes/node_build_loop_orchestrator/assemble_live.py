@@ -676,52 +676,65 @@ class LiveBuildDispatchHandler:
                 timeout=30,
             )
 
-            # Run pre-commit hooks before committing (up to 2 attempts)
+            # Run ruff format + check using omni_home venv (worktree venvs lack
+            # editable deps, causing pre-commit ruff hooks to fail on dependency
+            # resolution). This validates generated code before committing.
+            repo_venv = OMNI_HOME / repo / ".venv"
+            ruff_bin = str(repo_venv / "bin" / "ruff") if repo_venv.exists() else "ruff"
+
             for attempt in range(1, 3):
-                pc_result = subprocess.run(
-                    ["pre-commit", "run", "--all-files"],
+                # Format
+                subprocess.run(
+                    [ruff_bin, "format", "."],
                     capture_output=True,
                     text=True,
-                    timeout=120,
+                    timeout=60,
                     cwd=str(worktree_path),
                 )
-                if pc_result.returncode == 0:
+                # Lint with auto-fix
+                lint_result = subprocess.run(
+                    [ruff_bin, "check", "--fix", "."],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    cwd=str(worktree_path),
+                )
+
+                if lint_result.returncode == 0:
                     logger.info(
-                        "[DISPATCH] pre-commit passed for %s (attempt %d)",
+                        "[DISPATCH] ruff checks passed for %s (attempt %d)",
                         ticket_id,
                         attempt,
                     )
                     break
 
                 logger.warning(
-                    "[DISPATCH] pre-commit failed for %s (attempt %d/2):\n%s",
+                    "[DISPATCH] ruff check failed for %s (attempt %d/2):\n%s",
                     ticket_id,
                     attempt,
-                    pc_result.stdout[-500:]
-                    if pc_result.stdout
-                    else pc_result.stderr[-500:]
-                    if pc_result.stderr
+                    lint_result.stdout[-500:]
+                    if lint_result.stdout
+                    else lint_result.stderr[-500:]
+                    if lint_result.stderr
                     else "(no output)",
                 )
 
                 if attempt == 2:
                     logger.error(
-                        "[DISPATCH] pre-commit failed twice for %s, skipping ticket",
+                        "[DISPATCH] ruff check failed twice for %s, skipping ticket",
                         ticket_id,
                     )
                     return False
 
-                # Re-stage after pre-commit auto-fixes (formatters may have modified files)
+                # Re-stage after auto-fixes
                 subprocess.run(
                     ["git", "-C", str(worktree_path), "add", "-A"],
                     check=True,
                     capture_output=True,
                     timeout=30,
                 )
-            else:
-                return False
 
-            # Re-stage in case pre-commit modified files
+            # Re-stage in case ruff modified files
             subprocess.run(
                 ["git", "-C", str(worktree_path), "add", "-A"],
                 check=True,
