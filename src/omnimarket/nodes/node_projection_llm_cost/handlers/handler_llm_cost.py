@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -15,7 +18,21 @@ from omnimarket.projection.runner import (
 
 logger = logging.getLogger(__name__)
 
-TOPIC = "onex.evt.omniintelligence.llm-call-completed.v1"
+KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
+    {
+        "delegation_events",
+        "delegation_shadow_comparisons",
+        "llm_cost_aggregates",
+        "node_service_registry",
+        "baselines_snapshots",
+        "baselines_comparisons",
+        "baselines_trend",
+        "baselines_breakdown",
+        "savings_estimates",
+        "session_outcomes",
+        "injection_effectiveness",
+    }
+)
 
 VALID_USAGE_SOURCES = {"API", "ESTIMATED", "MISSING"}
 
@@ -26,12 +43,37 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
     Append-only (no ON CONFLICT) -- matches omnidash projectLlmCostEvent() exactly.
     """
 
+    def __init__(self, contract_path: Path | None = None) -> None:
+        super().__init__()
+        _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
+        with open(_path) as f:
+            self._contract: dict = yaml.safe_load(f)
+
+        _tables = self._contract.get("db_io", {}).get("db_tables", [])
+        _by_role = {t["role"]: t["name"] for t in _tables}
+
+        for role, name in _by_role.items():
+            if name not in KNOWN_PROJECTION_TABLES:
+                raise ValueError(
+                    f"Unknown table role {role!r} maps to {name!r} which is not in KNOWN_PROJECTION_TABLES"
+                )
+
+        if "aggregates" not in _by_role:
+            raise ValueError("Contract missing required table role 'aggregates'")
+
+        self._table_aggregates: str = _by_role["aggregates"]
+
+    @property
+    def subscribe_topics(self) -> list[str]:
+        return self._contract.get("event_bus", {}).get("subscribe_topics", [])
+
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to project_event via asyncio.run().
         """
-        topic = str(input_data.pop("_topic", TOPIC))
+        topics = self.subscribe_topics
+        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
         meta = MessageMeta(
             partition=int(input_data.pop("_partition", 0)),
             offset=int(input_data.pop("_offset", 0)),
@@ -42,7 +84,7 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
 
     @property
     def topics(self) -> list[str]:
-        return [TOPIC]
+        return self.subscribe_topics
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
@@ -144,8 +186,8 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
             )
 
         await self.db.execute(
-            """
-            INSERT INTO llm_cost_aggregates (
+            f"""
+            INSERT INTO {self._table_aggregates} (
               bucket_time, granularity, model_name, repo_name,
               pattern_id, pattern_name, session_id, usage_source,
               request_count, prompt_tokens, completion_tokens, total_tokens,

@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -14,9 +17,21 @@ from omnimarket.projection.runner import (
 
 logger = logging.getLogger(__name__)
 
-TOPIC_INTROSPECTION = "onex.evt.platform.node-introspection.v1"
-TOPIC_HEARTBEAT = "onex.evt.platform.node-heartbeat.v1"
-TOPIC_STATE_CHANGE = "onex.evt.platform.node-state-change.v1"
+KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
+    {
+        "delegation_events",
+        "delegation_shadow_comparisons",
+        "llm_cost_aggregates",
+        "node_service_registry",
+        "baselines_snapshots",
+        "baselines_comparisons",
+        "baselines_trend",
+        "baselines_breakdown",
+        "savings_estimates",
+        "session_outcomes",
+        "injection_effectiveness",
+    }
+)
 
 
 class RegistrationProjectionRunner(BaseProjectionRunner):
@@ -31,12 +46,37 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
     and projectNodeStateChangeEvent() exactly.
     """
 
+    def __init__(self, contract_path: Path | None = None) -> None:
+        super().__init__()
+        _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
+        with open(_path) as f:
+            self._contract: dict = yaml.safe_load(f)
+
+        _tables = self._contract.get("db_io", {}).get("db_tables", [])
+        _by_role = {t["role"]: t["name"] for t in _tables}
+
+        for role, name in _by_role.items():
+            if name not in KNOWN_PROJECTION_TABLES:
+                raise ValueError(
+                    f"Unknown table role {role!r} maps to {name!r} which is not in KNOWN_PROJECTION_TABLES"
+                )
+
+        if "registry" not in _by_role:
+            raise ValueError("Contract missing required table role 'registry'")
+
+        self._table_registry: str = _by_role["registry"]
+
+    @property
+    def subscribe_topics(self) -> list[str]:
+        return self._contract.get("event_bus", {}).get("subscribe_topics", [])
+
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to project_event via asyncio.run().
         """
-        topic = str(input_data.pop("_topic", TOPIC_INTROSPECTION))
+        topics = self.subscribe_topics
+        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
         meta = MessageMeta(
             partition=int(input_data.pop("_partition", 0)),
             offset=int(input_data.pop("_offset", 0)),
@@ -47,16 +87,21 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
 
     @property
     def topics(self) -> list[str]:
-        return [TOPIC_INTROSPECTION, TOPIC_HEARTBEAT, TOPIC_STATE_CHANGE]
+        return self.subscribe_topics
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        if topic == TOPIC_INTROSPECTION:
+        subscribe = self.subscribe_topics
+        topic_introspection = subscribe[0] if len(subscribe) > 0 else ""
+        topic_heartbeat = subscribe[1] if len(subscribe) > 1 else ""
+        topic_state_change = subscribe[2] if len(subscribe) > 2 else ""
+
+        if topic == topic_introspection:
             return await self._project_introspection(data)
-        if topic == TOPIC_HEARTBEAT:
+        if topic == topic_heartbeat:
             return await self._project_heartbeat(data)
-        if topic == TOPIC_STATE_CHANGE:
+        if topic == topic_state_change:
             return await self._project_state_change(data)
         return False
 
@@ -96,8 +141,8 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         metadata_json = json.dumps(metadata)
 
         await self.db.execute(
-            """
-            INSERT INTO node_service_registry (
+            f"""
+            INSERT INTO {self._table_registry} (
               service_name, service_url, service_type, health_status,
               last_health_check, metadata, is_active, updated_at, projected_at
             ) VALUES (
@@ -139,8 +184,8 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         )
 
         await self.db.execute(
-            """
-            UPDATE node_service_registry
+            f"""
+            UPDATE {self._table_registry}
             SET health_status = $1,
                 last_health_check = NOW(),
                 updated_at = NOW()
@@ -172,8 +217,8 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         is_active = str(new_state).lower() == "active"
 
         await self.db.execute(
-            """
-            UPDATE node_service_registry
+            f"""
+            UPDATE {self._table_registry}
             SET health_status = $1,
                 is_active = $2,
                 updated_at = NOW()

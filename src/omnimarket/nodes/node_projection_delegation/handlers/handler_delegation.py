@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -15,8 +18,21 @@ from omnimarket.projection.runner import (
 
 logger = logging.getLogger(__name__)
 
-TOPIC_TASK_DELEGATED = "onex.evt.omniclaude.task-delegated.v1"
-TOPIC_SHADOW_COMPARISON = "onex.evt.omniclaude.delegation-shadow-comparison.v1"
+KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
+    {
+        "delegation_events",
+        "delegation_shadow_comparisons",
+        "llm_cost_aggregates",
+        "node_service_registry",
+        "baselines_snapshots",
+        "baselines_comparisons",
+        "baselines_trend",
+        "baselines_breakdown",
+        "savings_estimates",
+        "session_outcomes",
+        "injection_effectiveness",
+    }
+)
 
 
 class DelegationProjectionRunner(BaseProjectionRunner):
@@ -27,12 +43,40 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     projectDelegationShadowComparisonEvent() exactly.
     """
 
+    def __init__(self, contract_path: Path | None = None) -> None:
+        super().__init__()
+        _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
+        with open(_path) as f:
+            self._contract: dict = yaml.safe_load(f)
+
+        _tables = self._contract.get("db_io", {}).get("db_tables", [])
+        _by_role = {t["role"]: t["name"] for t in _tables}
+
+        for role, name in _by_role.items():
+            if name not in KNOWN_PROJECTION_TABLES:
+                raise ValueError(
+                    f"Unknown table role {role!r} maps to {name!r} which is not in KNOWN_PROJECTION_TABLES"
+                )
+
+        if "events" not in _by_role:
+            raise ValueError("Contract missing required table role 'events'")
+        if "shadow_comparisons" not in _by_role:
+            raise ValueError("Contract missing required table role 'shadow_comparisons'")
+
+        self._table_delegation: str = _by_role["events"]
+        self._table_shadow: str = _by_role["shadow_comparisons"]
+
+    @property
+    def subscribe_topics(self) -> list[str]:
+        return self._contract.get("event_bus", {}).get("subscribe_topics", [])
+
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to project_event via asyncio.run().
         """
-        topic = str(input_data.pop("_topic", TOPIC_TASK_DELEGATED))
+        topics = self.subscribe_topics
+        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
         meta = MessageMeta(
             partition=int(input_data.pop("_partition", 0)),
             offset=int(input_data.pop("_offset", 0)),
@@ -43,14 +87,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
 
     @property
     def topics(self) -> list[str]:
-        return [TOPIC_TASK_DELEGATED, TOPIC_SHADOW_COMPARISON]
+        return self.subscribe_topics
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        if topic == TOPIC_TASK_DELEGATED:
+        subscribe = self.subscribe_topics
+        topic_delegated = subscribe[0] if len(subscribe) > 0 else ""
+        topic_shadow = subscribe[1] if len(subscribe) > 1 else ""
+
+        if topic == topic_delegated:
             return await self._project_task_delegated(data, meta)
-        if topic == TOPIC_SHADOW_COMPARISON:
+        if topic == topic_shadow:
             return await self._project_shadow_comparison(data, meta)
         return False
 
@@ -122,8 +170,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
 
         await self.db.execute(
-            """
-            INSERT INTO delegation_events (
+            f"""
+            INSERT INTO {self._table_delegation} (
               correlation_id, session_id, timestamp, task_type,
               delegated_to, delegated_by, quality_gate_passed,
               quality_gates_checked, quality_gates_failed,
@@ -199,8 +247,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
 
         await self.db.execute(
-            """
-            INSERT INTO delegation_shadow_comparisons (
+            f"""
+            INSERT INTO {self._table_shadow} (
               correlation_id, session_id, timestamp, task_type,
               primary_agent, shadow_agent, divergence_detected,
               divergence_score, primary_latency_ms, shadow_latency_ms,
