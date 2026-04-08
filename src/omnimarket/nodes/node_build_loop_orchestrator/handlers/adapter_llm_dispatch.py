@@ -62,13 +62,10 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 
 logger = logging.getLogger(__name__)
 
-# Bus topics
-_DELEGATION_ATTEMPT_TOPIC = "onex.evt.omnimarket.delegation-attempt.v1"
-_DELEGATION_METRICS_TOPIC = "onex.evt.omnimarket.delegation-metrics.v1"
-
 # ---------------------------------------------------------------------------
-# Resolve delegation topic from build_dispatch_effect contract.yaml
+# Load bus topics from contracts (single source of truth — no hardcoding)
 # ---------------------------------------------------------------------------
+_ORCHESTRATOR_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _DISPATCH_CONTRACT_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "node_build_dispatch_effect"
@@ -76,18 +73,26 @@ _DISPATCH_CONTRACT_PATH = (
 )
 
 
-def _load_delegation_topic() -> str:
-    """Load delegation-request publish topic from dispatch contract."""
-    if _DISPATCH_CONTRACT_PATH.exists():
-        with open(_DISPATCH_CONTRACT_PATH) as fh:
+def _load_topic_from_contract(contract_path: Path, keyword: str) -> str:
+    """Load a publish topic matching keyword from a contract.yaml."""
+    if contract_path.exists():
+        with open(contract_path) as fh:
             data = yaml.safe_load(fh) or {}
         for topic in (data.get("event_bus", {}) or {}).get("publish_topics", []) or []:
-            if isinstance(topic, str) and "delegation-request" in topic:
+            if isinstance(topic, str) and keyword in topic:
                 return topic
-    return "delegation-request"  # fallback — never a valid topic, will be overridden
+    return f"onex.evt.omnimarket.{keyword}.v1"  # fallback matches contract convention
 
 
-_DEFAULT_DELEGATION_TOPIC: str = _load_delegation_topic()
+_DELEGATION_ATTEMPT_TOPIC: str = _load_topic_from_contract(
+    _ORCHESTRATOR_CONTRACT_PATH, "delegation-attempt"
+)
+_DELEGATION_METRICS_TOPIC: str = _load_topic_from_contract(
+    _ORCHESTRATOR_CONTRACT_PATH, "delegation-metrics"
+)
+_DEFAULT_DELEGATION_TOPIC: str = _load_topic_from_contract(
+    _DISPATCH_CONTRACT_PATH, "delegation-request"
+)
 
 
 def _get_state_dir() -> Path:
@@ -129,7 +134,7 @@ def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
         return
     try:
         from omnibase_infra.bus.kafka_producer import (
-            KafkaProducerClient,  # type: ignore[import-not-found]
+            KafkaProducerClient,
         )
 
         producer = KafkaProducerClient.from_env()
@@ -152,7 +157,6 @@ def _compute_metrics(
     *,
     correlation_id: str,
     traces: list[ModelDispatchTrace],
-    coder_model: str,
 ) -> ModelDispatchMetrics:
     """Compute aggregate metrics from a list of dispatch traces.
 
@@ -172,7 +176,7 @@ def _compute_metrics(
             total_completion_tokens=0,
             total_review_tokens=0,
             total_wall_clock_ms=0,
-            coder_model=coder_model,
+            coder_model="none",
             reviewer_model=None,
             quality_gate_failure_rate=0.0,
             review_rejection_rate=0.0,
@@ -201,6 +205,12 @@ def _compute_metrics(
         t.review_result.review_tokens for t in traces if t.review_result is not None
     )
     total_wall_clock_ms = sum(t.wall_clock_ms for t in traces)
+
+    # Coder model: most-used model across all traces (handles multi-model routing)
+    from collections import Counter  # noqa: PLC0415
+
+    coder_counts: Counter[str] = Counter(t.coder_model for t in traces)
+    coder_model: str = coder_counts.most_common(1)[0][0] if coder_counts else "unknown"
 
     # Reviewer model: use the first non-None reviewer_model found
     reviewer_model: str | None = next(
@@ -280,7 +290,7 @@ def _emit_metrics_to_bus(metrics: ModelDispatchMetrics) -> None:
         return
     try:
         from omnibase_infra.bus.kafka_producer import (
-            KafkaProducerClient,  # type: ignore[import-not-found]
+            KafkaProducerClient,
         )
 
         producer = KafkaProducerClient.from_env()
@@ -441,7 +451,6 @@ class AdapterLlmDispatch:
         payloads: list[DelegationPayload] = []
         total_dispatched = 0
         all_traces: list[ModelDispatchTrace] = []
-        primary_coder_model = ""
 
         for target in targets:
             if dry_run:
@@ -458,8 +467,6 @@ class AdapterLlmDispatch:
                 )
                 all_traces.append(trace)
                 coder_model = trace.coder_model
-                if not primary_coder_model:
-                    primary_coder_model = coder_model
 
                 # Review via reasoning model (if available)
                 review: dict[str, object] = {
@@ -517,7 +524,6 @@ class AdapterLlmDispatch:
             metrics = _compute_metrics(
                 correlation_id=str(correlation_id),
                 traces=all_traces,
-                coder_model=primary_coder_model,
             )
             _write_metrics(metrics, self._state_dir)
             _emit_metrics_to_bus(metrics)
@@ -555,6 +561,8 @@ class AdapterLlmDispatch:
             ruff_pass=False, import_pass=False, test_pass=False, errors=[]
         )
 
+        prompt_tokens = 0
+        completion_tokens = 0
         try:
             router = await self._ensure_router()
             available = await router.get_available_providers()
@@ -577,6 +585,9 @@ class AdapterLlmDispatch:
             response = await router.generate_typed(request)
             raw = response.generated_text
             model_used = response.model_used
+            usage = response.usage_statistics or {}
+            prompt_tokens = int(usage.get("prompt_tokens", 0))
+            completion_tokens = int(usage.get("completion_tokens", 0))
             try:
                 json.loads(raw)
                 gate = ModelQualityGateResult(
@@ -606,8 +617,8 @@ class AdapterLlmDispatch:
             timestamp=datetime.now(tz=UTC).isoformat(),
             coder_model=model_used,
             reviewer_model=None,
-            prompt_tokens=0,
-            completion_tokens=0,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             prompt_chars=prompt_chars,
             generation_raw=raw,
             quality_gate=gate,

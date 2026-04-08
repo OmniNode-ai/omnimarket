@@ -178,7 +178,6 @@ def test_compute_metrics_empty_traces() -> None:
     m = _compute_metrics(
         correlation_id="corr-000",
         traces=[],
-        coder_model="qwen3-coder-30b",
     )
     assert m.total_tickets == 0
     assert m.accepted_count == 0
@@ -188,7 +187,7 @@ def test_compute_metrics_empty_traces() -> None:
     assert m.quality_gate_failure_rate == 0.0
     assert m.review_rejection_rate == 0.0
     assert m.reviewer_model is None
-    assert m.coder_model == "qwen3-coder-30b"
+    assert m.coder_model == "none"
 
 
 def test_compute_metrics_single_accepted_trace() -> None:
@@ -203,7 +202,7 @@ def test_compute_metrics_single_accepted_trace() -> None:
         wall_clock_ms=400,
     )
     m = _compute_metrics(
-        correlation_id="c1", traces=[trace], coder_model="qwen3-coder-30b"
+        correlation_id="c1", traces=[trace]
     )
 
     assert m.total_tickets == 1
@@ -223,7 +222,7 @@ def test_compute_metrics_all_rejected() -> None:
         _make_trace(ticket_id="OMN-1", attempt=1, accepted=False, gate_pass=False),
         _make_trace(ticket_id="OMN-2", attempt=1, accepted=False, gate_pass=False),
     ]
-    m = _compute_metrics(correlation_id="c1", traces=traces, coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=traces)
 
     assert m.total_tickets == 2
     assert m.accepted_count == 0
@@ -237,7 +236,7 @@ def test_compute_metrics_multiple_attempts_per_ticket() -> None:
         _make_trace(ticket_id="OMN-5", attempt=2, accepted=False, gate_pass=False),
         _make_trace(ticket_id="OMN-5", attempt=3, accepted=True, gate_pass=True),
     ]
-    m = _compute_metrics(correlation_id="c1", traces=traces, coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=traces)
 
     assert m.total_tickets == 1
     assert m.accepted_count == 1
@@ -250,7 +249,7 @@ def test_compute_metrics_token_totals() -> None:
         _make_trace(ticket_id="OMN-1", prompt_tokens=100, completion_tokens=50),
         _make_trace(ticket_id="OMN-2", prompt_tokens=200, completion_tokens=75),
     ]
-    m = _compute_metrics(correlation_id="c1", traces=traces, coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=traces)
 
     assert m.total_prompt_tokens == 300
     assert m.total_completion_tokens == 125
@@ -273,7 +272,7 @@ def test_compute_metrics_review_tokens_summed() -> None:
             reviewer_model="glm-4.7-flash",
         ),
     ]
-    m = _compute_metrics(correlation_id="c1", traces=traces, coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=traces)
 
     assert m.total_review_tokens == 100
     assert m.total_review_iterations == 2
@@ -307,7 +306,7 @@ def test_compute_metrics_quality_gate_failure_rate() -> None:
             review=None,
         ),
     ]
-    m = _compute_metrics(correlation_id="c1", traces=traces, coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=traces)
 
     # 2/3 attempts failed the gate
     assert abs(m.quality_gate_failure_rate - 2 / 3) < 1e-9
@@ -338,7 +337,7 @@ def test_compute_metrics_review_rejection_rate() -> None:
             review=_review(approved=True),
         ),
     ]
-    m = _compute_metrics(correlation_id="c1", traces=traces, coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=traces)
 
     # gate_failure_rate: 0 gate failures out of 3
     assert m.quality_gate_failure_rate == 0.0
@@ -353,7 +352,7 @@ def test_compute_metrics_reviewer_model_from_first_trace() -> None:
         _make_trace(ticket_id="OMN-2", reviewer_model="glm-4.7-flash"),
         _make_trace(ticket_id="OMN-3", reviewer_model="other-model"),
     ]
-    m = _compute_metrics(correlation_id="c1", traces=traces, coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=traces)
     assert m.reviewer_model == "glm-4.7-flash"
 
 
@@ -361,7 +360,6 @@ def test_compute_metrics_correlation_id_preserved() -> None:
     m = _compute_metrics(
         correlation_id="specific-corr-id",
         traces=[_make_trace()],
-        coder_model="qwen3",
     )
     assert m.correlation_id == "specific-corr-id"
 
@@ -376,7 +374,6 @@ def test_write_metrics_creates_file(tmp_path: Path) -> None:
     m = _compute_metrics(
         correlation_id="test-corr-write",
         traces=[_make_trace()],
-        coder_model="qwen3-coder-30b",
     )
     _write_metrics(m, state_dir)
 
@@ -389,7 +386,7 @@ def test_write_metrics_creates_file(tmp_path: Path) -> None:
 def test_write_metrics_filename_is_correlation_id(tmp_path: Path) -> None:
     state_dir = tmp_path / ".onex_state"
     corr = "unique-corr-xyz"
-    m = _compute_metrics(correlation_id=corr, traces=[], coder_model="qwen3")
+    m = _compute_metrics(correlation_id=corr, traces=[])
     _write_metrics(m, state_dir)
 
     assert (state_dir / "dispatch-metrics" / f"{corr}.json").exists()
@@ -404,7 +401,6 @@ def test_write_metrics_json_content_valid(tmp_path: Path) -> None:
     m = _compute_metrics(
         correlation_id="content-check",
         traces=traces,
-        coder_model="qwen3-coder-30b",
     )
     _write_metrics(m, state_dir)
 
@@ -451,7 +447,6 @@ def test_write_metrics_totals_match_traces(tmp_path: Path) -> None:
     m = _compute_metrics(
         correlation_id="cross-ref-check",
         traces=traces,
-        coder_model="qwen3",
     )
     _write_metrics(m, state_dir)
 
@@ -475,7 +470,7 @@ def test_emit_metrics_skips_without_kafka_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("KAFKA_ENABLED", raising=False)
-    m = _compute_metrics(correlation_id="c1", traces=[], coder_model="qwen3")
+    m = _compute_metrics(correlation_id="c1", traces=[])
     from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (
         _emit_metrics_to_bus,
     )
@@ -511,12 +506,37 @@ async def test_handle_writes_metrics_file_after_dispatch(tmp_path: Path) -> None
         BuildTarget(ticket_id="OMN-A", title="Ticket A", buildability="auto_buildable"),
         BuildTarget(ticket_id="OMN-B", title="Ticket B", buildability="auto_buildable"),
     )
-    valid_json = json.dumps({"ticket_id": "OMN-A", "implementation_plan": {}})
+    from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
+        ModelQualityGateResult,
+    )
 
-    with patch.object(
-        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = valid_json
+    valid_plan = {"ticket_id": "OMN-A", "implementation_plan": {}}
+
+    async def _fake_generate(self, *, target, correlation_id, attempt):  # type: ignore[no-untyped-def]
+        from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
+            ModelDispatchTrace,
+        )
+
+        return valid_plan, ModelDispatchTrace(
+            correlation_id=str(correlation_id),
+            ticket_id=target.ticket_id,
+            attempt=attempt,
+            timestamp="2026-04-08T00:00:00+00:00",
+            coder_model="mock-model",
+            reviewer_model=None,
+            prompt_tokens=10,
+            completion_tokens=20,
+            prompt_chars=100,
+            generation_raw="{}",
+            quality_gate=ModelQualityGateResult(
+                ruff_pass=True, import_pass=True, test_pass=True, errors=[]
+            ),
+            review_result=None,
+            accepted=True,
+            wall_clock_ms=50,
+        )
+
+    with patch.object(AdapterLlmDispatch, "_generate_plan_traced", new=_fake_generate):
         await adapter.handle(correlation_id=corr_id, targets=targets, dry_run=False)
 
     metrics_file = state_dir / "dispatch-metrics" / f"{corr_id}.json"
