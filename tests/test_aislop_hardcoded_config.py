@@ -77,16 +77,14 @@ class TestHardcodedPort:
     def test_no_false_positive_on_year(self) -> None:
         # 8000 inside a year-like context shouldn't fire — but the pattern
         # is intentionally broad; verify it only fires on :-prefixed ports
-        findings = _run_check('# created in 8000 BC\n')
+        findings = _run_check("# created in 8000 BC\n")
         # comment lines are skipped
         assert findings == []
 
 
 class TestHardcodedDbConnectionString:
     def test_detects_postgres_dsn(self) -> None:
-        findings = _run_check(
-            'DB_URL = "postgresql://user:pass@host:5432/mydb"\n'
-        )
+        findings = _run_check('DB_URL = "postgresql://user:pass@host:5432/mydb"\n')
         assert len(findings) >= 1
         checks = {f.check for f in findings}
         assert "hardcoded-config" in checks
@@ -126,8 +124,7 @@ class TestExclusions:
 
     def test_clean_file_produces_no_findings(self) -> None:
         findings = _run_check(
-            'BASE_URL = os.environ["BASE_URL"]\n'
-            'DB_NAME = settings.database_name\n'
+            'BASE_URL = os.environ["BASE_URL"]\nDB_NAME = settings.database_name\n'
         )
         assert findings == []
 

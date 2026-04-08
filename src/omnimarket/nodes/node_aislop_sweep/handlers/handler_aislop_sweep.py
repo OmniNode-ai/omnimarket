@@ -129,7 +129,9 @@ _TODO_PATTERN = re.compile(r"\b(TODO|FIXME|HACK)\b")
 # Hardcoded config patterns: (pattern, description, severity, confidence)
 _HARDCODED_CONFIG_PATTERNS: list[tuple[re.Pattern[str], str, str, str]] = [
     (
-        re.compile(r'["\'](?:https?://)?(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)\d+\.\d+'),
+        re.compile(
+            r'["\'](?:https?://)?(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)\d+\.\d+'
+        ),
         "hardcoded private IP address",
         "ERROR",
         "HIGH",
@@ -147,13 +149,15 @@ _HARDCODED_CONFIG_PATTERNS: list[tuple[re.Pattern[str], str, str, str]] = [
         "HIGH",
     ),
     (
-        re.compile(r':(?:8000|8080|8443|5432|3306|6379|19092|9092|27017|5672|15672)\b'),
+        re.compile(r":(?:8000|8080|8443|5432|3306|6379|19092|9092|27017|5672|15672)\b"),
         "hardcoded well-known port number",
         "WARNING",
         "MEDIUM",
     ),
     (
-        re.compile(r'(?i)(?:host|dsn|url)\s*=\s*["\'][^"\']*(?:postgres|mysql|mongo|redis|rabbitmq)[^"\']*://[^"\']+["\']'),
+        re.compile(
+            r'(?i)(?:host|dsn|url)\s*=\s*["\'][^"\']*(?:postgres|mysql|mongo|redis|rabbitmq)[^"\']*://[^"\']+["\']'
+        ),
         "hardcoded database connection string",
         "CRITICAL",
         "HIGH",
@@ -382,7 +386,11 @@ class NodeAislopSweep:
         for i, line in enumerate(lines, 1):
             stripped = line.strip()
             # Skip comment-only lines and docstrings
-            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+            if (
+                stripped.startswith("#")
+                or stripped.startswith('"""')
+                or stripped.startswith("'''")
+            ):
                 continue
             for pattern, desc, severity, confidence in _HARDCODED_CONFIG_PATTERNS:
                 if pattern.search(line):
