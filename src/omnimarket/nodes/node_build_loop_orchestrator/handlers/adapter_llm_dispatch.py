@@ -628,10 +628,17 @@ class AdapterLlmDispatch:
                 )
                 all_traces.extend(traces)
 
-                approved = accepted_code is not None
                 last_trace = traces[-1] if traces else None
+                # Only report approved=True when the reviewer explicitly approved.
+                # accepted_code may be non-None via allow_unreviewed=True — do not
+                # synthesize reviewer approval from that path.
+                reviewer_approved = bool(
+                    last_trace
+                    and last_trace.review_result
+                    and last_trace.review_result.approved
+                )
                 review_result: dict[str, object] = {
-                    "approved": approved,
+                    "approved": reviewer_approved,
                     "issues": [],
                     "risk_level": "unknown",
                 }
@@ -658,7 +665,7 @@ class AdapterLlmDispatch:
                     if reviewer_endpoint
                     else None,
                     "total_attempts": len(traces),
-                    "accepted": approved,
+                    "accepted": accepted_code is not None,
                 }
 
                 payloads.append(
@@ -667,13 +674,13 @@ class AdapterLlmDispatch:
                         payload=payload_data,
                     )
                 )
-                if approved:
+                if accepted_code is not None:
                     total_dispatched += 1
                 logger.info(
                     "LLM dispatch: %s via %s — accepted=%s, attempts=%d",
                     target.ticket_id,
                     tier.value,
-                    approved,
+                    accepted_code is not None,
                     len(traces),
                 )
 
@@ -1045,9 +1052,9 @@ class AdapterLlmDispatch:
                 raw = await self._call_endpoint(
                     endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt, temperature=0.3
                 )
-            except httpx.HTTPError as exc:
+            except Exception as exc:
                 logger.warning(
-                    "Reviewer unreachable for %s (attempt %d): %s",
+                    "Reviewer unavailable for %s (attempt %d): %s",
                     ticket_id,
                     attempt,
                     exc,
@@ -1099,9 +1106,9 @@ class AdapterLlmDispatch:
                 raw = await self._call_endpoint(
                     endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt
                 )
-            except httpx.HTTPError as exc:
+            except Exception as exc:
                 logger.warning(
-                    "Review endpoint unreachable for %s (attempt %d): %s",
+                    "Review endpoint unavailable for %s (attempt %d): %s",
                     target.ticket_id,
                     attempt,
                     exc,
