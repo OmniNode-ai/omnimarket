@@ -1,4 +1,4 @@
-"""DatabaseAdapter protocol for projection nodes.
+"""ProtocolProjectionDatabaseSync — sync projection database protocol.
 
 Production: asyncpg UPSERT into Postgres on .201:5436.
 Tests: InmemoryDatabaseAdapter that records rows for assertion.
@@ -10,8 +10,12 @@ from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
-class DatabaseAdapter(Protocol):
-    """Protocol for synchronous projection database operations."""
+class ProtocolProjectionDatabaseSync(Protocol):
+    """Protocol for synchronous projection database operations.
+
+    Disambiguated from the async ProtocolProjectionDatabase in
+    omnibase_compat which serves projection runners.
+    """
 
     def upsert(
         self,
@@ -29,6 +33,10 @@ class DatabaseAdapter(Protocol):
     ) -> list[dict[str, object]]:
         """Query rows from a table with optional filters."""
         ...
+
+
+# Backward-compat alias — existing code imports DatabaseAdapter
+DatabaseAdapter = ProtocolProjectionDatabaseSync
 
 
 class InmemoryDatabaseAdapter:
@@ -83,4 +91,5 @@ class InmemoryDatabaseAdapter:
 __all__: list[str] = [
     "DatabaseAdapter",
     "InmemoryDatabaseAdapter",
+    "ProtocolProjectionDatabaseSync",
 ]
