@@ -14,6 +14,11 @@ description: >
   FSM: IDLE -> CLOSING_OUT -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE
   Circuit breaker trips after 3 consecutive failures -> FAILED.
 
+handler:
+  module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
+  class: HandlerBuildLoopOrchestrator
+  input_model: omnimarket.nodes.node_build_loop.models.model_loop_start_command.ModelLoopStartCommand
+
 handler_routing:
   default_handler: handler:HandlerBuildLoopOrchestrator
 

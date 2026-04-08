@@ -11,6 +11,11 @@ description: >
   dispatches polish work on fixable PRs. Tracks cross-run failure history
   with escalation thresholds (STUCK, CHRONIC, RECIDIVIST).
 
+handler:
+  module: omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep
+  class: NodeMergeSweep
+  input_model: omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep.ModelMergeSweepRequest
+
 handler_routing:
   default_handler: handler:NodeMergeSweep
 

@@ -9,6 +9,11 @@ description: >
   tri-state (PASS/WARN/FAIL) report with freshness-aware semantics and
   valid-zero vs broken-zero distinction.
 
+handler:
+  module: omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness
+  class: NodePlatformReadiness
+  input_model: omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness.ModelPlatformReadinessRequest
+
 handler_routing:
   default_handler: handler:NodePlatformReadiness
 
