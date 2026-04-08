@@ -11,9 +11,7 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
-from typing import Any
-
-from omnibase_compat.protocols import ProtocolDataSource as DataSource
+from typing import Protocol, runtime_checkable
 
 from omnimarket.nodes.node_data_verification.models.model_data_verification_completed_event import (
     ModelDataVerificationCompletedEvent,
@@ -29,6 +27,19 @@ from omnimarket.nodes.node_data_verification.models.model_data_verification_stat
 )
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class DataSource(Protocol):
+    """Protocol for data source used by the data verification handler."""
+
+    def get_row_count(self, table_name: str) -> int: ...
+
+    def get_sample_rows(
+        self, table_name: str, sample_size: int
+    ) -> list[dict[str, str]]: ...
+
+    def get_columns(self, table_name: str) -> list[str]: ...
 
 
 # UUID v4 pattern — rejects nil UUID and sequential/default UUIDs
@@ -244,21 +255,25 @@ class HandlerDataVerification:
             dry_run=command.dry_run,
         )
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim.
+    def handle(
+        self,
+        command: ModelDataVerificationStartCommand,
+        data_source: DataSource | None = None,
+        event_landed: bool | None = None,
+        latency_ms: float | None = None,
+    ) -> ModelDataVerificationCompletedEvent:
+        """Typed RuntimeLocal handler protocol entry point.
 
-        Delegates to run_verification with a ModelDataVerificationStartCommand
-        and an InmemoryDataSource constructed from input_data.
+        Delegates to run_verification. Uses InmemoryDataSource when no
+        data_source is provided (suitable for testing with pre-loaded rows).
         """
-        rows = input_data.pop("rows", [])
-        event_landed = input_data.pop("event_landed", None)
-        latency_ms = input_data.pop("latency_ms", None)
-        command = ModelDataVerificationStartCommand(**input_data)
-        data_source = InmemoryDataSource(rows=rows)
-        result, _completed = self.run_verification(
-            command, data_source, event_landed=event_landed, latency_ms=latency_ms
+        _result, completed = self.run_verification(
+            command,
+            data_source or InmemoryDataSource(),
+            event_landed=event_landed,
+            latency_ms=latency_ms,
         )
-        return result.model_dump(mode="json")
+        return completed
 
     def make_completed_event(
         self,
