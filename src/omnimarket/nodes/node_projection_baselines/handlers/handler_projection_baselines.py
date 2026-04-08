@@ -104,7 +104,7 @@ class HandlerProjectionBaselines:
         Delegates to project() with a ModelBaselinesComputedEvent and
         a DatabaseAdapter from input_data['_db'].
         """
-        db = input_data.pop("_db", None)
+        db: DatabaseAdapter = input_data.pop("_db", None)  # type: ignore[assignment]
         event = ModelBaselinesComputedEvent(**input_data)
         result = self.project(event, db)
         return result.model_dump(mode="json")
