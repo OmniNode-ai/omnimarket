@@ -24,9 +24,18 @@ golden_path:
   - "Verify row exists with service_name, health_status fields"
   - "Golden chain test: omnimarket/tests/test_golden_chain_projection_registration.py"
 
+db_io:
+  db_tables:
+    - name: node_service_registry
+      migration: "0001_omnidash_analytics_read_model.sql"
+      access: write
+      database: omnidash_analytics
+      role: registry
+
 event_bus:
   subscribe_topics:
     - onex.evt.platform.node-introspection.v1
     - onex.evt.platform.node-heartbeat.v1
+    - onex.evt.platform.node-state-change.v1
   publish_topics:
     - onex.evt.omnimarket.projection-registration-applied.v1

@@ -23,8 +23,22 @@ golden_path:
   - "Verify row exists with correlation_id, task_type, delegated_to fields"
   - "Golden chain test: omnimarket/tests/test_golden_chain_projection_delegation.py"
 
+db_io:
+  db_tables:
+    - name: delegation_events
+      migration: "0007_delegation_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: events
+    - name: delegation_shadow_comparisons
+      migration: "0007_delegation_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: shadow_comparisons
+
 event_bus:
   subscribe_topics:
     - onex.evt.omniclaude.task-delegated.v1
+    - onex.evt.omniclaude.delegation-shadow-comparison.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1

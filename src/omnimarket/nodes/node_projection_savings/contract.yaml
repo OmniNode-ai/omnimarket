@@ -14,6 +14,14 @@ handler:
 
 terminal_event: onex.evt.omnimarket.projection-savings-applied.v1
 
+db_io:
+  db_tables:
+    - name: savings_estimates
+      migration: "0034_savings_estimates.sql"
+      access: write
+      database: omnidash_analytics
+      role: estimates
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnibase-infra.savings-estimated.v1
