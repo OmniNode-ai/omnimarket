@@ -135,7 +135,9 @@ class HandlerBuildLoopOrchestrator:
                 HandlerTicketClassify,
             )
 
-            self._classify = cast(ProtocolTicketClassifyHandler, HandlerTicketClassify())
+            self._classify = cast(
+                ProtocolTicketClassifyHandler, HandlerTicketClassify()
+            )
         if self._dispatch is None:
             from omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch import (
                 HandlerBuildDispatch,
