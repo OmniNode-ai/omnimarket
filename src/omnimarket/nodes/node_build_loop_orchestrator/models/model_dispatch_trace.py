@@ -8,10 +8,14 @@ optionally emitted to the event bus.
 
 Related:
     - OMN-7855: Add dispatch tracing to .onex_state/
+    - OMN-7856: Wire GLM-4.7-Flash as code reviewer
+    - OMN-7857: Implement generate-review-retry loop
     - OMN-5113: Autonomous Build Loop epic
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,17 +39,31 @@ class ModelQualityGateResult(BaseModel):
         return self.ruff_pass and self.import_pass and self.test_pass
 
 
-class ModelReviewResult(BaseModel):
-    """Result from the LLM code reviewer."""
+class ModelReviewIssue(BaseModel):
+    """A single issue found during code review."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    approved: bool = Field(..., description="Whether the reviewer approved the code.")
-    issues: list[str] = Field(
-        default_factory=list,
-        description="Issues found by the reviewer.",
+    line: int | None = Field(default=None, description="Line number, if known.")
+    severity: Literal["minor", "major", "critical"] = Field(
+        ..., description="Issue severity."
     )
-    reviewer_model: str = Field(..., description="Model ID used for review.")
+    message: str = Field(..., description="Issue description.")
+
+
+class ModelReviewResult(BaseModel):
+    """Structured output from the GLM-4.7-Flash code reviewer."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    approved: bool = Field(..., description="Whether the code is approved.")
+    issues: list[ModelReviewIssue] = Field(
+        default_factory=list, description="Issues found."
+    )
+    risk_level: Literal["low", "medium", "high"] = Field(
+        default="low", description="Overall risk level."
+    )
+    reviewer_model: str = Field(default="", description="Model ID used for review.")
     review_tokens: int = Field(
         default=0,
         ge=0,
@@ -104,10 +122,18 @@ class ModelDispatchTrace(BaseModel):
         ge=0,
         description="Wall-clock time for this attempt in milliseconds.",
     )
+    failure_kind: str | None = Field(
+        default=None,
+        description=(
+            "Failure taxonomy: generation_malformed, gate_failed, review_rejected, "
+            "review_unavailable, transport_failure. None if accepted."
+        ),
+    )
 
 
 __all__: list[str] = [
     "ModelDispatchTrace",
     "ModelQualityGateResult",
+    "ModelReviewIssue",
     "ModelReviewResult",
 ]

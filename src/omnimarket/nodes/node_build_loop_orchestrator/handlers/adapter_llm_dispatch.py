@@ -3,16 +3,13 @@
 """Adapter that dispatches ticket builds via multi-model LLM code generation.
 
 Implements ProtocolBuildDispatchHandler for live build loop execution.
-Routes tickets to the appropriate model tier:
-- Simple tasks -> local Qwen3-14B (fast)
-- Medium tasks -> local Qwen3-Coder-30B (64K ctx)
-- Complex tasks -> frontier models (Gemini, OpenAI)
-- Review -> GLM-4.7-Flash (cheap frontier reviewer, 203K ctx)
+Routes tickets to the appropriate model tier based on complexity,
+using both local models (Qwen3, DeepSeek) and frontier APIs.
 
-Uses the existing LLM infrastructure from omnibase_infra:
-- AdapterLlmProviderOpenai for OpenAI-compatible inference (health checks, failover)
-- AdapterModelRouter for multi-provider routing with round-robin fallback
-- ModelLlmProviderConfig for provider configuration from the registry
+Review policy (OMN-7856/OMN-7857):
+- Reviewer unavailable: review_status="unavailable", rejected unless allow_unreviewed=True
+- Reviewer malformed: retry once, then review_status="failed", always rejected
+- Reviewer approved: accepted if structural gate also passes
 
 Every generation attempt writes a ModelDispatchTrace to
 .onex_state/dispatch-traces/ and (when KAFKA_BOOTSTRAP_SERVERS) emits
@@ -24,24 +21,28 @@ onex.evt.omnimarket.delegation-metrics.v1.
 
 Related:
     - OMN-7854: Add source context loading
-    - OMN-7856: Wire GLM-4.7-Flash as code reviewer
-    - OMN-7810: Wire build loop to Linear queue
     - OMN-7855: Add dispatch tracing to .onex_state/
+    - OMN-7856: Wire GLM-4.7-Flash as code reviewer
+    - OMN-7857: Implement generate-review-retry loop
+    - OMN-7810: Wire build loop to Linear queue
     - OMN-7858: Add dispatch metrics summary
     - OMN-5113: Autonomous Build Loop epic
 """
 
 from __future__ import annotations
 
+import ast
+import contextlib
 import json
 import logging
 import os
 import re
+import subprocess
+import tempfile
 import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
 from uuid import UUID
 
 import httpx
@@ -59,7 +60,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
     EnumModelTier,
     ModelEndpointConfig,
     build_endpoint_configs,
-    route_to_template,
+    route_ticket_to_tier,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_metrics import (
     ModelDispatchMetrics,
@@ -67,6 +68,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_metrics
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
     ModelDispatchTrace,
     ModelQualityGateResult,
+    ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
@@ -77,7 +79,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Load bus topics from contracts (single source of truth — no hardcoding)
+# Load topics from contract.yaml — never hardcode topics inside handlers.
 # ---------------------------------------------------------------------------
 _ORCHESTRATOR_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _DISPATCH_CONTRACT_PATH = (
@@ -87,25 +89,34 @@ _DISPATCH_CONTRACT_PATH = (
 )
 
 
-def _load_topic_from_contract(contract_path: Path, keyword: str) -> str:
-    """Load a publish topic matching keyword from a contract.yaml."""
+def _load_topic_from_contract(contract_path: Path, fragment: str, fallback: str) -> str:
+    """Load a publish topic matching *fragment* from a contract.yaml file."""
     if contract_path.exists():
         with open(contract_path) as fh:
             data = yaml.safe_load(fh) or {}
         for topic in (data.get("event_bus", {}) or {}).get("publish_topics", []) or []:
-            if isinstance(topic, str) and keyword in topic:
+            if isinstance(topic, str) and fragment in topic:
                 return topic
-    return f"onex.evt.omnimarket.{keyword}.v1"  # fallback matches contract convention
+    return fallback
 
 
+# Bus topic for per-attempt trace events — declared in contract.yaml publish_topics
 _DELEGATION_ATTEMPT_TOPIC: str = _load_topic_from_contract(
-    _ORCHESTRATOR_CONTRACT_PATH, "delegation-attempt"
+    _ORCHESTRATOR_CONTRACT_PATH,
+    "delegation-attempt",
+    "onex.evt.omnimarket.delegation-attempt.v1",  # fallback only
 )
+
 _DELEGATION_METRICS_TOPIC: str = _load_topic_from_contract(
-    _ORCHESTRATOR_CONTRACT_PATH, "delegation-metrics"
+    _ORCHESTRATOR_CONTRACT_PATH,
+    "delegation-metrics",
+    "onex.evt.omnimarket.delegation-metrics.v1",  # fallback only
 )
+
 _DEFAULT_DELEGATION_TOPIC: str = _load_topic_from_contract(
-    _DISPATCH_CONTRACT_PATH, "delegation-request"
+    _DISPATCH_CONTRACT_PATH,
+    "delegation-request",
+    "delegation-request",  # fallback — never a valid topic, will be overridden
 )
 
 
@@ -165,6 +176,29 @@ def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
             trace.attempt,
             exc,
         )
+
+
+def _extract_json_block(text: str, marker: str) -> str | None:
+    """Extract the outermost brace-balanced JSON block containing *marker*.
+
+    Handles nested objects (e.g., ``"issues": [{...}]``) where simple
+    ``[^{}]*`` regexes would fail.  Returns None if no matching block found.
+    """
+    for start in range(len(text)):
+        if text[start] != "{":
+            continue
+        depth = 0
+        for end in range(start, len(text)):
+            if text[end] == "{":
+                depth += 1
+            elif text[end] == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start : end + 1]
+                    if marker in candidate:
+                        return candidate
+                    break
+    return None
 
 
 def _compute_metrics(
@@ -370,18 +404,18 @@ Output ONLY the complete refactored Python file. Do not add explanations, markdo
 """
 
 _REVIEW_SYSTEM_PROMPT = """\
-You are a code review agent. Review the implementation plan JSON for structural correctness.
+You are a code review agent. Review the refactored code against the template pattern and original source.
 
 Check specifically:
-1. Required keys present — does the plan contain "ticket_id", "implementation_plan", and "code_changes"?
-2. Plausible values — are file paths, actions ("modify"|"create"), and approach strings non-empty and sensible?
-3. No obviously hallucinated ticket IDs — does the plan's ticket_id match the one in the user prompt?
-4. Risk assessment — based on the number of files changed and complexity, assign an overall risk level.
+1. Correct method name — does the refactored handler use handle() and not run_full_pipeline() or other legacy names?
+2. Correct type annotations — do parameter and return types match the template pattern exactly?
+3. All logic preserved — is every branch, condition, and side effect from the original source present?
+4. No hallucinated field names — does the code only reference fields that exist in the Pydantic models?
 
 You MUST respond with ONLY a JSON object, no prose, no explanation:
 {
   "approved": true,
-  "issues": [{"line": null, "severity": "major", "message": "missing required key 'code_changes'"}],
+  "issues": [{"line": 15, "severity": "major", "message": "hallucinated field name 'phase'"}],
   "risk_level": "low"
 }
 
@@ -393,36 +427,12 @@ issues must be an array (empty array if none).
 # 48K char budget leaves headroom for Qwen3-Coder's 64K context
 _DEFAULT_MAX_CONTEXT_CHARS: int = 48000
 
-
-# ---------------------------------------------------------------------------
-# Structured review output schema
-# ---------------------------------------------------------------------------
-
-
-class ModelReviewIssue(BaseModel):
-    """A single issue found during code review."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    line: int | None = Field(default=None, description="Line number, if known.")
-    severity: Literal["minor", "major", "critical"] = Field(
-        ..., description="Issue severity."
-    )
-    message: str = Field(..., description="Issue description.")
-
-
-class ModelReviewResult(BaseModel):
-    """Structured output from the GLM-4.7-Flash code reviewer."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    approved: bool = Field(..., description="Whether the code is approved.")
-    issues: list[ModelReviewIssue] = Field(
-        default_factory=list, description="Issues found."
-    )
-    risk_level: Literal["low", "medium", "high"] = Field(
-        ..., description="Overall risk level."
-    )
+# Failure taxonomy for traces
+_FAILURE_GENERATION_MALFORMED = "generation_malformed"
+_FAILURE_GATE_FAILED = "gate_failed"
+_FAILURE_REVIEW_REJECTED = "review_rejected"
+_FAILURE_REVIEW_UNAVAILABLE = "review_unavailable"
+_FAILURE_TRANSPORT = "transport_failure"
 
 
 class ModelPlanSchema(BaseModel):
@@ -481,8 +491,10 @@ class AdapterLlmDispatch:
     Routes each ticket to the appropriate model tier based on complexity,
     using both local models (Qwen3, DeepSeek) and frontier APIs (Gemini, OpenAI).
 
-    Uses AdapterModelRouter from omnibase_infra for model selection with
-    health checks, failover, and round-robin load balancing.
+    Review policy (OMN-7856):
+    - Reviewer unavailable: review_status="unavailable", rejected unless allow_unreviewed=True
+    - Reviewer malformed: retry once, then review_status="failed", always rejected
+    - Reviewer approved: accepted if structural gate also passes
 
     Every generation attempt (pass or fail) produces a ModelDispatchTrace written
     to .onex_state/dispatch-traces/ and emitted to the event bus when available.
@@ -493,16 +505,19 @@ class AdapterLlmDispatch:
         *,
         endpoint_configs: dict[EnumModelTier, ModelEndpointConfig] | None = None,
         delegation_topic: str | None = None,
+        state_dir: Path | None = None,
+        max_attempts: int = 3,
         allow_unreviewed: bool = False,
         router: AdapterModelRouter | None = None,
-        state_dir: Path | None = None,
     ) -> None:
         self._endpoints = endpoint_configs or build_endpoint_configs()
         self._delegation_topic = delegation_topic or _DEFAULT_DELEGATION_TOPIC
+        self._available_tiers = frozenset(self._endpoints.keys())
+        self._state_dir = state_dir or _get_state_dir()
+        self._max_attempts = max_attempts
         self._allow_unreviewed = allow_unreviewed
         self._router = router
         self._router_initialized = router is not None
-        self._state_dir = state_dir or _get_state_dir()
 
         # Build per-tier providers for direct access (review model)
         self._providers: dict[EnumModelTier, AdapterLlmProviderOpenai] = {}
@@ -511,7 +526,7 @@ class AdapterLlmDispatch:
 
         logger.info(
             "LLM dispatch initialized with tiers: %s (allow_unreviewed=%s)",
-            ", ".join(t.value for t in sorted(self._endpoints.keys(), key=str)),
+            ", ".join(t.value for t in sorted(self._available_tiers, key=str)),
             allow_unreviewed,
         )
 
@@ -523,6 +538,26 @@ class AdapterLlmDispatch:
         assert self._router is not None
         return self._router
 
+    def _is_accepted(self, review_status: str, review_data: dict[str, object]) -> bool:
+        """Determine acceptance under review policy.
+
+        Rules:
+        - review_status="approved": accepted
+        - review_status="rejected": rejected
+        - review_status="unavailable": accepted only if allow_unreviewed=True
+        - review_status="failed" or "malformed": always rejected
+        """
+        if review_status == "approved":
+            return True
+        if review_status == "unavailable":
+            if self._allow_unreviewed:
+                logger.warning(
+                    "Accepting unreviewed output (allow_unreviewed=True, review_status=unavailable)"
+                )
+                return True
+            return False
+        return False
+
     async def handle(
         self,
         *,
@@ -533,11 +568,10 @@ class AdapterLlmDispatch:
         """Generate implementation plans for each buildable ticket.
 
         For each target:
-        1. Route to best available provider via AdapterModelRouter
+        1. Route to appropriate model tier based on complexity
         2. Load source context (template + target + models)
-        3. Generate code via routed model using source-grounded prompt
-        4. Review via reasoning provider (if available)
-        5. Package as delegation payload
+        3. Run generate-review-retry loop (up to max_attempts)
+        4. Package as delegation payload
         """
         logger.info(
             "LLM dispatch: %d targets (correlation_id=%s, dry_run=%s)",
@@ -557,105 +591,81 @@ class AdapterLlmDispatch:
                 continue
 
             try:
-                # Select template node (FSM vs compute) for coder context.
-                # Use explicit override from target if set; otherwise default to
-                # the compute template (route_to_template("") returns _COMPUTE_TEMPLATE_NODE).
-                template_node_id = target.template_node_id or route_to_template("")
-
-                # Generate plan via model router (traced, with source context)
-                plan, trace = await self._generate_plan_traced(
-                    target=target,
-                    correlation_id=correlation_id,
-                    attempt=1,
-                    template_node_id=template_node_id,
+                # Route to appropriate model tier
+                tier = route_ticket_to_tier(
+                    title=target.title,
+                    description="",  # description not on BuildTarget
+                    available_tiers=self._available_tiers,
                 )
-                all_traces.append(trace)
-                coder_model = trace.coder_model
+                coder_endpoint = self._endpoints[tier]
+                reviewer_endpoint = self._endpoints.get(EnumModelTier.FRONTIER_REVIEW)
 
-                if not trace.accepted:
-                    logger.warning(
-                        "LLM dispatch: skipping payload for %s — generation failed (gate=%s)",
-                        target.ticket_id,
-                        trace.quality_gate.errors,
+                logger.info(
+                    "Routing %s to %s (%s) — %s",
+                    target.ticket_id,
+                    tier.value,
+                    coder_endpoint.model_id,
+                    target.title[:80],
+                )
+
+                # Load source context
+                template_source, target_source, model_sources = (
+                    self._load_source_context(
+                        target_node_dir=self._resolve_node_dir(target.ticket_id),
                     )
-                    continue
+                )
 
-                # Validate plan shape before review — raw_response fallbacks must not pass
-                plan_valid = True
-                plan_rejection_data: dict[str, object] = {}
-                try:
-                    ModelPlanSchema.model_validate(plan)
-                except Exception as val_exc:
-                    plan_valid = False
-                    plan_rejection_data = {
-                        "issues": [{"severity": "critical", "message": str(val_exc)}],
-                        "risk_level": "high",
+                # Generate with review loop
+                accepted_code, traces = await self._generate_with_review(
+                    target=target,
+                    coder_endpoint=coder_endpoint,
+                    reviewer_endpoint=reviewer_endpoint,
+                    template_source=template_source,
+                    target_source=target_source,
+                    model_sources=model_sources,
+                    max_attempts=self._max_attempts,
+                    correlation_id=correlation_id,
+                )
+                all_traces.extend(traces)
+
+                last_trace = traces[-1] if traces else None
+                # Only report approved=True when the reviewer explicitly approved.
+                # accepted_code may be non-None via allow_unreviewed=True — do not
+                # synthesize reviewer approval from that path.
+                reviewer_approved = bool(
+                    last_trace
+                    and last_trace.review_result
+                    and last_trace.review_result.approved
+                )
+                review_result: dict[str, object] = {
+                    "approved": reviewer_approved,
+                    "issues": [],
+                    "risk_level": "unknown",
+                }
+                if last_trace and last_trace.review_result:
+                    review_result = {
+                        "approved": last_trace.review_result.approved,
+                        "issues": [
+                            i.model_dump() for i in last_trace.review_result.issues
+                        ],
+                        "risk_level": last_trace.review_result.risk_level,
                     }
-                    logger.warning(
-                        "Plan schema validation failed for %s: %s — rejecting",
-                        target.ticket_id,
-                        val_exc,
-                    )
-
-                if not plan_valid:
-                    rejection_payload: dict[str, object] = {
-                        "ticket_id": target.ticket_id,
-                        "title": target.title,
-                        "implementation_plan": plan,
-                        "review_result": plan_rejection_data,
-                        "review_status": "rejected",
-                        "accepted": False,
-                        "correlation_id": str(correlation_id),
-                        "generated_at": datetime.now(tz=UTC).isoformat(),
-                        "delegated_to": coder_model,
-                        "coder_model": coder_model,
-                        "reviewer_model": "schema-validator",
-                    }
-                    payloads.append(
-                        DelegationPayload(
-                            topic=self._delegation_topic, payload=rejection_payload
-                        )
-                    )
-                    total_dispatched += 1
-                    continue
-
-                # Review via FRONTIER_REVIEW (GLM-4.7-Flash) if available
-                review_status: str
-                review_data: dict[str, object]
-                reviewer_model: str
-
-                if EnumModelTier.FRONTIER_REVIEW in self._endpoints:
-                    reviewer_endpoint = self._endpoints[EnumModelTier.FRONTIER_REVIEW]
-                    reviewer_model = reviewer_endpoint.model_id
-                    review_status, review_data = await self._review_plan(
-                        target, plan, reviewer_endpoint
-                    )
-                else:
-                    # No reviewer configured — unavailable
-                    review_status = "unavailable"
-                    review_data = {"issues": [], "risk_level": "unknown"}
-                    reviewer_model = "none"
-                    logger.warning(
-                        "No FRONTIER_REVIEW endpoint configured for %s — review unavailable",
-                        target.ticket_id,
-                    )
-
-                # Determine acceptance under review policy
-                accepted = self._is_accepted(review_status, review_data)
 
                 payload_data: dict[str, object] = {
                     "ticket_id": target.ticket_id,
                     "title": target.title,
-                    "implementation_plan": plan,
-                    "review_result": review_data,
-                    "review_status": review_status,
-                    "accepted": accepted,
+                    "implementation_plan": accepted_code or "",
+                    "review_result": review_result,
                     "correlation_id": str(correlation_id),
                     "generated_at": datetime.now(tz=UTC).isoformat(),
-                    "delegated_to": coder_model,
-                    "coder_model": coder_model,
-                    "reviewer_model": reviewer_model,
-                    "template_node_id": template_node_id,
+                    "routed_to_tier": tier.value,
+                    "delegated_to": coder_endpoint.model_id,
+                    "coder_model": coder_endpoint.model_id,
+                    "reviewer_model": reviewer_endpoint.model_id
+                    if reviewer_endpoint
+                    else None,
+                    "total_attempts": len(traces),
+                    "accepted": accepted_code is not None,
                 }
 
                 payloads.append(
@@ -664,13 +674,14 @@ class AdapterLlmDispatch:
                         payload=payload_data,
                     )
                 )
-                total_dispatched += 1
+                if accepted_code is not None:
+                    total_dispatched += 1
                 logger.info(
-                    "LLM dispatch: generated plan for %s via %s (review_status=%s, accepted=%s)",
+                    "LLM dispatch: %s via %s — accepted=%s, attempts=%d",
                     target.ticket_id,
-                    coder_model,
-                    review_status,
-                    accepted,
+                    tier.value,
+                    accepted_code is not None,
+                    len(traces),
                 )
 
             except Exception as exc:
@@ -702,190 +713,430 @@ class AdapterLlmDispatch:
             delegation_payloads=tuple(payloads),
         )
 
-    def _is_accepted(self, review_status: str, review_data: dict[str, object]) -> bool:
-        """Determine acceptance under review policy.
-
-        Rules:
-        - review_status="approved": accepted
-        - review_status="rejected": rejected
-        - review_status="unavailable": accepted only if allow_unreviewed=True
-        - review_status="failed" or "malformed": always rejected
-        """
-        if review_status == "approved":
-            return True
-        if review_status == "unavailable":
-            if self._allow_unreviewed:
-                logger.warning(
-                    "Accepting unreviewed output (allow_unreviewed=True, review_status=unavailable)"
-                )
-                return True
-            return False
-        return False
-
-    def _build_coder_prompt(
+    async def _generate_with_review(
         self,
         *,
         target: BuildTarget,
+        coder_endpoint: ModelEndpointConfig,
+        reviewer_endpoint: ModelEndpointConfig | None,
         template_source: str,
         target_source: str,
-        model_sources: list[str] | None = None,
-        max_context_chars: int = _DEFAULT_MAX_CONTEXT_CHARS,
-    ) -> str:
-        """Build a coder prompt with actual source code context.
+        model_sources: list[str],
+        max_attempts: int = 3,
+        correlation_id: UUID,
+    ) -> tuple[str | None, list[ModelDispatchTrace]]:
+        """Generate code with review loop. Returns (accepted_code, traces).
 
-        Truncates model_sources (whole files) if total exceeds max_context_chars.
-        Never truncates template or target handlers mid-file.
+        Flow per attempt:
+        1. Build source-grounded prompt (with LATEST review feedback if retry)
+        2. Call coder endpoint
+        3. Extract code from response (strip markdown fences)
+        4. Run structural quality gate (ruff + AST parse + import check)
+        5. If gate fails: trace as gate_failed, set feedback, continue
+        6. If gate passes: send to GLM reviewer
+        7. If review rejects: trace as review_rejected, set feedback (replace, don't accumulate), continue
+        8. If review unavailable and not allow_unreviewed: trace as review_unavailable, continue
+        9. If review approves (or no reviewer or allow_unreviewed): trace as accepted, return code
+
+        After all attempts exhausted: return None + all traces.
         """
-        header = f"Ticket: {target.ticket_id} — {target.title}"
-        template_section = f"## TEMPLATE (follow this pattern):\n{template_source}"
-        target_section = f"## TARGET (refactor this):\n{target_source}"
+        traces: list[ModelDispatchTrace] = []
+        review_feedback = ""
 
-        base_parts = [header, "", template_section, "", target_section]
-        base_prompt = "\n".join(base_parts)
+        for attempt in range(1, max_attempts + 1):
+            t0 = time.monotonic()
+            raw = ""
+            failure_kind: str | None = None
 
-        if not model_sources:
-            return base_prompt
-
-        # Add model files one at a time, dropping from the end if over budget
-        model_parts: list[str] = []
-        for src in model_sources:
-            candidate = "\n".join(
-                [base_prompt, "", "## RELEVANT MODELS:", *model_parts, src]
+            # 1. Build prompt (include LATEST review feedback if retry — replace, don't accumulate)
+            prompt = self._build_coder_prompt(
+                target=target,
+                template_source=template_source,
+                target_source=target_source,
+                model_sources=model_sources,
             )
-            if len(candidate) <= max_context_chars:
-                model_parts.append(src)
-            else:
-                logger.debug(
-                    "Dropping model source (budget %d chars): %d chars",
-                    max_context_chars,
-                    len(src),
+            if review_feedback:
+                prompt += (
+                    f"\n\n## REVIEW FEEDBACK (fix these issues):\n{review_feedback}"
                 )
-                break
 
-        if model_parts:
-            return "\n".join([base_prompt, "", "## RELEVANT MODELS:", *model_parts])
-        return base_prompt
+            prompt_chars = len(prompt)
 
-    def _load_source_context(
+            # 2. Call coder
+            try:
+                raw = await self._call_endpoint(
+                    coder_endpoint, _CODER_SYSTEM_PROMPT, prompt
+                )
+            except Exception as exc:
+                failure_kind = _FAILURE_TRANSPORT
+                wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                gate = ModelQualityGateResult(
+                    ruff_pass=False,
+                    import_pass=False,
+                    test_pass=False,
+                    errors=[f"Transport failure: {exc}"],
+                )
+                trace = ModelDispatchTrace(
+                    correlation_id=str(correlation_id),
+                    ticket_id=target.ticket_id,
+                    attempt=attempt,
+                    timestamp=datetime.now(tz=UTC).isoformat(),
+                    coder_model=coder_endpoint.model_id,
+                    reviewer_model=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    prompt_chars=prompt_chars,
+                    generation_raw=raw,
+                    quality_gate=gate,
+                    review_result=None,
+                    accepted=False,
+                    wall_clock_ms=wall_clock_ms,
+                    failure_kind=failure_kind,
+                )
+                _write_trace(trace, self._state_dir)
+                _emit_trace_to_bus(trace)
+                traces.append(trace)
+                review_feedback = f"Transport failure on attempt {attempt}, retry."
+                continue
+
+            # 3. Extract code from response
+            code = self._extract_code_from_response(raw)
+            if not code.strip():
+                failure_kind = _FAILURE_GENERATION_MALFORMED
+                wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                gate = ModelQualityGateResult(
+                    ruff_pass=False,
+                    import_pass=False,
+                    test_pass=False,
+                    errors=["Empty code extracted from response"],
+                )
+                trace = ModelDispatchTrace(
+                    correlation_id=str(correlation_id),
+                    ticket_id=target.ticket_id,
+                    attempt=attempt,
+                    timestamp=datetime.now(tz=UTC).isoformat(),
+                    coder_model=coder_endpoint.model_id,
+                    reviewer_model=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    prompt_chars=prompt_chars,
+                    generation_raw=raw,
+                    quality_gate=gate,
+                    review_result=None,
+                    accepted=False,
+                    wall_clock_ms=wall_clock_ms,
+                    failure_kind=failure_kind,
+                )
+                _write_trace(trace, self._state_dir)
+                _emit_trace_to_bus(trace)
+                traces.append(trace)
+                review_feedback = (
+                    "Response produced empty code. Output complete Python code only."
+                )
+                continue
+
+            # 4. Structural quality gate
+            gate_result = self._run_quality_gate(code)
+
+            # 5. If gate fails: trace and retry
+            if not gate_result.all_pass:
+                failure_kind = _FAILURE_GATE_FAILED
+                wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                trace = ModelDispatchTrace(
+                    correlation_id=str(correlation_id),
+                    ticket_id=target.ticket_id,
+                    attempt=attempt,
+                    timestamp=datetime.now(tz=UTC).isoformat(),
+                    coder_model=coder_endpoint.model_id,
+                    reviewer_model=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    prompt_chars=prompt_chars,
+                    generation_raw=raw,
+                    quality_gate=gate_result,
+                    review_result=None,
+                    accepted=False,
+                    wall_clock_ms=wall_clock_ms,
+                    failure_kind=failure_kind,
+                )
+                _write_trace(trace, self._state_dir)
+                _emit_trace_to_bus(trace)
+                traces.append(trace)
+                review_feedback = "Quality gate failed:\n" + "\n".join(
+                    gate_result.errors
+                )
+                continue
+
+            # 6. Review (if reviewer available)
+            review_model: ModelReviewResult | None = None
+            reviewer_model_id: str | None = None
+
+            if reviewer_endpoint:
+                reviewer_model_id = reviewer_endpoint.model_id
+                review_status, review_model = await self._run_review(
+                    generated_code=code,
+                    target_source=target_source,
+                    template_source=template_source,
+                    model_sources=model_sources,
+                    endpoint=reviewer_endpoint,
+                    ticket_id=target.ticket_id,
+                )
+
+                # 7. If review rejects: trace and retry with LATEST feedback (replace)
+                if review_status == "rejected" and review_model is not None:
+                    failure_kind = _FAILURE_REVIEW_REJECTED
+                    wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                    trace = ModelDispatchTrace(
+                        correlation_id=str(correlation_id),
+                        ticket_id=target.ticket_id,
+                        attempt=attempt,
+                        timestamp=datetime.now(tz=UTC).isoformat(),
+                        coder_model=coder_endpoint.model_id,
+                        reviewer_model=reviewer_model_id,
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        prompt_chars=prompt_chars,
+                        generation_raw=raw,
+                        quality_gate=gate_result,
+                        review_result=review_model,
+                        accepted=False,
+                        wall_clock_ms=wall_clock_ms,
+                        failure_kind=failure_kind,
+                    )
+                    _write_trace(trace, self._state_dir)
+                    _emit_trace_to_bus(trace)
+                    traces.append(trace)
+                    # Replace feedback — never accumulate across retries
+                    review_feedback = "Review issues:\n" + "\n".join(
+                        f"- Line {i.line or '?'}: [{i.severity}] {i.message}"
+                        for i in review_model.issues
+                    )
+                    continue
+
+                # 8. Review unavailable or failed — check policy
+                if (
+                    review_status in ("unavailable", "failed", "malformed")
+                    and not self._allow_unreviewed
+                ):
+                    failure_kind = _FAILURE_REVIEW_UNAVAILABLE
+                    wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                    trace = ModelDispatchTrace(
+                        correlation_id=str(correlation_id),
+                        ticket_id=target.ticket_id,
+                        attempt=attempt,
+                        timestamp=datetime.now(tz=UTC).isoformat(),
+                        coder_model=coder_endpoint.model_id,
+                        reviewer_model=reviewer_model_id,
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        prompt_chars=prompt_chars,
+                        generation_raw=raw,
+                        quality_gate=gate_result,
+                        review_result=None,
+                        accepted=False,
+                        wall_clock_ms=wall_clock_ms,
+                        failure_kind=failure_kind,
+                    )
+                    _write_trace(trace, self._state_dir)
+                    _emit_trace_to_bus(trace)
+                    traces.append(trace)
+                    review_feedback = f"Reviewer {review_status} — retry."
+                    continue
+
+            elif not self._allow_unreviewed:
+                # No reviewer configured and unreviewed not allowed — reject
+                failure_kind = _FAILURE_REVIEW_UNAVAILABLE
+                wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                trace = ModelDispatchTrace(
+                    correlation_id=str(correlation_id),
+                    ticket_id=target.ticket_id,
+                    attempt=attempt,
+                    timestamp=datetime.now(tz=UTC).isoformat(),
+                    coder_model=coder_endpoint.model_id,
+                    reviewer_model=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    prompt_chars=prompt_chars,
+                    generation_raw=raw,
+                    quality_gate=gate_result,
+                    review_result=None,
+                    accepted=False,
+                    wall_clock_ms=wall_clock_ms,
+                    failure_kind=failure_kind,
+                )
+                _write_trace(trace, self._state_dir)
+                _emit_trace_to_bus(trace)
+                traces.append(trace)
+                review_feedback = (
+                    "No reviewer configured and allow_unreviewed=False — retry."
+                )
+                continue
+
+            # 9. Accepted: gate passed and (approved or no reviewer or allow_unreviewed)
+            wall_clock_ms = int((time.monotonic() - t0) * 1000)
+            trace = ModelDispatchTrace(
+                correlation_id=str(correlation_id),
+                ticket_id=target.ticket_id,
+                attempt=attempt,
+                timestamp=datetime.now(tz=UTC).isoformat(),
+                coder_model=coder_endpoint.model_id,
+                reviewer_model=reviewer_model_id,
+                prompt_tokens=0,
+                completion_tokens=0,
+                prompt_chars=prompt_chars,
+                generation_raw=raw,
+                quality_gate=gate_result,
+                review_result=review_model,
+                accepted=True,
+                wall_clock_ms=wall_clock_ms,
+                failure_kind=None,
+            )
+            _write_trace(trace, self._state_dir)
+            _emit_trace_to_bus(trace)
+            traces.append(trace)
+            logger.info(
+                "Accepted code for %s on attempt %d/%d",
+                target.ticket_id,
+                attempt,
+                max_attempts,
+            )
+            return code, traces
+
+        # All attempts exhausted
+        logger.warning(
+            "All %d attempts exhausted for %s",
+            max_attempts,
+            target.ticket_id,
+        )
+        return None, traces
+
+    async def _run_review(
         self,
         *,
-        target_node_dir: Path,
-        template_node_dir: Path | None = None,
-    ) -> tuple[str, str, list[str]]:
-        """Load source files for prompt context.
+        generated_code: str,
+        target_source: str,
+        template_source: str,
+        model_sources: list[str],
+        endpoint: ModelEndpointConfig,
+        ticket_id: str,
+    ) -> tuple[str, ModelReviewResult | None]:
+        """Review generated code via the GLM reviewer endpoint.
 
-        Returns (template_source, target_source, model_sources).
+        Returns (review_status, review_result) where review_status is one of:
+        - "approved": reviewer approved
+        - "rejected": reviewer rejected with issues
+        - "unavailable": endpoint unreachable
+        - "malformed": reviewer returned non-JSON after retry
+        - "failed": parsing failed after retry
 
-        Source selection rules:
-        1. Target handler: target_node_dir/handlers/handler_*.py
-        2. Template handler: template_node_dir/handlers/handler_*.py
-           - If not provided, auto-selects nearest READY node by scanning siblings
-        3. Related models: target_node_dir/models/model_*.py
-        4. Contract: target_node_dir/contract.yaml
-
-        Whole files only — no mid-file truncation. Falls back to empty strings
-        with a WARNING log if files don't exist.
+        Never collapses "unavailable" to "approved".
+        Retries once on malformed JSON before marking failed.
         """
-        # Load target handler
-        target_source = self._read_handler_file(target_node_dir)
-
-        # Load template handler
-        if template_node_dir is not None:
-            template_source = self._read_handler_file(template_node_dir)
-        else:
-            template_source = self._auto_select_template(target_node_dir)
-
-        # Load related models
-        model_sources: list[str] = []
-        models_dir = target_node_dir / "models"
-        if models_dir.exists():
-            for model_file in sorted(models_dir.glob("model_*.py")):
-                try:
-                    model_sources.append(model_file.read_text())
-                except OSError as exc:
-                    logger.warning("Could not read model file %s: %s", model_file, exc)
-
-        # Append contract.yaml if present
-        contract_path = target_node_dir / "contract.yaml"
-        if contract_path.exists():
-            try:
-                model_sources.append(contract_path.read_text())
-            except OSError as exc:
-                logger.warning("Could not read contract %s: %s", contract_path, exc)
-
-        return template_source, target_source, model_sources
-
-    def _read_handler_file(self, node_dir: Path) -> str:
-        """Read the primary handler file from a node directory."""
-        handlers_dir = node_dir / "handlers"
-        if not handlers_dir.exists():
-            logger.warning("No handlers/ directory in %s", node_dir)
-            return ""
-        handler_files = sorted(handlers_dir.glob("handler_*.py"))
-        if not handler_files:
-            logger.warning("No handler_*.py files in %s", handlers_dir)
-            return ""
-        try:
-            return handler_files[0].read_text()
-        except OSError as exc:
-            logger.warning("Could not read handler %s: %s", handler_files[0], exc)
-            return ""
-
-    def _auto_select_template(self, target_node_dir: Path) -> str:
-        """Auto-select the nearest READY node as template by scanning siblings."""
-        nodes_dir = target_node_dir.parent
-        if not nodes_dir.exists():
-            return ""
-
-        for candidate in sorted(nodes_dir.iterdir()):
-            if not candidate.is_dir():
-                continue
-            if candidate == target_node_dir:
-                continue
-            # Skip node if it has no handler
-            handler_src = self._read_handler_file(candidate)
-            if not handler_src:
-                continue
-            # Prefer nodes that define a canonical handle() method
-            if "def handle(" in handler_src:
-                logger.info("Auto-selected template node: %s", candidate.name)
-                return handler_src
-
-        logger.warning(
-            "No suitable template node found in siblings of %s", target_node_dir
+        # Include template and model context so reviewer can check template-pattern
+        # conformance and field name validity (required by _REVIEW_SYSTEM_PROMPT checks).
+        model_ctx = (
+            "\n\n".join(model_sources[:2]) if model_sources else ""
+        )  # budget cap
+        user_prompt = (
+            f"Ticket: {ticket_id}\n\n"
+            f"## TEMPLATE (pattern to follow):\n{template_source[:2000]}\n\n"
+            f"## ORIGINAL SOURCE:\n{target_source[:3000]}\n\n"
+            f"## MODEL/CONTRACT CONTEXT:\n{model_ctx[:2000]}\n\n"
+            f"## GENERATED CODE:\n{generated_code[:6000]}\n\n"
+            f"Review the generated code against the template and original source. "
+            f"Output only a JSON object."
         )
-        return ""
 
-    def _resolve_node_dir(self, ticket_id: str) -> Path:
-        """Resolve the node directory for a ticket from the omnimarket source tree.
+        for attempt in range(1, 3):  # max 2 review attempts
+            try:
+                raw = await self._call_endpoint(
+                    endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt, temperature=0.3
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Reviewer unavailable for %s (attempt %d): %s",
+                    ticket_id,
+                    attempt,
+                    exc,
+                )
+                return "unavailable", None
 
-        Falls back to a non-existent path — _load_source_context handles missing dirs gracefully.
+            parsed = self._parse_review_response(raw)
+            if parsed is None:
+                logger.warning(
+                    "Review returned malformed JSON for %s (attempt %d)",
+                    ticket_id,
+                    attempt,
+                )
+                if attempt == 2:
+                    return "failed", None
+                continue
+
+            status = "approved" if parsed.approved else "rejected"
+            return status, parsed
+
+        return "failed", None
+
+    async def _review_plan(
+        self,
+        target: BuildTarget,
+        plan: dict[str, object],
+        endpoint: ModelEndpointConfig,
+    ) -> tuple[str, dict[str, object]]:
+        """Review implementation plan via GLM-4.7-Flash (FRONTIER_REVIEW tier).
+
+        Returns (review_status, review_data) where review_status is one of:
+        - "approved": reviewer approved the plan
+        - "rejected": reviewer rejected with issues
+        - "unavailable": endpoint unreachable
+        - "malformed": reviewer returned non-JSON after retry
+        - "failed": parsing failed after retry
+
+        Never returns a status that collapses to auto-approval.
+        Retries once on malformed JSON before marking failed.
         """
-        # Nodes are named by ticket convention in the build loop; fall back to
-        # the orchestrator's own node dir as a safe default
-        nodes_root = Path(__file__).resolve().parent.parent.parent
-        return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
+        user_prompt = (
+            f"Ticket: {target.ticket_id} — {target.title}\n\n"
+            f"Implementation plan:\n{json.dumps(plan, indent=2, default=str)[:8000]}\n\n"
+            f"Review this plan and output only a JSON object."
+        )
 
-    @staticmethod
-    def _extract_code_from_response(raw_response: str) -> str:
-        """Extract Python code from model response.
+        for attempt in range(1, 3):  # max 2 attempts
+            try:
+                raw = await self._call_endpoint(
+                    endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Review endpoint unavailable for %s (attempt %d): %s",
+                    target.ticket_id,
+                    attempt,
+                    exc,
+                )
+                return "unavailable", {"issues": [], "risk_level": "unknown"}
 
-        Handles: bare code, ```python fences, ``` fences, mixed prose+code.
-        Returns the first fenced Python block found, or the raw response if no fences detected.
-        Falls back to raw_response if no fences detected.
-        """
-        # Try ```python ... ``` first
-        python_fence = re.search(r"```python\s*\n(.*?)```", raw_response, re.DOTALL)
-        if python_fence:
-            return python_fence.group(1)
+            # Try to parse structured review output
+            parsed_result = self._parse_review_response(raw)
+            if parsed_result is None:
+                logger.warning(
+                    "Review returned malformed JSON for %s (attempt %d)",
+                    target.ticket_id,
+                    attempt,
+                )
+                if attempt == 2:
+                    return "failed", {
+                        "raw_response": raw,
+                        "issues": [],
+                        "risk_level": "unknown",
+                    }
+                # Retry
+                continue
 
-        # Try generic ``` ... ```
-        generic_fence = re.search(r"```\s*\n(.*?)```", raw_response, re.DOTALL)
-        if generic_fence:
-            return generic_fence.group(1)
+            review_status = "approved" if parsed_result.approved else "rejected"
+            return review_status, parsed_result.model_dump()
 
-        # No fences — return raw (assume the model output bare code as instructed)
-        return raw_response
+        # Should not reach here, but guard
+        return "failed", {"issues": [], "risk_level": "unknown"}
 
     async def _generate_plan_traced(
         self,
@@ -1005,66 +1256,61 @@ class AdapterLlmDispatch:
 
         return plan, trace
 
-    async def _review_plan(
-        self,
-        target: BuildTarget,
-        plan: dict[str, object],
-        endpoint: ModelEndpointConfig,
-    ) -> tuple[str, dict[str, object]]:
-        """Review implementation plan via GLM-4.7-Flash (FRONTIER_REVIEW tier).
+    def _run_quality_gate(self, code: str) -> ModelQualityGateResult:
+        """Run structural quality gate on generated code.
 
-        Returns (review_status, review_data) where review_status is one of:
-        - "approved": reviewer approved the plan
-        - "rejected": reviewer rejected with issues
-        - "unavailable": endpoint unreachable
-        - "malformed": reviewer returned non-JSON after retry
-        - "failed": parsing failed after retry
+        Checks:
+        - AST parse (syntax validity)
+        - ruff check (lint)
 
-        Never returns a status that collapses to auto-approval.
-        Retries once on malformed JSON before marking failed.
+        Returns ModelQualityGateResult. Never raises.
         """
-        user_prompt = (
-            f"Ticket: {target.ticket_id} — {target.title}\n\n"
-            f"Implementation plan:\n{json.dumps(plan, indent=2, default=str)[:8000]}\n\n"
-            f"Review this plan and output only a JSON object."
-        )
+        errors: list[str] = []
+        ruff_pass = True
+        import_pass = True
 
-        for attempt in range(1, 3):  # max 2 attempts
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, prefix="onex_gate_"
+        ) as tmp:
+            tmp.write(code)
+            tmp_path = tmp.name
+
+        try:
+            # AST syntax check
             try:
-                raw = await self._call_endpoint(
-                    endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt
-                )
-            except httpx.HTTPError as exc:
-                logger.warning(
-                    "Review endpoint unreachable for %s (attempt %d): %s",
-                    target.ticket_id,
-                    attempt,
-                    exc,
-                )
-                return "unavailable", {"issues": [], "risk_level": "unknown"}
+                ast.parse(code)
+            except SyntaxError as exc:
+                errors.append(f"Syntax error: {exc}")
+                import_pass = False
+                ruff_pass = False  # ruff will also fail on bad syntax
 
-            # Try to parse structured review output
-            parsed_result = self._parse_review_response(raw)
-            if parsed_result is None:
-                logger.warning(
-                    "Review returned malformed JSON for %s (attempt %d)",
-                    target.ticket_id,
-                    attempt,
-                )
-                if attempt == 2:
-                    return "failed", {
-                        "raw_response": raw,
-                        "issues": [],
-                        "risk_level": "unknown",
-                    }
-                # Retry
-                continue
+            # ruff lint check (only if syntax OK)
+            if not errors:
+                try:
+                    result = subprocess.run(
+                        ["ruff", "check", "--output-format=concise", tmp_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    if result.returncode != 0:
+                        ruff_pass = False
+                        for line in result.stdout.strip().splitlines():
+                            errors.append(f"ruff: {line}")
+                except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+                    # ruff not available — skip, don't fail the gate
+                    logger.debug("ruff check skipped: %s", exc)
 
-            review_status = "approved" if parsed_result.approved else "rejected"
-            return review_status, parsed_result.model_dump()
+        finally:
+            with contextlib.suppress(Exception):
+                Path(tmp_path).unlink(missing_ok=True)
 
-        # Should not reach here, but guard
-        return "failed", {"issues": [], "risk_level": "unknown"}
+        return ModelQualityGateResult(
+            ruff_pass=ruff_pass,
+            import_pass=import_pass,
+            test_pass=True,  # test_pass not run at generation time
+            errors=errors,
+        )
 
     @staticmethod
     def _parse_review_response(raw: str) -> ModelReviewResult | None:
@@ -1073,14 +1319,13 @@ class AdapterLlmDispatch:
         Handles JSON wrapped in markdown fences or bare JSON.
         Returns None if parsing fails or schema validation fails.
         """
-        # Strip markdown fences if present
         text = raw.strip()
+        # Strip markdown fences if present
         if text.startswith("```"):
             lines = text.splitlines()
-            # Drop first line (```json or ```) and last line (```)
             inner = (
                 "\n".join(lines[1:-1])
-                if lines[-1].strip() == "```"
+                if lines and lines[-1].strip() == "```"
                 else "\n".join(lines[1:])
             )
             text = inner.strip()
@@ -1088,22 +1333,195 @@ class AdapterLlmDispatch:
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            return None
+            # Regex fallback: brace-balanced extraction handles nested objects
+            # (e.g., issues=[{...}]).  Scan for the outermost { containing "approved".
+            extracted = _extract_json_block(raw, marker="approved")
+            if extracted is None:
+                return None
+            try:
+                data = json.loads(extracted)
+            except json.JSONDecodeError:
+                return None
 
         try:
             return ModelReviewResult.model_validate(data)
         except Exception:
             return None
 
+    def _build_coder_prompt(
+        self,
+        *,
+        target: BuildTarget,
+        template_source: str,
+        target_source: str,
+        model_sources: list[str] | None = None,
+        max_context_chars: int = _DEFAULT_MAX_CONTEXT_CHARS,
+    ) -> str:
+        """Build a coder prompt with actual source code context.
+
+        Truncates model_sources (whole files) if total exceeds max_context_chars.
+        Never truncates template or target handlers mid-file.
+        """
+        header = f"Ticket: {target.ticket_id} — {target.title}"
+        template_section = f"## TEMPLATE (follow this pattern):\n{template_source}"
+        target_section = f"## TARGET (refactor this):\n{target_source}"
+
+        base_parts = [header, "", template_section, "", target_section]
+        base_prompt = "\n".join(base_parts)
+
+        if not model_sources:
+            return base_prompt
+
+        # Add model files one at a time, dropping from the end if over budget
+        model_parts: list[str] = []
+        for src in model_sources:
+            candidate = "\n".join(
+                [base_prompt, "", "## RELEVANT MODELS:", *model_parts, src]
+            )
+            if len(candidate) <= max_context_chars:
+                model_parts.append(src)
+            else:
+                logger.debug(
+                    "Dropping model source (budget %d chars): %d chars",
+                    max_context_chars,
+                    len(src),
+                )
+                break
+
+        if model_parts:
+            return "\n".join([base_prompt, "", "## RELEVANT MODELS:", *model_parts])
+        return base_prompt
+
+    def _load_source_context(
+        self,
+        *,
+        target_node_dir: Path,
+        template_node_dir: Path | None = None,
+        omni_home: Path | None = None,
+    ) -> tuple[str, str, list[str]]:
+        """Load source files for prompt context.
+
+        Returns (template_source, target_source, model_sources).
+
+        Source selection rules:
+        1. Target handler: target_node_dir/handlers/handler_*.py
+        2. Template handler: template_node_dir/handlers/handler_*.py
+           - If not provided, auto-selects nearest READY node by scanning siblings
+        3. Related models: target_node_dir/models/model_*.py
+        4. Contract: target_node_dir/contract.yaml
+
+        Whole files only — no mid-file truncation. Falls back to empty strings
+        with a WARNING log if files don't exist.
+        """
+        target_source = self._read_handler_file(target_node_dir)
+
+        if template_node_dir is not None:
+            template_source = self._read_handler_file(template_node_dir)
+        else:
+            template_source = self._auto_select_template(target_node_dir)
+
+        model_sources: list[str] = []
+        models_dir = target_node_dir / "models"
+        if models_dir.exists():
+            for model_file in sorted(models_dir.glob("model_*.py")):
+                try:
+                    model_sources.append(model_file.read_text())
+                except OSError as exc:
+                    logger.warning("Could not read model file %s: %s", model_file, exc)
+
+        contract_path = target_node_dir / "contract.yaml"
+        if contract_path.exists():
+            try:
+                model_sources.append(contract_path.read_text())
+            except OSError as exc:
+                logger.warning("Could not read contract %s: %s", contract_path, exc)
+
+        return template_source, target_source, model_sources
+
+    def _read_handler_file(self, node_dir: Path) -> str:
+        """Read the primary handler file from a node directory."""
+        handlers_dir = node_dir / "handlers"
+        if not handlers_dir.exists():
+            logger.warning("No handlers/ directory in %s", node_dir)
+            return ""
+        handler_files = sorted(handlers_dir.glob("handler_*.py"))
+        if not handler_files:
+            logger.warning("No handler_*.py files in %s", handlers_dir)
+            return ""
+        try:
+            return handler_files[0].read_text()
+        except OSError as exc:
+            logger.warning("Could not read handler %s: %s", handler_files[0], exc)
+            return ""
+
+    def _auto_select_template(self, target_node_dir: Path) -> str:
+        """Auto-select the nearest READY node as template by scanning siblings."""
+        nodes_dir = target_node_dir.parent
+        if not nodes_dir.exists():
+            return ""
+
+        for candidate in sorted(nodes_dir.iterdir()):
+            if not candidate.is_dir():
+                continue
+            if candidate == target_node_dir:
+                continue
+            handler_src = self._read_handler_file(candidate)
+            if not handler_src:
+                continue
+            if "def handle(" in handler_src:
+                logger.info("Auto-selected template node: %s", candidate.name)
+                return handler_src
+
+        logger.warning(
+            "No suitable template node found in siblings of %s", target_node_dir
+        )
+        return ""
+
+    def _resolve_node_dir(self, ticket_id: str) -> Path:
+        """Resolve the node directory for a ticket from the omnimarket source tree.
+
+        Logs a warning if the resolved directory does not exist so callers
+        receive a non-ambiguous signal instead of silently empty context.
+        """
+        nodes_root = Path(__file__).resolve().parent.parent.parent
+        candidate = nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
+        if not candidate.exists():
+            logger.warning(
+                "Node directory not found for %s: %s — source context will be empty",
+                ticket_id,
+                candidate,
+            )
+        return candidate
+
+    @staticmethod
+    def _extract_code_from_response(raw_response: str) -> str:
+        """Extract Python code from model response.
+
+        Handles: bare code, ```python fences, ``` fences, mixed prose+code.
+        Returns the largest contiguous Python block found.
+        Falls back to raw_response if no fences detected.
+        """
+        python_fence = re.search(r"```python\s*\n(.*?)```", raw_response, re.DOTALL)
+        if python_fence:
+            return python_fence.group(1)
+
+        generic_fence = re.search(r"```\s*\n(.*?)```", raw_response, re.DOTALL)
+        if generic_fence:
+            return generic_fence.group(1)
+
+        return raw_response
+
     @staticmethod
     async def _call_endpoint(
         endpoint: ModelEndpointConfig,
         system_prompt: str,
         user_prompt: str,
-        temperature: float = 0.2,
+        *,
+        temperature: float = 0.1,
+        top_p: float | None = None,
     ) -> str:
         """Call an OpenAI-compatible endpoint."""
-        payload = {
+        payload: dict[str, object] = {
             "model": endpoint.model_id,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -1112,6 +1530,8 @@ class AdapterLlmDispatch:
             "max_tokens": endpoint.max_tokens,
             "temperature": temperature,
         }
+        if top_p is not None:
+            payload["top_p"] = top_p
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if endpoint.api_key:

@@ -6,6 +6,7 @@ Scans repository directories for common AI-slop patterns:
 - Backwards-compat shims (# removed, _unused_ vars)
 - Empty implementations (bare pass in non-abstract src files)
 - TODO/FIXME markers in source code
+- Hardcoded configuration values (IPs, ports, DB names, API URLs)
 
 ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 """
@@ -125,6 +126,50 @@ _EMPTY_IMPL_PATTERN = re.compile(r"^\s+pass\s*$")
 
 _TODO_PATTERN = re.compile(r"\b(TODO|FIXME|HACK)\b")
 
+# Hardcoded config patterns: (pattern, description, severity, confidence)
+_HARDCODED_CONFIG_PATTERNS: list[tuple[re.Pattern[str], str, str, str]] = [
+    (
+        re.compile(
+            r'["\'](?:https?://)?(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)\d+\.\d+'
+        ),
+        "hardcoded private IP address",
+        "ERROR",
+        "HIGH",
+    ),
+    (
+        re.compile(r'["\']https?://localhost[:/]'),
+        "hardcoded localhost URL",
+        "ERROR",
+        "HIGH",
+    ),
+    (
+        re.compile(r'["\']https?://127\.0\.0\.1[:/]'),
+        "hardcoded loopback URL",
+        "ERROR",
+        "HIGH",
+    ),
+    (
+        re.compile(r":(?:8000|8080|8443|5432|3306|6379|19092|9092|27017|5672|15672)\b"),
+        "hardcoded well-known port number",
+        "WARNING",
+        "MEDIUM",
+    ),
+    (
+        re.compile(
+            r'(?i)(?:host|dsn|url)\s*=\s*["\'][^"\']*(?:postgres|mysql|mongo|redis|rabbitmq)[^"\']*://[^"\']+["\']'
+        ),
+        "hardcoded database connection string",
+        "CRITICAL",
+        "HIGH",
+    ),
+    (
+        re.compile(r'(?i)(?:db_?name|database)\s*=\s*["\'][a-z][a-z0-9_]{2,}["\']'),
+        "hardcoded database name",
+        "WARNING",
+        "MEDIUM",
+    ),
+]
+
 
 # ---------------------------------------------------------------------------
 # Handler
@@ -143,6 +188,7 @@ class NodeAislopSweep:
         "compat-shims",
         "empty-impls",
         "todo-fixme",
+        "hardcoded-config",
     ]
 
     def handle(self, request: AislopSweepRequest) -> AislopSweepResult:
@@ -182,6 +228,10 @@ class NodeAislopSweep:
                     findings.extend(self._check_empty_impls(repo_name, rel_path, lines))
                 if "todo-fixme" in checks:
                     findings.extend(self._check_todos(repo_name, rel_path, lines))
+                if "hardcoded-config" in checks:
+                    findings.extend(
+                        self._check_hardcoded_config(repo_name, rel_path, lines)
+                    )
 
         status = "clean" if not findings else "findings"
         return AislopSweepResult(
@@ -318,4 +368,42 @@ class NodeAislopSweep:
                         confidence="MEDIUM",
                     )
                 )
+        return findings
+
+    def _check_hardcoded_config(
+        self, repo: str, path: str, lines: list[str]
+    ) -> list[ModelSweepFinding]:
+        """Detect hardcoded IPs, ports, DB names, and API URLs in handler code."""
+        # Skip test files and config/env examples where literals are expected
+        if "test" in path.lower() or "conftest" in path.lower():
+            return []
+        if any(
+            path.endswith(ext)
+            for ext in (".env.example", ".env.sample", ".env.template")
+        ):
+            return []
+        findings = []
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            # Skip comment-only lines and docstrings
+            if (
+                stripped.startswith("#")
+                or stripped.startswith('"""')
+                or stripped.startswith("'''")
+            ):
+                continue
+            for pattern, desc, severity, confidence in _HARDCODED_CONFIG_PATTERNS:
+                if pattern.search(line):
+                    findings.append(
+                        ModelSweepFinding(
+                            repo=repo,
+                            path=path,
+                            line=i,
+                            check="hardcoded-config",
+                            message=f"Hardcoded config value: {desc} — {line.strip()[:80]}",
+                            severity=severity,
+                            confidence=confidence,
+                        )
+                    )
+                    break  # one finding per line per check category
         return findings

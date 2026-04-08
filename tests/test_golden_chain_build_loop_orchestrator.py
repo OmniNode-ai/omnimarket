@@ -329,3 +329,32 @@ class TestBuildLoopOrchestratorGoldenChain:
         source = inspect.getsource(mod)
         assert "from omnibase_infra" not in source
         assert "import omnibase_infra" not in source
+
+    def test_zero_arg_construction_succeeds(self) -> None:
+        """Auto-wiring runtime must be able to construct with zero args."""
+        orch = HandlerBuildLoopOrchestrator()
+        assert orch._closeout is None
+        assert orch._verify is None
+        assert orch._rsd_fill is None
+        assert orch._classify is None
+        assert orch._dispatch is None
+
+    def test_explicit_injection_still_works(self) -> None:
+        """Callers that pass sub-handlers explicitly must not be broken."""
+        closeout = MockCloseout()
+        verify = MockVerify()
+        rsd_fill = MockRsdFill()
+        classify = MockClassify()
+        dispatch = MockDispatch()
+        orch = HandlerBuildLoopOrchestrator(
+            closeout=closeout,
+            verify=verify,
+            rsd_fill=rsd_fill,
+            classify=classify,
+            dispatch=dispatch,
+        )
+        assert orch._closeout is closeout
+        assert orch._verify is verify
+        assert orch._rsd_fill is rsd_fill
+        assert orch._classify is classify
+        assert orch._dispatch is dispatch

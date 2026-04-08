@@ -279,8 +279,11 @@ class TestContractWiring:
         with open(_CONTRACT_PATH) as f:
             contract = yaml.safe_load(f)
 
-        assert contract["handler"]["class"] == "HandlerNightlyLoopController"
-        assert "input_model" in contract["handler"]
+        handlers = contract["handler_routing"]["handlers"]
+        assert any(
+            h.get("handler", {}).get("name") == "HandlerNightlyLoopController"
+            for h in handlers
+        )
 
     def test_contract_env_deps(self) -> None:
         with open(_CONTRACT_PATH) as f:

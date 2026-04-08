@@ -1,0 +1,17 @@
+---
+name: node_pr_health_monitor
+version: "1.0.0"
+description: "PR health classification — flags stale-red, stale-inactive, conflicted, and review-blocked PRs."
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["pr", "health", "monitoring", "ci"]

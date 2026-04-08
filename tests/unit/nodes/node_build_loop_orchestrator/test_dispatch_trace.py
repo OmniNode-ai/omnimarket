@@ -6,7 +6,7 @@ Tests:
 - ModelQualityGateResult / ModelReviewResult / ModelDispatchTrace field validation
 - _write_trace writes correct filename and JSON content
 - _emit_trace_to_bus skips when KAFKA_BOOTSTRAP_SERVERS not set
-- AdapterLlmDispatch._generate_plan_traced writes trace on LLM success and failure
+- AdapterLlmDispatch._generate_with_review writes trace on success and failure
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
     ModelDispatchTrace,
     ModelQualityGateResult,
+    ModelReviewIssue,
     ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
@@ -57,14 +58,16 @@ def test_quality_gate_errors_default_empty() -> None:
 
 
 def test_review_result_fields() -> None:
+    issue = ModelReviewIssue(severity="major", message="bad field")
     r = ModelReviewResult(
         approved=False,
-        issues=["bad"],
+        issues=[issue],
         reviewer_model="glm-4.7-flash",
         review_tokens=100,
     )
     assert r.approved is False
-    assert r.issues == ["bad"]
+    assert len(r.issues) == 1
+    assert r.issues[0].message == "bad field"
     assert r.review_tokens == 100
 
 
@@ -215,7 +218,7 @@ def test_emit_trace_skips_without_kafka_enabled(
 
 
 # ---------------------------------------------------------------------------
-# AdapterLlmDispatch._generate_plan_traced integration
+# AdapterLlmDispatch._generate_with_review integration (OMN-7857)
 # ---------------------------------------------------------------------------
 
 
@@ -234,56 +237,45 @@ def tmp_state_dir(tmp_path: Path) -> Path:
     return tmp_path / ".onex_state"
 
 
-def _make_mock_router(response_text: str, model_name: str = "mock-model") -> AsyncMock:
-    """Build a mock AdapterModelRouter that returns the given response text."""
-    from omnibase_infra.adapters.llm.model_llm_adapter_response import (
-        ModelLlmAdapterResponse,
-    )
-
-    mock_router = AsyncMock()
-    mock_router.get_available_providers = AsyncMock(return_value=["local_coder"])
-    mock_router.generate_typed = AsyncMock(
-        return_value=ModelLlmAdapterResponse(
-            generated_text=response_text,
-            model_used=model_name,
-            usage_statistics={"prompt_tokens": 10, "completion_tokens": 20},
-        )
-    )
-    return mock_router
+_VALID_PYTHON = "def handle(req):\n    return req\n"
 
 
 @pytest.mark.asyncio
-async def test_generate_plan_traced_writes_trace_on_success(
+async def test_generate_with_review_writes_trace_on_success(
     tmp_state_dir: Path,
 ) -> None:
+    """Accepted attempt produces a trace file with accepted=True."""
     corr_id = uuid.uuid4()
     adapter = AdapterLlmDispatch(
         endpoint_configs={EnumModelTier.LOCAL_CODER: _make_endpoint()},
         state_dir=tmp_state_dir,
+        allow_unreviewed=True,  # no reviewer configured
     )
     target = BuildTarget(
         ticket_id="OMN-TEST", title="Test ticket", buildability="auto_buildable"
     )
-    valid_json = json.dumps({"ticket_id": "OMN-TEST", "implementation_plan": {}})
 
     with patch.object(
-        AdapterLlmDispatch,
-        "_ensure_router",
-        new_callable=AsyncMock,
-        return_value=_make_mock_router(valid_json),
-    ):
-        _plan, trace = await adapter._generate_plan_traced(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
+        mock_call.return_value = _VALID_PYTHON
+        code, traces = await adapter._generate_with_review(
             target=target,
+            coder_endpoint=_make_endpoint(),
+            reviewer_endpoint=None,
+            template_source="def handle(req): pass",
+            target_source="def run_full_pipeline(): pass",
+            model_sources=[],
+            max_attempts=3,
             correlation_id=corr_id,
-            attempt=1,
         )
 
-    assert trace.accepted is True
-    assert trace.ticket_id == "OMN-TEST"
-    assert trace.attempt == 1
-    assert trace.quality_gate.all_pass is True
+    assert code is not None
+    assert len(traces) == 1
+    assert traces[0].accepted is True
+    assert traces[0].ticket_id == "OMN-TEST"
+    assert traces[0].attempt == 1
 
-    # Trace file must exist
     fname = f"{corr_id}-OMN-TEST-attempt-1.json"
     trace_path = tmp_state_dir / "dispatch-traces" / fname
     assert trace_path.exists()
@@ -292,70 +284,40 @@ async def test_generate_plan_traced_writes_trace_on_success(
 
 
 @pytest.mark.asyncio
-async def test_generate_plan_traced_writes_trace_on_json_failure(
+async def test_generate_with_review_writes_trace_on_transport_error(
     tmp_state_dir: Path,
 ) -> None:
+    """Transport failure produces a trace with failure_kind=transport_failure."""
     corr_id = uuid.uuid4()
     adapter = AdapterLlmDispatch(
         endpoint_configs={EnumModelTier.LOCAL_CODER: _make_endpoint()},
         state_dir=tmp_state_dir,
-    )
-    target = BuildTarget(
-        ticket_id="OMN-FAIL", title="Bad ticket", buildability="auto_buildable"
-    )
-
-    with patch.object(
-        AdapterLlmDispatch,
-        "_ensure_router",
-        new_callable=AsyncMock,
-        return_value=_make_mock_router("not json at all — just prose"),
-    ):
-        _plan, trace = await adapter._generate_plan_traced(
-            target=target,
-            correlation_id=corr_id,
-            attempt=2,
-        )
-
-    assert trace.accepted is False
-    assert trace.attempt == 2
-    assert any("JSON" in e for e in trace.quality_gate.errors)
-
-    fname = f"{corr_id}-OMN-FAIL-attempt-2.json"
-    assert (tmp_state_dir / "dispatch-traces" / fname).exists()
-
-
-@pytest.mark.asyncio
-async def test_generate_plan_traced_writes_trace_on_llm_error(
-    tmp_state_dir: Path,
-) -> None:
-    corr_id = uuid.uuid4()
-    adapter = AdapterLlmDispatch(
-        endpoint_configs={EnumModelTier.LOCAL_CODER: _make_endpoint()},
-        state_dir=tmp_state_dir,
+        allow_unreviewed=True,
     )
     target = BuildTarget(
         ticket_id="OMN-ERR", title="Error ticket", buildability="auto_buildable"
     )
 
-    mock_router = AsyncMock()
-    mock_router.get_available_providers = AsyncMock(return_value=["local_coder"])
-    mock_router.generate_typed = AsyncMock(
-        side_effect=RuntimeError("connection refused")
-    )
-
     with patch.object(
         AdapterLlmDispatch,
-        "_ensure_router",
+        "_call_endpoint",
         new_callable=AsyncMock,
-        return_value=mock_router,
+        side_effect=RuntimeError("connection refused"),
     ):
-        _plan, trace = await adapter._generate_plan_traced(
+        code, traces = await adapter._generate_with_review(
             target=target,
+            coder_endpoint=_make_endpoint(),
+            reviewer_endpoint=None,
+            template_source="",
+            target_source="",
+            model_sources=[],
+            max_attempts=1,
             correlation_id=corr_id,
-            attempt=1,
         )
 
-    assert trace.accepted is False
-    assert any("LLM call failed" in e for e in trace.quality_gate.errors)
+    assert code is None
+    assert len(traces) == 1
+    assert traces[0].accepted is False
+    assert traces[0].failure_kind == "transport_failure"
     fname = f"{corr_id}-OMN-ERR-attempt-1.json"
     assert (tmp_state_dir / "dispatch-traces" / fname).exists()

@@ -30,11 +30,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
 )
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (
     AdapterLlmDispatch,
-    ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
-    ModelDispatchTrace,
-    ModelQualityGateResult,
+    ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
@@ -264,92 +262,104 @@ def test_is_accepted_malformed_always_rejected() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _review_plan: endpoint unreachable -> "unavailable"
+# _run_review: endpoint unreachable -> "unavailable"
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_review_plan_endpoint_unreachable_returns_unavailable() -> None:
+async def test_run_review_endpoint_unreachable_returns_unavailable() -> None:
     """If the review endpoint raises httpx.HTTPError, status must be 'unavailable'."""
     adapter = _make_adapter()
     endpoint = _make_review_endpoint()
-    target = _make_target()
 
     with patch.object(
         AdapterLlmDispatch,
         "_call_endpoint",
         new=AsyncMock(side_effect=httpx.ConnectError("Connection refused")),
     ):
-        status, data = await adapter._review_plan(target, {}, endpoint)
+        status, result = await adapter._run_review(
+            generated_code="def handle(req): pass",
+            target_source="def run_full_pipeline(): pass",
+            template_source="",
+            model_sources=[],
+            endpoint=endpoint,
+            ticket_id="OMN-TEST",
+        )
 
     assert status == "unavailable"
-    assert data.get("issues") == []
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
-# _review_plan: malformed once -> retry -> approved
+# _run_review: malformed once -> retry -> approved
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_review_plan_malformed_first_attempt_then_valid() -> None:
+async def test_run_review_malformed_first_attempt_then_valid() -> None:
     """First attempt returns prose (malformed), second returns valid JSON -> approved."""
     adapter = _make_adapter()
     endpoint = _make_review_endpoint()
-    target = _make_target()
 
     valid_json = json.dumps({"approved": True, "issues": [], "risk_level": "low"})
 
-    call_count = 0
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
+        mock_call.side_effect = ["Looks good to me!", valid_json]
+        status, result = await adapter._run_review(
+            generated_code="def handle(req): pass",
+            target_source="",
+            template_source="",
+            model_sources=[],
+            endpoint=endpoint,
+            ticket_id="OMN-TEST",
+        )
 
-    async def _mock_call(ep: object, sp: str, up: str, temperature: float = 0.2) -> str:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return "Looks good to me!"
-        return valid_json
-
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new=_mock_call):
-        status, _data = await adapter._review_plan(target, {}, endpoint)
-
-    assert call_count == 2
+    assert mock_call.call_count == 2
     assert status == "approved"
+    assert result is not None
+    assert result.approved is True
 
 
 # ---------------------------------------------------------------------------
-# _review_plan: malformed both attempts -> "failed"
+# _run_review: malformed both attempts -> "failed"
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_review_plan_malformed_both_attempts_returns_failed() -> None:
+async def test_run_review_malformed_both_attempts_returns_failed() -> None:
     """Both attempts return prose — must return 'failed', never auto-approve."""
     adapter = _make_adapter()
     endpoint = _make_review_endpoint()
-    target = _make_target()
 
     with patch.object(
         AdapterLlmDispatch,
         "_call_endpoint",
         new=AsyncMock(return_value="The code looks good, I approve!"),
     ):
-        status, data = await adapter._review_plan(target, {}, endpoint)
+        status, result = await adapter._run_review(
+            generated_code="def handle(req): pass",
+            target_source="",
+            template_source="",
+            model_sources=[],
+            endpoint=endpoint,
+            ticket_id="OMN-TEST",
+        )
 
     assert status == "failed"
-    # Must NOT be treated as approved
-    assert adapter._is_accepted(status, data) is False
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
-# _review_plan: reviewer rejects -> "rejected"
+# _run_review: reviewer rejects -> "rejected"
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_review_plan_reviewer_rejects() -> None:
+async def test_run_review_reviewer_rejects() -> None:
     adapter = _make_adapter()
     endpoint = _make_review_endpoint()
-    target = _make_target()
 
     reject_json = json.dumps(
         {
@@ -366,20 +376,29 @@ async def test_review_plan_reviewer_rejects() -> None:
         "_call_endpoint",
         new=AsyncMock(return_value=reject_json),
     ):
-        status, data = await adapter._review_plan(target, {}, endpoint)
+        status, result = await adapter._run_review(
+            generated_code="def handle(req): pass",
+            target_source="",
+            template_source="",
+            model_sources=[],
+            endpoint=endpoint,
+            ticket_id="OMN-TEST",
+        )
 
     assert status == "rejected"
-    assert adapter._is_accepted(status, data) is False
+    assert result is not None
+    assert result.approved is False
+    assert len(result.issues) == 1
 
 
 # ---------------------------------------------------------------------------
-# handle(): no FRONTIER_REVIEW configured -> review_status="unavailable" in payload
+# handle(): no FRONTIER_REVIEW configured -> unreviewed, accepted=False (default policy)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_handle_no_reviewer_sets_unavailable_status() -> None:
-    """When FRONTIER_REVIEW tier is absent, payload must record review_status=unavailable."""
+async def test_handle_no_reviewer_allow_unreviewed_false_rejects() -> None:
+    """When FRONTIER_REVIEW tier is absent and allow_unreviewed=False, code is not dispatched."""
     endpoint_configs: dict[EnumModelTier, ModelEndpointConfig] = {
         EnumModelTier.LOCAL_CODER: ModelEndpointConfig(
             tier=EnumModelTier.LOCAL_CODER,
@@ -390,6 +409,8 @@ async def test_handle_no_reviewer_sets_unavailable_status() -> None:
             timeout_seconds=120.0,
         ),
     }
+    # allow_unreviewed=False but no reviewer — code passes gate but is "review_unavailable"
+    endpoint_configs[EnumModelTier.FRONTIER_REVIEW] = _make_review_endpoint()
     adapter = AdapterLlmDispatch(
         endpoint_configs=endpoint_configs,
         delegation_topic="test-topic",
@@ -399,37 +420,23 @@ async def test_handle_no_reviewer_sets_unavailable_status() -> None:
         BuildTarget(ticket_id="OMN-X", title="Test", buildability="auto_buildable"),
     )
 
-    valid_plan: dict[str, object] = {
-        "ticket_id": "OMN-X",
-        "implementation_plan": {
-            "approach": "add feature",
-            "estimated_complexity": "low",
-        },
-        "code_changes": [],
-    }
-
-    stub_trace = ModelDispatchTrace(
-        correlation_id=str(uuid4()),
-        ticket_id="OMN-X",
-        attempt=1,
-        timestamp="2026-01-01T00:00:00+00:00",
-        coder_model="default",
-        quality_gate=ModelQualityGateResult(
-            ruff_pass=True, import_pass=True, test_pass=True, errors=[]
-        ),
-        accepted=True,
-    )
-    with patch.object(
-        AdapterLlmDispatch,
-        "_generate_plan_traced",
-        new=AsyncMock(return_value=(valid_plan, stub_trace)),
+    with (
+        patch.object(
+            AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+        ) as mock_coder,
+        patch.object(
+            AdapterLlmDispatch, "_run_review", new_callable=AsyncMock
+        ) as mock_reviewer,
     ):
+        # Coder succeeds (returns valid Python); reviewer is unreachable
+        mock_coder.return_value = "def handle(self):\n    pass\n"
+        mock_reviewer.return_value = ("unavailable", None)
         result = await adapter.handle(
             correlation_id=uuid4(),
             targets=targets,
         )
 
-    assert result.total_dispatched == 1
+    # All 3 attempts failed (reviewer unavailable, allow_unreviewed=False)
+    assert result.total_dispatched == 0
     payload = result.delegation_payloads[0].payload
-    assert payload["review_status"] == "unavailable"
     assert payload["accepted"] is False

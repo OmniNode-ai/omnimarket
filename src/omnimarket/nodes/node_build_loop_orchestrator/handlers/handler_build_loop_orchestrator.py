@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
@@ -81,16 +81,21 @@ class HandlerBuildLoopOrchestrator:
     Takes protocol-based sub-handler dependencies and an optional event bus
     for publishing phase transition events. Synchronous sub-handler calls,
     in-process state ownership.
+
+    All sub-handler arguments are optional to support zero-arg construction by
+    the auto-wiring runtime (``onex run``). When omitted, concrete default
+    implementations are lazy-initialized on the first call to ``handle()``.
+    Callers that want explicit DI can still pass all five dependencies.
     """
 
     def __init__(
         self,
         *,
-        closeout: ProtocolCloseoutHandler,
-        verify: ProtocolVerifyHandler,
-        rsd_fill: ProtocolRsdFillHandler,
-        classify: ProtocolTicketClassifyHandler,
-        dispatch: ProtocolBuildDispatchHandler,
+        closeout: ProtocolCloseoutHandler | None = None,
+        verify: ProtocolVerifyHandler | None = None,
+        rsd_fill: ProtocolRsdFillHandler | None = None,
+        classify: ProtocolTicketClassifyHandler | None = None,
+        dispatch: ProtocolBuildDispatchHandler | None = None,
         event_bus: ProtocolEventBusPublisher | None = None,
     ) -> None:
         self._fsm = HandlerBuildLoop()
@@ -105,6 +110,41 @@ class HandlerBuildLoopOrchestrator:
         self._last_fill_result: tuple[ScoredTicket, ...] = ()
         self._last_classify_result: tuple[BuildTarget, ...] = ()
 
+    def _ensure_sub_handlers(self) -> None:
+        """Lazy-initialize sub-handlers from default implementations if not injected."""
+        if self._closeout is None:
+            from omnimarket.nodes.node_closeout_effect.handlers.handler_closeout import (
+                HandlerCloseout,
+            )
+
+            self._closeout = cast(ProtocolCloseoutHandler, HandlerCloseout())
+        if self._verify is None:
+            from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
+                HandlerVerify,
+            )
+
+            self._verify = cast(ProtocolVerifyHandler, HandlerVerify())
+        if self._rsd_fill is None:
+            from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
+                HandlerRsdFill,
+            )
+
+            self._rsd_fill = cast(ProtocolRsdFillHandler, HandlerRsdFill())
+        if self._classify is None:
+            from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify import (
+                HandlerTicketClassify,
+            )
+
+            self._classify = cast(
+                ProtocolTicketClassifyHandler, HandlerTicketClassify()
+            )
+        if self._dispatch is None:
+            from omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch import (
+                HandlerBuildDispatch,
+            )
+
+            self._dispatch = cast(ProtocolBuildDispatchHandler, HandlerBuildDispatch())
+
     async def handle(
         self,
         command: ModelLoopStartCommand,
@@ -117,6 +157,7 @@ class HandlerBuildLoopOrchestrator:
         Returns:
             ModelOrchestratorResult with per-cycle summaries.
         """
+        self._ensure_sub_handlers()
         logger.info(
             "[BUILD-LOOP-ORCH] === ENTRY === handle() called "
             "(correlation_id=%s, max_cycles=%d, dry_run=%s, skip_closeout=%s)",
@@ -234,6 +275,13 @@ class HandlerBuildLoopOrchestrator:
         Returns (success, error_message, metrics_dict).
         """
         metrics: dict[str, int] = {}
+
+        # _ensure_sub_handlers() is called before _run_cycle; assert for mypy
+        assert self._closeout is not None
+        assert self._verify is not None
+        assert self._rsd_fill is not None
+        assert self._classify is not None
+        assert self._dispatch is not None
 
         try:
             if phase == EnumBuildLoopPhase.CLOSING_OUT:
