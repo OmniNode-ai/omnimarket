@@ -248,8 +248,8 @@ class AdapterLlmDispatch:
 
             try:
                 # Select template node (FSM vs compute) for coder context.
-                # Use explicit override from target if set; otherwise auto-detect
-                # by inspecting the target's handler source via route_to_template().
+                # Use explicit override from target if set; otherwise default to
+                # the compute template (route_to_template("") returns _COMPUTE_TEMPLATE_NODE).
                 template_node_id = target.template_node_id or route_to_template("")
 
                 # Generate plan via model router (handles failover + tier routing)
