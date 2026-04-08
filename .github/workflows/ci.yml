@@ -41,6 +41,12 @@ jobs:
             done
           done
           if [ -f /tmp/todo_check_failed ]; then exit 1; fi
+      # NOTE: This step requires PR #75 (OMN-7922, fix legacy contracts) to be merged
+      # before it is active in CI. The build_loop_orchestrator handler still contains
+      # hardcoded onex.evt.* constants until OMN-7922 migrates them to contract-declared
+      # topics. This lint was added in OMN-7921 (branched from PR #76 / OMN-7918).
+      - name: Topic-literal guardrail
+        run: python scripts/lint_no_hardcoded_topics.py
 
   typecheck:
     runs-on: ubuntu-latest
