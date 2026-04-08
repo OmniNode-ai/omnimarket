@@ -419,9 +419,7 @@ class TestBuildLoopGoldenChain:
         assert state.current_phase == EnumBuildLoopPhase.COMPLETE
         assert len(events) == 6
 
-    async def test_handle_with_phase_failure(
-        self, event_bus: EventBusInmemory
-    ) -> None:
+    async def test_handle_with_phase_failure(self, event_bus: EventBusInmemory) -> None:
         """handle() passes phase_results through to run_full_cycle()."""
         handler = HandlerBuildLoop()
         command = _make_command()
