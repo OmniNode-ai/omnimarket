@@ -152,11 +152,6 @@ def _do_start(args: argparse.Namespace) -> int:
     # Create components
     handler = HandlerEmitDaemon()
     queue = BoundedEventQueue(spool_dir=spool_dir)
-    server = EmitSocketServer(
-        socket_path=socket_path,
-        queue=queue,
-        registry=registry,
-    )
 
     # Create publisher loop with optional Kafka
     async def _noop_publish(
@@ -173,6 +168,14 @@ def _do_start(args: argparse.Namespace) -> int:
         # Kafka integration will be wired here when available
 
     publisher = KafkaPublisherLoop(queue=queue, publish_fn=publish_fn)
+
+    # Wire publisher into socket server so health endpoint can report circuit state
+    server = EmitSocketServer(
+        socket_path=socket_path,
+        queue=queue,
+        registry=registry,
+        publisher_loop=publisher,
+    )
 
     # Write PID file
     pid_path.parent.mkdir(parents=True, exist_ok=True)
@@ -244,15 +247,18 @@ def _do_stop(args: argparse.Namespace) -> int:
 
 
 def _do_health(args: argparse.Namespace) -> int:
+    import json as _json
+
     from omnimarket.nodes.node_emit_daemon.client import EmitClient
 
     socket_path = _resolve_socket_path(args.socket_path)
     client = EmitClient(socket_path=socket_path, timeout=2.0)
     try:
-        if client.is_daemon_running_sync():
-            return 0
-        return 1
+        health = client.health_sync()
+        sys.stdout.write(_json.dumps(health, indent=2, default=str) + "\n")
+        return 0 if health.get("healthy") else 1
     except Exception:
+        sys.stdout.write('{"healthy": false, "error": "daemon unreachable"}\n')
         return 1
     finally:
         client.close()

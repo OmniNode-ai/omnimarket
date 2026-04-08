@@ -31,9 +31,10 @@ classifiers = [
 dependencies = [
     "omnibase_core>=0.39.0",
     "omnibase-compat>=0.3.1",
+    "omnibase-infra>=0.32.0",
     "pydantic>=2.12.5,<3.0.0",
     "pyyaml>=6.0.2,<7.0.0",
-    "aiokafka>=0.12.0",
+    "aiokafka>=0.11.0",
     "asyncpg>=0.30.0",
     "python-dateutil>=2.9.0",
     "psycopg2-binary>=2.9.10",
@@ -79,6 +80,7 @@ node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute.ha
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch:HandlerBuildDispatch"
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect.handlers.handler_closeout:HandlerCloseout"
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator:HandlerFindingAggregator"
+node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot:HandlerPrSnapshot"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
@@ -133,6 +135,10 @@ explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "omnibase_compat.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "omnibase_infra.*"
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

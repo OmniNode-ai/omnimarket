@@ -41,6 +41,13 @@ from uuid import UUID
 
 import httpx
 import yaml
+from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
+    AdapterLlmProviderOpenai,
+)
+from omnibase_infra.adapters.llm.adapter_model_router import AdapterModelRouter
+from omnibase_infra.adapters.llm.model_llm_adapter_request import (
+    ModelLlmAdapterRequest,
+)
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import (
     EnumModelTier,
@@ -186,6 +193,36 @@ _FAILURE_REVIEW_UNAVAILABLE = "review_unavailable"
 _FAILURE_TRANSPORT = "transport_failure"
 
 
+def _build_provider_from_endpoint(
+    name: str, endpoint: ModelEndpointConfig
+) -> AdapterLlmProviderOpenai:
+    """Create an AdapterLlmProviderOpenai from a legacy ModelEndpointConfig."""
+    provider_type = "local" if not endpoint.api_key else "external_trusted"
+    return AdapterLlmProviderOpenai(
+        base_url=endpoint.base_url,
+        default_model=endpoint.model_id,
+        api_key=endpoint.api_key or None,
+        provider_name=name,
+        provider_type=provider_type,
+        max_timeout_seconds=endpoint.timeout_seconds,
+    )
+
+
+async def _build_model_router(
+    endpoint_configs: dict[EnumModelTier, ModelEndpointConfig],
+) -> AdapterModelRouter:
+    """Build an AdapterModelRouter from endpoint configs.
+
+    Registers each configured tier as a provider with the router.
+    The router handles health checking, round-robin, and failover.
+    """
+    router = AdapterModelRouter()
+    for tier, endpoint in endpoint_configs.items():
+        provider = _build_provider_from_endpoint(tier.value, endpoint)
+        await router.register_provider(tier.value, provider)
+    return router
+
+
 class AdapterLlmDispatch:
     """Dispatches ticket builds via multi-model LLM code generation.
 
@@ -210,6 +247,7 @@ class AdapterLlmDispatch:
         state_dir: Path | None = None,
         max_attempts: int = 3,
         allow_unreviewed: bool = False,
+        router: AdapterModelRouter | None = None,
     ) -> None:
         self._endpoints = endpoint_configs or build_endpoint_configs()
         self._delegation_topic = delegation_topic or _DEFAULT_DELEGATION_TOPIC
@@ -217,12 +255,27 @@ class AdapterLlmDispatch:
         self._state_dir = state_dir or _get_state_dir()
         self._max_attempts = max_attempts
         self._allow_unreviewed = allow_unreviewed
+        self._router = router
+        self._router_initialized = router is not None
+
+        # Build per-tier providers for direct access (review model)
+        self._providers: dict[EnumModelTier, AdapterLlmProviderOpenai] = {}
+        for tier, endpoint in self._endpoints.items():
+            self._providers[tier] = _build_provider_from_endpoint(tier.value, endpoint)
 
         logger.info(
             "LLM dispatch initialized with tiers: %s (allow_unreviewed=%s)",
             ", ".join(t.value for t in sorted(self._available_tiers, key=str)),
             allow_unreviewed,
         )
+
+    async def _ensure_router(self) -> AdapterModelRouter:
+        """Lazily initialize the model router on first use."""
+        if not self._router_initialized:
+            self._router = await _build_model_router(self._endpoints)
+            self._router_initialized = True
+        assert self._router is not None
+        return self._router
 
     async def handle(
         self,
@@ -963,6 +1016,11 @@ class AdapterLlmDispatch:
                 "correlation_id": str(correlation_id),
             },
         )
+
+    async def close(self) -> None:
+        """Close all provider connections."""
+        for provider in self._providers.values():
+            await provider.close()
 
 
 __all__: list[str] = ["AdapterLlmDispatch"]
