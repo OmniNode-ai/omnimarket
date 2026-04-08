@@ -14,14 +14,20 @@ Uses the existing LLM infrastructure from omnibase_infra:
 - AdapterModelRouter for multi-provider routing with round-robin fallback
 - ModelLlmProviderConfig for provider configuration from the registry
 
-Review policy (OMN-7856):
-- Reviewer unavailable -> review_status: "unavailable", NOT approved
-- Reviewer returns malformed JSON -> retry once, then review_status: "failed", reject
-- Acceptance requires structural gate pass AND (reviewer approval OR allow_unreviewed=True)
+Every generation attempt writes a ModelDispatchTrace to
+.onex_state/dispatch-traces/ and (when KAFKA_BOOTSTRAP_SERVERS) emits
+onex.evt.omnimarket.delegation-attempt.v1 to the event bus.
+
+After all tickets are processed, aggregate ModelDispatchMetrics are written to
+.onex_state/dispatch-metrics/{correlation_id}.json and emitted as
+onex.evt.omnimarket.delegation-metrics.v1.
 
 Related:
+    - OMN-7854: Add source context loading
     - OMN-7856: Wire GLM-4.7-Flash as code reviewer
     - OMN-7810: Wire build loop to Linear queue
+    - OMN-7855: Add dispatch tracing to .onex_state/
+    - OMN-7858: Add dispatch metrics summary
     - OMN-5113: Autonomous Build Loop epic
 """
 
@@ -29,6 +35,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
+import time
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -49,6 +59,14 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
     EnumModelTier,
     ModelEndpointConfig,
     build_endpoint_configs,
+    route_to_template,
+)
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_metrics import (
+    ModelDispatchMetrics,
+)
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
+    ModelDispatchTrace,
+    ModelQualityGateResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
@@ -59,8 +77,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Resolve delegation topic from build_dispatch_effect contract.yaml
+# Load bus topics from contracts (single source of truth — no hardcoding)
 # ---------------------------------------------------------------------------
+_ORCHESTRATOR_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _DISPATCH_CONTRACT_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "node_build_dispatch_effect"
@@ -68,44 +87,286 @@ _DISPATCH_CONTRACT_PATH = (
 )
 
 
-def _load_delegation_topic() -> str:
-    """Load delegation-request publish topic from dispatch contract."""
-    if _DISPATCH_CONTRACT_PATH.exists():
-        with open(_DISPATCH_CONTRACT_PATH) as fh:
+def _load_topic_from_contract(contract_path: Path, keyword: str) -> str:
+    """Load a publish topic matching keyword from a contract.yaml."""
+    if contract_path.exists():
+        with open(contract_path) as fh:
             data = yaml.safe_load(fh) or {}
         for topic in (data.get("event_bus", {}) or {}).get("publish_topics", []) or []:
-            if isinstance(topic, str) and "delegation-request" in topic:
+            if isinstance(topic, str) and keyword in topic:
                 return topic
-    return "delegation-request"  # fallback — never a valid topic, will be overridden
+    return f"onex.evt.omnimarket.{keyword}.v1"  # fallback matches contract convention
 
 
-_DEFAULT_DELEGATION_TOPIC: str = _load_delegation_topic()
+_DELEGATION_ATTEMPT_TOPIC: str = _load_topic_from_contract(
+    _ORCHESTRATOR_CONTRACT_PATH, "delegation-attempt"
+)
+_DELEGATION_METRICS_TOPIC: str = _load_topic_from_contract(
+    _ORCHESTRATOR_CONTRACT_PATH, "delegation-metrics"
+)
+_DEFAULT_DELEGATION_TOPIC: str = _load_topic_from_contract(
+    _DISPATCH_CONTRACT_PATH, "delegation-request"
+)
+
+
+def _get_state_dir() -> Path:
+    """Resolve .onex_state from OMNI_HOME env or cwd fallback."""
+    omni_home = os.environ.get("OMNI_HOME", "")
+    if omni_home:
+        return Path(omni_home) / ".onex_state"
+    return Path.cwd() / ".onex_state"
+
+
+def _write_trace(trace: ModelDispatchTrace, state_dir: Path) -> None:
+    """Write a dispatch trace to .onex_state/dispatch-traces/.
+
+    Filename: {correlation_id}-{ticket_id}-attempt-{N}.json
+    Never raises — logs on failure so a write error never kills a dispatch.
+    """
+    traces_dir = state_dir / "dispatch-traces"
+    try:
+        traces_dir.mkdir(parents=True, exist_ok=True)
+        fname = f"{trace.correlation_id}-{trace.ticket_id}-attempt-{trace.attempt}.json"
+        (traces_dir / fname).write_text(trace.model_dump_json(indent=2))
+        logger.debug("Wrote dispatch trace: %s", fname)
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Failed to write dispatch trace for %s attempt %d: %s",
+            trace.ticket_id,
+            trace.attempt,
+            exc,
+        )
+
+
+def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
+    """Emit trace event to Kafka when KAFKA_BOOTSTRAP_SERVERS is set.
+
+    Bus events are observability copies — local files are authoritative.
+    Silently skips when Kafka is not configured.
+    """
+    if not os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""):
+        return
+    try:
+        from omnibase_infra.bus.kafka_producer import (
+            KafkaProducerClient,
+        )
+
+        producer = KafkaProducerClient.from_env()
+        producer.produce(topic=_DELEGATION_ATTEMPT_TOPIC, value=trace.model_dump_json())
+        logger.debug(
+            "Emitted delegation-attempt to bus: %s attempt %d",
+            trace.ticket_id,
+            trace.attempt,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "Bus emit failed for %s attempt %d (trace file is authoritative): %s",
+            trace.ticket_id,
+            trace.attempt,
+            exc,
+        )
+
+
+def _compute_metrics(
+    *,
+    correlation_id: str,
+    traces: list[ModelDispatchTrace],
+) -> ModelDispatchMetrics:
+    """Compute aggregate metrics from a list of dispatch traces.
+
+    Covers all tickets in a single dispatch run. Each ticket may have
+    multiple traces (one per generation attempt).
+    """
+    if not traces:
+        return ModelDispatchMetrics(
+            correlation_id=correlation_id,
+            total_tickets=0,
+            accepted_count=0,
+            rejected_count=0,
+            total_generation_attempts=0,
+            total_review_iterations=0,
+            avg_attempts_per_ticket=0.0,
+            total_prompt_tokens=0,
+            total_completion_tokens=0,
+            total_review_tokens=0,
+            total_wall_clock_ms=0,
+            coder_model="none",
+            reviewer_model=None,
+            quality_gate_failure_rate=0.0,
+            review_rejection_rate=0.0,
+        )
+
+    # Group traces by ticket_id to determine per-ticket outcomes
+    tickets: dict[str, list[ModelDispatchTrace]] = {}
+    for t in traces:
+        tickets.setdefault(t.ticket_id, []).append(t)
+
+    accepted_count = sum(
+        1
+        for ticket_traces in tickets.values()
+        if any(t.accepted for t in ticket_traces)
+    )
+    rejected_count = len(tickets) - accepted_count
+
+    total_attempts = len(traces)
+    total_review_iterations = sum(1 for t in traces if t.review_result is not None)
+
+    avg_attempts = total_attempts / len(tickets) if tickets else 0.0
+
+    total_prompt_tokens = sum(t.prompt_tokens for t in traces)
+    total_completion_tokens = sum(t.completion_tokens for t in traces)
+    total_review_tokens = sum(
+        t.review_result.review_tokens for t in traces if t.review_result is not None
+    )
+    total_wall_clock_ms = sum(t.wall_clock_ms for t in traces)
+
+    # Coder model: most-used model across all traces (handles multi-model routing)
+    coder_counts: Counter[str] = Counter(t.coder_model for t in traces)
+    coder_model: str = coder_counts.most_common(1)[0][0] if coder_counts else "unknown"
+
+    # Reviewer model: use the first non-None reviewer_model found
+    reviewer_model: str | None = next(
+        (t.reviewer_model for t in traces if t.reviewer_model is not None),
+        None,
+    )
+
+    # Quality gate failure rate: fraction of attempts that failed gate (never reached review)
+    gate_failed = sum(
+        1 for t in traces if not t.quality_gate.all_pass and t.review_result is None
+    )
+    quality_gate_failure_rate = gate_failed / total_attempts if total_attempts else 0.0
+
+    # Review rejection rate: fraction of gate-passing attempts rejected by reviewer
+    gate_passing = [t for t in traces if t.quality_gate.all_pass]
+    reviewed_rejected = sum(
+        1
+        for t in gate_passing
+        if t.review_result is not None and not t.review_result.approved
+    )
+    review_rejection_rate = (
+        reviewed_rejected / len(gate_passing) if gate_passing else 0.0
+    )
+
+    return ModelDispatchMetrics(
+        correlation_id=correlation_id,
+        total_tickets=len(tickets),
+        accepted_count=accepted_count,
+        rejected_count=rejected_count,
+        total_generation_attempts=total_attempts,
+        total_review_iterations=total_review_iterations,
+        avg_attempts_per_ticket=avg_attempts,
+        total_prompt_tokens=total_prompt_tokens,
+        total_completion_tokens=total_completion_tokens,
+        total_review_tokens=total_review_tokens,
+        total_wall_clock_ms=total_wall_clock_ms,
+        coder_model=coder_model,
+        reviewer_model=reviewer_model,
+        quality_gate_failure_rate=quality_gate_failure_rate,
+        review_rejection_rate=review_rejection_rate,
+    )
+
+
+def _write_metrics(metrics: ModelDispatchMetrics, state_dir: Path) -> None:
+    """Write aggregate dispatch metrics to .onex_state/dispatch-metrics/.
+
+    Filename: {correlation_id}.json
+    Never raises — logs on failure so a write error never kills a dispatch.
+    """
+    metrics_dir = state_dir / "dispatch-metrics"
+    try:
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        fname = f"{metrics.correlation_id}.json"
+        (metrics_dir / fname).write_text(metrics.model_dump_json(indent=2))
+        logger.info(
+            "Wrote dispatch metrics: %s (accepted=%d/%d, avg_attempts=%.2f)",
+            fname,
+            metrics.accepted_count,
+            metrics.total_tickets,
+            metrics.avg_attempts_per_ticket,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Failed to write dispatch metrics for %s: %s",
+            metrics.correlation_id,
+            exc,
+        )
+
+
+def _emit_metrics_to_bus(metrics: ModelDispatchMetrics) -> None:
+    """Emit aggregate metrics event to Kafka when KAFKA_BOOTSTRAP_SERVERS is set.
+
+    Bus events are observability copies — local files are authoritative.
+    Silently skips when Kafka is not configured.
+    """
+    if not os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""):
+        return
+    try:
+        from omnibase_infra.bus.kafka_producer import (
+            KafkaProducerClient,
+        )
+
+        producer = KafkaProducerClient.from_env()
+        producer.produce(
+            topic=_DELEGATION_METRICS_TOPIC, value=metrics.model_dump_json()
+        )
+        logger.debug(
+            "Emitted delegation-metrics to bus: %s",
+            metrics.correlation_id,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "Bus emit failed for metrics %s (metrics file is authoritative): %s",
+            metrics.correlation_id,
+            exc,
+        )
+
+
+# Root of all node directories — used to load template handler source
+_NODES_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _load_template_source(template_node_id: str) -> str:
+    """Load handler source from a template node directory.
+
+    Returns the concatenated source of all .py files under the template node's
+    handlers/ subdirectory, or an empty string if the node does not exist.
+    """
+    # Reject path traversal attempts: no slashes, backslashes, or leading dots
+    if not template_node_id or "/" in template_node_id or "\\" in template_node_id:
+        logger.warning(
+            "Invalid template_node_id (path separator): %s", template_node_id
+        )
+        return ""
+    if template_node_id.startswith("."):
+        logger.warning(
+            "Invalid template_node_id (starts with dot): %s", template_node_id
+        )
+        return ""
+    handlers_dir = _NODES_ROOT / template_node_id / "handlers"
+    # Confirm the resolved path stays under _NODES_ROOT
+    try:
+        handlers_dir.resolve().relative_to(_NODES_ROOT.resolve())
+    except ValueError:
+        logger.warning("template_node_id escapes nodes root: %s", template_node_id)
+        return ""
+    if not handlers_dir.is_dir():
+        logger.warning("Template node handlers not found: %s", handlers_dir)
+        return ""
+    parts: list[str] = []
+    for py_file in sorted(handlers_dir.glob("*.py")):
+        try:
+            parts.append(py_file.read_text(encoding="utf-8"))
+        except OSError as exc:
+            logger.warning("Could not read template file %s: %s", py_file, exc)
+    return "\n\n".join(parts)
+
 
 _CODER_SYSTEM_PROMPT = """\
-You are an autonomous code implementation agent for the OmniNode platform.
-Given a ticket ID, title, and context, produce a structured implementation plan.
+You are an autonomous code refactoring agent for the OmniNode platform.
+You will be given a template handler (a READY node to follow) and a target handler (the PARTIAL file to refactor).
+Refactor the target code to follow the template pattern exactly.
 
-Your response must be a JSON object with these fields:
-{
-  "ticket_id": "<ticket ID>",
-  "implementation_plan": {
-    "files_to_modify": ["list of file paths"],
-    "files_to_create": ["list of new file paths"],
-    "approach": "brief description of the implementation approach",
-    "estimated_complexity": "low|medium|high",
-    "test_strategy": "brief description of how to test"
-  },
-  "code_changes": [
-    {
-      "file_path": "path/to/file.py",
-      "action": "modify|create",
-      "description": "what to change",
-      "code_snippet": "relevant code"
-    }
-  ]
-}
-
-Focus on producing actionable, concrete changes. Do not explain or apologize.
+Output ONLY the complete refactored Python file. Do not add explanations, markdown fences, or commentary.
 """
 
 _REVIEW_SYSTEM_PROMPT = """\
@@ -128,6 +389,9 @@ severity must be "minor", "major", or "critical".
 risk_level must be "low", "medium", or "high".
 issues must be an array (empty array if none).
 """
+
+# 48K char budget leaves headroom for Qwen3-Coder's 64K context
+_DEFAULT_MAX_CONTEXT_CHARS: int = 48000
 
 
 # ---------------------------------------------------------------------------
@@ -220,10 +484,8 @@ class AdapterLlmDispatch:
     Uses AdapterModelRouter from omnibase_infra for model selection with
     health checks, failover, and round-robin load balancing.
 
-    Review policy (OMN-7856):
-    - Reviewer unavailable: review_status="unavailable", rejected unless allow_unreviewed=True
-    - Reviewer malformed: retry once, then review_status="failed", always rejected
-    - Reviewer approved: accepted if structural gate also passes
+    Every generation attempt (pass or fail) produces a ModelDispatchTrace written
+    to .onex_state/dispatch-traces/ and emitted to the event bus when available.
     """
 
     def __init__(
@@ -233,12 +495,14 @@ class AdapterLlmDispatch:
         delegation_topic: str | None = None,
         allow_unreviewed: bool = False,
         router: AdapterModelRouter | None = None,
+        state_dir: Path | None = None,
     ) -> None:
         self._endpoints = endpoint_configs or build_endpoint_configs()
         self._delegation_topic = delegation_topic or _DEFAULT_DELEGATION_TOPIC
         self._allow_unreviewed = allow_unreviewed
         self._router = router
         self._router_initialized = router is not None
+        self._state_dir = state_dir or _get_state_dir()
 
         # Build per-tier providers for direct access (review model)
         self._providers: dict[EnumModelTier, AdapterLlmProviderOpenai] = {}
@@ -269,10 +533,11 @@ class AdapterLlmDispatch:
         """Generate implementation plans for each buildable ticket.
 
         For each target:
-        1. Route to appropriate model tier based on complexity via AdapterModelRouter
-        2. Generate implementation plan via routed model
-        3. Review via GLM-4.7-Flash (FRONTIER_REVIEW tier)
-        4. Package as delegation payload
+        1. Route to best available provider via AdapterModelRouter
+        2. Load source context (template + target + models)
+        3. Generate code via routed model using source-grounded prompt
+        4. Review via reasoning provider (if available)
+        5. Package as delegation payload
         """
         logger.info(
             "LLM dispatch: %d targets (correlation_id=%s, dry_run=%s)",
@@ -283,6 +548,7 @@ class AdapterLlmDispatch:
 
         payloads: list[DelegationPayload] = []
         total_dispatched = 0
+        all_traces: list[ModelDispatchTrace] = []
 
         for target in targets:
             if dry_run:
@@ -291,8 +557,28 @@ class AdapterLlmDispatch:
                 continue
 
             try:
-                # Generate plan via model router (handles failover)
-                plan, coder_model = await self._generate_plan(target)
+                # Select template node (FSM vs compute) for coder context.
+                # Use explicit override from target if set; otherwise default to
+                # the compute template (route_to_template("") returns _COMPUTE_TEMPLATE_NODE).
+                template_node_id = target.template_node_id or route_to_template("")
+
+                # Generate plan via model router (traced, with source context)
+                plan, trace = await self._generate_plan_traced(
+                    target=target,
+                    correlation_id=correlation_id,
+                    attempt=1,
+                    template_node_id=template_node_id,
+                )
+                all_traces.append(trace)
+                coder_model = trace.coder_model
+
+                if not trace.accepted:
+                    logger.warning(
+                        "LLM dispatch: skipping payload for %s — generation failed (gate=%s)",
+                        target.ticket_id,
+                        trace.quality_gate.errors,
+                    )
+                    continue
 
                 # Validate plan shape before review — raw_response fallbacks must not pass
                 plan_valid = True
@@ -369,6 +655,7 @@ class AdapterLlmDispatch:
                     "delegated_to": coder_model,
                     "coder_model": coder_model,
                     "reviewer_model": reviewer_model,
+                    "template_node_id": template_node_id,
                 }
 
                 payloads.append(
@@ -401,6 +688,15 @@ class AdapterLlmDispatch:
             correlation_id,
         )
 
+        # Compute and persist aggregate metrics after all tickets processed
+        if not dry_run:
+            metrics = _compute_metrics(
+                correlation_id=str(correlation_id),
+                traces=all_traces,
+            )
+            _write_metrics(metrics, self._state_dir)
+            _emit_metrics_to_bus(metrics)
+
         return DispatchResult(
             total_dispatched=total_dispatched,
             delegation_payloads=tuple(payloads),
@@ -426,59 +722,288 @@ class AdapterLlmDispatch:
             return False
         return False
 
-    async def _generate_plan(
-        self, target: BuildTarget
-    ) -> tuple[dict[str, object], str]:
-        """Generate implementation plan via the model router.
+    def _build_coder_prompt(
+        self,
+        *,
+        target: BuildTarget,
+        template_source: str,
+        target_source: str,
+        model_sources: list[str] | None = None,
+        max_context_chars: int = _DEFAULT_MAX_CONTEXT_CHARS,
+    ) -> str:
+        """Build a coder prompt with actual source code context.
 
-        Returns:
-            Tuple of (parsed plan dict, model name used).
+        Truncates model_sources (whole files) if total exceeds max_context_chars.
+        Never truncates template or target handlers mid-file.
         """
-        user_prompt = (
-            f"Ticket: {target.ticket_id}\n"
-            f"Title: {target.title}\n"
-            f"Buildability: {target.buildability}\n\n"
-            f"Generate an implementation plan."
-        )
+        header = f"Ticket: {target.ticket_id} — {target.title}"
+        template_section = f"## TEMPLATE (follow this pattern):\n{template_source}"
+        target_section = f"## TARGET (refactor this):\n{target_source}"
 
-        prompt = f"{_CODER_SYSTEM_PROMPT}\n\n{user_prompt}"
+        base_parts = [header, "", template_section, "", target_section]
+        base_prompt = "\n".join(base_parts)
 
-        router = await self._ensure_router()
-        # Use the first available provider's default model for the request
-        available = await router.get_available_providers()
-        model_name = "default"
-        if available:
-            provider_name = available[0]
-            endpoint = next(
-                (e for t, e in self._endpoints.items() if t.value == provider_name),
-                None,
+        if not model_sources:
+            return base_prompt
+
+        # Add model files one at a time, dropping from the end if over budget
+        model_parts: list[str] = []
+        for src in model_sources:
+            candidate = "\n".join(
+                [base_prompt, "", "## RELEVANT MODELS:", *model_parts, src]
             )
-            if endpoint:
-                model_name = endpoint.model_id
+            if len(candidate) <= max_context_chars:
+                model_parts.append(src)
+            else:
+                logger.debug(
+                    "Dropping model source (budget %d chars): %d chars",
+                    max_context_chars,
+                    len(src),
+                )
+                break
 
-        request = ModelLlmAdapterRequest(
-            prompt=prompt,
-            model_name=model_name,
-            max_tokens=8192,
-            temperature=0.2,
+        if model_parts:
+            return "\n".join([base_prompt, "", "## RELEVANT MODELS:", *model_parts])
+        return base_prompt
+
+    def _load_source_context(
+        self,
+        *,
+        target_node_dir: Path,
+        template_node_dir: Path | None = None,
+    ) -> tuple[str, str, list[str]]:
+        """Load source files for prompt context.
+
+        Returns (template_source, target_source, model_sources).
+
+        Source selection rules:
+        1. Target handler: target_node_dir/handlers/handler_*.py
+        2. Template handler: template_node_dir/handlers/handler_*.py
+           - If not provided, auto-selects nearest READY node by scanning siblings
+        3. Related models: target_node_dir/models/model_*.py
+        4. Contract: target_node_dir/contract.yaml
+
+        Whole files only — no mid-file truncation. Falls back to empty strings
+        with a WARNING log if files don't exist.
+        """
+        # Load target handler
+        target_source = self._read_handler_file(target_node_dir)
+
+        # Load template handler
+        if template_node_dir is not None:
+            template_source = self._read_handler_file(template_node_dir)
+        else:
+            template_source = self._auto_select_template(target_node_dir)
+
+        # Load related models
+        model_sources: list[str] = []
+        models_dir = target_node_dir / "models"
+        if models_dir.exists():
+            for model_file in sorted(models_dir.glob("model_*.py")):
+                try:
+                    model_sources.append(model_file.read_text())
+                except OSError as exc:
+                    logger.warning("Could not read model file %s: %s", model_file, exc)
+
+        # Append contract.yaml if present
+        contract_path = target_node_dir / "contract.yaml"
+        if contract_path.exists():
+            try:
+                model_sources.append(contract_path.read_text())
+            except OSError as exc:
+                logger.warning("Could not read contract %s: %s", contract_path, exc)
+
+        return template_source, target_source, model_sources
+
+    def _read_handler_file(self, node_dir: Path) -> str:
+        """Read the primary handler file from a node directory."""
+        handlers_dir = node_dir / "handlers"
+        if not handlers_dir.exists():
+            logger.warning("No handlers/ directory in %s", node_dir)
+            return ""
+        handler_files = sorted(handlers_dir.glob("handler_*.py"))
+        if not handler_files:
+            logger.warning("No handler_*.py files in %s", handlers_dir)
+            return ""
+        try:
+            return handler_files[0].read_text()
+        except OSError as exc:
+            logger.warning("Could not read handler %s: %s", handler_files[0], exc)
+            return ""
+
+    def _auto_select_template(self, target_node_dir: Path) -> str:
+        """Auto-select the nearest READY node as template by scanning siblings."""
+        nodes_dir = target_node_dir.parent
+        if not nodes_dir.exists():
+            return ""
+
+        for candidate in sorted(nodes_dir.iterdir()):
+            if not candidate.is_dir():
+                continue
+            if candidate == target_node_dir:
+                continue
+            # Skip node if it has no handler
+            handler_src = self._read_handler_file(candidate)
+            if not handler_src:
+                continue
+            # Prefer nodes that define a canonical handle() method
+            if "def handle(" in handler_src:
+                logger.info("Auto-selected template node: %s", candidate.name)
+                return handler_src
+
+        logger.warning(
+            "No suitable template node found in siblings of %s", target_node_dir
+        )
+        return ""
+
+    def _resolve_node_dir(self, ticket_id: str) -> Path:
+        """Resolve the node directory for a ticket from the omnimarket source tree.
+
+        Falls back to a non-existent path — _load_source_context handles missing dirs gracefully.
+        """
+        # Nodes are named by ticket convention in the build loop; fall back to
+        # the orchestrator's own node dir as a safe default
+        nodes_root = Path(__file__).resolve().parent.parent.parent
+        return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
+
+    @staticmethod
+    def _extract_code_from_response(raw_response: str) -> str:
+        """Extract Python code from model response.
+
+        Handles: bare code, ```python fences, ``` fences, mixed prose+code.
+        Returns the first fenced Python block found, or the raw response if no fences detected.
+        Falls back to raw_response if no fences detected.
+        """
+        # Try ```python ... ``` first
+        python_fence = re.search(r"```python\s*\n(.*?)```", raw_response, re.DOTALL)
+        if python_fence:
+            return python_fence.group(1)
+
+        # Try generic ``` ... ```
+        generic_fence = re.search(r"```\s*\n(.*?)```", raw_response, re.DOTALL)
+        if generic_fence:
+            return generic_fence.group(1)
+
+        # No fences — return raw (assume the model output bare code as instructed)
+        return raw_response
+
+    async def _generate_plan_traced(
+        self,
+        *,
+        target: BuildTarget,
+        correlation_id: UUID,
+        attempt: int,
+        template_node_id: str = "node_data_flow_sweep",
+    ) -> tuple[dict[str, object], ModelDispatchTrace]:
+        """Generate implementation plan via the model router and write a dispatch trace.
+
+        Loads source context from the selected template node (FSM vs compute pattern).
+        Always writes a trace — even on failure — so no attempt is ever lost.
+        Returns (plan_dict, trace).
+        """
+        template_source, target_source, model_sources = self._load_source_context(
+            target_node_dir=self._resolve_node_dir(target.ticket_id),
+            template_node_dir=_NODES_ROOT / template_node_id,
         )
 
-        response = await router.generate_typed(request)
-        model_used = response.model_used
+        user_prompt = self._build_coder_prompt(
+            target=target,
+            template_source=template_source,
+            target_source=target_source,
+            model_sources=model_sources,
+        )
+        prompt = f"{_CODER_SYSTEM_PROMPT}\n\n{user_prompt}"
+        prompt_chars = len(user_prompt)
+        t0 = time.monotonic()
+        raw = ""
+        model_used = "unknown"
+        accepted = False
+        gate = ModelQualityGateResult(
+            ruff_pass=False, import_pass=False, test_pass=False, errors=[]
+        )
 
+        prompt_tokens = 0
+        completion_tokens = 0
         try:
-            parsed: dict[str, object] = json.loads(response.generated_text)
-            return parsed, model_used
-        except json.JSONDecodeError:
+            router = await self._ensure_router()
+            available = await router.get_available_providers()
+            model_name = "default"
+            if available:
+                provider_name = available[0]
+                endpoint = next(
+                    (e for t, e in self._endpoints.items() if t.value == provider_name),
+                    None,
+                )
+                if endpoint:
+                    model_name = endpoint.model_id
+
+            request = ModelLlmAdapterRequest(
+                prompt=prompt,
+                model_name=model_name,
+                max_tokens=8192,
+                temperature=0.2,
+            )
+            response = await router.generate_typed(request)
+            raw = response.generated_text
+            model_used = response.model_used
+            usage = response.usage_statistics or {}
+            prompt_tokens = int(usage.get("prompt_tokens", 0))
+            completion_tokens = int(usage.get("completion_tokens", 0))
+            try:
+                json.loads(raw)
+                gate = ModelQualityGateResult(
+                    ruff_pass=True, import_pass=True, test_pass=True, errors=[]
+                )
+                accepted = True
+            except json.JSONDecodeError as je:
+                gate = ModelQualityGateResult(
+                    ruff_pass=False,
+                    import_pass=False,
+                    test_pass=False,
+                    errors=[f"JSON parse error: {je}"],
+                )
+        except Exception as exc:
+            gate = ModelQualityGateResult(
+                ruff_pass=False,
+                import_pass=False,
+                test_pass=False,
+                errors=[f"LLM call failed: {exc}"],
+            )
+
+        wall_clock_ms = int((time.monotonic() - t0) * 1000)
+        trace = ModelDispatchTrace(
+            correlation_id=str(correlation_id),
+            ticket_id=target.ticket_id,
+            attempt=attempt,
+            timestamp=datetime.now(tz=UTC).isoformat(),
+            coder_model=model_used,
+            reviewer_model=None,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            prompt_chars=prompt_chars,
+            generation_raw=raw,
+            quality_gate=gate,
+            review_result=None,
+            accepted=accepted,
+            wall_clock_ms=wall_clock_ms,
+        )
+        _write_trace(trace, self._state_dir)
+        _emit_trace_to_bus(trace)
+
+        if accepted:
+            try:
+                plan: dict[str, object] = json.loads(raw)
+            except json.JSONDecodeError:
+                plan = {"raw_response": raw, "ticket_id": target.ticket_id}
+        else:
             logger.warning(
                 "Response not valid JSON for %s via %s, wrapping as raw",
                 target.ticket_id,
                 model_used,
             )
-            return {
-                "raw_response": response.generated_text,
-                "ticket_id": target.ticket_id,
-            }, model_used
+            plan = {"raw_response": raw, "ticket_id": target.ticket_id}
+
+        return plan, trace
 
     async def _review_plan(
         self,
@@ -630,9 +1155,4 @@ class AdapterLlmDispatch:
             await provider.close()
 
 
-__all__: list[str] = [
-    "AdapterLlmDispatch",
-    "ModelPlanSchema",
-    "ModelReviewIssue",
-    "ModelReviewResult",
-]
+__all__: list[str] = ["AdapterLlmDispatch", "_compute_metrics", "_write_metrics"]

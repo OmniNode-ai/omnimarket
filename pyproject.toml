@@ -81,6 +81,12 @@ node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect.handle
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect.handlers.handler_closeout:HandlerCloseout"
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator:HandlerFindingAggregator"
 node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot:HandlerPrSnapshot"
+node_design_to_plan = "omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan:HandlerDesignToPlan"
+node_ticket_work = "omnimarket.nodes.node_ticket_work.handlers.handler_ticket_work:HandlerTicketWork"
+node_create_ticket = "omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket:HandlerCreateTicket"
+node_plan_to_tickets = "omnimarket.nodes.node_plan_to_tickets.handlers.handler_plan_to_tickets:HandlerPlanToTickets"
+node_release = "omnimarket.nodes.node_release.handlers.handler_release:HandlerRelease"
+node_redeploy = "omnimarket.nodes.node_redeploy.handlers.handler_redeploy:HandlerRedeploy"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }

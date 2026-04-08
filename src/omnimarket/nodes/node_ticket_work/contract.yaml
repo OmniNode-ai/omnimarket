@@ -1,0 +1,57 @@
+---
+name: node_ticket_work
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Contract-driven ticket execution with Linear integration. Orchestrates intake, research,
+  questions, spec, implementation, review, and done phases with explicit human gates.
+
+handler:
+  module: omnimarket.nodes.node_ticket_work.handlers.handler_ticket_work
+  class: HandlerTicketWork
+  input_model: omnimarket.nodes.node_ticket_work.models.model_ticket_work_state.ModelTicketWorkStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: false
+  timeout_ms: 3600000
+
+inputs:
+  ticket_id:
+    type: str
+    description: "Linear ticket ID (e.g., OMN-1807)"
+    required: true
+  autonomous:
+    type: bool
+    description: "Skip human gates; proceed through all phases unattended"
+    required: false
+    default: false
+  skip_to:
+    type: str
+    description: "Skip directly to a specific phase (intake, research, questions, spec, implementation, review, done)"
+    required: false
+
+outputs:
+  status:
+    type: str
+    description: "success | blocked | pending | error"
+  extra_status:
+    type: str
+    description: "done | questions_pending | null"
+  pr_url:
+    type: str
+    description: "URL of the created PR if applicable"
+  phase_reached:
+    type: str
+    description: "Final phase reached"
+
+terminal_event: onex.evt.omnimarket.ticket-work-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ticket-work-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.ticket-work-completed.v1
