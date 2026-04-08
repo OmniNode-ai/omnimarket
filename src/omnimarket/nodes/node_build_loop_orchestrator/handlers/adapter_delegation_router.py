@@ -118,8 +118,8 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     # Frontier review: GLM-4.7-Flash — cheap frontier code reviewer (203K ctx)
     glm_review_key = os.environ.get("LLM_GLM_API_KEY", "")
-    glm_review_url = os.environ.get(
-        "LLM_GLM_URL", "https://open.bigmodel.cn/api/paas/v4"
+    glm_review_url = (
+        os.environ.get("LLM_GLM_URL") or "https://open.bigmodel.cn/api/paas/v4"
     )
     if glm_review_key:
         configs[EnumModelTier.FRONTIER_REVIEW] = ModelEndpointConfig(

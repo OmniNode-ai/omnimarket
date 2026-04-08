@@ -109,18 +109,18 @@ Focus on producing actionable, concrete changes. Do not explain or apologize.
 """
 
 _REVIEW_SYSTEM_PROMPT = """\
-You are a code review agent. Review the refactored code against the template pattern and original source.
+You are a code review agent. Review the implementation plan JSON for structural correctness.
 
 Check specifically:
-1. Correct method name — does the refactored handler use handle() and not run_full_pipeline() or other legacy names?
-2. Correct type annotations — do parameter and return types match the template pattern exactly?
-3. All logic preserved — is every branch, condition, and side effect from the original source present?
-4. No hallucinated field names — does the code only reference fields that exist in the Pydantic models?
+1. Required keys present — does the plan contain "ticket_id", "implementation_plan", and "code_changes"?
+2. Plausible values — are file paths, actions ("modify"|"create"), and approach strings non-empty and sensible?
+3. No obviously hallucinated ticket IDs — does the plan's ticket_id match the one in the user prompt?
+4. Risk assessment — based on the number of files changed and complexity, assign an overall risk level.
 
 You MUST respond with ONLY a JSON object, no prose, no explanation:
 {
   "approved": true,
-  "issues": [{"line": 15, "severity": "major", "message": "hallucinated field name 'phase'"}],
+  "issues": [{"line": null, "severity": "major", "message": "missing required key 'code_changes'"}],
   "risk_level": "low"
 }
 
@@ -158,6 +158,25 @@ class ModelReviewResult(BaseModel):
     )
     risk_level: Literal["low", "medium", "high"] = Field(
         ..., description="Overall risk level."
+    )
+
+
+class ModelPlanSchema(BaseModel):
+    """Minimal required shape for a generated implementation plan.
+
+    Plans that do not validate against this schema are treated as invalid
+    and rejected before review — preventing a raw_response fallback from
+    ever being accepted.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    ticket_id: str = Field(..., description="Ticket ID this plan targets.")
+    implementation_plan: dict[str, object] = Field(
+        ..., description="Plan details (approach, files, complexity, test strategy)."
+    )
+    code_changes: list[dict[str, object]] = Field(
+        ..., description="List of file-level changes."
     )
 
 
@@ -275,6 +294,45 @@ class AdapterLlmDispatch:
                 # Generate plan via model router (handles failover)
                 plan, coder_model = await self._generate_plan(target)
 
+                # Validate plan shape before review — raw_response fallbacks must not pass
+                plan_valid = True
+                plan_rejection_data: dict[str, object] = {}
+                try:
+                    ModelPlanSchema.model_validate(plan)
+                except Exception as val_exc:
+                    plan_valid = False
+                    plan_rejection_data = {
+                        "issues": [{"severity": "critical", "message": str(val_exc)}],
+                        "risk_level": "high",
+                    }
+                    logger.warning(
+                        "Plan schema validation failed for %s: %s — rejecting",
+                        target.ticket_id,
+                        val_exc,
+                    )
+
+                if not plan_valid:
+                    rejection_payload: dict[str, object] = {
+                        "ticket_id": target.ticket_id,
+                        "title": target.title,
+                        "implementation_plan": plan,
+                        "review_result": plan_rejection_data,
+                        "review_status": "rejected",
+                        "accepted": False,
+                        "correlation_id": str(correlation_id),
+                        "generated_at": datetime.now(tz=UTC).isoformat(),
+                        "delegated_to": coder_model,
+                        "coder_model": coder_model,
+                        "reviewer_model": "schema-validator",
+                    }
+                    payloads.append(
+                        DelegationPayload(
+                            topic=self._delegation_topic, payload=rejection_payload
+                        )
+                    )
+                    total_dispatched += 1
+                    continue
+
                 # Review via FRONTIER_REVIEW (GLM-4.7-Flash) if available
                 review_status: str
                 review_data: dict[str, object]
@@ -348,9 +406,7 @@ class AdapterLlmDispatch:
             delegation_payloads=tuple(payloads),
         )
 
-    def _is_accepted(
-        self, review_status: str, review_data: dict[str, object]
-    ) -> bool:
+    def _is_accepted(self, review_status: str, review_data: dict[str, object]) -> bool:
         """Determine acceptance under review policy.
 
         Rules:
@@ -471,7 +527,11 @@ class AdapterLlmDispatch:
                     attempt,
                 )
                 if attempt == 2:
-                    return "failed", {"raw_response": raw, "issues": [], "risk_level": "unknown"}
+                    return "failed", {
+                        "raw_response": raw,
+                        "issues": [],
+                        "risk_level": "unknown",
+                    }
                 # Retry
                 continue
 
@@ -493,7 +553,11 @@ class AdapterLlmDispatch:
         if text.startswith("```"):
             lines = text.splitlines()
             # Drop first line (```json or ```) and last line (```)
-            inner = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+            inner = (
+                "\n".join(lines[1:-1])
+                if lines[-1].strip() == "```"
+                else "\n".join(lines[1:])
+            )
             text = inner.strip()
 
         try:
@@ -528,9 +592,16 @@ class AdapterLlmDispatch:
         if endpoint.api_key:
             headers["Authorization"] = f"Bearer {endpoint.api_key}"
 
+        # BigModel's /api/paas/v4 base already includes the version prefix;
+        # appending /v1/chat/completions would produce an invalid double-versioned path.
+        chat_path = (
+            "/chat/completions"
+            if "/paas/v4" in endpoint.base_url
+            else "/v1/chat/completions"
+        )
         async with httpx.AsyncClient(timeout=endpoint.timeout_seconds) as client:
             resp = await client.post(
-                f"{endpoint.base_url}/v1/chat/completions",
+                f"{endpoint.base_url}{chat_path}",
                 json=payload,
                 headers=headers,
             )
@@ -559,4 +630,9 @@ class AdapterLlmDispatch:
             await provider.close()
 
 
-__all__: list[str] = ["AdapterLlmDispatch", "ModelReviewIssue", "ModelReviewResult"]
+__all__: list[str] = [
+    "AdapterLlmDispatch",
+    "ModelPlanSchema",
+    "ModelReviewIssue",
+    "ModelReviewResult",
+]
