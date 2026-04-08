@@ -27,6 +27,7 @@ Related:
 from __future__ import annotations
 
 import ast
+import contextlib
 import json
 import logging
 import os
@@ -50,7 +51,6 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
     ModelDispatchTrace,
     ModelQualityGateResult,
-    ModelReviewIssue,
     ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
@@ -548,8 +548,7 @@ class AdapterLlmDispatch:
                     continue
 
                 # 8. Review unavailable or failed — check policy
-                if review_status in ("unavailable", "failed", "malformed"):
-                    if not self._allow_unreviewed:
+                if review_status in ("unavailable", "failed", "malformed") and not self._allow_unreviewed:
                         failure_kind = _FAILURE_REVIEW_UNAVAILABLE
                         wall_clock_ms = int((time.monotonic() - t0) * 1000)
                         trace = ModelDispatchTrace(
@@ -703,7 +702,7 @@ class AdapterLlmDispatch:
             if not errors:
                 try:
                     result = subprocess.run(
-                        ["ruff", "check", "--output-format=text", tmp_path],
+                        ["ruff", "check", "--output-format=concise", tmp_path],
                         capture_output=True,
                         text=True,
                         timeout=30,
@@ -717,10 +716,8 @@ class AdapterLlmDispatch:
                     logger.debug("ruff check skipped: %s", exc)
 
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 Path(tmp_path).unlink(missing_ok=True)
-            except Exception:
-                pass
 
         return ModelQualityGateResult(
             ruff_pass=ruff_pass,
