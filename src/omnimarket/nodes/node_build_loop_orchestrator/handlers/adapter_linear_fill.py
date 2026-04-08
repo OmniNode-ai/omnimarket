@@ -54,7 +54,7 @@ query {
 """
 
 _QUERY_ACTIVE_TICKETS = """
-query ActiveSprintTickets($teamId: String!, $limit: Int!) {
+query ActiveSprintTickets($teamId: ID!, $limit: Int!) {
   issues(
     filter: {
       team: { id: { eq: $teamId } }
@@ -62,7 +62,7 @@ query ActiveSprintTickets($teamId: String!, $limit: Int!) {
       state: { name: { in: ["Backlog", "Todo"] } }
     }
     first: $limit
-    orderBy: priority
+    orderBy: updatedAt
   ) {
     nodes {
       id
@@ -79,14 +79,14 @@ query ActiveSprintTickets($teamId: String!, $limit: Int!) {
 
 # Fallback: fetch all backlog/todo from team regardless of cycle
 _QUERY_BACKLOG_TICKETS = """
-query BacklogTickets($teamId: String!, $limit: Int!) {
+query BacklogTickets($teamId: ID!, $limit: Int!) {
   issues(
     filter: {
       team: { id: { eq: $teamId } }
       state: { name: { in: ["Backlog", "Todo"] } }
     }
     first: $limit
-    orderBy: priority
+    orderBy: updatedAt
   ) {
     nodes {
       id
@@ -248,8 +248,15 @@ class AdapterLinearFill:
                 },
                 headers=headers,
             )
-            resp.raise_for_status()
             data = resp.json()
+            if resp.status_code != 200:
+                errors = data.get("errors", [])
+                logger.warning(
+                    "Linear API error (status=%d): %s",
+                    resp.status_code,
+                    errors,
+                )
+                resp.raise_for_status()
 
         issues = data.get("data", {}).get("issues", {}).get("nodes", [])
 
