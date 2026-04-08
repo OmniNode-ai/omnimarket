@@ -1,14 +1,14 @@
 ---
 name: emit_daemon
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: service
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
-  Portable event publishing daemon. Accepts events via Unix domain socket,
-  validates against a pluggable per-platform event registry, queues with
-  disk spool durability, and publishes to Kafka. Supports standalone CLI,
-  platform wrapper, and kernel plugin runtime modes.
+  Self-healing portable event publishing daemon. Accepts events via Unix
+  domain socket, validates against a pluggable per-platform event registry,
+  queues with disk spool durability, and publishes to Kafka with circuit
+  breaker protection. Health endpoint responds within 100ms and never hangs.
 
 handler_routing:
   default_handler: handler:HandlerEmitDaemon
@@ -18,6 +18,34 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 0  # long-running daemon, no timeout
+
+env_dependencies:
+  KAFKA_BOOTSTRAP_SERVERS:
+    required: false
+    description: "Kafka broker addresses. Omit for no-kafka standalone mode."
+  ONEX_EMIT_SOCKET_PATH:
+    required: false
+    description: "Unix socket path override. Default: /tmp/onex-emit.sock"
+
+self_healing:
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout_seconds: 30
+    half_open_probes: 1
+    description: >
+      After 5 consecutive Kafka publish failures, circuit opens and events
+      are buffered in the memory queue + disk spool. After 30s, a probe
+      publish is attempted. On success, circuit closes and buffered events
+      are drained. On failure, circuit stays open for another 30s.
+  backoff:
+    strategy: exponential
+    base_seconds: 1.0
+    max_seconds: 60.0
+  auto_reconnect: true
+  health_endpoint:
+    protocol: unix_socket
+    command: '{"command": "health"}'
+    budget_ms: 100
 
 event_bus:
   subscribe_topics: []
