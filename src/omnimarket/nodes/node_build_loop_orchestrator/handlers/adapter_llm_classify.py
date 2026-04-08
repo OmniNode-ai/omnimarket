@@ -58,11 +58,9 @@ class AdapterLlmClassify:
         llm_url: str | None = None,
         timeout_seconds: float = 30.0,
     ) -> None:
-        self._llm_url = (
-            llm_url
-            or os.environ.get("LLM_CODER_FAST_URL", "")
-            or "http://192.168.86.201:8001"
-        )
+        self._llm_url = llm_url or os.environ.get("LLM_CODER_FAST_URL", "")
+        if not self._llm_url:
+            raise ValueError("LLM URL required: pass llm_url or set LLM_CODER_FAST_URL")
         self._timeout = timeout_seconds
 
     async def handle(
@@ -119,7 +117,13 @@ class AdapterLlmClassify:
                     parsed.get("reason", ""),
                 )
                 return buildability
-        except (json.JSONDecodeError, httpx.HTTPError, KeyError) as exc:
+        except (
+            json.JSONDecodeError,
+            httpx.HTTPError,
+            KeyError,
+            IndexError,
+            TypeError,
+        ) as exc:
             logger.warning(
                 "LLM classify failed for %s, using keyword fallback: %s",
                 ticket.ticket_id,

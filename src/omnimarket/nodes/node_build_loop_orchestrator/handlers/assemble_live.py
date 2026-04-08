@@ -30,9 +30,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
@@ -64,7 +65,7 @@ class _PassthroughCloseout:
     """Minimal closeout that always succeeds (closeout runs via separate skill)."""
 
     async def handle(
-        self, *, correlation_id: object, dry_run: bool = False
+        self, *, correlation_id: UUID, dry_run: bool = False
     ) -> CloseoutResult:
         logger.info("Closeout: passthrough (correlation_id=%s)", correlation_id)
         return CloseoutResult(success=True)
@@ -74,7 +75,7 @@ class _PassthroughVerify:
     """Minimal verify that always passes (verification runs via separate skill)."""
 
     async def handle(
-        self, *, correlation_id: object, dry_run: bool = False
+        self, *, correlation_id: UUID, dry_run: bool = False
     ) -> VerifyResult:
         logger.info("Verify: passthrough (correlation_id=%s)", correlation_id)
         return VerifyResult(all_critical_passed=True)
@@ -143,6 +144,7 @@ async def run_live_build_loop(
     command = ModelLoopStartCommand(
         correlation_id=uuid4(),
         max_cycles=max_cycles,
+        max_tickets=max_tickets,
         mode=mode,
         dry_run=dry_run,
         skip_closeout=skip_closeout,
@@ -177,9 +179,11 @@ async def run_live_build_loop(
         )
 
     # Write results to disk
-    out_path = Path(
-        output_dir or "/Volumes/PRO-G40/Code/omni_home/.onex_state/build-loop-results"
+    _default_output = os.environ.get(
+        "BUILD_LOOP_OUTPUT_DIR",
+        str(Path.home() / ".onex_state" / "build-loop-results"),
     )
+    out_path = Path(output_dir or _default_output)
     out_path.mkdir(parents=True, exist_ok=True)
     result_file = out_path / f"live-run-{command.correlation_id}.json"
     result_file.write_text(
@@ -196,7 +200,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-tickets", type=int, default=50)
     parser.add_argument("--mode", default="build")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--skip-closeout", action="store_true", default=True)
+    parser.add_argument("--skip-closeout", action="store_true")
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 

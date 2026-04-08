@@ -21,6 +21,7 @@ class ModelLoopStartCommand(BaseModel):
     skip_closeout: bool = Field(
         default=False, description="Skip the CLOSING_OUT phase."
     )
+    max_tickets: int = Field(default=5, ge=1, description="Max tickets per fill cycle.")
     dry_run: bool = Field(default=False, description="No side effects if true.")
     requested_at: datetime = Field(..., description="When the command was issued.")
 

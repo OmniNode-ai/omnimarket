@@ -202,7 +202,7 @@ def route_ticket_to_tier(
         if tier in available:
             return tier
 
-    return EnumModelTier.LOCAL_CODER
+    raise ValueError(f"No suitable model tier available from {available}")
 
 
 __all__: list[str] = [

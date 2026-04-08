@@ -196,6 +196,7 @@ class HandlerBuildLoopOrchestrator:
                 state.current_phase,
                 correlation_id=correlation_id,
                 dry_run=command.dry_run,
+                max_tickets=command.max_tickets,
             )
 
             state, event = self._fsm.advance(
@@ -226,6 +227,7 @@ class HandlerBuildLoopOrchestrator:
         *,
         correlation_id: UUID,
         dry_run: bool,
+        max_tickets: int = 5,
     ) -> tuple[bool, str | None, dict[str, int]]:
         """Execute the sub-handler for the given phase.
 
@@ -254,7 +256,7 @@ class HandlerBuildLoopOrchestrator:
                 fill_result = await self._rsd_fill.handle(
                     correlation_id=correlation_id,
                     scored_tickets=(),
-                    max_tickets=5,
+                    max_tickets=max_tickets,
                 )
                 self._last_fill_result = fill_result.selected_tickets
                 metrics["tickets_filled"] = fill_result.total_selected
