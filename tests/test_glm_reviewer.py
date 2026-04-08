@@ -225,6 +225,43 @@ def test_parse_review_response_malformed_json_returns_none() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _is_accepted: review policy
+# ---------------------------------------------------------------------------
+
+
+def test_is_accepted_approved() -> None:
+    adapter = _make_adapter()
+    assert adapter._is_accepted("approved", {}) is True
+
+
+def test_is_accepted_rejected() -> None:
+    adapter = _make_adapter()
+    assert adapter._is_accepted("rejected", {"issues": ["bad"]}) is False
+
+
+def test_is_accepted_unavailable_default_policy() -> None:
+    """Default: allow_unreviewed=False — unavailable review must NOT be accepted."""
+    adapter = _make_adapter(allow_unreviewed=False)
+    assert adapter._is_accepted("unavailable", {}) is False
+
+
+def test_is_accepted_unavailable_explicit_allow() -> None:
+    """allow_unreviewed=True — unavailable review may be accepted."""
+    adapter = _make_adapter(allow_unreviewed=True)
+    assert adapter._is_accepted("unavailable", {}) is True
+
+
+def test_is_accepted_failed_always_rejected() -> None:
+    adapter = _make_adapter(allow_unreviewed=True)
+    assert adapter._is_accepted("failed", {}) is False
+
+
+def test_is_accepted_malformed_always_rejected() -> None:
+    adapter = _make_adapter(allow_unreviewed=True)
+    assert adapter._is_accepted("malformed", {}) is False
+
+
+# ---------------------------------------------------------------------------
 # _run_review: endpoint unreachable -> "unavailable"
 # ---------------------------------------------------------------------------
 
@@ -373,9 +410,6 @@ async def test_handle_no_reviewer_allow_unreviewed_false_rejects() -> None:
         ),
     }
     # allow_unreviewed=False but no reviewer — code passes gate but is "review_unavailable"
-    # Wait — no reviewer endpoint means reviewer_endpoint=None, which skips review entirely
-    # and goes straight to accepted. So test allow_unreviewed with a configured reviewer
-    # that is unreachable instead.
     endpoint_configs[EnumModelTier.FRONTIER_REVIEW] = _make_review_endpoint()
     adapter = AdapterLlmDispatch(
         endpoint_configs=endpoint_configs,

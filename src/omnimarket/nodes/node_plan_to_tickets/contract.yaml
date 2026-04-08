@@ -1,0 +1,85 @@
+---
+name: node_plan_to_tickets
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Batch create Linear tickets from a plan markdown file. Parses ## Task N: sections,
+  creates/links epic, resolves dependencies, and generates ModelTicketContracts for all tickets.
+
+handler:
+  module: omnimarket.nodes.node_plan_to_tickets.handlers.handler_plan_to_tickets
+  class: HandlerPlanToTickets
+  input_model: omnimarket.nodes.node_plan_to_tickets.models.model_plan_to_tickets_state.ModelPlanToTicketsStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 300000
+
+inputs:
+  plan_path:
+    type: str
+    description: "Path to plan markdown file"
+    required: true
+  project:
+    type: str
+    description: "Linear project name"
+    required: false
+  epic_title:
+    type: str
+    description: "Title for epic (overrides auto-detection from plan)"
+    required: false
+  no_create_epic:
+    type: bool
+    description: "Fail if epic doesn't exist (don't auto-create)"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Show what would be created without creating"
+    required: false
+    default: false
+  skip_existing:
+    type: bool
+    description: "Skip tickets that already exist (don't ask)"
+    required: false
+    default: false
+  team:
+    type: str
+    description: "Linear team name (default: Omninode)"
+    required: false
+    default: "Omninode"
+  repo:
+    type: str
+    description: "Repository label for all tickets"
+    required: false
+  allow_arch_violation:
+    type: bool
+    description: "Bypass architecture dependency validation"
+    required: false
+    default: false
+
+outputs:
+  created_count:
+    type: int
+    description: "Number of tickets created"
+  skipped_count:
+    type: int
+    description: "Number of tickets skipped (already exist)"
+  failed_count:
+    type: int
+    description: "Number of tickets that failed to create"
+  epic_id:
+    type: str
+    description: "Linear ID of the parent epic"
+
+terminal_event: onex.evt.omnimarket.plan-to-tickets-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.plan-to-tickets-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.plan-to-tickets-completed.v1

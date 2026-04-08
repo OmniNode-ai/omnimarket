@@ -71,15 +71,18 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionDelegation:
     """Project task-delegated events into delegation_events table."""
 
-    def handle(self, request: object = None) -> dict[str, object]:
-        """RuntimeLocal entry point — returns projection handler metadata."""
-        return {
-            "status": "ok",
-            "handler": "HandlerProjectionDelegation",
-            "table": TABLE,
-            "conflict_key": CONFLICT_KEY,
-            "mode": "projection",
-        }
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to project() with a ModelTaskDelegatedEvent and
+        a DatabaseAdapter from input_data['_db'].
+        """
+        db_raw = input_data.pop("_db", None)
+        if not isinstance(db_raw, DatabaseAdapter):
+            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
+        event = ModelTaskDelegatedEvent(**input_data)
+        result = self.project(event, db_raw)
+        return result.model_dump(mode="json")
 
     def project(
         self,

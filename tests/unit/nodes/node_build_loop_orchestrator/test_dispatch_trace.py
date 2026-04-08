@@ -5,8 +5,8 @@
 Tests:
 - ModelQualityGateResult / ModelReviewResult / ModelDispatchTrace field validation
 - _write_trace writes correct filename and JSON content
-- _emit_trace_to_bus skips when KAFKA_ENABLED not set
-- AdapterLlmDispatch._generate_plan_traced writes trace on LLM success and failure
+- _emit_trace_to_bus skips when KAFKA_BOOTSTRAP_SERVERS not set
+- AdapterLlmDispatch._generate_with_review writes trace on success and failure
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
     ModelDispatchTrace,
     ModelQualityGateResult,
+    ModelReviewIssue,
     ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
@@ -57,10 +58,6 @@ def test_quality_gate_errors_default_empty() -> None:
 
 
 def test_review_result_fields() -> None:
-    from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
-        ModelReviewIssue,
-    )
-
     issue = ModelReviewIssue(severity="major", message="bad field")
     r = ModelReviewResult(
         approved=False,
@@ -202,15 +199,15 @@ def test_write_trace_idempotent_overwrite(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# _emit_trace_to_bus: skip when KAFKA_ENABLED not set
+# _emit_trace_to_bus: skip when KAFKA_BOOTSTRAP_SERVERS not set
 # ---------------------------------------------------------------------------
 
 
 def test_emit_trace_skips_without_kafka_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No import attempted when KAFKA_ENABLED is absent."""
-    monkeypatch.delenv("KAFKA_ENABLED", raising=False)
+    """No import attempted when KAFKA_BOOTSTRAP_SERVERS is absent."""
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     trace = _make_trace()
     # Should not raise even though omnibase_infra may not be installed
     from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (

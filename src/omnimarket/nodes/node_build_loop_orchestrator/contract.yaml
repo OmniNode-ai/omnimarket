@@ -69,6 +69,7 @@ event_bus:
     - onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1
     - onex.evt.omnimarket.build-loop-orchestrator-completed.v1
     - onex.evt.omnimarket.delegation-attempt.v1
+    - onex.evt.omnimarket.delegation-metrics.v1
 
 fsm:
   states:

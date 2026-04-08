@@ -207,7 +207,7 @@ class TestDodVerifyGoldenChain:
 
         state, _completed = handler.run_verification(command, checks)
 
-        # All skipped with no failures -> SKIPPED (cannot claim VERIFIED without actual evidence)
+        # All checks skipped -> overall SKIPPED (not VERIFIED — nothing was verified)
         assert state.status == EnumDodVerifyStatus.SKIPPED
         assert state.skipped_count == 2
         assert state.failed_count == 0

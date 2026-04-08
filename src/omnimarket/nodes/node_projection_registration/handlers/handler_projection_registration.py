@@ -68,15 +68,33 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionRegistration:
     """Project node registration and heartbeat events."""
 
-    def handle(self, request: object = None) -> dict[str, object]:
-        """RuntimeLocal entry point — returns projection handler metadata."""
-        return {
-            "status": "ok",
-            "handler": "HandlerProjectionRegistration",
-            "table": TABLE,
-            "conflict_key": CONFLICT_KEY,
-            "mode": "projection",
-        }
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Dispatches to project_introspection() or project_heartbeat() based on
+        input_data['_event_type'] ('introspection' | 'heartbeat'), with a
+        DatabaseAdapter from input_data['_db'].
+        """
+        db_raw = input_data.pop("_db", None)
+        if not isinstance(db_raw, DatabaseAdapter):
+            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
+        event_type_raw = input_data.pop("_event_type", "introspection")
+        if not isinstance(event_type_raw, str) or event_type_raw not in {
+            "introspection",
+            "heartbeat",
+        }:
+            raise ValueError(
+                "handle() requires input_data['_event_type'] to be "
+                "'introspection' or 'heartbeat'"
+            )
+        event_type = event_type_raw
+        if event_type == "heartbeat":
+            hb_event = ModelNodeHeartbeatEvent(**input_data)
+            result = self.project_heartbeat(hb_event, db_raw)
+        else:
+            intro_event = ModelNodeIntrospectionEvent(**input_data)
+            result = self.project_introspection(intro_event, db_raw)
+        return result.model_dump(mode="json")
 
     def project_introspection(
         self,
@@ -108,7 +126,6 @@ class HandlerProjectionRegistration:
         now = datetime.now(tz=UTC).isoformat()
         row: dict[str, object] = {
             "service_name": event.service_name,
-            "service_url": "",
             "health_status": event.health_status,
             "last_health_check": event.timestamp or now,
             "is_active": True,
