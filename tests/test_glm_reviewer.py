@@ -397,7 +397,10 @@ async def test_handle_no_reviewer_sets_unavailable_status() -> None:
 
     valid_plan: dict[str, object] = {
         "ticket_id": "OMN-X",
-        "implementation_plan": {"approach": "add feature", "estimated_complexity": "low"},
+        "implementation_plan": {
+            "approach": "add feature",
+            "estimated_complexity": "low",
+        },
         "code_changes": [],
     }
 
