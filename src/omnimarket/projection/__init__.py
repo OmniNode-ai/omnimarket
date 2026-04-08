@@ -3,9 +3,11 @@
 from omnimarket.projection.protocol_database import (
     DatabaseAdapter,
     InmemoryDatabaseAdapter,
+    ProtocolProjectionDatabaseSync,
 )
 
 __all__: list[str] = [
     "DatabaseAdapter",
     "InmemoryDatabaseAdapter",
+    "ProtocolProjectionDatabaseSync",
 ]

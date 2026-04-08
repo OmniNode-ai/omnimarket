@@ -4,7 +4,12 @@
 
 Implements ProtocolBuildDispatchHandler for live build loop execution.
 Routes tickets to the appropriate model tier based on complexity,
-using both local models (Qwen3, DeepSeek) and frontier APIs (Gemini, OpenAI).
+using both local models (Qwen3, DeepSeek) and frontier APIs.
+
+Review policy (OMN-7856/OMN-7857):
+- Reviewer unavailable: review_status="unavailable", rejected unless allow_unreviewed=True
+- Reviewer malformed: retry once, then review_status="failed", always rejected
+- Reviewer approved: accepted if structural gate also passes
 
 Every generation attempt writes a ModelDispatchTrace to
 .onex_state/dispatch-traces/ and (when KAFKA_ENABLED) emits
@@ -12,15 +17,16 @@ onex.evt.omnimarket.delegation-attempt.v1 to the event bus.
 
 Related:
     - OMN-7854: Add source context loading
-    - OMN-7810: Wire build loop to Linear queue
     - OMN-7855: Add dispatch tracing to .onex_state/
     - OMN-7856: Wire GLM-4.7-Flash as code reviewer
     - OMN-7857: Implement generate-review-retry loop
+    - OMN-7810: Wire build loop to Linear queue
     - OMN-5113: Autonomous Build Loop epic
 """
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import os
@@ -44,6 +50,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
     ModelDispatchTrace,
     ModelQualityGateResult,
+    ModelReviewIssue,
     ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
@@ -148,20 +155,24 @@ Output ONLY the complete refactored Python file. Do not add explanations, markdo
 """
 
 _REVIEW_SYSTEM_PROMPT = """\
-You are a code review agent. Review the proposed code refactoring.
-Compare the refactored code against the template pattern.
-Check:
-1. Correct method name — must use canonical handle() not run_full_pipeline()
-2. Correct type annotations — no hallucinated field names, matches template
-3. All logic preserved — no functionality dropped
-4. No hallucinated fields — only fields that exist in the actual models
+You are a code review agent. Review the refactored code against the template pattern and original source.
 
-Respond with a JSON object:
+Check specifically:
+1. Correct method name — does the refactored handler use handle() and not run_full_pipeline() or other legacy names?
+2. Correct type annotations — do parameter and return types match the template pattern exactly?
+3. All logic preserved — is every branch, condition, and side effect from the original source present?
+4. No hallucinated field names — does the code only reference fields that exist in the Pydantic models?
+
+You MUST respond with ONLY a JSON object, no prose, no explanation:
 {
-  "approved": true/false,
-  "issues": [{"line": N, "severity": "major|minor", "message": "..."}],
-  "risk_level": "low|medium|high"
+  "approved": true,
+  "issues": [{"line": 15, "severity": "major", "message": "hallucinated field name 'phase'"}],
+  "risk_level": "low"
 }
+
+severity must be "minor", "major", or "critical".
+risk_level must be "low", "medium", or "high".
+issues must be an array (empty array if none).
 """
 
 # 48K char budget leaves headroom for Qwen3-Coder's 64K context
@@ -181,6 +192,11 @@ class AdapterLlmDispatch:
     Implements ProtocolBuildDispatchHandler for live orchestrator wiring.
     Routes each ticket to the appropriate model tier based on complexity,
     using both local models (Qwen3, DeepSeek) and frontier APIs (Gemini, OpenAI).
+
+    Review policy (OMN-7856):
+    - Reviewer unavailable: review_status="unavailable", rejected unless allow_unreviewed=True
+    - Reviewer malformed: retry once, then review_status="failed", always rejected
+    - Reviewer approved: accepted if structural gate also passes
 
     Every generation attempt (pass or fail) produces a ModelDispatchTrace written
     to .onex_state/dispatch-traces/ and emitted to the event bus when available.
@@ -203,8 +219,9 @@ class AdapterLlmDispatch:
         self._allow_unreviewed = allow_unreviewed
 
         logger.info(
-            "LLM dispatch initialized with tiers: %s",
+            "LLM dispatch initialized with tiers: %s (allow_unreviewed=%s)",
             ", ".join(t.value for t in sorted(self._available_tiers, key=str)),
+            allow_unreviewed,
         )
 
     async def handle(
@@ -283,8 +300,10 @@ class AdapterLlmDispatch:
                 if last_trace and last_trace.review_result:
                     review_result = {
                         "approved": last_trace.review_result.approved,
-                        "issues": [i for i in last_trace.review_result.issues],
-                        "risk_level": "low",
+                        "issues": [
+                            i.model_dump() for i in last_trace.review_result.issues
+                        ],
+                        "risk_level": last_trace.review_result.risk_level,
                     }
 
                 payload_data: dict[str, object] = {
@@ -353,14 +372,15 @@ class AdapterLlmDispatch:
         """Generate code with review loop. Returns (accepted_code, traces).
 
         Flow per attempt:
-        1. Build source-grounded prompt (with review feedback if retry)
+        1. Build source-grounded prompt (with LATEST review feedback if retry)
         2. Call coder endpoint
         3. Extract code from response (strip markdown fences)
         4. Run structural quality gate (ruff + AST parse + import check)
         5. If gate fails: trace as gate_failed, set feedback, continue
         6. If gate passes: send to GLM reviewer
-        7. If review rejects: trace as review_rejected, set feedback, continue
-        8. If review approves (or review_unavailable + allow_unreviewed): accept
+        7. If review rejects: trace as review_rejected, set feedback (replace, don't accumulate), continue
+        8. If review unavailable and not allow_unreviewed: trace as review_unavailable, continue
+        9. If review approves (or no reviewer or allow_unreviewed): trace as accepted, return code
 
         After all attempts exhausted: return None + all traces.
         """
@@ -480,24 +500,24 @@ class AdapterLlmDispatch:
                 _write_trace(trace, self._state_dir)
                 _emit_trace_to_bus(trace)
                 traces.append(trace)
-                review_feedback = f"Quality gate failed:\n" + "\n".join(gate_result.errors)
+                review_feedback = "Quality gate failed:\n" + "\n".join(gate_result.errors)
                 continue
 
             # 6. Review (if reviewer available)
-            review_result_model: ModelReviewResult | None = None
+            review_model: ModelReviewResult | None = None
             reviewer_model_id: str | None = None
 
             if reviewer_endpoint:
                 reviewer_model_id = reviewer_endpoint.model_id
-                review_result_model = await self._review_code(
+                review_status, review_model = await self._run_review(
                     generated_code=code,
                     target_source=target_source,
                     endpoint=reviewer_endpoint,
                     ticket_id=target.ticket_id,
                 )
 
-                # 7. If review rejects: trace and retry
-                if review_result_model is not None and not review_result_model.approved:
+                # 7. If review rejects: trace and retry with LATEST feedback (replace)
+                if review_status == "rejected" and review_model is not None:
                     failure_kind = _FAILURE_REVIEW_REJECTED
                     wall_clock_ms = int((time.monotonic() - t0) * 1000)
                     trace = ModelDispatchTrace(
@@ -512,7 +532,7 @@ class AdapterLlmDispatch:
                         prompt_chars=prompt_chars,
                         generation_raw=raw,
                         quality_gate=gate_result,
-                        review_result=review_result_model,
+                        review_result=review_model,
                         accepted=False,
                         wall_clock_ms=wall_clock_ms,
                         failure_kind=failure_kind,
@@ -520,17 +540,15 @@ class AdapterLlmDispatch:
                     _write_trace(trace, self._state_dir)
                     _emit_trace_to_bus(trace)
                     traces.append(trace)
-                    # Replace feedback (never accumulate)
+                    # Replace feedback — never accumulate across retries
                     review_feedback = "Review issues:\n" + "\n".join(
-                        f"- Line {i.get('line', '?')}: {i.get('message', str(i))}"
-                        if isinstance(i, dict)
-                        else f"- {i}"
-                        for i in review_result_model.issues
+                        f"- Line {i.line or '?'}: [{i.severity}] {i.message}"
+                        for i in review_model.issues
                     )
                     continue
 
-                # Review unavailable (None returned) — check policy
-                if review_result_model is None:
+                # 8. Review unavailable or failed — check policy
+                if review_status in ("unavailable", "failed", "malformed"):
                     if not self._allow_unreviewed:
                         failure_kind = _FAILURE_REVIEW_UNAVAILABLE
                         wall_clock_ms = int((time.monotonic() - t0) * 1000)
@@ -554,10 +572,10 @@ class AdapterLlmDispatch:
                         _write_trace(trace, self._state_dir)
                         _emit_trace_to_bus(trace)
                         traces.append(trace)
-                        review_feedback = "Reviewer unavailable — retry."
+                        review_feedback = f"Reviewer {review_status} — retry."
                         continue
 
-            # 8. Accepted: gate passed and (approved or no reviewer or allow_unreviewed)
+            # 9. Accepted: gate passed and (approved or no reviewer or allow_unreviewed)
             wall_clock_ms = int((time.monotonic() - t0) * 1000)
             trace = ModelDispatchTrace(
                 correlation_id=str(correlation_id),
@@ -571,7 +589,7 @@ class AdapterLlmDispatch:
                 prompt_chars=prompt_chars,
                 generation_raw=raw,
                 quality_gate=gate_result,
-                review_result=review_result_model,
+                review_result=review_model,
                 accepted=True,
                 wall_clock_ms=wall_clock_ms,
                 failure_kind=None,
@@ -595,13 +613,70 @@ class AdapterLlmDispatch:
         )
         return None, traces
 
+    async def _run_review(
+        self,
+        *,
+        generated_code: str,
+        target_source: str,
+        endpoint: ModelEndpointConfig,
+        ticket_id: str,
+    ) -> tuple[str, ModelReviewResult | None]:
+        """Review generated code via the GLM reviewer endpoint.
+
+        Returns (review_status, review_result) where review_status is one of:
+        - "approved": reviewer approved
+        - "rejected": reviewer rejected with issues
+        - "unavailable": endpoint unreachable
+        - "malformed": reviewer returned non-JSON after retry
+        - "failed": parsing failed after retry
+
+        Never collapses "unavailable" to "approved".
+        Retries once on malformed JSON before marking failed.
+        """
+        user_prompt = (
+            f"Ticket: {ticket_id}\n\n"
+            f"## ORIGINAL SOURCE:\n{target_source[:4000]}\n\n"
+            f"## GENERATED CODE:\n{generated_code[:8000]}\n\n"
+            f"Review the generated code against the original source. "
+            f"Output only a JSON object."
+        )
+
+        for attempt in range(1, 3):  # max 2 review attempts
+            try:
+                raw = await self._call_endpoint(
+                    endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt, temperature=0.3
+                )
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "Reviewer unreachable for %s (attempt %d): %s",
+                    ticket_id,
+                    attempt,
+                    exc,
+                )
+                return "unavailable", None
+
+            parsed = self._parse_review_response(raw)
+            if parsed is None:
+                logger.warning(
+                    "Review returned malformed JSON for %s (attempt %d)",
+                    ticket_id,
+                    attempt,
+                )
+                if attempt == 2:
+                    return "failed", None
+                continue
+
+            status = "approved" if parsed.approved else "rejected"
+            return status, parsed
+
+        return "failed", None
+
     def _run_quality_gate(self, code: str) -> ModelQualityGateResult:
         """Run structural quality gate on generated code.
 
         Checks:
         - AST parse (syntax validity)
         - ruff check (lint)
-        - Basic import check (no top-level ImportError)
 
         Returns ModelQualityGateResult. Never raises.
         """
@@ -618,12 +693,11 @@ class AdapterLlmDispatch:
         try:
             # AST syntax check
             try:
-                import ast
-
                 ast.parse(code)
             except SyntaxError as exc:
                 errors.append(f"Syntax error: {exc}")
-                ruff_pass = False  # ruff will also fail, skip it
+                import_pass = False
+                ruff_pass = False  # ruff will also fail on bad syntax
 
             # ruff lint check (only if syntax OK)
             if not errors:
@@ -639,20 +713,8 @@ class AdapterLlmDispatch:
                         for line in result.stdout.strip().splitlines():
                             errors.append(f"ruff: {line}")
                 except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-                    # ruff not available — skip, don't fail
+                    # ruff not available — skip, don't fail the gate
                     logger.debug("ruff check skipped: %s", exc)
-
-            # Basic import check — scan for import statements that would fail
-            # We check syntax-level only; runtime ImportError not tested here
-            try:
-                import ast as _ast
-
-                tree = _ast.parse(code)
-                for node in _ast.walk(tree):
-                    if isinstance(node, (_ast.Import, _ast.ImportFrom)):
-                        pass  # imports present, structure OK
-            except SyntaxError:
-                pass  # already caught above
 
         finally:
             try:
@@ -667,82 +729,36 @@ class AdapterLlmDispatch:
             errors=errors,
         )
 
-    async def _review_code(
-        self,
-        *,
-        generated_code: str,
-        target_source: str,
-        endpoint: ModelEndpointConfig,
-        ticket_id: str,
-    ) -> ModelReviewResult | None:
-        """Review generated code via the GLM reviewer endpoint.
-
-        Returns ModelReviewResult on success.
-        Returns None if reviewer is unreachable or returns malformed output twice.
-        Never raises.
-        """
-        user_prompt = (
-            f"Ticket: {ticket_id}\n\n"
-            f"## ORIGINAL SOURCE:\n{target_source[:4000]}\n\n"
-            f"## GENERATED CODE:\n{generated_code[:8000]}\n\n"
-            f"Review the generated code against the original source. "
-            f"Does it correctly refactor the original? Check method names, "
-            f"type annotations, and that no fields are hallucinated."
-        )
-
-        for retry in range(2):
-            try:
-                raw = await self._call_endpoint(endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt)
-                # Parse structured review response
-                review_data = self._parse_review_response(raw)
-                if review_data is not None:
-                    return ModelReviewResult(
-                        approved=bool(review_data.get("approved", False)),
-                        issues=review_data.get("issues", []),
-                        reviewer_model=endpoint.model_id,
-                        review_tokens=0,
-                    )
-                logger.warning(
-                    "Review returned malformed output for %s (retry %d/2)",
-                    ticket_id,
-                    retry + 1,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Reviewer unreachable for %s (retry %d/2): %s",
-                    ticket_id,
-                    retry + 1,
-                    exc,
-                )
-
-        return None  # review_unavailable
-
     @staticmethod
-    def _parse_review_response(raw: str) -> dict[str, object] | None:
-        """Parse structured review JSON from reviewer response.
+    def _parse_review_response(raw: str) -> ModelReviewResult | None:
+        """Parse reviewer response into ModelReviewResult.
 
-        Handles: bare JSON, JSON in markdown fences, prose with embedded JSON.
-        Returns None if no valid JSON with 'approved' key found.
+        Handles JSON wrapped in markdown fences or bare JSON.
+        Returns None if parsing fails or schema validation fails.
         """
-        # Try direct parse
-        try:
-            data = json.loads(raw.strip())
-            if "approved" in data:
-                return data  # type: ignore[return-value]
-        except (json.JSONDecodeError, ValueError):
-            pass
+        text = raw.strip()
+        # Strip markdown fences if present
+        if text.startswith("```"):
+            lines = text.splitlines()
+            inner = "\n".join(lines[1:-1]) if lines and lines[-1].strip() == "```" else "\n".join(lines[1:])
+            text = inner.strip()
 
-        # Try to extract JSON block from prose/fences
-        json_match = re.search(r"\{[^{}]*\"approved\"[^{}]*\}", raw, re.DOTALL)
-        if json_match:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            # Try to extract JSON block from prose
+            json_match = re.search(r"\{[^{}]*\"approved\"[^{}]*\}", raw, re.DOTALL)
+            if not json_match:
+                return None
             try:
                 data = json.loads(json_match.group(0))
-                if "approved" in data:
-                    return data  # type: ignore[return-value]
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except json.JSONDecodeError:
+                return None
 
-        return None
+        try:
+            return ModelReviewResult.model_validate(data)
+        except Exception:
+            return None
 
     def _build_coder_prompt(
         self,
@@ -811,16 +827,13 @@ class AdapterLlmDispatch:
         Whole files only — no mid-file truncation. Falls back to empty strings
         with a WARNING log if files don't exist.
         """
-        # Load target handler
         target_source = self._read_handler_file(target_node_dir)
 
-        # Load template handler
         if template_node_dir is not None:
             template_source = self._read_handler_file(template_node_dir)
         else:
             template_source = self._auto_select_template(target_node_dir)
 
-        # Load related models
         model_sources: list[str] = []
         models_dir = target_node_dir / "models"
         if models_dir.exists():
@@ -830,7 +843,6 @@ class AdapterLlmDispatch:
                 except OSError as exc:
                     logger.warning("Could not read model file %s: %s", model_file, exc)
 
-        # Append contract.yaml if present
         contract_path = target_node_dir / "contract.yaml"
         if contract_path.exists():
             try:
@@ -867,15 +879,11 @@ class AdapterLlmDispatch:
                 continue
             if candidate == target_node_dir:
                 continue
-            # Skip node if it has no handler
             handler_src = self._read_handler_file(candidate)
             if not handler_src:
                 continue
-            # Prefer nodes that define a canonical handle() method
             if "def handle(" in handler_src:
-                logger.info(
-                    "Auto-selected template node: %s", candidate.name
-                )
+                logger.info("Auto-selected template node: %s", candidate.name)
                 return handler_src
 
         logger.warning(
@@ -884,10 +892,7 @@ class AdapterLlmDispatch:
         return ""
 
     def _resolve_node_dir(self, ticket_id: str) -> Path:
-        """Resolve the node directory for a ticket from the omnimarket source tree.
-
-        Falls back to a non-existent path — _load_source_context handles missing dirs gracefully.
-        """
+        """Resolve the node directory for a ticket from the omnimarket source tree."""
         nodes_root = Path(__file__).resolve().parent.parent.parent
         return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
 
@@ -899,19 +904,16 @@ class AdapterLlmDispatch:
         Returns the largest contiguous Python block found.
         Falls back to raw_response if no fences detected.
         """
-        # Try ```python ... ``` first
         python_fence = re.search(
             r"```python\s*\n(.*?)```", raw_response, re.DOTALL
         )
         if python_fence:
             return python_fence.group(1)
 
-        # Try generic ``` ... ```
         generic_fence = re.search(r"```\s*\n(.*?)```", raw_response, re.DOTALL)
         if generic_fence:
             return generic_fence.group(1)
 
-        # No fences — return raw (assume the model output bare code as instructed)
         return raw_response
 
     @staticmethod
@@ -920,7 +922,7 @@ class AdapterLlmDispatch:
         system_prompt: str,
         user_prompt: str,
         *,
-        temperature: float | None = None,
+        temperature: float = 0.1,
         top_p: float | None = None,
     ) -> str:
         """Call an OpenAI-compatible endpoint."""
@@ -931,7 +933,7 @@ class AdapterLlmDispatch:
                 {"role": "user", "content": user_prompt},
             ],
             "max_tokens": endpoint.max_tokens,
-            "temperature": temperature if temperature is not None else 0.1,
+            "temperature": temperature,
         }
         if top_p is not None:
             payload["top_p"] = top_p
