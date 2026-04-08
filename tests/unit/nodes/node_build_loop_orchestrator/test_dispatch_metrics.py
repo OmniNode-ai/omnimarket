@@ -36,6 +36,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_metrics
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
     ModelDispatchTrace,
     ModelQualityGateResult,
+    ModelReviewIssue,
     ModelReviewResult,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
@@ -61,7 +62,9 @@ def _gate(
 def _review(approved: bool, tokens: int = 50) -> ModelReviewResult:
     return ModelReviewResult(
         approved=approved,
-        issues=[] if approved else ["bad code"],
+        issues=[]
+        if approved
+        else [ModelReviewIssue(severity="minor", message="bad code")],
         reviewer_model="glm-4.7-flash",
         review_tokens=tokens,
     )
@@ -508,24 +511,26 @@ async def test_handle_writes_metrics_file_after_dispatch(tmp_path: Path) -> None
         ModelQualityGateResult,
     )
 
-    valid_plan = {"ticket_id": "OMN-A", "implementation_plan": {}}
-
-    async def _fake_generate(
+    async def _fake_generate_with_review(
         self,
         *,
         target,
+        coder_endpoint,
+        reviewer_endpoint,
+        template_source,
+        target_source,
+        model_sources,
+        max_attempts=3,
         correlation_id,
-        attempt,
-        template_node_id="node_data_flow_sweep",
     ):  # type: ignore[no-untyped-def]
         from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
             ModelDispatchTrace,
         )
 
-        return valid_plan, ModelDispatchTrace(
+        trace = ModelDispatchTrace(
             correlation_id=str(correlation_id),
             ticket_id=target.ticket_id,
-            attempt=attempt,
+            attempt=1,
             timestamp="2026-04-08T00:00:00+00:00",
             coder_model="mock-model",
             reviewer_model=None,
@@ -540,8 +545,11 @@ async def test_handle_writes_metrics_file_after_dispatch(tmp_path: Path) -> None
             accepted=True,
             wall_clock_ms=50,
         )
+        return "def main(): pass", [trace]
 
-    with patch.object(AdapterLlmDispatch, "_generate_plan_traced", new=_fake_generate):
+    with patch.object(
+        AdapterLlmDispatch, "_generate_with_review", new=_fake_generate_with_review
+    ):
         await adapter.handle(correlation_id=corr_id, targets=targets, dry_run=False)
 
     metrics_file = state_dir / "dispatch-metrics" / f"{corr_id}.json"
