@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
@@ -117,31 +117,31 @@ class HandlerBuildLoopOrchestrator:
                 HandlerCloseout,
             )
 
-            self._closeout = HandlerCloseout()
+            self._closeout = cast(ProtocolCloseoutHandler, HandlerCloseout())
         if self._verify is None:
             from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
                 HandlerVerify,
             )
 
-            self._verify = HandlerVerify()
+            self._verify = cast(ProtocolVerifyHandler, HandlerVerify())
         if self._rsd_fill is None:
             from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
                 HandlerRsdFill,
             )
 
-            self._rsd_fill = HandlerRsdFill()
+            self._rsd_fill = cast(ProtocolRsdFillHandler, HandlerRsdFill())
         if self._classify is None:
             from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify import (
                 HandlerTicketClassify,
             )
 
-            self._classify = HandlerTicketClassify()
+            self._classify = cast(ProtocolTicketClassifyHandler, HandlerTicketClassify())
         if self._dispatch is None:
             from omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch import (
                 HandlerBuildDispatch,
             )
 
-            self._dispatch = HandlerBuildDispatch()
+            self._dispatch = cast(ProtocolBuildDispatchHandler, HandlerBuildDispatch())
 
     async def handle(
         self,
