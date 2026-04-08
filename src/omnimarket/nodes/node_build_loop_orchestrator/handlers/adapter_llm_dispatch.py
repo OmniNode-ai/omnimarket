@@ -89,34 +89,34 @@ _DISPATCH_CONTRACT_PATH = (
 )
 
 
-def _load_topic_from_contract(contract_path: Path, fragment: str, fallback: str) -> str:
-    """Load a publish topic matching *fragment* from a contract.yaml file."""
+def _load_topic_from_contract(contract_path: Path, fragment: str) -> str:
+    """Load a publish topic matching *fragment* from a contract.yaml file.
+
+    Raises ValueError if the contract does not declare a matching topic.
+    """
     if contract_path.exists():
         with open(contract_path) as fh:
             data = yaml.safe_load(fh) or {}
         for topic in (data.get("event_bus", {}) or {}).get("publish_topics", []) or []:
             if isinstance(topic, str) and fragment in topic:
                 return topic
-    return fallback
+    raise ValueError(f"No publish topic matching '{fragment}' found in {contract_path}")
 
 
 # Bus topic for per-attempt trace events — declared in contract.yaml publish_topics
 _DELEGATION_ATTEMPT_TOPIC: str = _load_topic_from_contract(
     _ORCHESTRATOR_CONTRACT_PATH,
     "delegation-attempt",
-    "onex.evt.omnimarket.delegation-attempt.v1",  # fallback only
 )
 
 _DELEGATION_METRICS_TOPIC: str = _load_topic_from_contract(
     _ORCHESTRATOR_CONTRACT_PATH,
     "delegation-metrics",
-    "onex.evt.omnimarket.delegation-metrics.v1",  # fallback only
 )
 
 _DEFAULT_DELEGATION_TOPIC: str = _load_topic_from_contract(
     _DISPATCH_CONTRACT_PATH,
     "delegation-request",
-    "delegation-request",  # fallback — never a valid topic, will be overridden
 )
 
 

@@ -32,8 +32,11 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
+
+import yaml
 
 from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
     HandlerBuildLoop,
@@ -68,11 +71,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Topics declared in contract.yaml -- referenced here for event publishing
-TOPIC_PHASE_TRANSITION = (
-    "onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1"
-)
-TOPIC_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"
+
+def _load_contract(contract_path: Path | None = None) -> dict[str, Any]:
+    """Load the node's contract.yaml."""
+    _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
+    with open(_path) as f:
+        return yaml.safe_load(f)
 
 
 class HandlerBuildLoopOrchestrator:
@@ -97,7 +101,20 @@ class HandlerBuildLoopOrchestrator:
         classify: ProtocolTicketClassifyHandler | None = None,
         dispatch: ProtocolBuildDispatchHandler | None = None,
         event_bus: ProtocolEventBusPublisher | None = None,
+        contract_path: Path | None = None,
     ) -> None:
+        contract = _load_contract(contract_path)
+        publish_topics: list[str] = contract.get("event_bus", {}).get(
+            "publish_topics", []
+        )
+
+        self._topic_phase_transition = next(
+            (t for t in publish_topics if "phase-transition" in t), ""
+        )
+        self._topic_completed = next(
+            (t for t in publish_topics if "completed" in t), ""
+        )
+
         self._fsm = HandlerBuildLoop()
         self._closeout = closeout
         self._verify = verify
@@ -371,7 +388,7 @@ class HandlerBuildLoopOrchestrator:
         if isinstance(event, ModelPhaseTransitionEvent):
             payload = json.dumps(event.model_dump(mode="json")).encode()
             await self._event_bus.publish(
-                topic=TOPIC_PHASE_TRANSITION,
+                topic=self._topic_phase_transition,
                 key=None,
                 value=payload,
             )
