@@ -1,0 +1,20 @@
+---
+name: pr_health_monitor
+version: 1.0.0
+description: PR health classification — flags stale-red, stale-inactive, conflicted, and review-blocked PRs.
+tags:
+  - pr
+  - health
+  - monitoring
+  - ci
+capabilities:
+  - pr_health_classification
+  - stale_detection
+  - ci_failure_detection
+  - conflict_detection
+  - review_thread_detection
+dependencies:
+  - node_pr_snapshot_effect
+compatibility:
+  omnibase_core: ">=1.0.0"
+  omnimarket: ">=1.0.0"

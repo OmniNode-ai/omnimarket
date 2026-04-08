@@ -1,0 +1,31 @@
+---
+name: pr_health_monitor
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Extends the PR snapshot with health classification. Consumes ModelPRInfo
+  objects (from node_pr_snapshot_effect) and classifies each PR as
+  HEALTHY, STALE_RED (CI failing >24h), STALE_INACTIVE (no activity 3+
+  days), CONFLICTED, or REVIEW_BLOCKED. Produces a structured health
+  report suitable for dashboard ingestion or Linear ticket creation.
+
+handler:
+  module: omnimarket.nodes.node_pr_health_monitor.handlers.handler_pr_health_monitor
+  class: HandlerPrHealthMonitor
+  input_model: omnimarket.nodes.node_pr_health_monitor.models.model_pr_health_input.ModelPrHealthInput
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+
+terminal_event: onex.evt.omnimarket.pr-health-report-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-health-check-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-health-report-completed.v1
