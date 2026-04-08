@@ -102,6 +102,7 @@ def _estimate_cost(model: str, total_tokens: int) -> float:
     per_1k = _MODEL_COST_PER_1K.get(model, 0.001)  # conservative default
     return round(per_1k * total_tokens / 1000, 6)
 
+
 # Repo mapping: label/keyword -> repo name
 REPO_HINTS: dict[str, str] = {
     "omniclaude": "omniclaude",
@@ -725,7 +726,7 @@ class LiveBuildDispatchHandler:
             return None
 
     @staticmethod
-    def _record_llm_cost(*, model: str, response_data: dict) -> None:
+    def _record_llm_cost(*, model: str, response_data: dict[str, object]) -> None:
         """Write llm-call-completed event to disk for Kafka emission.
 
         Extracts usage data from OpenAI-compatible response and writes to
