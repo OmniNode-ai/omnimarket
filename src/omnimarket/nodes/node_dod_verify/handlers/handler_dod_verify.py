@@ -60,7 +60,7 @@ class HandlerDodVerify:
         else:
             overall = EnumDodVerifyStatus.VERIFIED
 
-        return ModelDodVerifyState(
+        state = ModelDodVerifyState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
             status=overall,
@@ -71,6 +71,8 @@ class HandlerDodVerify:
             failed_count=failed,
             skipped_count=skipped,
         )
+
+        return state
 
     def run_verification(
         self,
