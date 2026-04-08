@@ -367,6 +367,10 @@ class TestProofOfLifeE2E:
     async def test_all_package_exports_resolve(self) -> None:
         """All __init__.py exports resolve without import cycles."""
         # Node-level exports
+        # Finding aggregator node
+        from omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator import (  # noqa: F401
+            HandlerFindingAggregator,
+        )
         from omnimarket.nodes.node_hostile_reviewer import (  # noqa: F401
             EnumHostileReviewerPhase,
             HandlerHostileReviewer,
@@ -404,11 +408,6 @@ class TestProofOfLifeE2E:
         from omnimarket.nodes.node_hostile_reviewer.models.model_training_data import (  # noqa: F401
             EnumLabelSource,
             ModelTrainingDataRecord,
-        )
-
-        # Finding aggregator node
-        from omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator import (  # noqa: F401
-            HandlerFindingAggregator,
         )
 
     async def test_prompt_builder_both_templates(self) -> None:
