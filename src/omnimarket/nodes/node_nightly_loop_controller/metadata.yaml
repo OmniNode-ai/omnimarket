@@ -1,0 +1,18 @@
+name: nightly_loop_controller
+version: "1.0.0"
+description: >
+  Persistent nightly loop controller. Reads config from DB, executes
+  priority checks, writes decisions back, emits Kafka events for
+  dashboard projection.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - orchestrator
+  - nightly-loop
+  - decision-store
+  - delegation

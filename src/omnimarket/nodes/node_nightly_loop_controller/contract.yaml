@@ -1,0 +1,111 @@
+---
+name: nightly_loop_controller
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Persistent nightly loop controller. Reads config from DB, executes
+  priority checks each iteration, writes decisions and outcomes back
+  to DB, and emits Kafka events for dashboard projection.
+
+  Replaces .onex_state/nightly-loop-decisions.md with a real persistent
+  system backed by DB tables and Kafka event projections.
+
+handler:
+  module: omnimarket.nodes.node_nightly_loop_controller.handlers.handler_nightly_loop_controller
+  class: HandlerNightlyLoopController
+  input_model: omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop.ModelNightlyLoopConfig
+
+handler_routing:
+  default_handler: handler:HandlerNightlyLoopController
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Unique run ID"
+    required: true
+  config_id:
+    type: uuid
+    description: "Config version to use (reads from DB)"
+    required: false
+  max_iterations:
+    type: int
+    description: "Override max iterations for this run"
+    required: false
+    default: 10
+  max_cost_usd:
+    type: float
+    description: "Cost ceiling for this run"
+    required: false
+    default: 5.0
+  dry_run:
+    type: bool
+    description: "Run without side effects"
+    required: false
+    default: false
+
+outputs:
+  iterations_completed:
+    type: int
+    description: "Number of iterations completed"
+  iterations_failed:
+    type: int
+    description: "Number of iterations that failed"
+  total_decisions:
+    type: int
+    description: "Total decisions made"
+  total_tickets_dispatched:
+    type: int
+    description: "Total tickets dispatched to build loop"
+  total_gaps_checked:
+    type: int
+    description: "Total gaps checked for closure"
+  total_gaps_closed:
+    type: int
+    description: "Total gaps closed during run"
+  total_cost_usd:
+    type: float
+    description: "Total cost of the run"
+
+env_deps:
+  - OMNIBASE_INFRA_DB_URL
+  - KAFKA_BOOTSTRAP_SERVERS
+  - LINEAR_API_KEY
+
+terminal_event: onex.evt.omnimarket.nightly-loop-completed.v1
+
+golden_path:
+  - "Load config from nightly_loop_configs table (or use defaults)"
+  - "For each iteration: check priorities, evaluate gaps, make decisions"
+  - "Dispatch mechanical tickets to build loop, frontier tasks to agent pool"
+  - "Write decisions to nightly_loop_decisions table"
+  - "Write iteration summaries to nightly_loop_iterations table"
+  - "Emit events for each decision and iteration completion"
+  - "Emit terminal event with full run result"
+  - "Golden chain test: omnimarket/tests/test_golden_chain_nightly_loop_controller.py"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.nightly-loop-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.nightly-loop-decision.v1
+    - onex.evt.omnimarket.nightly-loop-iteration-completed.v1
+    - onex.evt.omnimarket.nightly-loop-completed.v1
+
+metadata:
+  description: "Persistent nightly loop controller with DB-backed decision store"
+  author: "OmniNode Platform Team"
+  created: "2026-04-08"
+  tags:
+    - "orchestrator"
+    - "nightly-loop"
+    - "decision-store"
+    - "delegation"
+    - "OMN-5113"
