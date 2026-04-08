@@ -79,6 +79,7 @@ node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute.ha
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch:HandlerBuildDispatch"
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect.handlers.handler_closeout:HandlerCloseout"
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator:HandlerFindingAggregator"
+node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot:HandlerPrSnapshot"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
