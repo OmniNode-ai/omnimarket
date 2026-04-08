@@ -80,11 +80,11 @@ class HandlerProjectionRegistration:
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
         event_type = str(input_data.pop("_event_type", "introspection"))
         if event_type == "heartbeat":
-            event = ModelNodeHeartbeatEvent(**input_data)
-            result = self.project_heartbeat(event, db_raw)
+            hb_event = ModelNodeHeartbeatEvent(**input_data)
+            result = self.project_heartbeat(hb_event, db_raw)
         else:
-            event = ModelNodeIntrospectionEvent(**input_data)
-            result = self.project_introspection(event, db_raw)
+            intro_event = ModelNodeIntrospectionEvent(**input_data)
+            result = self.project_introspection(intro_event, db_raw)
         return result.model_dump(mode="json")
 
     def project_introspection(
