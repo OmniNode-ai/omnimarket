@@ -139,6 +139,18 @@ class EmitClient:
         reason = resp.get("reason", "unknown error")
         raise ValueError(f"Daemon rejected event: {reason}")
 
+    def health_sync(self) -> dict[str, object]:
+        """Get detailed health from the daemon.
+
+        Returns:
+            Health snapshot dict with circuit_state, counters, timestamps.
+
+        Raises:
+            ConnectionRefusedError: If the daemon is not running.
+            OSError: On socket-level failures.
+        """
+        return self._send_and_recv({"command": "health"})
+
     def is_daemon_running_sync(self) -> bool:
         """Ping the daemon. Returns True if it responds OK."""
         try:
