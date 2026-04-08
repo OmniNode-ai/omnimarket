@@ -1,0 +1,83 @@
+---
+name: node_create_ticket
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Create a single Linear ticket from args, contract file, or plan milestone with
+  conflict resolution and ModelTicketContract generation.
+
+handler:
+  module: omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket
+  class: HandlerCreateTicket
+  input_model: omnimarket.nodes.node_create_ticket.models.model_create_ticket_state.ModelCreateTicketStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  title:
+    type: str
+    description: "Ticket title (mutually exclusive with from_contract, from_plan)"
+    required: false
+  from_contract:
+    type: str
+    description: "Path to YAML contract file"
+    required: false
+  from_plan:
+    type: str
+    description: "Path to plan markdown file"
+    required: false
+  milestone:
+    type: str
+    description: "Milestone ID when using from_plan (e.g., M4)"
+    required: false
+  repo:
+    type: str
+    description: "Repository label (e.g., omniclaude, omnibase_core)"
+    required: false
+  parent:
+    type: str
+    description: "Parent issue ID for epic relationship (e.g., OMN-1800)"
+    required: false
+  blocked_by:
+    type: str
+    description: "Comma-separated issue IDs that block this ticket"
+    required: false
+  project:
+    type: str
+    description: "Linear project name"
+    required: false
+  team:
+    type: str
+    description: "Linear team name (default: Omninode)"
+    required: false
+    default: "Omninode"
+  allow_arch_violation:
+    type: bool
+    description: "Bypass architecture dependency validation"
+    required: false
+    default: false
+
+outputs:
+  ticket_id:
+    type: str
+    description: "Created or updated Linear ticket ID (e.g., OMN-5957)"
+  ticket_url:
+    type: str
+    description: "URL of the created ticket"
+  contract_completeness:
+    type: str
+    description: "stub | enriched | full"
+
+terminal_event: onex.evt.omnimarket.create-ticket-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.create-ticket-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.create-ticket-completed.v1
