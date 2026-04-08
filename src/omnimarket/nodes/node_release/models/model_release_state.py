@@ -1,6 +1,5 @@
 """Models for node_release."""
 
-
 from pydantic import BaseModel, ConfigDict
 
 
