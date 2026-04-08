@@ -32,6 +32,10 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch
     AdapterLlmDispatch,
     ModelReviewResult,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
+    ModelDispatchTrace,
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
 )
@@ -404,10 +408,21 @@ async def test_handle_no_reviewer_sets_unavailable_status() -> None:
         "code_changes": [],
     }
 
+    stub_trace = ModelDispatchTrace(
+        correlation_id=str(uuid4()),
+        ticket_id="OMN-X",
+        attempt=1,
+        timestamp="2026-01-01T00:00:00+00:00",
+        coder_model="default",
+        quality_gate=ModelQualityGateResult(
+            ruff_pass=True, import_pass=True, test_pass=True, errors=[]
+        ),
+        accepted=True,
+    )
     with patch.object(
         AdapterLlmDispatch,
-        "_generate_plan",
-        new=AsyncMock(return_value=(valid_plan, "default")),
+        "_generate_plan_traced",
+        new=AsyncMock(return_value=(valid_plan, stub_trace)),
     ):
         result = await adapter.handle(
             correlation_id=uuid4(),
