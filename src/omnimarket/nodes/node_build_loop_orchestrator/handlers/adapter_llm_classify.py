@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Adapter that classifies tickets using a local LLM (Qwen3-14B).
+"""Adapter that classifies tickets using the LLM infrastructure.
 
 Implements ProtocolTicketClassifyHandler for live build loop execution.
-Sends ticket title+description to the fast model for classification,
-with keyword heuristics as fallback.
+Uses AdapterLlmProviderOpenai from omnibase_infra for inference with
+health checks and circuit breaking. Falls back to keyword heuristics
+when the LLM is unavailable.
 
 Related:
     - OMN-7810: Wire build loop to Linear queue
@@ -18,7 +19,12 @@ import logging
 import os
 from uuid import UUID
 
-import httpx
+from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
+    AdapterLlmProviderOpenai,
+)
+from omnibase_infra.adapters.llm.model_llm_adapter_request import (
+    ModelLlmAdapterRequest,
+)
 
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
@@ -46,22 +52,37 @@ Respond with ONLY a JSON object: {"buildability": "<category>", "reason": "<one 
 
 
 class AdapterLlmClassify:
-    """Classifies tickets by sending to a local LLM, with keyword fallback.
+    """Classifies tickets via AdapterLlmProviderOpenai, with keyword fallback.
 
     Implements ProtocolTicketClassifyHandler for live orchestrator wiring.
-    Uses LLM_CODER_FAST_URL (Qwen3-14B) for classification.
+    Uses the cheapest available model (local Qwen3-14B) for classification
+    through the omnibase_infra LLM adapter infrastructure.
     """
 
     def __init__(
         self,
         *,
         llm_url: str | None = None,
+        model_name: str = "default",
         timeout_seconds: float = 30.0,
+        provider: AdapterLlmProviderOpenai | None = None,
     ) -> None:
-        self._llm_url = llm_url or os.environ.get("LLM_CODER_FAST_URL", "")
-        if not self._llm_url:
-            raise ValueError("LLM URL required: pass llm_url or set LLM_CODER_FAST_URL")
-        self._timeout = timeout_seconds
+        if provider is not None:
+            self._provider = provider
+        else:
+            base_url = llm_url or os.environ.get("LLM_CODER_FAST_URL", "")
+            if not base_url:
+                raise ValueError(
+                    "LLM URL required: pass llm_url, provider, or set LLM_CODER_FAST_URL"
+                )
+            self._provider = AdapterLlmProviderOpenai(
+                base_url=base_url,
+                default_model=model_name,
+                provider_name="classify-fast",
+                provider_type="local",
+                max_timeout_seconds=timeout_seconds,
+            )
+        self._model_name = model_name
 
     async def handle(
         self,
@@ -69,7 +90,7 @@ class AdapterLlmClassify:
         correlation_id: UUID,
         tickets: tuple[ScoredTicket, ...],
     ) -> ClassifyResult:
-        """Classify tickets using local LLM with keyword fallback."""
+        """Classify tickets using LLM provider with keyword fallback."""
         logger.info(
             "LLM classify: %d tickets (correlation_id=%s)",
             len(tickets),
@@ -99,10 +120,17 @@ class AdapterLlmClassify:
     async def _classify_one(self, ticket: ScoredTicket) -> str:
         """Classify a single ticket via LLM, falling back to keyword heuristics."""
         user_prompt = f"Title: {ticket.title}\nDescription: {ticket.description[:2000]}"
+        prompt = f"{_CLASSIFY_SYSTEM_PROMPT}\n\n{user_prompt}"
 
         try:
-            result = await self._call_llm(user_prompt)
-            parsed: dict[str, object] = json.loads(result)
+            request = ModelLlmAdapterRequest(
+                prompt=prompt,
+                model_name=self._model_name,
+                max_tokens=256,
+                temperature=0.1,
+            )
+            response = await self._provider.generate_async(request)
+            parsed: dict[str, object] = json.loads(response.generated_text)
             buildability = str(parsed.get("buildability", "auto_buildable"))
             if buildability in (
                 "auto_buildable",
@@ -119,7 +147,6 @@ class AdapterLlmClassify:
                 return buildability
         except (
             json.JSONDecodeError,
-            httpx.HTTPError,
             KeyError,
             IndexError,
             TypeError,
@@ -129,31 +156,15 @@ class AdapterLlmClassify:
                 ticket.ticket_id,
                 exc,
             )
+        except Exception as exc:
+            logger.warning(
+                "LLM classify failed for %s, using keyword fallback: %s",
+                ticket.ticket_id,
+                exc,
+            )
 
         # Keyword fallback
         return self._keyword_classify(ticket)
-
-    async def _call_llm(self, user_prompt: str) -> str:
-        """Call the local LLM via OpenAI-compatible API."""
-        payload = {
-            "model": "default",
-            "messages": [
-                {"role": "system", "content": _CLASSIFY_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": 256,
-            "temperature": 0.1,
-        }
-
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.post(
-                f"{self._llm_url}/v1/chat/completions",
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return str(data["choices"][0]["message"]["content"])
 
     @staticmethod
     def _keyword_classify(ticket: ScoredTicket) -> str:
@@ -173,6 +184,10 @@ class AdapterLlmClassify:
             return "needs_arch_decision"
 
         return "auto_buildable"
+
+    async def close(self) -> None:
+        """Close the provider connection."""
+        await self._provider.close()
 
 
 __all__: list[str] = ["AdapterLlmClassify"]

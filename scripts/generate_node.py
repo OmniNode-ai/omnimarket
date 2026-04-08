@@ -35,6 +35,7 @@ def _snake_to_kebab(name: str) -> str:
 # Templates
 # ---------------------------------------------------------------------------
 
+
 def _contract_yaml(name: str, node_type: str) -> str:
     kebab = _snake_to_kebab(name)
     pascal = _snake_to_pascal(name)
@@ -231,6 +232,7 @@ class Test{pascal}GoldenChain:
 # File generation
 # ---------------------------------------------------------------------------
 
+
 def generate_node(name: str, node_type: str) -> list[Path]:
     """Generate all files for a new node. Returns list of created paths."""
     node_dir = NODES_DIR / f"node_{name}"
@@ -287,7 +289,9 @@ def main() -> None:
     print(f"Generating node_{name} ({args.node_type})...")
     created = generate_node(name, args.node_type)
     print(f"\nGenerated {len(created)} files. Next steps:")
-    print(f"  1. Edit handler: src/omnimarket/nodes/node_{name}/handlers/handler_{name}.py")
+    print(
+        f"  1. Edit handler: src/omnimarket/nodes/node_{name}/handlers/handler_{name}.py"
+    )
     print("  2. Add entry point to pyproject.toml:")
     print(f'     node_{name} = "omnimarket.nodes.node_{name}"')
     print(f"  3. Run tests: uv run pytest tests/test_golden_chain_{name}.py -v")

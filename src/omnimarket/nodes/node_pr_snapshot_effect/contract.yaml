@@ -1,0 +1,30 @@
+---
+name: pr_snapshot_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Scans GitHub repos for open PRs via `gh pr list` subprocess calls.
+  Produces ModelPRInfo objects compatible with ModelMergeSweepRequest,
+  enabling direct wiring into the merge sweep pipeline. Per-repo error
+  isolation ensures partial failures do not block the full scan.
+
+handler:
+  module: omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot
+  class: HandlerPrSnapshot
+  input_model: omnimarket.nodes.node_pr_snapshot_effect.models.model_pr_snapshot_input.ModelPrSnapshotInput
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.pr-snapshot-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-snapshot-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-snapshot-completed.v1

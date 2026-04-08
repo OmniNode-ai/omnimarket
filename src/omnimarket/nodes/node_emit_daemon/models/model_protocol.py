@@ -31,6 +31,14 @@ class ModelDaemonPingRequest(BaseModel):
     command: Literal["ping"] = Field(default="ping")
 
 
+class ModelDaemonHealthRequest(BaseModel):
+    """Detailed health check request (returns circuit breaker state)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command: Literal["health"] = Field(default="health")
+
+
 class ModelDaemonEmitRequest(BaseModel):
     """Event emission request."""
 
@@ -41,18 +49,19 @@ class ModelDaemonEmitRequest(BaseModel):
 
 
 ModelDaemonRequest = Annotated[
-    ModelDaemonPingRequest | ModelDaemonEmitRequest,
+    ModelDaemonPingRequest | ModelDaemonHealthRequest | ModelDaemonEmitRequest,
     Field(description="Union of all daemon request types"),
 ]
 
 
 def parse_daemon_request(
     data: dict[str, object],
-) -> ModelDaemonPingRequest | ModelDaemonEmitRequest:
+) -> ModelDaemonPingRequest | ModelDaemonHealthRequest | ModelDaemonEmitRequest:
     """Parse raw dict into typed request model.
 
     Discriminates by field presence:
-    - "command" -> ModelDaemonPingRequest
+    - "command": "ping" -> ModelDaemonPingRequest
+    - "command": "health" -> ModelDaemonHealthRequest
     - "event_type" -> ModelDaemonEmitRequest
     """
     if "command" in data and "event_type" in data:
@@ -61,6 +70,9 @@ def parse_daemon_request(
             "Send separate requests for ping and emit operations."
         )
     if "command" in data:
+        cmd = data["command"]
+        if cmd == "health":
+            return ModelDaemonHealthRequest.model_validate(data)
         return ModelDaemonPingRequest.model_validate(data)
     if "event_type" in data:
         return ModelDaemonEmitRequest.model_validate(data)
@@ -126,6 +138,7 @@ __all__: list[str] = [
     "JsonType",
     "ModelDaemonEmitRequest",
     "ModelDaemonErrorResponse",
+    "ModelDaemonHealthRequest",
     "ModelDaemonPingRequest",
     "ModelDaemonPingResponse",
     "ModelDaemonQueuedResponse",
