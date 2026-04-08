@@ -34,7 +34,8 @@ class ModelOrchestratorCompletedEvent(BaseModel):
     @field_validator("final_phase")
     @classmethod
     def validate_terminal_final_phase(
-        cls, value: EnumOrchestratorPhase,
+        cls,
+        value: EnumOrchestratorPhase,
     ) -> EnumOrchestratorPhase:
         if value not in TERMINAL_ORCHESTRATOR_PHASES:
             msg = f"final_phase must be a terminal phase (COMPLETE or FAILED), got {value}"
