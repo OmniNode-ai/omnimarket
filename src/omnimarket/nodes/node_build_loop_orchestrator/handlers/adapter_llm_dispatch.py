@@ -140,7 +140,7 @@ def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
         return
     try:
         from omnibase_infra.bus.kafka_producer import (
-            KafkaProducerClient,  # type: ignore[import-not-found]
+            KafkaProducerClient,
         )
 
         producer = KafkaProducerClient.from_env()
