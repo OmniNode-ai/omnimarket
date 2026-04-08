@@ -76,7 +76,8 @@ def _load_contract(contract_path: Path | None = None) -> dict[str, Any]:
     """Load the node's contract.yaml."""
     _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
     with open(_path) as f:
-        return yaml.safe_load(f)
+        data: dict[str, Any] = yaml.safe_load(f)
+    return data
 
 
 class HandlerBuildLoopOrchestrator:
