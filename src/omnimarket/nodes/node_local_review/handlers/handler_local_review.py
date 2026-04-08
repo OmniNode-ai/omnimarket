@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 from omnimarket.nodes.node_local_review.models.model_local_review_completed_event import (
     ModelLocalReviewCompletedEvent,
@@ -38,7 +37,7 @@ class HandlerLocalReview:
     Pure logic — no external I/O. Callers wire event bus publish/subscribe.
     """
 
-    def start(self, command: ModelLocalReviewStartCommand) -> ModelLocalReviewState:
+    def _start(self, command: ModelLocalReviewStartCommand) -> ModelLocalReviewState:
         """Initialize review state from a start command."""
         return ModelLocalReviewState(
             correlation_id=command.correlation_id,
@@ -49,7 +48,7 @@ class HandlerLocalReview:
             required_clean_runs=command.required_clean_runs,
         )
 
-    def advance(
+    def _advance(
         self,
         state: ModelLocalReviewState,
         phase_success: bool,
@@ -130,7 +129,7 @@ class HandlerLocalReview:
         )
         return new_state, event
 
-    def make_completed_event(
+    def _make_completed_event(
         self,
         state: ModelLocalReviewState,
         started_at: datetime,
@@ -147,43 +146,22 @@ class HandlerLocalReview:
             error_message=state.error_message,
         )
 
-    def serialize_event(self, event: ModelLocalReviewPhaseEvent) -> bytes:
+    def _serialize_event(self, event: ModelLocalReviewPhaseEvent) -> bytes:
         """Serialize a phase event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
-    def serialize_completed(self, event: ModelLocalReviewCompletedEvent) -> bytes:
+    def _serialize_completed(self, event: ModelLocalReviewCompletedEvent) -> bytes:
         """Serialize a completed event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim.
-
-        Delegates to run_full_pipeline with a ModelLocalReviewStartCommand
-        constructed from input_data.
-        """
-        command = ModelLocalReviewStartCommand(**input_data)
-        _state, _events, completed = self.run_full_pipeline(command)
-        return completed.model_dump(mode="json")
-
-    def run_full_pipeline(
-        self,
-        command: ModelLocalReviewStartCommand,
-        check_clean_results: list[bool] | None = None,
-    ) -> tuple[
-        ModelLocalReviewState,
-        list[ModelLocalReviewPhaseEvent],
-        ModelLocalReviewCompletedEvent,
-    ]:
-        """Run a complete review loop with provided clean check results.
-
-        check_clean_results is a list of booleans for each CHECK_CLEAN phase.
-        True means clean, False means loop back. If not provided, first check
-        is clean (single iteration).
-        """
+    def handle(
+        self, input_data: ModelLocalReviewStartCommand
+    ) -> ModelLocalReviewCompletedEvent:
+        """Execute the full local review pipeline."""
         started_at = datetime.now(tz=UTC)
-        state = self.start(command)
+        state = self._start(input_data)
         events: list[ModelLocalReviewPhaseEvent] = []
-        clean_results = list(check_clean_results or [True])
+        clean_results = [True]
         clean_idx = 0
 
         while state.current_phase not in TERMINAL_PHASES:
@@ -192,11 +170,11 @@ class HandlerLocalReview:
                     clean_results[clean_idx] if clean_idx < len(clean_results) else True
                 )
                 clean_idx += 1
-                state, event = self.advance(
+                state, event = self._advance(
                     state, phase_success=True, is_clean=is_clean
                 )
             else:
-                state, event = self.advance(state, phase_success=True)
+                state, event = self._advance(state, phase_success=True)
             events.append(event)
 
             if (
@@ -211,8 +189,8 @@ class HandlerLocalReview:
                 )
                 break
 
-        completed = self.make_completed_event(state, started_at)
-        return state, events, completed
+        completed = self._make_completed_event(state, started_at)
+        return completed
 
 
 __all__: list[str] = ["HandlerLocalReview"]

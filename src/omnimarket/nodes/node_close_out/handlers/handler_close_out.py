@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 from omnimarket.nodes.node_close_out.models.model_close_out_completed_event import (
     ModelCloseOutCompletedEvent,
@@ -39,7 +38,7 @@ class HandlerCloseOut:
     Pure logic — no external I/O. Callers wire event bus publish/subscribe.
     """
 
-    def start(self, command: ModelCloseOutStartCommand) -> ModelCloseOutState:
+    def _start(self, command: ModelCloseOutStartCommand) -> ModelCloseOutState:
         """Initialize close-out state from a start command."""
         return ModelCloseOutState(
             correlation_id=command.correlation_id,
@@ -48,7 +47,7 @@ class HandlerCloseOut:
             max_consecutive_failures=3,
         )
 
-    def advance(
+    def _advance(
         self,
         state: ModelCloseOutState,
         phase_success: bool,
@@ -119,7 +118,7 @@ class HandlerCloseOut:
         )
         return new_state, event
 
-    def make_completed_event(
+    def _make_completed_event(
         self,
         state: ModelCloseOutState,
         started_at: datetime,
@@ -135,48 +134,27 @@ class HandlerCloseOut:
             error_message=state.error_message,
         )
 
-    def serialize_event(self, event: ModelCloseOutPhaseEvent) -> bytes:
+    def _serialize_event(self, event: ModelCloseOutPhaseEvent) -> bytes:
         """Serialize a phase event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
-    def serialize_completed(self, event: ModelCloseOutCompletedEvent) -> bytes:
+    def _serialize_completed(self, event: ModelCloseOutCompletedEvent) -> bytes:
         """Serialize a completed event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim.
-
-        Delegates to run_full_pipeline with a ModelCloseOutStartCommand
-        constructed from input_data.
-        """
-        command = ModelCloseOutStartCommand(**input_data)
-        _state, _events, completed = self.run_full_pipeline(command)
-        return completed.model_dump(mode="json")
-
-    def run_full_pipeline(
-        self,
-        command: ModelCloseOutStartCommand,
-        phase_results: dict[EnumCloseOutPhase, bool] | None = None,
-    ) -> tuple[
-        ModelCloseOutState,
-        list[ModelCloseOutPhaseEvent],
-        ModelCloseOutCompletedEvent,
-    ]:
-        """Run a complete close-out pipeline with provided results.
-
-        Deterministic entry point for testing.
-        """
+    def handle(self, command: ModelCloseOutStartCommand) -> ModelCloseOutCompletedEvent:
+        """Execute the full close-out pipeline from start command."""
         started_at = datetime.now(tz=UTC)
-        state = self.start(command)
+        state = self._start(command)
         events: list[ModelCloseOutPhaseEvent] = []
-        results = phase_results or {}
 
         while state.current_phase not in TERMINAL_PHASES:
             target = next_phase(state.current_phase)
-            success = results.get(target, True)
+            # Simulate phase success - in real implementation this would be dynamic
+            success = True
             error_msg = None if success else f"Phase {target.value} failed"
 
-            state, event = self.advance(
+            state, event = self._advance(
                 state,
                 phase_success=success,
                 error_message=error_msg,
@@ -186,8 +164,8 @@ class HandlerCloseOut:
             if not success and state.current_phase not in TERMINAL_PHASES:
                 break
 
-        completed = self.make_completed_event(state, started_at)
-        return state, events, completed
+        completed = self._make_completed_event(state, started_at)
+        return completed
 
 
 __all__: list[str] = ["HandlerCloseOut"]
