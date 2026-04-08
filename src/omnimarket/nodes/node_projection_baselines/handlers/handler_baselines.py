@@ -57,7 +57,7 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
         super().__init__()
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
-            self._contract: dict = yaml.safe_load(f)
+            self._contract: dict[str, Any] = yaml.safe_load(f)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
         _by_role = {t["role"]: t["name"] for t in _tables}
@@ -70,7 +70,9 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
 
         for required_role in ("snapshots", "comparisons", "trend", "breakdown"):
             if required_role not in _by_role:
-                raise ValueError(f"Contract missing required table role {required_role!r}")
+                raise ValueError(
+                    f"Contract missing required table role {required_role!r}"
+                )
 
         self._table_snapshots: str = _by_role["snapshots"]
         self._table_comparisons: str = _by_role["comparisons"]
@@ -79,7 +81,7 @@ class BaselinesProjectionRunner(BaseProjectionRunner):
 
     @property
     def subscribe_topics(self) -> list[str]:
-        return self._contract.get("event_bus", {}).get("subscribe_topics", [])
+        return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.

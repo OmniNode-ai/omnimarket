@@ -47,7 +47,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         super().__init__()
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
-            self._contract: dict = yaml.safe_load(f)
+            self._contract: dict[str, Any] = yaml.safe_load(f)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
         _by_role = {t["role"]: t["name"] for t in _tables}
@@ -61,14 +61,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if "events" not in _by_role:
             raise ValueError("Contract missing required table role 'events'")
         if "shadow_comparisons" not in _by_role:
-            raise ValueError("Contract missing required table role 'shadow_comparisons'")
+            raise ValueError(
+                "Contract missing required table role 'shadow_comparisons'"
+            )
 
         self._table_delegation: str = _by_role["events"]
         self._table_shadow: str = _by_role["shadow_comparisons"]
 
     @property
     def subscribe_topics(self) -> list[str]:
-        return self._contract.get("event_bus", {}).get("subscribe_topics", [])
+        return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
