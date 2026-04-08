@@ -11,11 +11,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
-
-from omnibase_compat.protocols.protocol_health_check import (
-    ProtocolHealthCheck as CheckTarget,
-)
+from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.nodes.node_process_watchdog.models.model_watchdog_completed_event import (
     ModelWatchdogCompletedEvent,
@@ -39,6 +35,21 @@ _STATUS_SEVERITY: dict[EnumCheckStatus, int] = {
     EnumCheckStatus.DEGRADED: 2,
     EnumCheckStatus.DOWN: 3,
 }
+
+
+@runtime_checkable
+class CheckTarget(Protocol):
+    """Protocol for health check targets used by the process watchdog handler."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def category(self) -> EnumCheckTarget: ...
+
+    def check(self) -> ModelWatchdogCheckResult: ...
+
+    def restart(self) -> bool: ...
 
 
 class InmemoryCheckTarget:

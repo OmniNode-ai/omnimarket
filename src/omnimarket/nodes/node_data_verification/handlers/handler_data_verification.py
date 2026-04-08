@@ -11,11 +11,7 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
-from typing import Any
-
-from omnibase_compat.protocols.protocol_data_source import (
-    ProtocolDataSource as DataSource,
-)
+from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.nodes.node_data_verification.models.model_data_verification_completed_event import (
     ModelDataVerificationCompletedEvent,
@@ -31,6 +27,20 @@ from omnimarket.nodes.node_data_verification.models.model_data_verification_stat
 )
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class DataSource(Protocol):
+    """Protocol for data source used by the data verification handler."""
+
+    def get_row_count(self, table_name: str) -> int: ...
+
+    def get_sample_rows(
+        self, table_name: str, sample_size: int
+    ) -> list[dict[str, str]]: ...
+
+    def get_columns(self, table_name: str) -> list[str]: ...
+
 
 # UUID v4 pattern — rejects nil UUID and sequential/default UUIDs
 _UUID_V4_RE = re.compile(
