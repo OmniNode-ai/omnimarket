@@ -60,6 +60,28 @@ outputs:
     type: int
     description: "Total tickets dispatched across all cycles"
 
+sub_handler_dependencies:
+  - name: closeout
+    protocol: omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers.ProtocolCloseoutHandler
+    default_impl: omnimarket.nodes.node_closeout_effect.handlers.handler_closeout.HandlerCloseout
+    optional: true
+  - name: verify
+    protocol: omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers.ProtocolVerifyHandler
+    default_impl: omnimarket.nodes.node_verify_effect.handlers.handler_verify.HandlerVerify
+    optional: true
+  - name: rsd_fill
+    protocol: omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers.ProtocolRsdFillHandler
+    default_impl: omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill.HandlerRsdFill
+    optional: true
+  - name: classify
+    protocol: omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers.ProtocolTicketClassifyHandler
+    default_impl: omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify.HandlerTicketClassify
+    optional: true
+  - name: dispatch
+    protocol: omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers.ProtocolBuildDispatchHandler
+    default_impl: omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch.HandlerBuildDispatch
+    optional: true
+
 terminal_event: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
 
 event_bus:
