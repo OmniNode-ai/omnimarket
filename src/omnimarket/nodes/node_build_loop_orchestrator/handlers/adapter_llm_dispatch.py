@@ -454,6 +454,14 @@ class AdapterLlmDispatch:
                 all_traces.append(trace)
                 coder_model = trace.coder_model
 
+                if not trace.accepted:
+                    logger.warning(
+                        "LLM dispatch: skipping payload for %s — generation failed (gate=%s)",
+                        target.ticket_id,
+                        trace.quality_gate.errors,
+                    )
+                    continue
+
                 # Review via reasoning model (if available)
                 review: dict[str, object] = {
                     "approved": True,
