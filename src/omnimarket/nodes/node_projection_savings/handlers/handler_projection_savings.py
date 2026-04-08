@@ -63,6 +63,17 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionSavings:
     """Project savings-estimated events into savings_estimates table."""
 
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to project() with a ModelSavingsEstimatedEvent and
+        a DatabaseAdapter from input_data['_db'].
+        """
+        db = input_data.pop("_db", None)
+        event = ModelSavingsEstimatedEvent(**input_data)
+        result = self.project(event, db)
+        return result.model_dump(mode="json")
+
     def project(
         self,
         event: ModelSavingsEstimatedEvent,

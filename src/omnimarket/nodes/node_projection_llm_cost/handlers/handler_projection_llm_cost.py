@@ -58,6 +58,17 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionLlmCost:
     """Project LLM call completed events into llm_cost_aggregates."""
 
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to project() with a ModelLlmCallCompletedEvent and
+        a DatabaseAdapter from input_data['_db'].
+        """
+        db = input_data.pop("_db", None)
+        event = ModelLlmCallCompletedEvent(**input_data)
+        result = self.project(event, db)
+        return result.model_dump(mode="json")
+
     def project(
         self,
         event: ModelLlmCallCompletedEvent,

@@ -46,6 +46,17 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionSessionOutcome:
     """Project session-outcome events into session_outcomes table."""
 
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to project() with a ModelSessionOutcomeEvent and
+        a DatabaseAdapter from input_data['_db'].
+        """
+        db = input_data.pop("_db", None)
+        event = ModelSessionOutcomeEvent(**input_data)
+        result = self.project(event, db)
+        return result.model_dump(mode="json")
+
     def project(
         self,
         event: ModelSessionOutcomeEvent,

@@ -196,8 +196,24 @@ def parse_model_response(raw_text: str, source_model: str) -> ModelParseResult:
     )
 
 
+class HandlerResponseParser:
+    """RuntimeLocal handler protocol wrapper for response parser."""
+
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to parse_model_response. Expects input_data with
+        'raw_text' and 'source_model' keys.
+        """
+        raw_text = str(input_data.get("raw_text", ""))
+        source_model = str(input_data.get("source_model", "unknown"))
+        result = parse_model_response(raw_text, source_model)
+        return result.model_dump(mode="json")
+
+
 __all__: list[str] = [
     "EnumParseStatus",
+    "HandlerResponseParser",
     "ModelParseResult",
     "parse_model_response",
 ]

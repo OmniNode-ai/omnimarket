@@ -6,6 +6,7 @@ CONVERGENCE_CHECK -> REPORT -> DONE. Each phase transition is explicit.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -116,7 +117,32 @@ async def run_hostile_review_workflow(
     )
 
 
+class HandlerWorkflowRunner:
+    """RuntimeLocal handler protocol wrapper for workflow runner."""
+
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to run_hostile_review_workflow. Requires an inference_adapter
+        to be injected via set_adapter() before calling handle().
+        """
+        parsed = ModelWorkflowInput(**input_data)
+        if self._adapter is None:
+            msg = "inference_adapter not set — call set_adapter() first"
+            raise RuntimeError(msg)
+        result = asyncio.run(run_hostile_review_workflow(parsed, self._adapter))
+        return result.model_dump(mode="json")
+
+    def __init__(self) -> None:
+        self._adapter: ModelInferenceAdapter | None = None
+
+    def set_adapter(self, adapter: ModelInferenceAdapter) -> None:
+        """Inject the inference adapter before calling handle()."""
+        self._adapter = adapter
+
+
 __all__: list[str] = [
+    "HandlerWorkflowRunner",
     "ModelWorkflowInput",
     "ModelWorkflowOutput",
     "run_hostile_review_workflow",

@@ -105,7 +105,21 @@ def compute_convergence(input_data: ModelConvergenceInput) -> ModelConvergenceOu
     )
 
 
+class HandlerConvergenceReducer:
+    """RuntimeLocal handler protocol wrapper for convergence reducer."""
+
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to compute_convergence with a ModelConvergenceInput.
+        """
+        parsed = ModelConvergenceInput(**input_data)
+        result = compute_convergence(parsed)
+        return result.model_dump(mode="json")
+
+
 __all__: list[str] = [
+    "HandlerConvergenceReducer",
     "ModelConvergenceInput",
     "ModelConvergenceOutput",
     "ModelFindingLabel",

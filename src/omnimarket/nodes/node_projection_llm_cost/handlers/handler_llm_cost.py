@@ -26,6 +26,20 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
     Append-only (no ON CONFLICT) -- matches omnidash projectLlmCostEvent() exactly.
     """
 
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to project_event via asyncio.run().
+        """
+        topic = str(input_data.pop("_topic", TOPIC))
+        meta = MessageMeta(
+            partition=int(input_data.pop("_partition", 0)),
+            offset=int(input_data.pop("_offset", 0)),
+            fallback_id=str(input_data.pop("_fallback_id", "")),
+        )
+        ok = asyncio.run(self.project_event(topic, input_data, meta))
+        return {"projected": ok}
+
     @property
     def topics(self) -> list[str]:
         return [TOPIC]

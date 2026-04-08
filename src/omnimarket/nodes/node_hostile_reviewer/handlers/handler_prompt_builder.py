@@ -216,7 +216,21 @@ def build_prompt(input_data: ModelPromptBuilderInput) -> ModelPromptBuilderOutpu
     )
 
 
+class HandlerPromptBuilder:
+    """RuntimeLocal handler protocol wrapper for prompt builder."""
+
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to build_prompt with a ModelPromptBuilderInput.
+        """
+        parsed = ModelPromptBuilderInput(**input_data)
+        result = build_prompt(parsed)
+        return result.model_dump(mode="json")
+
+
 __all__: list[str] = [
+    "HandlerPromptBuilder",
     "ModelPromptBuilderInput",
     "ModelPromptBuilderOutput",
     "build_prompt",

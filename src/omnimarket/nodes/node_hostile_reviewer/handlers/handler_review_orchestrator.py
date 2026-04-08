@@ -259,7 +259,32 @@ async def run_review_orchestration(
     )
 
 
+class HandlerReviewOrchestrator:
+    """RuntimeLocal handler protocol wrapper for review orchestrator."""
+
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to run_review_orchestration. Requires an inference_adapter
+        to be injected via set_adapter() before calling handle().
+        """
+        parsed = ModelOrchestratorInput(**input_data)
+        if self._adapter is None:
+            msg = "inference_adapter not set — call set_adapter() first"
+            raise RuntimeError(msg)
+        result = asyncio.run(run_review_orchestration(parsed, self._adapter))
+        return result.model_dump(mode="json")
+
+    def __init__(self) -> None:
+        self._adapter: ModelInferenceAdapter | None = None
+
+    def set_adapter(self, adapter: ModelInferenceAdapter) -> None:
+        """Inject the inference adapter before calling handle()."""
+        self._adapter = adapter
+
+
 __all__: list[str] = [
+    "HandlerReviewOrchestrator",
     "ModelInferenceAdapter",
     "ModelMergedFinding",
     "ModelOrchestratorInput",

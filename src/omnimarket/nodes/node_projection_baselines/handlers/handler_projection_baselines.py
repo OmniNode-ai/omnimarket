@@ -98,6 +98,17 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionBaselines:
     """Project baselines-computed events into 4 baselines tables."""
 
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim.
+
+        Delegates to project() with a ModelBaselinesComputedEvent and
+        a DatabaseAdapter from input_data['_db'].
+        """
+        db = input_data.pop("_db", None)
+        event = ModelBaselinesComputedEvent(**input_data)
+        result = self.project(event, db)
+        return result.model_dump(mode="json")
+
     def project(
         self,
         event: ModelBaselinesComputedEvent,
