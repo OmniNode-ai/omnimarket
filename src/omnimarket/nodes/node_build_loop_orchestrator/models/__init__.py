@@ -1,5 +1,8 @@
 """Models for the build loop orchestrator."""
 
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_metrics import (
+    ModelDispatchMetrics,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_loop_cycle_summary import (
     ModelLoopCycleSummary,
 )
@@ -8,6 +11,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_res
 )
 
 __all__ = [
+    "ModelDispatchMetrics",
     "ModelLoopCycleSummary",
     "ModelOrchestratorResult",
 ]

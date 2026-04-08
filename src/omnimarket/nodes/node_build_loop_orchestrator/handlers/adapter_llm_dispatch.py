@@ -13,9 +13,14 @@ Every generation attempt writes a ModelDispatchTrace to
 .onex_state/dispatch-traces/ and (when KAFKA_ENABLED) emits
 onex.evt.omnimarket.delegation-attempt.v1 to the event bus.
 
+After all tickets are processed, aggregate ModelDispatchMetrics are written to
+.onex_state/dispatch-metrics/{correlation_id}.json and emitted as
+onex.evt.omnimarket.delegation-metrics.v1.
+
 Related:
     - OMN-7810: Wire build loop to Linear queue
     - OMN-7855: Add dispatch tracing to .onex_state/
+    - OMN-7858: Add dispatch metrics summary
     - OMN-5113: Autonomous Build Loop epic
 """
 
@@ -38,6 +43,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
     build_endpoint_configs,
     route_ticket_to_tier,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_metrics import (
+    ModelDispatchMetrics,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
     ModelDispatchTrace,
     ModelQualityGateResult,
@@ -50,8 +58,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 
 logger = logging.getLogger(__name__)
 
-# Bus topic for per-attempt trace events
+# Bus topics
 _DELEGATION_ATTEMPT_TOPIC = "onex.evt.omnimarket.delegation-attempt.v1"
+_DELEGATION_METRICS_TOPIC = "onex.evt.omnimarket.delegation-metrics.v1"
 
 # ---------------------------------------------------------------------------
 # Resolve delegation topic from build_dispatch_effect contract.yaml
@@ -131,6 +140,157 @@ def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
             "Bus emit failed for %s attempt %d (trace file is authoritative): %s",
             trace.ticket_id,
             trace.attempt,
+            exc,
+        )
+
+
+def _compute_metrics(
+    *,
+    correlation_id: str,
+    traces: list[ModelDispatchTrace],
+    coder_model: str,
+) -> ModelDispatchMetrics:
+    """Compute aggregate metrics from a list of dispatch traces.
+
+    Covers all tickets in a single dispatch run. Each ticket may have
+    multiple traces (one per generation attempt).
+    """
+    if not traces:
+        return ModelDispatchMetrics(
+            correlation_id=correlation_id,
+            total_tickets=0,
+            accepted_count=0,
+            rejected_count=0,
+            total_generation_attempts=0,
+            total_review_iterations=0,
+            avg_attempts_per_ticket=0.0,
+            total_prompt_tokens=0,
+            total_completion_tokens=0,
+            total_review_tokens=0,
+            total_wall_clock_ms=0,
+            coder_model=coder_model,
+            reviewer_model=None,
+            quality_gate_failure_rate=0.0,
+            review_rejection_rate=0.0,
+        )
+
+    # Group traces by ticket_id to determine per-ticket outcomes
+    tickets: dict[str, list[ModelDispatchTrace]] = {}
+    for t in traces:
+        tickets.setdefault(t.ticket_id, []).append(t)
+
+    accepted_count = sum(
+        1
+        for ticket_traces in tickets.values()
+        if any(t.accepted for t in ticket_traces)
+    )
+    rejected_count = len(tickets) - accepted_count
+
+    total_attempts = len(traces)
+    total_review_iterations = sum(1 for t in traces if t.review_result is not None)
+
+    avg_attempts = total_attempts / len(tickets) if tickets else 0.0
+
+    total_prompt_tokens = sum(t.prompt_tokens for t in traces)
+    total_completion_tokens = sum(t.completion_tokens for t in traces)
+    total_review_tokens = sum(
+        t.review_result.review_tokens for t in traces if t.review_result is not None
+    )
+    total_wall_clock_ms = sum(t.wall_clock_ms for t in traces)
+
+    # Reviewer model: use the first non-None reviewer_model found
+    reviewer_model: str | None = next(
+        (t.reviewer_model for t in traces if t.reviewer_model is not None),
+        None,
+    )
+
+    # Quality gate failure rate: fraction of attempts that failed gate (never reached review)
+    gate_failed = sum(
+        1 for t in traces if not t.quality_gate.all_pass and t.review_result is None
+    )
+    quality_gate_failure_rate = gate_failed / total_attempts if total_attempts else 0.0
+
+    # Review rejection rate: fraction of gate-passing attempts rejected by reviewer
+    gate_passing = [t for t in traces if t.quality_gate.all_pass]
+    reviewed_rejected = sum(
+        1
+        for t in gate_passing
+        if t.review_result is not None and not t.review_result.approved
+    )
+    review_rejection_rate = (
+        reviewed_rejected / len(gate_passing) if gate_passing else 0.0
+    )
+
+    return ModelDispatchMetrics(
+        correlation_id=correlation_id,
+        total_tickets=len(tickets),
+        accepted_count=accepted_count,
+        rejected_count=rejected_count,
+        total_generation_attempts=total_attempts,
+        total_review_iterations=total_review_iterations,
+        avg_attempts_per_ticket=avg_attempts,
+        total_prompt_tokens=total_prompt_tokens,
+        total_completion_tokens=total_completion_tokens,
+        total_review_tokens=total_review_tokens,
+        total_wall_clock_ms=total_wall_clock_ms,
+        coder_model=coder_model,
+        reviewer_model=reviewer_model,
+        quality_gate_failure_rate=quality_gate_failure_rate,
+        review_rejection_rate=review_rejection_rate,
+    )
+
+
+def _write_metrics(metrics: ModelDispatchMetrics, state_dir: Path) -> None:
+    """Write aggregate dispatch metrics to .onex_state/dispatch-metrics/.
+
+    Filename: {correlation_id}.json
+    Never raises — logs on failure so a write error never kills a dispatch.
+    """
+    metrics_dir = state_dir / "dispatch-metrics"
+    try:
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        fname = f"{metrics.correlation_id}.json"
+        (metrics_dir / fname).write_text(metrics.model_dump_json(indent=2))
+        logger.info(
+            "Wrote dispatch metrics: %s (accepted=%d/%d, avg_attempts=%.2f)",
+            fname,
+            metrics.accepted_count,
+            metrics.total_tickets,
+            metrics.avg_attempts_per_ticket,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Failed to write dispatch metrics for %s: %s",
+            metrics.correlation_id,
+            exc,
+        )
+
+
+def _emit_metrics_to_bus(metrics: ModelDispatchMetrics) -> None:
+    """Emit aggregate metrics event to Kafka when KAFKA_ENABLED is set.
+
+    Bus events are observability copies — local files are authoritative.
+    Silently skips when Kafka is not configured.
+    """
+    if not os.environ.get("KAFKA_ENABLED", ""):
+        return
+    try:
+        from omnibase_infra.bus.kafka_producer import (
+            KafkaProducerClient,  # type: ignore[import-not-found]
+        )
+
+        producer = KafkaProducerClient.from_env()
+        producer.produce(
+            topic=_DELEGATION_METRICS_TOPIC, value=metrics.model_dump_json()
+        )
+        logger.debug(
+            "Emitted delegation-metrics to bus: %s",
+            metrics.correlation_id,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "Bus emit failed for metrics %s (metrics file is authoritative): %s",
+            metrics.correlation_id,
             exc,
         )
 
@@ -231,6 +391,8 @@ class AdapterLlmDispatch:
 
         payloads: list[DelegationPayload] = []
         total_dispatched = 0
+        all_traces: list[ModelDispatchTrace] = []
+        primary_coder_model = ""
 
         for target in targets:
             if dry_run:
@@ -246,6 +408,8 @@ class AdapterLlmDispatch:
                     available_tiers=self._available_tiers,
                 )
                 endpoint = self._endpoints[tier]
+                if not primary_coder_model:
+                    primary_coder_model = endpoint.model_id
 
                 logger.info(
                     "Routing %s to %s (%s) — %s",
@@ -256,12 +420,13 @@ class AdapterLlmDispatch:
                 )
 
                 # Generate plan via routed model (traced)
-                plan, _trace = await self._generate_plan_traced(
+                plan, trace = await self._generate_plan_traced(
                     target=target,
                     endpoint=endpoint,
                     correlation_id=correlation_id,
                     attempt=1,
                 )
+                all_traces.append(trace)
 
                 # Review via reasoning model (if available)
                 review: dict[str, object] = {
@@ -317,6 +482,16 @@ class AdapterLlmDispatch:
             len(targets),
             correlation_id,
         )
+
+        # Compute and persist aggregate metrics after all tickets processed
+        if not dry_run:
+            metrics = _compute_metrics(
+                correlation_id=str(correlation_id),
+                traces=all_traces,
+                coder_model=primary_coder_model,
+            )
+            _write_metrics(metrics, self._state_dir)
+            _emit_metrics_to_bus(metrics)
 
         return DispatchResult(
             total_dispatched=total_dispatched,
@@ -506,4 +681,4 @@ class AdapterLlmDispatch:
         )
 
 
-__all__: list[str] = ["AdapterLlmDispatch"]
+__all__: list[str] = ["AdapterLlmDispatch", "_compute_metrics", "_write_metrics"]
