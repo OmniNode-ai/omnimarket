@@ -195,10 +195,10 @@ class TestProofOfLifeE2E:
         assert orch.verdict == EnumReviewVerdict.BLOCKING_ISSUE  # critical finding
 
         # Dedup: security finding reported by both models -> merged
-        assert len(orch.merged_findings) == 3  # security (merged), race condition, unused import
-        security = next(
-            f for f in orch.merged_findings if "API key" in f.title
-        )
+        assert (
+            len(orch.merged_findings) == 3
+        )  # security (merged), race condition, unused import
+        security = next(f for f in orch.merged_findings if "API key" in f.title)
         assert set(security.source_models) == {"deepseek-r1", "qwen3-coder"}
         assert security.severity == EnumFindingSeverity.CRITICAL
 
@@ -276,7 +276,10 @@ class TestProofOfLifeE2E:
         assert restored.local_detected is True
         assert restored.frontier_detected is True
         assert restored.label_source == EnumLabelSource.FRONTIER_BOOTSTRAP
-        assert restored.code_diff_hash == hashlib.sha256(_DIFF_CONTENT.encode()).hexdigest()
+        assert (
+            restored.code_diff_hash
+            == hashlib.sha256(_DIFF_CONTENT.encode()).hexdigest()
+        )
 
     async def test_finding_aggregator_produces_verdict(self) -> None:
         """Standalone finding aggregator produces correct verdict from parsed findings."""
