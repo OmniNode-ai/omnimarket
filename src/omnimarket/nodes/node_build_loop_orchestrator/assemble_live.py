@@ -88,6 +88,20 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "") or os.environ.get(
 
 LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
 
+# Per-token cost estimates (USD per 1K tokens) for cost tracking
+_MODEL_COST_PER_1K: dict[str, float] = {
+    "glm-4.5": 0.0005,
+    "glm-4.7-flash": 0.0001,
+    "gpt-4o-mini": 0.00015,
+    "qwen3-coder-30b": 0.0,  # local — no cost
+}
+
+
+def _estimate_cost(model: str, total_tokens: int) -> float:
+    """Estimate USD cost for an LLM call based on model and token count."""
+    per_1k = _MODEL_COST_PER_1K.get(model, 0.001)  # conservative default
+    return round(per_1k * total_tokens / 1000, 6)
+
 # Repo mapping: label/keyword -> repo name
 REPO_HINTS: dict[str, str] = {
     "omniclaude": "omniclaude",
@@ -677,6 +691,9 @@ class LiveBuildDispatchHandler:
                 resp.raise_for_status()
                 data = resp.json()
 
+            # OMN-7810: Record LLM cost event for cost trends dashboard
+            self._record_llm_cost(model=model, response_data=data)
+
             raw = (
                 data.get("choices", [{}])[0]
                 .get("message", {})
@@ -706,6 +723,39 @@ class LiveBuildDispatchHandler:
         except (json.JSONDecodeError, httpx.HTTPError, KeyError) as exc:
             logger.warning("[DISPATCH] LLM call failed (%s): %s", url[:50], exc)
             return None
+
+    @staticmethod
+    def _record_llm_cost(*, model: str, response_data: dict) -> None:
+        """Write llm-call-completed event to disk for Kafka emission.
+
+        Extracts usage data from OpenAI-compatible response and writes to
+        .onex_state/llm-cost-events/ for the emit daemon to publish to
+        onex.evt.omniintelligence.llm-call-completed.v1.
+        """
+        usage = response_data.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", prompt_tokens + completion_tokens)
+
+        event = {
+            "timestamp": datetime.now(tz=UTC).isoformat(),
+            "model_name": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "usage_source": "API" if usage else "ESTIMATED",
+            "estimated_cost_usd": _estimate_cost(model, total_tokens),
+            "total_cost_usd": _estimate_cost(model, total_tokens),
+            "reported_cost_usd": 0,
+            "request_count": 1,
+            "granularity": "hour",
+            "reporting_source": "build-loop",
+        }
+
+        events_dir = OMNI_HOME / ".onex_state" / "llm-cost-events"
+        events_dir.mkdir(parents=True, exist_ok=True)
+        event_path = events_dir / f"{uuid4()}.json"
+        event_path.write_text(json.dumps(event, indent=2, default=str))
 
     async def _apply_and_pr(
         self,
