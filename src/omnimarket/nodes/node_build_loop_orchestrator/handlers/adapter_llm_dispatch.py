@@ -10,6 +10,7 @@ Routes tickets to the appropriate model tier:
 - Review -> DeepSeek-R1 (reasoning)
 
 Related:
+    - OMN-7854: Add source context loading
     - OMN-7810: Wire build loop to Linear queue
     - OMN-5113: Autonomous Build Loop epic
 """
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -63,30 +65,11 @@ def _load_delegation_topic() -> str:
 _DEFAULT_DELEGATION_TOPIC: str = _load_delegation_topic()
 
 _CODER_SYSTEM_PROMPT = """\
-You are an autonomous code implementation agent for the OmniNode platform.
-Given a ticket ID, title, and context, produce a structured implementation plan.
+You are an autonomous code refactoring agent for the OmniNode platform.
+You will be given a template handler (a READY node to follow) and a target handler (the PARTIAL file to refactor).
+Refactor the target code to follow the template pattern exactly.
 
-Your response must be a JSON object with these fields:
-{
-  "ticket_id": "<ticket ID>",
-  "implementation_plan": {
-    "files_to_modify": ["list of file paths"],
-    "files_to_create": ["list of new file paths"],
-    "approach": "brief description of the implementation approach",
-    "estimated_complexity": "low|medium|high",
-    "test_strategy": "brief description of how to test"
-  },
-  "code_changes": [
-    {
-      "file_path": "path/to/file.py",
-      "action": "modify|create",
-      "description": "what to change",
-      "code_snippet": "relevant code"
-    }
-  ]
-}
-
-Focus on producing actionable, concrete changes. Do not explain or apologize.
+Output ONLY the complete refactored Python file. Do not add explanations, markdown fences, or commentary.
 """
 
 _REVIEW_SYSTEM_PROMPT = """\
@@ -104,6 +87,9 @@ Respond with a JSON object:
   "risk_level": "low|medium|high"
 }
 """
+
+# 48K char budget leaves headroom for Qwen3-Coder's 64K context
+_DEFAULT_MAX_CONTEXT_CHARS: int = 48000
 
 
 class AdapterLlmDispatch:
@@ -140,9 +126,10 @@ class AdapterLlmDispatch:
 
         For each target:
         1. Route to appropriate model tier based on complexity
-        2. Generate implementation plan via routed model
-        3. Review via DeepSeek-R1 (reasoning specialist)
-        4. Package as delegation payload
+        2. Load source context (template + target + models)
+        3. Generate code via routed model using source-grounded prompt
+        4. Review via reasoning model
+        5. Package as delegation payload
         """
         logger.info(
             "LLM dispatch: %d targets (correlation_id=%s, dry_run=%s)",
@@ -177,7 +164,7 @@ class AdapterLlmDispatch:
                     target.title[:80],
                 )
 
-                # Generate plan via routed model
+                # Generate code via routed model with source context
                 plan = await self._generate_plan(target, endpoint)
 
                 # Review via reasoning model (if available)
@@ -240,35 +227,222 @@ class AdapterLlmDispatch:
             delegation_payloads=tuple(payloads),
         )
 
+    def _build_coder_prompt(
+        self,
+        *,
+        target: BuildTarget,
+        template_source: str,
+        target_source: str,
+        model_sources: list[str] | None = None,
+        max_context_chars: int = _DEFAULT_MAX_CONTEXT_CHARS,
+    ) -> str:
+        """Build a coder prompt with actual source code context.
+
+        Truncates model_sources (whole files) if total exceeds max_context_chars.
+        Never truncates template or target handlers mid-file.
+        """
+        header = f"Ticket: {target.ticket_id} — {target.title}"
+        template_section = f"## TEMPLATE (follow this pattern):\n{template_source}"
+        target_section = f"## TARGET (refactor this):\n{target_source}"
+
+        base_parts = [header, "", template_section, "", target_section]
+        base_prompt = "\n".join(base_parts)
+
+        if not model_sources:
+            return base_prompt
+
+        # Add model files one at a time, dropping from the end if over budget
+        model_parts: list[str] = []
+        for src in model_sources:
+            candidate = "\n".join(
+                [base_prompt, "", "## RELEVANT MODELS:", *model_parts, src]
+            )
+            if len(candidate) <= max_context_chars:
+                model_parts.append(src)
+            else:
+                logger.debug(
+                    "Dropping model source (budget %d chars): %d chars",
+                    max_context_chars,
+                    len(src),
+                )
+                break
+
+        if model_parts:
+            return "\n".join(
+                [base_prompt, "", "## RELEVANT MODELS:", *model_parts]
+            )
+        return base_prompt
+
+    def _load_source_context(
+        self,
+        *,
+        target_node_dir: Path,
+        template_node_dir: Path | None = None,
+        omni_home: Path | None = None,
+    ) -> tuple[str, str, list[str]]:
+        """Load source files for prompt context.
+
+        Returns (template_source, target_source, model_sources).
+
+        Source selection rules:
+        1. Target handler: target_node_dir/handlers/handler_*.py
+        2. Template handler: template_node_dir/handlers/handler_*.py
+           - If not provided, auto-selects nearest READY node by scanning siblings
+        3. Related models: target_node_dir/models/model_*.py
+        4. Contract: target_node_dir/contract.yaml
+
+        Whole files only — no mid-file truncation. Falls back to empty strings
+        with a WARNING log if files don't exist.
+        """
+        # Load target handler
+        target_source = self._read_handler_file(target_node_dir)
+
+        # Load template handler
+        if template_node_dir is not None:
+            template_source = self._read_handler_file(template_node_dir)
+        else:
+            template_source = self._auto_select_template(target_node_dir)
+
+        # Load related models
+        model_sources: list[str] = []
+        models_dir = target_node_dir / "models"
+        if models_dir.exists():
+            for model_file in sorted(models_dir.glob("model_*.py")):
+                try:
+                    model_sources.append(model_file.read_text())
+                except OSError as exc:
+                    logger.warning("Could not read model file %s: %s", model_file, exc)
+
+        # Append contract.yaml if present
+        contract_path = target_node_dir / "contract.yaml"
+        if contract_path.exists():
+            try:
+                model_sources.append(contract_path.read_text())
+            except OSError as exc:
+                logger.warning("Could not read contract %s: %s", contract_path, exc)
+
+        return template_source, target_source, model_sources
+
+    def _read_handler_file(self, node_dir: Path) -> str:
+        """Read the primary handler file from a node directory."""
+        handlers_dir = node_dir / "handlers"
+        if not handlers_dir.exists():
+            logger.warning("No handlers/ directory in %s", node_dir)
+            return ""
+        handler_files = sorted(handlers_dir.glob("handler_*.py"))
+        if not handler_files:
+            logger.warning("No handler_*.py files in %s", handlers_dir)
+            return ""
+        try:
+            return handler_files[0].read_text()
+        except OSError as exc:
+            logger.warning("Could not read handler %s: %s", handler_files[0], exc)
+            return ""
+
+    def _auto_select_template(self, target_node_dir: Path) -> str:
+        """Auto-select the nearest READY node as template by scanning siblings."""
+        nodes_dir = target_node_dir.parent
+        if not nodes_dir.exists():
+            return ""
+
+        for candidate in sorted(nodes_dir.iterdir()):
+            if not candidate.is_dir():
+                continue
+            if candidate == target_node_dir:
+                continue
+            # Skip node if it has no handler
+            handler_src = self._read_handler_file(candidate)
+            if not handler_src:
+                continue
+            # Prefer nodes that define a canonical handle() method
+            if "def handle(" in handler_src:
+                logger.info(
+                    "Auto-selected template node: %s", candidate.name
+                )
+                return handler_src
+
+        logger.warning(
+            "No suitable template node found in siblings of %s", target_node_dir
+        )
+        return ""
+
+    @staticmethod
+    def _extract_code_from_response(raw_response: str) -> str:
+        """Extract Python code from model response.
+
+        Handles: bare code, ```python fences, ``` fences, mixed prose+code.
+        Returns the largest contiguous Python block found.
+        Falls back to raw_response if no fences detected.
+        """
+        # Try ```python ... ``` first
+        python_fence = re.search(
+            r"```python\s*\n(.*?)```", raw_response, re.DOTALL
+        )
+        if python_fence:
+            return python_fence.group(1)
+
+        # Try generic ``` ... ```
+        generic_fence = re.search(r"```\s*\n(.*?)```", raw_response, re.DOTALL)
+        if generic_fence:
+            return generic_fence.group(1)
+
+        # No fences — return raw (assume the model output bare code as instructed)
+        return raw_response
+
     async def _generate_plan(
-        self, target: BuildTarget, endpoint: ModelEndpointConfig
+        self,
+        target: BuildTarget,
+        endpoint: ModelEndpointConfig,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
     ) -> dict[str, object]:
-        """Generate implementation plan via the routed model endpoint."""
-        user_prompt = (
-            f"Ticket: {target.ticket_id}\n"
-            f"Title: {target.title}\n"
-            f"Buildability: {target.buildability}\n\n"
-            f"Generate an implementation plan."
+        """Generate code via the routed model endpoint using source-grounded prompt."""
+        template_source, target_source, model_sources = self._load_source_context(
+            target_node_dir=self._resolve_node_dir(target.ticket_id),
         )
 
-        raw = await self._call_endpoint(endpoint, _CODER_SYSTEM_PROMPT, user_prompt)
+        user_prompt = self._build_coder_prompt(
+            target=target,
+            template_source=template_source,
+            target_source=target_source,
+            model_sources=model_sources,
+        )
 
-        try:
-            parsed: dict[str, object] = json.loads(raw)
-            return parsed
-        except json.JSONDecodeError:
-            logger.warning(
-                "Response not valid JSON for %s via %s, wrapping as raw",
-                target.ticket_id,
-                endpoint.tier.value,
-            )
-            return {"raw_response": raw, "ticket_id": target.ticket_id}
+        raw = await self._call_endpoint(
+            endpoint,
+            _CODER_SYSTEM_PROMPT,
+            user_prompt,
+            temperature=temperature,
+            top_p=top_p,
+        )
+        code = self._extract_code_from_response(raw)
+
+        return {
+            "ticket_id": target.ticket_id,
+            "generated_code": code,
+            "raw_response": raw,
+            "prompt_chars": len(user_prompt),
+        }
+
+    def _resolve_node_dir(self, ticket_id: str) -> Path:
+        """Resolve the node directory for a ticket from the omnimarket source tree.
+
+        Falls back to a non-existent path — _load_source_context handles missing dirs gracefully.
+        """
+        # Nodes are named by ticket convention in the build loop; fall back to
+        # the orchestrator's own node dir as a safe default
+        nodes_root = Path(__file__).resolve().parent.parent.parent
+        return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
 
     async def _review_plan(
         self,
         target: BuildTarget,
         plan: dict[str, object],
         endpoint: ModelEndpointConfig,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
     ) -> dict[str, object]:
         """Review implementation plan via the reasoning model."""
         user_prompt = (
@@ -279,7 +453,11 @@ class AdapterLlmDispatch:
 
         try:
             raw = await self._call_endpoint(
-                endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt
+                endpoint,
+                _REVIEW_SYSTEM_PROMPT,
+                user_prompt,
+                temperature=temperature,
+                top_p=top_p,
             )
             review_result: dict[str, object] = json.loads(raw)
             return review_result
@@ -296,17 +474,22 @@ class AdapterLlmDispatch:
         endpoint: ModelEndpointConfig,
         system_prompt: str,
         user_prompt: str,
+        *,
+        temperature: float | None = None,
+        top_p: float | None = None,
     ) -> str:
         """Call an OpenAI-compatible endpoint."""
-        payload = {
+        payload: dict[str, object] = {
             "model": endpoint.model_id,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             "max_tokens": endpoint.max_tokens,
-            "temperature": 0.2,
+            "temperature": temperature if temperature is not None else 0.1,
         }
+        if top_p is not None:
+            payload["top_p"] = top_p
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if endpoint.api_key:
