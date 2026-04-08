@@ -734,10 +734,10 @@ class LiveBuildDispatchHandler:
         onex.evt.omniintelligence.llm-call-completed.v1.
         """
         usage_raw = response_data.get("usage", {})
-        usage: dict[str, object] = usage_raw if isinstance(usage_raw, dict) else {}
-        prompt_tokens = int(str(usage.get("prompt_tokens", 0) or 0))
-        completion_tokens = int(str(usage.get("completion_tokens", 0) or 0))
-        total_tokens = int(str(usage.get("total_tokens", prompt_tokens + completion_tokens) or 0))
+        usage: dict[str, int] = usage_raw if isinstance(usage_raw, dict) else {}
+        prompt_tokens: int = usage.get("prompt_tokens", 0)
+        completion_tokens: int = usage.get("completion_tokens", 0)
+        total_tokens: int = usage.get("total_tokens", prompt_tokens + completion_tokens)
 
         event = {
             "timestamp": datetime.now(tz=UTC).isoformat(),
