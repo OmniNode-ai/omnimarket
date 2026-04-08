@@ -14,13 +14,15 @@ description: >
   FSM: IDLE -> CLOSING_OUT -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE
   Circuit breaker trips after 3 consecutive failures -> FAILED.
 
-handler:
-  module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
-  class: HandlerBuildLoopOrchestrator
-  input_model: omnimarket.nodes.node_build_loop.models.model_loop_start_command.ModelLoopStartCommand
-
 handler_routing:
-  default_handler: handler:HandlerBuildLoopOrchestrator
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerBuildLoopOrchestrator
+        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
+      event_model:
+        name: ModelOrchestratorStartCommand
+        module: omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command
 
 descriptor:
   node_archetype: orchestrator
@@ -70,6 +72,12 @@ event_bus:
     - onex.evt.omnimarket.build-loop-orchestrator-completed.v1
     - onex.evt.omnimarket.delegation-attempt.v1
     - onex.evt.omnimarket.delegation-metrics.v1
+    - onex.evt.omnimarket.build-loop-started.v1
+    - onex.evt.omnimarket.build-loop-fill-completed.v1
+    - onex.evt.omnimarket.build-loop-classify-completed.v1
+    - onex.evt.omnimarket.build-loop-closeout-completed.v1
+    - onex.evt.omnimarket.build-loop-build-completed.v1
+    - onex.evt.omnimarket.build-loop-failed.v1
 
 fsm:
   states:

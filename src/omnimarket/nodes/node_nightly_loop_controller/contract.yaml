@@ -12,13 +12,15 @@ description: >
   Replaces .onex_state/nightly-loop-decisions.md with a real persistent
   system backed by DB tables and Kafka event projections.
 
-handler:
-  module: omnimarket.nodes.node_nightly_loop_controller.handlers.handler_nightly_loop_controller
-  class: HandlerNightlyLoopController
-  input_model: omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop.ModelNightlyLoopConfig
-
 handler_routing:
-  default_handler: handler:HandlerNightlyLoopController
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerNightlyLoopController
+        module: omnimarket.nodes.node_nightly_loop_controller.handlers.handler_nightly_loop_controller
+      event_model:
+        name: ModelNightlyLoopConfig
+        module: omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop
 
 descriptor:
   node_archetype: orchestrator
@@ -98,6 +100,12 @@ event_bus:
     - onex.evt.omnimarket.nightly-loop-decision.v1
     - onex.evt.omnimarket.nightly-loop-iteration-completed.v1
     - onex.evt.omnimarket.nightly-loop-completed.v1
+    - onex.evt.omnimarket.build-loop-started.v1
+    - onex.evt.omnimarket.build-loop-fill-completed.v1
+    - onex.evt.omnimarket.build-loop-classify-completed.v1
+    - onex.evt.omnimarket.build-loop-closeout-completed.v1
+    - onex.evt.omnimarket.build-loop-build-completed.v1
+    - onex.evt.omnimarket.build-loop-failed.v1
 
 metadata:
   description: "Persistent nightly loop controller with DB-backed decision store"
