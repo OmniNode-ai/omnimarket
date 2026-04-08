@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -207,8 +208,6 @@ def _compute_metrics(
     total_wall_clock_ms = sum(t.wall_clock_ms for t in traces)
 
     # Coder model: most-used model across all traces (handles multi-model routing)
-    from collections import Counter  # noqa: PLC0415
-
     coder_counts: Counter[str] = Counter(t.coder_model for t in traces)
     coder_model: str = coder_counts.most_common(1)[0][0] if coder_counts else "unknown"
 
