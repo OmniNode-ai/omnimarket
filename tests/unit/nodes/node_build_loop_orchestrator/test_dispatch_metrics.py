@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
