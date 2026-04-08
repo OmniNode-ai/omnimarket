@@ -6,9 +6,28 @@ Tests: InmemoryDatabaseAdapter that records rows for assertion.
 
 from __future__ import annotations
 
-from omnibase_compat.protocols.protocol_projection_database_sync import (
-    ProtocolProjectionDatabaseSync as DatabaseAdapter,
-)
+from typing import Protocol
+
+
+class DatabaseAdapter(Protocol):
+    """Protocol for synchronous projection database operations."""
+
+    def upsert(
+        self,
+        table: str,
+        conflict_key: str,
+        row: dict[str, object],
+    ) -> bool:
+        """UPSERT a row. Returns True on success."""
+        ...
+
+    def query(
+        self,
+        table: str,
+        filters: dict[str, object] | None = None,
+    ) -> list[dict[str, object]]:
+        """Query rows from a table with optional filters."""
+        ...
 
 
 class InmemoryDatabaseAdapter:
