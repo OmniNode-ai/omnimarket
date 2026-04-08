@@ -34,6 +34,27 @@ class HandlerDodVerify:
 
     def handle(
         self,
+        command: ModelDodVerifyStartCommand | dict[str, object],
+        evidence_results: list[ModelEvidenceCheckResult] | None = None,
+    ) -> ModelDodVerifyState | dict[str, object]:
+        """Run DoD evidence verification and return final state.
+
+        Supports two calling conventions:
+        - Typed: handle(ModelDodVerifyStartCommand, ...) -> ModelDodVerifyState
+        - RuntimeLocal shim: handle(dict) -> dict  (required by RuntimeLocal contract)
+        """
+        if isinstance(command, dict):
+            return self._handle_dict(command)
+        return self._handle_typed(command, evidence_results)
+
+    def _handle_dict(self, payload: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal shim — translates dict in/out to typed handle."""
+        command = ModelDodVerifyStartCommand(**payload)
+        state = self._handle_typed(command)
+        return state.model_dump(mode="json")
+
+    def _handle_typed(
+        self,
         command: ModelDodVerifyStartCommand,
         evidence_results: list[ModelEvidenceCheckResult] | None = None,
     ) -> ModelDodVerifyState:
@@ -52,12 +73,12 @@ class HandlerDodVerify:
 
         if failed > 0:
             overall = EnumDodVerifyStatus.FAILED
-        elif len(checks) == 0:
+        elif len(checks) == 0 or skipped == len(checks):
             overall = EnumDodVerifyStatus.SKIPPED
         else:
             overall = EnumDodVerifyStatus.VERIFIED
 
-        return ModelDodVerifyState(
+        state = ModelDodVerifyState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
             status=overall,
@@ -68,6 +89,8 @@ class HandlerDodVerify:
             failed_count=failed,
             skipped_count=skipped,
         )
+
+        return state
 
     def run_verification(
         self,
@@ -80,7 +103,7 @@ class HandlerDodVerify:
         the completed event alongside the state.
         """
         started_at = datetime.now(tz=UTC)
-        state = self.handle(command, evidence_results)
+        state = self._handle_typed(command, evidence_results)
         completed = self.make_completed_event(state, started_at)
         return state, completed
 

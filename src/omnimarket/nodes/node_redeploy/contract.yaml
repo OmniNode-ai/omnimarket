@@ -1,0 +1,77 @@
+---
+name: node_redeploy
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Full post-release runtime redeploy — syncs bare clones, updates Dockerfile plugin pins,
+  rebuilds Docker runtime, seeds Infisical, and verifies health across all services.
+
+handler:
+  module: omnimarket.nodes.node_redeploy.handlers.handler_redeploy
+  class: HandlerRedeploy
+  input_model: omnimarket.nodes.node_redeploy.models.model_redeploy_state.ModelRedeployStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 3600000
+
+inputs:
+  versions:
+    type: str
+    description: "Comma-separated plugin version pins: omniintelligence=0.8.0,omninode-claude=0.4.0. If omitted, auto-detected from latest git tags."
+    required: false
+  skip_sync:
+    type: bool
+    description: "Skip SYNC phase (bare clones already current)"
+    required: false
+    default: false
+  skip_dockerfile_update:
+    type: bool
+    description: "Skip PIN_UPDATE phase"
+    required: false
+    default: false
+  skip_infisical:
+    type: bool
+    description: "Skip INFISICAL phase unconditionally"
+    required: false
+    default: false
+  verify_only:
+    type: bool
+    description: "Skip to VERIFY phase only (assumes runtime already running)"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Print step commands without execution"
+    required: false
+    default: false
+  resume:
+    type: str
+    description: "Resume from first non-completed phase in state file by run_id"
+    required: false
+
+outputs:
+  status:
+    type: str
+    description: "success | failed | dry_run"
+  run_id:
+    type: str
+    description: "Unique redeploy run identifier"
+  phases:
+    type: object
+    description: "Phase completion status map"
+  pins_applied:
+    type: object
+    description: "Package versions that were pinned"
+
+terminal_event: onex.evt.omnimarket.redeploy-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.redeploy-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.redeploy-completed.v1

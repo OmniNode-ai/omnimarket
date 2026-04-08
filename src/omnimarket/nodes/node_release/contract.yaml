@@ -1,0 +1,75 @@
+---
+name: node_release
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Org-wide coordinated release pipeline — bumps versions, pins cross-repo deps, creates PRs,
+  merges, tags, and triggers PyPI publish across all OmniNode repos in dependency-tier order.
+
+handler:
+  module: omnimarket.nodes.node_release.handlers.handler_release
+  class: HandlerRelease
+  input_model: omnimarket.nodes.node_release.models.model_release_state.ModelReleaseStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 3600000
+
+inputs:
+  repos:
+    type: list[str]
+    description: "Repo names to release. Default: all repos in dependency graph"
+    required: false
+  bump:
+    type: str
+    description: "Override bump level: major | minor | patch. Default: inferred from commits"
+    required: false
+  dry_run:
+    type: bool
+    description: "Show plan table and exit without making any changes"
+    required: false
+    default: false
+  resume:
+    type: str
+    description: "Resume a previously failed run by run_id"
+    required: false
+  skip_pypi_wait:
+    type: bool
+    description: "Don't block on PyPI package availability after publish trigger"
+    required: false
+    default: false
+  autonomous:
+    type: bool
+    description: "Skip Slack HIGH_RISK gate; intended for nightly autopilot runs"
+    required: false
+    default: false
+  gate_attestation:
+    type: str
+    description: "Pre-issued gate token to bypass Slack HIGH_RISK gate"
+    required: false
+
+outputs:
+  status:
+    type: str
+    description: "SUCCESS | PARTIAL | FAILED | DRY_RUN"
+  run_id:
+    type: str
+    description: "Unique release run identifier"
+  repos_succeeded:
+    type: int
+    description: "Number of repos released successfully"
+  repos_failed:
+    type: int
+    description: "Number of repos that failed"
+
+terminal_event: onex.evt.omnimarket.release-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.release-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.release-completed.v1

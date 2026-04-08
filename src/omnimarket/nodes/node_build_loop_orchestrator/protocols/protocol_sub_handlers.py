@@ -67,6 +67,10 @@ class BuildTarget(BaseModel):
     ticket_id: str = Field(..., description="Ticket identifier.")
     title: str = Field(default="")
     buildability: str = Field(default="auto_buildable")
+    template_node_id: str | None = Field(
+        default=None,
+        description="Template node to use for code generation context (FSM vs compute).",
+    )
 
 
 class ClassifyResult(BaseModel):

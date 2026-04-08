@@ -234,6 +234,24 @@ def tmp_state_dir(tmp_path: Path) -> Path:
     return tmp_path / ".onex_state"
 
 
+def _make_mock_router(response_text: str, model_name: str = "mock-model") -> AsyncMock:
+    """Build a mock AdapterModelRouter that returns the given response text."""
+    from omnibase_infra.adapters.llm.model_llm_adapter_response import (
+        ModelLlmAdapterResponse,
+    )
+
+    mock_router = AsyncMock()
+    mock_router.get_available_providers = AsyncMock(return_value=["local_coder"])
+    mock_router.generate_typed = AsyncMock(
+        return_value=ModelLlmAdapterResponse(
+            generated_text=response_text,
+            model_used=model_name,
+            usage_statistics={"prompt_tokens": 10, "completion_tokens": 20},
+        )
+    )
+    return mock_router
+
+
 @pytest.mark.asyncio
 async def test_generate_plan_traced_writes_trace_on_success(
     tmp_state_dir: Path,
@@ -249,12 +267,13 @@ async def test_generate_plan_traced_writes_trace_on_success(
     valid_json = json.dumps({"ticket_id": "OMN-TEST", "implementation_plan": {}})
 
     with patch.object(
-        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = valid_json
+        AdapterLlmDispatch,
+        "_ensure_router",
+        new_callable=AsyncMock,
+        return_value=_make_mock_router(valid_json),
+    ):
         _plan, trace = await adapter._generate_plan_traced(
             target=target,
-            endpoint=_make_endpoint(),
             correlation_id=corr_id,
             attempt=1,
         )
@@ -262,9 +281,7 @@ async def test_generate_plan_traced_writes_trace_on_success(
     assert trace.accepted is True
     assert trace.ticket_id == "OMN-TEST"
     assert trace.attempt == 1
-    # accepted=True means JSON parsed successfully; ruff/import/test gates require
-    # actual code execution and remain False until explicitly run.
-    assert trace.quality_gate.errors == []
+    assert trace.quality_gate.all_pass is True
 
     # Trace file must exist
     fname = f"{corr_id}-OMN-TEST-attempt-1.json"
@@ -288,12 +305,13 @@ async def test_generate_plan_traced_writes_trace_on_json_failure(
     )
 
     with patch.object(
-        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
-    ) as mock_call:
-        mock_call.return_value = "not json at all — just prose"
+        AdapterLlmDispatch,
+        "_ensure_router",
+        new_callable=AsyncMock,
+        return_value=_make_mock_router("not json at all — just prose"),
+    ):
         _plan, trace = await adapter._generate_plan_traced(
             target=target,
-            endpoint=_make_endpoint(),
             correlation_id=corr_id,
             attempt=2,
         )
@@ -319,26 +337,25 @@ async def test_generate_plan_traced_writes_trace_on_llm_error(
         ticket_id="OMN-ERR", title="Error ticket", buildability="auto_buildable"
     )
 
-    with (
-        patch.object(
-            AdapterLlmDispatch,
-            "_call_endpoint",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("connection refused"),
-        ),
-        pytest.raises(RuntimeError, match="connection refused"),
+    mock_router = AsyncMock()
+    mock_router.get_available_providers = AsyncMock(return_value=["local_coder"])
+    mock_router.generate_typed = AsyncMock(
+        side_effect=RuntimeError("connection refused")
+    )
+
+    with patch.object(
+        AdapterLlmDispatch,
+        "_ensure_router",
+        new_callable=AsyncMock,
+        return_value=mock_router,
     ):
-        await adapter._generate_plan_traced(
+        _plan, trace = await adapter._generate_plan_traced(
             target=target,
-            endpoint=_make_endpoint(),
             correlation_id=corr_id,
             attempt=1,
         )
 
-    # Trace must still be written even though the endpoint raised
+    assert trace.accepted is False
+    assert any("LLM call failed" in e for e in trace.quality_gate.errors)
     fname = f"{corr_id}-OMN-ERR-attempt-1.json"
-    trace_path = tmp_state_dir / "dispatch-traces" / fname
-    assert trace_path.exists()
-    data = json.loads(trace_path.read_text())
-    assert data["accepted"] is False
-    assert any("LLM call failed" in e for e in data["quality_gate"]["errors"])
+    assert (tmp_state_dir / "dispatch-traces" / fname).exists()
