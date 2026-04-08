@@ -62,6 +62,29 @@ def _load_delegation_topic() -> str:
 
 _DEFAULT_DELEGATION_TOPIC: str = _load_delegation_topic()
 
+# Root of all node directories — used to load template handler source
+_NODES_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _load_template_source(template_node_id: str) -> str:
+    """Load handler source from a template node directory.
+
+    Returns the concatenated source of all .py files under the template node's
+    handlers/ subdirectory, or an empty string if the node does not exist.
+    """
+    handlers_dir = _NODES_ROOT / template_node_id / "handlers"
+    if not handlers_dir.is_dir():
+        logger.warning("Template node handlers not found: %s", handlers_dir)
+        return ""
+    parts: list[str] = []
+    for py_file in sorted(handlers_dir.glob("*.py")):
+        try:
+            parts.append(py_file.read_text(encoding="utf-8"))
+        except OSError as exc:
+            logger.warning("Could not read template file %s: %s", py_file, exc)
+    return "\n\n".join(parts)
+
+
 _CODER_SYSTEM_PROMPT = """\
 You are an autonomous code implementation agent for the OmniNode platform.
 Given a ticket ID, title, and context, produce a structured implementation plan.
@@ -177,8 +200,12 @@ class AdapterLlmDispatch:
                     target.title[:80],
                 )
 
+                # Select template node (FSM vs compute) for coder context.
+                # Use explicit template from target if set, else default to compute.
+                template_node_id = target.template_node_id or "node_data_flow_sweep"
+
                 # Generate plan via routed model
-                plan = await self._generate_plan(target, endpoint)
+                plan = await self._generate_plan(target, endpoint, template_node_id)
 
                 # Review via reasoning model (if available)
                 review: dict[str, object] = {
@@ -204,6 +231,7 @@ class AdapterLlmDispatch:
                     "delegated_to": endpoint.model_id,
                     "coder_model": endpoint.model_id,
                     "reviewer_model": "deepseek-r1-32b",
+                    "template_node_id": template_node_id,
                 }
 
                 payloads.append(
@@ -241,13 +269,24 @@ class AdapterLlmDispatch:
         )
 
     async def _generate_plan(
-        self, target: BuildTarget, endpoint: ModelEndpointConfig
+        self,
+        target: BuildTarget,
+        endpoint: ModelEndpointConfig,
+        template_node_id: str = "node_data_flow_sweep",
     ) -> dict[str, object]:
         """Generate implementation plan via the routed model endpoint."""
+        template_source = _load_template_source(template_node_id)
+        template_section = (
+            f"\nTemplate node ({template_node_id}) — follow this pattern:\n"
+            f"```python\n{template_source[:6000]}\n```\n"
+            if template_source
+            else ""
+        )
         user_prompt = (
             f"Ticket: {target.ticket_id}\n"
             f"Title: {target.title}\n"
-            f"Buildability: {target.buildability}\n\n"
+            f"Buildability: {target.buildability}\n"
+            f"{template_section}\n"
             f"Generate an implementation plan."
         )
 

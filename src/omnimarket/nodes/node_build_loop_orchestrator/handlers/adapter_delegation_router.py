@@ -236,9 +236,30 @@ def route_ticket_to_tier(
     raise ValueError(f"No suitable model tier available from {available}")
 
 
+# FSM keywords that indicate a node follows the FSM handler pattern
+_FSM_KEYWORDS: frozenset[str] = frozenset(
+    {"run_full_pipeline", "run_full_cycle", "start", "advance", "phase", "circuit_breaker"}
+)
+
+_FSM_TEMPLATE_NODE = "node_close_out"
+_COMPUTE_TEMPLATE_NODE = "node_data_flow_sweep"
+
+
+def route_to_template(target_handler_source: str) -> str:
+    """Return template node directory name based on target handler patterns.
+
+    FSM nodes (run_full_pipeline/run_full_cycle/start/advance) get node_close_out
+    as a template. All other nodes get node_data_flow_sweep (compute template).
+    """
+    if any(kw in target_handler_source for kw in _FSM_KEYWORDS):
+        return _FSM_TEMPLATE_NODE
+    return _COMPUTE_TEMPLATE_NODE
+
+
 __all__: list[str] = [
     "EnumModelTier",
     "ModelEndpointConfig",
     "build_endpoint_configs",
     "route_ticket_to_tier",
+    "route_to_template",
 ]
