@@ -145,6 +145,11 @@ class ModelLoopState(BaseModel):
     tickets_classified: int = Field(default=0, ge=0)
     tickets_dispatched: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
+    verification_snapshot: dict[str, object] | None = Field(
+        default=None,
+        description="Captured during VERIFYING phase — platform readiness, "
+        "golden chain, and data flow results.",
+    )
 
 
 __all__: list[str] = [

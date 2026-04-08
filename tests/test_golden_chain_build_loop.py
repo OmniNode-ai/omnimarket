@@ -431,3 +431,43 @@ class TestBuildLoopGoldenChain:
 
         assert state.consecutive_failures == 1
         assert completed.final_phase == EnumBuildLoopPhase.CLOSING_OUT
+
+    async def test_verification_snapshot_captured(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Verification snapshot is captured when transitioning from VERIFYING."""
+        handler = HandlerBuildLoop()
+        command = _make_command(skip_closeout=True)
+        state = handler.start(command)
+
+        # IDLE -> VERIFYING
+        state, _ = handler.advance(state, phase_success=True)
+        assert state.current_phase == EnumBuildLoopPhase.VERIFYING
+        assert state.verification_snapshot is None
+
+        # VERIFYING -> FILLING with snapshot
+        snapshot = {
+            "platform_readiness": "pass",
+            "golden_chain": "pass",
+            "data_flow": "warn",
+        }
+        state, _ = handler.advance(
+            state, phase_success=True, verification_snapshot=snapshot
+        )
+        assert state.current_phase == EnumBuildLoopPhase.FILLING
+        assert state.verification_snapshot is not None
+        assert state.verification_snapshot["platform_readiness"] == "pass"
+        assert state.verification_snapshot["data_flow"] == "warn"
+
+    async def test_verification_snapshot_in_full_cycle(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """run_full_cycle captures a default verification snapshot."""
+        handler = HandlerBuildLoop()
+        command = _make_command()
+        state, _events, completed = handler.run_full_cycle(command)
+
+        assert state.current_phase == EnumBuildLoopPhase.COMPLETE
+        assert state.verification_snapshot is not None
+        assert "captured_at" in state.verification_snapshot
+        assert state.verification_snapshot["platform_readiness"] == "pass"

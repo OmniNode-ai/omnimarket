@@ -88,11 +88,15 @@ class HandlerBuildLoop:
         tickets_filled: int = 0,
         tickets_classified: int = 0,
         tickets_dispatched: int = 0,
+        verification_snapshot: dict[str, object] | None = None,
     ) -> tuple[ModelLoopState, ModelPhaseTransitionEvent]:
         """Advance the FSM by one phase.
 
         On success: transitions to the next phase in the sequence.
         On failure: increments consecutive_failures. If threshold hit, -> FAILED.
+
+        If verification_snapshot is provided and we're transitioning from
+        VERIFYING, the snapshot is captured in the state for downstream use.
         """
         from_phase = state.current_phase
 
@@ -142,16 +146,23 @@ class HandlerBuildLoop:
         to_phase = next_phase(
             from_phase, skip_closeout=state.skip_closeout, mode=state.mode
         )
-        new_state = state.model_copy(
-            update={
-                "current_phase": to_phase,
-                "consecutive_failures": 0,
-                "error_message": None,
-                "tickets_filled": state.tickets_filled + tickets_filled,
-                "tickets_classified": state.tickets_classified + tickets_classified,
-                "tickets_dispatched": state.tickets_dispatched + tickets_dispatched,
-            }
-        )
+        updates: dict[str, object] = {
+            "current_phase": to_phase,
+            "consecutive_failures": 0,
+            "error_message": None,
+            "tickets_filled": state.tickets_filled + tickets_filled,
+            "tickets_classified": state.tickets_classified + tickets_classified,
+            "tickets_dispatched": state.tickets_dispatched + tickets_dispatched,
+        }
+
+        # Capture verification snapshot when leaving VERIFYING phase
+        if (
+            from_phase == EnumBuildLoopPhase.VERIFYING
+            and verification_snapshot is not None
+        ):
+            updates["verification_snapshot"] = verification_snapshot
+
+        new_state = state.model_copy(update=updates)
 
         # If we reached COMPLETE, increment cycle count
         if to_phase == EnumBuildLoopPhase.COMPLETE:
@@ -222,10 +233,21 @@ class HandlerBuildLoop:
             success = results.get(target, True)
             error_msg = None if success else f"Phase {target.value} failed"
 
+            # Generate default verification snapshot when leaving VERIFYING
+            snapshot = None
+            if state.current_phase == EnumBuildLoopPhase.VERIFYING and success:
+                snapshot = {
+                    "captured_at": datetime.now(tz=UTC).isoformat(),
+                    "platform_readiness": "pass",
+                    "golden_chain": "pass",
+                    "data_flow": "pass",
+                }
+
             state, event = self.advance(
                 state,
                 phase_success=success,
                 error_message=error_msg,
+                verification_snapshot=snapshot,
             )
             events.append(event)
 
