@@ -6,9 +6,10 @@ Tests: InmemoryDatabaseAdapter that records rows for assertion.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
+@runtime_checkable
 class DatabaseAdapter(Protocol):
     """Protocol for synchronous projection database operations."""
 

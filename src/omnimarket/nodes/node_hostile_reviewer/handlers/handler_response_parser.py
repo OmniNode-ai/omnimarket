@@ -205,8 +205,12 @@ class HandlerResponseParser:
         Delegates to parse_model_response. Expects input_data with
         'raw_text' and 'source_model' keys.
         """
-        raw_text = str(input_data.get("raw_text", ""))
-        source_model = str(input_data.get("source_model", "unknown"))
+        raw_text = input_data.get("raw_text")
+        if not isinstance(raw_text, str):
+            raise TypeError("handle() requires a str in input_data['raw_text']")
+        source_model = input_data.get("source_model")
+        if not isinstance(source_model, str):
+            raise TypeError("handle() requires a str in input_data['source_model']")
         result = parse_model_response(raw_text, source_model)
         return result.model_dump(mode="json")
 
