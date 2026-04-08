@@ -40,7 +40,9 @@ def _make_adapter() -> AdapterLlmDispatch:
     return AdapterLlmDispatch(endpoint_configs=_MOCK_CONFIGS)
 
 
-def _make_target(ticket_id: str = "OMN-TEST", title: str = "Fix handle()") -> BuildTarget:
+def _make_target(
+    ticket_id: str = "OMN-TEST", title: str = "Fix handle()"
+) -> BuildTarget:
     return BuildTarget(ticket_id=ticket_id, title=title, buildability="auto_buildable")
 
 

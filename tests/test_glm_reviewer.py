@@ -98,7 +98,9 @@ def test_frontier_review_tier_exists() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_build_endpoint_configs_registers_glm_reviewer(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_endpoint_configs_registers_glm_reviewer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """GLM-4.7-Flash endpoint registered when LLM_GLM_API_KEY is set."""
     monkeypatch.setenv("LLM_GLM_API_KEY", "test-api-key")
     monkeypatch.delenv("LLM_GLM_URL", raising=False)
@@ -114,7 +116,9 @@ def test_build_endpoint_configs_registers_glm_reviewer(monkeypatch: pytest.Monke
     assert "bigmodel.cn" in cfg.base_url
 
 
-def test_build_endpoint_configs_no_reviewer_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_endpoint_configs_no_reviewer_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """FRONTIER_REVIEW must NOT be registered when LLM_GLM_API_KEY is absent."""
     monkeypatch.delenv("LLM_GLM_API_KEY", raising=False)
     monkeypatch.delenv("LLM_GLM_URL", raising=False)
@@ -126,13 +130,17 @@ def test_build_endpoint_configs_no_reviewer_without_key(monkeypatch: pytest.Monk
     assert EnumModelTier.FRONTIER_REVIEW not in configs
 
 
-def test_build_endpoint_configs_glm_review_url_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_endpoint_configs_glm_review_url_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """LLM_GLM_URL overrides the default bigmodel.cn URL for reviewer too."""
     monkeypatch.setenv("LLM_GLM_API_KEY", "key")
     monkeypatch.setenv("LLM_GLM_URL", "https://custom.endpoint/api")
 
     configs = build_endpoint_configs()
-    assert configs[EnumModelTier.FRONTIER_REVIEW].base_url == "https://custom.endpoint/api"
+    assert (
+        configs[EnumModelTier.FRONTIER_REVIEW].base_url == "https://custom.endpoint/api"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +243,8 @@ async def test_run_review_endpoint_unreachable_returns_unavailable() -> None:
         status, result = await adapter._run_review(
             generated_code="def handle(req): pass",
             target_source="def run_full_pipeline(): pass",
+            template_source="",
+            model_sources=[],
             endpoint=endpoint,
             ticket_id="OMN-TEST",
         )
@@ -256,11 +266,15 @@ async def test_run_review_malformed_first_attempt_then_valid() -> None:
 
     valid_json = json.dumps({"approved": True, "issues": [], "risk_level": "low"})
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         mock_call.side_effect = ["Looks good to me!", valid_json]
         status, result = await adapter._run_review(
             generated_code="def handle(req): pass",
             target_source="",
+            template_source="",
+            model_sources=[],
             endpoint=endpoint,
             ticket_id="OMN-TEST",
         )
@@ -290,6 +304,8 @@ async def test_run_review_malformed_both_attempts_returns_failed() -> None:
         status, result = await adapter._run_review(
             generated_code="def handle(req): pass",
             target_source="",
+            template_source="",
+            model_sources=[],
             endpoint=endpoint,
             ticket_id="OMN-TEST",
         )
@@ -308,11 +324,15 @@ async def test_run_review_reviewer_rejects() -> None:
     adapter = _make_adapter()
     endpoint = _make_review_endpoint()
 
-    reject_json = json.dumps({
-        "approved": False,
-        "issues": [{"line": 5, "severity": "critical", "message": "wrong method name"}],
-        "risk_level": "high",
-    })
+    reject_json = json.dumps(
+        {
+            "approved": False,
+            "issues": [
+                {"line": 5, "severity": "critical", "message": "wrong method name"}
+            ],
+            "risk_level": "high",
+        }
+    )
 
     with patch.object(
         AdapterLlmDispatch,
@@ -322,6 +342,8 @@ async def test_run_review_reviewer_rejects() -> None:
         status, result = await adapter._run_review(
             generated_code="def handle(req): pass",
             target_source="",
+            template_source="",
+            model_sources=[],
             endpoint=endpoint,
             ticket_id="OMN-TEST",
         )
@@ -360,12 +382,21 @@ async def test_handle_no_reviewer_allow_unreviewed_false_rejects() -> None:
         delegation_topic="test-topic",
         allow_unreviewed=False,
     )
-    targets = (BuildTarget(ticket_id="OMN-X", title="Test", buildability="auto_buildable"),)
+    targets = (
+        BuildTarget(ticket_id="OMN-X", title="Test", buildability="auto_buildable"),
+    )
 
-    with patch.object(
-        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
-    ) as mock_ep:
-        mock_ep.side_effect = httpx.ConnectError("Reviewer down")
+    with (
+        patch.object(
+            AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+        ) as mock_coder,
+        patch.object(
+            AdapterLlmDispatch, "_run_review", new_callable=AsyncMock
+        ) as mock_reviewer,
+    ):
+        # Coder succeeds (returns valid Python); reviewer is unreachable
+        mock_coder.return_value = "def handle(self):\n    pass\n"
+        mock_reviewer.return_value = ("unavailable", None)
         result = await adapter.handle(
             correlation_id=uuid4(),
             targets=targets,

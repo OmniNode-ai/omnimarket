@@ -60,8 +60,14 @@ def test_review_result_fields() -> None:
     from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
         ModelReviewIssue,
     )
+
     issue = ModelReviewIssue(severity="major", message="bad field")
-    r = ModelReviewResult(approved=False, issues=[issue], reviewer_model="glm-4.7-flash", review_tokens=100)
+    r = ModelReviewResult(
+        approved=False,
+        issues=[issue],
+        reviewer_model="glm-4.7-flash",
+        review_tokens=100,
+    )
     assert r.approved is False
     assert len(r.issues) == 1
     assert r.issues[0].message == "bad field"
@@ -163,7 +169,9 @@ def test_write_trace_json_content_valid(tmp_path: Path) -> None:
     trace = _make_trace()
     _write_trace(trace, state_dir)
 
-    content = (state_dir / "dispatch-traces" / "corr-123-OMN-9999-attempt-1.json").read_text()
+    content = (
+        state_dir / "dispatch-traces" / "corr-123-OMN-9999-attempt-1.json"
+    ).read_text()
     data = json.loads(content)
     assert data["correlation_id"] == "corr-123"
     assert data["ticket_id"] == "OMN-9999"
@@ -177,7 +185,9 @@ def test_write_trace_fail_trace_has_errors(tmp_path: Path) -> None:
     trace = _make_trace(accepted=False)
     _write_trace(trace, state_dir)
 
-    content = (state_dir / "dispatch-traces" / "corr-123-OMN-9999-attempt-1.json").read_text()
+    content = (
+        state_dir / "dispatch-traces" / "corr-123-OMN-9999-attempt-1.json"
+    ).read_text()
     data = json.loads(content)
     assert data["accepted"] is False
     assert data["quality_gate"]["ruff_pass"] is False
@@ -196,7 +206,9 @@ def test_write_trace_idempotent_overwrite(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_emit_trace_skips_without_kafka_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_emit_trace_skips_without_kafka_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """No import attempted when KAFKA_ENABLED is absent."""
     monkeypatch.delenv("KAFKA_ENABLED", raising=False)
     trace = _make_trace()
@@ -204,6 +216,7 @@ def test_emit_trace_skips_without_kafka_enabled(monkeypatch: pytest.MonkeyPatch)
     from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (
         _emit_trace_to_bus,
     )
+
     _emit_trace_to_bus(trace)  # no-op, no exception
 
 
@@ -241,9 +254,13 @@ async def test_generate_with_review_writes_trace_on_success(
         state_dir=tmp_state_dir,
         allow_unreviewed=True,  # no reviewer configured
     )
-    target = BuildTarget(ticket_id="OMN-TEST", title="Test ticket", buildability="auto_buildable")
+    target = BuildTarget(
+        ticket_id="OMN-TEST", title="Test ticket", buildability="auto_buildable"
+    )
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         mock_call.return_value = _VALID_PYTHON
         code, traces = await adapter._generate_with_review(
             target=target,
@@ -280,7 +297,9 @@ async def test_generate_with_review_writes_trace_on_transport_error(
         state_dir=tmp_state_dir,
         allow_unreviewed=True,
     )
-    target = BuildTarget(ticket_id="OMN-ERR", title="Error ticket", buildability="auto_buildable")
+    target = BuildTarget(
+        ticket_id="OMN-ERR", title="Error ticket", buildability="auto_buildable"
+    )
 
     with patch.object(
         AdapterLlmDispatch,

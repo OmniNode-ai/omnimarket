@@ -45,9 +45,6 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
     AdapterLlmProviderOpenai,
 )
 from omnibase_infra.adapters.llm.adapter_model_router import AdapterModelRouter
-from omnibase_infra.adapters.llm.model_llm_adapter_request import (
-    ModelLlmAdapterRequest,
-)
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import (
     EnumModelTier,
@@ -68,12 +65,10 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 
 logger = logging.getLogger(__name__)
 
-# Bus topic for per-attempt trace events
-_DELEGATION_ATTEMPT_TOPIC = "onex.evt.omnimarket.delegation-attempt.v1"
-
 # ---------------------------------------------------------------------------
-# Resolve delegation topic from build_dispatch_effect contract.yaml
+# Load topics from contract.yaml — never hardcode topics inside handlers.
 # ---------------------------------------------------------------------------
+_ORCHESTRATOR_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _DISPATCH_CONTRACT_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "node_build_dispatch_effect"
@@ -81,18 +76,29 @@ _DISPATCH_CONTRACT_PATH = (
 )
 
 
-def _load_delegation_topic() -> str:
-    """Load delegation-request publish topic from dispatch contract."""
-    if _DISPATCH_CONTRACT_PATH.exists():
-        with open(_DISPATCH_CONTRACT_PATH) as fh:
+def _load_topic_from_contract(contract_path: Path, fragment: str, fallback: str) -> str:
+    """Load a publish topic matching *fragment* from a contract.yaml file."""
+    if contract_path.exists():
+        with open(contract_path) as fh:
             data = yaml.safe_load(fh) or {}
         for topic in (data.get("event_bus", {}) or {}).get("publish_topics", []) or []:
-            if isinstance(topic, str) and "delegation-request" in topic:
+            if isinstance(topic, str) and fragment in topic:
                 return topic
-    return "delegation-request"  # fallback — never a valid topic, will be overridden
+    return fallback
 
 
-_DEFAULT_DELEGATION_TOPIC: str = _load_delegation_topic()
+# Bus topic for per-attempt trace events — declared in contract.yaml publish_topics
+_DELEGATION_ATTEMPT_TOPIC: str = _load_topic_from_contract(
+    _ORCHESTRATOR_CONTRACT_PATH,
+    "delegation-attempt",
+    "onex.evt.omnimarket.delegation-attempt.v1",  # fallback only
+)
+
+_DEFAULT_DELEGATION_TOPIC: str = _load_topic_from_contract(
+    _DISPATCH_CONTRACT_PATH,
+    "delegation-request",
+    "delegation-request",  # fallback — never a valid topic, will be overridden
+)
 
 
 def _get_state_dir() -> Path:
@@ -151,6 +157,29 @@ def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
             trace.attempt,
             exc,
         )
+
+
+def _extract_json_block(text: str, marker: str) -> str | None:
+    """Extract the outermost brace-balanced JSON block containing *marker*.
+
+    Handles nested objects (e.g., ``"issues": [{...}]``) where simple
+    ``[^{}]*`` regexes would fail.  Returns None if no matching block found.
+    """
+    for start in range(len(text)):
+        if text[start] != "{":
+            continue
+        depth = 0
+        for end in range(start, len(text)):
+            if text[end] == "{":
+                depth += 1
+            elif text[end] == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start : end + 1]
+                    if marker in candidate:
+                        return candidate
+                    break
+    return None
 
 
 _CODER_SYSTEM_PROMPT = """\
@@ -327,8 +356,10 @@ class AdapterLlmDispatch:
                 )
 
                 # Load source context
-                template_source, target_source, model_sources = self._load_source_context(
-                    target_node_dir=self._resolve_node_dir(target.ticket_id),
+                template_source, target_source, model_sources = (
+                    self._load_source_context(
+                        target_node_dir=self._resolve_node_dir(target.ticket_id),
+                    )
                 )
 
                 # Generate with review loop
@@ -369,7 +400,9 @@ class AdapterLlmDispatch:
                     "routed_to_tier": tier.value,
                     "delegated_to": coder_endpoint.model_id,
                     "coder_model": coder_endpoint.model_id,
-                    "reviewer_model": reviewer_endpoint.model_id if reviewer_endpoint else None,
+                    "reviewer_model": reviewer_endpoint.model_id
+                    if reviewer_endpoint
+                    else None,
                     "total_attempts": len(traces),
                     "accepted": approved,
                 }
@@ -453,13 +486,17 @@ class AdapterLlmDispatch:
                 model_sources=model_sources,
             )
             if review_feedback:
-                prompt += f"\n\n## REVIEW FEEDBACK (fix these issues):\n{review_feedback}"
+                prompt += (
+                    f"\n\n## REVIEW FEEDBACK (fix these issues):\n{review_feedback}"
+                )
 
             prompt_chars = len(prompt)
 
             # 2. Call coder
             try:
-                raw = await self._call_endpoint(coder_endpoint, _CODER_SYSTEM_PROMPT, prompt)
+                raw = await self._call_endpoint(
+                    coder_endpoint, _CODER_SYSTEM_PROMPT, prompt
+                )
             except Exception as exc:
                 failure_kind = _FAILURE_TRANSPORT
                 wall_clock_ms = int((time.monotonic() - t0) * 1000)
@@ -523,7 +560,9 @@ class AdapterLlmDispatch:
                 _write_trace(trace, self._state_dir)
                 _emit_trace_to_bus(trace)
                 traces.append(trace)
-                review_feedback = "Response produced empty code. Output complete Python code only."
+                review_feedback = (
+                    "Response produced empty code. Output complete Python code only."
+                )
                 continue
 
             # 4. Structural quality gate
@@ -553,7 +592,9 @@ class AdapterLlmDispatch:
                 _write_trace(trace, self._state_dir)
                 _emit_trace_to_bus(trace)
                 traces.append(trace)
-                review_feedback = "Quality gate failed:\n" + "\n".join(gate_result.errors)
+                review_feedback = "Quality gate failed:\n" + "\n".join(
+                    gate_result.errors
+                )
                 continue
 
             # 6. Review (if reviewer available)
@@ -565,6 +606,8 @@ class AdapterLlmDispatch:
                 review_status, review_model = await self._run_review(
                     generated_code=code,
                     target_source=target_source,
+                    template_source=template_source,
+                    model_sources=model_sources,
                     endpoint=reviewer_endpoint,
                     ticket_id=target.ticket_id,
                 )
@@ -601,31 +644,63 @@ class AdapterLlmDispatch:
                     continue
 
                 # 8. Review unavailable or failed — check policy
-                if review_status in ("unavailable", "failed", "malformed") and not self._allow_unreviewed:
-                        failure_kind = _FAILURE_REVIEW_UNAVAILABLE
-                        wall_clock_ms = int((time.monotonic() - t0) * 1000)
-                        trace = ModelDispatchTrace(
-                            correlation_id=str(correlation_id),
-                            ticket_id=target.ticket_id,
-                            attempt=attempt,
-                            timestamp=datetime.now(tz=UTC).isoformat(),
-                            coder_model=coder_endpoint.model_id,
-                            reviewer_model=reviewer_model_id,
-                            prompt_tokens=0,
-                            completion_tokens=0,
-                            prompt_chars=prompt_chars,
-                            generation_raw=raw,
-                            quality_gate=gate_result,
-                            review_result=None,
-                            accepted=False,
-                            wall_clock_ms=wall_clock_ms,
-                            failure_kind=failure_kind,
-                        )
-                        _write_trace(trace, self._state_dir)
-                        _emit_trace_to_bus(trace)
-                        traces.append(trace)
-                        review_feedback = f"Reviewer {review_status} — retry."
-                        continue
+                if (
+                    review_status in ("unavailable", "failed", "malformed")
+                    and not self._allow_unreviewed
+                ):
+                    failure_kind = _FAILURE_REVIEW_UNAVAILABLE
+                    wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                    trace = ModelDispatchTrace(
+                        correlation_id=str(correlation_id),
+                        ticket_id=target.ticket_id,
+                        attempt=attempt,
+                        timestamp=datetime.now(tz=UTC).isoformat(),
+                        coder_model=coder_endpoint.model_id,
+                        reviewer_model=reviewer_model_id,
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        prompt_chars=prompt_chars,
+                        generation_raw=raw,
+                        quality_gate=gate_result,
+                        review_result=None,
+                        accepted=False,
+                        wall_clock_ms=wall_clock_ms,
+                        failure_kind=failure_kind,
+                    )
+                    _write_trace(trace, self._state_dir)
+                    _emit_trace_to_bus(trace)
+                    traces.append(trace)
+                    review_feedback = f"Reviewer {review_status} — retry."
+                    continue
+
+            elif not self._allow_unreviewed:
+                # No reviewer configured and unreviewed not allowed — reject
+                failure_kind = _FAILURE_REVIEW_UNAVAILABLE
+                wall_clock_ms = int((time.monotonic() - t0) * 1000)
+                trace = ModelDispatchTrace(
+                    correlation_id=str(correlation_id),
+                    ticket_id=target.ticket_id,
+                    attempt=attempt,
+                    timestamp=datetime.now(tz=UTC).isoformat(),
+                    coder_model=coder_endpoint.model_id,
+                    reviewer_model=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    prompt_chars=prompt_chars,
+                    generation_raw=raw,
+                    quality_gate=gate_result,
+                    review_result=None,
+                    accepted=False,
+                    wall_clock_ms=wall_clock_ms,
+                    failure_kind=failure_kind,
+                )
+                _write_trace(trace, self._state_dir)
+                _emit_trace_to_bus(trace)
+                traces.append(trace)
+                review_feedback = (
+                    "No reviewer configured and allow_unreviewed=False — retry."
+                )
+                continue
 
             # 9. Accepted: gate passed and (approved or no reviewer or allow_unreviewed)
             wall_clock_ms = int((time.monotonic() - t0) * 1000)
@@ -670,6 +745,8 @@ class AdapterLlmDispatch:
         *,
         generated_code: str,
         target_source: str,
+        template_source: str,
+        model_sources: list[str],
         endpoint: ModelEndpointConfig,
         ticket_id: str,
     ) -> tuple[str, ModelReviewResult | None]:
@@ -685,11 +762,18 @@ class AdapterLlmDispatch:
         Never collapses "unavailable" to "approved".
         Retries once on malformed JSON before marking failed.
         """
+        # Include template and model context so reviewer can check template-pattern
+        # conformance and field name validity (required by _REVIEW_SYSTEM_PROMPT checks).
+        model_ctx = (
+            "\n\n".join(model_sources[:2]) if model_sources else ""
+        )  # budget cap
         user_prompt = (
             f"Ticket: {ticket_id}\n\n"
-            f"## ORIGINAL SOURCE:\n{target_source[:4000]}\n\n"
-            f"## GENERATED CODE:\n{generated_code[:8000]}\n\n"
-            f"Review the generated code against the original source. "
+            f"## TEMPLATE (pattern to follow):\n{template_source[:2000]}\n\n"
+            f"## ORIGINAL SOURCE:\n{target_source[:3000]}\n\n"
+            f"## MODEL/CONTRACT CONTEXT:\n{model_ctx[:2000]}\n\n"
+            f"## GENERATED CODE:\n{generated_code[:6000]}\n\n"
+            f"Review the generated code against the template and original source. "
             f"Output only a JSON object."
         )
 
@@ -790,18 +874,23 @@ class AdapterLlmDispatch:
         # Strip markdown fences if present
         if text.startswith("```"):
             lines = text.splitlines()
-            inner = "\n".join(lines[1:-1]) if lines and lines[-1].strip() == "```" else "\n".join(lines[1:])
+            inner = (
+                "\n".join(lines[1:-1])
+                if lines and lines[-1].strip() == "```"
+                else "\n".join(lines[1:])
+            )
             text = inner.strip()
 
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            # Try to extract JSON block from prose
-            json_match = re.search(r"\{[^{}]*\"approved\"[^{}]*\}", raw, re.DOTALL)
-            if not json_match:
+            # Regex fallback: brace-balanced extraction handles nested objects
+            # (e.g., issues=[{...}]).  Scan for the outermost { containing "approved".
+            extracted = _extract_json_block(raw, marker="approved")
+            if extracted is None:
                 return None
             try:
-                data = json.loads(json_match.group(0))
+                data = json.loads(extracted)
             except json.JSONDecodeError:
                 return None
 
@@ -851,9 +940,7 @@ class AdapterLlmDispatch:
                 break
 
         if model_parts:
-            return "\n".join(
-                [base_prompt, "", "## RELEVANT MODELS:", *model_parts]
-            )
+            return "\n".join([base_prompt, "", "## RELEVANT MODELS:", *model_parts])
         return base_prompt
 
     def _load_source_context(
@@ -942,9 +1029,20 @@ class AdapterLlmDispatch:
         return ""
 
     def _resolve_node_dir(self, ticket_id: str) -> Path:
-        """Resolve the node directory for a ticket from the omnimarket source tree."""
+        """Resolve the node directory for a ticket from the omnimarket source tree.
+
+        Logs a warning if the resolved directory does not exist so callers
+        receive a non-ambiguous signal instead of silently empty context.
+        """
         nodes_root = Path(__file__).resolve().parent.parent.parent
-        return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
+        candidate = nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
+        if not candidate.exists():
+            logger.warning(
+                "Node directory not found for %s: %s — source context will be empty",
+                ticket_id,
+                candidate,
+            )
+        return candidate
 
     @staticmethod
     def _extract_code_from_response(raw_response: str) -> str:
@@ -954,9 +1052,7 @@ class AdapterLlmDispatch:
         Returns the largest contiguous Python block found.
         Falls back to raw_response if no fences detected.
         """
-        python_fence = re.search(
-            r"```python\s*\n(.*?)```", raw_response, re.DOTALL
-        )
+        python_fence = re.search(r"```python\s*\n(.*?)```", raw_response, re.DOTALL)
         if python_fence:
             return python_fence.group(1)
 

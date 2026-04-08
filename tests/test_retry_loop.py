@@ -44,7 +44,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 # ---------------------------------------------------------------------------
 
 _VALID_PYTHON = "def handle(req):\n    return req\n"
-_SYNTAX_ERROR_PYTHON = "def handle(req):\n    return req\n    orphan syntax error @@@@\n"
+_SYNTAX_ERROR_PYTHON = (
+    "def handle(req):\n    return req\n    orphan syntax error @@@@\n"
+)
 _EMPTY_RESPONSE = "   "
 
 
@@ -100,11 +102,13 @@ def _approve_json() -> str:
 
 
 def _reject_json(message: str = "wrong method name") -> str:
-    return json.dumps({
-        "approved": False,
-        "issues": [{"line": 5, "severity": "major", "message": message}],
-        "risk_level": "high",
-    })
+    return json.dumps(
+        {
+            "approved": False,
+            "issues": [{"line": 5, "severity": "major", "message": message}],
+            "risk_level": "high",
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +187,9 @@ async def test_generate_accepted_first_attempt_no_reviewer(tmp_path: Path) -> No
     """With no reviewer and allow_unreviewed=True, valid code is accepted on attempt 1."""
     adapter = _make_adapter(tmp_path, allow_unreviewed=True)
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         mock_call.return_value = _VALID_PYTHON
         code, traces = await adapter._generate_with_review(
             target=_make_target(),
@@ -213,7 +219,9 @@ async def test_generate_retries_after_gate_failure(tmp_path: Path) -> None:
     """First attempt fails quality gate, second attempt passes."""
     adapter = _make_adapter(tmp_path, allow_unreviewed=True)
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         mock_call.side_effect = ["not valid python @@@", _VALID_PYTHON]
         code, traces = await adapter._generate_with_review(
             target=_make_target(),
@@ -245,7 +253,9 @@ async def test_generate_retries_after_review_rejection(tmp_path: Path) -> None:
     adapter = _make_adapter(tmp_path)
     reviewer_ep = _make_reviewer_endpoint()
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         # Calls: 1=coder, 2=reviewer(reject), 3=coder(retry), 4=reviewer(approve)
         mock_call.side_effect = [
             _VALID_PYTHON,
@@ -280,33 +290,30 @@ async def test_feedback_is_replaced_not_accumulated(tmp_path: Path) -> None:
     adapter = _make_adapter(tmp_path)
     reviewer_ep = _make_reviewer_endpoint()
     all_user_prompts: list[str] = []
+    # Calls: coder1, reviewer(reject A), coder2, reviewer(reject B), coder3, reviewer(approve)
+    _response_queue = [
+        _VALID_PYTHON,
+        _reject_json("issue-A"),
+        _VALID_PYTHON,
+        _reject_json("issue-B"),
+        _VALID_PYTHON,
+        _approve_json(),
+    ]
+    _call_idx = 0
 
-    def _capture_and_route(*args: object, **kw: object) -> object:
-        # user_prompt is the 3rd positional arg (after ep, system_prompt)
+    async def _recording_side_effect(*args: object, **kw: object) -> str:
+        nonlocal _call_idx
+        # user_prompt is the 3rd positional arg (endpoint, system_prompt, user_prompt)
         if len(args) >= 3:
             all_user_prompts.append(str(args[2]))
-        return None  # replaced by side_effect
+        response = _response_queue[_call_idx]
+        _call_idx += 1
+        return response  # type: ignore[return-value]
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
-        # Calls: coder1, reviewer(reject A), coder2, reviewer(reject B), coder3, reviewer(approve)
-        mock_call.side_effect = [
-            _VALID_PYTHON,
-            _reject_json("issue-A"),
-            _VALID_PYTHON,
-            _reject_json("issue-B"),
-            _VALID_PYTHON,
-            _approve_json(),
-        ]
-        # Also track calls to see user prompts
-        original_side_effect = mock_call.side_effect
-
-        def _recording_side_effect(*args: object, **kw: object) -> object:
-            if len(args) >= 3:
-                all_user_prompts.append(str(args[2]))
-            return None
-
-        mock_call.side_effect = original_side_effect
-
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
+        mock_call.side_effect = _recording_side_effect
         code, traces = await adapter._generate_with_review(
             target=_make_target(),
             coder_endpoint=_make_coder_endpoint(),
@@ -331,6 +338,20 @@ async def test_feedback_is_replaced_not_accumulated(tmp_path: Path) -> None:
     assert traces[1].review_result is not None
     assert any("issue-B" in i.message for i in traces[1].review_result.issues)
 
+    # Verify prompt replacement (not accumulation):
+    # Coder calls are at indices 0, 2, 4 in all_user_prompts.
+    coder_prompts = [p for i, p in enumerate(all_user_prompts) if i % 2 == 0]
+    assert len(coder_prompts) >= 3
+    assert "issue-A" in coder_prompts[1], (
+        "2nd coder prompt must contain issue-A feedback"
+    )
+    assert "issue-B" in coder_prompts[2], (
+        "3rd coder prompt must contain issue-B feedback"
+    )
+    assert "issue-A" not in coder_prompts[2], (
+        "3rd coder prompt must NOT contain issue-A (replaced)"
+    )
+
 
 # ---------------------------------------------------------------------------
 # _generate_with_review: all attempts exhausted -> returns None
@@ -344,10 +365,13 @@ async def test_generate_returns_none_when_all_attempts_fail(tmp_path: Path) -> N
         ModelQualityGateResult,
         ModelReviewIssue,
     )
+
     adapter = _make_adapter(tmp_path, max_attempts=3)
     reviewer_ep = _make_reviewer_endpoint()
 
-    async def always_reject(self_: object, **kw: object) -> tuple[str, ModelReviewResult | None]:
+    async def always_reject(
+        self_: object, **kw: object
+    ) -> tuple[str, ModelReviewResult | None]:
         return "rejected", ModelReviewResult(
             approved=False,
             issues=[ModelReviewIssue(severity="major", message="always bad")],
@@ -357,7 +381,9 @@ async def test_generate_returns_none_when_all_attempts_fail(tmp_path: Path) -> N
     with (
         patch.object(AdapterLlmDispatch, "_run_review", new=always_reject),
         patch.object(AdapterLlmDispatch, "_run_quality_gate") as mock_gate,
-        patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+        ) as mock_call,
     ):
         mock_gate.return_value = ModelQualityGateResult(
             ruff_pass=True, import_pass=True, test_pass=True
@@ -390,7 +416,9 @@ async def test_empty_code_traced_as_generation_malformed(tmp_path: Path) -> None
     """Empty code extraction produces a generation_malformed trace."""
     adapter = _make_adapter(tmp_path, max_attempts=1)
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         mock_call.return_value = _EMPTY_RESPONSE
         code, traces = await adapter._generate_with_review(
             target=_make_target(),
@@ -419,24 +447,28 @@ async def test_review_unavailable_traced_distinctly(tmp_path: Path) -> None:
     adapter = _make_adapter(tmp_path, allow_unreviewed=False, max_attempts=1)
     reviewer_ep = _make_reviewer_endpoint()
 
-    async def always_unavailable(self_: object = None, **kw: object) -> tuple[str, None]:
+    async def always_unavailable(
+        self_: object = None, **kw: object
+    ) -> tuple[str, None]:
         return "unavailable", None
 
     with (
         patch.object(AdapterLlmDispatch, "_run_review", new=always_unavailable),
-        patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+        ) as mock_call,
     ):
         mock_call.return_value = _VALID_PYTHON
         code, traces = await adapter._generate_with_review(
-                target=_make_target(),
-                coder_endpoint=_make_coder_endpoint(),
-                reviewer_endpoint=reviewer_ep,
-                template_source="",
-                target_source="",
-                model_sources=[],
-                max_attempts=1,
-                correlation_id=uuid.uuid4(),
-            )
+            target=_make_target(),
+            coder_endpoint=_make_coder_endpoint(),
+            reviewer_endpoint=reviewer_ep,
+            template_source="",
+            target_source="",
+            model_sources=[],
+            max_attempts=1,
+            correlation_id=uuid.uuid4(),
+        )
 
     assert code is None
     assert len(traces) == 1
@@ -455,7 +487,9 @@ async def test_all_attempts_produce_trace_files(tmp_path: Path) -> None:
     corr_id = uuid.uuid4()
     adapter = _make_adapter(tmp_path, max_attempts=3, allow_unreviewed=True)
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         mock_call.side_effect = ["bad syntax @@@", "bad syntax @@@", _VALID_PYTHON]
         code, _traces = await adapter._generate_with_review(
             target=_make_target("OMN-TRACE"),
@@ -491,7 +525,9 @@ async def test_handle_wires_generate_with_review(tmp_path: Path) -> None:
         BuildTarget(ticket_id="OMN-B", title="Fix B", buildability="auto_buildable"),
     )
 
-    with patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call:
+    with patch.object(
+        AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+    ) as mock_call:
         mock_call.return_value = _VALID_PYTHON
         result = await adapter.handle(
             correlation_id=uuid.uuid4(),
@@ -513,18 +549,22 @@ async def test_handle_counts_only_accepted(tmp_path: Path) -> None:
         BuildTarget(ticket_id="OMN-C", title="Fix C", buildability="auto_buildable"),
     )
 
-    async def always_unavailable_handle(self_: object = None, **kw: object) -> tuple[str, None]:
+    async def always_unavailable_handle(
+        self_: object = None, **kw: object
+    ) -> tuple[str, None]:
         return "unavailable", None
 
     with (
         patch.object(AdapterLlmDispatch, "_run_review", new=always_unavailable_handle),
-        patch.object(AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            AdapterLlmDispatch, "_call_endpoint", new_callable=AsyncMock
+        ) as mock_call,
     ):
         mock_call.return_value = _VALID_PYTHON
         result = await adapter.handle(
-                correlation_id=uuid.uuid4(),
-                targets=targets,
-            )
+            correlation_id=uuid.uuid4(),
+            targets=targets,
+        )
 
     assert result.total_dispatched == 0
     assert result.delegation_payloads[0].payload["accepted"] is False
