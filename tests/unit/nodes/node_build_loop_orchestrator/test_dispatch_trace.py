@@ -246,7 +246,9 @@ async def test_generate_plan_traced_writes_trace_on_success(
     assert trace.accepted is True
     assert trace.ticket_id == "OMN-TEST"
     assert trace.attempt == 1
-    assert trace.quality_gate.all_pass is True
+    # accepted=True means JSON parsed successfully; ruff/import/test gates require
+    # actual code execution and remain False until explicitly run.
+    assert trace.quality_gate.errors == []
 
     # Trace file must exist
     fname = f"{corr_id}-OMN-TEST-attempt-1.json"
@@ -301,14 +303,18 @@ async def test_generate_plan_traced_writes_trace_on_llm_error(
         new_callable=AsyncMock,
         side_effect=RuntimeError("connection refused"),
     ):
-        _plan, trace = await adapter._generate_plan_traced(
-            target=target,
-            endpoint=_make_endpoint(),
-            correlation_id=corr_id,
-            attempt=1,
-        )
+        with pytest.raises(RuntimeError, match="connection refused"):
+            await adapter._generate_plan_traced(
+                target=target,
+                endpoint=_make_endpoint(),
+                correlation_id=corr_id,
+                attempt=1,
+            )
 
-    assert trace.accepted is False
-    assert any("LLM call failed" in e for e in trace.quality_gate.errors)
+    # Trace must still be written even though the endpoint raised
     fname = f"{corr_id}-OMN-ERR-attempt-1.json"
-    assert (tmp_state_dir / "dispatch-traces" / fname).exists()
+    trace_path = tmp_state_dir / "dispatch-traces" / fname
+    assert trace_path.exists()
+    data = json.loads(trace_path.read_text())
+    assert data["accepted"] is False
+    assert any("LLM call failed" in e for e in data["quality_gate"]["errors"])

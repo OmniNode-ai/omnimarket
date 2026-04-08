@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+import httpx
 import yaml
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
     AdapterLlmProviderOpenai,
@@ -54,12 +55,11 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 
 logger = logging.getLogger(__name__)
 
-# Bus topic for per-attempt trace events
-_DELEGATION_ATTEMPT_TOPIC = "onex.evt.omnimarket.delegation-attempt.v1"
+# ---------------------------------------------------------------------------
+# Resolve topics from contract.yaml files — no hardcoded topic strings
+# ---------------------------------------------------------------------------
+_ORCHESTRATOR_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 
-# ---------------------------------------------------------------------------
-# Resolve delegation topic from build_dispatch_effect contract.yaml
-# ---------------------------------------------------------------------------
 _DISPATCH_CONTRACT_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "node_build_dispatch_effect"
@@ -67,18 +67,37 @@ _DISPATCH_CONTRACT_PATH = (
 )
 
 
-def _load_delegation_topic() -> str:
-    """Load delegation-request publish topic from dispatch contract."""
-    if _DISPATCH_CONTRACT_PATH.exists():
-        with open(_DISPATCH_CONTRACT_PATH) as fh:
+def _load_topic_from_contract(contract_path: Path, keyword: str, fallback: str) -> str:
+    """Load a publish topic matching *keyword* from a contract.yaml."""
+    if contract_path.exists():
+        with open(contract_path) as fh:
             data = yaml.safe_load(fh) or {}
         for topic in (data.get("event_bus", {}) or {}).get("publish_topics", []) or []:
-            if isinstance(topic, str) and "delegation-request" in topic:
+            if isinstance(topic, str) and keyword in topic:
                 return topic
-    return "delegation-request"  # fallback — never a valid topic, will be overridden
+    return fallback
+
+
+def _load_delegation_topic() -> str:
+    """Load delegation-request publish topic from dispatch contract."""
+    return _load_topic_from_contract(
+        _DISPATCH_CONTRACT_PATH,
+        keyword="delegation-request",
+        fallback="delegation-request",
+    )
+
+
+def _load_delegation_attempt_topic() -> str:
+    """Load delegation-attempt publish topic from orchestrator contract."""
+    return _load_topic_from_contract(
+        _ORCHESTRATOR_CONTRACT_PATH,
+        keyword="delegation-attempt",
+        fallback="onex.evt.omnimarket.delegation-attempt.v1",
+    )
 
 
 _DEFAULT_DELEGATION_TOPIC: str = _load_delegation_topic()
+_DELEGATION_ATTEMPT_TOPIC: str = _load_delegation_attempt_topic()
 
 
 def _get_state_dir() -> Path:
@@ -119,9 +138,7 @@ def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
     if not os.environ.get("KAFKA_ENABLED", ""):
         return
     try:
-        from omnibase_infra.bus.kafka_producer import (
-            KafkaProducerClient,  # type: ignore[import-not-found]
-        )
+        from omnibase_infra.bus.kafka_producer import KafkaProducerClient
 
         producer = KafkaProducerClient.from_env()
         producer.produce(topic=_DELEGATION_ATTEMPT_TOPIC, value=trace.model_dump_json())
@@ -376,12 +393,16 @@ class AdapterLlmDispatch:
             ruff_pass=False, import_pass=False, test_pass=False, errors=[]
         )
 
+        endpoint_exc: Exception | None = None
         try:
             raw = await self._call_endpoint(endpoint, _CODER_SYSTEM_PROMPT, user_prompt)
             try:
                 json.loads(raw)
+                # json_valid is a necessary but not sufficient quality signal.
+                # ruff/import/test gates require actual code execution; mark as
+                # unknown here so consumers don't treat parse success as CI-green.
                 gate = ModelQualityGateResult(
-                    ruff_pass=True, import_pass=True, test_pass=True, errors=[]
+                    ruff_pass=False, import_pass=False, test_pass=False, errors=[]
                 )
                 accepted = True
             except json.JSONDecodeError as je:
@@ -392,6 +413,7 @@ class AdapterLlmDispatch:
                     errors=[f"JSON parse error: {je}"],
                 )
         except Exception as exc:
+            endpoint_exc = exc
             gate = ModelQualityGateResult(
                 ruff_pass=False,
                 import_pass=False,
@@ -418,6 +440,9 @@ class AdapterLlmDispatch:
         )
         _write_trace(trace, self._state_dir)
         _emit_trace_to_bus(trace)
+
+        if endpoint_exc is not None:
+            raise endpoint_exc
 
         if accepted:
             try:
@@ -534,6 +559,37 @@ class AdapterLlmDispatch:
                 "issues": [],
                 "risk_level": "unknown",
             }, endpoint.model_id
+
+    @staticmethod
+    async def _call_endpoint(
+        endpoint: ModelEndpointConfig,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> str:
+        """Call an OpenAI-compatible endpoint directly."""
+        payload = {
+            "model": endpoint.model_id,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": endpoint.max_tokens,
+            "temperature": 0.2,
+        }
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if endpoint.api_key:
+            headers["Authorization"] = f"Bearer {endpoint.api_key}"
+
+        async with httpx.AsyncClient(timeout=endpoint.timeout_seconds) as client:
+            resp = await client.post(
+                f"{endpoint.base_url}/v1/chat/completions",
+                json=payload,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return str(data["choices"][0]["message"]["content"])
 
     @staticmethod
     def _make_dry_run_payload(

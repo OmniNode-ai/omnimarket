@@ -42,7 +42,6 @@ class HandlerDodVerify:
         Canonical typed entry point. Accepts a start command and optional
         pre-collected evidence results; returns the completed verification state.
         """
-        started_at = datetime.now(tz=UTC)
         checks = evidence_results or []
 
         verified = sum(
@@ -58,7 +57,7 @@ class HandlerDodVerify:
         else:
             overall = EnumDodVerifyStatus.VERIFIED
 
-        state = ModelDodVerifyState(
+        return ModelDodVerifyState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
             status=overall,
@@ -69,9 +68,6 @@ class HandlerDodVerify:
             failed_count=failed,
             skipped_count=skipped,
         )
-
-        self._started_at = started_at
-        return state
 
     def run_verification(
         self,
