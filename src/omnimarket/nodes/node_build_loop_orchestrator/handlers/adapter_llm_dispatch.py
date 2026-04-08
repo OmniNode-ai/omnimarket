@@ -305,7 +305,6 @@ class AdapterLlmDispatch:
         *,
         target_node_dir: Path,
         template_node_dir: Path | None = None,
-        omni_home: Path | None = None,
     ) -> tuple[str, str, list[str]]:
         """Load source files for prompt context.
 
@@ -406,7 +405,7 @@ class AdapterLlmDispatch:
         """Extract Python code from model response.
 
         Handles: bare code, ```python fences, ``` fences, mixed prose+code.
-        Returns the largest contiguous Python block found.
+        Returns the first fenced Python block found, or the raw response if no fences detected.
         Falls back to raw_response if no fences detected.
         """
         # Try ```python ... ``` first
