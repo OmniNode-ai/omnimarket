@@ -1,0 +1,56 @@
+---
+name: node_design_to_plan
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  End-to-end design workflow — brainstorm ideas into structured implementation plans
+  with optional launch. Phases: brainstorm (Phase 1), plan (Phase 2), launch (Phase 3).
+
+handler:
+  module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan
+  class: HandlerDesignToPlan
+  input_model: omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state.ModelDesignToPlanStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: false
+  timeout_ms: 600000
+
+inputs:
+  phase:
+    type: str
+    description: "Start at phase: brainstorm, plan, or launch. Default: brainstorm"
+    required: false
+    default: "brainstorm"
+  topic:
+    type: str
+    description: "Topic or problem to brainstorm (Phase 1)"
+    required: false
+  plan_path:
+    type: str
+    description: "Path to existing plan file (skip to Phase 2 or 3)"
+    required: false
+  no_launch:
+    type: bool
+    description: "Stop after plan save — do not prompt for launch"
+    required: false
+    default: false
+
+outputs:
+  plan_path:
+    type: str
+    description: "Path to the saved plan document"
+  phase_reached:
+    type: str
+    description: "Final phase reached (brainstorm, plan, launch)"
+
+terminal_event: onex.evt.omnimarket.design-to-plan-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.design-to-plan-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.design-to-plan-completed.v1

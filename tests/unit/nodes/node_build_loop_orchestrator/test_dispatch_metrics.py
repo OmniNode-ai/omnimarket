@@ -510,7 +510,14 @@ async def test_handle_writes_metrics_file_after_dispatch(tmp_path: Path) -> None
 
     valid_plan = {"ticket_id": "OMN-A", "implementation_plan": {}}
 
-    async def _fake_generate(self, *, target, correlation_id, attempt):  # type: ignore[no-untyped-def]
+    async def _fake_generate(
+        self,
+        *,
+        target,
+        correlation_id,
+        attempt,
+        template_node_id="node_data_flow_sweep",
+    ):  # type: ignore[no-untyped-def]
         from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
             ModelDispatchTrace,
         )

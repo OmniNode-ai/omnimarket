@@ -236,9 +236,45 @@ def route_ticket_to_tier(
     raise ValueError(f"No suitable model tier available from {available}")
 
 
+# FSM keywords that indicate a node follows the FSM handler pattern.
+# Use only distinctive method signatures and identifiers that cannot appear
+# coincidentally in compute handler names (e.g. avoids "start", "phase", "advance"
+# which are substrings in common identifiers like started_at or phase_angle).
+_FSM_KEYWORDS: frozenset[str] = frozenset(
+    {"run_full_pipeline", "run_full_cycle", "circuit_breaker"}
+)
+# Method-signature patterns that unambiguously indicate an FSM node
+_FSM_METHOD_PATTERNS: frozenset[str] = frozenset(
+    {"def start(", "async def start(", "def advance(", "async def advance("}
+)
+
+_FSM_TEMPLATE_NODE = "node_close_out"
+_COMPUTE_TEMPLATE_NODE = "node_data_flow_sweep"
+
+
+def route_to_template(target_handler_source: str) -> str:
+    """Return template node directory name based on target handler patterns.
+
+    FSM nodes get node_close_out as a template. All other nodes get
+    node_data_flow_sweep (compute template).
+
+    Detection uses two complementary checks to avoid false positives:
+    - Distinctive identifiers (run_full_pipeline, circuit_breaker) that only
+      appear in FSM-style orchestrators
+    - Method-signature patterns (def start(, def advance() that unambiguously
+      indicate an FSM transition interface
+    """
+    if any(kw in target_handler_source for kw in _FSM_KEYWORDS):
+        return _FSM_TEMPLATE_NODE
+    if any(pat in target_handler_source for pat in _FSM_METHOD_PATTERNS):
+        return _FSM_TEMPLATE_NODE
+    return _COMPUTE_TEMPLATE_NODE
+
+
 __all__: list[str] = [
     "EnumModelTier",
     "ModelEndpointConfig",
     "build_endpoint_configs",
     "route_ticket_to_tier",
+    "route_to_template",
 ]
