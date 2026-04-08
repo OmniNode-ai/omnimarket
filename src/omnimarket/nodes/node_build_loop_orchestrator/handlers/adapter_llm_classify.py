@@ -104,8 +104,8 @@ class AdapterLlmClassify:
 
         try:
             result = await self._call_llm(user_prompt)
-            parsed = json.loads(result)
-            buildability = parsed.get("buildability", "auto_buildable")
+            parsed: dict[str, object] = json.loads(result)
+            buildability = str(parsed.get("buildability", "auto_buildable"))
             if buildability in (
                 "auto_buildable",
                 "needs_arch_decision",

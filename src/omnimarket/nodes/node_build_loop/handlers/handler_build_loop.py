@@ -234,7 +234,7 @@ class HandlerBuildLoop:
             error_msg = None if success else f"Phase {target.value} failed"
 
             # Generate default verification snapshot when leaving VERIFYING
-            snapshot = None
+            snapshot: dict[str, object] | None = None
             if state.current_phase == EnumBuildLoopPhase.VERIFYING and success:
                 snapshot = {
                     "captured_at": datetime.now(tz=UTC).isoformat(),

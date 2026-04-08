@@ -202,7 +202,9 @@ class HandlerBuildLoopOrchestrator:
                 state,
                 phase_success=success,
                 error_message=error_msg,
-                **metrics,
+                tickets_filled=metrics.get("tickets_filled", 0),
+                tickets_classified=metrics.get("tickets_classified", 0),
+                tickets_dispatched=metrics.get("tickets_dispatched", 0),
             )
             await self._publish_phase_event(event)
 

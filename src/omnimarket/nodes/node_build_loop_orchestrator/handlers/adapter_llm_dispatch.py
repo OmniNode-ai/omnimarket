@@ -55,7 +55,7 @@ def _load_delegation_topic() -> str:
         with open(_DISPATCH_CONTRACT_PATH) as fh:
             data = yaml.safe_load(fh) or {}
         for topic in (data.get("event_bus", {}) or {}).get("publish_topics", []) or []:
-            if "delegation-request" in topic:
+            if isinstance(topic, str) and "delegation-request" in topic:
                 return topic
     return "delegation-request"  # fallback — never a valid topic, will be overridden
 
@@ -253,7 +253,8 @@ class AdapterLlmDispatch:
         raw = await self._call_endpoint(endpoint, _CODER_SYSTEM_PROMPT, user_prompt)
 
         try:
-            return json.loads(raw)
+            parsed: dict[str, object] = json.loads(raw)
+            return parsed
         except json.JSONDecodeError:
             logger.warning(
                 "Response not valid JSON for %s via %s, wrapping as raw",
@@ -279,7 +280,8 @@ class AdapterLlmDispatch:
             raw = await self._call_endpoint(
                 endpoint, _REVIEW_SYSTEM_PROMPT, user_prompt
             )
-            return json.loads(raw)
+            review_result: dict[str, object] = json.loads(raw)
+            return review_result
         except (json.JSONDecodeError, httpx.HTTPError) as exc:
             logger.warning(
                 "Review failed for %s: %s — defaulting to approved",

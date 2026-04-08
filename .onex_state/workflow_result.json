@@ -1,0 +1,5 @@
+{
+  "result": "completed",
+  "exit_code": 0,
+  "workflow": "src/omnimarket/nodes/node_build_loop/contract.yaml"
+}
