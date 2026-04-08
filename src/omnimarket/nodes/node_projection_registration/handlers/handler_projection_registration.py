@@ -68,6 +68,16 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionRegistration:
     """Project node registration and heartbeat events."""
 
+    def handle(self, request: object = None) -> dict[str, object]:
+        """RuntimeLocal entry point — returns projection handler metadata."""
+        return {
+            "status": "ok",
+            "handler": "HandlerProjectionRegistration",
+            "table": TABLE,
+            "conflict_key": CONFLICT_KEY,
+            "mode": "projection",
+        }
+
     def project_introspection(
         self,
         event: ModelNodeIntrospectionEvent,

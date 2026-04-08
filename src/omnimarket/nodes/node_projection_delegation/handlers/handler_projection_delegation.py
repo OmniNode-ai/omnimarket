@@ -71,6 +71,16 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionDelegation:
     """Project task-delegated events into delegation_events table."""
 
+    def handle(self, request: object = None) -> dict[str, object]:
+        """RuntimeLocal entry point — returns projection handler metadata."""
+        return {
+            "status": "ok",
+            "handler": "HandlerProjectionDelegation",
+            "table": TABLE,
+            "conflict_key": CONFLICT_KEY,
+            "mode": "projection",
+        }
+
     def project(
         self,
         event: ModelTaskDelegatedEvent,
