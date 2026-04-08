@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: MIT
 """Delegation router — routes tickets to the appropriate model tier.
 
-Routes based on ticket complexity:
-- Simple (single-file fix, rename, format): local Qwen3-14B (fast, cheap)
-- Medium (multi-file, add tests, wire endpoint): local Qwen3-Coder-30B (64K ctx)
-- Complex (architecture, multi-repo, design): frontier models (Gemini, OpenAI)
+Routes based on ticket complexity, with GLM-4.5 as the primary frontier
+code generation backend:
+- Tier 1 (primary): GLM-4.5 via Zhipu API — best quality, 20 concurrent
+- Tier 2 (fallback): local Qwen3-Coder-30B — 64K ctx, zero cost
+- Tier 3 (classification only): local Qwen3-14B — fast, routing/simple tasks
 - Review: DeepSeek-R1 (reasoning specialist)
+- Complex overflow: Gemini, OpenAI (when GLM unavailable)
 
 All endpoints speak OpenAI-compatible chat/completions API.
 
 Related:
+    - OMN-7832: Wire GLM into build loop
     - OMN-7810: Wire build loop to Linear queue
     - OMN-5113: Autonomous Build Loop epic
 """
@@ -29,6 +32,7 @@ logger = logging.getLogger(__name__)
 class EnumModelTier(StrEnum):
     """Model tier for delegation routing."""
 
+    FRONTIER_GLM = "frontier_glm"  # GLM-4.5 — primary code gen (Zhipu API)
     LOCAL_FAST = "local_fast"  # Qwen3-14B — classification, simple tasks
     LOCAL_CODER = "local_coder"  # Qwen3-Coder-30B — medium code tasks
     LOCAL_REASONING = "local_reasoning"  # DeepSeek-R1 — review, reasoning
@@ -88,8 +92,28 @@ _COMPLEX_KEYWORDS: frozenset[str] = frozenset(
 
 
 def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
-    """Build endpoint configurations from environment variables."""
+    """Build endpoint configurations from environment variables.
+
+    GLM-4.5 (Zhipu API) is the primary code generation backend when
+    LLM_GLM_API_KEY is set. Local models serve as fallbacks.
+    """
     configs: dict[EnumModelTier, ModelEndpointConfig] = {}
+
+    # Frontier GLM (primary code gen) — reads LLM_GLM_* from env
+    glm_key = os.environ.get("LLM_GLM_API_KEY", "")
+    glm_url = os.environ.get("LLM_GLM_URL", "")
+    glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "glm-4.5")
+    if glm_key and glm_url:
+        configs[EnumModelTier.FRONTIER_GLM] = ModelEndpointConfig(
+            tier=EnumModelTier.FRONTIER_GLM,
+            base_url=glm_url,
+            model_id=glm_model,
+            api_key=glm_key,
+            max_tokens=8192,
+            context_window=128000,
+            timeout_seconds=120.0,
+        )
+        logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
 
     # Local fast: Qwen3-14B on .201:8001
     local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "http://192.168.86.201:8001")
@@ -165,32 +189,39 @@ def route_ticket_to_tier(
 ) -> EnumModelTier:
     """Route a ticket to the appropriate model tier based on complexity.
 
+    GLM-4.5 is the primary code generation backend for all buildable tickets.
+    Local models serve as fallbacks when GLM is unavailable.
+
     Routing priority:
-    1. Check for complex keywords -> frontier (prefer Google, fallback OpenAI)
-    2. Check for simple keywords -> local fast
-    3. Default -> local coder (medium complexity)
+    1. GLM-4.5 (primary frontier, best quality) for all code gen tasks
+    2. Complex keywords with no GLM -> Gemini, OpenAI
+    3. Simple keywords with no frontier -> local fast (Qwen3-14B)
+    4. Default fallback -> local coder (Qwen3-Coder-30B)
     """
     text = f"{title} {description} {' '.join(labels)}".lower()
     available = available_tiers or frozenset(EnumModelTier)
 
-    # Check complex keywords first
+    # GLM is primary for all code generation tasks
+    if EnumModelTier.FRONTIER_GLM in available:
+        return EnumModelTier.FRONTIER_GLM
+
+    # Check complex keywords — route to other frontier models
     has_complex = any(kw in text for kw in _COMPLEX_KEYWORDS)
     if has_complex:
         if EnumModelTier.FRONTIER_GOOGLE in available:
             return EnumModelTier.FRONTIER_GOOGLE
         if EnumModelTier.FRONTIER_OPENAI in available:
             return EnumModelTier.FRONTIER_OPENAI
-        # Fall back to local coder if no frontier available
         return EnumModelTier.LOCAL_CODER
 
-    # Check simple keywords
+    # Simple keywords -> local fast
     has_simple = any(kw in text for kw in _SIMPLE_KEYWORDS)
     if has_simple:
         if EnumModelTier.LOCAL_FAST in available:
             return EnumModelTier.LOCAL_FAST
         return EnumModelTier.LOCAL_CODER
 
-    # Default: medium complexity -> local coder
+    # Default: local coder (medium complexity)
     if EnumModelTier.LOCAL_CODER in available:
         return EnumModelTier.LOCAL_CODER
     # Fallback chain

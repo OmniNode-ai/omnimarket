@@ -201,6 +201,7 @@ class AdapterLlmDispatch:
                     "correlation_id": str(correlation_id),
                     "generated_at": datetime.now(tz=UTC).isoformat(),
                     "routed_to_tier": tier.value,
+                    "delegated_to": endpoint.model_id,
                     "coder_model": endpoint.model_id,
                     "reviewer_model": "deepseek-r1-32b",
                 }

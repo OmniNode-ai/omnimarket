@@ -72,6 +72,11 @@ WORKTREE_ROOT = Path("/Volumes/PRO-G40/Code/omni_worktrees")
 LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "http://192.168.86.201:8001")
 LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "http://192.168.86.201:8000")
 
+# Frontier: GLM-4.5 (primary code generation backend)
+LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
+LLM_GLM_URL = os.environ.get("LLM_GLM_URL", "")
+LLM_GLM_MODEL_NAME = os.environ.get("LLM_GLM_MODEL_NAME", "glm-4.5")
+
 # Frontier: OpenAI
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -552,7 +557,24 @@ class LiveBuildDispatchHandler:
             If you cannot determine what to implement, respond with: {{"_skip": "reason"}}
         """)
 
-        # Try local coder first (Qwen3-Coder-30B, longer context)
+        # Tier 1: GLM-4.5 (primary frontier code gen)
+        if LLM_GLM_API_KEY and LLM_GLM_URL:
+            logger.info(
+                "[DISPATCH] Trying GLM-4.5 (%s) for %s",
+                LLM_GLM_MODEL_NAME,
+                target.ticket_id,
+            )
+            impl = await self._call_llm(
+                url=f"{LLM_GLM_URL}/chat/completions",
+                model=LLM_GLM_MODEL_NAME,
+                prompt=prompt,
+                max_tokens=4096,
+                api_key=LLM_GLM_API_KEY,
+            )
+            if impl and "_skip" not in impl:
+                return impl
+
+        # Tier 2: Local coder (Qwen3-Coder-30B, longer context)
         impl = await self._call_llm(
             url=f"{LLM_CODER_URL}/v1/chat/completions",
             model="cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
@@ -563,7 +585,7 @@ class LiveBuildDispatchHandler:
         if impl and "_skip" not in impl:
             return impl
 
-        # Fallback to frontier (OpenAI)
+        # Tier 3: Frontier fallback (OpenAI)
         if OPENAI_API_KEY:
             logger.info(
                 "[DISPATCH] Local LLM skipped/failed, trying OpenAI for %s",
