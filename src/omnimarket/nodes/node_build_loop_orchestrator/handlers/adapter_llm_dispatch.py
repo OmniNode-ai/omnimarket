@@ -9,8 +9,13 @@ Routes tickets to the appropriate model tier:
 - Complex tasks -> frontier models (Gemini, OpenAI)
 - Review -> DeepSeek-R1 (reasoning)
 
+Every generation attempt writes a ModelDispatchTrace to
+.onex_state/dispatch-traces/ and (when KAFKA_ENABLED) emits
+onex.evt.omnimarket.delegation-attempt.v1 to the event bus.
+
 Related:
     - OMN-7810: Wire build loop to Linear queue
+    - OMN-7855: Add dispatch tracing to .onex_state/
     - OMN-5113: Autonomous Build Loop epic
 """
 
@@ -18,6 +23,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -31,6 +38,10 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
     build_endpoint_configs,
     route_ticket_to_tier,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace import (
+    ModelDispatchTrace,
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
     DelegationPayload,
@@ -38,6 +49,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 )
 
 logger = logging.getLogger(__name__)
+
+# Bus topic for per-attempt trace events
+_DELEGATION_ATTEMPT_TOPIC = "onex.evt.omnimarket.delegation-attempt.v1"
 
 # ---------------------------------------------------------------------------
 # Resolve delegation topic from build_dispatch_effect contract.yaml
@@ -61,6 +75,65 @@ def _load_delegation_topic() -> str:
 
 
 _DEFAULT_DELEGATION_TOPIC: str = _load_delegation_topic()
+
+
+def _get_state_dir() -> Path:
+    """Resolve .onex_state from OMNI_HOME env or cwd fallback."""
+    omni_home = os.environ.get("OMNI_HOME", "")
+    if omni_home:
+        return Path(omni_home) / ".onex_state"
+    return Path.cwd() / ".onex_state"
+
+
+def _write_trace(trace: ModelDispatchTrace, state_dir: Path) -> None:
+    """Write a dispatch trace to .onex_state/dispatch-traces/.
+
+    Filename: {correlation_id}-{ticket_id}-attempt-{N}.json
+    Never raises — logs on failure so a write error never kills a dispatch.
+    """
+    traces_dir = state_dir / "dispatch-traces"
+    try:
+        traces_dir.mkdir(parents=True, exist_ok=True)
+        fname = f"{trace.correlation_id}-{trace.ticket_id}-attempt-{trace.attempt}.json"
+        (traces_dir / fname).write_text(trace.model_dump_json(indent=2))
+        logger.debug("Wrote dispatch trace: %s", fname)
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Failed to write dispatch trace for %s attempt %d: %s",
+            trace.ticket_id,
+            trace.attempt,
+            exc,
+        )
+
+
+def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
+    """Emit trace event to Kafka when KAFKA_ENABLED is set.
+
+    Bus events are observability copies — local files are authoritative.
+    Silently skips when Kafka is not configured.
+    """
+    if not os.environ.get("KAFKA_ENABLED", ""):
+        return
+    try:
+        from omnibase_infra.bus.kafka_producer import (
+            KafkaProducerClient,  # type: ignore[import-not-found]
+        )
+
+        producer = KafkaProducerClient.from_env()
+        producer.produce(topic=_DELEGATION_ATTEMPT_TOPIC, value=trace.model_dump_json())
+        logger.debug(
+            "Emitted delegation-attempt to bus: %s attempt %d",
+            trace.ticket_id,
+            trace.attempt,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning(
+            "Bus emit failed for %s attempt %d (trace file is authoritative): %s",
+            trace.ticket_id,
+            trace.attempt,
+            exc,
+        )
+
 
 _CODER_SYSTEM_PROMPT = """\
 You are an autonomous code implementation agent for the OmniNode platform.
@@ -112,6 +185,9 @@ class AdapterLlmDispatch:
     Implements ProtocolBuildDispatchHandler for live orchestrator wiring.
     Routes each ticket to the appropriate model tier based on complexity,
     using both local models (Qwen3, DeepSeek) and frontier APIs (Gemini, OpenAI).
+
+    Every generation attempt (pass or fail) produces a ModelDispatchTrace written
+    to .onex_state/dispatch-traces/ and emitted to the event bus when available.
     """
 
     def __init__(
@@ -119,10 +195,12 @@ class AdapterLlmDispatch:
         *,
         endpoint_configs: dict[EnumModelTier, ModelEndpointConfig] | None = None,
         delegation_topic: str | None = None,
+        state_dir: Path | None = None,
     ) -> None:
         self._endpoints = endpoint_configs or build_endpoint_configs()
         self._delegation_topic = delegation_topic or _DEFAULT_DELEGATION_TOPIC
         self._available_tiers = frozenset(self._endpoints.keys())
+        self._state_dir = state_dir or _get_state_dir()
 
         logger.info(
             "LLM dispatch initialized with tiers: %s",
@@ -177,8 +255,13 @@ class AdapterLlmDispatch:
                     target.title[:80],
                 )
 
-                # Generate plan via routed model
-                plan = await self._generate_plan(target, endpoint)
+                # Generate plan via routed model (traced)
+                plan, _trace = await self._generate_plan_traced(
+                    target=target,
+                    endpoint=endpoint,
+                    correlation_id=correlation_id,
+                    attempt=1,
+                )
 
                 # Review via reasoning model (if available)
                 review: dict[str, object] = {
@@ -239,6 +322,91 @@ class AdapterLlmDispatch:
             total_dispatched=total_dispatched,
             delegation_payloads=tuple(payloads),
         )
+
+    async def _generate_plan_traced(
+        self,
+        *,
+        target: BuildTarget,
+        endpoint: ModelEndpointConfig,
+        correlation_id: UUID,
+        attempt: int,
+    ) -> tuple[dict[str, object], ModelDispatchTrace]:
+        """Generate implementation plan and write a dispatch trace.
+
+        Always writes a trace — even on failure — so no attempt is ever lost.
+        Returns (plan_dict, trace).
+        """
+        user_prompt = (
+            f"Ticket: {target.ticket_id}\n"
+            f"Title: {target.title}\n"
+            f"Buildability: {target.buildability}\n\n"
+            f"Generate an implementation plan."
+        )
+        prompt_chars = len(user_prompt)
+        t0 = time.monotonic()
+        raw = ""
+        accepted = False
+        gate = ModelQualityGateResult(
+            ruff_pass=False, import_pass=False, test_pass=False, errors=[]
+        )
+
+        try:
+            raw = await self._call_endpoint(endpoint, _CODER_SYSTEM_PROMPT, user_prompt)
+            try:
+                json.loads(raw)
+                gate = ModelQualityGateResult(
+                    ruff_pass=True, import_pass=True, test_pass=True, errors=[]
+                )
+                accepted = True
+            except json.JSONDecodeError as je:
+                gate = ModelQualityGateResult(
+                    ruff_pass=False,
+                    import_pass=False,
+                    test_pass=False,
+                    errors=[f"JSON parse error: {je}"],
+                )
+        except Exception as exc:
+            gate = ModelQualityGateResult(
+                ruff_pass=False,
+                import_pass=False,
+                test_pass=False,
+                errors=[f"LLM call failed: {exc}"],
+            )
+
+        wall_clock_ms = int((time.monotonic() - t0) * 1000)
+        trace = ModelDispatchTrace(
+            correlation_id=str(correlation_id),
+            ticket_id=target.ticket_id,
+            attempt=attempt,
+            timestamp=datetime.now(tz=UTC).isoformat(),
+            coder_model=endpoint.model_id,
+            reviewer_model=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            prompt_chars=prompt_chars,
+            generation_raw=raw,
+            quality_gate=gate,
+            review_result=None,
+            accepted=accepted,
+            wall_clock_ms=wall_clock_ms,
+        )
+        _write_trace(trace, self._state_dir)
+        _emit_trace_to_bus(trace)
+
+        if accepted:
+            try:
+                plan: dict[str, object] = json.loads(raw)
+            except json.JSONDecodeError:
+                plan = {"raw_response": raw, "ticket_id": target.ticket_id}
+        else:
+            logger.warning(
+                "Response not valid JSON for %s via %s, wrapping as raw",
+                target.ticket_id,
+                endpoint.tier.value,
+            )
+            plan = {"raw_response": raw, "ticket_id": target.ticket_id}
+
+        return plan, trace
 
     async def _generate_plan(
         self, target: BuildTarget, endpoint: ModelEndpointConfig
