@@ -201,9 +201,7 @@ def test_compute_metrics_single_accepted_trace() -> None:
         completion_tokens=200,
         wall_clock_ms=400,
     )
-    m = _compute_metrics(
-        correlation_id="c1", traces=[trace]
-    )
+    m = _compute_metrics(correlation_id="c1", traces=[trace])
 
     assert m.total_tickets == 1
     assert m.accepted_count == 1
