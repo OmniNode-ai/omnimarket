@@ -5,7 +5,7 @@
 Tests:
 - ModelQualityGateResult / ModelReviewResult / ModelDispatchTrace field validation
 - _write_trace writes correct filename and JSON content
-- _emit_trace_to_bus skips when KAFKA_ENABLED not set
+- _emit_trace_to_bus skips when KAFKA_BOOTSTRAP_SERVERS not set
 - AdapterLlmDispatch._generate_plan_traced writes trace on LLM success and failure
 """
 
@@ -187,13 +187,13 @@ def test_write_trace_idempotent_overwrite(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# _emit_trace_to_bus: skip when KAFKA_ENABLED not set
+# _emit_trace_to_bus: skip when KAFKA_BOOTSTRAP_SERVERS not set
 # ---------------------------------------------------------------------------
 
 
 def test_emit_trace_skips_without_kafka_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No import attempted when KAFKA_ENABLED is absent."""
-    monkeypatch.delenv("KAFKA_ENABLED", raising=False)
+    """No import attempted when KAFKA_BOOTSTRAP_SERVERS is absent."""
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     trace = _make_trace()
     # Should not raise even though omnibase_infra may not be installed
     from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (
@@ -302,14 +302,13 @@ async def test_generate_plan_traced_writes_trace_on_llm_error(
         "_call_endpoint",
         new_callable=AsyncMock,
         side_effect=RuntimeError("connection refused"),
-    ):
-        with pytest.raises(RuntimeError, match="connection refused"):
-            await adapter._generate_plan_traced(
-                target=target,
-                endpoint=_make_endpoint(),
-                correlation_id=corr_id,
-                attempt=1,
-            )
+    ), pytest.raises(RuntimeError, match="connection refused"):
+        await adapter._generate_plan_traced(
+            target=target,
+            endpoint=_make_endpoint(),
+            correlation_id=corr_id,
+            attempt=1,
+        )
 
     # Trace must still be written even though the endpoint raised
     fname = f"{corr_id}-OMN-ERR-attempt-1.json"
