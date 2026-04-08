@@ -465,7 +465,7 @@ class TestBuildLoopGoldenChain:
         """run_full_cycle captures a default verification snapshot."""
         handler = HandlerBuildLoop()
         command = _make_command()
-        state, _events, completed = handler.run_full_cycle(command)
+        state, _events, _completed = handler.run_full_cycle(command)
 
         assert state.current_phase == EnumBuildLoopPhase.COMPLETE
         assert state.verification_snapshot is not None
