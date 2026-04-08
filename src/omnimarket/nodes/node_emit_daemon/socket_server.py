@@ -31,10 +31,17 @@ from omnimarket.nodes.node_emit_daemon.event_queue import (
     ModelQueuedEvent,
 )
 from omnimarket.nodes.node_emit_daemon.event_registry import EventRegistry
+from omnimarket.nodes.node_emit_daemon.models.model_emit_daemon_config import (
+    EnumCircuitBreakerState,
+)
+from omnimarket.nodes.node_emit_daemon.models.model_emit_daemon_health import (
+    ModelEmitDaemonHealth,
+)
 from omnimarket.nodes.node_emit_daemon.models.model_protocol import (
     JsonType,
     ModelDaemonEmitRequest,
     ModelDaemonErrorResponse,
+    ModelDaemonHealthRequest,
     ModelDaemonPingRequest,
     ModelDaemonPingResponse,
     ModelDaemonQueuedResponse,
@@ -75,6 +82,7 @@ class EmitSocketServer:
         socket_timeout_seconds: float = 5.0,
         socket_permissions: int = 0o660,
         max_payload_bytes: int = 1_048_576,
+        publisher_loop: object | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._queue = queue
@@ -82,6 +90,8 @@ class EmitSocketServer:
         self._socket_timeout_seconds = socket_timeout_seconds
         self._socket_permissions = socket_permissions
         self._max_payload_bytes = max_payload_bytes
+        # Typed as object to avoid circular import; duck-typed access via attributes.
+        self._publisher_loop = publisher_loop
 
         self._server: asyncio.Server | None = None
         self._shutdown_event = asyncio.Event()
@@ -190,6 +200,8 @@ class EmitSocketServer:
         except (ValueError, ValidationError) as e:
             return ModelDaemonErrorResponse(reason=str(e)).model_dump_json()
 
+        if isinstance(request, ModelDaemonHealthRequest):
+            return self._handle_health()
         if isinstance(request, ModelDaemonPingRequest):
             return self._handle_ping()
         return await self._handle_emit(request)
@@ -199,6 +211,58 @@ class EmitSocketServer:
             queue_size=self._queue.memory_size(),
             spool_size=self._queue.spool_size(),
         ).model_dump_json()
+
+    def _handle_health(self) -> str:
+        """Return detailed health snapshot. Never blocks on I/O."""
+        loop = self._publisher_loop
+        now = datetime.now(UTC)
+
+        # Extract circuit breaker state from publisher loop if available
+        circuit_state = EnumCircuitBreakerState.CLOSED
+        consecutive_failures = 0
+        events_published = 0
+        events_dropped = 0
+        events_buffered = 0
+        last_publish_at = None
+        last_failure_at = None
+        circuit_opened_at = None
+        kafka_connected = False
+        uptime_seconds = 0.0
+
+        if loop is not None:
+            circuit_state = getattr(
+                loop, "circuit_state", EnumCircuitBreakerState.CLOSED
+            )
+            consecutive_failures = getattr(loop, "consecutive_failures", 0)
+            events_published = getattr(loop, "events_published", 0)
+            events_dropped = getattr(loop, "events_dropped", 0)
+            events_buffered = getattr(loop, "events_buffered", 0)
+            last_publish_at = getattr(loop, "last_publish_at", None)
+            last_failure_at = getattr(loop, "last_failure_at", None)
+            circuit_opened_at = getattr(loop, "circuit_opened_at", None)
+            kafka_connected = getattr(loop, "kafka_connected", False)
+            started_at = getattr(loop, "started_at", None)
+            if started_at is not None:
+                uptime_seconds = (now - started_at).total_seconds()
+
+        healthy = self.is_running and circuit_state != EnumCircuitBreakerState.OPEN
+
+        health = ModelEmitDaemonHealth(
+            healthy=healthy,
+            circuit_state=circuit_state,
+            consecutive_failures=consecutive_failures,
+            memory_queue_size=self._queue.memory_size(),
+            spool_queue_size=self._queue.spool_size(),
+            events_published=events_published,
+            events_dropped=events_dropped,
+            events_buffered=events_buffered,
+            last_publish_at=last_publish_at,
+            last_failure_at=last_failure_at,
+            circuit_opened_at=circuit_opened_at,
+            uptime_seconds=uptime_seconds,
+            kafka_connected=kafka_connected,
+        )
+        return health.model_dump_json()
 
     def _inject_metadata(
         self,
