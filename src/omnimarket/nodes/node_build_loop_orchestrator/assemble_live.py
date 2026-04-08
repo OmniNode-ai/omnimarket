@@ -733,10 +733,16 @@ class LiveBuildDispatchHandler:
         .onex_state/llm-cost-events/ for the emit daemon to publish to
         onex.evt.omniintelligence.llm-call-completed.v1.
         """
-        usage = response_data.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", prompt_tokens + completion_tokens)
+        usage_raw = response_data.get("usage")
+        usage: dict[str, object] = usage_raw if isinstance(usage_raw, dict) else {}
+        _pt = usage.get("prompt_tokens")
+        _ct = usage.get("completion_tokens")
+        _tt = usage.get("total_tokens")
+        prompt_tokens: int = _pt if isinstance(_pt, int) else 0
+        completion_tokens: int = _ct if isinstance(_ct, int) else 0
+        total_tokens: int = (
+            _tt if isinstance(_tt, int) else prompt_tokens + completion_tokens
+        )
 
         event = {
             "timestamp": datetime.now(tz=UTC).isoformat(),

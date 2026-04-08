@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 from omnimarket.nodes.node_local_review.models.model_local_review_completed_event import (
     ModelLocalReviewCompletedEvent,
@@ -155,15 +154,12 @@ class HandlerLocalReview:
         """Serialize a completed event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim.
-
-        Delegates to run_full_pipeline with a ModelLocalReviewStartCommand
-        constructed from input_data.
-        """
-        command = ModelLocalReviewStartCommand(**input_data)
+    def handle(
+        self, command: ModelLocalReviewStartCommand
+    ) -> ModelLocalReviewCompletedEvent:
+        """Execute the local review pipeline."""
         _state, _events, completed = self.run_full_pipeline(command)
-        return completed.model_dump(mode="json")
+        return completed
 
     def run_full_pipeline(
         self,
