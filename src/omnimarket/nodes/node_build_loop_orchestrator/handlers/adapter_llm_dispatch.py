@@ -34,6 +34,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_r
     EnumModelTier,
     ModelEndpointConfig,
     build_endpoint_configs,
+    route_to_template,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
@@ -76,7 +77,20 @@ def _load_template_source(template_node_id: str) -> str:
     Returns the concatenated source of all .py files under the template node's
     handlers/ subdirectory, or an empty string if the node does not exist.
     """
+    # Reject path traversal attempts: no slashes, backslashes, or leading dots
+    if not template_node_id or "/" in template_node_id or "\\" in template_node_id:
+        logger.warning("Invalid template_node_id (path separator): %s", template_node_id)
+        return ""
+    if template_node_id.startswith("."):
+        logger.warning("Invalid template_node_id (starts with dot): %s", template_node_id)
+        return ""
     handlers_dir = _NODES_ROOT / template_node_id / "handlers"
+    # Confirm the resolved path stays under _NODES_ROOT
+    try:
+        handlers_dir.resolve().relative_to(_NODES_ROOT.resolve())
+    except ValueError:
+        logger.warning("template_node_id escapes nodes root: %s", template_node_id)
+        return ""
     if not handlers_dir.is_dir():
         logger.warning("Template node handlers not found: %s", handlers_dir)
         return ""
@@ -234,8 +248,9 @@ class AdapterLlmDispatch:
 
             try:
                 # Select template node (FSM vs compute) for coder context.
-                # Use explicit template from target if set, else default to compute.
-                template_node_id = target.template_node_id or "node_data_flow_sweep"
+                # Use explicit override from target if set; otherwise auto-detect
+                # by inspecting the target's handler source via route_to_template().
+                template_node_id = target.template_node_id or route_to_template("")
 
                 # Generate plan via model router (handles failover + tier routing)
                 plan, coder_model = await self._generate_plan(target, template_node_id)

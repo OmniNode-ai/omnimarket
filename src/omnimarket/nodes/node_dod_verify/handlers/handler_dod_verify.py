@@ -53,7 +53,7 @@ class HandlerDodVerify:
 
         if failed > 0:
             overall = EnumDodVerifyStatus.FAILED
-        elif len(checks) == 0:
+        elif len(checks) == 0 or skipped == len(checks):
             overall = EnumDodVerifyStatus.SKIPPED
         else:
             overall = EnumDodVerifyStatus.VERIFIED
