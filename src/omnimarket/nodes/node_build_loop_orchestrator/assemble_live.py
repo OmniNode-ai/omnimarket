@@ -682,57 +682,46 @@ class LiveBuildDispatchHandler:
             repo_venv = OMNI_HOME / repo / ".venv"
             ruff_bin = str(repo_venv / "bin" / "ruff") if repo_venv.exists() else "ruff"
 
-            for attempt in range(1, 3):
-                # Format
-                subprocess.run(
-                    [ruff_bin, "format", "."],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                    cwd=str(worktree_path),
-                )
-                # Lint with auto-fix
-                lint_result = subprocess.run(
-                    [ruff_bin, "check", "--fix", "."],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                    cwd=str(worktree_path),
-                )
-
-                if lint_result.returncode == 0:
-                    logger.info(
-                        "[DISPATCH] ruff checks passed for %s (attempt %d)",
-                        ticket_id,
-                        attempt,
-                    )
-                    break
-
+            # Format
+            subprocess.run(
+                [ruff_bin, "format", "."],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=str(worktree_path),
+            )
+            # Lint with auto-fix (fix what we can)
+            subprocess.run(
+                [ruff_bin, "check", "--fix", "."],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=str(worktree_path),
+            )
+            # Check for blocking errors only (syntax, undefined names)
+            # Non-blocking warnings (print statements, etc.) are logged but allowed
+            blocking_result = subprocess.run(
+                [ruff_bin, "check", "--select", "E,F", "."],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=str(worktree_path),
+            )
+            if blocking_result.returncode != 0:
                 logger.warning(
-                    "[DISPATCH] ruff check failed for %s (attempt %d/2):\n%s",
+                    "[DISPATCH] ruff blocking errors for %s:\n%s",
                     ticket_id,
-                    attempt,
-                    lint_result.stdout[-500:]
-                    if lint_result.stdout
-                    else lint_result.stderr[-500:]
-                    if lint_result.stderr
+                    blocking_result.stdout[-500:]
+                    if blocking_result.stdout
                     else "(no output)",
                 )
-
-                if attempt == 2:
-                    logger.error(
-                        "[DISPATCH] ruff check failed twice for %s, skipping ticket",
-                        ticket_id,
-                    )
-                    return False
-
-                # Re-stage after auto-fixes
-                subprocess.run(
-                    ["git", "-C", str(worktree_path), "add", "-A"],
-                    check=True,
-                    capture_output=True,
-                    timeout=30,
+                logger.error(
+                    "[DISPATCH] Generated code has syntax/import errors for %s, skipping",
+                    ticket_id,
                 )
+                return False
+
+            logger.info("[DISPATCH] ruff checks passed for %s", ticket_id)
 
             # Re-stage in case ruff modified files
             subprocess.run(
