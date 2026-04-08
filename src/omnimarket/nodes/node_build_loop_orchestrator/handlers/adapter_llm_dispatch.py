@@ -9,7 +9,7 @@ Uses the existing LLM infrastructure from omnibase_infra:
 - ModelLlmProviderConfig for provider configuration from the registry
 
 Every generation attempt writes a ModelDispatchTrace to
-.onex_state/dispatch-traces/ and (when KAFKA_ENABLED) emits
+.onex_state/dispatch-traces/ and (when KAFKA_BOOTSTRAP_SERVERS) emits
 onex.evt.omnimarket.delegation-attempt.v1 to the event bus.
 
 Related:
@@ -130,12 +130,12 @@ def _write_trace(trace: ModelDispatchTrace, state_dir: Path) -> None:
 
 
 def _emit_trace_to_bus(trace: ModelDispatchTrace) -> None:
-    """Emit trace event to Kafka when KAFKA_ENABLED is set.
+    """Emit trace event to Kafka when KAFKA_BOOTSTRAP_SERVERS is set.
 
     Bus events are observability copies — local files are authoritative.
     Silently skips when Kafka is not configured.
     """
-    if not os.environ.get("KAFKA_ENABLED", ""):
+    if not os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""):
         return
     try:
         from omnibase_infra.bus.kafka_producer import KafkaProducerClient
