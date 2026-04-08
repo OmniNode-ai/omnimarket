@@ -25,8 +25,12 @@ from omnimarket.nodes.node_build_loop.models.model_loop_state import (
     EnumBuildLoopPhase,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
-    TOPIC_PHASE_TRANSITION,
     HandlerBuildLoopOrchestrator,
+)
+
+# Topic string for test assertions — matches contract.yaml publish_topics
+TOPIC_PHASE_TRANSITION = (
+    "onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1"
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
