@@ -395,6 +395,16 @@ class AdapterLlmDispatch:
         )
         return ""
 
+    def _resolve_node_dir(self, ticket_id: str) -> Path:
+        """Resolve the node directory for a ticket from the omnimarket source tree.
+
+        Falls back to a non-existent path — _load_source_context handles missing dirs gracefully.
+        """
+        # Nodes are named by ticket convention in the build loop; fall back to
+        # the orchestrator's own node dir as a safe default
+        nodes_root = Path(__file__).resolve().parent.parent.parent
+        return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
+
     @staticmethod
     def _extract_code_from_response(raw_response: str) -> str:
         """Extract Python code from model response.
@@ -421,7 +431,10 @@ class AdapterLlmDispatch:
     async def _generate_plan(
         self, target: BuildTarget
     ) -> tuple[dict[str, object], str]:
-        """Generate code via the model router using source-grounded prompt.
+        """Generate implementation plan via the model router with source context.
+
+        Loads source context (template + target handler + models) to ground the
+        prompt, then dispatches via AdapterModelRouter for failover-safe generation.
 
         Returns:
             Tuple of (parsed plan dict, model name used).
@@ -470,14 +483,6 @@ class AdapterLlmDispatch:
             "raw_response": raw,
             "prompt_chars": len(user_prompt),
         }, model_used
-
-    def _resolve_node_dir(self, ticket_id: str) -> Path:
-        """Resolve the node directory for a ticket from the omnimarket source tree.
-
-        Falls back to a non-existent path — _load_source_context handles missing dirs gracefully.
-        """
-        nodes_root = Path(__file__).resolve().parent.parent.parent
-        return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
 
     async def _review_plan(
         self,
