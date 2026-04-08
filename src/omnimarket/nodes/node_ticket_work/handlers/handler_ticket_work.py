@@ -10,7 +10,7 @@ class HandlerTicketWork:
     def handle(
         self, command: ModelTicketWorkStartCommand
     ) -> ModelTicketWorkCompletedEvent:
-        raise NotImplementedError(
+        raise NotImplementedError(  # stub-ok: structural placeholder, logic migrated in follow-up
             "This node is a structural placeholder. "
             "Logic is currently in the omniclaude skill (onex:ticket_work) "
             "and will be migrated here in a follow-up ticket."
