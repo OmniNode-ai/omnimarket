@@ -163,9 +163,7 @@ class AdapterLlmDispatch:
         # Build per-tier providers for direct access (review model)
         self._providers: dict[EnumModelTier, AdapterLlmProviderOpenai] = {}
         for tier, endpoint in self._endpoints.items():
-            self._providers[tier] = _build_provider_from_endpoint(
-                tier.value, endpoint
-            )
+            self._providers[tier] = _build_provider_from_endpoint(tier.value, endpoint)
 
         logger.info(
             "LLM dispatch initialized with providers: %s",
@@ -320,7 +318,10 @@ class AdapterLlmDispatch:
                 target.ticket_id,
                 model_used,
             )
-            return {"raw_response": response.generated_text, "ticket_id": target.ticket_id}, model_used
+            return {
+                "raw_response": response.generated_text,
+                "ticket_id": target.ticket_id,
+            }, model_used
 
     async def _review_plan(
         self,
@@ -363,7 +364,11 @@ class AdapterLlmDispatch:
                 target.ticket_id,
                 exc,
             )
-            return {"approved": True, "issues": [], "risk_level": "unknown"}, endpoint.model_id
+            return {
+                "approved": True,
+                "issues": [],
+                "risk_level": "unknown",
+            }, endpoint.model_id
 
     @staticmethod
     def _make_dry_run_payload(
