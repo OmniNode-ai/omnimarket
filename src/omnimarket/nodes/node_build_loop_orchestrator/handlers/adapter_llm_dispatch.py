@@ -297,9 +297,7 @@ class AdapterLlmDispatch:
                 break
 
         if model_parts:
-            return "\n".join(
-                [base_prompt, "", "## RELEVANT MODELS:", *model_parts]
-            )
+            return "\n".join([base_prompt, "", "## RELEVANT MODELS:", *model_parts])
         return base_prompt
 
     def _load_source_context(
@@ -385,9 +383,7 @@ class AdapterLlmDispatch:
                 continue
             # Prefer nodes that define a canonical handle() method
             if "def handle(" in handler_src:
-                logger.info(
-                    "Auto-selected template node: %s", candidate.name
-                )
+                logger.info("Auto-selected template node: %s", candidate.name)
                 return handler_src
 
         logger.warning(
@@ -414,9 +410,7 @@ class AdapterLlmDispatch:
         Falls back to raw_response if no fences detected.
         """
         # Try ```python ... ``` first
-        python_fence = re.search(
-            r"```python\s*\n(.*?)```", raw_response, re.DOTALL
-        )
+        python_fence = re.search(r"```python\s*\n(.*?)```", raw_response, re.DOTALL)
         if python_fence:
             return python_fence.group(1)
 
