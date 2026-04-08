@@ -7,7 +7,7 @@ Tests:
 - _compute_metrics handles empty trace list gracefully
 - _compute_metrics quality_gate_failure_rate and review_rejection_rate
 - _write_metrics writes correct filename and JSON to .onex_state/dispatch-metrics/
-- _emit_metrics_to_bus skips when KAFKA_ENABLED not set
+- _emit_metrics_to_bus skips when KAFKA_BOOTSTRAP_SERVERS not set
 - AdapterLlmDispatch.handle() writes metrics file after non-dry-run dispatch
 """
 
@@ -462,14 +462,14 @@ def test_write_metrics_totals_match_traces(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# _emit_metrics_to_bus: skip when KAFKA_ENABLED not set
+# _emit_metrics_to_bus: skip when KAFKA_BOOTSTRAP_SERVERS not set
 # ---------------------------------------------------------------------------
 
 
 def test_emit_metrics_skips_without_kafka_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("KAFKA_ENABLED", raising=False)
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     m = _compute_metrics(correlation_id="c1", traces=[])
     from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (
         _emit_metrics_to_bus,
