@@ -3,11 +3,10 @@
 """Adapter that dispatches ticket builds via multi-model LLM code generation.
 
 Implements ProtocolBuildDispatchHandler for live build loop execution.
-Routes tickets to the appropriate model tier:
-- Simple tasks -> local Qwen3-14B (fast)
-- Medium tasks -> local Qwen3-Coder-30B (64K ctx)
-- Complex tasks -> frontier models (Gemini, OpenAI)
-- Review -> DeepSeek-R1 (reasoning)
+Uses the existing LLM infrastructure from omnibase_infra:
+- AdapterLlmProviderOpenai for OpenAI-compatible inference (health checks, failover)
+- AdapterModelRouter for multi-provider routing with round-robin fallback
+- ModelLlmProviderConfig for provider configuration from the registry
 
 Related:
     - OMN-7854: Add source context loading
@@ -24,14 +23,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-import httpx
 import yaml
+from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
+    AdapterLlmProviderOpenai,
+)
+from omnibase_infra.adapters.llm.adapter_model_router import AdapterModelRouter
+from omnibase_infra.adapters.llm.model_llm_adapter_request import (
+    ModelLlmAdapterRequest,
+)
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import (
     EnumModelTier,
     ModelEndpointConfig,
     build_endpoint_configs,
-    route_ticket_to_tier,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
@@ -92,12 +96,42 @@ Respond with a JSON object:
 _DEFAULT_MAX_CONTEXT_CHARS: int = 48000
 
 
+def _build_provider_from_endpoint(
+    name: str, endpoint: ModelEndpointConfig
+) -> AdapterLlmProviderOpenai:
+    """Create an AdapterLlmProviderOpenai from a legacy ModelEndpointConfig."""
+    provider_type = "local" if not endpoint.api_key else "external_trusted"
+    return AdapterLlmProviderOpenai(
+        base_url=endpoint.base_url,
+        default_model=endpoint.model_id,
+        api_key=endpoint.api_key or None,
+        provider_name=name,
+        provider_type=provider_type,
+        max_timeout_seconds=endpoint.timeout_seconds,
+    )
+
+
+async def _build_model_router(
+    endpoint_configs: dict[EnumModelTier, ModelEndpointConfig],
+) -> AdapterModelRouter:
+    """Build an AdapterModelRouter from endpoint configs.
+
+    Registers each configured tier as a provider with the router.
+    The router handles health checking, round-robin, and failover.
+    """
+    router = AdapterModelRouter()
+    for tier, endpoint in endpoint_configs.items():
+        provider = _build_provider_from_endpoint(tier.value, endpoint)
+        await router.register_provider(tier.value, provider)
+    return router
+
+
 class AdapterLlmDispatch:
     """Dispatches ticket builds via multi-model LLM code generation.
 
     Implements ProtocolBuildDispatchHandler for live orchestrator wiring.
-    Routes each ticket to the appropriate model tier based on complexity,
-    using both local models (Qwen3, DeepSeek) and frontier APIs (Gemini, OpenAI).
+    Uses AdapterModelRouter from omnibase_infra for model selection with
+    health checks, failover, and round-robin load balancing.
     """
 
     def __init__(
@@ -105,15 +139,30 @@ class AdapterLlmDispatch:
         *,
         endpoint_configs: dict[EnumModelTier, ModelEndpointConfig] | None = None,
         delegation_topic: str | None = None,
+        router: AdapterModelRouter | None = None,
     ) -> None:
         self._endpoints = endpoint_configs or build_endpoint_configs()
         self._delegation_topic = delegation_topic or _DEFAULT_DELEGATION_TOPIC
-        self._available_tiers = frozenset(self._endpoints.keys())
+        self._router = router
+        self._router_initialized = router is not None
+
+        # Build per-tier providers for direct access (review model)
+        self._providers: dict[EnumModelTier, AdapterLlmProviderOpenai] = {}
+        for tier, endpoint in self._endpoints.items():
+            self._providers[tier] = _build_provider_from_endpoint(tier.value, endpoint)
 
         logger.info(
-            "LLM dispatch initialized with tiers: %s",
-            ", ".join(t.value for t in sorted(self._available_tiers, key=str)),
+            "LLM dispatch initialized with providers: %s",
+            ", ".join(t.value for t in sorted(self._endpoints.keys(), key=str)),
         )
+
+    async def _ensure_router(self) -> AdapterModelRouter:
+        """Lazily initialize the model router on first use."""
+        if not self._router_initialized:
+            self._router = await _build_model_router(self._endpoints)
+            self._router_initialized = True
+        assert self._router is not None
+        return self._router
 
     async def handle(
         self,
@@ -125,10 +174,10 @@ class AdapterLlmDispatch:
         """Generate implementation plans for each buildable ticket.
 
         For each target:
-        1. Route to appropriate model tier based on complexity
+        1. Route to best available provider via AdapterModelRouter
         2. Load source context (template + target + models)
         3. Generate code via routed model using source-grounded prompt
-        4. Review via reasoning model
+        4. Review via reasoning provider (if available)
         5. Package as delegation payload
         """
         logger.info(
@@ -148,24 +197,8 @@ class AdapterLlmDispatch:
                 continue
 
             try:
-                # Route to appropriate model tier
-                tier = route_ticket_to_tier(
-                    title=target.title,
-                    description="",  # description not on BuildTarget
-                    available_tiers=self._available_tiers,
-                )
-                endpoint = self._endpoints[tier]
-
-                logger.info(
-                    "Routing %s to %s (%s) — %s",
-                    target.ticket_id,
-                    tier.value,
-                    endpoint.model_id,
-                    target.title[:80],
-                )
-
-                # Generate code via routed model with source context
-                plan = await self._generate_plan(target, endpoint)
+                # Generate plan via model router (handles failover) with source context
+                plan, coder_model = await self._generate_plan(target)
 
                 # Review via reasoning model (if available)
                 review: dict[str, object] = {
@@ -173,12 +206,9 @@ class AdapterLlmDispatch:
                     "issues": [],
                     "risk_level": "unknown",
                 }
-                if EnumModelTier.LOCAL_REASONING in self._endpoints:
-                    review = await self._review_plan(
-                        target,
-                        plan,
-                        self._endpoints[EnumModelTier.LOCAL_REASONING],
-                    )
+                reviewer_model = "none"
+                if EnumModelTier.LOCAL_REASONING in self._providers:
+                    review, reviewer_model = await self._review_plan(target, plan)
 
                 payload_data: dict[str, object] = {
                     "ticket_id": target.ticket_id,
@@ -187,10 +217,9 @@ class AdapterLlmDispatch:
                     "review_result": review,
                     "correlation_id": str(correlation_id),
                     "generated_at": datetime.now(tz=UTC).isoformat(),
-                    "routed_to_tier": tier.value,
-                    "delegated_to": endpoint.model_id,
-                    "coder_model": endpoint.model_id,
-                    "reviewer_model": "deepseek-r1-32b",
+                    "delegated_to": coder_model,
+                    "coder_model": coder_model,
+                    "reviewer_model": reviewer_model,
                 }
 
                 payloads.append(
@@ -203,7 +232,7 @@ class AdapterLlmDispatch:
                 logger.info(
                     "LLM dispatch: generated plan for %s via %s (approved=%s)",
                     target.ticket_id,
-                    tier.value,
+                    coder_model,
                     review.get("approved", "unknown"),
                 )
 
@@ -390,14 +419,13 @@ class AdapterLlmDispatch:
         return raw_response
 
     async def _generate_plan(
-        self,
-        target: BuildTarget,
-        endpoint: ModelEndpointConfig,
-        *,
-        temperature: float | None = None,
-        top_p: float | None = None,
-    ) -> dict[str, object]:
-        """Generate code via the routed model endpoint using source-grounded prompt."""
+        self, target: BuildTarget
+    ) -> tuple[dict[str, object], str]:
+        """Generate code via the model router using source-grounded prompt.
+
+        Returns:
+            Tuple of (parsed plan dict, model name used).
+        """
         template_source, target_source, model_sources = self._load_source_context(
             target_node_dir=self._resolve_node_dir(target.ticket_id),
         )
@@ -409,13 +437,31 @@ class AdapterLlmDispatch:
             model_sources=model_sources,
         )
 
-        raw = await self._call_endpoint(
-            endpoint,
-            _CODER_SYSTEM_PROMPT,
-            user_prompt,
-            temperature=temperature,
-            top_p=top_p,
+        prompt = f"{_CODER_SYSTEM_PROMPT}\n\n{user_prompt}"
+
+        router = await self._ensure_router()
+        # Use the first available provider's default model for the request
+        available = await router.get_available_providers()
+        model_name = "default"
+        if available:
+            provider_name = available[0]
+            endpoint = next(
+                (e for t, e in self._endpoints.items() if t.value == provider_name),
+                None,
+            )
+            if endpoint:
+                model_name = endpoint.model_id
+
+        request = ModelLlmAdapterRequest(
+            prompt=prompt,
+            model_name=model_name,
+            max_tokens=8192,
+            temperature=0.2,
         )
+
+        response = await router.generate_typed(request)
+        model_used = response.model_used
+        raw = response.generated_text
         code = self._extract_code_from_response(raw)
 
         return {
@@ -423,15 +469,13 @@ class AdapterLlmDispatch:
             "generated_code": code,
             "raw_response": raw,
             "prompt_chars": len(user_prompt),
-        }
+        }, model_used
 
     def _resolve_node_dir(self, ticket_id: str) -> Path:
         """Resolve the node directory for a ticket from the omnimarket source tree.
 
         Falls back to a non-existent path — _load_source_context handles missing dirs gracefully.
         """
-        # Nodes are named by ticket convention in the build loop; fall back to
-        # the orchestrator's own node dir as a safe default
         nodes_root = Path(__file__).resolve().parent.parent.parent
         return nodes_root / f"node_{ticket_id.lower().replace('-', '_')}"
 
@@ -439,71 +483,48 @@ class AdapterLlmDispatch:
         self,
         target: BuildTarget,
         plan: dict[str, object],
-        endpoint: ModelEndpointConfig,
-        *,
-        temperature: float | None = None,
-        top_p: float | None = None,
-    ) -> dict[str, object]:
-        """Review implementation plan via the reasoning model."""
+    ) -> tuple[dict[str, object], str]:
+        """Review implementation plan via the reasoning provider.
+
+        Returns:
+            Tuple of (review result dict, reviewer model name).
+        """
         user_prompt = (
             f"Ticket: {target.ticket_id} — {target.title}\n\n"
             f"Implementation plan:\n{json.dumps(plan, indent=2, default=str)[:8000]}\n\n"
             f"Review this plan."
         )
 
+        prompt = f"{_REVIEW_SYSTEM_PROMPT}\n\n{user_prompt}"
+
+        provider = self._providers.get(EnumModelTier.LOCAL_REASONING)
+        if provider is None:
+            return {"approved": True, "issues": [], "risk_level": "unknown"}, "none"
+
+        endpoint = self._endpoints[EnumModelTier.LOCAL_REASONING]
+        request = ModelLlmAdapterRequest(
+            prompt=prompt,
+            model_name=endpoint.model_id,
+            max_tokens=4096,
+            temperature=0.1,
+        )
+
         try:
-            raw = await self._call_endpoint(
-                endpoint,
-                _REVIEW_SYSTEM_PROMPT,
-                user_prompt,
-                temperature=temperature,
-                top_p=top_p,
-            )
-            review_result: dict[str, object] = json.loads(raw)
-            return review_result
-        except (json.JSONDecodeError, httpx.HTTPError) as exc:
+            response = await provider.generate_async(request)
+            model_used = response.model_used
+            review_result: dict[str, object] = json.loads(response.generated_text)
+            return review_result, model_used
+        except (json.JSONDecodeError, Exception) as exc:
             logger.warning(
                 "Review failed for %s: %s — defaulting to approved",
                 target.ticket_id,
                 exc,
             )
-            return {"approved": True, "issues": [], "risk_level": "unknown"}
-
-    @staticmethod
-    async def _call_endpoint(
-        endpoint: ModelEndpointConfig,
-        system_prompt: str,
-        user_prompt: str,
-        *,
-        temperature: float | None = None,
-        top_p: float | None = None,
-    ) -> str:
-        """Call an OpenAI-compatible endpoint."""
-        payload: dict[str, object] = {
-            "model": endpoint.model_id,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": endpoint.max_tokens,
-            "temperature": temperature if temperature is not None else 0.1,
-        }
-        if top_p is not None:
-            payload["top_p"] = top_p
-
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if endpoint.api_key:
-            headers["Authorization"] = f"Bearer {endpoint.api_key}"
-
-        async with httpx.AsyncClient(timeout=endpoint.timeout_seconds) as client:
-            resp = await client.post(
-                f"{endpoint.base_url}/v1/chat/completions",
-                json=payload,
-                headers=headers,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return str(data["choices"][0]["message"]["content"])
+            return {
+                "approved": True,
+                "issues": [],
+                "risk_level": "unknown",
+            }, endpoint.model_id
 
     @staticmethod
     def _make_dry_run_payload(
@@ -519,6 +540,11 @@ class AdapterLlmDispatch:
                 "correlation_id": str(correlation_id),
             },
         )
+
+    async def close(self) -> None:
+        """Close all provider connections."""
+        for provider in self._providers.values():
+            await provider.close()
 
 
 __all__: list[str] = ["AdapterLlmDispatch"]
