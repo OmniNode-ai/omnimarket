@@ -27,7 +27,9 @@ class ModelVerifierRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    task_id: str = Field(..., description="Unique identifier for the task being verified.")
+    task_id: str = Field(
+        ..., description="Unique identifier for the task being verified."
+    )
     status: str = Field(..., description="Current task status string.")
     domain: str = Field(..., description="Domain the task is running in.")
     node_id: str = Field(..., description="Node ID that produced the output.")
@@ -36,7 +38,8 @@ class ModelVerifierRequest(BaseModel):
     )
     attempt: int = Field(default=1, ge=1, description="Attempt number.")
     payload: dict[str, Any] = Field(
-        default_factory=dict, description="Task payload for completeness and scope checks."
+        default_factory=dict,
+        description="Task payload for completeness and scope checks.",
     )
     error: str | None = Field(
         default=None, description="Error message if task has failed."

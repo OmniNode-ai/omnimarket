@@ -211,9 +211,7 @@ class HandlerOverseerVerifier:
 
     def _check_allowed_action_scope(self, req: ModelVerifierRequest) -> _CheckResult:
         """Verify all claimed actions are within permitted scope."""
-        unknown = [
-            a for a in req.allowed_actions if a not in _GLOBAL_ALLOWED_ACTIONS
-        ]
+        unknown = [a for a in req.allowed_actions if a not in _GLOBAL_ALLOWED_ACTIONS]
         if unknown:
             return _CheckResult(
                 name="allowed_action_scope",
