@@ -141,9 +141,7 @@ class _StubInventoryHandler:
         repos: tuple[str, ...] = (),
         dry_run: bool = False,
     ) -> InventoryResult:
-        logger.warning(
-            "[PR-LIFECYCLE-ORCH] inventory stub called (sub-node not wired)"
-        )
+        logger.warning("[PR-LIFECYCLE-ORCH] inventory stub called (sub-node not wired)")
         return InventoryResult(prs=(), total_collected=0)
 
 
@@ -154,9 +152,7 @@ class _StubTriageHandler:
         correlation_id: UUID,
         prs: Any,
     ) -> PrTriageResult:
-        logger.warning(
-            "[PR-LIFECYCLE-ORCH] triage stub called (sub-node not wired)"
-        )
+        logger.warning("[PR-LIFECYCLE-ORCH] triage stub called (sub-node not wired)")
         return PrTriageResult(classified=(), green_count=0, non_green_count=0)
 
 
@@ -171,9 +167,7 @@ class _StubReducerHandler:
         fix_only: bool = False,
         merge_only: bool = False,
     ) -> ReducerResult:
-        logger.warning(
-            "[PR-LIFECYCLE-ORCH] reducer stub called (sub-node not wired)"
-        )
+        logger.warning("[PR-LIFECYCLE-ORCH] reducer stub called (sub-node not wired)")
         return ReducerResult(intents=(), merge_count=0, fix_count=0, skip_count=0)
 
 
@@ -185,9 +179,7 @@ class _StubMergeHandler:
         prs_to_merge: Any,
         dry_run: bool = False,
     ) -> MergeResult:
-        logger.warning(
-            "[PR-LIFECYCLE-ORCH] merge stub called (sub-node not wired)"
-        )
+        logger.warning("[PR-LIFECYCLE-ORCH] merge stub called (sub-node not wired)")
         return MergeResult(prs_merged=0, prs_failed=0)
 
 
@@ -199,9 +191,7 @@ class _StubFixHandler:
         prs_to_fix: Any,
         dry_run: bool = False,
     ) -> FixResult:
-        logger.warning(
-            "[PR-LIFECYCLE-ORCH] fix stub called (sub-node not wired)"
-        )
+        logger.warning("[PR-LIFECYCLE-ORCH] fix stub called (sub-node not wired)")
         return FixResult(prs_dispatched=0, prs_skipped=0)
 
 
@@ -301,6 +291,7 @@ class HandlerPrLifecycleOrchestrator:
                 self._fix = HandlerPrLifecycleFix()
             except ImportError:
                 self._fix = _StubFixHandler()
+
     async def handle(
         self,
         command: ModelPrLifecycleStartCommand,
@@ -320,14 +311,14 @@ class HandlerPrLifecycleOrchestrator:
         )
 
         state = _SweepState()
-        repos_filter = tuple(
-            r.strip() for r in command.repos.split(",") if r.strip()
-        )
+        repos_filter = tuple(r.strip() for r in command.repos.split(",") if r.strip())
 
         try:
             # Phase: INVENTORYING
             state.fsm = EnumOrchestratorState.INVENTORYING
-            await self._publish_phase_event("IDLE", "INVENTORYING", command.correlation_id)
+            await self._publish_phase_event(
+                "IDLE", "INVENTORYING", command.correlation_id
+            )
 
             assert self._inventory is not None
             inv_result = await self._inventory.handle(
@@ -466,7 +457,9 @@ class HandlerPrLifecycleOrchestrator:
                 next_from = "FIXING"
 
             state.fsm = EnumOrchestratorState.COMPLETE
-            await self._publish_phase_event(next_from, "COMPLETE", command.correlation_id)
+            await self._publish_phase_event(
+                next_from, "COMPLETE", command.correlation_id
+            )
 
         except Exception as exc:
             logger.exception(

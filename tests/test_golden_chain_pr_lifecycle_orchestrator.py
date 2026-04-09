@@ -107,7 +107,9 @@ class MockReducer:
         self.last_dry_run = dry_run
         self.last_fix_only = fix_only
         self.last_merge_only = merge_only
-        merge_count = sum(1 for i in self._intents if i.intent == EnumReducerIntent.MERGE)
+        merge_count = sum(
+            1 for i in self._intents if i.intent == EnumReducerIntent.MERGE
+        )
         fix_count = sum(1 for i in self._intents if i.intent == EnumReducerIntent.FIX)
         skip_count = sum(1 for i in self._intents if i.intent == EnumReducerIntent.SKIP)
         return ReducerResult(
@@ -363,15 +365,26 @@ class TestPrLifecycleOrchestratorGoldenChain:
         inventory = MockInventory()
         orch = _make_orchestrator(inventory=inventory)
 
-        await orch.handle(_make_command(repos="OmniNode-ai/omnimarket,OmniNode-ai/omniclaude"))
+        await orch.handle(
+            _make_command(repos="OmniNode-ai/omnimarket,OmniNode-ai/omniclaude")
+        )
 
-        assert inventory.last_repos == ("OmniNode-ai/omnimarket", "OmniNode-ai/omniclaude")
+        assert inventory.last_repos == (
+            "OmniNode-ai/omnimarket",
+            "OmniNode-ai/omniclaude",
+        )
 
     async def test_exception_in_inventory_leads_to_failed_state(self) -> None:
         """Exception in inventory -> final_state=FAILED with error_message set."""
 
         class BrokenInventory:
-            async def handle(self, *, correlation_id: UUID, repos: tuple[str, ...] = (), dry_run: bool = False) -> InventoryResult:
+            async def handle(
+                self,
+                *,
+                correlation_id: UUID,
+                repos: tuple[str, ...] = (),
+                dry_run: bool = False,
+            ) -> InventoryResult:
                 msg = "GitHub API down"
                 raise RuntimeError(msg)
 
