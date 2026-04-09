@@ -21,7 +21,9 @@ class ModelPrInventoryItem(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     pr_number: int = Field(..., description="GitHub PR number.")
-    repo: str = Field(..., description="Repository slug (e.g. 'OmniNode-ai/omnimarket').")
+    repo: str = Field(
+        ..., description="Repository slug (e.g. 'OmniNode-ai/omnimarket')."
+    )
     title: str = Field(default="", description="PR title.")
     branch: str = Field(default="", description="Head branch name.")
     ci_status: str = Field(

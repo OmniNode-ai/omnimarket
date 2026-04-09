@@ -22,7 +22,9 @@ class ModelPrTriageInput(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    correlation_id: UUID = Field(..., description="Correlation ID from the inventory event.")
+    correlation_id: UUID = Field(
+        ..., description="Correlation ID from the inventory event."
+    )
     prs: tuple[ModelPrInventoryItem, ...] = Field(
         ..., description="PR inventory items to classify."
     )

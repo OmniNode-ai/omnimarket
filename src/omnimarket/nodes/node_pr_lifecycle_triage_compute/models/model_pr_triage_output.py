@@ -22,13 +22,21 @@ class ModelPrTriageOutput(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    correlation_id: UUID = Field(..., description="Correlation ID from the input event.")
+    correlation_id: UUID = Field(
+        ..., description="Correlation ID from the input event."
+    )
     results: tuple[ModelPrTriageResult, ...] = Field(
         ..., description="Triage results for each PR."
     )
-    total_green: int = Field(default=0, ge=0, description="Count of GREEN (ready to merge) PRs.")
-    total_red: int = Field(default=0, ge=0, description="Count of RED (CI failing) PRs.")
-    total_conflicted: int = Field(default=0, ge=0, description="Count of CONFLICTED PRs.")
+    total_green: int = Field(
+        default=0, ge=0, description="Count of GREEN (ready to merge) PRs."
+    )
+    total_red: int = Field(
+        default=0, ge=0, description="Count of RED (CI failing) PRs."
+    )
+    total_conflicted: int = Field(
+        default=0, ge=0, description="Count of CONFLICTED PRs."
+    )
     total_needs_review: int = Field(
         default=0, ge=0, description="Count of NEEDS_REVIEW PRs."
     )

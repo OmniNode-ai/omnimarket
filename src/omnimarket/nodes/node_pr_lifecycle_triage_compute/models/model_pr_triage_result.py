@@ -21,7 +21,9 @@ class ModelPrTriageResult(BaseModel):
     category: EnumPrTriageCategory = Field(
         ..., description="Triage category assigned to this PR."
     )
-    reason: str = Field(..., description="Human-readable explanation of the classification.")
+    reason: str = Field(
+        ..., description="Human-readable explanation of the classification."
+    )
 
 
 __all__: list[str] = ["ModelPrTriageResult"]
