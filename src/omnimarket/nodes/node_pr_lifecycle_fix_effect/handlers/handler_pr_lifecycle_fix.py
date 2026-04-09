@@ -56,9 +56,7 @@ class ProtocolAgentDispatchAdapter(Protocol):
         """Dispatch an agent to address review comments. Returns action string."""
         ...
 
-    async def dispatch_coderabbit_reply(
-        self, repo: str, pr_number: int
-    ) -> str:
+    async def dispatch_coderabbit_reply(self, repo: str, pr_number: int) -> str:
         """Dispatch auto-reply for open CodeRabbit threads. Returns action string."""
         ...
 
@@ -86,9 +84,7 @@ class _NoopAgentDispatchAdapter:
     ) -> str:
         return f"[noop] would dispatch review-fix agent on {repo}#{pr_number}"
 
-    async def dispatch_coderabbit_reply(
-        self, repo: str, pr_number: int
-    ) -> str:
+    async def dispatch_coderabbit_reply(self, repo: str, pr_number: int) -> str:
         return f"[noop] would dispatch coderabbit-reply agent on {repo}#{pr_number}"
 
 
@@ -183,9 +179,12 @@ class HandlerPrLifecycleFix:
         raise ValueError(msg)
 
     # RuntimeLocal handler shim
-    def handle_sync(self, command: ModelPrLifecycleFixCommand) -> ModelPrLifecycleFixResult:
+    def handle_sync(
+        self, command: ModelPrLifecycleFixCommand
+    ) -> ModelPrLifecycleFixResult:
         """Synchronous shim for RuntimeLocal compatibility."""
         import asyncio
+
         return asyncio.get_event_loop().run_until_complete(self.handle(command))
 
     @property

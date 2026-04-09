@@ -29,7 +29,9 @@ class ModelPrLifecycleFixCommand(BaseModel):
     block_reason: EnumPrBlockReason = Field(
         ..., description="Block reason driving the fix route."
     )
-    ticket_id: str | None = Field(default=None, description="Linear ticket ID for context.")
+    ticket_id: str | None = Field(
+        default=None, description="Linear ticket ID for context."
+    )
     dry_run: bool = Field(default=False, description="Run without side effects.")
     requested_at: datetime = Field(..., description="When the command was issued.")
 

@@ -161,9 +161,7 @@ class TestPrLifecycleFixEffectGoldenChain:
     ) -> None:
         """dry_run=True: noop adapters produce [noop] action strings, no real I/O."""
         handler = HandlerPrLifecycleFix()  # no adapters injected -> noop
-        command = _make_command(
-            block_reason=EnumPrBlockReason.CI_FAILURE, dry_run=True
-        )
+        command = _make_command(block_reason=EnumPrBlockReason.CI_FAILURE, dry_run=True)
 
         result = await handler.handle(command)
 
@@ -184,9 +182,7 @@ class TestPrLifecycleFixEffectGoldenChain:
         assert result.error is not None
         assert "unavailable" in result.error
 
-    async def test_result_fields_populated(
-        self, event_bus: EventBusInmemory
-    ) -> None:
+    async def test_result_fields_populated(self, event_bus: EventBusInmemory) -> None:
         """Result has all required fields set."""
         handler = HandlerPrLifecycleFix(
             github_adapter=_MockGitHubAdapter(),
@@ -218,6 +214,7 @@ class TestPrLifecycleFixEffectGoldenChain:
             from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
                 ModelPrLifecycleFixCommand,
             )
+
             cmd = ModelPrLifecycleFixCommand(
                 correlation_id=payload["correlation_id"],
                 pr_number=payload["pr_number"],
@@ -257,9 +254,7 @@ class TestPrLifecycleFixEffectGoldenChain:
 
         await event_bus.close()
 
-    async def test_all_block_reasons_covered(
-        self, event_bus: EventBusInmemory
-    ) -> None:
+    async def test_all_block_reasons_covered(self, event_bus: EventBusInmemory) -> None:
         """All four EnumPrBlockReason values route without error."""
         gh = _MockGitHubAdapter()
         agent = _MockAgentDispatchAdapter()
@@ -268,5 +263,7 @@ class TestPrLifecycleFixEffectGoldenChain:
         for reason in EnumPrBlockReason:
             command = _make_command(block_reason=reason)
             result = await handler.handle(command)
-            assert result.fix_applied is True, f"reason={reason} should route successfully"
+            assert result.fix_applied is True, (
+                f"reason={reason} should route successfully"
+            )
             assert result.error is None, f"reason={reason} should not error"
