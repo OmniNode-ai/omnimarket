@@ -151,7 +151,7 @@ class TestHelpers:
         assert _get_command_topic(_CONTRACT) == "onex.cmd.omnimarket.test-start.v1"
 
     def test_get_command_topic_missing(self) -> None:
-        assert _get_command_topic({}) == "onex.cmd.omnimarket.UNKNOWN.v1"
+        assert _get_command_topic({}) == "UNKNOWN_COMMAND_TOPIC"
 
     def test_get_completion_topic_prefers_terminal_event(self) -> None:
         assert (
@@ -170,7 +170,7 @@ class TestHelpers:
         assert _get_completion_topic(contract) == "onex.evt.omnimarket.done.v1"
 
     def test_get_completion_topic_missing(self) -> None:
-        assert _get_completion_topic({}) == "onex.evt.omnimarket.UNKNOWN.v1"
+        assert _get_completion_topic({}) == "UNKNOWN_COMPLETION_TOPIC"
 
     def test_get_timeout_ms(self) -> None:
         assert _get_timeout_ms(_CONTRACT) == 60000
