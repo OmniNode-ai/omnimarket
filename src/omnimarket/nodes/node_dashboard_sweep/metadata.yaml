@@ -18,3 +18,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["sweep", "dashboard", "audit", "playwright", "quality"]
+pack: "diagnostics"
+display_name: "Dashboard Sweep"
+node_role: "probe"

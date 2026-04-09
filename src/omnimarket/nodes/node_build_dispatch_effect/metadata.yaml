@@ -18,3 +18,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "build-loop", "delegation", "dispatch", "kafka"]
+pack: "build"
+display_name: "Build Dispatch Effect"
+node_role: "effect"

@@ -14,3 +14,6 @@ tags:
   - projection
   - baselines
   - reducer
+pack: "data"
+display_name: "Projection: Baselines"
+node_role: "effect"

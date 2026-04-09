@@ -18,3 +18,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["compute", "build-loop", "rsd", "ticket-selection"]
+pack: "planning"
+display_name: "RSD Fill Compute"
+node_role: "triage"

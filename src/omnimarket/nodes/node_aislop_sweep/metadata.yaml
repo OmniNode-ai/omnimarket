@@ -18,3 +18,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["sweep", "quality", "analysis", "anti-patterns"]
+pack: "review"
+display_name: "AI Slop Sweep"
+node_role: "inventory"

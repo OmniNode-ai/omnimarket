@@ -1,0 +1,23 @@
+name: node_plan_to_tickets
+version: "1.0.0"
+description: "Batch create Linear tickets from a plan markdown file"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_plan_to_tickets: "omnimarket.nodes.node_plan_to_tickets"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["planning", "linear", "tickets", "batch"]
+pack: "planning"
+display_name: "Plan to Tickets"
+node_role: "effect"

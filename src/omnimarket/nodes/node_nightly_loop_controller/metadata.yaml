@@ -16,3 +16,6 @@ tags:
   - nightly-loop
   - decision-store
   - delegation
+pack: "build"
+display_name: "Nightly Loop Controller"
+node_role: "orchestrator"

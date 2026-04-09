@@ -1,10 +1,10 @@
-name: node_ticket_pipeline
+name: node_design_to_plan
 version: "1.0.0"
-description: "Per-ticket execution pipeline — multi-phase FSM workflow package"
+description: "End-to-end design workflow — brainstorm ideas into structured implementation plans"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
-    node_ticket_pipeline: "omnimarket.nodes.node_ticket_pipeline"
+    node_design_to_plan: "omnimarket.nodes.node_design_to_plan"
 capabilities:
   standalone: true
   full_runtime: true
@@ -12,12 +12,12 @@ capabilities:
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read_only
+  side_effect_class: read_write
 dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["pipeline", "ticket", "workflow", "fsm", "automation"]
-pack: "pipeline"
-display_name: "Ticket Pipeline"
+tags: ["planning", "design", "brainstorm", "workflow"]
+pack: "planning"
+display_name: "Design to Plan"
 node_role: "orchestrator"

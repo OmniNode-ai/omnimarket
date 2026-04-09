@@ -14,3 +14,6 @@ tags:
   - projection
   - delegation
   - reducer
+pack: "data"
+display_name: "Projection: Delegation"
+node_role: "effect"

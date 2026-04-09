@@ -14,3 +14,6 @@ tags:
   - projection
   - session
   - reducer
+pack: "data"
+display_name: "Projection: Session Outcome"
+node_role: "effect"

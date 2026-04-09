@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.enums.enum_node_role import EnumNodeRole
 from omnimarket.models.model_metadata import MetadataSchema
 
 _REPO_ROOT = Path(__file__).parent.parent
@@ -101,50 +102,80 @@ class TestMetadataSchema:
         }
         schema = MetadataSchema(**data)
         assert schema.pack is None
+
+    def test_node_role_field_defaults_to_none(self) -> None:
+        """Nodes without node_role field default to None."""
+        data = {
+            "name": "test_node",
+            "version": "1.0.0",
+            "description": "A test node",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.node_role is None
+
+    def test_display_name_field_defaults_to_none(self) -> None:
+        """Nodes without display_name field default to None."""
+        data = {
+            "name": "test_node",
+            "version": "1.0.0",
+            "description": "A test node",
+        }
+        schema = MetadataSchema(**data)
         assert schema.display_name is None
 
-    def test_pack_field_parses_correctly(self) -> None:
-        """pack field accepts a string value for domain package grouping."""
+    def test_pack_and_role_parse_correctly(self) -> None:
+        """Pack, display_name, and node_role fields parse correctly."""
         data = {
-            "name": "test_node",
+            "name": "node_ticket_pipeline",
             "version": "1.0.0",
-            "description": "A test node",
-            "pack": "pr_lifecycle",
+            "description": "Pipeline node",
+            "pack": "pipeline",
+            "display_name": "Ticket Pipeline",
+            "node_role": "orchestrator",
         }
         schema = MetadataSchema(**data)
-        assert schema.pack == "pr_lifecycle"
+        assert schema.pack == "pipeline"
+        assert schema.display_name == "Ticket Pipeline"
+        assert schema.node_role == EnumNodeRole.ORCHESTRATOR
 
-    def test_display_name_field_parses_correctly(self) -> None:
-        """display_name field accepts a string value for human-friendly names."""
-        data = {
-            "name": "test_node",
-            "version": "1.0.0",
-            "description": "A test node",
-            "display_name": "PR Lifecycle Orchestrator",
-        }
-        schema = MetadataSchema(**data)
-        assert schema.display_name == "PR Lifecycle Orchestrator"
-
-    def test_pack_and_display_name_parse_together(self) -> None:
-        """Both pack and display_name can be set simultaneously."""
-        data = {
-            "name": "node_pr_lifecycle_orchestrator",
-            "version": "1.0.0",
-            "description": "Orchestrates PR lifecycle.",
-            "pack": "pr_lifecycle",
-            "display_name": "PR Lifecycle Orchestrator",
-        }
-        schema = MetadataSchema(**data)
-        assert schema.pack == "pr_lifecycle"
-        assert schema.display_name == "PR Lifecycle Orchestrator"
-
-    def test_existing_metadata_files_backward_compatible(self) -> None:
-        """All existing metadata.yaml files parse without error (backward compat)."""
+    def test_all_nodes_have_pack_field(self) -> None:
+        """Every node metadata.yaml must have a pack field set."""
         metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
+        missing_pack = []
         for meta_path in metadata_files:
             with meta_path.open() as f:
                 data = yaml.safe_load(f)
             schema = MetadataSchema(**data)
-            # pack and display_name default to None when absent
-            assert schema.pack is None or isinstance(schema.pack, str)
-            assert schema.display_name is None or isinstance(schema.display_name, str)
+            if schema.pack is None:
+                missing_pack.append(meta_path.parent.name)
+        assert not missing_pack, (
+            f"Nodes missing pack field: {missing_pack}"
+        )
+
+    def test_all_nodes_have_node_role_field(self) -> None:
+        """Every node metadata.yaml must have a node_role field set."""
+        metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
+        missing_role = []
+        for meta_path in metadata_files:
+            with meta_path.open() as f:
+                data = yaml.safe_load(f)
+            schema = MetadataSchema(**data)
+            if schema.node_role is None:
+                missing_role.append(meta_path.parent.name)
+        assert not missing_role, (
+            f"Nodes missing node_role field: {missing_role}"
+        )
+
+    def test_all_nodes_have_display_name_field(self) -> None:
+        """Every node metadata.yaml must have a display_name field set."""
+        metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
+        missing_display = []
+        for meta_path in metadata_files:
+            with meta_path.open() as f:
+                data = yaml.safe_load(f)
+            schema = MetadataSchema(**data)
+            if schema.display_name is None:
+                missing_display.append(meta_path.parent.name)
+        assert not missing_display, (
+            f"Nodes missing display_name field: {missing_display}"
+        )

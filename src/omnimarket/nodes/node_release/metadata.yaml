@@ -1,0 +1,23 @@
+name: node_release
+version: "1.0.0"
+description: "Org-wide coordinated release pipeline — bumps versions, creates tags, triggers deploys"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_release: "omnimarket.nodes.node_release"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["release", "versioning", "pipeline", "deploy"]
+pack: "release"
+display_name: "Release"
+node_role: "orchestrator"

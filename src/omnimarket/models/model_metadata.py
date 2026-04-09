@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from omnimarket.enums.enum_node_role import EnumNodeRole
+
 
 class MetadataEntryPoint(BaseModel):
     """Entry point mapping for onex.nodes."""
@@ -41,3 +43,4 @@ class MetadataSchema(BaseModel):
     deprecated_reason: str | None = None
     pack: str | None = None
     display_name: str | None = None
+node_role: EnumNodeRole | None = None

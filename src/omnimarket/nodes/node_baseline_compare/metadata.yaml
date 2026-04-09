@@ -19,3 +19,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["baseline", "measurement", "diff", "observability"]
+pack: "diagnostics"
+display_name: "Baseline Compare"
+node_role: "report"

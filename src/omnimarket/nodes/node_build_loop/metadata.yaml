@@ -18,3 +18,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["build-loop", "workflow", "fsm", "orchestrator", "autonomous"]
+pack: "build"
+display_name: "Build Loop"
+node_role: "orchestrator"

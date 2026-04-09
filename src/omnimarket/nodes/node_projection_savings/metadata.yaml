@@ -15,3 +15,6 @@ tags:
   - savings
   - sow-blocker
   - reducer
+pack: "data"
+display_name: "Projection: Savings"
+node_role: "effect"

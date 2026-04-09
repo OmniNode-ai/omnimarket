@@ -15,3 +15,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["pr", "health", "monitoring", "ci"]
+pack: "pr_lifecycle"
+display_name: "PR Health Monitor"
+node_role: "probe"

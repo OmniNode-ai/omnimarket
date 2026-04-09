@@ -19,3 +19,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["baseline", "measurement", "snapshot", "observability"]
+pack: "diagnostics"
+display_name: "Baseline Capture"
+node_role: "effect"

@@ -19,3 +19,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["review", "pr-bot", "github", "judge-verification", "fsm", "quality-gate"]
+pack: "pr_lifecycle"
+display_name: "PR Review Bot"
+node_role: "fix"

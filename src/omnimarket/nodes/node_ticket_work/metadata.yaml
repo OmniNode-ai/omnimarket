@@ -1,0 +1,23 @@
+name: node_ticket_work
+version: "1.0.0"
+description: "Contract-driven ticket execution with Linear integration — multi-phase FSM workflow"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ticket_work: "omnimarket.nodes.node_ticket_work"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["pipeline", "ticket", "workflow", "fsm", "linear"]
+pack: "pipeline"
+display_name: "Ticket Work"
+node_role: "orchestrator"
