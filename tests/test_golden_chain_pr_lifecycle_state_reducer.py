@@ -205,7 +205,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             EnumPrLifecyclePhase.COMPLETE,
         ]
 
-        for (from_phase, trigger), expected in zip(transitions, expected_phases):
+        for (from_phase, trigger), expected in zip(transitions, expected_phases, strict=False):
             event = _event(from_phase, trigger, cid)
             state, _ = handler.delta(state, event)
             assert state.phase == expected
@@ -231,7 +231,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             EnumPrLifecyclePhase.COMPLETE,
         ]
 
-        for (from_phase, trigger), expected in zip(transitions, expected_phases):
+        for (from_phase, trigger), expected in zip(transitions, expected_phases, strict=False):
             event = _event(from_phase, trigger, cid)
             state, _ = handler.delta(state, event)
             assert state.phase == expected
@@ -273,7 +273,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             error_message="triage error",
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.FAILED
         assert new_state.error_message == "triage error"
@@ -291,7 +291,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             error_message="fix dispatch failed",
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.FAILED
 
@@ -308,7 +308,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             error_message="merge error",
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.FAILED
 
@@ -480,7 +480,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             state.correlation_id,
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.INVENTORYING
 
@@ -500,7 +500,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             cid,
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.TRIAGED
 
@@ -520,7 +520,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             cid,
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.COMPLETE
 
@@ -540,7 +540,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             cid,
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.COMPLETE
 
@@ -564,7 +564,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             cid,
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.FIXING
 
@@ -584,7 +584,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             cid,
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.COMPLETE
 
@@ -604,7 +604,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             cid,
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.COMPLETE
 
@@ -626,7 +626,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             error_message="fix error",
         )
 
-        new_state, intents = handler.delta(state, event)
+        new_state, _ = handler.delta(state, event)
 
         assert new_state.phase == EnumPrLifecyclePhase.FAILED
 
