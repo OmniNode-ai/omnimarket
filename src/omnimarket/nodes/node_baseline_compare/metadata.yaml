@@ -1,0 +1,21 @@
+name: node_baseline_compare
+version: "1.0.0"
+description: "Diff current system state against a previously captured baseline artifact"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_baseline_compare: "omnimarket.nodes.node_baseline_compare"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["baseline", "measurement", "diff", "observability"]

@@ -1,0 +1,74 @@
+---
+name: baseline_compare
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Diffs current system state against a previously captured baseline artifact.
+  Loads the named baseline from .onex_state/baselines/, re-runs the same probes
+  to capture current state, computes per-probe deltas, and writes a delta JSON
+  artifact. Used as the "after" measurement in any workflow.
+
+handler:
+  module: omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare
+  class: HandlerBaselineCompare
+  input_model: omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare.ModelBaselineCompareRequest
+
+handler_routing:
+  default_handler: handler:HandlerBaselineCompare
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  baseline_id:
+    type: str
+    description: "Name of the baseline artifact to compare against"
+    required: true
+  probes:
+    type: list[str]
+    description: "Probe names to compare (None = compare all probes present in baseline)"
+    required: false
+  omni_home:
+    type: str
+    description: "Root path of the omni_home workspace"
+    required: false
+    default: "/Volumes/PRO-G40/Code/omni_home"
+  baseline_path:
+    type: str
+    description: "Override artifact lookup path"
+    required: false
+  dry_run:
+    type: bool
+    description: "If true, compute delta without writing delta artifact"
+    required: false
+    default: false
+
+outputs:
+  baseline_id:
+    type: str
+    description: "The baseline ID that was compared"
+  baseline_captured_at:
+    type: str
+    description: "ISO timestamp when the baseline was originally captured"
+  compared_at:
+    type: str
+    description: "ISO timestamp when the comparison was run"
+  summary:
+    type: str
+    description: "Human-readable one-paragraph summary of changes"
+  report_path:
+    type: str
+    description: "Filesystem path where the delta JSON was written"
+
+terminal_event: onex.evt.omnimarket.baseline-compared.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.baseline-compare-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.baseline-compared.v1

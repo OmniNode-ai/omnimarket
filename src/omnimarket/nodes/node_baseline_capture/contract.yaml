@@ -1,0 +1,72 @@
+---
+name: baseline_capture
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Captures a named snapshot of system state as a baseline artifact.
+  Runs configurable probes (GitHub PRs, Linear tickets, service health,
+  Kafka topics, git branches, DB row counts) and writes a JSON artifact
+  to .onex_state/baselines/. Used as the "before" measurement in any workflow.
+
+handler:
+  module: omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture
+  class: HandlerBaselineCapture
+  input_model: omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture.ModelBaselineCaptureRequest
+
+handler_routing:
+  default_handler: handler:HandlerBaselineCapture
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  baseline_id:
+    type: str
+    description: "Unique name for this baseline snapshot"
+    required: true
+  probes:
+    type: list[str]
+    description: "Probe names to run: github_prs, linear_tickets, system_health, kafka_topics, git_branches, db_row_counts"
+    required: false
+    default: ["github_prs", "linear_tickets", "system_health", "git_branches"]
+  label:
+    type: str
+    description: "Human-readable label for this baseline"
+    required: false
+  omni_home:
+    type: str
+    description: "Root path of the omni_home workspace"
+    required: false
+    default: "/Volumes/PRO-G40/Code/omni_home"
+  dry_run:
+    type: bool
+    description: "If true, capture and return snapshot without writing artifact"
+    required: false
+    default: false
+
+outputs:
+  baseline_id:
+    type: str
+    description: "The baseline ID that was captured"
+  artifact_path:
+    type: str
+    description: "Filesystem path where the baseline JSON was written"
+  probes_run:
+    type: list[str]
+    description: "Probes that completed successfully"
+  probes_failed:
+    type: list[str]
+    description: "Probes that failed (non-fatal)"
+
+terminal_event: onex.evt.omnimarket.baseline-captured.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.baseline-capture-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.baseline-captured.v1
