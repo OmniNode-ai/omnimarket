@@ -47,7 +47,7 @@ def _get_command_topic(contract: dict[str, Any]) -> str:
     try:
         return contract["event_bus"]["subscribe_topics"][0]
     except (KeyError, IndexError, TypeError):
-        return "onex.cmd.omnimarket.UNKNOWN.v1"
+        return "UNKNOWN_COMMAND_TOPIC"
 
 
 def _get_completion_topic(contract: dict[str, Any]) -> str:
@@ -59,7 +59,7 @@ def _get_completion_topic(contract: dict[str, Any]) -> str:
             return terminal
         return topics[-1]
     except (KeyError, IndexError, TypeError):
-        return "onex.evt.omnimarket.UNKNOWN.v1"
+        return "UNKNOWN_COMPLETION_TOPIC"
 
 
 def _get_timeout_ms(contract: dict[str, Any]) -> int:
