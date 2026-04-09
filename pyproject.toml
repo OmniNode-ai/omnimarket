@@ -94,6 +94,9 @@ node_pr_lifecycle_triage_compute = "omnimarket.nodes.node_pr_lifecycle_triage_co
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory:HandlerPrLifecycleInventory"
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix:HandlerPrLifecycleFix"
+node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer:HandlerPrLifecycleStateReducer"
+node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:HandlerPrLifecycleOrchestrator"
+node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge:HandlerPrLifecycleMerge"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
@@ -157,6 +160,16 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "omnimarket.nodes.node_pr_lifecycle_inventory_compute.*",
+    "omnimarket.nodes.node_pr_lifecycle_triage_compute.*",
+    "omnimarket.nodes.node_pr_lifecycle_state_reducer.*",
+    "omnimarket.nodes.node_pr_lifecycle_merge_effect.*",
+    "omnimarket.nodes.node_pr_lifecycle_fix_effect.*",
+]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]
