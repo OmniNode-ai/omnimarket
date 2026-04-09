@@ -1,6 +1,9 @@
 name: node_contract_sweep
 version: "1.0.0"
 description: "Contract compliance sweep — validates all node contract.yaml files across repos"
+display_name: "Contract Sweep"
+node_role: "probe"
+pack: "diagnostics"
 category: verification
 tags:
   - contracts
@@ -8,3 +11,19 @@ tags:
   - sweep
   - ci
 author: OmniNode Team
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_contract_sweep: "omnimarket.nodes.node_contract_sweep"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
