@@ -269,11 +269,13 @@ class HandlerPrLifecycleOrchestrator:
                 self._triage = _StubTriageHandler()
         if self._reducer is None:
             try:
-                from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_reducer import (
-                    HandlerPrLifecycleReducer,
+                from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer import (
+                    HandlerPrLifecycleStateReducer,
                 )
 
-                self._reducer = HandlerPrLifecycleReducer()
+                self._reducer = cast(
+                    ProtocolStateReducerHandler, HandlerPrLifecycleStateReducer()
+                )
             except ImportError:
                 self._reducer = _StubReducerHandler()
         if self._merge is None:
@@ -282,7 +284,7 @@ class HandlerPrLifecycleOrchestrator:
                     HandlerPrLifecycleMerge,
                 )
 
-                self._merge = HandlerPrLifecycleMerge()
+                self._merge = cast(ProtocolMergeHandler, HandlerPrLifecycleMerge())
             except ImportError:
                 self._merge = _StubMergeHandler()
         if self._fix is None:
@@ -291,7 +293,7 @@ class HandlerPrLifecycleOrchestrator:
                     HandlerPrLifecycleFix,
                 )
 
-                self._fix = HandlerPrLifecycleFix()
+                self._fix = cast(ProtocolFixHandler, HandlerPrLifecycleFix())
             except ImportError:
                 self._fix = _StubFixHandler()
 
