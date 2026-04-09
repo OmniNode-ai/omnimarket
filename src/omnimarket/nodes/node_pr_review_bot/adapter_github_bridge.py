@@ -395,11 +395,12 @@ class AdapterGitHubBridge(GitHubBridgeProtocol):
         reviews_raw = await self._paginate(reviews_url)
         threads_raw = await self._paginate(threads_url)
 
-        # GitHub does not expose a direct "resolved" field on comments via REST;
-        # we infer unresolved as threads without a bot verification reply.
-        # The caller (HandlerThreadWatcher) does the real resolution tracking.
-        # Here we just return raw counts and let the FSM layer interpret state.
-        unresolved = sum(1 for t in threads_raw if not t.get("_resolved", False))
+        # GitHub REST does not expose a "resolved" field on review comments.
+        # Top-level comments (in_reply_to_id is null) represent thread roots;
+        # replies are follow-ups on an existing thread. We count root comments
+        # as a proxy for thread count. HandlerThreadWatcher tracks actual
+        # resolution by polling GraphQL or detecting bot-reply markers.
+        unresolved = sum(1 for t in threads_raw if t.get("in_reply_to_id") is None)
 
         latest_states: dict[str, str] = {}
         for review in reviews_raw:

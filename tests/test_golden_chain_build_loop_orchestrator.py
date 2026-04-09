@@ -362,3 +362,162 @@ class TestBuildLoopOrchestratorGoldenChain:
         assert orch._rsd_fill is rsd_fill
         assert orch._classify is classify
         assert orch._dispatch is dispatch
+
+
+@pytest.mark.unit
+class TestDoDVerificationGating:
+    """DoD verification gates FSM advancement after BUILDING phase.
+
+    Tests that the overseer verifier is called after dispatch and that
+    a FAIL verdict blocks FSM advancement to COMPLETE.
+
+    Related: OMN-8030
+    """
+
+    async def test_dod_pass_advances_to_complete(self) -> None:
+        """Happy path: verifier returns PASS for all targets -> COMPLETE."""
+        targets = (
+            BuildTarget(ticket_id="OMN-100", title="T1", buildability="auto_buildable"),
+        )
+        orch = _make_orchestrator(
+            rsd_fill=MockRsdFill(
+                tickets=(
+                    ScoredTicket(
+                        ticket_id="OMN-100", title="T1", rsd_score=3.0, priority=2
+                    ),
+                )
+            ),
+            classify=MockClassify(targets=targets),
+            dispatch=MockDispatch(dispatched=1),
+        )
+        command = _make_command()
+        result = await orch.handle(command)
+        assert result.cycles_completed == 1
+        assert result.cycles_failed == 0
+        assert result.cycle_summaries[0].final_phase == EnumBuildLoopPhase.COMPLETE
+
+    async def test_dod_emits_event_on_pass(self) -> None:
+        """DoD PASS emits onex.evt.build-loop.dod-checked.v1 for each target."""
+        from omnimarket.nodes.node_build_loop_orchestrator.topics import (
+            TOPIC_DOD_CHECKED,
+        )
+
+        event_bus = EventBusInmemory()
+        await event_bus.start()
+        targets = (
+            BuildTarget(ticket_id="OMN-200", title="T2", buildability="auto_buildable"),
+        )
+        orch = _make_orchestrator(
+            rsd_fill=MockRsdFill(
+                tickets=(
+                    ScoredTicket(
+                        ticket_id="OMN-200", title="T2", rsd_score=3.0, priority=2
+                    ),
+                )
+            ),
+            classify=MockClassify(targets=targets),
+            dispatch=MockDispatch(dispatched=1),
+            event_bus=event_bus,
+        )
+        command = _make_command()
+        await orch.handle(command)
+
+        dod_events = await event_bus.get_event_history(topic=TOPIC_DOD_CHECKED)
+        assert len(dod_events) == 1
+        payload = json.loads(dod_events[0].value)
+        assert payload["task_id"] == "OMN-200"
+        assert payload["verdict"] == "PASS"
+        await event_bus.close()
+
+    async def test_dod_fail_blocks_fsm_at_building(self) -> None:
+        """DoD FAIL verdict keeps cycle in BUILDING (not COMPLETE).
+
+        The overseer verifier returns FAIL when domain is unknown or input
+        is empty. We force FAIL by providing a task_id that triggers
+        input_completeness failure — empty node_id placeholder.
+
+        Actually, since HandlerOverseerVerifier is deterministic and requires
+        real domain + node_id, the easiest way to force FAIL is to mock the
+        overseer verifier on the orchestrator instance.
+        """
+        from unittest.mock import patch
+
+        targets = (
+            BuildTarget(ticket_id="OMN-300", title="T3", buildability="auto_buildable"),
+        )
+        orch = _make_orchestrator(
+            rsd_fill=MockRsdFill(
+                tickets=(
+                    ScoredTicket(
+                        ticket_id="OMN-300", title="T3", rsd_score=3.0, priority=2
+                    ),
+                )
+            ),
+            classify=MockClassify(targets=targets),
+            dispatch=MockDispatch(dispatched=1),
+        )
+        command = _make_command()
+
+        # Patch the overseer verifier to return FAIL verdict
+        with patch.object(
+            orch._overseer_verifier,
+            "verify",
+            return_value={
+                "verdict": "FAIL",
+                "checks": [{"name": "input_completeness", "passed": False}],
+                "failure_class": "DATA_INTEGRITY",
+                "summary": "Forced FAIL for test",
+            },
+        ):
+            result = await orch.handle(command)
+
+        assert result.cycles_completed == 0
+        assert result.cycles_failed == 1
+        assert result.cycle_summaries[0].final_phase == EnumBuildLoopPhase.FAILED
+
+    async def test_dod_fail_emits_fail_event(self) -> None:
+        """DoD FAIL emits dod-checked event with verdict=FAIL."""
+        from unittest.mock import patch
+
+        from omnimarket.nodes.node_build_loop_orchestrator.topics import (
+            TOPIC_DOD_CHECKED,
+        )
+
+        event_bus = EventBusInmemory()
+        await event_bus.start()
+        targets = (
+            BuildTarget(ticket_id="OMN-400", title="T4", buildability="auto_buildable"),
+        )
+        orch = _make_orchestrator(
+            rsd_fill=MockRsdFill(
+                tickets=(
+                    ScoredTicket(
+                        ticket_id="OMN-400", title="T4", rsd_score=3.0, priority=2
+                    ),
+                )
+            ),
+            classify=MockClassify(targets=targets),
+            dispatch=MockDispatch(dispatched=1),
+            event_bus=event_bus,
+        )
+        command = _make_command()
+
+        with patch.object(
+            orch._overseer_verifier,
+            "verify",
+            return_value={
+                "verdict": "FAIL",
+                "checks": [{"name": "input_completeness", "passed": False}],
+                "failure_class": "DATA_INTEGRITY",
+                "summary": "Forced FAIL for test",
+            },
+        ):
+            await orch.handle(command)
+
+        dod_events = await event_bus.get_event_history(topic=TOPIC_DOD_CHECKED)
+        assert len(dod_events) >= 1
+        payload = json.loads(dod_events[0].value)
+        assert payload["task_id"] == "OMN-400"
+        assert payload["verdict"] == "FAIL"
+        assert payload["checks_failed"] == 1
+        await event_bus.close()

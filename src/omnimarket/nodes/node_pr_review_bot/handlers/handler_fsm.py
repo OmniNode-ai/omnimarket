@@ -299,8 +299,35 @@ class HandlerPrReviewBot:
         )
         return new_state, event
 
-    def make_verdict(self, state: ModelPrReviewBotState) -> ReviewVerdict:
-        """Derive the final ReviewVerdict from completed FSM state."""
+    def make_verdict(
+        self,
+        state: ModelPrReviewBotState,
+        judge_model_used: str = "",
+    ) -> ReviewVerdict:
+        """Derive the final ReviewVerdict from completed FSM state.
+
+        If the FSM ended in FAILED, returns BLOCKING_ISSUE to fail closed —
+        a run that aborted before producing findings must not be reported as CLEAN.
+        """
+        if state.current_phase == EnumFsmPhase.FAILED:
+            return ReviewVerdict(
+                correlation_id=state.correlation_id,
+                pr_number=state.pr_number,
+                repo=state.repo,
+                verdict=EnumPrVerdict.BLOCKING_ISSUE,
+                total_findings=len(state.findings),
+                threads_posted=0,
+                threads_verified_pass=0,
+                threads_verified_fail=0,
+                threads_pending=0,
+                judge_model_used=judge_model_used,
+                duration_ms=int(
+                    (datetime.now(tz=UTC) - state.started_at).total_seconds() * 1000
+                ),
+                completed_at=datetime.now(tz=UTC),
+                summary=f"FSM terminated in FAILED: {state.error_message or 'unknown error'}",
+            )
+
         threads = state.thread_states
         threads_posted = sum(1 for t in threads if t.status != EnumThreadStatus.PENDING)
         threads_pass = sum(
@@ -330,7 +357,7 @@ class HandlerPrReviewBot:
             threads_verified_pass=threads_pass,
             threads_verified_fail=threads_fail,
             threads_pending=threads_pending,
-            judge_model_used="",  # set by caller from ReviewRequest
+            judge_model_used=judge_model_used,
             duration_ms=int(
                 (datetime.now(tz=UTC) - state.started_at).total_seconds() * 1000
             ),
@@ -414,7 +441,9 @@ class HandlerPrReviewBot:
                     )
 
                 elif phase == EnumFsmPhase.REPORT:
-                    verdict_obj = self.make_verdict(state)
+                    verdict_obj = self.make_verdict(
+                        state, judge_model_used=request.judge_model
+                    )
                     report_poster.post_summary(
                         state.pr_number,
                         state.repo,
@@ -437,14 +466,12 @@ class HandlerPrReviewBot:
 
             events.append(event)
 
-            # Stop only when a terminal phase is reached (DONE or FAILED).
-            # Non-terminal failures allow the loop to retry the same phase
-            # because advance() sets current_phase back to from_phase when the
-            # circuit breaker has not yet tripped.
-            if state.current_phase in TERMINAL_PHASES:
-                break
+            # If the FSM reached a terminal phase, stop the loop.
+            # Do NOT break on non-terminal failure — advance() handles retries
+            # by keeping current_phase unchanged; the circuit breaker in advance()
+            # trips to FAILED after MAX_CONSECUTIVE_FAILURES, which is terminal.
 
-        verdict = self.make_verdict(state)
+        verdict = self.make_verdict(state, judge_model_used=request.judge_model)
         return state, events, verdict
 
 

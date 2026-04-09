@@ -63,6 +63,13 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ProtocolVerifyHandler,
     ScoredTicket,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.topics import TOPIC_DOD_CHECKED
+from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
+    HandlerOverseerVerifier,
+)
+from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
+    ModelVerifierRequest,
+)
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
@@ -123,6 +130,7 @@ class HandlerBuildLoopOrchestrator:
         self._classify = classify
         self._dispatch = dispatch
         self._event_bus = event_bus
+        self._overseer_verifier = HandlerOverseerVerifier()
 
         # Inter-phase state: carry results between fill -> classify -> build
         self._last_fill_result: tuple[ScoredTicket, ...] = ()
@@ -364,6 +372,51 @@ class HandlerBuildLoopOrchestrator:
                         )
 
                 metrics["tickets_dispatched"] = dispatch_result.total_dispatched
+
+                # Run DoD verification for each dispatched target before advancing FSM
+                verification_failures: list[str] = []
+                for target in self._last_classify_result:
+                    verifier_result = self._overseer_verifier.verify(
+                        ModelVerifierRequest(
+                            task_id=target.ticket_id,
+                            status="completed",
+                            domain="build_loop",
+                            node_id=str(correlation_id),
+                        )
+                    )
+                    verdict = str(verifier_result.get("verdict", "FAIL"))
+                    raw_checks = verifier_result.get("checks", [])
+                    checks: list[object] = (
+                        list(raw_checks) if isinstance(raw_checks, list) else []
+                    )
+                    await self._publish_dod_event(
+                        task_id=target.ticket_id,
+                        verdict=verdict,
+                        checks=checks,
+                        correlation_id=correlation_id,
+                    )
+                    if verdict != "PASS":
+                        failure_reason = str(
+                            verifier_result.get("failure_class", "UNKNOWN")
+                        )
+                        verification_failures.append(
+                            f"{target.ticket_id}: {failure_reason}"
+                        )
+                        logger.warning(
+                            "[BUILD-LOOP-ORCH] DoD verification FAIL for %s: %s "
+                            "(correlation_id=%s)",
+                            target.ticket_id,
+                            failure_reason,
+                            correlation_id,
+                        )
+
+                if verification_failures:
+                    return (
+                        False,
+                        f"DoD verification failed for: {', '.join(verification_failures)}",
+                        metrics,
+                    )
+
                 return True, None, metrics
 
             return False, f"Unknown phase: {phase}", metrics
@@ -376,6 +429,38 @@ class HandlerBuildLoopOrchestrator:
                 correlation_id,
             )
             return False, str(exc), metrics
+
+    async def _publish_dod_event(
+        self,
+        task_id: str,
+        verdict: str,
+        checks: list[object],
+        correlation_id: UUID,
+    ) -> None:
+        """Publish a DoD verification event to the event bus."""
+        if self._event_bus is None:
+            return
+        checks_passed = sum(
+            1 for c in checks if isinstance(c, dict) and c.get("passed")
+        )
+        checks_failed = sum(
+            1 for c in checks if isinstance(c, dict) and not c.get("passed")
+        )
+        payload = json.dumps(
+            {
+                "task_id": task_id,
+                "verdict": verdict,
+                "checks_passed": checks_passed,
+                "checks_failed": checks_failed,
+                "correlation_id": str(correlation_id),
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+            }
+        ).encode()
+        await self._event_bus.publish(
+            topic=TOPIC_DOD_CHECKED,
+            key=None,
+            value=payload,
+        )
 
     async def _publish_phase_event(self, event: object) -> None:
         """Publish a phase transition event to the event bus."""

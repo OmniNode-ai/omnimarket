@@ -32,19 +32,14 @@ class HandlerPrReviewBot:
         """Execute the PR Review Bot FSM pipeline.
 
         Reads topics from contract.yaml at runtime — never hardcodes them.
-        Returns the completed event payload as a dict pending OMN-7965 models.
+        Full implementation wires sub-handlers from OMN-7966.
         """
         logger.info("HandlerPrReviewBot.handle invoked — delegating to FSM (OMN-7966)")
-        return {
-            "verdict": "pending",
-            "total_findings": 0,
-            "threads_posted": 0,
-            "threads_verified_pass": 0,
-            "threads_verified_fail": 0,
-            "threads_pending": 0,
-            "judge_model_used": "",
-            "duration_ms": 0,
-        }
+        msg = (
+            "HandlerPrReviewBot.handle is not yet wired to sub-handlers. "
+            "Call run_full_pipeline() from the effects layer with injected protocols."
+        )
+        raise NotImplementedError(msg)  # stub-ok
 
 
 __all__: list[str] = ["HandlerPrReviewBot"]

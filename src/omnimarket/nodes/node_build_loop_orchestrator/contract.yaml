@@ -100,6 +100,7 @@ event_bus:
     - onex.evt.omnimarket.build-loop-closeout-completed.v1
     - onex.evt.omnimarket.build-loop-build-completed.v1
     - onex.evt.omnimarket.build-loop-failed.v1
+    - onex.evt.build-loop.dod-checked.v1
 
 fsm:
   states:

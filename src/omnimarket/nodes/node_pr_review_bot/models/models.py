@@ -21,9 +21,37 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
     EnumFindingCategory,
     EnumFindingSeverity,
     EnumReviewConfidence,
-    ModelFindingEvidence,
     ModelReviewFinding,
 )
+
+# ---------------------------------------------------------------------------
+# PR-bot-specific evidence model with line anchors
+# ---------------------------------------------------------------------------
+
+
+class PrReviewFindingEvidence(BaseModel):
+    """Evidence model for PR review bot findings, extending the base with line anchors.
+
+    HandlerThreadPoster uses line_start / line_end to anchor GitHub review
+    threads to specific diff lines. The shared ModelFindingEvidence does not
+    carry these fields, so we define a PR-bot-specific evidence model here.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    file_path: str | None = Field(
+        default=None, description="Repo-relative file path of the finding."
+    )
+    line_start: int | None = Field(
+        default=None, ge=1, description="First line of the finding (1-indexed)."
+    )
+    line_end: int | None = Field(
+        default=None, ge=1, description="Last line of the finding (inclusive)."
+    )
+    snippet: str | None = Field(
+        default=None, description="Relevant code snippet from the diff."
+    )
+
 
 # ---------------------------------------------------------------------------
 # FSM phases
@@ -117,19 +145,23 @@ class ReviewFinding(BaseModel):
         default=None,
         description="Optional concrete fix suggestion for the thread body.",
     )
-    evidence: ModelFindingEvidence = Field(default_factory=ModelFindingEvidence)
+    evidence: PrReviewFindingEvidence = Field(default_factory=PrReviewFindingEvidence)
     confidence: EnumReviewConfidence = Field(...)
     source_model: str = Field(..., min_length=1)
 
     @classmethod
     def from_model_review_finding(cls, finding: ModelReviewFinding) -> ReviewFinding:
+        base_ev = finding.evidence
+        pr_evidence = PrReviewFindingEvidence(
+            file_path=base_ev.file_path if hasattr(base_ev, "file_path") else None,
+        )
         return cls(
             id=finding.id,
             category=finding.category,
             severity=finding.severity,
             title=finding.title,
             description=finding.description,
-            evidence=finding.evidence,
+            evidence=pr_evidence,
             confidence=finding.confidence,
             source_model=finding.source_model,
         )
@@ -212,16 +244,14 @@ class ReviewVerdict(BaseModel):
 
 
 __all__: list[str] = [
-    # Models
     "DiffHunk",
-    # Re-exported from hostile_reviewer for convenience
     "EnumFindingCategory",
     "EnumFindingSeverity",
-    # Enums
     "EnumFsmPhase",
     "EnumPrVerdict",
     "EnumReviewConfidence",
     "EnumThreadStatus",
+    "PrReviewFindingEvidence",
     "ReviewFinding",
     "ReviewRequest",
     "ReviewVerdict",

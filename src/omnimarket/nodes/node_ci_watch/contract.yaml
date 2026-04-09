@@ -1,0 +1,70 @@
+---
+name: ci_watch
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  CI watch WorkflowPackage. Polls GitHub Actions for a PR's CI status,
+  classifies the terminal state (passed, failed, timeout), and emits a
+  completion event with failure details. No LLM involvement — pure GitHub
+  CLI polling with hardcoded terminal-state detection.
+
+handler:
+  module: omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch
+  class: HandlerCiWatch
+  input_model: omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch.ModelCiWatchCommand
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 3600000
+
+inputs:
+  pr_number:
+    type: int
+    description: "GitHub PR number to watch"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo slug (org/repo)"
+    required: true
+  correlation_id:
+    type: uuid
+    description: "Unique run ID"
+    required: true
+  timeout_minutes:
+    type: int
+    description: "Max minutes to wait for CI (default 60)"
+    required: false
+    default: 60
+  max_fix_cycles:
+    type: int
+    description: "Max auto-fix attempts before escalating (default 3)"
+    required: false
+    default: 3
+  dry_run:
+    type: bool
+    description: "Run without side effects"
+    required: false
+    default: false
+
+outputs:
+  terminal_status:
+    type: str
+    description: "passed | failed | timeout | error"
+  failed_checks:
+    type: list
+    description: "Names of failed CI checks"
+  failure_summary:
+    type: str
+    description: "Condensed failure log excerpt"
+
+terminal_event: onex.evt.omnimarket.ci-watch-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ci-watch-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.ci-watch-completed.v1

@@ -41,7 +41,7 @@ handler_routing:
       handler:
         name: "HandlerThreadPoster"
         module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster"
-      description: "Converts ModelReviewFinding -> GitHub review comment via gh api. Side-effect (I/O)."
+      description: "Converts ReviewFinding -> GitHub review comment via adapter_github_bridge. Side-effect (I/O)."
 
     - operation: "watch_threads"
       handler:
@@ -64,7 +64,7 @@ handler_routing:
   adapters:
     - name: "AdapterGitHubBridge"
       module: "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
-      description: "Abstracts all gh api / gh pr CLI calls behind a protocol."
+      description: "Abstracts all GitHub REST API calls behind a protocol with retry/backoff."
 
     - name: "AdapterInferenceBridge"
       module: "omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge"
