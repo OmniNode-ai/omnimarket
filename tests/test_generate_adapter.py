@@ -101,7 +101,9 @@ class TestBuildSubstitutions:
 
     def test_falls_back_to_derived_display_name(self) -> None:
         metadata = {**FIXTURE_METADATA_ORCHESTRATOR, "display_name": None}
-        subs = generate_adapter._build_substitutions("node_test_orchestrator", metadata, FIXTURE_CONTRACT)
+        subs = generate_adapter._build_substitutions(
+            "node_test_orchestrator", metadata, FIXTURE_CONTRACT
+        )
         assert subs["SKILL_DISPLAY_NAME"] == "Test Orchestrator"
 
     def test_command_topic_extracted(self) -> None:
@@ -114,7 +116,10 @@ class TestBuildSubstitutions:
         subs = generate_adapter._build_substitutions(
             "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
         )
-        assert subs["COMPLETION_TOPIC"] == "onex.evt.omnimarket.test-orchestrator-completed.v1"
+        assert (
+            subs["COMPLETION_TOPIC"]
+            == "onex.evt.omnimarket.test-orchestrator-completed.v1"
+        )
 
     def test_timeout_ms_extracted(self) -> None:
         subs = generate_adapter._build_substitutions(
@@ -138,7 +143,9 @@ class TestBuildSubstitutions:
 class TestApplySubstitutions:
     def test_replaces_placeholders(self) -> None:
         template = "Hello {{NAME}}, welcome to {{PLACE}}."
-        result = generate_adapter._apply_substitutions(template, {"NAME": "Alice", "PLACE": "OmniMarket"})
+        result = generate_adapter._apply_substitutions(
+            template, {"NAME": "Alice", "PLACE": "OmniMarket"}
+        )
         assert result == "Hello Alice, welcome to OmniMarket."
 
     def test_leaves_unknown_placeholders_intact(self) -> None:
@@ -149,54 +156,78 @@ class TestApplySubstitutions:
     def test_deterministic(self) -> None:
         template = "{{A}} {{B}}"
         subs = {"A": "foo", "B": "bar"}
-        assert generate_adapter._apply_substitutions(template, subs) == generate_adapter._apply_substitutions(
+        assert generate_adapter._apply_substitutions(
             template, subs
-        )
+        ) == generate_adapter._apply_substitutions(template, subs)
 
 
 class TestOutputFilename:
     def test_gemini_uses_md_extension(self) -> None:
-        assert generate_adapter._output_filename("gemini", "aislop-sweep") == "aislop-sweep.md"
+        assert (
+            generate_adapter._output_filename("gemini", "aislop-sweep")
+            == "aislop-sweep.md"
+        )
 
     def test_claude_code_uses_skill_md(self) -> None:
-        assert generate_adapter._output_filename("claude_code", "aislop-sweep") == "aislop_sweep_SKILL.md"
+        assert (
+            generate_adapter._output_filename("claude_code", "aislop-sweep")
+            == "aislop_sweep_SKILL.md"
+        )
 
     def test_cursor_uses_mdc_extension(self) -> None:
-        assert generate_adapter._output_filename("cursor", "aislop-sweep") == "aislop-sweep.mdc"
+        assert (
+            generate_adapter._output_filename("cursor", "aislop-sweep")
+            == "aislop-sweep.mdc"
+        )
 
     def test_codex_uses_instructions_md(self) -> None:
-        assert generate_adapter._output_filename("codex", "aislop-sweep") == "aislop-sweep-instructions.md"
+        assert (
+            generate_adapter._output_filename("codex", "aislop-sweep")
+            == "aislop-sweep-instructions.md"
+        )
 
 
 class TestGenerateAdaptersGemini:
     def test_generates_gemini_md_file(self, node_dir: Path, output_dir: Path) -> None:
-        generated = generate_adapter.generate_adapters(node_dir, output_dir, formats=("gemini",))
+        generated = generate_adapter.generate_adapters(
+            node_dir, output_dir, formats=("gemini",)
+        )
         assert len(generated) == 1
         out_file = generated[0]
         assert out_file.name == "test-orchestrator.md"
         assert out_file.exists()
 
-    def test_gemini_output_contains_display_name(self, node_dir: Path, output_dir: Path) -> None:
+    def test_gemini_output_contains_display_name(
+        self, node_dir: Path, output_dir: Path
+    ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("gemini",))
         content = (output_dir / "gemini" / "test-orchestrator.md").read_text()
         assert "Test Orchestrator" in content
 
-    def test_gemini_output_contains_command_topic(self, node_dir: Path, output_dir: Path) -> None:
+    def test_gemini_output_contains_command_topic(
+        self, node_dir: Path, output_dir: Path
+    ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("gemini",))
         content = (output_dir / "gemini" / "test-orchestrator.md").read_text()
         assert "onex.cmd.omnimarket.test-orchestrator-start.v1" in content
 
-    def test_gemini_output_contains_completion_topic(self, node_dir: Path, output_dir: Path) -> None:
+    def test_gemini_output_contains_completion_topic(
+        self, node_dir: Path, output_dir: Path
+    ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("gemini",))
         content = (output_dir / "gemini" / "test-orchestrator.md").read_text()
         assert "onex.evt.omnimarket.test-orchestrator-completed.v1" in content
 
-    def test_gemini_output_contains_timeout(self, node_dir: Path, output_dir: Path) -> None:
+    def test_gemini_output_contains_timeout(
+        self, node_dir: Path, output_dir: Path
+    ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("gemini",))
         content = (output_dir / "gemini" / "test-orchestrator.md").read_text()
         assert "90000" in content
 
-    def test_gemini_output_is_deterministic(self, node_dir: Path, tmp_path: Path) -> None:
+    def test_gemini_output_is_deterministic(
+        self, node_dir: Path, tmp_path: Path
+    ) -> None:
         out1 = tmp_path / "out1"
         out2 = tmp_path / "out2"
         out1.mkdir()
@@ -207,7 +238,9 @@ class TestGenerateAdaptersGemini:
         file2 = (out2 / "gemini" / "test-orchestrator.md").read_text()
         assert file1 == file2
 
-    def test_non_orchestrator_node_skipped(self, non_orchestrator_node_dir: Path, output_dir: Path) -> None:
+    def test_non_orchestrator_node_skipped(
+        self, non_orchestrator_node_dir: Path, output_dir: Path
+    ) -> None:
         generated = generate_adapter.generate_adapters(
             non_orchestrator_node_dir, output_dir, formats=("gemini",)
         )
@@ -217,7 +250,9 @@ class TestGenerateAdaptersGemini:
         nd = tmp_path / "node_no_meta"
         nd.mkdir()
         (nd / "contract.yaml").write_text(yaml.dump(FIXTURE_CONTRACT))
-        generated = generate_adapter.generate_adapters(nd, output_dir, formats=("gemini",))
+        generated = generate_adapter.generate_adapters(
+            nd, output_dir, formats=("gemini",)
+        )
         assert generated == []
 
     def test_all_formats_generated(self, node_dir: Path, output_dir: Path) -> None:
@@ -242,11 +277,20 @@ class TestExtractArgsTable:
 
 
 class TestMainCli:
-    def test_main_with_node_flag(self, node_dir: Path, output_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_main_with_node_flag(
+        self, node_dir: Path, output_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Point NODES_DIR at the temp node parent; ADAPTERS_DIR stays real so templates resolve.
         monkeypatch.setattr(generate_adapter, "NODES_DIR", node_dir.parent)
         result = generate_adapter.main(
-            ["--node", "node_test_orchestrator", "--output-dir", str(output_dir), "--formats", "gemini"]
+            [
+                "--node",
+                "node_test_orchestrator",
+                "--output-dir",
+                str(output_dir),
+                "--formats",
+                "gemini",
+            ]
         )
         assert result == 0
         assert (output_dir / "gemini" / "test-orchestrator.md").exists()
