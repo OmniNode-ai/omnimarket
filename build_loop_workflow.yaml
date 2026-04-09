@@ -1,0 +1,48 @@
+---
+# build_loop_workflow.yaml — Workflow contract for the autonomous ONEX build loop.
+#
+# Invoked via:
+#   uv run onex run build_loop_workflow.yaml
+#   scripts/fire-build-loop.sh [--max-cycles N] [--dry-run]
+#
+# RuntimeLocal single-handler execution path:
+#   1. Loads this contract
+#   2. Instantiates HandlerBuildLoopOrchestrator (zero-arg, sub-handlers lazy-init)
+#   3. Calls handle(ModelLoopStartCommand(...)) with defaults
+#   4. Classifies result from ModelOrchestratorResult.cycles_failed
+#
+# FSM: IDLE -> CLOSING_OUT -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE
+# Circuit breaker: trips after 3 consecutive phase failures -> FAILED
+
+name: build_loop_workflow
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+
+description: >
+  Autonomous build loop workflow. Runs the full 6-phase FSM cycle in-process via
+  RuntimeLocal with in-memory event bus and filesystem state. No Kafka or Docker
+  runtime required for standalone execution.
+
+handler:
+  module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
+  class: HandlerBuildLoopOrchestrator
+  input_model:
+    module: omnimarket.nodes.node_build_loop.models.model_loop_start_command
+    class: ModelLoopStartCommand
+
+terminal_event: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+
+metadata:
+  description: "Build loop workflow — autonomous 6-phase FSM orchestrator"
+  author: "OmniNode Platform Team"
+  created: "2026-04-09"
+  tags:
+    - "build-loop"
+    - "workflow"
+    - "orchestrator"
+    - "autonomous"
+    - "OMN-8010"
+  related_tickets:
+    - "OMN-8010"
+    - "OMN-7583"
+    - "OMN-5113"
