@@ -151,6 +151,10 @@ ignore_missing_imports = true
 module = "omnibase_infra.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = false
