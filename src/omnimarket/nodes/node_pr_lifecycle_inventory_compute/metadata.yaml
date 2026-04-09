@@ -1,0 +1,23 @@
+name: node_pr_lifecycle_inventory_compute
+version: "1.0.0"
+description: "Inventory layer of the pr_lifecycle domain — collects raw PR state via gh CLI"
+pack: pr_lifecycle
+node_role: inventory
+display_name: "PR Inventory"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_lifecycle_inventory_compute: "omnimarket.nodes.node_pr_lifecycle_inventory_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "pr-lifecycle", "inventory", "gh-cli"]
