@@ -253,7 +253,9 @@ class HandlerPrLifecycleOrchestrator:
                     HandlerPrLifecycleInventory,
                 )
 
-                self._inventory = cast(ProtocolInventoryHandler, HandlerPrLifecycleInventory())
+                self._inventory = cast(
+                    ProtocolInventoryHandler, HandlerPrLifecycleInventory()
+                )
             except ImportError:
                 self._inventory = _StubInventoryHandler()
         if self._triage is None:
