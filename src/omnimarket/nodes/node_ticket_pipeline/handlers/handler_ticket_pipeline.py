@@ -7,8 +7,8 @@ from ..models.model_pipeline_state import ModelPipelineState
 
 
 class HandlerTicketPipeline:
-    def __init__(self):
-        self.state = {}
+    def __init__(self) -> None:
+        self.state: dict[str, ModelPipelineState] = {}
 
     def handle_start(
         self, command: ModelPipelineStartCommand

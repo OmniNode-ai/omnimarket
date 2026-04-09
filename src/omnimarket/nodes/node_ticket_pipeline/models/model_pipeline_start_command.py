@@ -8,4 +8,4 @@ class ModelPipelineStartCommand:
     pipeline_id: str
     phase: str
     started_at: str | None = None
-    metadata: dict | None = None
+    metadata: dict[str, object] | None = None

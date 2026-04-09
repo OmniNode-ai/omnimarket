@@ -9,4 +9,4 @@ class ModelPipelinePhaseEvent:
     phase: str
     event_type: str
     timestamp: str | None = None
-    details: dict | None = None
+    details: dict[str, object] | None = None
