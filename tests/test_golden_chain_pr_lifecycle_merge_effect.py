@@ -259,7 +259,9 @@ class TestPrLifecycleMergeEffectEventBus:
                 repo=str(payload.get("repo", "OmniNode-ai/omnimarket")),
                 triage_verdict=str(payload.get("category", "green")),
                 use_merge_queue=bool(payload.get("use_merge_queue", False)),
-                correlation_id=UUID(payload["correlation_id"]) if "correlation_id" in payload else uuid4(),
+                correlation_id=UUID(payload["correlation_id"])
+                if "correlation_id" in payload
+                else uuid4(),
             )
             result = await handler.handle(command)
             event: dict[str, object] = {
