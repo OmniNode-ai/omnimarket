@@ -147,11 +147,7 @@ class HandlerCoderabbitTriage:
         """Primary handler protocol entry point."""
         started_at = datetime.now(tz=UTC)
 
-        if command.dry_run:
-            # Dry run: fetch and classify but emit nothing
-            threads = self._fetch_and_classify(command.repo, command.pr_number)
-        else:
-            threads = self._fetch_and_classify(command.repo, command.pr_number)
+        threads = self._fetch_and_classify(command.repo, command.pr_number)
 
         blocking = [t for t in threads if t.severity == EnumThreadSeverity.BLOCKING]
         suggestion = [t for t in threads if t.severity == EnumThreadSeverity.SUGGESTION]
