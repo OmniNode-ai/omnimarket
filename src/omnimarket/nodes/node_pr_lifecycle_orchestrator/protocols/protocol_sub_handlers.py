@@ -1,0 +1,218 @@
+"""Protocol interfaces for pr_lifecycle sub-handlers.
+
+Defines the contracts that each sub-handler node must satisfy when injected
+into the orchestrator. Protocol-based DI allows the orchestrator to be tested
+in isolation and composed with real or mock implementations.
+
+Related:
+    - OMN-8087: Create pr_lifecycle_orchestrator Node
+    - OMN-8082: inventory_compute
+    - OMN-8083: triage_compute
+    - OMN-8084: merge_effect
+    - OMN-8085: fix_effect
+    - OMN-8086: state_reducer
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Protocol, runtime_checkable
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+# ---------------------------------------------------------------------------
+# Shared data models
+# ---------------------------------------------------------------------------
+
+
+class PrRecord(BaseModel):
+    """Raw PR data collected by the inventory handler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int = Field(..., description="GitHub PR number.")
+    repo: str = Field(..., description="Repo slug, e.g. 'OmniNode-ai/omnimarket'.")
+    title: str = Field(default="")
+    branch: str = Field(default="")
+    checks_status: str = Field(
+        default="unknown",
+        description="CI checks status: success | failure | pending | unknown",
+    )
+    review_status: str = Field(
+        default="unknown",
+        description="Review status: approved | changes_requested | pending | unknown",
+    )
+    has_conflicts: bool = Field(default=False)
+    coderabbit_unresolved: int = Field(
+        default=0,
+        description="Count of unresolved CodeRabbit threads.",
+    )
+
+
+class EnumPrCategory(StrEnum):
+    """Triage classification for a PR."""
+
+    GREEN = "green"
+    RED = "red"
+    CONFLICTED = "conflicted"
+    NEEDS_REVIEW = "needs_review"
+    UNKNOWN = "unknown"
+
+
+class TriageRecord(BaseModel):
+    """A classified PR from the triage handler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int = Field(..., description="GitHub PR number.")
+    repo: str = Field(...)
+    category: EnumPrCategory = Field(default=EnumPrCategory.UNKNOWN)
+    block_reason: str = Field(
+        default="",
+        description="Why this PR is blocked (populated for non-green PRs).",
+    )
+
+
+class EnumReducerIntent(StrEnum):
+    """Intent emitted by the state reducer to direct the orchestrator."""
+
+    MERGE = "merge"
+    FIX = "fix"
+    SKIP = "skip"
+
+
+class ReducerIntent(BaseModel):
+    """A single intent from the reducer for a specific PR."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int = Field(...)
+    repo: str = Field(...)
+    intent: EnumReducerIntent = Field(...)
+    reason: str = Field(default="")
+
+
+# ---------------------------------------------------------------------------
+# Handler result models
+# ---------------------------------------------------------------------------
+
+
+class InventoryResult(BaseModel):
+    """Result from the inventory handler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prs: tuple[PrRecord, ...] = Field(default_factory=tuple)
+    total_collected: int = Field(default=0, ge=0)
+
+
+class PrTriageResult(BaseModel):
+    """Result from the triage handler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    classified: tuple[TriageRecord, ...] = Field(default_factory=tuple)
+    green_count: int = Field(default=0, ge=0)
+    non_green_count: int = Field(default=0, ge=0)
+
+
+class ReducerResult(BaseModel):
+    """Result from the state reducer."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    intents: tuple[ReducerIntent, ...] = Field(default_factory=tuple)
+    merge_count: int = Field(default=0, ge=0)
+    fix_count: int = Field(default=0, ge=0)
+    skip_count: int = Field(default=0, ge=0)
+
+
+class MergeResult(BaseModel):
+    """Result from the merge effect handler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prs_merged: int = Field(default=0, ge=0)
+    prs_failed: int = Field(default=0, ge=0)
+
+
+class FixResult(BaseModel):
+    """Result from the fix effect handler."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prs_dispatched: int = Field(default=0, ge=0)
+    prs_skipped: int = Field(default=0, ge=0)
+
+
+# ---------------------------------------------------------------------------
+# Protocols
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class ProtocolInventoryHandler(Protocol):
+    """Collect raw PR state from GitHub."""
+
+    async def handle(
+        self,
+        *,
+        correlation_id: UUID,
+        repos: tuple[str, ...] = (),
+        dry_run: bool = False,
+    ) -> InventoryResult: ...
+
+
+@runtime_checkable
+class ProtocolTriageHandler(Protocol):
+    """Classify collected PRs into categories."""
+
+    async def handle(
+        self,
+        *,
+        correlation_id: UUID,
+        prs: tuple[PrRecord, ...],
+    ) -> PrTriageResult: ...
+
+
+@runtime_checkable
+class ProtocolStateReducerHandler(Protocol):
+    """Pure FSM reducer: (state, triage_result, flags) -> intents[]."""
+
+    async def handle(
+        self,
+        *,
+        correlation_id: UUID,
+        classified: tuple[TriageRecord, ...],
+        dry_run: bool = False,
+        inventory_only: bool = False,
+        fix_only: bool = False,
+        merge_only: bool = False,
+    ) -> ReducerResult: ...
+
+
+@runtime_checkable
+class ProtocolMergeHandler(Protocol):
+    """Execute merges for PRs with MERGE intent."""
+
+    async def handle(
+        self,
+        *,
+        correlation_id: UUID,
+        prs_to_merge: tuple[TriageRecord, ...],
+        dry_run: bool = False,
+    ) -> MergeResult: ...
+
+
+@runtime_checkable
+class ProtocolFixHandler(Protocol):
+    """Dispatch remediation for PRs with FIX intent."""
+
+    async def handle(
+        self,
+        *,
+        correlation_id: UUID,
+        prs_to_fix: tuple[TriageRecord, ...],
+        dry_run: bool = False,
+    ) -> FixResult: ...

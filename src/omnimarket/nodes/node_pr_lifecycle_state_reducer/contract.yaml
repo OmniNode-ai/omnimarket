@@ -1,0 +1,145 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Lifecycle State Reducer
+#
+# Pure FSM reducer: (state, event) -> (new_state, intents[]).
+# Entry flags control which transitions are enabled:
+#   dry_run: all transitions allowed, no side-effect intents emitted
+#   inventory_only: only IDLE -> INVENTORYING allowed
+#   fix_only: only TRIAGED -> FIXING allowed
+#
+# Related Tickets:
+#   - OMN-8086: Create pr_lifecycle_state_reducer Node
+#   - OMN-8070: PR Lifecycle Domain epic
+name: node_pr_lifecycle_state_reducer
+node_type: reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure FSM reducer for the PR lifecycle domain.
+  delta(state, event) -> (new_state, intents[]).
+  Entry flags (dry_run, inventory_only, fix_only) control which transitions are enabled.
+  No side effects — only computes state transitions and emits intent events.
+
+input_model:
+  name: ModelPrLifecycleEvent
+  module: omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_event
+  description: "Event from a completed PR lifecycle phase."
+
+output_model:
+  name: ModelPrLifecycleState
+  module: omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_state
+  description: "New FSM state after applying the event."
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reduce_pr_state
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+state_machine:
+  state_machine_name: pr_lifecycle_fsm
+  initial_state: idle
+  states:
+    - state_name: idle
+      description: "Waiting for PR lifecycle sweep command"
+      required_data: []
+    - state_name: inventorying
+      description: "Collecting PR state via gh CLI (status, checks, reviews, conflicts)"
+      required_data: [correlation_id]
+    - state_name: triaged
+      description: "PRs classified by block reason, awaiting action routing"
+      required_data: [correlation_id]
+    - state_name: fixing
+      description: "Dispatching fix actions for blocked PRs"
+      required_data: [correlation_id]
+    - state_name: merging
+      description: "Triggering auto-merge for eligible PRs"
+      required_data: [correlation_id]
+    - state_name: complete
+      description: "PR lifecycle sweep completed successfully"
+      required_data: [correlation_id, prs_processed]
+      is_terminal: true
+    - state_name: failed
+      description: "PR lifecycle sweep failed"
+      is_terminal: true
+      required_data: [error_message]
+  transitions:
+    - from_state: idle
+      to_state: inventorying
+      trigger: start_received
+      description: "Sweep command received, begin inventory"
+    - from_state: inventorying
+      to_state: triaged
+      trigger: inventory_complete
+      description: "Inventory done, classify PRs by block reason"
+    - from_state: triaged
+      to_state: fixing
+      trigger: fixes_pending
+      description: "Blocked PRs found, dispatch fix actions"
+    - from_state: triaged
+      to_state: merging
+      trigger: no_fixes_needed
+      description: "No blocked PRs, proceed to merge eligible"
+    - from_state: fixing
+      to_state: merging
+      trigger: fixes_complete
+      description: "Fix actions dispatched, proceed to merge"
+    - from_state: merging
+      to_state: complete
+      trigger: merge_complete
+      description: "Merge actions dispatched, sweep complete"
+    - from_state: inventorying
+      to_state: failed
+      trigger: error
+      description: "Inventory error"
+    - from_state: triaged
+      to_state: failed
+      trigger: error
+      description: "Triage error"
+    - from_state: fixing
+      to_state: failed
+      trigger: error
+      description: "Fix dispatch error"
+    - from_state: merging
+      to_state: failed
+      trigger: error
+      description: "Merge dispatch error"
+  terminal_states: [complete, failed]
+  persistence_enabled: false
+
+terminal_event: onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-lifecycle-sweep-start.v1
+    - onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-triage-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-merge-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
+
+metadata:
+  description: "PR lifecycle FSM reducer"
+  author: "OmniNode Team"
+  created: "2026-04-09"
+  tags:
+    - reducer
+    - fsm
+    - pr-lifecycle
+    - OMN-8086
+  related_tickets:
+    - OMN-8086
+    - OMN-8070

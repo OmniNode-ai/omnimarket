@@ -1,0 +1,189 @@
+---
+name: pr_lifecycle_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  FSM orchestrator composing 5 pr_lifecycle sub-handlers via a state reducer.
+  Single entry point that replaces the merge_sweep orchestration logic.
+
+  Sub-handlers (injected via protocol-based DI):
+    - ProtocolInventoryHandler     (node_pr_lifecycle_inventory_compute)
+    - ProtocolTriageHandler        (node_pr_lifecycle_triage_compute)
+    - ProtocolMergeHandler         (node_pr_lifecycle_merge_effect)
+    - ProtocolFixHandler           (node_pr_lifecycle_fix_effect)
+    - ProtocolStateReducerHandler  (node_pr_lifecycle_state_reducer)
+
+  FSM: IDLE -> INVENTORYING -> TRIAGING -> [MERGING|FIXING|SKIPPED] -> COMPLETE
+  Entry flags control which transitions are enabled:
+    dry_run, inventory_only, fix_only, merge_only, repos (CSV filter)
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerPrLifecycleOrchestrator
+        module: omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator
+      event_model:
+        name: ModelPrLifecycleStartCommand
+        module: omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Unique sweep run ID"
+    required: true
+  dry_run:
+    type: bool
+    description: "Run without side effects"
+    required: false
+    default: false
+  inventory_only:
+    type: bool
+    description: "Stop after inventory; no triage, merge, or fix"
+    required: false
+    default: false
+  fix_only:
+    type: bool
+    description: "Only fix non-green PRs; skip merge"
+    required: false
+    default: false
+  merge_only:
+    type: bool
+    description: "Only merge green PRs; skip fix"
+    required: false
+    default: false
+  repos:
+    type: str
+    description: "Comma-separated repo slugs to filter (empty = all)"
+    required: false
+    default: ""
+
+outputs:
+  prs_inventoried:
+    type: int
+    description: "Total PRs collected by inventory handler"
+  prs_merged:
+    type: int
+    description: "PRs successfully merged"
+  prs_fixed:
+    type: int
+    description: "PRs where fix was dispatched"
+  prs_skipped:
+    type: int
+    description: "PRs skipped (not green, not fixable)"
+
+sub_handler_dependencies:
+  - name: inventory
+    protocol: omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers.ProtocolInventoryHandler
+    default_impl: omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory.HandlerPrLifecycleInventory
+    optional: true
+  - name: triage
+    protocol: omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers.ProtocolTriageHandler
+    default_impl: omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage.HandlerPrLifecycleTriage
+    optional: true
+  - name: merge
+    protocol: omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers.ProtocolMergeHandler
+    default_impl: omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge.HandlerPrLifecycleMerge
+    optional: true
+  - name: fix
+    protocol: omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers.ProtocolFixHandler
+    default_impl: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix.HandlerPrLifecycleFix
+    optional: true
+  - name: reducer
+    protocol: omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers.ProtocolStateReducerHandler
+    default_impl: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_reducer.HandlerPrLifecycleReducer
+    optional: true
+
+terminal_event: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1
+    - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-inventory-collected.v1
+    - onex.evt.omnimarket.pr-lifecycle-triage-classified.v1
+    - onex.evt.omnimarket.pr-lifecycle-merge-executed.v1
+    - onex.evt.omnimarket.pr-lifecycle-fix-dispatched.v1
+
+fsm:
+  states:
+    - IDLE
+    - INVENTORYING
+    - TRIAGING
+    - MERGING
+    - FIXING
+    - COMPLETE
+    - FAILED
+  initial_state: IDLE
+  terminal_states:
+    - COMPLETE
+    - FAILED
+  transitions:
+    - from: IDLE
+      to: INVENTORYING
+      trigger: "start command received"
+    - from: INVENTORYING
+      to: TRIAGING
+      trigger: "inventory completed"
+    - from: INVENTORYING
+      to: COMPLETE
+      trigger: "inventory_only flag set"
+    - from: TRIAGING
+      to: MERGING
+      trigger: "triage completed, merge not skipped"
+    - from: TRIAGING
+      to: FIXING
+      trigger: "triage completed, fix_only flag set"
+    - from: TRIAGING
+      to: COMPLETE
+      trigger: "triage completed, dry_run or no actionable PRs"
+    - from: MERGING
+      to: FIXING
+      trigger: "merge completed, not merge_only"
+    - from: MERGING
+      to: COMPLETE
+      trigger: "merge completed, merge_only flag set"
+    - from: FIXING
+      to: COMPLETE
+      trigger: "fix completed"
+    - from: INVENTORYING
+      to: FAILED
+      trigger: "error"
+    - from: TRIAGING
+      to: FAILED
+      trigger: "error"
+    - from: MERGING
+      to: FAILED
+      trigger: "error"
+    - from: FIXING
+      to: FAILED
+      trigger: "error"
+
+metadata:
+  description: "PR Lifecycle orchestrator — FSM wiring 5 sub-handlers"
+  author: "OmniNode Platform Team"
+  created: "2026-04-09"
+  tags:
+    - "orchestrator"
+    - "pr-lifecycle"
+    - "fsm"
+    - "merge-sweep"
+    - "OMN-8087"
+  related_tickets:
+    - "OMN-8087"
+    - "OMN-8082"
+    - "OMN-8083"
+    - "OMN-8084"
+    - "OMN-8085"
+    - "OMN-8086"
+    - "OMN-8070"
