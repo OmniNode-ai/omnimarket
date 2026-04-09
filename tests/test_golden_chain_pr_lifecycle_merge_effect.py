@@ -30,7 +30,6 @@ from omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_result i
     ModelPrMergeResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # Test adapters
 # ---------------------------------------------------------------------------
