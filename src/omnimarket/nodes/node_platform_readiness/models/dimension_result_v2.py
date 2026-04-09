@@ -8,7 +8,7 @@ V2 adds: sweep_names, check_count, actionable_items, valid_zero, evidence_source
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
     EnumReadinessStatus,
@@ -29,10 +29,10 @@ class ModelDimensionResultV2(BaseModel):
 
     dimension: str
     status: EnumReadinessStatus
-    check_count: int
+    check_count: int = Field(ge=0)
     valid_zero: bool = False
     actionable_items: list[str] = []
     evidence_source: str
     sweep_names: list[str] = []
-    freshness_seconds: int | None = None
+    freshness_seconds: int | None = Field(default=None, ge=0)
     raw_detail: str = ""
