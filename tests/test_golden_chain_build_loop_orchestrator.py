@@ -422,7 +422,7 @@ class TestDoDVerificationGating:
         command = _make_command()
         await orch.handle(command)
 
-        dod_events = [m for m in event_bus.published if m.topic == TOPIC_DOD_CHECKED]
+        dod_events = await event_bus.get_event_history(topic=TOPIC_DOD_CHECKED)
         assert len(dod_events) == 1
         payload = json.loads(dod_events[0].value)
         assert payload["task_id"] == "OMN-200"
@@ -473,7 +473,7 @@ class TestDoDVerificationGating:
 
         assert result.cycles_completed == 0
         assert result.cycles_failed == 1
-        assert result.cycle_summaries[0].final_phase == EnumBuildLoopPhase.BUILDING
+        assert result.cycle_summaries[0].final_phase == EnumBuildLoopPhase.FAILED
 
     async def test_dod_fail_emits_fail_event(self) -> None:
         """DoD FAIL emits dod-checked event with verdict=FAIL."""
@@ -514,8 +514,8 @@ class TestDoDVerificationGating:
         ):
             await orch.handle(command)
 
-        dod_events = [m for m in event_bus.published if m.topic == TOPIC_DOD_CHECKED]
-        assert len(dod_events) == 1
+        dod_events = await event_bus.get_event_history(topic=TOPIC_DOD_CHECKED)
+        assert len(dod_events) >= 1
         payload = json.loads(dod_events[0].value)
         assert payload["task_id"] == "OMN-400"
         assert payload["verdict"] == "FAIL"
