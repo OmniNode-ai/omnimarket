@@ -90,10 +90,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         ) -> MagicMock:
             if "checks" in cmd:
                 return _make_subprocess_result(json.dumps(check_runs))
-            elif "reviews" in cmd[-1]:
+            if "reviews" in cmd[-1]:
                 return _make_subprocess_result(json.dumps({"reviews": reviews}))
-            else:
-                return _make_subprocess_result(json.dumps(pr_data))
+            return _make_subprocess_result(json.dumps(pr_data))
 
         with patch("subprocess.run", side_effect=fake_run):
             return handler.handle(
@@ -229,18 +228,16 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
             if "1" in cmd and call_count <= 3:
                 if "checks" in cmd:
                     return _make_subprocess_result("[]")
-                elif "reviews" in cmd[-1]:
+                if "reviews" in cmd[-1]:
                     return _make_subprocess_result(json.dumps({"reviews": []}))
-                else:
-                    return _make_subprocess_result(
-                        json.dumps(_fake_gh_pr_view(pr_number=1))
-                    )
-            else:
-                mock = MagicMock()
-                mock.returncode = 1
-                mock.stdout = ""
-                mock.stderr = "not found"
-                return mock
+                return _make_subprocess_result(
+                    json.dumps(_fake_gh_pr_view(pr_number=1))
+                )
+            mock = MagicMock()
+            mock.returncode = 1
+            mock.stdout = ""
+            mock.stderr = "not found"
+            return mock
 
         handler = HandlerPrLifecycleInventory()
         with patch("subprocess.run", side_effect=mixed_run):
@@ -291,12 +288,11 @@ class TestEventBusWiring:
         def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
             if "checks" in cmd:
                 return _make_subprocess_result("[]")
-            elif "reviews" in cmd[-1]:
+            if "reviews" in cmd[-1]:
                 return _make_subprocess_result(json.dumps({"reviews": []}))
-            else:
-                return _make_subprocess_result(
-                    json.dumps(_fake_gh_pr_view(pr_number=1))
-                )
+            return _make_subprocess_result(
+                json.dumps(_fake_gh_pr_view(pr_number=1))
+            )
 
         async def on_command(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
