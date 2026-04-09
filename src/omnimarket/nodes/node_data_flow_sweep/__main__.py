@@ -20,6 +20,8 @@ import json
 import logging
 import sys
 
+from pydantic import ValidationError
+
 from omnimarket.nodes.node_data_flow_sweep.handlers.handler_data_flow_sweep import (
     DataFlowSweepRequest,
     ModelFlowInput,
@@ -97,7 +99,11 @@ def main() -> None:
         except json.JSONDecodeError as exc:
             _log.error("invalid --flows JSON: %s", exc)
             sys.exit(1)
-        flows = [ModelFlowInput.model_validate(f) for f in raw_flows]
+        try:
+            flows = [ModelFlowInput.model_validate(f) for f in raw_flows]
+        except ValidationError as exc:
+            _log.error("invalid --flows content: %s", exc)
+            sys.exit(1)
     else:
         flows = _DEFAULT_FLOWS
 

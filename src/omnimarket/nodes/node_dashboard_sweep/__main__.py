@@ -21,6 +21,8 @@ import json
 import logging
 import sys
 
+from pydantic import ValidationError
+
 from omnimarket.nodes.node_dashboard_sweep.handlers.handler_dashboard_sweep import (
     DashboardSweepRequest,
     ModelPageInput,
@@ -40,8 +42,10 @@ def main() -> None:
         "--pages",
         default="[]",
         help=(
-            "JSON array of page objects with keys: route, status_code, "
-            "visible_text, console_errors (default: empty)"
+            "JSON array of page objects with keys: route, has_data, "
+            "has_js_errors, has_network_errors, visible_text, "
+            "has_live_timestamps, has_mock_patterns, has_feature_flag "
+            "(default: empty)"
         ),
     )
     parser.add_argument(
@@ -65,7 +69,11 @@ def main() -> None:
         _log.error("invalid --pages JSON: %s", exc)
         sys.exit(1)
 
-    pages = [ModelPageInput.model_validate(p) for p in raw_pages]
+    try:
+        pages = [ModelPageInput.model_validate(p) for p in raw_pages]
+    except ValidationError as exc:
+        _log.error("invalid --pages content: %s", exc)
+        sys.exit(1)
 
     request = DashboardSweepRequest(
         pages=pages,

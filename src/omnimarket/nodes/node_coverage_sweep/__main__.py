@@ -56,7 +56,9 @@ def _resolve_repo_dirs(repos: list[str], omni_home: str) -> list[str]:
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    omni_home = os.environ.get("OMNI_HOME", "/Volumes/PRO-G40/Code/omni_home")
+    omni_home = os.environ.get("OMNI_HOME") or str(Path.home() / "omni_home")
+    if not os.environ.get("OMNI_HOME"):
+        _log.warning("OMNI_HOME not set; falling back to %s", omni_home)
 
     parser = argparse.ArgumentParser(
         description="Measure test coverage across Python repos, flag modules below threshold."
