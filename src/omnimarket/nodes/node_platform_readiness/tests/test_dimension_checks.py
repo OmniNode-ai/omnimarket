@@ -343,7 +343,7 @@ def _make_ci_response(check_runs: list[dict[str, object]]) -> MagicMock:
 
 def test_ci_health_pass(ctx: CheckContext) -> None:
     """PASS when all CI runs succeeded."""
-    runs = [{"name": "test", "conclusion": "success"}]
+    runs: list[dict[str, object]] = [{"name": "test", "conclusion": "success"}]
     session_cm = _make_mock_session(_make_ci_response(runs))
     with patch(
         "omnimarket.nodes.node_platform_readiness.handlers.dimension_checks.aiohttp.ClientSession",
@@ -357,7 +357,7 @@ def test_ci_health_pass(ctx: CheckContext) -> None:
 
 def test_ci_health_fail_on_failure(ctx: CheckContext) -> None:
     """FAIL when a CI run has failure conclusion."""
-    runs = [
+    runs: list[dict[str, object]] = [
         {"name": "test", "conclusion": "success"},
         {"name": "lint", "conclusion": "failure"},
     ]
