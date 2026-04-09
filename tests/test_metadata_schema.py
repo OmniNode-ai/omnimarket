@@ -91,3 +91,60 @@ class TestMetadataSchema:
         assert schema.deprecated is True
         assert schema.deprecated_by == "node_pr_lifecycle_orchestrator"
         assert schema.deprecated_reason
+
+    def test_pack_and_display_name_default_to_none(self) -> None:
+        """Nodes without pack or display_name default to None."""
+        data = {
+            "name": "test_node",
+            "version": "1.0.0",
+            "description": "A test node",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.pack is None
+        assert schema.display_name is None
+
+    def test_pack_field_parses_correctly(self) -> None:
+        """pack field accepts a string value for domain package grouping."""
+        data = {
+            "name": "test_node",
+            "version": "1.0.0",
+            "description": "A test node",
+            "pack": "pr_lifecycle",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.pack == "pr_lifecycle"
+
+    def test_display_name_field_parses_correctly(self) -> None:
+        """display_name field accepts a string value for human-friendly names."""
+        data = {
+            "name": "test_node",
+            "version": "1.0.0",
+            "description": "A test node",
+            "display_name": "PR Lifecycle Orchestrator",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.display_name == "PR Lifecycle Orchestrator"
+
+    def test_pack_and_display_name_parse_together(self) -> None:
+        """Both pack and display_name can be set simultaneously."""
+        data = {
+            "name": "node_pr_lifecycle_orchestrator",
+            "version": "1.0.0",
+            "description": "Orchestrates PR lifecycle.",
+            "pack": "pr_lifecycle",
+            "display_name": "PR Lifecycle Orchestrator",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.pack == "pr_lifecycle"
+        assert schema.display_name == "PR Lifecycle Orchestrator"
+
+    def test_existing_metadata_files_backward_compatible(self) -> None:
+        """All existing metadata.yaml files parse without error (backward compat)."""
+        metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
+        for meta_path in metadata_files:
+            with meta_path.open() as f:
+                data = yaml.safe_load(f)
+            schema = MetadataSchema(**data)
+            # pack and display_name default to None when absent
+            assert schema.pack is None or isinstance(schema.pack, str)
+            assert schema.display_name is None or isinstance(schema.display_name, str)

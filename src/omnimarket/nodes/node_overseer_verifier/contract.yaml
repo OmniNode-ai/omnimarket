@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Overseer Verifier
+#
+# Deterministic verification layer for all overseer model outputs.
+# Five check dimensions: input completeness, contract compliance,
+# allowed action scope, invariant preservation, outcome success validation.
+# Zero LLM — pure Python validation.
+#
+# Related Tickets:
+#   - OMN-8031: node_overseer_verifier in omnimarket
+#   - OMN-8025: Overseer seam integration epic
+---
+name: overseer_verifier
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Deterministic verification layer for overseer model outputs. Applies five
+  independent check dimensions synchronously: input_completeness,
+  contract_compliance, allowed_action_scope, invariant_preservation,
+  outcome_success_validation. Returns PASS, FAIL, ESCALATE, or RETRY_REQUIRED.
+  No LLM calls. No I/O side effects.
+
+handler:
+  module: omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier
+  class: HandlerOverseerVerifier
+  input_model: omnimarket.nodes.node_overseer_verifier.models.model_verifier_request.ModelVerifierRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+terminal_event: onex.evt.omnimarket.overseer-verifier-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.overseer-verify.v1
+  publish_topics:
+    - onex.evt.omnimarket.overseer-verifier-completed.v1
+
+inputs:
+  task_id:
+    type: str
+    description: "Unique identifier for the task being verified."
+    required: true
+  status:
+    type: str
+    description: "Current task status string."
+    required: true
+  domain:
+    type: str
+    description: "Domain the task is running in."
+    required: true
+  node_id:
+    type: str
+    description: "Node ID that produced the output."
+    required: true
+  runner_id:
+    type: str
+    description: "Runner that executed the task."
+    required: false
+    default: null
+  attempt:
+    type: int
+    description: "Attempt number (>= 1)."
+    required: false
+    default: 1
+  payload:
+    type: dict
+    description: "Task payload for completeness and scope checks."
+    required: false
+    default: {}
+  error:
+    type: str
+    description: "Error message if task has failed."
+    required: false
+    default: null
+  confidence:
+    type: float
+    description: "Model output confidence score (0.0–1.0)."
+    required: false
+    default: null
+  cost_so_far:
+    type: float
+    description: "Cumulative cost in USD."
+    required: false
+    default: null
+  allowed_actions:
+    type: list
+    description: "Action names the model claimed to take."
+    required: false
+    default: []
+  declared_invariants:
+    type: list
+    description: "Invariant assertions from the model output."
+    required: false
+    default: []
+  schema_version:
+    type: str
+    description: "Schema version of the request envelope."
+    required: false
+    default: "1.0"
+
+outputs:
+  verdict:
+    type: str
+    description: "Overall verdict: PASS | FAIL | ESCALATE | RETRY_REQUIRED"
+  checks:
+    type: list
+    description: "Per-check results with name, passed, message."
+  failure_class:
+    type: str
+    description: "Dominant failure class when verdict is not PASS."
+  summary:
+    type: str
+    description: "Human-readable summary of verification results."
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pydantic>=2.0.0"
+
+metadata:
+  description: "Overseer Verifier — deterministic 5-dimension verification gate for overseer outputs"
+  author: "OmniNode Platform Team"
+  created: "2026-04-09"
+  updated: "2026-04-09"
+  tags:
+    - "overseer"
+    - "verifier"
+    - "compute"
+    - "deterministic"
+    - "pure"
+    - "OMN-8031"
+    - "OMN-8025"
+  related_tickets:
+    - "OMN-8031"
+    - "OMN-8025"

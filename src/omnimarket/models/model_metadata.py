@@ -39,3 +39,5 @@ class MetadataSchema(BaseModel):
     deprecated: bool = False
     deprecated_by: str | None = None
     deprecated_reason: str | None = None
+    pack: str | None = None
+    display_name: str | None = None
