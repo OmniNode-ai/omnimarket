@@ -94,6 +94,7 @@ node_pr_lifecycle_triage_compute = "omnimarket.nodes.node_pr_lifecycle_triage_co
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory:HandlerPrLifecycleInventory"
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix:HandlerPrLifecycleFix"
+node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer:HandlerPrLifecycleStateReducer"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
