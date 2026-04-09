@@ -52,6 +52,7 @@ repos:
         pass_filenames: false
 
       - id: ruff
+        alias: ruff-fix
         name: ruff check (auto-fix)
         args: [--fix, --exit-non-zero-on-fix, src/, tests/]
         pass_filenames: false
