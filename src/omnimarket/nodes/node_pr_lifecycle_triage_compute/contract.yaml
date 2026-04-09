@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Lifecycle Triage Compute
+#
+# Pure computation: classifies PRs from inventory data into triage categories
+# (green/red/conflicted/needs_review) with zero network calls.
+#
+# Related Tickets:
+#   - OMN-8083: Create pr_lifecycle_triage_compute Node
+name: "node_pr_lifecycle_triage_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: classifies PRs into triage categories (green/red/conflicted/needs_review) from inventory data with zero network calls."
+subscribe_topics:
+  - "onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1"
+publish_topics:
+  - "onex.evt.omnimarket.pr-lifecycle-triage-completed.v1"
+input_model:
+  name: "ModelPrTriageInput"
+  module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_input"
+  description: "PR inventory data to classify."
+output_model:
+  name: "ModelPrTriageOutput"
+  module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_output"
+  description: "Triage classification results for each PR."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "triage_prs"
+      handler:
+        name: "HandlerPrLifecycleTriage"
+        module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage"
+metadata:
+  description: "PR triage compute node for pr_lifecycle domain"
+  author: "OmniNode Team"
+  created: "2026-04-09"
+  tags:
+    - "compute"
+    - "pr-lifecycle"
+    - "triage"
+    - "OMN-8083"
+  related_tickets:
+    - "OMN-8083"
+    - "OMN-8070"

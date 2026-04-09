@@ -1,0 +1,23 @@
+name: node_pr_lifecycle_triage_compute
+version: "1.0.0"
+description: "Pure computation: classifies PRs into triage categories from inventory data with zero network calls"
+pack: pr_lifecycle
+node_role: triage
+display_name: "PR Triage"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_lifecycle_triage_compute: "omnimarket.nodes.node_pr_lifecycle_triage_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "pr-lifecycle", "triage"]

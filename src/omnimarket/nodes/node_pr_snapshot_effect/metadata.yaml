@@ -18,3 +18,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "pr", "github", "snapshot", "merge-sweep"]
+deprecated: true
+deprecated_by: node_pr_lifecycle_orchestrator
+deprecated_reason: "Superseded by node_pr_lifecycle_orchestrator which includes inventory scanning functionality via the pr_lifecycle_inventory_compute sub-handler."

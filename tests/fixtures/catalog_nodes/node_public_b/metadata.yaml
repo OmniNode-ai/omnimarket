@@ -1,0 +1,19 @@
+name: node_public_b
+version: "2.1.0"
+description: "Public node B in pack_beta"
+pack: pack_beta
+node_role: public
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["beta", "effect"]
