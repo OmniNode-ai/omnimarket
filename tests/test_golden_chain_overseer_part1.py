@@ -37,7 +37,6 @@ from omnimarket.nodes.node_seam_parallel_executor.models.model_seam_task import 
     ModelSeamTask,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shim factory helpers
 # ---------------------------------------------------------------------------
