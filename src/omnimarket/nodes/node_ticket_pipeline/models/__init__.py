@@ -1,21 +1,18 @@
-"""Ticket pipeline models."""
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#!/usr/bin/env python3
 
-from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_completed_event import (
-    ModelPipelineCompletedEvent,
-)
-from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_phase_event import (
-    ModelPipelinePhaseEvent,
-)
-from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command import (
-    ModelPipelineStartCommand,
-)
-from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_state import (
-    EnumPipelinePhase,
-    ModelPipelineState,
-)
+"""
+Models for the ticket pipeline node.
+These models represent data structures used in the ticket processing workflow.
+"""
+
+from .model_pipeline_completed_event import ModelPipelineCompletedEvent
+from .model_pipeline_phase_event import ModelPipelinePhaseEvent
+from .model_pipeline_start_command import ModelPipelineStartCommand
+from .model_pipeline_state import ModelPipelineState
 
 __all__ = [
-    "EnumPipelinePhase",
     "ModelPipelineCompletedEvent",
     "ModelPipelinePhaseEvent",
     "ModelPipelineStartCommand",

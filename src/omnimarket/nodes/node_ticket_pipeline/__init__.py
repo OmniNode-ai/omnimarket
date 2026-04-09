@@ -1,13 +1,25 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Ticket Pipeline Node
+#!/usr/bin/env python3
 
-Manages the ticket processing pipeline with phase-based execution
-and event-driven lifecycle management.
-
-Components:
-- PipelineStartCommand: Initiates ticket processing
-- PipelinePhaseEvent: Tracks processing phases
-- PipelineCompletedEvent: Signals completion
-- PipelineState: Maintains pipeline status
 """
+This module handles the ticket pipeline orchestration.
+It manages the lifecycle of ticket processing tasks including start,
+completion, and phase transitions.
+"""
+
+from .handlers import HandlerTicketPipeline
+from .models import (
+    ModelPipelineCompletedEvent,
+    ModelPipelinePhaseEvent,
+    ModelPipelineStartCommand,
+    ModelPipelineState,
+)
+
+__all__ = [
+    "HandlerTicketPipeline",
+    "ModelPipelineCompletedEvent",
+    "ModelPipelinePhaseEvent",
+    "ModelPipelineStartCommand",
+    "ModelPipelineState",
+]

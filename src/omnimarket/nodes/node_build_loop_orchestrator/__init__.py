@@ -1,17 +1,34 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Build Loop Orchestrator Node
+#!/usr/bin/env python3
 
-Orchestrates build loop execution with configurable phases,
-dispatching, and comprehensive lifecycle management.
-
-Components:
-- OrchestratorStartCommand: Initiates build loop
-- PhaseCommandIntent: Manages build phases
-- LiveRunnerConfig: Build environment configuration
-- OrchestratorCompletedEvent: Completion signaling
-- DispatchMetrics: Execution metrics
-- DispatchTrace: Execution tracing
-- OrchestratorState: Orchestrator status
-- LoopCycleSummary: Cycle summary
 """
+Orchestrates build loop processes.
+Manages the execution flow of build loops, tracking state and dispatching commands.
+"""
+
+from .models import (
+    ModelDispatchMetrics,
+    ModelDispatchTrace,
+    ModelLiveRunnerConfig,
+    ModelLoopCycleSummary,
+    ModelOrchestratorCompletedEvent,
+    ModelOrchestratorResult,
+    ModelOrchestratorStartCommand,
+    ModelOrchestratorState,
+    ModelPhaseCommandIntent,
+)
+from .protocols import ProtocolSubHandlers
+
+__all__ = [
+    "ModelDispatchMetrics",
+    "ModelDispatchTrace",
+    "ModelLiveRunnerConfig",
+    "ModelLoopCycleSummary",
+    "ModelOrchestratorCompletedEvent",
+    "ModelOrchestratorResult",
+    "ModelOrchestratorStartCommand",
+    "ModelOrchestratorState",
+    "ModelPhaseCommandIntent",
+    "ProtocolSubHandlers",
+]
