@@ -53,9 +53,8 @@ def _build_thread_body(finding: ReviewFinding) -> str:
     )
     file_ref = ""
     if finding.evidence.file_path:
-        lr = finding.evidence.line_range or {}
-        start = lr.get("start") or "?"
-        end = lr.get("end") or start
+        start = finding.evidence.line_start or "?"
+        end = finding.evidence.line_end or start
         file_ref = (
             f"\n\n\U0001f4cd File: `{finding.evidence.file_path}`, lines {start}-{end}"
         )
@@ -80,7 +79,7 @@ def _build_summary_body(minor_findings: list[ReviewFinding]) -> str:
         severity_tag = f.severity.upper()
         location = ""
         if f.evidence.file_path:
-            start = (f.evidence.line_range or {}).get("start") or "?"
+            start = f.evidence.line_start or "?"
             location = f" (`{f.evidence.file_path}:{start}`)"
         lines.append(f"- **[{severity_tag}] {f.title}**{location}: {f.description}")
     return "\n".join(lines)
@@ -150,11 +149,36 @@ class HandlerThreadPoster(ProtocolThreadPoster):
             thread_findings = thread_findings[: self._max_findings_per_pr]
 
         # Fetch head SHA once — needed to anchor review comments.
+        # Degrade gracefully: if metadata fetch fails, fall back to posting
+        # all findings as general PR comments (no line-level anchoring).
+        head_sha = ""
         if not dry_run and thread_findings:
-            pr_meta = await self._bridge.fetch_pr_metadata(repo, pr_number)
-            head_sha = pr_meta.head_sha
-        else:
-            head_sha = ""
+            try:
+                pr_meta = await self._bridge.fetch_pr_metadata(repo, pr_number)
+                head_sha = pr_meta.head_sha
+            except Exception:
+                logger.exception(
+                    "Failed to fetch PR metadata for PR #%d in %s — "
+                    "findings will be posted as general comments without line anchors",
+                    pr_number,
+                    repo,
+                )
+
+        # Fetch all existing bot review threads once for R10 dedup. This
+        # prevents re-paginating GitHub on every finding in the loop.
+        existing_threads: list = []
+        if not dry_run and thread_findings:
+            try:
+                existing_threads = await self._bridge.fetch_review_threads(
+                    repo, pr_number
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to fetch existing review threads for PR #%d in %s — "
+                    "dedup check will be skipped; findings may be posted twice",
+                    pr_number,
+                    repo,
+                )
 
         thread_states: list[ThreadState] = []
 
@@ -165,6 +189,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
                 finding=finding,
                 head_sha=head_sha,
                 dry_run=dry_run,
+                cached_threads=existing_threads,
             )
             thread_states.append(state)
 
@@ -205,14 +230,24 @@ class HandlerThreadPoster(ProtocolThreadPoster):
         finding: ReviewFinding,
         head_sha: str,
         dry_run: bool,
+        cached_threads: list,
     ) -> ThreadState:
-        """Post (or skip) a single finding thread. Returns the resulting ThreadState."""
-        finding_id_str = str(finding.id)
+        """Post (or skip) a single finding thread. Returns the resulting ThreadState.
 
-        # R10 dedup: skip if a bot thread already exists for this finding.
+        Uses cached_threads for R10 dedup to avoid re-paginating GitHub per finding.
+        """
+        finding_id_str = str(finding.id)
+        marker = _FINDING_MARKER_TEMPLATE.format(finding_id=finding_id_str)
+
+        # R10 dedup: check cached threads instead of re-fetching from GitHub.
         if not dry_run:
-            existing = await self._bridge.find_bot_thread_for_finding(
-                repo, pr_number, finding_id_str, self._bot_login
+            existing = next(
+                (
+                    t
+                    for t in cached_threads
+                    if t.user_login == self._bot_login and marker in t.body
+                ),
+                None,
             )
             if existing is not None:
                 logger.info(
@@ -247,12 +282,17 @@ class HandlerThreadPoster(ProtocolThreadPoster):
 
         # Determine file and line for the review comment anchor.
         file_path = finding.evidence.file_path or ""
-        line = (finding.evidence.line_range or {}).get("start") or 1
+        line_start = finding.evidence.line_start
 
-        if not file_path:
+        if not file_path or line_start is None:
             # No file context — fall back to a general PR comment.
             logger.warning(
                 "Finding %s has no file_path; posting as general PR comment",
+                finding_id_str,
+            )
+            # No file/line context — fall back to a general PR comment.
+            logger.warning(
+                "Finding %s has no file_path or line_start; posting as general PR comment",
                 finding_id_str,
             )
             try:
@@ -288,7 +328,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
                 pr_number=pr_number,
                 commit_id=head_sha,
                 path=file_path,
-                line=line,
+                line=line_start,
                 body=body,
             )
             logger.info(
