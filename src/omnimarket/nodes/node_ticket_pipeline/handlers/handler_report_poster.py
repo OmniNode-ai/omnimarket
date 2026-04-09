@@ -6,12 +6,12 @@ logger = logging.getLogger(__name__)
 
 
 class HandlerReportPoster:
-    def __init__(self):
+    def __init__(self) -> None:
         self._report_endpoint = (
             "https://api.example.com/reports"  # Placeholder endpoint
         )
 
-    def post_report(self, report_data: dict) -> bool:
+    def post_report(self, report_data: dict[str, object]) -> bool:
         """
         Posts report data to the configured endpoint.
 
