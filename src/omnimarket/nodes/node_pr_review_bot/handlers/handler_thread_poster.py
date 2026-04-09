@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 
 from omnimarket.nodes.node_pr_review_bot.adapter_github_bridge import (
     AdapterGitHubBridge,
+    ReviewThread,
 )
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolThreadPoster,
@@ -166,7 +167,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
 
         # Fetch all existing bot review threads once for R10 dedup. This
         # prevents re-paginating GitHub on every finding in the loop.
-        existing_threads: list = []
+        existing_threads: list[ReviewThread] = []
         if not dry_run and thread_findings:
             try:
                 existing_threads = await self._bridge.fetch_review_threads(
@@ -230,7 +231,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
         finding: ReviewFinding,
         head_sha: str,
         dry_run: bool,
-        cached_threads: list,
+        cached_threads: list[ReviewThread],
     ) -> ThreadState:
         """Post (or skip) a single finding thread. Returns the resulting ThreadState.
 

@@ -87,10 +87,9 @@ def _build_user_prompt(
         finding_block += f"Suggested fix: {finding.suggestion}\n"
     if finding.evidence.file_path:
         line_info = ""
-        if finding.evidence.line_range:
-            start = finding.evidence.line_range.get("start", "?")
-            end = finding.evidence.line_range.get("end", "?")
-            line_info = f", lines {start}-{end}"
+        if finding.evidence.line_start is not None:
+            end = finding.evidence.line_end or finding.evidence.line_start
+            line_info = f", lines {finding.evidence.line_start}-{end}"
         finding_block += f"File: {finding.evidence.file_path}{line_info}\n"
 
     conversation_block = "## Author Thread Replies\n"
