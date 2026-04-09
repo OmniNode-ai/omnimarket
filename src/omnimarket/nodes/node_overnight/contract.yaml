@@ -1,0 +1,69 @@
+---
+name: overnight
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Overnight session orchestrator. Sequences the autonomous overnight
+  pipeline: build_loop_orchestrator -> merge_sweep -> ci_watch ->
+  platform_readiness. Emits a session-completed event with per-phase
+  summary. No LLM in the orchestration layer — each node handles its own
+  logic deterministically.
+
+handler:
+  module: omnimarket.nodes.node_overnight.handlers.handler_overnight
+  class: HandlerOvernight
+  input_model: omnimarket.nodes.node_overnight.handlers.handler_overnight.ModelOvernightCommand
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 28800000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Unique session ID"
+    required: true
+  max_cycles:
+    type: int
+    description: "Maximum build loop cycles (0 = unlimited)"
+    required: false
+    default: 0
+  skip_build_loop:
+    type: bool
+    description: "Skip build loop phase"
+    required: false
+    default: false
+  skip_merge_sweep:
+    type: bool
+    description: "Skip merge sweep phase"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Run all phases in dry-run mode"
+    required: false
+    default: false
+
+outputs:
+  session_status:
+    type: str
+    description: "completed | partial | failed"
+  phases_run:
+    type: list
+    description: "Names of phases that executed"
+  phases_failed:
+    type: list
+    description: "Names of phases that failed"
+
+terminal_event: onex.evt.omnimarket.overnight.session-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.overnight-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.overnight.phase-completed.v1
+    - onex.evt.omnimarket.overnight.session-completed.v1

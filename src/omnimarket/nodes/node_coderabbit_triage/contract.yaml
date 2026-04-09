@@ -1,0 +1,64 @@
+---
+name: coderabbit_triage
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  CodeRabbit thread triage WorkflowPackage. Lists all CodeRabbit review
+  threads on a PR, classifies each as BLOCKING or SUGGESTION using a
+  hardcoded keyword list (no LLM), and emits a completion event with the
+  classification summary. BLOCKING threads require manual fix before merge.
+  SUGGESTION threads are safe to auto-acknowledge.
+
+handler:
+  module: omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage
+  class: HandlerCoderabbitTriage
+  input_model: omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage.ModelCoderabbitTriageCommand
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  repo:
+    type: str
+    description: "GitHub repo in owner/name format"
+    required: true
+  pr_number:
+    type: int
+    description: "PR number to triage"
+    required: true
+  correlation_id:
+    type: uuid
+    description: "Unique run ID"
+    required: true
+  dry_run:
+    type: bool
+    description: "Classify threads but do not post replies or resolve"
+    required: false
+    default: false
+
+outputs:
+  total_threads:
+    type: int
+    description: "Total CodeRabbit threads found"
+  blocking_count:
+    type: int
+    description: "Threads classified as BLOCKING"
+  suggestion_count:
+    type: int
+    description: "Threads classified as SUGGESTION"
+  threads:
+    type: list
+    description: "Per-thread classification results"
+
+terminal_event: onex.evt.omnimarket.coderabbit-triage-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.coderabbit-triage-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.coderabbit-triage-completed.v1
