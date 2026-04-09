@@ -156,7 +156,7 @@ class HandlerBaselineCapture:
         # the handler is actually used. type: ignore comments are needed here
         # because the probe modules are implemented in a parallel PR (OMN-7954)
         # and do not yet exist in the source tree at type-check time.
-        from omnimarket.nodes.node_baseline_capture.handlers.probes import (  # type: ignore[attr-defined]
+        from omnimarket.nodes.node_baseline_capture.handlers.probes import (
             probe_db_row_counts,
             probe_git_branches,
             probe_github_prs,
