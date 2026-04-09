@@ -15,12 +15,11 @@ Related:
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ---------------------------------------------------------------------------
 # Shared data models
@@ -51,7 +50,7 @@ class PrRecord(BaseModel):
     )
 
 
-class EnumPrCategory(str, Enum):
+class EnumPrCategory(StrEnum):
     """Triage classification for a PR."""
 
     GREEN = "green"
@@ -75,7 +74,7 @@ class TriageRecord(BaseModel):
     )
 
 
-class EnumReducerIntent(str, Enum):
+class EnumReducerIntent(StrEnum):
     """Intent emitted by the state reducer to direct the orchestrator."""
 
     MERGE = "merge"

@@ -27,8 +27,8 @@ Related:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -41,14 +41,13 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     FixResult,
     InventoryResult,
     MergeResult,
-    PrTriageResult,
     ProtocolFixHandler,
     ProtocolInventoryHandler,
     ProtocolMergeHandler,
     ProtocolStateReducerHandler,
     ProtocolTriageHandler,
+    PrTriageResult,
     ReducerResult,
-    TriageRecord,
 )
 
 if TYPE_CHECKING:
@@ -99,7 +98,7 @@ class ModelPrLifecycleResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class EnumOrchestratorState(str, Enum):
+class EnumOrchestratorState(StrEnum):
     IDLE = "IDLE"
     INVENTORYING = "INVENTORYING"
     TRIAGING = "TRIAGING"
@@ -259,7 +258,7 @@ class HandlerPrLifecycleOrchestrator:
         """Lazy-initialize sub-handlers from stubs if not injected."""
         if self._inventory is None:
             try:
-                from omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory import (  # noqa: E501
+                from omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory import (
                     HandlerPrLifecycleInventory,
                 )
 
@@ -268,7 +267,7 @@ class HandlerPrLifecycleOrchestrator:
                 self._inventory = _StubInventoryHandler()
         if self._triage is None:
             try:
-                from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage import (  # noqa: E501
+                from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage import (
                     HandlerPrLifecycleTriage,
                 )
 
@@ -277,7 +276,7 @@ class HandlerPrLifecycleOrchestrator:
                 self._triage = _StubTriageHandler()
         if self._reducer is None:
             try:
-                from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_reducer import (  # noqa: E501
+                from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_reducer import (
                     HandlerPrLifecycleReducer,
                 )
 
@@ -286,7 +285,7 @@ class HandlerPrLifecycleOrchestrator:
                 self._reducer = _StubReducerHandler()
         if self._merge is None:
             try:
-                from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge import (  # noqa: E501
+                from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge import (
                     HandlerPrLifecycleMerge,
                 )
 
@@ -295,7 +294,7 @@ class HandlerPrLifecycleOrchestrator:
                 self._merge = _StubMergeHandler()
         if self._fix is None:
             try:
-                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (  # noqa: E501
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
                     HandlerPrLifecycleFix,
                 )
 
@@ -531,6 +530,6 @@ class HandlerPrLifecycleOrchestrator:
 
 __all__: list[str] = [
     "HandlerPrLifecycleOrchestrator",
-    "ModelPrLifecycleStartCommand",
     "ModelPrLifecycleResult",
+    "ModelPrLifecycleStartCommand",
 ]

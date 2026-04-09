@@ -18,8 +18,8 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
-    ModelPrLifecycleStartCommand,
     ModelPrLifecycleResult,
+    ModelPrLifecycleStartCommand,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -371,7 +371,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         """Exception in inventory -> final_state=FAILED with error_message set."""
 
         class BrokenInventory:
-            async def handle(self, *, correlation_id: UUID, repos: tuple[str, ...] = (), dry_run: bool = False) -> InventoryResult:  # noqa: E501
+            async def handle(self, *, correlation_id: UUID, repos: tuple[str, ...] = (), dry_run: bool = False) -> InventoryResult:
                 msg = "GitHub API down"
                 raise RuntimeError(msg)
 
