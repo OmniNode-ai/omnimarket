@@ -45,7 +45,10 @@ _ORCHESTRATOR_METADATA = {
     "node_role": "orchestrator",
     "display_name": "Test Orchestrator",
     "pack": "testing",
-    "entry_flags": ["--dry-run", "--ticket"],
+    "entry_flags": {
+        "--dry-run": "Run without making changes",
+        "--ticket": "Ticket ID to process",
+    },
     "tags": ["test", "orchestrator"],
 }
 
@@ -191,7 +194,10 @@ class TestRenderers:
         "slug": "test-orchestrator",
         "display_name": "Test Orchestrator",
         "description": "A test orchestrator node",
-        "entry_flags": ["--dry-run", "--ticket"],
+        "entry_flags": {
+            "--dry-run": "Run without making changes",
+            "--ticket": "Ticket ID to process",
+        },
         "command_topic": "onex.cmd.omnimarket.test-start.v1",
         "completion_topic": "onex.evt.omnimarket.test-completed.v1",
         "timeout_ms": 60000,
@@ -240,7 +246,7 @@ class TestRenderers:
         assert c1 == c2
 
     def test_render_with_no_entry_flags(self) -> None:
-        kwargs = {**self._COMMON, "entry_flags": []}
+        kwargs = {**self._COMMON, "entry_flags": {}}
         content = _render_skill_md(pack="testing", tags=[], **kwargs)
         assert "No entry flags" in content
 

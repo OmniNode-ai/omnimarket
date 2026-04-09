@@ -251,7 +251,7 @@ class TestMetadataSchema:
         assert schema.entry_flags == {}
 
     def test_existing_metadata_files_parse_without_entry_flags(self) -> None:
-        """All existing metadata.yaml files (without entry_flags) still parse cleanly."""
+        """Metadata files lacking entry_flags parse cleanly and default to None."""
         metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
         assert len(metadata_files) >= 3
 
@@ -259,9 +259,10 @@ class TestMetadataSchema:
             with meta_path.open() as f:
                 data = yaml.safe_load(f)
             schema = MetadataSchema(**data)
-            assert schema.entry_flags is None, (
-                f"{meta_path} unexpectedly has entry_flags set"
-            )
+            if "entry_flags" not in data:
+                assert schema.entry_flags is None, (
+                    f"{meta_path} unexpectedly has entry_flags set"
+                )
 
     def test_existing_metadata_files_backward_compatible(self) -> None:
         """All existing metadata.yaml files parse without error (backward compat)."""
