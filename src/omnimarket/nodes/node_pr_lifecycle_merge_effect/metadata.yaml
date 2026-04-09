@@ -1,0 +1,23 @@
+name: node_pr_lifecycle_merge_effect
+version: "1.0.0"
+description: "PR lifecycle merge effect — auto-merge execution for green PRs with protocol-injected GitHub adapter and merge queue policy support"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: pr_lifecycle
+node_role: effect
+display_name: "PR Merge"
+entry_points:
+  onex.nodes:
+    node_pr_lifecycle_merge_effect: "omnimarket.nodes.node_pr_lifecycle_merge_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr", "merge", "github", "pr_lifecycle"]

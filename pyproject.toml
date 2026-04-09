@@ -96,6 +96,7 @@ node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_invent
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix:HandlerPrLifecycleFix"
 node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer:HandlerPrLifecycleStateReducer"
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:HandlerPrLifecycleOrchestrator"
+node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge:HandlerPrLifecycleMerge"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
