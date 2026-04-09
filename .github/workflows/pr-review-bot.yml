@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: PR Review Bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review_comment:
+    types: [created]
+
+# Prevent redundant runs when multiple pushes arrive in quick succession.
+# Key on PR number so concurrent runs for different PRs are allowed.
+concurrency:
+  group: pr-review-bot-${{ github.event.pull_request.number || github.event.pull_request_review_comment.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  # R1 (design doc): GITHUB_TOKEN needs write scope to post review threads.
+  pull-requests: write
+  contents: read
+
+jobs:
+  pr-review-bot:
+    name: PR Review Bot
+    # Self-hosted .201 runner — has direct LAN access to LLM inference endpoints.
+    runs-on: self-hosted
+
+    # Skip review when the PR carries the skip-review label.
+    if: |
+      !contains(github.event.pull_request.labels.*.name, 'skip-review')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history needed so the diff fetcher can compare against base.
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Resolve PR number
+        id: pr
+        run: |
+          # Works for both pull_request and pull_request_review_comment events.
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=${{ github.event.pull_request_review_comment.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run PR Review Bot
+        run: |
+          uv run python -m omnimarket.nodes.node_pr_review_bot.workflow_runner \
+            --pr "${{ steps.pr.outputs.number }}" \
+            --repo "${{ github.repository }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLM_CODER_URL: ${{ vars.LLM_CODER_URL }}
+          LLM_CODER_FAST_URL: ${{ vars.LLM_CODER_FAST_URL }}
+          LLM_DEEPSEEK_R1_URL: ${{ vars.LLM_DEEPSEEK_R1_URL }}

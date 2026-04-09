@@ -309,3 +309,73 @@ __all__: list[str] = [
     "WorkflowRunnerResult",
     "run_review",
 ]
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point — invoked as: python -m omnimarket.nodes.node_pr_review_bot.workflow_runner
+# ---------------------------------------------------------------------------
+
+
+def _main() -> None:
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        description="Run the PR review bot pipeline for a single pull request."
+    )
+    parser.add_argument("--pr", type=int, required=True, help="GitHub PR number")
+    parser.add_argument(
+        "--repo",
+        required=True,
+        help="Repository in owner/repo format",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Post no GitHub comments; log findings only",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default="deepseek-r1",
+        help="Judge model identifier (must not be a build-loop model)",
+    )
+    parser.add_argument(
+        "--severity-threshold",
+        default="major",
+        choices=["minor", "major", "critical"],
+        help="Minimum severity to post a review thread",
+    )
+    parser.add_argument(
+        "--max-findings",
+        type=int,
+        default=20,
+        help="Cap on review threads to prevent spam",
+    )
+    args = parser.parse_args()
+
+    severity = EnumFindingSeverity(args.severity_threshold.upper())
+
+    result = run_review(
+        pr_number=args.pr,
+        repo=args.repo,
+        dry_run=args.dry_run,
+        judge_model=args.judge_model,
+        severity_threshold=severity,
+        max_findings_per_pr=args.max_findings,
+    )
+
+    print(  # noqa: T201
+        f"verdict={result.verdict.verdict} "
+        f"findings={result.verdict.total_findings} "
+        f"threads_pass={result.verdict.threads_verified_pass} "
+        f"threads_fail={result.verdict.threads_verified_fail} "
+        f"threads_pending={result.verdict.threads_pending}"
+    )
+
+    if result.verdict.threads_verified_fail > 0:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    _main()
