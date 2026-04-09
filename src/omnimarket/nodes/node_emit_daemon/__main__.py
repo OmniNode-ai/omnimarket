@@ -141,7 +141,7 @@ def _do_start(args: argparse.Namespace) -> int:
         )
     else:
         # Try default registry location
-        default_registry = Path(__file__).parent / "registries" / "claude_code.yaml"
+        default_registry = Path(__file__).parent / "registries" / "topics.yaml"
         if default_registry.exists():
             registry = EventRegistry.from_yaml(default_registry)
             logger.info(f"Loaded default event registry ({len(registry)} event types)")

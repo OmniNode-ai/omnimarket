@@ -291,7 +291,7 @@ class TestEventRegistry:
             / "nodes"
             / "node_emit_daemon"
             / "registries"
-            / "claude_code.yaml"
+            / "topics.yaml"
         )
         registry = EventRegistry.from_yaml(registry_path)
         assert len(registry) > 40  # Should have 40+ event types

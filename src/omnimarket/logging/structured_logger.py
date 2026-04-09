@@ -11,12 +11,11 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from omnimarket.logging.topics import LOG_ENTRY_TOPIC
 from omnimarket.nodes.node_log_projection.handlers.handler_log_projection import (
     EnumLogLevel,
     ModelLogEntry,
 )
-
-LOG_ENTRY_TOPIC = "onex.evt.platform.log-entry.v1"
 
 
 class EventBusProtocol(Protocol):
