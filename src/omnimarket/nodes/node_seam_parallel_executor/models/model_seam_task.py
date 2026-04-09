@@ -109,8 +109,8 @@ class ModelSeamParallelResult(BaseModel):
 
 __all__: list[str] = [
     "EnumSeamTaskStatus",
-    "ModelSeamTask",
     "ModelSeamParallelInput",
-    "ModelSeamTaskResult",
     "ModelSeamParallelResult",
+    "ModelSeamTask",
+    "ModelSeamTaskResult",
 ]

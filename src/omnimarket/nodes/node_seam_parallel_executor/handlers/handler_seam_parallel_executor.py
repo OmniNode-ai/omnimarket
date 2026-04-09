@@ -15,9 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections import defaultdict
-from typing import Any, Callable, Literal, Protocol, runtime_checkable
-from uuid import UUID
+from collections.abc import Callable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from omnimarket.nodes.node_seam_parallel_executor.models.model_seam_task import (
     EnumSeamTaskStatus,
@@ -188,9 +187,7 @@ class HandlerSeamParallelExecutor:
         waves = _build_waves(tasks)
 
         # Create shims
-        self._active_shims = {
-            key: shim for key, shim in self._registry.items()
-        }
+        self._active_shims = dict(self._registry.items())
 
         task_outputs: dict[str, Any] = {}
         all_results: list[ModelSeamTaskResult] = []
