@@ -25,24 +25,29 @@ from omnimarket.nodes.node_data_flow_sweep.handlers.handler_data_flow_sweep impo
     ModelFlowInput,
     NodeDataFlowSweep,
 )
+from omnimarket.nodes.node_data_flow_sweep.topics import (
+    NODE_INTROSPECTION_TOPIC,
+    PATTERN_LEARNED_TOPIC,
+    ROUTING_DECISION_TOPIC,
+)
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_FLOWS = [
     ModelFlowInput(
-        topic="onex.evt.platform.node-introspection.v1",
+        topic=NODE_INTROSPECTION_TOPIC,
         handler_name="projectNodeIntrospection",
         table_name="node_service_registry",
         dashboard_route="/agents",
     ),
     ModelFlowInput(
-        topic="onex.evt.omniintelligence.pattern-learned.v1",
+        topic=PATTERN_LEARNED_TOPIC,
         handler_name="projectPatternLearned",
         table_name="pattern_learning_artifacts",
         dashboard_route="/intelligence",
     ),
     ModelFlowInput(
-        topic="onex.evt.omniclaude.routing-decision.v1",
+        topic=ROUTING_DECISION_TOPIC,
         handler_name="projectRoutingDecision",
         table_name="agent_routing_decisions",
         dashboard_route="/pipeline",

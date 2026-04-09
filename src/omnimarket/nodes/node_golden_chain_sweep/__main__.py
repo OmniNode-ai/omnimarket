@@ -25,37 +25,44 @@ from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_swee
     ModelChainDefinition,
     NodeGoldenChainSweep,
 )
+from omnimarket.nodes.node_golden_chain_sweep.topics import (
+    LLM_ROUTING_DECISION_TOPIC,
+    PATTERN_STORED_TOPIC,
+    ROUTING_DECISION_TOPIC,
+    RUN_EVALUATED_TOPIC,
+    TASK_DELEGATED_TOPIC,
+)
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_CHAINS = [
     ModelChainDefinition(
         name="registration",
-        head_topic="onex.evt.omniclaude.routing-decision.v1",
+        head_topic=ROUTING_DECISION_TOPIC,
         tail_table="agent_routing_decisions",
         expected_fields=["correlation_id", "selected_agent"],
     ),
     ModelChainDefinition(
         name="pattern_learning",
-        head_topic="onex.evt.omniintelligence.pattern-stored.v1",
+        head_topic=PATTERN_STORED_TOPIC,
         tail_table="pattern_learning_artifacts",
         expected_fields=["correlation_id"],
     ),
     ModelChainDefinition(
         name="delegation",
-        head_topic="onex.evt.omniclaude.task-delegated.v1",
+        head_topic=TASK_DELEGATED_TOPIC,
         tail_table="delegation_events",
         expected_fields=["correlation_id"],
     ),
     ModelChainDefinition(
         name="routing",
-        head_topic="onex.evt.omniclaude.llm-routing-decision.v1",
+        head_topic=LLM_ROUTING_DECISION_TOPIC,
         tail_table="llm_routing_decisions",
         expected_fields=["correlation_id"],
     ),
     ModelChainDefinition(
         name="evaluation",
-        head_topic="onex.evt.omniintelligence.run-evaluated.v1",
+        head_topic=RUN_EVALUATED_TOPIC,
         tail_table="session_outcomes",
         expected_fields=["correlation_id"],
     ),
