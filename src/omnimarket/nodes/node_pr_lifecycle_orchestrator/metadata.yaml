@@ -17,26 +17,11 @@ capabilities:
   requires_docker: false
   side_effect_class: effectful
 entry_flags:
-  - name: dry_run
-    type: bool
-    default: false
-    description: "Run without side effects (no merges, no gh calls)"
-  - name: inventory_only
-    type: bool
-    default: false
-    description: "Stop after inventory phase; do not triage, merge, or fix"
-  - name: fix_only
-    type: bool
-    default: false
-    description: "Only execute fix phase on non-green PRs; skip merge"
-  - name: merge_only
-    type: bool
-    default: false
-    description: "Only merge green PRs; skip fix phase"
-  - name: repos
-    type: str
-    default: ""
-    description: "Comma-separated list of repo slugs to filter (empty = all repos)"
+  dry_run: "Run without side effects (no merges, no gh calls)"
+  inventory_only: "Stop after inventory phase; do not triage, merge, or fix"
+  fix_only: "Only execute fix phase on non-green PRs; skip merge"
+  merge_only: "Only merge green PRs; skip fix phase"
+  repos: "Comma-separated list of repo slugs to filter (empty = all repos)"
 dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]

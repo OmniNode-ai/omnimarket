@@ -69,31 +69,31 @@ def _get_timeout_ms(contract: dict[str, Any]) -> int:
         return 120000
 
 
-def _build_args_table(entry_flags: list[str]) -> str:
-    """Build a markdown table from entry_flags list."""
+def _build_args_table(entry_flags: dict[str, str]) -> str:
+    """Build a markdown table from entry_flags dict (key=flag, value=description)."""
     if not entry_flags:
         return "| (none) | — | — |\n"
     rows = []
-    for flag in entry_flags:
-        rows.append(f"| {flag} | — | — |")
+    for flag, description in entry_flags.items():
+        rows.append(f"| {flag} | {description} | — |")
     return "\n".join(rows) + "\n"
 
 
-def _build_args_frontmatter(entry_flags: list[str]) -> str:
-    """Build SKILL.md frontmatter args block from entry_flags."""
+def _build_args_frontmatter(entry_flags: dict[str, str]) -> str:
+    """Build SKILL.md frontmatter args block from entry_flags dict."""
     if not entry_flags:
         return "  # No entry flags declared\n"
     lines = []
-    for flag in entry_flags:
+    for flag, description in entry_flags.items():
         lines.append(f"  - name: {flag}")
-        lines.append('    description: "See node contract for details"')
+        lines.append(f'    description: "{description}"')
         lines.append("    required: false")
     return "\n".join(lines) + "\n"
 
 
-def _build_cli_examples(slug: str, entry_flags: list[str]) -> str:
+def _build_cli_examples(slug: str, entry_flags: dict[str, str]) -> str:
     lines = [f"/{slug}                    # Default invocation"]
-    for flag in entry_flags[:2]:
+    for flag in list(entry_flags.keys())[:2]:
         lines.append(f"/{slug} {flag}")
     return "\n".join(lines)
 
@@ -110,7 +110,7 @@ def _render_skill_md(
     display_name: str,
     description: str,
     pack: str,
-    entry_flags: list[str],
+    entry_flags: dict[str, str],
     command_topic: str,
     completion_topic: str,
     timeout_ms: int,
@@ -208,13 +208,14 @@ def _render_mdc(
     slug: str,
     display_name: str,
     description: str,
-    entry_flags: list[str],
+    entry_flags: dict[str, str],
     command_topic: str,
     completion_topic: str,
     timeout_ms: int,
 ) -> str:
+    first_flag = next(iter(entry_flags), None)
     payload_comment = (
-        '  "' + entry_flags[0] + '": "<value>"' if entry_flags else "  // no flags"
+        '  "' + first_flag + '": "<value>"' if first_flag else "  // no flags"
     )
     return f"""\
 ---
@@ -280,7 +281,7 @@ def _render_instructions_md(
     slug: str,
     display_name: str,
     description: str,
-    entry_flags: list[str],
+    entry_flags: dict[str, str],
     command_topic: str,
     completion_topic: str,
     timeout_ms: int,
@@ -399,7 +400,7 @@ def generate_adapters_for_node(
     display_name = metadata.get("display_name") or slug.replace("-", " ").title()
     description = metadata.get("description", f"OmniMarket {display_name} node")
     pack = metadata.get("pack", "omnimarket")
-    entry_flags: list[str] = metadata.get("entry_flags") or []
+    entry_flags: dict[str, str] = metadata.get("entry_flags") or {}
     tags: list[str] = metadata.get("tags") or []
 
     command_topic = _get_command_topic(contract)
