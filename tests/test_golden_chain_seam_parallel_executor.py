@@ -88,9 +88,7 @@ class TestSeamParallelExecutorGoldenChain:
 
     async def test_seam_parallel_two_independent_tasks(self) -> None:
         """Two tasks with no shared deps both succeed."""
-        handler = HandlerSeamParallelExecutor(
-            shim_registry={"echo": _EchoShim()}
-        )
+        handler = HandlerSeamParallelExecutor(shim_registry={"echo": _EchoShim()})
 
         result = await handler.handle(
             ModelSeamParallelInput(
@@ -123,16 +121,12 @@ class TestSeamParallelExecutorGoldenChain:
 
     async def test_seam_parallel_shim_removed_on_completion(self) -> None:
         """Shims are cleaned up after execution completes."""
-        handler = HandlerSeamParallelExecutor(
-            shim_registry={"echo": _EchoShim()}
-        )
+        handler = HandlerSeamParallelExecutor(shim_registry={"echo": _EchoShim()})
 
         result = await handler.handle(
             ModelSeamParallelInput(
                 correlation_id=uuid4(),
-                tasks=(
-                    ModelSeamTask(task_id="t1", callable_key="echo"),
-                ),
+                tasks=(ModelSeamTask(task_id="t1", callable_key="echo"),),
             )
         )
 
@@ -208,9 +202,7 @@ class TestSeamParallelExecutorGoldenChain:
 
     async def test_seam_parallel_callable_key_mismatch(self) -> None:
         """Missing callable_key raises ValueError."""
-        handler = HandlerSeamParallelExecutor(
-            shim_registry={"echo": _EchoShim()}
-        )
+        handler = HandlerSeamParallelExecutor(shim_registry={"echo": _EchoShim()})
 
         with pytest.raises(ValueError, match="unknown callable_key"):
             await handler.handle(
@@ -227,9 +219,7 @@ class TestSeamParallelExecutorGoldenChain:
 
     async def test_seam_parallel_empty_tasks_returns_false(self) -> None:
         """Empty task list returns all_succeeded=False."""
-        handler = HandlerSeamParallelExecutor(
-            shim_registry={"echo": _EchoShim()}
-        )
+        handler = HandlerSeamParallelExecutor(shim_registry={"echo": _EchoShim()})
 
         result = await handler.handle(
             ModelSeamParallelInput(
@@ -244,9 +234,7 @@ class TestSeamParallelExecutorGoldenChain:
 
     async def test_seam_parallel_timeout_seconds_enforced(self) -> None:
         """Per-task timeout is enforced via asyncio.wait_for."""
-        handler = HandlerSeamParallelExecutor(
-            shim_registry={"slow": _SlowShim()}
-        )
+        handler = HandlerSeamParallelExecutor(shim_registry={"slow": _SlowShim()})
 
         result = await handler.handle(
             ModelSeamParallelInput(
@@ -268,9 +256,7 @@ class TestSeamParallelExecutorGoldenChain:
 
     async def test_seam_parallel_dependency_cycle_raises(self) -> None:
         """Circular dependency raises ValueError."""
-        handler = HandlerSeamParallelExecutor(
-            shim_registry={"echo": _EchoShim()}
-        )
+        handler = HandlerSeamParallelExecutor(shim_registry={"echo": _EchoShim()})
 
         with pytest.raises(ValueError, match="Dependency cycle"):
             await handler.handle(
@@ -293,9 +279,7 @@ class TestSeamParallelExecutorGoldenChain:
 
     async def test_seam_parallel_unknown_dependency_raises(self) -> None:
         """Dependency on non-existent task raises ValueError."""
-        handler = HandlerSeamParallelExecutor(
-            shim_registry={"echo": _EchoShim()}
-        )
+        handler = HandlerSeamParallelExecutor(shim_registry={"echo": _EchoShim()})
 
         with pytest.raises(ValueError, match="unknown task"):
             await handler.handle(
@@ -329,12 +313,8 @@ class TestSeamParallelExecutorGoldenChain:
                 correlation_id=uuid4(),
                 tasks=(
                     ModelSeamTask(task_id="a", callable_key="a"),
-                    ModelSeamTask(
-                        task_id="b", callable_key="b", depends_on=("a",)
-                    ),
-                    ModelSeamTask(
-                        task_id="c", callable_key="c", depends_on=("a",)
-                    ),
+                    ModelSeamTask(task_id="b", callable_key="b", depends_on=("a",)),
+                    ModelSeamTask(task_id="c", callable_key="c", depends_on=("a",)),
                     ModelSeamTask(
                         task_id="d",
                         callable_key="d",

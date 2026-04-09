@@ -92,9 +92,7 @@ def _build_waves(tasks: tuple[ModelSeamTask, ...]) -> list[list[ModelSeamTask]]:
 
     while remaining:
         wave = [
-            t
-            for t in remaining.values()
-            if all(d in completed for d in t.depends_on)
+            t for t in remaining.values() if all(d in completed for d in t.depends_on)
         ]
         if not wave:
             unresolved = list(remaining.keys())
@@ -237,8 +235,7 @@ class HandlerSeamParallelExecutor:
     ) -> list[ModelSeamTaskResult]:
         """Execute a single wave of independent tasks in parallel."""
         coros = [
-            self._execute_task(task, task_outputs, global_timeout)
-            for task in wave
+            self._execute_task(task, task_outputs, global_timeout) for task in wave
         ]
         return list(await asyncio.gather(*coros))
 
