@@ -88,6 +88,7 @@ node_create_ticket = "omnimarket.nodes.node_create_ticket.handlers.handler_creat
 node_plan_to_tickets = "omnimarket.nodes.node_plan_to_tickets.handlers.handler_plan_to_tickets:HandlerPlanToTickets"
 node_release = "omnimarket.nodes.node_release.handlers.handler_release:HandlerRelease"
 node_redeploy = "omnimarket.nodes.node_redeploy.handlers.handler_redeploy:HandlerRedeploy"
+node_baseline_capture = "omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture:HandlerBaselineCapture"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
