@@ -89,6 +89,7 @@ terminal_event: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.build-loop-orchestrator-start.v1
+    - onex.evt.overseer.verification-completed.v1
   publish_topics:
     - onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1
     - onex.evt.omnimarket.build-loop-orchestrator-completed.v1
@@ -101,6 +102,7 @@ event_bus:
     - onex.evt.omnimarket.build-loop-build-completed.v1
     - onex.evt.omnimarket.build-loop-failed.v1
     - onex.evt.build-loop.dod-checked.v1
+    - onex.cmd.overseer.verify-requested.v1
 
 fsm:
   states:

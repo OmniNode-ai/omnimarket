@@ -16,9 +16,13 @@ TOPIC_PHASE_TRANSITION = (
 )
 TOPIC_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"
 TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"
+TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.overseer.verify-requested.v1"
+TOPIC_OVERSEER_VERIFICATION_COMPLETED = "onex.evt.overseer.verification-completed.v1"
 
 __all__: list[str] = [
     "TOPIC_COMPLETED",
     "TOPIC_DOD_CHECKED",
+    "TOPIC_OVERSEER_VERIFICATION_COMPLETED",
+    "TOPIC_OVERSEER_VERIFY_REQUESTED",
     "TOPIC_PHASE_TRANSITION",
 ]
