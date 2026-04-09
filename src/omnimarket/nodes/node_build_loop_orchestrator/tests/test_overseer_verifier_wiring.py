@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -25,7 +25,15 @@ from omnimarket.nodes.node_build_loop_orchestrator.topics import (
     TOPIC_OVERSEER_VERIFY_REQUESTED,
 )
 
-_AsyncCallback = Callable[[bytes], Coroutine[Any, Any, None]]
+
+class _FakeMessage:
+    """Minimal stand-in for ModelEventMessage with a .value bytes field."""
+
+    def __init__(self, value: bytes) -> None:
+        self.value = value
+
+
+_AsyncCallback = Callable[[_FakeMessage], Awaitable[None]]
 
 
 class _FakeEventBus:
@@ -38,12 +46,20 @@ class _FakeEventBus:
     async def publish(self, *, topic: str, key: object, value: bytes) -> None:
         self.published.append((topic, value))
 
-    async def subscribe(self, *, topic: str, callback: _AsyncCallback) -> None:
-        self._callbacks.setdefault(topic, []).append(callback)
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object = None,
+        on_message: _AsyncCallback | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if on_message is not None:
+            self._callbacks.setdefault(topic, []).append(on_message)
 
     async def deliver(self, topic: str, payload: bytes) -> None:
+        msg = _FakeMessage(payload)
         for cb in self._callbacks.get(topic, []):
-            await cb(payload)
+            await cb(msg)
 
 
 def _make_orchestrator(event_bus: _FakeEventBus) -> HandlerBuildLoopOrchestrator:

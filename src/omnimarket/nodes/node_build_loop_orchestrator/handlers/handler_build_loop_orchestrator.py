@@ -77,6 +77,7 @@ from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request impor
 )
 
 if TYPE_CHECKING:
+    from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
         ProtocolEventBusPublisher,
     )
@@ -133,6 +134,7 @@ class HandlerBuildLoopOrchestrator:
         self._fsm = HandlerBuildLoop()
         self._closeout = closeout
         self._verify = verify
+        self._verify_explicitly_injected: bool = verify is not None
         self._rsd_fill = rsd_fill
         self._classify = classify
         self._dispatch = dispatch
@@ -447,9 +449,12 @@ class HandlerBuildLoopOrchestrator:
         4. passed=False → FAILED with failed_criteria surfaced
         5. passed=True → advance to FILLING
 
-        If event_bus is None (standalone/dry-run), fall back to legacy verify handler.
+        If event_bus is None, dry_run=True, or a verify handler was explicitly injected
+        at construction time, fall back to the legacy verify handler. The overseer event
+        path is only taken when event_bus is present AND no legacy verify handler was
+        injected (i.e. the auto-wired default is in use).
         """
-        if self._event_bus is None or dry_run:
+        if self._event_bus is None or self._verify_explicitly_injected or dry_run:
             # No event bus: fall back to legacy verify handler for standalone/dry-run
             assert self._verify is not None
             result = await self._verify.handle(
@@ -482,9 +487,9 @@ class HandlerBuildLoopOrchestrator:
         verdict_event: asyncio.Event = asyncio.Event()
         verdict_payload: dict[str, Any] = {}
 
-        async def on_verification_completed(raw: bytes) -> None:
+        async def on_verification_completed(msg: ModelEventMessage) -> None:
             try:
-                data = json.loads(raw)
+                data = json.loads(msg.value)
             except (json.JSONDecodeError, ValueError):
                 return
             if str(data.get("correlation_id")) == str(correlation_id):
@@ -494,8 +499,9 @@ class HandlerBuildLoopOrchestrator:
         # Register callback on event bus if it supports subscribe; otherwise poll
         if hasattr(self._event_bus, "subscribe"):
             await self._event_bus.subscribe(
-                topic=TOPIC_OVERSEER_VERIFICATION_COMPLETED,
-                callback=on_verification_completed,
+                TOPIC_OVERSEER_VERIFICATION_COMPLETED,
+                on_message=on_verification_completed,
+                group_id=f"build-loop-overseer-wait-{correlation_id}",
             )
 
         try:

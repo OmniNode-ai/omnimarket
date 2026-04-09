@@ -258,7 +258,7 @@ class TestBuildLoopOrchestratorGoldenChain:
         """Phase transition events are published to event bus."""
         await event_bus.start()
 
-        orch = _make_orchestrator(event_bus=event_bus)
+        orch = _make_orchestrator(event_bus=event_bus, verify=MockVerify())
         command = _make_command()
 
         result = await orch.handle(command)
@@ -418,6 +418,7 @@ class TestDoDVerificationGating:
             classify=MockClassify(targets=targets),
             dispatch=MockDispatch(dispatched=1),
             event_bus=event_bus,
+            verify=MockVerify(),
         )
         command = _make_command()
         await orch.handle(command)
@@ -499,6 +500,7 @@ class TestDoDVerificationGating:
             classify=MockClassify(targets=targets),
             dispatch=MockDispatch(dispatched=1),
             event_bus=event_bus,
+            verify=MockVerify(),
         )
         command = _make_command()
 
