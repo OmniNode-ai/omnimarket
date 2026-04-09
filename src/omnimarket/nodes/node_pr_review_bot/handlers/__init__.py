@@ -13,9 +13,13 @@ from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolThreadWatcher,
     next_phase,
 )
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster import (
+    HandlerThreadPoster,
+)
 
 __all__: list[str] = [
     "HandlerPrReviewBot",
+    "HandlerThreadPoster",
     "ModelPhaseTransitionEvent",
     "ModelPrReviewBotState",
     "ProtocolDiffFetcher",
