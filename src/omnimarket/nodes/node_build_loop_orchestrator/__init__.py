@@ -1,45 +1,26 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
-# SPDX-License-Identifier: MIT
-#!/usr/bin/env python
+"""node_build_loop_orchestrator -- top-level build loop orchestrator.
 
-# Orchestrator implementation for handling workflow execution
+Composes 6 sub-handlers via FSM reducer (HandlerBuildLoop). Takes
+protocol-based dependencies for closeout, verify, rsd_fill, classify,
+and dispatch handlers. Emits phase transition events via event bus.
 
+Related:
+    - OMN-7583: Migrate build loop orchestrator to omnimarket
+    - OMN-7575: Build loop migration epic
+"""
 
-class HandlerWorkflowRunner:
-    """
-    Orchestrator class responsible for managing the execution flow of build loops.
-    """
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
+    HandlerBuildLoopOrchestrator,
+)
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_loop_cycle_summary import (
+    ModelLoopCycleSummary,
+)
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_result import (
+    ModelOrchestratorResult,
+)
 
-    def __init__(self):
-        self.state = None
-
-    def start(self, command):
-        """
-        Start the orchestrator with a given command.
-        """
-        # Initialize state from command
-        self.state = command
-        return self.state
-
-    def process(self):
-        """
-        Process the current workflow step.
-        """
-        if self.state is None:
-            raise ValueError("Orchestrator not started")
-
-        # Placeholder for actual processing logic
-        # This would typically involve:
-        # - Checking current phase
-        # - Dispatching appropriate handlers
-        # - Updating state
-        # - Emitting events
-
-        return True
-
-    def complete(self):
-        """
-        Complete the orchestrator workflow.
-        """
-        # Finalize and emit completion event
-        return True
+__all__ = [
+    "HandlerBuildLoopOrchestrator",
+    "ModelLoopCycleSummary",
+    "ModelOrchestratorResult",
+]
