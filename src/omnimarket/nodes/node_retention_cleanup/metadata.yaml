@@ -1,0 +1,30 @@
+name: node_retention_cleanup
+version: "1.0.0"
+description: "Prunes stale records from projection tables per declarative retention policy"
+display_name: "Retention Cleanup"
+node_role: "effect"
+pack: "operations"
+category: operations
+tags:
+  - retention
+  - cleanup
+  - projections
+  - database
+author: OmniNode Team
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_retention_cleanup: "omnimarket.nodes.node_retention_cleanup"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "psycopg2-binary>=2.9.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"

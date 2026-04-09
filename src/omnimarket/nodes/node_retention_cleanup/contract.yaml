@@ -1,0 +1,55 @@
+---
+name: retention_cleanup
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Prunes stale records from projection tables per declarative retention policy.
+  Deletes never-store topics immediately, high-volume topics after 3 days,
+  and general events after 14 days. Tables and retention windows are
+  declared in this contract — changes require a contract bump, not a handler edit.
+handler:
+  module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
+  class: NodeRetentionCleanup
+  input_model: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup.RetentionCleanupRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+terminal_event: onex.evt.omnimarket.retention-cleanup-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.retention-cleanup-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.retention-cleanup-completed.v1
+retention_policy:
+  targets:
+    - table: event_bus_events
+      column: created_at
+      retention_days: 14
+      high_volume_topics:
+        - tool-executed
+        - tool-content
+        - wiring-health-snapshot
+        - promotion-check-requested
+        - node-introspection
+      high_volume_retention_days: 3
+      never_store_topics:
+        - node-heartbeat
+        - pattern-learned
+        - pattern-stored
+        - pattern-projection
+        - pattern-learning-cmd
+    - table: agent_actions
+      column: created_at
+      retention_days: 30
+    - table: agent_routing_decisions
+      column: created_at
+      retention_days: 30
