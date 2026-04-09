@@ -22,6 +22,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_platform_readiness.topics import SOW_PHASE2_REQUIRED_TOPICS
 
+# SSH target for .201 infra checks — override via ONEX_INFRA_SSH_TARGET env var
+_INFRA_SSH_TARGET = os.environ.get("ONEX_INFRA_SSH_TARGET", "jonah@192.168.86.201")
+
 
 class EnumReadinessStatus(StrEnum):
     """Tri-state readiness status."""
@@ -173,7 +176,7 @@ class NodePlatformReadiness:
             result = subprocess.run(
                 [
                     "ssh",
-                    "jonah@192.168.86.201",
+                    _INFRA_SSH_TARGET,
                     "docker inspect omninode-runtime --format '{{.Created}}'",
                 ],
                 capture_output=True,
@@ -181,11 +184,11 @@ class NodePlatformReadiness:
                 timeout=15,
             )
             created_str = result.stdout.strip().strip("'")
-            if created_str:
+            if created_str and result.returncode == 0:
                 created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
-                age_hours = (
-                    now.replace(tzinfo=UTC) - created.replace(tzinfo=UTC)
-                ).total_seconds() / 3600
+                # Both now (UTC-aware from request) and created (tz-aware from ISO) are
+                # already timezone-aware; subtract directly without replace(tzinfo=...).
+                age_hours = (now - created.astimezone(UTC)).total_seconds() / 3600
                 healthy = age_hours < 48
                 details = f"Image created {int(age_hours)}h ago"
                 last_checked = now
@@ -211,7 +214,7 @@ class NodePlatformReadiness:
             result = subprocess.run(
                 [
                     "ssh",
-                    "jonah@192.168.86.201",
+                    _INFRA_SSH_TARGET,
                     "docker exec omnibase-infra-postgres psql -U postgres -d omnibase_infra -t -c "
                     '"SELECT migration_id FROM schema_migrations ORDER BY applied_at DESC LIMIT 1;"',
                 ],
@@ -219,19 +222,23 @@ class NodePlatformReadiness:
                 text=True,
                 timeout=15,
             )
-            last_migration = result.stdout.strip()
-            # Extract numeric part from migration_id like "docker/062_..."
-            parts = last_migration.split("/")
-            if len(parts) >= 2:
-                num_str = parts[-1][:3]
-                num = int(num_str) if num_str.isdigit() else 0
-                healthy = num >= 62
-                details = (
-                    f"Latest migration: {last_migration.strip()} (watermark {num})"
-                )
+            if result.returncode != 0:
+                healthy = None
+                details = f"Migration check failed (exit {result.returncode}): {result.stderr.strip()}"
             else:
-                healthy = False
-                details = f"Could not parse migration watermark: {last_migration}"
+                last_migration = result.stdout.strip()
+                # Extract numeric part from migration_id like "docker/062_..."
+                parts = last_migration.split("/")
+                if len(parts) >= 2:
+                    num_str = parts[-1][:3]
+                    num = int(num_str) if num_str.isdigit() else 0
+                    healthy = num >= 62
+                    details = (
+                        f"Latest migration: {last_migration.strip()} (watermark {num})"
+                    )
+                else:
+                    healthy = False
+                    details = f"Could not parse migration watermark: {last_migration}"
         except Exception as e:
             healthy = None
             details = f"Migration check failed: {e}"
@@ -250,14 +257,29 @@ class NodePlatformReadiness:
             result = subprocess.run(
                 [
                     "ssh",
-                    "jonah@192.168.86.201",
+                    _INFRA_SSH_TARGET,
                     "docker exec omnibase-infra-redpanda rpk topic list 2>/dev/null",
                 ],
                 capture_output=True,
                 text=True,
                 timeout=15,
             )
-            existing = result.stdout
+            if result.returncode != 0:
+                healthy = None
+                details = f"Kafka topic check failed (exit {result.returncode}): {result.stderr.strip()}"
+                return ModelDimensionInput(
+                    name="kafka_topic_coverage",
+                    critical=False,
+                    healthy=healthy,
+                    last_checked=now,
+                    details=details,
+                )
+            # Parse topic names from rpk output — first token on each line
+            existing = {
+                line.split()[0]
+                for line in result.stdout.splitlines()
+                if line.strip() and not line.startswith("NAME")
+            }
             missing = [t for t in required_topics if t not in existing]
             healthy = len(missing) == 0
             details = (
@@ -278,11 +300,20 @@ class NodePlatformReadiness:
 
     def _check_pre_commit_installation(self, now: datetime) -> ModelDimensionInput:
         """Check pre-commit hooks are installed in key repos."""
-        omni_home = os.environ.get("OMNI_HOME", Path.home() / "Code" / "omni_home")
+        omni_home_env = os.environ.get("OMNI_HOME")
+        if not omni_home_env:
+            return ModelDimensionInput(
+                name="pre_commit_installation",
+                critical=False,
+                healthy=None,
+                last_checked=now,
+                details="OMNI_HOME env var not set; pre-commit check skipped",
+            )
+        omni_home = Path(omni_home_env)
         repos_to_check = ["omniclaude", "omnibase_core", "omnibase_infra", "omnimarket"]
         missing = []
         for repo in repos_to_check:
-            hook_path = Path(omni_home) / repo / ".git" / "hooks" / "pre-commit"
+            hook_path = omni_home / repo / ".git" / "hooks" / "pre-commit"
             if not (hook_path.exists() and os.access(hook_path, os.X_OK)):
                 missing.append(repo)
         healthy = len(missing) == 0
@@ -305,7 +336,7 @@ class NodePlatformReadiness:
             result = subprocess.run(
                 [
                     "ssh",
-                    "jonah@192.168.86.201",
+                    _INFRA_SSH_TARGET,
                     "docker exec omnibase-infra-postgres psql -U postgres -d omnibase_infra -t -c "
                     '"SELECT COUNT(*) FROM routing_outcomes WHERE quality_score IS NOT NULL;"',
                 ],
@@ -313,10 +344,14 @@ class NodePlatformReadiness:
                 text=True,
                 timeout=15,
             )
-            count_str = result.stdout.strip()
-            count = int(count_str) if count_str.isdigit() else 0
-            healthy = count > 0
-            details = f"{count} routing outcomes with quality scores"
+            if result.returncode != 0:
+                healthy = None
+                details = f"Quality score check failed (exit {result.returncode}): {result.stderr.strip()}"
+            else:
+                count_str = result.stdout.strip()
+                count = int(count_str) if count_str.isdigit() else 0
+                healthy = count > 0
+                details = f"{count} routing outcomes with quality scores"
         except Exception as e:
             healthy = None
             details = f"Quality score check failed: {e}"
@@ -334,7 +369,7 @@ class NodePlatformReadiness:
             result = subprocess.run(
                 [
                     "ssh",
-                    "jonah@192.168.86.201",
+                    _INFRA_SSH_TARGET,
                     "docker exec omnibase-infra-postgres psql -U postgres -d omnibase_infra -t -c "
                     "\"SELECT COUNT(*) FROM baselines WHERE created_at > NOW() - INTERVAL '7 days';\"",
                 ],
@@ -342,10 +377,14 @@ class NodePlatformReadiness:
                 text=True,
                 timeout=15,
             )
-            count_str = result.stdout.strip()
-            count = int(count_str) if count_str.isdigit() else 0
-            healthy = count > 0
-            details = f"{count} baseline records in last 7 days"
+            if result.returncode != 0:
+                healthy = None
+                details = f"Baselines check failed (exit {result.returncode}): {result.stderr.strip()}"
+            else:
+                count_str = result.stdout.strip()
+                count = int(count_str) if count_str.isdigit() else 0
+                healthy = count > 0
+                details = f"{count} baseline records in last 7 days"
         except Exception as e:
             healthy = None
             details = f"Baselines check failed: {e}"
