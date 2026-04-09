@@ -148,9 +148,7 @@ class TestMetadataSchema:
             schema = MetadataSchema(**data)
             if schema.pack is None:
                 missing_pack.append(meta_path.parent.name)
-        assert not missing_pack, (
-            f"Nodes missing pack field: {missing_pack}"
-        )
+        assert not missing_pack, f"Nodes missing pack field: {missing_pack}"
 
     def test_all_nodes_have_node_role_field(self) -> None:
         """Every node metadata.yaml must have a node_role field set."""
@@ -162,9 +160,7 @@ class TestMetadataSchema:
             schema = MetadataSchema(**data)
             if schema.node_role is None:
                 missing_role.append(meta_path.parent.name)
-        assert not missing_role, (
-            f"Nodes missing node_role field: {missing_role}"
-        )
+        assert not missing_role, f"Nodes missing node_role field: {missing_role}"
 
     def test_all_nodes_have_display_name_field(self) -> None:
         """Every node metadata.yaml must have a display_name field set."""
