@@ -175,3 +175,54 @@ class TestMetadataSchema:
         assert not missing_display, (
             f"Nodes missing display_name field: {missing_display}"
         )
+
+    def test_entry_flags_defaults_to_none(self) -> None:
+        """Nodes without entry_flags default to None."""
+        data = {
+            "name": "test_node",
+            "version": "1.0.0",
+            "description": "A test node",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.entry_flags is None
+
+    def test_entry_flags_parses_dict(self) -> None:
+        """An orchestrator node with entry_flags parses them as dict[str, str]."""
+        data = {
+            "name": "node_ticket_pipeline",
+            "version": "1.0.0",
+            "description": "Orchestrator node",
+            "entry_flags": {
+                "dry_run": "Run without making changes",
+                "fix_only": "Only apply fixes, skip reporting",
+                "inventory_only": "Only collect inventory, skip execution",
+            },
+        }
+        schema = MetadataSchema(**data)
+        assert schema.entry_flags is not None
+        assert schema.entry_flags["dry_run"] == "Run without making changes"
+        assert schema.entry_flags["fix_only"] == "Only apply fixes, skip reporting"
+        assert len(schema.entry_flags) == 3
+
+    def test_entry_flags_empty_dict_accepted(self) -> None:
+        """An empty entry_flags dict is valid."""
+        data = {
+            "name": "node_ticket_pipeline",
+            "version": "1.0.0",
+            "description": "A test node",
+            "entry_flags": {},
+        }
+        schema = MetadataSchema(**data)
+        assert schema.entry_flags == {}
+
+    def test_existing_metadata_files_parse_without_entry_flags(self) -> None:
+        """All existing metadata.yaml files (without entry_flags) still parse cleanly."""
+        metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
+        assert len(metadata_files) >= 3
+        for meta_path in metadata_files:
+            with meta_path.open() as f:
+                data = yaml.safe_load(f)
+            schema = MetadataSchema(**data)
+            assert schema.entry_flags is None, (
+                f"{meta_path} unexpectedly has entry_flags set"
+            )

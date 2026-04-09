@@ -44,3 +44,11 @@ class MetadataSchema(BaseModel):
     pack: str | None = None
     display_name: str | None = None
     node_role: EnumNodeRole | None = None
+    entry_flags: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "FSM entry point flags for orchestrator nodes (node_role=orchestrator). "
+            "Keys are flag names (e.g. 'dry_run', 'fix_only'); values are descriptions. "
+            "Only meaningful when node_role is 'orchestrator'."
+        ),
+    )
