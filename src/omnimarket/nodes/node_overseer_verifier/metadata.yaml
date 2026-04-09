@@ -19,3 +19,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["overseer", "verifier", "compute", "deterministic", "pure", "OMN-8031"]
+pack: intelligence
+display_name: Overseer Verifier
+node_role: probe

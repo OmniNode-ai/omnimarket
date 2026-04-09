@@ -146,7 +146,7 @@ class TestMetadataSchema:
             with meta_path.open() as f:
                 data = yaml.safe_load(f)
             schema = MetadataSchema(**data)
-            if schema.pack is None:
+            if schema.pack is None or not str(schema.pack).strip():
                 missing_pack.append(meta_path.parent.name)
         assert not missing_pack, f"Nodes missing pack field: {missing_pack}"
 
@@ -158,7 +158,7 @@ class TestMetadataSchema:
             with meta_path.open() as f:
                 data = yaml.safe_load(f)
             schema = MetadataSchema(**data)
-            if schema.node_role is None:
+            if schema.node_role is None or not str(schema.node_role).strip():
                 missing_role.append(meta_path.parent.name)
         assert not missing_role, f"Nodes missing node_role field: {missing_role}"
 
@@ -170,7 +170,7 @@ class TestMetadataSchema:
             with meta_path.open() as f:
                 data = yaml.safe_load(f)
             schema = MetadataSchema(**data)
-            if schema.display_name is None:
+            if schema.display_name is None or not str(schema.display_name).strip():
                 missing_display.append(meta_path.parent.name)
         assert not missing_display, (
             f"Nodes missing display_name field: {missing_display}"
