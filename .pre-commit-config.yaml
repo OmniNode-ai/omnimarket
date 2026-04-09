@@ -40,24 +40,21 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=1000]
 
-  # Local hooks
-  - repo: local
+  # Ruff — standalone pre-commit hooks (no uv source resolution needed)
+  # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
+  # because uv.sources relative paths (../omnibase_core) resolve against the worktree
+  # parent directory instead of $OMNI_HOME. (OMN-8103)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.9
     hooks:
       - id: ruff-format
-        name: ruff format (auto-format)
-        entry: uv run ruff format src/ tests/
-        language: system
+        args: [src/, tests/]
         pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
 
-      - id: ruff-fix
+      - id: ruff
         name: ruff check (auto-fix)
-        entry: uv run ruff check --fix --exit-non-zero-on-fix src/ tests/
-        language: system
+        args: [--fix, --exit-non-zero-on-fix, src/, tests/]
         pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
 
 # Configuration
 default_install_hook_types: [pre-commit]
