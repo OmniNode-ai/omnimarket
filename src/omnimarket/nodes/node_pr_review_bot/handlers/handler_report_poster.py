@@ -138,6 +138,7 @@ def build_summary_comment(
     )
 
     findings_section = "### Findings by Severity\n\n" + _build_findings_table(findings)
+    summary_section = f"### Summary\n\n{verdict.summary}" if verdict.summary else ""
     threads_section = (
         "### Thread Resolution Summary\n\n" + _build_thread_summary(thread_states)
         if thread_states
@@ -159,7 +160,7 @@ def build_summary_comment(
     else:
         verdict_detail = "> No blocking findings. This PR is clear to merge."
 
-    sections = [header, meta, verdict_detail, findings_section]
+    sections = [header, meta, verdict_detail, summary_section, findings_section]
     if threads_section:
         sections.append(threads_section)
 
@@ -187,8 +188,8 @@ class HandlerReportPoster(ProtocolReportPoster):
     def __init__(
         self,
         github_bridge: ProtocolGitHubBridge,
-        findings: tuple[ReviewFinding, ...] = (),
-        thread_states: tuple[ThreadState, ...] = (),
+        findings: tuple[ReviewFinding, ...],
+        thread_states: tuple[ThreadState, ...],
     ) -> None:
         self._bridge = github_bridge
         self._findings = findings
@@ -206,6 +207,10 @@ class HandlerReportPoster(ProtocolReportPoster):
         In dry_run mode the body is logged at INFO level and no GitHub call
         is made. Raises on unrecoverable GitHub API failures (non-dry-run).
         """
+        if verdict.total_findings and not self._findings:
+            msg = "findings must be provided when verdict.total_findings > 0"
+            raise ValueError(msg)
+
         body = build_summary_comment(verdict, self._findings, self._thread_states)
 
         if dry_run:

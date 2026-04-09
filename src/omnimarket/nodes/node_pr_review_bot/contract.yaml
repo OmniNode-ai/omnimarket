@@ -28,7 +28,7 @@ handler_routing:
     - operation: "fsm_transition"
       handler:
         name: "HandlerPrReviewBot"
-        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_pr_review_bot"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm"
       description: "FSM state machine — phase transitions, circuit breaker, terminal detection. Pure COMPUTE."
 
     - operation: "fetch_diff"
@@ -71,13 +71,13 @@ handler_routing:
       description: "HTTP adapter to vLLM endpoints (reused from node_hostile_reviewer)."
 
 input_model:
-  name: "ModelPrReviewBotStartCommand"
-  module: "omnimarket.nodes.node_pr_review_bot.models.model_pr_review_bot_start_command"
+  name: "ReviewRequest"
+  module: "omnimarket.nodes.node_pr_review_bot.models.models"
   description: "Start command for PR review bot workflow."
 
 output_model:
-  name: "ModelPrReviewBotCompletedEvent"
-  module: "omnimarket.nodes.node_pr_review_bot.models.model_pr_review_bot_completed_event"
+  name: "ReviewVerdict"
+  module: "omnimarket.nodes.node_pr_review_bot.models.models"
   description: "Completed event with verdict, thread counts, and phase history."
 
 descriptor:
