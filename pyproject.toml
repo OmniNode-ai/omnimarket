@@ -91,6 +91,7 @@ node_redeploy = "omnimarket.nodes.node_redeploy.handlers.handler_redeploy:Handle
 node_baseline_capture = "omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture:HandlerBaselineCapture"
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare:HandlerBaselineCompare"
 node_pr_lifecycle_triage_compute = "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage:HandlerPrLifecycleTriage"
+node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory:HandlerPrLifecycleInventory"
 
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }

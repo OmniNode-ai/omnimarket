@@ -86,7 +86,7 @@ def _build_args_frontmatter(entry_flags: list[str]) -> str:
     lines = []
     for flag in entry_flags:
         lines.append(f"  - name: {flag}")
-        lines.append("    description: \"See node contract for details\"")
+        lines.append('    description: "See node contract for details"')
         lines.append("    required: false")
     return "\n".join(lines) + "\n"
 
@@ -290,7 +290,7 @@ def _render_instructions_md(
 # {display_name} — Instructions
 
 You have access to the OmniMarket `{node_name}` node via the ONEX event bus.
-When the user asks you to run {slug} or {description.lower().rstrip('.')},
+When the user asks you to run {slug} or {description.lower().rstrip(".")},
 use this procedure. **Do not implement the logic yourself.**
 
 ## Supported arguments

@@ -1,0 +1,30 @@
+---
+name: seam_parallel_executor
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Deterministic wave executor for parallel task execution with protocol shims.
+  Accepts tasks with a dependency graph, creates protocol shims, runs independent
+  tasks in parallel waves via asyncio.gather, captures shim outputs, and cleans up.
+  Not LLM-driven.
+
+handler:
+  module: omnimarket.nodes.node_seam_parallel_executor.handlers.handler_seam_parallel_executor
+  class: HandlerSeamParallelExecutor
+  input_model: omnimarket.nodes.node_seam_parallel_executor.models.model_seam_task.ModelSeamParallelInput
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.seam-parallel-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.seam-parallel-execute.v1
+  publish_topics:
+    - onex.evt.omnimarket.seam-parallel-completed.v1
