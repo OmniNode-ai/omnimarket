@@ -6,6 +6,5 @@ from pydantic import BaseModel
 
 class PipelineState(BaseModel):
     pipeline_id: str
-    status: str
     current_phase: str | None = None
-    updated_at: str
+    status: str
