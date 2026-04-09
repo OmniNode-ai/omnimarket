@@ -538,6 +538,23 @@ class LiveBuildDispatchHandler:
         worktree_path = WORKTREE_ROOT / ticket_id / repo
         if worktree_path.exists():
             logger.info("[DISPATCH] Worktree already exists at %s", worktree_path)
+            # Reset to clean HEAD — previous failed attempts may have left staged or
+            # modified files that contaminate the next dispatch attempt.
+            subprocess.run(
+                ["git", "-C", str(worktree_path), "reset", "HEAD", "--"],
+                capture_output=True,
+                timeout=15,
+            )
+            subprocess.run(
+                ["git", "-C", str(worktree_path), "checkout", "--", "."],
+                capture_output=True,
+                timeout=15,
+            )
+            subprocess.run(
+                ["git", "-C", str(worktree_path), "clean", "-fd"],
+                capture_output=True,
+                timeout=15,
+            )
         else:
             try:
                 worktree_path.parent.mkdir(parents=True, exist_ok=True)
