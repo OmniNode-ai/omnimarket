@@ -83,6 +83,7 @@ node_closeout_effect = "omnimarket.nodes.node_closeout_effect.handlers.handler_c
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator:HandlerFindingAggregator"
 node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot:HandlerPrSnapshot"
 node_pr_health_monitor = "omnimarket.nodes.node_pr_health_monitor.handlers.handler_pr_health_monitor:HandlerPrHealthMonitor"
+node_pr_review_bot = "omnimarket.nodes.node_pr_review_bot"
 node_design_to_plan = "omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan:HandlerDesignToPlan"
 node_ticket_work = "omnimarket.nodes.node_ticket_work.handlers.handler_ticket_work:HandlerTicketWork"
 node_create_ticket = "omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket:HandlerCreateTicket"
