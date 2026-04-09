@@ -148,17 +148,14 @@ class TestDiscoverOrchestratorNodes:
 @pytest.mark.unit
 class TestHelpers:
     def test_get_command_topic(self) -> None:
-        assert (
-            _get_command_topic(_CONTRACT) == "onex.cmd.omnimarket.test-start.v1"
-        )
+        assert _get_command_topic(_CONTRACT) == "onex.cmd.omnimarket.test-start.v1"
 
     def test_get_command_topic_missing(self) -> None:
         assert _get_command_topic({}) == "onex.cmd.omnimarket.UNKNOWN.v1"
 
     def test_get_completion_topic_prefers_terminal_event(self) -> None:
         assert (
-            _get_completion_topic(_CONTRACT)
-            == "onex.evt.omnimarket.test-completed.v1"
+            _get_completion_topic(_CONTRACT) == "onex.evt.omnimarket.test-completed.v1"
         )
 
     def test_get_completion_topic_falls_back_to_last_publish(self) -> None:
