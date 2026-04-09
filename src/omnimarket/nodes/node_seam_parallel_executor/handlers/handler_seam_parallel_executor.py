@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 """Handler for deterministic wave-based parallel task execution.
 
@@ -47,8 +47,11 @@ class ProtocolSeamShim(Protocol):
 
         Args:
             payload: Task-specific payload from ModelSeamTask.
-            upstream_outputs: Outputs from completed dependency tasks,
-                keyed by task_id.
+            upstream_outputs: Outputs from successfully completed dependency
+                tasks, keyed by task_id. Only dependencies that completed
+                successfully are present — keys for failed or timed-out
+                dependencies are absent. Implementations must handle missing
+                keys gracefully (e.g., use .get() with defaults).
 
         Returns:
             Arbitrary output from the shim execution.
@@ -252,7 +255,12 @@ class HandlerSeamParallelExecutor:
         task_outputs: dict[str, Any],
         global_timeout: float,
     ) -> ModelSeamTaskResult:
-        """Execute a single task via its protocol shim."""
+        """Execute a single task via its protocol shim.
+
+        Builds upstream_outputs from task_outputs for each declared dependency.
+        Only dependencies that completed successfully appear in upstream_outputs —
+        failed or timed-out dependency keys are absent.
+        """
         shim = self._active_shims[task.callable_key]
         timeout = task.timeout_seconds or global_timeout
 

@@ -79,12 +79,14 @@ def main() -> int:
     assert result_escalate["verdict"] == "ESCALATE", (
         f"Expected ESCALATE, got {result_escalate['verdict']!r}"
     )
-    assert result_escalate["failure_class"] is not None
+    assert result_escalate["failure_class"] == "PERMANENT", (
+        f"Expected failure_class == 'PERMANENT', got {result_escalate['failure_class']!r}"
+    )
     print(f"ASSERTION: verdict == 'ESCALATE'  ✓")
     print(f"ASSERTION: failure_class == {result_escalate['failure_class']!r}  ✓")
 
     # ------------------------------------------------------------------
-    # Case 3: FAIL — negative cost triggers invariant_preservation failure
+    # Case 3: ESCALATE — negative cost triggers invariant_preservation failure
     # ------------------------------------------------------------------
     request_neg_cost = ModelVerifierRequest(
         task_id="task-003",
@@ -97,13 +99,15 @@ def main() -> int:
         schema_version="1.0",
     )
     result_fail = handler.verify(request_neg_cost)
-    _print_result("FAIL — negative cost_so_far", result_fail)
+    _print_result("ESCALATE — negative cost_so_far", result_fail)
 
-    assert result_fail["verdict"] in ("FAIL", "ESCALATE"), (
-        f"Expected FAIL or ESCALATE, got {result_fail['verdict']!r}"
+    assert result_fail["verdict"] == "ESCALATE", (
+        f"Expected ESCALATE, got {result_fail['verdict']!r}"
     )
-    assert result_fail["failure_class"] is not None
-    print(f"ASSERTION: verdict in ('FAIL', 'ESCALATE') — got {result_fail['verdict']!r}  ✓")
+    assert result_fail["failure_class"] == "DATA_INTEGRITY", (
+        f"Expected failure_class == 'DATA_INTEGRITY', got {result_fail['failure_class']!r}"
+    )
+    print(f"ASSERTION: verdict == 'ESCALATE'  ✓")
     print(f"ASSERTION: failure_class == {result_fail['failure_class']!r}  ✓")
 
     # ------------------------------------------------------------------

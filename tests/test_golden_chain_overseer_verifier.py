@@ -94,6 +94,18 @@ def test_input_completeness_check_fail_empty_domain() -> None:
     assert checks["input_completeness"]["passed"] is False
 
 
+@pytest.mark.unit
+def test_input_completeness_check_fail_empty_node_id() -> None:
+    """An empty node_id fails input_completeness."""
+    handler = HandlerOverseerVerifier()
+    result = handler.verify(_make_request(node_id=""))
+
+    assert result["verdict"] == "FAIL"
+    checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
+    assert checks["input_completeness"]["passed"] is False
+    assert "node_id" in checks["input_completeness"]["message"]
+
+
 # ---------------------------------------------------------------------------
 # 2. invariant_preservation
 # ---------------------------------------------------------------------------
@@ -129,12 +141,11 @@ def test_invariant_check_passes_zero_cost() -> None:
 
 
 @pytest.mark.unit
-def test_verifier_returns_fail_not_escalate_on_low_confidence() -> None:
-    """confidence=0.1 triggers FAIL verdict (not ESCALATE).
+def test_verifier_returns_escalate_on_low_confidence() -> None:
+    """confidence=0.1 triggers ESCALATE verdict.
 
-    Low confidence maps to VERIFIER_REJECTION which routes to ESCALATE,
-    but input_completeness and invariant_preservation must be clean for
-    outcome_success_validation to be the dominant check.
+    Low confidence maps to VERIFIER_REJECTION which is in _ESCALATE_REASONS,
+    routing to ESCALATE when input_completeness and invariant_preservation are clean.
     """
     handler = HandlerOverseerVerifier()
     result = handler.verify(_make_request(confidence=0.1))

@@ -20,7 +20,7 @@ description: >
   Deterministic verification layer for overseer model outputs. Applies five
   independent check dimensions synchronously: input_completeness,
   contract_compliance, allowed_action_scope, invariant_preservation,
-  outcome_success_validation. Returns PASS, FAIL, ESCALATE, or RETRY_REQUIRED.
+  outcome_success_validation. Returns PASS, FAIL, or ESCALATE.
   No LLM calls. No I/O side effects.
 
 handler:
@@ -108,13 +108,13 @@ inputs:
 outputs:
   verdict:
     type: str
-    description: "Overall verdict: PASS | FAIL | ESCALATE | RETRY_REQUIRED"
+    description: "Overall verdict: PASS | FAIL | ESCALATE"
   checks:
     type: list
     description: "Per-check results with name, passed, message."
   failure_class:
-    type: str
-    description: "Dominant failure class when verdict is not PASS."
+    type: [str, "null"]
+    description: "Dominant failure class when verdict is not PASS. Null when verdict is PASS."
   summary:
     type: str
     description: "Human-readable summary of verification results."

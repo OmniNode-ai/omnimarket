@@ -100,7 +100,7 @@ class HandlerOverseerVerifier:
 
         handler = HandlerOverseerVerifier()
         result = handler.verify(request)
-        # result["verdict"] in ("PASS", "FAIL", "ESCALATE", "RETRY_REQUIRED")
+        # result["verdict"] in ("PASS", "FAIL", "ESCALATE")
     """
 
     def verify(self, request: ModelVerifierRequest) -> dict[str, object]:

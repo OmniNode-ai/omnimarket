@@ -11,10 +11,12 @@
 
 Minimal valid `ModelVerifierRequest` with confidence=0.92, cost_so_far=0.0042, allowed_actions=[dispatch, complete].
 
-```
+```text
 ============================================================
 CASE: PASS — valid envelope
 ============================================================
+```
+```json
 {
   "verdict": "PASS",
   "checks": [
@@ -27,6 +29,8 @@ CASE: PASS — valid envelope
   "failure_class": null,
   "summary": "All checks passed."
 }
+```
+```text
 ASSERTION: verdict == 'PASS'  ✓
 ASSERTION: failure_class is None  ✓
 ```
@@ -39,10 +43,12 @@ ASSERTION: failure_class is None  ✓
 
 ### 2a — ESCALATE: low confidence (0.12 < 0.50 threshold)
 
-```
+```text
 ============================================================
 CASE: ESCALATE — low confidence (0.12)
 ============================================================
+```
+```json
 {
   "verdict": "ESCALATE",
   "checks": [
@@ -52,16 +58,20 @@ CASE: ESCALATE — low confidence (0.12)
   "failure_class": "PERMANENT",
   "summary": "Check failed: outcome_success_validation — confidence=0.120 is below threshold 0.500"
 }
+```
+```text
 ASSERTION: verdict == 'ESCALATE'  ✓
 ASSERTION: failure_class == 'PERMANENT'  ✓
 ```
 
 ### 2b — ESCALATE: negative cost_so_far (-0.5) triggers invariant_preservation
 
+```text
+============================================================
+CASE: ESCALATE — negative cost_so_far
+============================================================
 ```
-============================================================
-CASE: FAIL — negative cost_so_far
-============================================================
+```json
 {
   "verdict": "ESCALATE",
   "checks": [
@@ -71,16 +81,20 @@ CASE: FAIL — negative cost_so_far
   "failure_class": "DATA_INTEGRITY",
   "summary": "Check failed: invariant_preservation — INVARIANT_VIOLATION: cost_so_far=-0.5 must be >= 0.0"
 }
-ASSERTION: verdict in ('FAIL', 'ESCALATE') — got 'ESCALATE'  ✓
+```
+```text
+ASSERTION: verdict == 'ESCALATE'  ✓
 ASSERTION: failure_class == 'DATA_INTEGRITY'  ✓
 ```
 
 ### 2c — FAIL: unknown action 'delete_all'
 
-```
+```text
 ============================================================
 CASE: FAIL — unknown action 'delete_all'
 ============================================================
+```
+```json
 {
   "verdict": "FAIL",
   "checks": [
@@ -90,6 +104,8 @@ CASE: FAIL — unknown action 'delete_all'
   "failure_class": "CONFIGURATION",
   "summary": "Check failed: allowed_action_scope — Actions outside allowed scope: delete_all"
 }
+```
+```text
 ASSERTION: verdict == 'FAIL'  ✓
 ASSERTION: failure_class == 'CONFIGURATION'  ✓
 ```
@@ -102,10 +118,12 @@ ASSERTION: failure_class == 'CONFIGURATION'  ✓
 
 ### 3a — 2-task wave (single wave, independent tasks)
 
-```
+```text
 ============================================================
 CASE: 2 independent tasks
 ============================================================
+```
+```json
 {
   "correlation_id": "00000000-0000-0000-0000-000000000001",
   "all_succeeded": true,
@@ -116,6 +134,8 @@ CASE: 2 independent tasks
     { "task_id": "task-b", "status": "completed", "output": "result_from_b", "error": null }
   ]
 }
+```
+```text
 ASSERTION: all_succeeded == True  ✓
 ASSERTION: shim_outputs['task-a'] == 'result_from_a'  ✓
 ASSERTION: shim_outputs['task-b'] == 'result_from_b'  ✓
@@ -125,10 +145,12 @@ ASSERTION: waves_executed == 1  ✓
 
 ### 3b — Dependency chain (2 waves)
 
-```
+```text
 ============================================================
 CASE: dependency chain
 ============================================================
+```
+```json
 {
   "correlation_id": "00000000-0000-0000-0000-000000000002",
   "all_succeeded": true,
@@ -140,6 +162,8 @@ CASE: dependency chain
       "output": { "received_from_a": "result_from_a", "my_output": "downstream_result" } }
   ]
 }
+```
+```text
 ASSERTION: all_succeeded == True  ✓
 ASSERTION: waves_executed == 2  ✓
 ASSERTION: downstream received 'result_from_a' from task-a  ✓
@@ -151,7 +175,7 @@ ASSERTION: downstream received 'result_from_a' from task-a  ✓
 
 ## Step 4 — Golden chain test output
 
-```
+```text
 ============================= test session starts ==============================
 platform darwin -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
 configfile: pyproject.toml
@@ -164,7 +188,7 @@ tests/test_golden_chain_overseer_verifier.py::test_input_completeness_check_fail
 tests/test_golden_chain_overseer_verifier.py::test_input_completeness_check_fail_empty_domain PASSED
 tests/test_golden_chain_overseer_verifier.py::test_invariant_check_detects_negative_cost PASSED
 tests/test_golden_chain_overseer_verifier.py::test_invariant_check_passes_zero_cost PASSED
-tests/test_golden_chain_overseer_verifier.py::test_verifier_returns_fail_not_escalate_on_low_confidence PASSED
+tests/test_golden_chain_overseer_verifier.py::test_verifier_returns_escalate_on_low_confidence PASSED
 tests/test_golden_chain_overseer_verifier.py::test_outcome_validation_passes_at_threshold PASSED
 tests/test_golden_chain_overseer_verifier.py::test_outcome_validation_skipped_when_confidence_absent PASSED
 tests/test_golden_chain_overseer_verifier.py::test_allowed_action_scope_pass PASSED
@@ -192,7 +216,7 @@ tests/test_golden_chain_seam_parallel_executor.py::TestSeamParallelExecutorGolde
 
 ## Step 5 — mypy --strict clean
 
-```
+```text
 uv run mypy src/omnimarket/nodes/node_overseer_verifier/ \
             src/omnimarket/nodes/node_seam_parallel_executor/ --strict
 
@@ -205,7 +229,7 @@ Success: no issues found in 10 source files
 
 ## Step 6 — ruff check clean
 
-```
+```text
 uv run ruff check src/omnimarket/nodes/node_overseer_verifier/ \
                   src/omnimarket/nodes/node_seam_parallel_executor/ \
                   tests/test_golden_chain_overseer_verifier.py \
