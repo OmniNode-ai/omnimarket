@@ -384,15 +384,21 @@ class HandlerBuildLoopOrchestrator:
                             node_id=str(correlation_id),
                         )
                     )
-                    verdict = verifier_result.get("verdict", "FAIL")
+                    verdict = str(verifier_result.get("verdict", "FAIL"))
+                    raw_checks = verifier_result.get("checks", [])
+                    checks: list[object] = (
+                        list(raw_checks) if isinstance(raw_checks, list) else []
+                    )
                     await self._publish_dod_event(
                         task_id=target.ticket_id,
                         verdict=verdict,
-                        checks=verifier_result.get("checks", []),
+                        checks=checks,
                         correlation_id=correlation_id,
                     )
                     if verdict != "PASS":
-                        failure_reason = verifier_result.get("failure_class", "UNKNOWN")
+                        failure_reason = str(
+                            verifier_result.get("failure_class", "UNKNOWN")
+                        )
                         verification_failures.append(
                             f"{target.ticket_id}: {failure_reason}"
                         )
