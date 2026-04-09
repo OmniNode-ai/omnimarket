@@ -75,7 +75,7 @@ _CHECK_PRIORITY: tuple[str, ...] = (
 class _CheckResult:
     """Lightweight result for a single verification check."""
 
-    __slots__ = ("name", "passed", "message", "failure_reason")
+    __slots__ = ("failure_reason", "message", "name", "passed")
 
     def __init__(
         self,
