@@ -52,6 +52,7 @@ class PrReviewFindingEvidence(BaseModel):
         default=None, description="Relevant code snippet from the diff."
     )
 
+
 # ---------------------------------------------------------------------------
 # FSM phases
 # ---------------------------------------------------------------------------

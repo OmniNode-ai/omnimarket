@@ -400,9 +400,7 @@ class AdapterGitHubBridge(GitHubBridgeProtocol):
         # replies are follow-ups on an existing thread. We count root comments
         # as a proxy for thread count. HandlerThreadWatcher tracks actual
         # resolution by polling GraphQL or detecting bot-reply markers.
-        unresolved = sum(
-            1 for t in threads_raw if t.get("in_reply_to_id") is None
-        )
+        unresolved = sum(1 for t in threads_raw if t.get("in_reply_to_id") is None)
 
         latest_states: dict[str, str] = {}
         for review in reviews_raw:

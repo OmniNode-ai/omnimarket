@@ -286,11 +286,6 @@ class HandlerThreadPoster(ProtocolThreadPoster):
         line_start = finding.evidence.line_start
 
         if not file_path or line_start is None:
-            # No file context — fall back to a general PR comment.
-            logger.warning(
-                "Finding %s has no file_path; posting as general PR comment",
-                finding_id_str,
-            )
             # No file/line context — fall back to a general PR comment.
             logger.warning(
                 "Finding %s has no file_path or line_start; posting as general PR comment",
