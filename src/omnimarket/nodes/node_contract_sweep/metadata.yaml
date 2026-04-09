@@ -1,0 +1,10 @@
+name: node_contract_sweep
+version: "1.0.0"
+description: "Contract compliance sweep — validates all node contract.yaml files across repos"
+category: verification
+tags:
+  - contracts
+  - compliance
+  - sweep
+  - ci
+author: OmniNode Team

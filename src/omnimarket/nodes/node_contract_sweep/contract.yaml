@@ -1,0 +1,49 @@
+---
+name: contract_sweep
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Contract compliance sweep — validates all node contract.yaml files across repos
+  for required fields, valid topic naming, handler module references, and schema
+  adherence. Reports violations by severity.
+
+handler:
+  module: omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep
+  class: NodeContractSweep
+  input_model: omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep.ContractSweepRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  repos:
+    type: list[str]
+    description: "Repo directories to scan; empty = all repos under OMNI_HOME"
+    required: false
+  dry_run:
+    type: bool
+    description: "If true, report violations without creating tickets"
+    required: false
+    default: false
+
+outputs:
+  violations:
+    type: list[ContractViolation]
+    description: "All detected contract violations"
+  summary:
+    type: object
+    description: "Aggregated counts by severity"
+
+terminal_event: onex.evt.omnimarket.contract-sweep-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-sweep-violation.v1
+    - onex.evt.omnimarket.contract-sweep-completed.v1

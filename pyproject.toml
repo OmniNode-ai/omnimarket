@@ -58,6 +58,7 @@ node_pr_polish = "omnimarket.nodes.node_pr_polish.handlers.handler_pr_polish:Han
 node_dod_verify = "omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify:HandlerDodVerify"
 node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep.handlers.handler_coverage_sweep:NodeCoverageSweep"
 node_compliance_sweep = "omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep:NodeComplianceSweep"
+node_contract_sweep = "omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep:NodeContractSweep"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep.handlers.handler_dashboard_sweep:NodeDashboardSweep"
 node_data_flow_sweep = "omnimarket.nodes.node_data_flow_sweep.handlers.handler_data_flow_sweep:NodeDataFlowSweep"
 node_golden_chain_sweep = "omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep:NodeGoldenChainSweep"
