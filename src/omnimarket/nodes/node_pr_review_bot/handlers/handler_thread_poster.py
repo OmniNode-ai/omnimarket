@@ -53,8 +53,9 @@ def _build_thread_body(finding: ReviewFinding) -> str:
     )
     file_ref = ""
     if finding.evidence.file_path:
-        start = finding.evidence.line_start or "?"
-        end = finding.evidence.line_end or start
+        lr = finding.evidence.line_range or {}
+        start = lr.get("start") or "?"
+        end = lr.get("end") or start
         file_ref = (
             f"\n\n\U0001f4cd File: `{finding.evidence.file_path}`, lines {start}-{end}"
         )
@@ -79,7 +80,7 @@ def _build_summary_body(minor_findings: list[ReviewFinding]) -> str:
         severity_tag = f.severity.upper()
         location = ""
         if f.evidence.file_path:
-            start = f.evidence.line_start or "?"
+            start = (f.evidence.line_range or {}).get("start") or "?"
             location = f" (`{f.evidence.file_path}:{start}`)"
         lines.append(f"- **[{severity_tag}] {f.title}**{location}: {f.description}")
     return "\n".join(lines)
@@ -246,7 +247,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
 
         # Determine file and line for the review comment anchor.
         file_path = finding.evidence.file_path or ""
-        line = finding.evidence.line_start or 1
+        line = (finding.evidence.line_range or {}).get("start") or 1
 
         if not file_path:
             # No file context — fall back to a general PR comment.
