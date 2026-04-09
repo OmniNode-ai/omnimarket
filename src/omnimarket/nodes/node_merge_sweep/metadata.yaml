@@ -18,3 +18,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["sweep", "pr", "merge", "github", "pipeline"]
+deprecated: true
+deprecated_by: node_pr_lifecycle_orchestrator
+deprecated_reason: "Superseded by node_pr_lifecycle_orchestrator which provides FSM-driven PR lifecycle management with inventory, triage, merge, fix, and reducer sub-handlers."

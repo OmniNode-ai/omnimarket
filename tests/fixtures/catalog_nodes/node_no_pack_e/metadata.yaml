@@ -1,0 +1,16 @@
+name: node_no_pack_e
+version: "0.1.0"
+description: "Node without pack field — goes to uncategorized"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: []
