@@ -21,7 +21,6 @@ import pytest
 
 from omnimarket.nodes.node_seam_parallel_executor.handlers.handler_seam_parallel_executor import (
     HandlerSeamParallelExecutor,
-    ProtocolSeamShim,
 )
 from omnimarket.nodes.node_seam_parallel_executor.models.model_seam_task import (
     EnumSeamTaskStatus,
