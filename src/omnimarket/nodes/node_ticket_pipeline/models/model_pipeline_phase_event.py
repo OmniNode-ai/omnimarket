@@ -1,19 +1,31 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-from dataclasses import dataclass
+"""Phase transition event for the ticket pipeline FSM."""
 
-default_phase_event = {
-    "event_type": "pipeline_phase",
-    "phase": "post_merge_verification",
-    "timestamp": "2026-04-08T00:00:00Z",
-    "status": "in_progress",
-}
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_state import (
+    EnumPipelinePhase,
+)
 
 
-@dataclass
-class PipelinePhaseEvent:
-    event_type: str = "pipeline_phase"
-    phase: str = "post_merge_verification"
-    timestamp: str = "2026-04-08T00:00:00Z"
-    status: str = "in_progress"
-    message: str | None = None
+class ModelPipelinePhaseEvent(BaseModel):
+    """Emitted on every phase transition (success or failure)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Pipeline run correlation ID.")
+    ticket_id: str = Field(..., description="Linear ticket ID.")
+    from_phase: EnumPipelinePhase = Field(...)
+    to_phase: EnumPipelinePhase = Field(...)
+    success: bool = Field(...)
+    timestamp: datetime = Field(...)
+    error_message: str | None = Field(default=None)
+
+
+__all__: list[str] = ["ModelPipelinePhaseEvent"]
