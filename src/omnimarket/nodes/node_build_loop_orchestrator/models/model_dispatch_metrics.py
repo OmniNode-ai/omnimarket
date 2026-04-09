@@ -6,5 +6,5 @@ from pydantic import BaseModel
 
 class DispatchMetrics(BaseModel):
     metrics_id: str
-    dispatched_count: int
-    timestamp: str | None = None
+    dispatch_count: int
+    last_dispatched: str | None = None

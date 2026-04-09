@@ -6,5 +6,5 @@ from pydantic import BaseModel
 
 class OrchestratorState(BaseModel):
     orchestrator_id: str
-    current_phase: str | None = None
+    current_cycle: str | None = None
     status: str

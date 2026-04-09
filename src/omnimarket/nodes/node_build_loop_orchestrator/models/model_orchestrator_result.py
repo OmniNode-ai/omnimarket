@@ -6,5 +6,5 @@ from pydantic import BaseModel
 
 class OrchestratorResult(BaseModel):
     result_id: str
-    success: bool
-    message: str | None = None
+    outcome: str
+    processed_at: str | None = None

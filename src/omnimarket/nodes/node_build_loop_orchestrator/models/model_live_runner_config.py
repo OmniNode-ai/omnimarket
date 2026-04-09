@@ -7,4 +7,5 @@ from pydantic import BaseModel
 class LiveRunnerConfig(BaseModel):
     config_id: str
     runner_type: str
-    settings: dict | None = None
+    settings: dict | None = {}
+    enabled: bool = True

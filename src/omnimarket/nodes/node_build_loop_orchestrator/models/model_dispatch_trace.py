@@ -6,5 +6,5 @@ from pydantic import BaseModel
 
 class DispatchTrace(BaseModel):
     trace_id: str
-    trace_data: dict | None = None
-    traced_at: str | None = None
+    dispatched_at: str | None = None
+    target_node: str
