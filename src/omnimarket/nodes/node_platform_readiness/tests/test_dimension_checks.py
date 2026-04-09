@@ -337,7 +337,7 @@ def test_cost_measurement_warn_no_records(ctx: CheckContext) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_ci_response(check_runs: list[dict]) -> MagicMock:
+def _make_ci_response(check_runs: list[dict[str, object]]) -> MagicMock:
     return _make_mock_response(200, {"check_runs": check_runs})
 
 
