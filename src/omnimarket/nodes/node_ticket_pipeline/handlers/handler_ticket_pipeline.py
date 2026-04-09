@@ -8,17 +8,17 @@ from omnimarket.nodes.node_ticket_pipeline.models import (
 
 
 class HandlerTicketPipeline:
-    def __init__(self):
+    def __init__(self) -> None:
         self.state = None
 
-    def handle_start_command(self, command: ModelPipelineStartCommand):
+    def handle_start_command(self, command: ModelPipelineStartCommand) -> None:
         # Logic for handling start command
         pass
 
-    def handle_phase_event(self, event: ModelPipelinePhaseEvent):
+    def handle_phase_event(self, event: ModelPipelinePhaseEvent) -> None:
         # Logic for handling phase events
         pass
 
-    def handle_completed_event(self, event: ModelPipelineCompletedEvent):
+    def handle_completed_event(self, event: ModelPipelineCompletedEvent) -> None:
         # Logic for handling completed events
         pass
