@@ -18,7 +18,13 @@ from .models import (
     ModelOrchestratorState,
     ModelPhaseCommandIntent,
 )
-from .protocols import ProtocolSubHandlers
+from .protocols import (
+    ProtocolBuildDispatchHandler,
+    ProtocolCloseoutHandler,
+    ProtocolRsdFillHandler,
+    ProtocolTicketClassifyHandler,
+    ProtocolVerifyHandler,
+)
 
 __all__ = [
     "ModelDispatchMetrics",
@@ -30,5 +36,9 @@ __all__ = [
     "ModelOrchestratorStartCommand",
     "ModelOrchestratorState",
     "ModelPhaseCommandIntent",
-    "ProtocolSubHandlers",
+    "ProtocolBuildDispatchHandler",
+    "ProtocolCloseoutHandler",
+    "ProtocolRsdFillHandler",
+    "ProtocolTicketClassifyHandler",
+    "ProtocolVerifyHandler",
 ]
