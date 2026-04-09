@@ -14,6 +14,6 @@ jobs:
        startsWith(github.event.pull_request.title, 'release:') ||
        startsWith(github.event.pull_request.title, 'chore: release') ||
        startsWith(github.event.pull_request.title, 'chore(release)'))
-    uses: OmniNode-ai/omnibase_core/.github/workflows/auto-tag-reusable.yml@main
+    uses: OmniNode-ai/omnibase_core/.github/workflows/auto-tag-reusable.yml@83fc5cfa234acf375295f7850bae6848e21dc56c
     permissions:
       contents: write
