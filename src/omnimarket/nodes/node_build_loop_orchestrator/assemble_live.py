@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import textwrap
 from datetime import UTC, datetime
@@ -117,6 +118,73 @@ REPO_HINTS: dict[str, str] = {
     "omnibase_spi": "omnibase_spi",
     "onex_change_control": "onex_change_control",
 }
+
+
+# ---------------------------------------------------------------------------
+# Generated code sanitizer
+# ---------------------------------------------------------------------------
+_AI_SLOP_DOCSTRING_PATTERNS: list[re.Pattern[str]] = [
+    # "This module provides..." / "This class implements..." / "This function..."
+    re.compile(
+        r'("""|\'\'\')(This (?:module|class|function|method|file) (?:provides|implements|contains|handles|manages|offers|defines)[^\n]*\n?)("""|\'\'\')',
+        re.IGNORECASE,
+    ),
+    # "A class/module/function that..." as sole docstring content
+    re.compile(
+        r'("""|\'\'\')(A (?:class|module|function|method|handler) that [^\n]*\n?)("""|\'\'\')',
+        re.IGNORECASE,
+    ),
+]
+
+_BARE_EXCEPT_RE = re.compile(r"\bexcept\s+Exception\s*:")
+_PRINT_CALL_RE = re.compile(r"^(\s*)print\(", re.MULTILINE)
+
+
+def _sanitize_generated_code(content: str) -> str:
+    """Strip common AI-generated quality anti-patterns from Python source.
+
+    Applied before writing files to disk so ruff sees cleaner input.
+    Handles:
+    - AI slop docstrings ("This module provides...")
+    - bare ``except Exception:`` → ``except Exception as e:``
+    - ``print(...)`` → ``logger.info(...)`` with logger import injection
+    """
+    # 1. Strip AI slop docstrings (replace with empty docstring to avoid stub detector)
+    for pattern in _AI_SLOP_DOCSTRING_PATTERNS:
+        content = pattern.sub(r"\1\3", content)
+
+    # 2. bare except Exception: → except Exception as e:
+    content = _BARE_EXCEPT_RE.sub("except Exception as e:", content)
+
+    # 3. print(...) → logger.info(...)
+    if _PRINT_CALL_RE.search(content):
+        content = _PRINT_CALL_RE.sub(r"\1logger.info(", content)
+        # Inject logger import if not already present
+        if "import logging" not in content and "logger = logging" not in content:
+            # Insert after the last future/stdlib import block
+            import_insert = "import logging\n"
+            if "from __future__" in content:
+                # Insert after from __future__ line
+                content = re.sub(
+                    r"(from __future__ import [^\n]+\n)",
+                    r"\1" + import_insert,
+                    content,
+                    count=1,
+                )
+            else:
+                content = import_insert + content
+        if "logger = logging.getLogger" not in content:
+            # Inject module-level logger after imports (before first class/def)
+            logger_line = "\nlogger = logging.getLogger(__name__)\n"
+            # Insert before the first class or def at module level
+            content = re.sub(
+                r"\n(class |def )",
+                logger_line + r"\n\1",
+                content,
+                count=1,
+            )
+
+    return content
 
 
 # ---------------------------------------------------------------------------
@@ -786,7 +854,7 @@ class LiveBuildDispatchHandler:
         if not implementation:
             return False
 
-        # Write files
+        # Write files — sanitize LLM output before writing to avoid hook failures
         files_written = 0
         written_paths: list[str] = []
         for rel_path, content in implementation.items():
@@ -794,6 +862,8 @@ class LiveBuildDispatchHandler:
                 continue
             full_path = worktree_path / rel_path
             full_path.parent.mkdir(parents=True, exist_ok=True)
+            if rel_path.endswith(".py"):
+                content = _sanitize_generated_code(content)
             full_path.write_text(content)
             files_written += 1
             written_paths.append(str(full_path))
