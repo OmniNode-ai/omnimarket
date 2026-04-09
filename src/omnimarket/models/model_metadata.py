@@ -36,3 +36,6 @@ class MetadataSchema(BaseModel):
     authors: list[str] = Field(default_factory=list)
     license: str = "MIT"
     tags: list[str] = Field(default_factory=list)
+    deprecated: bool = False
+    deprecated_by: str | None = None
+    deprecated_reason: str | None = None

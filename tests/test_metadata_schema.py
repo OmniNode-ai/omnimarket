@@ -44,3 +44,50 @@ class TestMetadataSchema:
             schema = MetadataSchema(**data)
             assert schema.name, f"Missing name in {meta_path}"
             assert schema.version, f"Missing version in {meta_path}"
+
+    def test_deprecation_fields_default_to_not_deprecated(self) -> None:
+        """Nodes without deprecation fields default to not deprecated."""
+        data = {
+            "name": "test_node",
+            "version": "1.0.0",
+            "description": "A test node",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.deprecated is False
+        assert schema.deprecated_by is None
+        assert schema.deprecated_reason is None
+
+    def test_deprecation_fields_parse_correctly(self) -> None:
+        """A node marked deprecated parses all three deprecation fields."""
+        data = {
+            "name": "node_merge_sweep",
+            "version": "1.0.0",
+            "description": "Old node",
+            "deprecated": True,
+            "deprecated_by": "node_pr_lifecycle_orchestrator",
+            "deprecated_reason": "Superseded by orchestrator.",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.deprecated is True
+        assert schema.deprecated_by == "node_pr_lifecycle_orchestrator"
+        assert schema.deprecated_reason == "Superseded by orchestrator."
+
+    def test_node_merge_sweep_is_deprecated(self) -> None:
+        """node_merge_sweep metadata.yaml marks node as deprecated."""
+        meta_path = _NODES_DIR / "node_merge_sweep" / "metadata.yaml"
+        with meta_path.open() as f:
+            data = yaml.safe_load(f)
+        schema = MetadataSchema(**data)
+        assert schema.deprecated is True
+        assert schema.deprecated_by == "node_pr_lifecycle_orchestrator"
+        assert schema.deprecated_reason
+
+    def test_node_pr_snapshot_effect_is_deprecated(self) -> None:
+        """node_pr_snapshot_effect metadata.yaml marks node as deprecated."""
+        meta_path = _NODES_DIR / "node_pr_snapshot_effect" / "metadata.yaml"
+        with meta_path.open() as f:
+            data = yaml.safe_load(f)
+        schema = MetadataSchema(**data)
+        assert schema.deprecated is True
+        assert schema.deprecated_by == "node_pr_lifecycle_orchestrator"
+        assert schema.deprecated_reason
