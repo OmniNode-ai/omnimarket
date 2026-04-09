@@ -8,7 +8,7 @@ fan-out support: a single event type can be published to multiple topics
 with different payload transformations.
 
 Key design decisions:
-    - YAML per platform (claude_code.yaml, cursor.yaml, etc.)
+    - YAML per platform (topics.yaml per platform, cursor.yaml, etc.)
     - Symbolic transform names mapped to fixed callables (no dynamic imports)
     - EventRegistration and FanOutRule are portable dataclasses
 """
@@ -136,7 +136,7 @@ class EventRegistry:
     """Pluggable event registry loaded from per-platform YAML files.
 
     Usage:
-        registry = EventRegistry.from_yaml(Path("registries/claude_code.yaml"))
+        registry = EventRegistry.from_yaml(Path("registries/topics.yaml"))
         reg = registry.get_registration("prompt.submitted")
     """
 

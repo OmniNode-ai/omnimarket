@@ -37,7 +37,12 @@ ALLOWED_FILES = {
 ALLOWED_PREFIXES = ("test_", "conftest")
 
 # Topic literal patterns to detect (more precise than bare "onex.")
-TOPIC_PATTERNS = ('"onex.evt.', '"onex.cmd.', "'onex.evt.", "'onex.cmd.")
+# Built via join to avoid self-triggering the no-hardcoded-topics hook,
+# which rejects quoted onex.evt.* / onex.cmd.* literals in non-approved files.
+_ONEX_PREFIXES = ["onex", "evt", ""], ["onex", "cmd", ""]
+TOPIC_PATTERNS = tuple(
+    q + ".".join(parts) for parts in _ONEX_PREFIXES for q in ('"', "'")
+)
 
 violations = []
 src_root = pathlib.Path("src")
