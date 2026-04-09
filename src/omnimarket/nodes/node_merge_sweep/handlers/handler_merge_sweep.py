@@ -378,9 +378,9 @@ class NodeMergeSweep:
 
         try:
             orch = HandlerPrLifecycleOrchestrator(
-                inventory=_PrebuiltInventory(),  # type: ignore[arg-type]
-                triage=_PrebuiltTriage(),  # type: ignore[arg-type]
-                merge=_NoopMerge(),  # type: ignore[arg-type]
+                inventory=_PrebuiltInventory(),
+                triage=_PrebuiltTriage(),
+                merge=_NoopMerge(),
             )
             # merge_only=True, dry_run=False: reducer emits MERGE intents in priority order;
             # _NoopMerge absorbs the calls without touching GitHub.
