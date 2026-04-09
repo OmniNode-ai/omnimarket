@@ -20,6 +20,8 @@ import json
 import logging
 import sys
 
+from pydantic import ValidationError
+
 from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep import (
     GoldenChainSweepRequest,
     ModelChainDefinition,
@@ -112,11 +114,15 @@ def main() -> None:
         _log.error("invalid --projected-rows JSON: %s", exc)
         sys.exit(1)
 
-    request = GoldenChainSweepRequest(
-        chains=chains,
-        timeout_ms=args.timeout_ms,
-        projected_rows=projected_rows,
-    )
+    try:
+        request = GoldenChainSweepRequest(
+            chains=chains,
+            timeout_ms=args.timeout_ms,
+            projected_rows=projected_rows,
+        )
+    except ValidationError as exc:
+        _log.error("invalid --projected-rows content: %s", exc)
+        sys.exit(1)
 
     handler = NodeGoldenChainSweep()
     result = handler.handle(request)

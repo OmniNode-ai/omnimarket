@@ -7,7 +7,7 @@ Page data is passed via --pages JSON array.
 
 Usage:
     python -m omnimarket.nodes.node_dashboard_sweep \
-        --pages '[{"route": "/agents", "status_code": 200, "visible_text": "No agents"}]' \
+        --pages '[{"route": "/agents", "has_data": true, "visible_text": "No agents"}]' \
         --max-iterations 3 \
         --dry-run
 
