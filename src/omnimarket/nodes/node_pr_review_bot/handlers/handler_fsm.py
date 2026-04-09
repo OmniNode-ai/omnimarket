@@ -310,9 +310,7 @@ class HandlerPrReviewBot:
             1 for t in threads if t.status == EnumThreadStatus.VERIFIED_FAIL
         )
         threads_pending = sum(
-            1
-            for t in threads
-            if t.status in (EnumThreadStatus.PENDING, EnumThreadStatus.POSTED)
+            1 for t in threads if t.status == EnumThreadStatus.PENDING
         )
 
         if threads_fail > 0:
@@ -439,8 +437,11 @@ class HandlerPrReviewBot:
 
             events.append(event)
 
-            # If circuit breaker did not trip but phase failed, stop advancing
-            if not event.success and state.current_phase not in TERMINAL_PHASES:
+            # Stop only when a terminal phase is reached (DONE or FAILED).
+            # Non-terminal failures allow the loop to retry the same phase
+            # because advance() sets current_phase back to from_phase when the
+            # circuit breaker has not yet tripped.
+            if state.current_phase in TERMINAL_PHASES:
                 break
 
         verdict = self.make_verdict(state)

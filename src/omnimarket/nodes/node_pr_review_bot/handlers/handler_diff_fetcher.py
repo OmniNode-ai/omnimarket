@@ -218,7 +218,7 @@ class HandlerDiffFetcher:
                 if not block.startswith("@@"):
                     continue
 
-                start_line, end_line = _extract_line_range(block)
+                start_line, _end_line = _extract_line_range(block)
                 if start_line == 0:
                     # Could not parse line range; use 1 as fallback
                     start_line = 1
@@ -227,19 +227,23 @@ class HandlerDiffFetcher:
                 sub_blocks = _split_large_block(
                     block, max_lines=self._config.max_lines_per_hunk
                 )
+                sub_start = max(start_line, 1)
                 for sub_block in sub_blocks:
                     if not sub_block.strip():
                         continue
+                    sub_line_count = sub_block.count("\n")
+                    sub_end = max(sub_start + sub_line_count - 1, sub_start)
                     hunks.append(
                         DiffHunk(
                             file_path=file_path,
-                            start_line=max(start_line, 1),
-                            end_line=max(end_line, start_line),
+                            start_line=sub_start,
+                            end_line=sub_end,
                             content=sub_block,
                             is_new_file=is_new,
                             is_deleted_file=is_deleted,
                         )
                     )
+                    sub_start = sub_end + 1
 
         return hunks
 

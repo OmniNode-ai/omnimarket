@@ -11,7 +11,7 @@ Circuit breaker: 3 consecutive failures -> FAILED.
 Topics are declared in contract.yaml (event_bus section) and read at runtime
 by the dispatch engine — they are never hardcoded here.
 
-Full FSM logic is implemented in handlers/handler_pr_review_bot.py (OMN-7966).
+Full FSM logic is implemented in handlers/handler_fsm.py (OMN-7966).
 """
 
 from __future__ import annotations

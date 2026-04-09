@@ -13,6 +13,7 @@ Entry point: run_review(pr_number, repo, github_token)
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 from datetime import UTC, datetime
@@ -59,7 +60,14 @@ class _DiffFetcherAdapter(ProtocolDiffFetcher):
         self._handler = handler
 
     def fetch(self, pr_number: int, repo: str) -> list[DiffHunk]:
-        return asyncio.run(self._handler.fetch(pr_number=pr_number, repo=repo))
+        # Run the async fetch in a dedicated thread so this sync wrapper is safe
+        # to call from both sync and already-running-event-loop contexts.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                asyncio.run,
+                self._handler.fetch(pr_number=pr_number, repo=repo),
+            )
+            return future.result()
 
 
 # ---------------------------------------------------------------------------

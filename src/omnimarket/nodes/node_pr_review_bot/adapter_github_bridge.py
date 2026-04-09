@@ -14,9 +14,9 @@ No tokens are hardcoded.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -301,7 +301,7 @@ class AdapterGitHubBridge(GitHubBridgeProtocol):
                         attempt + 1,
                         _MAX_RETRIES,
                     )
-                    time.sleep(wait)
+                    await asyncio.sleep(wait)
                     continue
 
                 response.raise_for_status()
@@ -316,7 +316,7 @@ class AdapterGitHubBridge(GitHubBridgeProtocol):
                     url,
                     wait,
                 )
-                time.sleep(wait)
+                await asyncio.sleep(wait)
 
         if last_exc is not None:
             raise last_exc
