@@ -23,6 +23,9 @@ from omnimarket.nodes.node_pr_review_bot.handlers.handler_report_poster import (
     ProtocolGitHubBridge,
     build_summary_comment,
 )
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster import (
+    HandlerThreadPoster,
+)
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_watcher import (
     HandlerThreadWatcher,
 )
@@ -33,6 +36,7 @@ __all__: list[str] = [
     "HandlerJudgeVerifier",
     "HandlerPrReviewBot",
     "HandlerReportPoster",
+    "HandlerThreadPoster",
     "HandlerThreadWatcher",
     "ModelPhaseTransitionEvent",
     "ModelPrReviewBotState",
