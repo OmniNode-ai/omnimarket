@@ -103,6 +103,9 @@ node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrato
 node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge:HandlerPrLifecycleMerge"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup:NodeRetentionCleanup"
 
+[project.entry-points."onex.node_package"]
+omnimarket = "omnimarket.nodes"
+
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
 omnibase-compat = { path = "../omnibase_compat", editable = true }
