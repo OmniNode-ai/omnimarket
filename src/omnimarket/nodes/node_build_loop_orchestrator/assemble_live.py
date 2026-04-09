@@ -702,21 +702,29 @@ class LiveBuildDispatchHandler:
                 .strip()
             )
 
-            # Strip markdown fencing if present
-            if raw.startswith("```"):
-                lines = raw.split("\n")
-                # Remove first and last lines (``` markers)
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                raw = "\n".join(lines)
-
-            # Strip thinking tags if present (Qwen3 models)
+            # Strip thinking tags first (Qwen3 models emit <think>...</think> before
+            # the actual response). Do this before markdown stripping so we see the
+            # actual output content.
             if "<think>" in raw:
                 think_end = raw.rfind("</think>")
                 if think_end >= 0:
                     raw = raw[think_end + len("</think>") :].strip()
+
+            # Strip markdown fencing if present
+            if raw.startswith("```"):
+                lines = raw.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                raw = "\n".join(lines).strip()
+
+            # Extract the first JSON object from the response. Models sometimes
+            # prefix with explanation text or suffix with commentary after the JSON.
+            brace_start = raw.find("{")
+            brace_end = raw.rfind("}")
+            if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+                raw = raw[brace_start : brace_end + 1]
 
             result: dict[str, str] = json.loads(raw)
             return result
@@ -780,6 +788,7 @@ class LiveBuildDispatchHandler:
 
         # Write files
         files_written = 0
+        written_paths: list[str] = []
         for rel_path, content in implementation.items():
             if rel_path.startswith("_"):
                 continue
@@ -787,6 +796,7 @@ class LiveBuildDispatchHandler:
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_text(content)
             files_written += 1
+            written_paths.append(str(full_path))
             logger.info("[DISPATCH] Wrote %s", full_path)
 
         if files_written == 0:
@@ -808,26 +818,26 @@ class LiveBuildDispatchHandler:
             repo_venv = OMNI_HOME / repo / ".venv"
             ruff_bin = str(repo_venv / "bin" / "ruff") if repo_venv.exists() else "ruff"
 
-            # Format
+            # Format only the written files (not the whole worktree — pre-existing
+            # violations in other files must not block dispatch).
             subprocess.run(
-                [ruff_bin, "format", "."],
+                [ruff_bin, "format", *written_paths],
                 capture_output=True,
                 text=True,
                 timeout=60,
                 cwd=str(worktree_path),
             )
-            # Lint with auto-fix (fix what we can)
+            # Lint with auto-fix on written files only
             subprocess.run(
-                [ruff_bin, "check", "--fix", "."],
+                [ruff_bin, "check", "--fix", *written_paths],
                 capture_output=True,
                 text=True,
                 timeout=60,
                 cwd=str(worktree_path),
             )
-            # Check for blocking errors only (syntax, undefined names)
-            # Non-blocking warnings (print statements, etc.) are logged but allowed
+            # Check for blocking errors only (syntax, undefined names) on written files
             blocking_result = subprocess.run(
-                [ruff_bin, "check", "--select", "E,F", "."],
+                [ruff_bin, "check", "--select", "E,F", *written_paths],
                 capture_output=True,
                 text=True,
                 timeout=60,
