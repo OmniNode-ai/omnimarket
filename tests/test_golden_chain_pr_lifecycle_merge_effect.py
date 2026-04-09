@@ -179,6 +179,19 @@ class TestPrLifecycleMergeEffectGoldenChain:
         assert "[noop]" in result.merge_action
         assert result.error is None
 
+    async def test_dry_run_with_injected_adapter_does_not_call_adapter(self) -> None:
+        """dry_run=True should bypass injected adapter side effects."""
+        adapter = _RecordingGitHubMergeAdapter()
+        handler = HandlerPrLifecycleMerge(github_adapter=adapter)
+        command = _make_command(triage_verdict="green", dry_run=True)
+
+        result = await handler.handle(command)
+
+        assert result.merged is True
+        assert "[noop]" in result.merge_action
+        assert result.error is None
+        assert len(adapter.calls) == 0
+
     async def test_completed_at_is_set(self) -> None:
         """completed_at is set on both success and failure paths."""
         adapter = _RecordingGitHubMergeAdapter()
@@ -234,13 +247,19 @@ class TestPrLifecycleMergeEffectEventBus:
         merge_events: list[dict[str, object]] = []
 
         async def on_triage_completed(message: object) -> None:
-            correlation_id = uuid4()
+            payload: dict[str, object] = {}
+            if isinstance(message, (bytes, bytearray)):
+                payload = json.loads(message.decode())
+            elif isinstance(message, str):
+                payload = json.loads(message)
+            elif isinstance(message, dict):
+                payload = message
             command = _make_command(
-                pr_number=777,
-                repo="OmniNode-ai/omnimarket",
-                triage_verdict="green",
-                use_merge_queue=False,
-                correlation_id=correlation_id,
+                pr_number=int(payload.get("pr_number", 777)),
+                repo=str(payload.get("repo", "OmniNode-ai/omnimarket")),
+                triage_verdict=str(payload.get("category", "green")),
+                use_merge_queue=bool(payload.get("use_merge_queue", False)),
+                correlation_id=UUID(payload["correlation_id"]) if "correlation_id" in payload else uuid4(),
             )
             result = await handler.handle(command)
             event: dict[str, object] = {

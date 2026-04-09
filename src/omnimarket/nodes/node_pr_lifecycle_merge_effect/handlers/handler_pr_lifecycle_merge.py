@@ -170,6 +170,20 @@ class HandlerPrLifecycleMerge:
         error: str | None = None
         merged = False
 
+        if command.dry_run:
+            strategy = "queue" if command.use_merge_queue else "squash"
+            merge_action = f"[noop] would auto-merge {command.repo}#{command.pr_number} via {strategy}"
+            merged = True
+            return ModelPrMergeResult(
+                correlation_id=command.correlation_id,
+                pr_number=command.pr_number,
+                repo=command.repo,
+                merged=merged,
+                merge_action=merge_action,
+                error=error,
+                completed_at=datetime.now(tz=UTC),
+            )
+
         try:
             merge_action = await self._github.merge_pr(
                 repo=command.repo,

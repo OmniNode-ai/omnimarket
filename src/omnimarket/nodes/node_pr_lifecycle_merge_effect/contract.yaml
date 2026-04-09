@@ -53,6 +53,10 @@ inputs:
     type: str
     description: "Linear ticket ID for context"
     required: false
+  requested_at:
+    type: str
+    description: "Timestamp when merge was requested, ISO 8601 string"
+    required: true
   dry_run:
     type: bool
     description: "Run without side effects"
@@ -60,6 +64,15 @@ inputs:
     default: false
 
 outputs:
+  correlation_id:
+    type: str
+    description: "Merge run correlation ID"
+  pr_number:
+    type: int
+    description: "PR number that was merged"
+  repo:
+    type: str
+    description: "GitHub repo slug (owner/repo)"
   merged:
     type: bool
     description: "Whether the merge was executed (or would be in dry_run)"
@@ -68,7 +81,11 @@ outputs:
     description: "Human-readable description of the merge action taken"
   error:
     type: str
+    nullable: true
     description: "Error message if merge failed (null on success)"
+  completed_at:
+    type: str
+    description: "ISO 8601 datetime when the merge completed"
 
 terminal_event: onex.evt.omnimarket.pr-lifecycle-merge-completed.v1
 
