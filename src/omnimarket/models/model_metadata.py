@@ -43,4 +43,6 @@ class MetadataSchema(BaseModel):
     deprecated_reason: str | None = None
     pack: str | None = None
     display_name: str | None = None
+
+
 node_role: EnumNodeRole | None = None
