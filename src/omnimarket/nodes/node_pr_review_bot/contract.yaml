@@ -1,0 +1,192 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR Review Bot WorkflowPackage
+#
+# Automated PR review with multi-model review fan-out, GitHub thread posting,
+# and judge model verification before thread resolution.
+#
+# Related Tickets:
+#   - OMN-7963: PR Review Bot epic
+#   - OMN-7964: Scaffold + contract
+---
+name: pr_review_bot
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: workflow
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  PR Review Bot WorkflowPackage. Triggers on every PR, uses Qwen3-Coder-30B-A3B
+  as primary reviewer to post structured GitHub review threads per MAJOR/CRITICAL
+  finding, then uses a separate judge model (DeepSeek-R1) to verify each thread
+  before it can be resolved. Phases: INIT -> FETCH_DIFF -> REVIEW ->
+  POST_THREADS -> WATCH -> JUDGE_VERIFY -> REPORT -> DONE.
+  Circuit breaker trips after 3 consecutive failures.
+
+handler_routing:
+  routing_strategy: "phase_dispatch"
+  handlers:
+    - operation: "fsm_transition"
+      handler:
+        name: "HandlerPrReviewBot"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_pr_review_bot"
+      description: "FSM state machine — phase transitions, circuit breaker, terminal detection. Pure COMPUTE."
+
+    - operation: "fetch_diff"
+      handler:
+        name: "HandlerDiffFetcher"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_diff_fetcher"
+      description: "Fetches PR diff via gh pr diff + full file content for context. Side-effect (I/O)."
+
+    - operation: "post_threads"
+      handler:
+        name: "HandlerThreadPoster"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster"
+      description: "Converts ModelReviewFinding -> GitHub review comment via gh api. Side-effect (I/O)."
+
+    - operation: "watch_threads"
+      handler:
+        name: "HandlerThreadWatcher"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_watcher"
+      description: "Polls GitHub API for thread resolution events. Side-effect (I/O)."
+
+    - operation: "judge_verify"
+      handler:
+        name: "HandlerJudgeVerifier"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_judge_verifier"
+      description: "Sends resolved-thread context to judge model, returns PASS/FAIL. Side-effect (I/O)."
+
+    - operation: "post_report"
+      handler:
+        name: "HandlerReportPoster"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_report_poster"
+      description: "Posts final summary PR comment with verdict + finding count. Side-effect (I/O)."
+
+  adapters:
+    - name: "AdapterGitHubBridge"
+      module: "omnimarket.nodes.node_pr_review_bot.handlers.adapter_github_bridge"
+      description: "Abstracts all gh api / gh pr CLI calls behind a protocol."
+
+    - name: "AdapterInferenceBridge"
+      module: "omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge"
+      description: "HTTP adapter to vLLM endpoints (reused from node_hostile_reviewer)."
+
+input_model:
+  name: "ModelPrReviewBotStartCommand"
+  module: "omnimarket.nodes.node_pr_review_bot.models.model_pr_review_bot_start_command"
+  description: "Start command for PR review bot workflow."
+
+output_model:
+  name: "ModelPrReviewBotCompletedEvent"
+  module: "omnimarket.nodes.node_pr_review_bot.models.model_pr_review_bot_completed_event"
+  description: "Completed event with verdict, thread counts, and phase history."
+
+descriptor:
+  node_archetype: workflow
+  purity: side_effect
+  idempotent: false
+  timeout_ms: 600000
+
+inputs:
+  pr_number:
+    type: int
+    description: "PR number to review"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo (owner/repo)"
+    required: true
+  reviewer_models:
+    type: list
+    description: "Models to use for review"
+    required: false
+    default: ["qwen3-coder-30b", "qwen3-14b"]
+  judge_model:
+    type: str
+    description: "Judge model for thread verification (must not be a build-loop model)"
+    required: false
+    default: "deepseek-r1"
+  severity_threshold:
+    type: str
+    description: "Minimum severity to post individual thread (major or critical)"
+    required: false
+    default: "major"
+  dry_run:
+    type: bool
+    description: "Run without posting to GitHub"
+    required: false
+    default: false
+  max_findings_per_pr:
+    type: int
+    description: "Maximum threads to post per PR (prevents spam on large diffs)"
+    required: false
+    default: 20
+
+outputs:
+  verdict:
+    type: str
+    description: "Overall verdict (clean | risks_noted | blocking_issue)"
+  total_findings:
+    type: int
+    description: "Total findings across all models"
+  threads_posted:
+    type: int
+    description: "Number of GitHub review threads posted"
+  threads_verified_pass:
+    type: int
+    description: "Threads that passed judge verification"
+  threads_verified_fail:
+    type: int
+    description: "Threads that failed judge verification"
+  threads_pending:
+    type: int
+    description: "Threads awaiting verification"
+  judge_model_used:
+    type: str
+    description: "Judge model endpoint used for verification"
+  duration_ms:
+    type: int
+    description: "Total workflow duration in milliseconds"
+
+terminal_event: onex.evt.omnimarket.pr-review-bot-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-review-bot-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-review-bot-phase-transition.v1
+    - onex.evt.omnimarket.pr-review-bot-thread-posted.v1
+    - onex.evt.omnimarket.pr-review-bot-thread-verified.v1
+    - onex.evt.omnimarket.pr-review-bot-completed.v1
+
+dependencies:
+  nodes:
+    - name: "node_hostile_reviewer"
+      reason: "Multi-model review fan-out and ModelReviewFinding production"
+      required: true
+    - name: "node_finding_aggregator_compute"
+      reason: "Weighted-union dedup of findings from N models"
+      required: true
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "httpx>=0.27.0"
+
+metadata:
+  description: "PR Review Bot — automated multi-model review with judge verification gate"
+  author: "OmniNode Team"
+  created: "2026-04-09"
+  updated: "2026-04-09"
+  tags:
+    - "review"
+    - "pr-bot"
+    - "github"
+    - "judge-verification"
+    - "fsm"
+    - "quality-gate"
+    - "OMN-7963"
+  related_tickets:
+    - "OMN-7963"
+    - "OMN-7964"
+    - "OMN-7965"
+    - "OMN-7966"
+    - "OMN-7967"
+    - "OMN-7968"
