@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable, Coroutine
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -23,18 +25,20 @@ from omnimarket.nodes.node_build_loop_orchestrator.topics import (
     TOPIC_OVERSEER_VERIFY_REQUESTED,
 )
 
+_AsyncCallback = Callable[[bytes], Coroutine[Any, Any, None]]
+
 
 class _FakeEventBus:
     """In-memory event bus stub for testing the correlated wait pattern."""
 
     def __init__(self) -> None:
         self.published: list[tuple[str, bytes]] = []
-        self._callbacks: dict[str, list] = {}
+        self._callbacks: dict[str, list[_AsyncCallback]] = {}
 
     async def publish(self, *, topic: str, key: object, value: bytes) -> None:
         self.published.append((topic, value))
 
-    async def subscribe(self, *, topic: str, callback) -> None:  # type: ignore[type-arg]
+    async def subscribe(self, *, topic: str, callback: _AsyncCallback) -> None:
         self._callbacks.setdefault(topic, []).append(callback)
 
     async def deliver(self, topic: str, payload: bytes) -> None:
@@ -43,7 +47,7 @@ class _FakeEventBus:
 
 
 def _make_orchestrator(event_bus: _FakeEventBus) -> HandlerBuildLoopOrchestrator:
-    return HandlerBuildLoopOrchestrator(event_bus=event_bus)
+    return HandlerBuildLoopOrchestrator(event_bus=event_bus)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
