@@ -20,4 +20,4 @@ license: "MIT"
 tags: ["ci", "github-actions", "polling", "pr", "watch"]
 pack: "ci_lifecycle"
 display_name: "CI Watch"
-node_role: "compute"
+node_role: "probe"

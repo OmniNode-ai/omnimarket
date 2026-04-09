@@ -32,12 +32,8 @@ def main() -> None:
         default=0,
         help="Maximum build loop cycles (0 = unlimited)",
     )
-    parser.add_argument(
-        "--skip-build-loop", action="store_true", default=False
-    )
-    parser.add_argument(
-        "--skip-merge-sweep", action="store_true", default=False
-    )
+    parser.add_argument("--skip-build-loop", action="store_true", default=False)
+    parser.add_argument("--skip-merge-sweep", action="store_true", default=False)
     parser.add_argument(
         "--dry-run",
         action="store_true",

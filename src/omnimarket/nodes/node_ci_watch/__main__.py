@@ -24,9 +24,7 @@ from omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Watch CI status for a GitHub PR."
-    )
+    parser = argparse.ArgumentParser(description="Watch CI status for a GitHub PR.")
     parser.add_argument("--repo", required=True, help="GitHub org/repo slug")
     parser.add_argument("--pr", type=int, required=True, help="PR number")
     parser.add_argument(

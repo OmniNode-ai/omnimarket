@@ -60,9 +60,7 @@ class TestCoderabbitTriageGoldenChain:
     ) -> None:
         """Body containing 'nitpick' should be classified SUGGESTION."""
         handler = HandlerCoderabbitTriage()
-        severity, keyword = handler.classify_body(
-            "nitpick: prefer single quotes here."
-        )
+        severity, keyword = handler.classify_body("nitpick: prefer single quotes here.")
         assert severity == EnumThreadSeverity.SUGGESTION
         assert "nit" in keyword
 
@@ -91,9 +89,7 @@ class TestCoderabbitTriageGoldenChain:
     async def test_unknown_body_is_unknown(self, event_bus: EventBusInmemory) -> None:
         """Body with no matching keywords should be classified UNKNOWN."""
         handler = HandlerCoderabbitTriage()
-        severity, keyword = handler.classify_body(
-            "The variable name looks fine to me."
-        )
+        severity, keyword = handler.classify_body("The variable name looks fine to me.")
         assert severity == EnumThreadSeverity.UNKNOWN
         assert keyword == ""
 

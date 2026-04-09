@@ -157,11 +157,14 @@ class HandlerOvernight:
                         "build_loop_orchestrator failed — halting overnight pipeline"
                     )
                     break
-                else:
-                    logger.warning("Phase %s failed — continuing to next phase", phase.value)
+                logger.warning(
+                    "Phase %s failed — continuing to next phase", phase.value
+                )
 
         phases_run = [r.phase.value for r in results if not r.skipped]
-        phases_failed = [r.phase.value for r in results if not r.success and not r.skipped]
+        phases_failed = [
+            r.phase.value for r in results if not r.success and not r.skipped
+        ]
         phases_skipped = [r.phase.value for r in results if r.skipped]
 
         if not phases_failed:

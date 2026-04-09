@@ -214,9 +214,7 @@ class HandlerCoderabbitTriage:
 
         return classifications
 
-    def _fetch_pr_comments(
-        self, owner: str, repo: str, pr_number: int
-    ) -> list[dict]:  # type: ignore[type-arg]
+    def _fetch_pr_comments(self, owner: str, repo: str, pr_number: int) -> list[dict]:  # type: ignore[type-arg]
         """Fetch PR review comments via gh api."""
         result = subprocess.run(
             [

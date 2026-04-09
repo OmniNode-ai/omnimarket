@@ -20,4 +20,4 @@ license: "MIT"
 tags: ["coderabbit", "pr-review", "triage", "classification"]
 pack: "ci_lifecycle"
 display_name: "CodeRabbit Triage"
-node_role: "compute"
+node_role: "triage"
