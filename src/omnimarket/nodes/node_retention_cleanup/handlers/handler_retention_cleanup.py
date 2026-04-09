@@ -114,7 +114,7 @@ class NodeRetentionCleanup:
 
         try:
             import psycopg2  # type: ignore[import-untyped]
-            from psycopg2 import sql as pgsql  # type: ignore[import-untyped]
+            from psycopg2 import sql as pgsql
         except ImportError:
             return RetentionCleanupResult(
                 status=EnumCleanupStatus.ERROR,
