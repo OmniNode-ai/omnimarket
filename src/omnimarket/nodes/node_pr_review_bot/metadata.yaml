@@ -1,0 +1,21 @@
+name: node_pr_review_bot
+version: "1.0.0"
+description: "PR Review Bot — automated multi-model review with judge verification gate"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_review_bot: "omnimarket.nodes.node_pr_review_bot"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["review", "pr-bot", "github", "judge-verification", "fsm", "quality-gate"]
