@@ -30,7 +30,7 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import yaml
@@ -245,7 +245,7 @@ class HandlerPrLifecycleOrchestrator:
         self._event_bus = event_bus
 
     def _ensure_sub_handlers(self) -> None:
-        """Lazy-initialize sub-handlers from stubs if not injected."""
+        """Lazy-initialize sub-handlers via import fallback if not injected."""
         if self._inventory is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory import (
@@ -261,7 +261,7 @@ class HandlerPrLifecycleOrchestrator:
                     HandlerPrLifecycleTriage,
                 )
 
-                self._triage = HandlerPrLifecycleTriage()
+                self._triage = cast(ProtocolTriageHandler, HandlerPrLifecycleTriage())
             except ImportError:
                 self._triage = _StubTriageHandler()
         if self._reducer is None:
