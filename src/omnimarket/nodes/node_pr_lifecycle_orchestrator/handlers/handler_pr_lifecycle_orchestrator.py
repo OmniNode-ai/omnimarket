@@ -26,6 +26,7 @@ Related:
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
@@ -505,8 +506,6 @@ class HandlerPrLifecycleOrchestrator:
     ) -> None:
         if self._event_bus is None:
             return
-        import json
-
         payload = json.dumps(
             {
                 "from_phase": from_state.lower(),
