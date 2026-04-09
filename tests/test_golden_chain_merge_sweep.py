@@ -1,6 +1,7 @@
 """Golden chain test for node_merge_sweep.
 
-Verifies PR classification logic, failure history tracking, and event bus wiring.
+Verifies PR classification logic, failure history tracking, event bus wiring,
+and lifecycle-ordered Track A merge sequencing.
 """
 
 from __future__ import annotations
@@ -415,3 +416,134 @@ class TestMergeSweepEventBus:
         assert len(history) == 1
 
         await event_bus.close()
+
+
+@pytest.mark.unit
+class TestLifecycleOrdering:
+    """Lifecycle-ordered Track A merge sequencing via pr_lifecycle_orchestrator."""
+
+    async def test_use_lifecycle_ordering_flag_accepted(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """use_lifecycle_ordering=True is accepted by the request model."""
+        pr = PRInfo(
+            number=1,
+            title="feat: single PR",
+            repo="OmniNode-ai/omnimarket",
+            mergeable="MERGEABLE",
+            merge_state_status="CLEAN",
+            review_decision="APPROVED",
+            required_checks_pass=True,
+        )
+        request = MergeSweepRequest(prs=[pr], use_lifecycle_ordering=True)
+        handler = NodeMergeSweep()
+        result = handler.handle(request)
+
+        assert result.status == "queued"
+        assert len(result.track_a_merge) == 1
+
+    async def test_lifecycle_ordering_preserves_all_track_a(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """All Track A PRs survive lifecycle ordering — none are dropped."""
+        prs = [
+            PRInfo(
+                number=i,
+                title=f"feat: PR {i}",
+                repo="OmniNode-ai/omnimarket",
+                mergeable="MERGEABLE",
+                merge_state_status="CLEAN",
+                review_decision="APPROVED",
+                required_checks_pass=True,
+            )
+            for i in range(1, 5)
+        ]
+        request = MergeSweepRequest(prs=prs, use_lifecycle_ordering=True)
+        handler = NodeMergeSweep()
+        result = handler.handle(request)
+
+        assert result.status == "queued"
+        assert len(result.track_a_merge) == 4
+        # All original PR numbers present
+        numbers = {c.pr.number for c in result.track_a_merge}
+        assert numbers == {1, 2, 3, 4}
+
+    async def test_lifecycle_ordering_mixed_tracks(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Non-Track-A PRs are not reordered; Track A PRs are lifecycle-ordered."""
+        prs = [
+            PRInfo(
+                number=10,
+                title="feat: green PR",
+                repo="OmniNode-ai/omniclaude",
+                mergeable="MERGEABLE",
+                merge_state_status="CLEAN",
+                review_decision="APPROVED",
+                required_checks_pass=True,
+            ),
+            PRInfo(
+                number=20,
+                title="fix: conflicted",
+                repo="OmniNode-ai/omniclaude",
+                mergeable="CONFLICTING",
+                merge_state_status="DIRTY",
+            ),
+            PRInfo(
+                number=30,
+                title="feat: another green",
+                repo="OmniNode-ai/omnimarket",
+                mergeable="MERGEABLE",
+                merge_state_status="CLEAN",
+                review_decision="APPROVED",
+                required_checks_pass=True,
+            ),
+        ]
+        request = MergeSweepRequest(prs=prs, use_lifecycle_ordering=True)
+        handler = NodeMergeSweep()
+        result = handler.handle(request)
+
+        assert result.status == "queued"
+        assert len(result.track_a_merge) == 2
+        assert len(result.track_b_polish) == 1
+        # Track A PRs contain both green PRs
+        track_a_numbers = {c.pr.number for c in result.track_a_merge}
+        assert track_a_numbers == {10, 30}
+
+    async def test_lifecycle_ordering_false_by_default(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """use_lifecycle_ordering defaults to False — existing behaviour unchanged."""
+        pr = PRInfo(
+            number=1,
+            title="feat: test",
+            repo="OmniNode-ai/omnimarket",
+            mergeable="MERGEABLE",
+            merge_state_status="CLEAN",
+            review_decision="APPROVED",
+            required_checks_pass=True,
+        )
+        request = MergeSweepRequest(prs=[pr])
+        assert request.use_lifecycle_ordering is False
+        handler = NodeMergeSweep()
+        result = handler.handle(request)
+        assert result.status == "queued"
+
+    async def test_lifecycle_ordering_empty_track_a_no_error(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """use_lifecycle_ordering=True with no Track A PRs does not error."""
+        pr = PRInfo(
+            number=99,
+            title="wip: draft",
+            repo="OmniNode-ai/omnimarket",
+            mergeable="MERGEABLE",
+            merge_state_status="CLEAN",
+            is_draft=True,
+        )
+        request = MergeSweepRequest(prs=[pr], use_lifecycle_ordering=True)
+        handler = NodeMergeSweep()
+        result = handler.handle(request)
+
+        assert result.status == "nothing_to_merge"
+        assert len(result.track_a_merge) == 0

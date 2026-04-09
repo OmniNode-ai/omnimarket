@@ -165,6 +165,15 @@ def main() -> None:
         default=False,
         help="Print classification without performing any merges",
     )
+    parser.add_argument(
+        "--use-lifecycle-ordering",
+        action="store_true",
+        default=False,
+        help=(
+            "Reorder Track A PRs via the lifecycle triage→reducer pipeline "
+            "for dependency-optimal merge order (default: flat listing order)"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -184,6 +193,7 @@ def main() -> None:
         max_total_merges=args.max_total_merges,
         skip_polish=args.skip_polish,
         failure_history=failure_history,
+        use_lifecycle_ordering=args.use_lifecycle_ordering,
     )
 
     handler = NodeMergeSweep()
