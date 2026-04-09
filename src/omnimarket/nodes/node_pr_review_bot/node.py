@@ -39,7 +39,7 @@ class HandlerPrReviewBot:
             "HandlerPrReviewBot.handle is not yet wired to sub-handlers. "
             "Call run_full_pipeline() from the effects layer with injected protocols."
         )
-        raise NotImplementedError(msg)
+        raise NotImplementedError(msg)  # stub-ok
 
 
 __all__: list[str] = ["HandlerPrReviewBot"]
