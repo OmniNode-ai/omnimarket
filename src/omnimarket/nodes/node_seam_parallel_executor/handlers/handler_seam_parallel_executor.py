@@ -78,6 +78,13 @@ def _build_waves(tasks: tuple[ModelSeamTask, ...]) -> list[list[ModelSeamTask]]:
         ValueError: If a dependency cycle is detected or a dependency
             references a non-existent task_id.
     """
+    seen: set[str] = set()
+    for t in tasks:
+        if t.task_id in seen:
+            msg = f"Duplicate task_id {t.task_id!r} in task list"
+            raise ValueError(msg)
+        seen.add(t.task_id)
+
     task_map: dict[str, ModelSeamTask] = {t.task_id: t for t in tasks}
 
     for task in tasks:
