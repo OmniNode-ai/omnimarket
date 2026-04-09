@@ -15,8 +15,6 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
     HandlerPrLifecycleFix,
-    ProtocolAgentDispatchAdapter,
-    ProtocolGitHubAdapter,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
