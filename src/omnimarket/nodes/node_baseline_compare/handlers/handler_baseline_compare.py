@@ -120,16 +120,8 @@ class ModelBaselineCompareResult(BaseModel):
 def _diff_github_prs(
     before: list[ProbeSnapshotItem], after: list[ProbeSnapshotItem]
 ) -> ModelGitHubPRDelta:
-    b = {
-        pr.pr_number: pr
-        for pr in before
-        if isinstance(pr, ModelGitHubPRSnapshot)
-    }
-    a = {
-        pr.pr_number: pr
-        for pr in after
-        if isinstance(pr, ModelGitHubPRSnapshot)
-    }
+    b = {pr.pr_number: pr for pr in before if isinstance(pr, ModelGitHubPRSnapshot)}
+    a = {pr.pr_number: pr for pr in after if isinstance(pr, ModelGitHubPRSnapshot)}
     before_nums = set(b)
     after_nums = set(a)
 
@@ -163,16 +155,8 @@ def _diff_github_prs(
 def _diff_linear_tickets(
     before: list[ProbeSnapshotItem], after: list[ProbeSnapshotItem]
 ) -> ModelLinearTicketDelta:
-    b = {
-        t.ticket_id: t
-        for t in before
-        if isinstance(t, ModelLinearTicketSnapshot)
-    }
-    a = {
-        t.ticket_id: t
-        for t in after
-        if isinstance(t, ModelLinearTicketSnapshot)
-    }
+    b = {t.ticket_id: t for t in before if isinstance(t, ModelLinearTicketSnapshot)}
+    a = {t.ticket_id: t for t in after if isinstance(t, ModelLinearTicketSnapshot)}
     before_ids = set(b)
     after_ids = set(a)
 
@@ -196,22 +180,12 @@ def _diff_linear_tickets(
 def _diff_system_health(
     before: list[ProbeSnapshotItem], after: list[ProbeSnapshotItem]
 ) -> ModelServiceHealthDelta:
-    b = {
-        s.service: s
-        for s in before
-        if isinstance(s, ModelServiceHealthSnapshot)
-    }
-    a = {
-        s.service: s
-        for s in after
-        if isinstance(s, ModelServiceHealthSnapshot)
-    }
+    b = {s.service: s for s in before if isinstance(s, ModelServiceHealthSnapshot)}
+    a = {s.service: s for s in after if isinstance(s, ModelServiceHealthSnapshot)}
     before_svcs = set(b)
     after_svcs = set(a)
 
-    new_failures = [
-        svc for svc in after_svcs - before_svcs if not a[svc].healthy
-    ]
+    new_failures = [svc for svc in after_svcs - before_svcs if not a[svc].healthy]
     recovered: list[str] = []
     degraded: list[str] = []
 
@@ -232,16 +206,8 @@ def _diff_system_health(
 def _diff_kafka_topics(
     before: list[ProbeSnapshotItem], after: list[ProbeSnapshotItem]
 ) -> ModelKafkaTopicDelta:
-    b = {
-        t.topic: t
-        for t in before
-        if isinstance(t, ModelKafkaTopicSnapshot)
-    }
-    a = {
-        t.topic: t
-        for t in after
-        if isinstance(t, ModelKafkaTopicSnapshot)
-    }
+    b = {t.topic: t for t in before if isinstance(t, ModelKafkaTopicSnapshot)}
+    a = {t.topic: t for t in after if isinstance(t, ModelKafkaTopicSnapshot)}
     before_topics = set(b)
     after_topics = set(a)
 
@@ -265,16 +231,8 @@ def _diff_git_branches(
     def _key(br: ModelGitBranchSnapshot) -> str:
         return f"{br.repo}::{br.branch}"
 
-    b_map = {
-        _key(br): br
-        for br in before
-        if isinstance(br, ModelGitBranchSnapshot)
-    }
-    a_map = {
-        _key(br): br
-        for br in after
-        if isinstance(br, ModelGitBranchSnapshot)
-    }
+    b_map = {_key(br): br for br in before if isinstance(br, ModelGitBranchSnapshot)}
+    a_map = {_key(br): br for br in after if isinstance(br, ModelGitBranchSnapshot)}
     before_keys = set(b_map)
     after_keys = set(a_map)
 
@@ -354,7 +312,7 @@ def _build_summary(delta: ModelBaselineDelta, baseline_id: str) -> str:
     ]
     parts: list[str] = []
 
-    for probe_name, probe_delta in delta.per_probe_deltas.items():
+    for _probe_name, probe_delta in delta.per_probe_deltas.items():
         if isinstance(probe_delta, ModelGitHubPRDelta):
             opened = len(probe_delta.opened)
             closed = len(probe_delta.closed)
@@ -377,7 +335,9 @@ def _build_summary(delta: ModelBaselineDelta, baseline_id: str) -> str:
             recovered = len(probe_delta.recovered)
             new_fail = len(probe_delta.new_failures)
             if degraded:
-                parts.append(f"Service health: {degraded} degraded ({', '.join(probe_delta.degraded)}).")
+                parts.append(
+                    f"Service health: {degraded} degraded ({', '.join(probe_delta.degraded)})."
+                )
             if recovered:
                 parts.append(f"Service health: {recovered} recovered.")
             if new_fail:
@@ -460,9 +420,7 @@ class HandlerBaselineCompare:
     ) -> ModelBaselineSnapshot:
         """Re-run the probes from the baseline to get a current snapshot."""
         probe_names = list(request.probes or baseline.probes.keys())
-        capture_handler = HandlerBaselineCapture(
-            probe_registry=self._probe_registry
-        )
+        capture_handler = HandlerBaselineCapture(probe_registry=self._probe_registry)
         capture_request = ModelBaselineCaptureRequest(
             baseline_id=f"{request.baseline_id}__current",
             probes=probe_names,
