@@ -1,0 +1,70 @@
+---
+name: pr_lifecycle_fix_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Agent-dispatched PR remediation effect. Consumes triage events for
+  non-green PRs and routes fix actions by block reason:
+  ci_failure -> CI fix dispatch, conflict -> conflict resolution,
+  changes_requested -> review-comment address, coderabbit -> CodeRabbit
+  auto-reply. Protocol-injected adapters for GitHub and agent dispatch.
+  Absorbs pr_polish conflict-resolution and coderabbit_triage auto-reply
+  logic into a proper node with contract-declared behavior.
+
+handler:
+  module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix
+  class: HandlerPrLifecycleFix
+  input_model: omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command.ModelPrLifecycleFixCommand
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: false
+  timeout_ms: 300000
+
+inputs:
+  pr_number:
+    type: int
+    description: "PR number to remediate"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo slug (owner/repo)"
+    required: true
+  block_reason:
+    type: str
+    description: "Block reason: ci_failure | conflict | changes_requested | coderabbit"
+    required: true
+  ticket_id:
+    type: str
+    description: "Linear ticket ID for context"
+    required: false
+  dry_run:
+    type: bool
+    description: "Run without side effects"
+    required: false
+    default: false
+
+outputs:
+  fix_applied:
+    type: bool
+    description: "Whether a fix action was dispatched"
+  block_reason:
+    type: str
+    description: "Block reason that was routed"
+  fix_action:
+    type: str
+    description: "Fix action that was taken or would be taken (dry_run)"
+  error:
+    type: str
+    description: "Error message if fix failed (null on success)"
+
+terminal_event: onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1

@@ -1,0 +1,23 @@
+name: node_pr_lifecycle_fix_effect
+version: "1.0.0"
+description: "PR lifecycle fix effect — routes PR remediation by block reason (ci_failure, conflict, changes_requested, coderabbit) with protocol-injected adapters"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: pr_lifecycle
+node_role: fix
+display_name: "PR Fix"
+entry_points:
+  onex.nodes:
+    node_pr_lifecycle_fix_effect: "omnimarket.nodes.node_pr_lifecycle_fix_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr", "fix", "ci", "conflicts", "coderabbit", "pr_lifecycle"]
