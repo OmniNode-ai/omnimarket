@@ -73,7 +73,9 @@ class ModelPrLifecycleState(BaseModel):
         default=None, description="Error message if phase is FAILED."
     )
     prs_inventoried: int = Field(
-        default=0, ge=0, description="Number of PRs collected during INVENTORYING phase."
+        default=0,
+        ge=0,
+        description="Number of PRs collected during INVENTORYING phase.",
     )
     prs_blocked: int = Field(
         default=0, ge=0, description="Number of blocked PRs found during triage."

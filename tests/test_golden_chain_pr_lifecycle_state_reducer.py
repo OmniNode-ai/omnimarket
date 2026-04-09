@@ -194,7 +194,10 @@ class TestPrLifecycleStateReducerGoldenChain:
 
         transitions = [
             (EnumPrLifecyclePhase.IDLE, EnumPrLifecycleEventTrigger.START_RECEIVED),
-            (EnumPrLifecyclePhase.INVENTORYING, EnumPrLifecycleEventTrigger.INVENTORY_COMPLETE),
+            (
+                EnumPrLifecyclePhase.INVENTORYING,
+                EnumPrLifecycleEventTrigger.INVENTORY_COMPLETE,
+            ),
             (EnumPrLifecyclePhase.TRIAGED, EnumPrLifecycleEventTrigger.NO_FIXES_NEEDED),
             (EnumPrLifecyclePhase.MERGING, EnumPrLifecycleEventTrigger.MERGE_COMPLETE),
         ]
@@ -205,7 +208,9 @@ class TestPrLifecycleStateReducerGoldenChain:
             EnumPrLifecyclePhase.COMPLETE,
         ]
 
-        for (from_phase, trigger), expected in zip(transitions, expected_phases, strict=False):
+        for (from_phase, trigger), expected in zip(
+            transitions, expected_phases, strict=False
+        ):
             event = _event(from_phase, trigger, cid)
             state, _ = handler.delta(state, event)
             assert state.phase == expected
@@ -218,7 +223,10 @@ class TestPrLifecycleStateReducerGoldenChain:
 
         transitions = [
             (EnumPrLifecyclePhase.IDLE, EnumPrLifecycleEventTrigger.START_RECEIVED),
-            (EnumPrLifecyclePhase.INVENTORYING, EnumPrLifecycleEventTrigger.INVENTORY_COMPLETE),
+            (
+                EnumPrLifecyclePhase.INVENTORYING,
+                EnumPrLifecycleEventTrigger.INVENTORY_COMPLETE,
+            ),
             (EnumPrLifecyclePhase.TRIAGED, EnumPrLifecycleEventTrigger.FIXES_PENDING),
             (EnumPrLifecyclePhase.FIXING, EnumPrLifecycleEventTrigger.FIXES_COMPLETE),
             (EnumPrLifecyclePhase.MERGING, EnumPrLifecycleEventTrigger.MERGE_COMPLETE),
@@ -231,7 +239,9 @@ class TestPrLifecycleStateReducerGoldenChain:
             EnumPrLifecyclePhase.COMPLETE,
         ]
 
-        for (from_phase, trigger), expected in zip(transitions, expected_phases, strict=False):
+        for (from_phase, trigger), expected in zip(
+            transitions, expected_phases, strict=False
+        ):
             event = _event(from_phase, trigger, cid)
             state, _ = handler.delta(state, event)
             assert state.phase == expected

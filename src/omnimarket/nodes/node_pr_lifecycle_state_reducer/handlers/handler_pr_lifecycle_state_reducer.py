@@ -45,16 +45,46 @@ _TRANSITIONS: dict[
     tuple[EnumPrLifecyclePhase, EnumPrLifecycleEventTrigger],
     EnumPrLifecyclePhase,
 ] = {
-    (EnumPrLifecyclePhase.IDLE, EnumPrLifecycleEventTrigger.START_RECEIVED): EnumPrLifecyclePhase.INVENTORYING,
-    (EnumPrLifecyclePhase.INVENTORYING, EnumPrLifecycleEventTrigger.INVENTORY_COMPLETE): EnumPrLifecyclePhase.TRIAGED,
-    (EnumPrLifecyclePhase.INVENTORYING, EnumPrLifecycleEventTrigger.ERROR): EnumPrLifecyclePhase.FAILED,
-    (EnumPrLifecyclePhase.TRIAGED, EnumPrLifecycleEventTrigger.FIXES_PENDING): EnumPrLifecyclePhase.FIXING,
-    (EnumPrLifecyclePhase.TRIAGED, EnumPrLifecycleEventTrigger.NO_FIXES_NEEDED): EnumPrLifecyclePhase.MERGING,
-    (EnumPrLifecyclePhase.TRIAGED, EnumPrLifecycleEventTrigger.ERROR): EnumPrLifecyclePhase.FAILED,
-    (EnumPrLifecyclePhase.FIXING, EnumPrLifecycleEventTrigger.FIXES_COMPLETE): EnumPrLifecyclePhase.MERGING,
-    (EnumPrLifecyclePhase.FIXING, EnumPrLifecycleEventTrigger.ERROR): EnumPrLifecyclePhase.FAILED,
-    (EnumPrLifecyclePhase.MERGING, EnumPrLifecycleEventTrigger.MERGE_COMPLETE): EnumPrLifecyclePhase.COMPLETE,
-    (EnumPrLifecyclePhase.MERGING, EnumPrLifecycleEventTrigger.ERROR): EnumPrLifecyclePhase.FAILED,
+    (
+        EnumPrLifecyclePhase.IDLE,
+        EnumPrLifecycleEventTrigger.START_RECEIVED,
+    ): EnumPrLifecyclePhase.INVENTORYING,
+    (
+        EnumPrLifecyclePhase.INVENTORYING,
+        EnumPrLifecycleEventTrigger.INVENTORY_COMPLETE,
+    ): EnumPrLifecyclePhase.TRIAGED,
+    (
+        EnumPrLifecyclePhase.INVENTORYING,
+        EnumPrLifecycleEventTrigger.ERROR,
+    ): EnumPrLifecyclePhase.FAILED,
+    (
+        EnumPrLifecyclePhase.TRIAGED,
+        EnumPrLifecycleEventTrigger.FIXES_PENDING,
+    ): EnumPrLifecyclePhase.FIXING,
+    (
+        EnumPrLifecyclePhase.TRIAGED,
+        EnumPrLifecycleEventTrigger.NO_FIXES_NEEDED,
+    ): EnumPrLifecyclePhase.MERGING,
+    (
+        EnumPrLifecyclePhase.TRIAGED,
+        EnumPrLifecycleEventTrigger.ERROR,
+    ): EnumPrLifecyclePhase.FAILED,
+    (
+        EnumPrLifecyclePhase.FIXING,
+        EnumPrLifecycleEventTrigger.FIXES_COMPLETE,
+    ): EnumPrLifecyclePhase.MERGING,
+    (
+        EnumPrLifecyclePhase.FIXING,
+        EnumPrLifecycleEventTrigger.ERROR,
+    ): EnumPrLifecyclePhase.FAILED,
+    (
+        EnumPrLifecyclePhase.MERGING,
+        EnumPrLifecycleEventTrigger.MERGE_COMPLETE,
+    ): EnumPrLifecyclePhase.COMPLETE,
+    (
+        EnumPrLifecyclePhase.MERGING,
+        EnumPrLifecycleEventTrigger.ERROR,
+    ): EnumPrLifecyclePhase.FAILED,
 }
 
 # Map to_phase -> intent type emitted on transition (for non-dry-run paths)
@@ -67,7 +97,9 @@ _PHASE_INTENTS: dict[EnumPrLifecyclePhase, EnumPrLifecycleIntentType] = {
 }
 
 # Terminal phases reject all events
-_TERMINAL_PHASES = frozenset({EnumPrLifecyclePhase.COMPLETE, EnumPrLifecyclePhase.FAILED})
+_TERMINAL_PHASES = frozenset(
+    {EnumPrLifecyclePhase.COMPLETE, EnumPrLifecyclePhase.FAILED}
+)
 
 
 def _is_transition_allowed(

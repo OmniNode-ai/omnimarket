@@ -74,7 +74,9 @@ class ModelPrLifecycleEvent(BaseModel):
         default=None, description="Error details if success=False."
     )
     prs_inventoried: int = Field(
-        default=0, ge=0, description="Number of PRs collected during INVENTORYING phase."
+        default=0,
+        ge=0,
+        description="Number of PRs collected during INVENTORYING phase.",
     )
     prs_blocked: int = Field(
         default=0, ge=0, description="Number of blocked PRs found during triage."
@@ -88,7 +90,7 @@ class ModelPrLifecycleEvent(BaseModel):
 
 
 __all__: list[str] = [
-    "EnumPrLifecyclePhase",
     "EnumPrLifecycleEventTrigger",
+    "EnumPrLifecyclePhase",
     "ModelPrLifecycleEvent",
 ]
