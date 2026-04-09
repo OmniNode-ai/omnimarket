@@ -105,15 +105,16 @@ class HandlerPrLifecycleInventory:
         merge_state_status = pr_data.get("mergeStateStatus") or None
         review_decision = pr_data.get("reviewDecision") or None
 
-        has_conflicts = (
-            mergeable == "CONFLICTING"
-            or (merge_state_status is not None and merge_state_status == "DIRTY")
+        has_conflicts = mergeable == "CONFLICTING" or (
+            merge_state_status is not None and merge_state_status == "DIRTY"
         )
 
         # CI passing: True if all completed checks succeeded, False if any failed
         ci_passing: bool | None = None
         completed = [
-            c for c in check_runs if c.status == "completed" and c.conclusion is not None
+            c
+            for c in check_runs
+            if c.status == "completed" and c.conclusion is not None
         ]
         if completed:
             ci_passing = all(
@@ -201,7 +202,9 @@ class HandlerPrLifecycleInventory:
                 ModelPrCheckRun(
                     name=str(item.get("name", "")),
                     status=str(item.get("state", "unknown")),
-                    conclusion=str(item["conclusion"]) if item.get("conclusion") else None,
+                    conclusion=str(item["conclusion"])
+                    if item.get("conclusion")
+                    else None,
                 )
                 for item in raw
             ]

@@ -27,7 +27,9 @@ from typing import Any
 import yaml
 
 NODES_DIR = Path(__file__).resolve().parent.parent / "src" / "omnimarket" / "nodes"
-ADAPTERS_DIR = Path(__file__).resolve().parent.parent / "src" / "omnimarket" / "adapters"
+ADAPTERS_DIR = (
+    Path(__file__).resolve().parent.parent / "src" / "omnimarket" / "adapters"
+)
 
 SUPPORTED_FORMATS = ("claude_code", "cursor", "codex", "gemini")
 
@@ -78,7 +80,10 @@ def _build_substitutions(
     metadata: dict[str, Any],
     contract: dict[str, Any],
 ) -> dict[str, str]:
-    display_name = metadata.get("display_name") or node_name.replace("node_", "").replace("_", " ").title()
+    display_name = (
+        metadata.get("display_name")
+        or node_name.replace("node_", "").replace("_", " ").title()
+    )
     description = metadata.get("description", f"Run {display_name} via OmniMarket.")
     entry_flags = metadata.get("entry_flags") or []
     flags_str = " ".join(entry_flags) if entry_flags else ""
@@ -190,8 +195,12 @@ def generate_adapters(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate multi-host adapter files for orchestrator nodes.")
-    parser.add_argument("--node", help="Process only this node (e.g. node_aislop_sweep)")
+    parser = argparse.ArgumentParser(
+        description="Generate multi-host adapter files for orchestrator nodes."
+    )
+    parser.add_argument(
+        "--node", help="Process only this node (e.g. node_aislop_sweep)"
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -216,7 +225,9 @@ def main(argv: list[str] | None = None) -> int:
     for node_dir in node_dirs:
         generated = generate_adapters(node_dir, args.output_dir, tuple(args.formats))
         for path in generated:
-            print(f"  generated: {path.relative_to(args.output_dir.parent.parent.parent.parent)}")
+            print(
+                f"  generated: {path.relative_to(args.output_dir.parent.parent.parent.parent)}"
+            )
             total += 1
 
     print(f"\n{total} adapter file(s) generated.")

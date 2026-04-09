@@ -85,9 +85,7 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
 
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(
-            cmd: list[str], capture_output: bool, text: bool
-        ) -> MagicMock:
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
             if "checks" in cmd:
                 return _make_subprocess_result(json.dumps(check_runs))
             if "reviews" in cmd[-1]:
@@ -290,9 +288,7 @@ class TestEventBusWiring:
                 return _make_subprocess_result("[]")
             if "reviews" in cmd[-1]:
                 return _make_subprocess_result(json.dumps({"reviews": []}))
-            return _make_subprocess_result(
-                json.dumps(_fake_gh_pr_view(pr_number=1))
-            )
+            return _make_subprocess_result(json.dumps(_fake_gh_pr_view(pr_number=1)))
 
         async def on_command(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
