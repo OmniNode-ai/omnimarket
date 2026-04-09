@@ -1,0 +1,44 @@
+name: node_pr_lifecycle_orchestrator
+version: "1.0.0"
+description: "PR Lifecycle orchestrator — FSM orchestrator wiring 5 sub-handlers (inventory, triage, merge, fix, reducer)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: pr_lifecycle
+node_role: orchestrator
+display_name: "PR Lifecycle"
+entry_points:
+  onex.nodes:
+    node_pr_lifecycle_orchestrator: "omnimarket.nodes.node_pr_lifecycle_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+entry_flags:
+  - name: dry_run
+    type: bool
+    default: false
+    description: "Run without side effects (no merges, no gh calls)"
+  - name: inventory_only
+    type: bool
+    default: false
+    description: "Stop after inventory phase; do not triage, merge, or fix"
+  - name: fix_only
+    type: bool
+    default: false
+    description: "Only execute fix phase on non-green PRs; skip merge"
+  - name: merge_only
+    type: bool
+    default: false
+    description: "Only merge green PRs; skip fix phase"
+  - name: repos
+    type: str
+    default: ""
+    description: "Comma-separated list of repo slugs to filter (empty = all repos)"
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["pr-lifecycle", "orchestrator", "fsm", "merge-sweep", "github", "OMN-8087"]
