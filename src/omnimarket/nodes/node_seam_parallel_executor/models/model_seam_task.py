@@ -102,9 +102,7 @@ class ModelSeamParallelResult(BaseModel):
     shims_removed: bool = Field(
         ..., description="Whether protocol shims were cleaned up."
     )
-    waves_executed: int = Field(
-        ..., description="Number of parallel waves executed."
-    )
+    waves_executed: int = Field(..., description="Number of parallel waves executed.")
 
 
 __all__: list[str] = [
