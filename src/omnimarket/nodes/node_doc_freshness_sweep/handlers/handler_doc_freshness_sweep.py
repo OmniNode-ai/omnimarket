@@ -23,20 +23,20 @@ _log = logging.getLogger(__name__)
 # If the package is not installed we fall back to None sentinels and surface the error
 # at handle() time instead.
 try:
-    from onex_change_control.enums.enum_doc_staleness_verdict import (
+    from onex_change_control.enums.enum_doc_staleness_verdict import (  # type: ignore[import-not-found]
         EnumDocStalenessVerdict,
     )
-    from onex_change_control.models.model_doc_freshness_sweep_report import (
+    from onex_change_control.models.model_doc_freshness_sweep_report import (  # type: ignore[import-not-found]
         ModelDocFreshnessSweepReport,
         ModelRepoDocSummary,
     )
-    from onex_change_control.scanners.doc_reference_extractor import (
+    from onex_change_control.scanners.doc_reference_extractor import (  # type: ignore[import-not-found]
         extract_all_references,
     )
-    from onex_change_control.scanners.doc_reference_resolver import (
+    from onex_change_control.scanners.doc_reference_resolver import (  # type: ignore[import-not-found]
         resolve_references,
     )
-    from onex_change_control.scanners.doc_staleness_detector import (
+    from onex_change_control.scanners.doc_staleness_detector import (  # type: ignore[import-not-found]
         build_freshness_result,
         get_recently_changed_files,
     )
@@ -47,13 +47,13 @@ except ImportError as _occ_import_err:
     _OCC_AVAILABLE = False
     _occ_err_msg = str(_occ_import_err)
     # Define None stubs so type checkers/tests see the names
-    EnumDocStalenessVerdict = None  # type: ignore
-    ModelDocFreshnessSweepReport = None  # type: ignore
-    ModelRepoDocSummary = None  # type: ignore
-    extract_all_references = None  # type: ignore
-    resolve_references = None  # type: ignore
-    build_freshness_result = None  # type: ignore
-    get_recently_changed_files = None  # type: ignore
+    EnumDocStalenessVerdict = None  # type: ignore[assignment]
+    ModelDocFreshnessSweepReport = None  # type: ignore[assignment]
+    ModelRepoDocSummary = None  # type: ignore[assignment]
+    extract_all_references = None  # type: ignore[assignment]
+    resolve_references = None  # type: ignore[assignment]
+    build_freshness_result = None  # type: ignore[assignment]
+    get_recently_changed_files = None  # type: ignore[assignment]
 
 # Repos to scan by default (must exist under omni_home)
 _DEFAULT_REPOS = [
