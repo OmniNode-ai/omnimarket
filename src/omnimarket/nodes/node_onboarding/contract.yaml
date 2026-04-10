@@ -1,0 +1,77 @@
+---
+name: node_onboarding
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Contract-driven progressive onboarding for new users and employees.
+  Accepts a policy name (new_employee, standalone_quickstart, contributor_local,
+  full_platform) or explicit target_capabilities. Resolves the policy, executes
+  verification for each step, and renders markdown progress output.
+
+handler:
+  module: omnimarket.nodes.node_onboarding.handlers.handler_onboarding
+  class: HandlerOnboarding
+  input_model: omnimarket.nodes.node_onboarding.models.model_onboarding_start_command.ModelOnboardingStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: false
+  timeout_ms: 300000
+
+inputs:
+  policy_name:
+    type: str
+    description: "Policy to apply: new_employee, standalone_quickstart, contributor_local, full_platform"
+    required: false
+    default: "new_employee"
+  target_capabilities:
+    type: list
+    description: "Override target capabilities directly (bypasses policy lookup)"
+    required: false
+  skip_steps:
+    type: list
+    description: "Step keys to skip"
+    required: false
+  continue_on_failure:
+    type: bool
+    description: "Continue executing steps after a failure"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Print the resolved step plan without executing verifications"
+    required: false
+    default: false
+
+outputs:
+  success:
+    type: bool
+    description: "Whether all steps passed"
+  total_steps:
+    type: int
+    description: "Total resolved steps"
+  completed_steps:
+    type: int
+    description: "Steps that passed"
+  rendered_output:
+    type: str
+    description: "Markdown-formatted onboarding progress"
+  dry_run:
+    type: bool
+    description: "True when invoked in dry-run mode (no verifications executed)"
+    required: false
+  resolved_steps:
+    type: list
+    description: "Step keys resolved by the policy resolver (present in dry-run response)"
+    required: false
+
+terminal_event: onex.evt.omnimarket.onboarding-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.onboarding-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.onboarding-completed.v1

@@ -107,6 +107,7 @@ node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier.handlers.handl
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup:NodeRetentionCleanup"
 node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap:HandlerSessionBootstrap"
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem:HandlerSessionPostMortem"
+node_onboarding = "omnimarket.nodes.node_onboarding.handlers.handler_onboarding:HandlerOnboarding"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
