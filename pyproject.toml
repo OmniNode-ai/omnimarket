@@ -104,6 +104,7 @@ node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_redu
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:HandlerPrLifecycleOrchestrator"
 node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge:HandlerPrLifecycleMerge"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup:NodeRetentionCleanup"
+node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap:HandlerSessionBootstrap"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
