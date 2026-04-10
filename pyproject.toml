@@ -39,6 +39,7 @@ dependencies = [
     "python-dateutil>=2.9.0",
     "psycopg2-binary>=2.9.10",
     "httpx>=0.27.0",
+    "omninode-memory>=0.1.0",
 ]
 
 [project.urls]
@@ -110,6 +111,9 @@ node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap.handlers.handl
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem:HandlerSessionPostMortem"
 node_onboarding = "omnimarket.nodes.node_onboarding.handlers.handler_onboarding:HandlerOnboarding"
 node_integration_test_runner = "omnimarket.nodes.node_integration_test_runner.handlers.handler_integration_test_runner:HandlerIntegrationTestRunner"
+node_similarity_compute = "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute:HandlerSimilarityCompute"
+node_persona_builder_compute = "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify:HandlerPersonaClassify"
+node_semantic_analyzer_compute = "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute:HandlerSemanticCompute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
@@ -120,6 +124,7 @@ omnimarket = "omnimarket.nodes"
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
 omnibase-compat = { path = "../omnibase_compat", editable = true }
+omninode-memory = { path = "../omnimemory", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
