@@ -41,7 +41,7 @@ __all__ = [
 ]
 
 
-class ModelSimilarityComputeHealth(BaseModel):  # type: ignore[misc]
+class ModelSimilarityComputeHealth(BaseModel):
     """Health status for the Similarity Compute Handler."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -53,7 +53,7 @@ class ModelSimilarityComputeHealth(BaseModel):  # type: ignore[misc]
     )
 
 
-class ModelSimilarityComputeMetadata(BaseModel):  # type: ignore[misc]
+class ModelSimilarityComputeMetadata(BaseModel):
     """Metadata describing similarity compute handler capabilities."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
