@@ -23,20 +23,20 @@ _log = logging.getLogger(__name__)
 # If the package is not installed we fall back to None sentinels and surface the error
 # at handle() time instead.
 try:
-    from onex_change_control.enums.enum_doc_staleness_verdict import (  # type: ignore[import-not-found]
+    from onex_change_control.enums.enum_doc_staleness_verdict import (
         EnumDocStalenessVerdict,
     )
-    from onex_change_control.models.model_doc_freshness_sweep_report import (  # type: ignore[import-not-found]
+    from onex_change_control.models.model_doc_freshness_sweep_report import (
         ModelDocFreshnessSweepReport,
         ModelRepoDocSummary,
     )
-    from onex_change_control.scanners.doc_reference_extractor import (  # type: ignore[import-not-found]
+    from onex_change_control.scanners.doc_reference_extractor import (
         extract_all_references,
     )
-    from onex_change_control.scanners.doc_reference_resolver import (  # type: ignore[import-not-found]
+    from onex_change_control.scanners.doc_reference_resolver import (
         resolve_references,
     )
-    from onex_change_control.scanners.doc_staleness_detector import (  # type: ignore[import-not-found]
+    from onex_change_control.scanners.doc_staleness_detector import (
         build_freshness_result,
         get_recently_changed_files,
     )
