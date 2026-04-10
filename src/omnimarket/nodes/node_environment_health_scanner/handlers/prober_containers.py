@@ -91,7 +91,7 @@ def probe_containers(
                 )
             )
 
-        restarts = int(container.get("restart_count", 0))
+        restarts = int(str(container.get("restart_count", 0)))
         if restarts >= _RESTART_FAIL_THRESHOLD:
             findings.append(
                 ModelHealthFinding(

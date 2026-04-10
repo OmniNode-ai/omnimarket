@@ -238,7 +238,7 @@ class NodeEnvironmentHealthScanner:
                 continue
         return sorted(topics)
 
-    def _collect_projection_specs(self, ssh_target: str | None) -> list:
+    def _collect_projection_specs(self, ssh_target: str | None) -> list[object]:
         """Query projection table row counts and timestamps via SSH psql."""
         import subprocess
 
