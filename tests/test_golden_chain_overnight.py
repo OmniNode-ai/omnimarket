@@ -8,8 +8,14 @@ or inject phase_results — no subprocess calls.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
+from omnibase_compat.overseer.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightHaltCondition,
+    ModelOvernightPhaseSpec,
+)
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
@@ -21,6 +27,41 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 
 CMD_TOPIC = "onex.cmd.omnimarket.overnight-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.overnight.session-completed.v1"
+
+
+def _make_contract(
+    *,
+    max_cost_usd: float = 10.0,
+    phases: list[ModelOvernightPhaseSpec] | None = None,
+    halt_conditions: list[ModelOvernightHaltCondition] | None = None,
+) -> ModelOvernightContract:
+    """Build a minimal ModelOvernightContract for testing."""
+    default_phases = [
+        ModelOvernightPhaseSpec(phase_name=phase.value)
+        for phase in [
+            EnumPhase.BUILD_LOOP,
+            EnumPhase.MERGE_SWEEP,
+            EnumPhase.CI_WATCH,
+            EnumPhase.PLATFORM_READINESS,
+        ]
+    ]
+    default_halt: list[ModelOvernightHaltCondition] = [
+        ModelOvernightHaltCondition(
+            condition_id="cost_ceiling",
+            description="Stop if cost exceeds ceiling",
+            check_type="cost_ceiling",
+            threshold=max_cost_usd,
+        )
+    ]
+    return ModelOvernightContract(
+        session_id="test-session-contract",
+        created_at=datetime.now(tz=UTC),
+        max_cost_usd=max_cost_usd,
+        phases=tuple(phases if phases is not None else default_phases),
+        halt_conditions=tuple(
+            halt_conditions if halt_conditions is not None else default_halt
+        ),
+    )
 
 
 @pytest.mark.unit
@@ -246,3 +287,150 @@ class TestOvernightGoldenChain:
         assert parsed["session_status"] == "completed"
         assert parsed["dry_run"] is True
         assert len(parsed["phases_run"]) == 4
+
+
+@pytest.mark.unit
+class TestOvernightContractEnforcement:
+    """Contract enforcement: cost ceiling and halt-on-failure checks."""
+
+    async def test_no_contract_behaves_as_before(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Without a contract, handler behaves exactly as before this change."""
+        handler = HandlerOvernight()
+        command = ModelOvernightCommand(
+            correlation_id="no-contract",
+            dry_run=True,
+        )
+        result = handler.handle(command)
+
+        assert result.session_status == EnumOvernightStatus.COMPLETED
+        assert result.halt_reason is None
+        assert len(result.phases_run) == 4
+
+    async def test_cost_ceiling_not_exceeded_completes(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """When accumulated cost stays below ceiling, pipeline completes normally."""
+        contract = _make_contract(max_cost_usd=10.0)
+        handler = HandlerOvernight()
+        command = ModelOvernightCommand(
+            correlation_id="cost-ok",
+            dry_run=False,
+            overnight_contract=contract,
+        )
+        phase_costs = {
+            EnumPhase.BUILD_LOOP: 1.0,
+            EnumPhase.MERGE_SWEEP: 0.5,
+            EnumPhase.CI_WATCH: 0.5,
+            EnumPhase.PLATFORM_READINESS: 0.5,
+        }
+        result = handler.handle(command, phase_costs=phase_costs)
+
+        assert result.session_status == EnumOvernightStatus.COMPLETED
+        assert result.halt_reason is None
+
+    async def test_cost_ceiling_exceeded_halts(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """When cost hits or exceeds ceiling after a phase, pipeline halts."""
+        contract = _make_contract(max_cost_usd=1.5)
+        handler = HandlerOvernight()
+        command = ModelOvernightCommand(
+            correlation_id="cost-halt",
+            dry_run=False,
+            overnight_contract=contract,
+        )
+        # BUILD_LOOP costs 1.0, MERGE_SWEEP pushes to 2.0 — ceiling is 1.5
+        phase_costs = {
+            EnumPhase.BUILD_LOOP: 1.0,
+            EnumPhase.MERGE_SWEEP: 1.0,
+        }
+        result = handler.handle(command, phase_costs=phase_costs)
+
+        assert result.halt_reason is not None
+        assert "cost_ceiling" in result.halt_reason
+        assert result.session_status == EnumOvernightStatus.FAILED
+        # Pipeline stopped — platform_readiness should not have run
+        assert EnumPhase.PLATFORM_READINESS.value not in result.phases_run
+
+    async def test_halt_on_failure_triggers_halt(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A phase with halt_on_failure=True that fails halts the pipeline."""
+        phases = [
+            ModelOvernightPhaseSpec(
+                phase_name=EnumPhase.BUILD_LOOP.value, halt_on_failure=True
+            ),
+            ModelOvernightPhaseSpec(phase_name=EnumPhase.MERGE_SWEEP.value),
+            ModelOvernightPhaseSpec(phase_name=EnumPhase.CI_WATCH.value),
+            ModelOvernightPhaseSpec(phase_name=EnumPhase.PLATFORM_READINESS.value),
+        ]
+        contract = _make_contract(phases=phases)
+        handler = HandlerOvernight()
+        command = ModelOvernightCommand(
+            correlation_id="halt-on-fail",
+            dry_run=False,
+            overnight_contract=contract,
+        )
+        result = handler.handle(
+            command,
+            phase_results={EnumPhase.BUILD_LOOP: False},
+        )
+
+        assert result.halt_reason is not None
+        assert "halt_on_failure" in result.halt_reason
+        assert EnumPhase.MERGE_SWEEP.value not in result.phases_run
+
+    async def test_halt_on_failure_false_continues(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A phase with halt_on_failure=False that fails does not trigger contract halt."""
+        phases = [
+            ModelOvernightPhaseSpec(phase_name=EnumPhase.BUILD_LOOP.value),
+            ModelOvernightPhaseSpec(
+                phase_name=EnumPhase.MERGE_SWEEP.value, halt_on_failure=False
+            ),
+            ModelOvernightPhaseSpec(phase_name=EnumPhase.CI_WATCH.value),
+            ModelOvernightPhaseSpec(phase_name=EnumPhase.PLATFORM_READINESS.value),
+        ]
+        contract = _make_contract(phases=phases)
+        handler = HandlerOvernight()
+        command = ModelOvernightCommand(
+            correlation_id="no-halt-on-fail",
+            dry_run=False,
+            overnight_contract=contract,
+        )
+        result = handler.handle(
+            command,
+            phase_results={
+                EnumPhase.BUILD_LOOP: True,
+                EnumPhase.MERGE_SWEEP: False,
+                EnumPhase.CI_WATCH: True,
+                EnumPhase.PLATFORM_READINESS: True,
+            },
+        )
+
+        # No contract halt — pipeline continues past failed merge_sweep
+        assert result.halt_reason is None
+        assert EnumPhase.CI_WATCH.value in result.phases_run
+        assert EnumPhase.PLATFORM_READINESS.value in result.phases_run
+        assert result.session_status == EnumOvernightStatus.PARTIAL
+
+    async def test_contract_halt_result_serializes(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """ModelOvernightResult with halt_reason serializes cleanly to JSON."""
+        contract = _make_contract(max_cost_usd=0.01)
+        handler = HandlerOvernight()
+        command = ModelOvernightCommand(
+            correlation_id="serial-test",
+            dry_run=False,
+            overnight_contract=contract,
+        )
+        phase_costs = {EnumPhase.BUILD_LOOP: 1.0}
+        result = handler.handle(command, phase_costs=phase_costs)
+
+        parsed = json.loads(result.model_dump_json())
+        assert "halt_reason" in parsed
+        assert parsed["halt_reason"] is not None
