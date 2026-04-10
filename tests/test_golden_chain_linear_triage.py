@@ -65,7 +65,9 @@ def _stub_client(
     client = MagicMock(spec=LinearClientProtocol)
     client.list_issues.return_value = _wrap_issues(issues)
 
-    def _list_children(*, parent_id: str, limit: int = 50) -> dict[str, Any]:
+    def _list_children(
+        *, parent_id: str, limit: int = 50, after: str | None = None
+    ) -> dict[str, Any]:
         node_list = (children or {}).get(parent_id, [])
         return {"data": {"issues": {"nodes": node_list}}}
 
