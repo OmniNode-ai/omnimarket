@@ -22,12 +22,16 @@ asyncio.run() caveat:
 from __future__ import annotations
 
 import asyncio
+from typing import Any, cast
 
 from omnibase_infra.nodes.node_onboarding_orchestrator.handlers.handler_onboarding import (
     handle_onboarding,
 )
 from omnibase_infra.nodes.node_onboarding_orchestrator.models.model_onboarding_input import (
     ModelOnboardingInput,
+)
+from omnibase_infra.nodes.node_onboarding_orchestrator.models.model_onboarding_output import (
+    ModelOnboardingOutput,
 )
 from omnibase_infra.onboarding.loader import load_canonical_graph
 from omnibase_infra.onboarding.policy_resolver import (
@@ -47,7 +51,7 @@ class HandlerOnboarding:
     and delegates to handle_onboarding via asyncio.run().
     """
 
-    def handle(self, command: ModelOnboardingStartCommand) -> dict:
+    def handle(self, command: ModelOnboardingStartCommand) -> dict[str, Any]:
         """Execute onboarding with the given command.
 
         Args:
@@ -92,7 +96,9 @@ class HandlerOnboarding:
             skip_steps=command.skip_steps or [],
             continue_on_failure=command.continue_on_failure,
         )
-        output = asyncio.run(handle_onboarding(input_model))
+        output = cast(
+            ModelOnboardingOutput, asyncio.run(handle_onboarding(input_model))
+        )
         return output.model_dump()
 
 

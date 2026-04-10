@@ -21,4 +21,4 @@ license: "MIT"
 tags: ["onboarding", "new-employee", "setup", "progressive-disclosure"]
 pack: "onboarding"
 display_name: "Onboarding"
-node_role: "setup"
+node_role: "orchestrator"
