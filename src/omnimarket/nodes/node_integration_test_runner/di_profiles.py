@@ -38,8 +38,8 @@ def build_event_bus_for_profile(profile: EnumDIProfile) -> Any:
         )
 
     try:
-        from omnibase_infra.event_bus.event_bus_kafka import (
-            EventBusKafka,  # type: ignore[import]
+        from omnibase_infra.event_bus.event_bus_kafka import (  # type: ignore[import-untyped]
+            EventBusKafka,
         )
 
         return EventBusKafka()
@@ -68,7 +68,7 @@ def build_conftest_plugin_for_profile(profile: EnumDIProfile) -> Any:
         # the DI bus is always injected, overriding the conftest fixture by name.
         # Tests that declare `event_bus` explicitly will receive this fixture.
         @pytest.fixture(autouse=False)
-        def event_bus(self):
+        def event_bus(self) -> Any:
             return bus
 
     return _DIPlugin()
