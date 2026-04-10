@@ -20,6 +20,7 @@ import os
 import sys
 
 from omnimarket.nodes.node_environment_health_scanner.handlers.handler_environment_health_scanner import (
+    EnumSubsystem,
     EnvironmentHealthRequest,
     EnvironmentHealthResult,
     NodeEnvironmentHealthScanner,
@@ -30,15 +31,7 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
 
 _log = logging.getLogger(__name__)
 
-_ALL_SUBSYSTEMS = [
-    "emit_daemon",
-    "hooks",
-    "kafka",
-    "containers",
-    "projections",
-    "entry_points",
-    "model_endpoints",
-]
+_ALL_SUBSYSTEMS = [s.value for s in EnumSubsystem]
 
 
 def main() -> None:
@@ -60,8 +53,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--ssh-target",
-        default=os.environ.get("ONEX_INFRA_SSH_TARGET", "jonah@192.168.86.201"),
-        help="SSH target for .201 infra probes (default: jonah@192.168.86.201)",
+        default=os.environ.get("ONEX_INFRA_SSH_TARGET"),
+        help="SSH target for .201 infra probes (default: $ONEX_INFRA_SSH_TARGET)",
     )
     parser.add_argument(
         "--omni-home",

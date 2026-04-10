@@ -79,6 +79,7 @@ def probe_containers(
                     evidence="docker ps --format json",
                 )
             )
+            continue
 
         if not container.get("healthy", True):
             findings.append(

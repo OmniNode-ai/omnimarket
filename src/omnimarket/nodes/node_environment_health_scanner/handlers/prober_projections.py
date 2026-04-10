@@ -58,7 +58,12 @@ def probe_projections(
             continue
 
         if spec.last_updated is not None:
-            age = (now - spec.last_updated).total_seconds()
+            last_updated = (
+                spec.last_updated
+                if spec.last_updated.tzinfo is not None
+                else spec.last_updated.replace(tzinfo=UTC)
+            )
+            age = (now - last_updated).total_seconds()
             if age > spec.max_freshness_seconds * 2:
                 findings.append(
                     ModelHealthFinding(

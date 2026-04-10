@@ -54,6 +54,17 @@ def probe_entry_points(
                 )
             )
 
+    if not specs:
+        findings.append(
+            ModelHealthFinding(
+                subsystem=EnumSubsystem.ENTRY_POINTS,
+                severity=EnumHealthFindingSeverity.WARN,
+                subject="discovery",
+                message="No onex.nodes entry-points discovered — package may not be installed",
+                evidence="importlib.metadata.entry_points(group='onex.nodes')",
+            )
+        )
+
     status = aggregate_status(findings) if findings else EnumReadinessStatus.PASS
     return ModelSubsystemResult(
         subsystem=EnumSubsystem.ENTRY_POINTS,

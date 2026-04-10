@@ -105,6 +105,16 @@ def probe_hooks(log_dir: str) -> ModelSubsystemResult:
                                 evidence=str(summary_path),
                             )
                         )
+                else:
+                    findings.append(
+                        ModelHealthFinding(
+                            subsystem=EnumSubsystem.HOOKS,
+                            severity=EnumHealthFindingSeverity.WARN,
+                            subject="violations_summary.json",
+                            message="Unsupported or malformed violations_summary schema",
+                            evidence=str(summary_path),
+                        )
+                    )
         except (json.JSONDecodeError, KeyError, ValueError):
             findings.append(
                 ModelHealthFinding(
@@ -116,10 +126,43 @@ def probe_hooks(log_dir: str) -> ModelSubsystemResult:
                 )
             )
     else:
-        # Fall back to violations.log
+        # Fall back to violations.log — read content to count actual violations
         violations_path = log_path / "violations.log"
         if violations_path.exists():
             checks = 1
+            try:
+                raw_content = violations_path.read_text()
+                # Count non-empty lines, treating "[]" (empty JSON array) as no violations
+                violation_lines = [
+                    ln
+                    for ln in raw_content.splitlines()
+                    if ln.strip() and ln.strip() not in ("[]", "{}", "")
+                ]
+                if violation_lines:
+                    severity = (
+                        EnumHealthFindingSeverity.FAIL
+                        if len(violation_lines) >= 20
+                        else EnumHealthFindingSeverity.WARN
+                    )
+                    findings.append(
+                        ModelHealthFinding(
+                            subsystem=EnumSubsystem.HOOKS,
+                            severity=severity,
+                            subject="violations.log",
+                            message=f"{len(violation_lines)} hook violation(s) recorded",
+                            evidence=str(violations_path),
+                        )
+                    )
+            except OSError:
+                findings.append(
+                    ModelHealthFinding(
+                        subsystem=EnumSubsystem.HOOKS,
+                        severity=EnumHealthFindingSeverity.FAIL,
+                        subject="violations.log",
+                        message="Failed to read violations.log",
+                        evidence=str(violations_path),
+                    )
+                )
         else:
             findings.append(
                 ModelHealthFinding(

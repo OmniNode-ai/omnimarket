@@ -17,6 +17,8 @@ if TYPE_CHECKING:
         ModelProjectionSpec,
     )
 
+from datetime import UTC
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
@@ -60,11 +62,14 @@ class ModelSubsystemResult(BaseModel):
     raw_detail: str = ""
 
 
+_DEFAULT_SSH_TARGET = "jonah@192.168.86.201"
+
+
 class EnvironmentHealthRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     subsystems: list[str] = Field(default_factory=list)
     omni_home: str = ""
-    ssh_target: str | None = "jonah@192.168.86.201"
+    ssh_target: str | None = _DEFAULT_SSH_TARGET
     now_override: str | None = None  # ISO datetime string for test injection
 
 
@@ -114,7 +119,7 @@ class NodeEnvironmentHealthScanner:
         )
         omni_home = request.omni_home or os.environ.get("OMNI_HOME", "")
         ssh_target = request.ssh_target or os.environ.get(
-            "ONEX_INFRA_SSH_TARGET", "jonah@192.168.86.201"
+            "ONEX_INFRA_SSH_TARGET", _DEFAULT_SSH_TARGET
         )
         onex_state_dir = os.environ.get(
             "ONEX_STATE_DIR", str(Path.home() / ".onex_state")
@@ -293,8 +298,12 @@ class NodeEnvironmentHealthScanner:
                 if last_updated_str and last_updated_str not in ("", "null", "NULL"):
                     from datetime import datetime
 
-                    last_updated = datetime.fromisoformat(
-                        last_updated_str.replace(" ", "T")
+                    parsed = datetime.fromisoformat(last_updated_str.replace(" ", "T"))
+                    # Ensure timezone-aware to avoid TypeError when comparing with UTC datetimes
+                    last_updated = (
+                        parsed
+                        if parsed.tzinfo is not None
+                        else parsed.replace(tzinfo=UTC)
                     )
                 specs.append(
                     ModelProjectionSpec(
