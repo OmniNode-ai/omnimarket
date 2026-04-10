@@ -78,6 +78,18 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default="",
         description="Comma-separated repo slugs to filter (empty = all).",
     )
+    enable_trivial_comment_resolution: bool = Field(
+        default=True,
+        description="Resolve trivial bot (CodeRabbit/dependabot) review threads before merge.",
+    )
+    enable_admin_merge_fallback: bool = Field(
+        default=False,
+        description="Admin merge fallback for PRs stuck in merge queue (opt-in only).",
+    )
+    admin_fallback_threshold_minutes: int = Field(
+        default=30,
+        description="Minutes a PR must be stuck in queue before admin merge fallback fires.",
+    )
 
 
 class ModelPrLifecycleResult(BaseModel):
