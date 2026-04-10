@@ -1,0 +1,23 @@
+name: node_linear_triage
+version: "1.0.0"
+description: "Scan non-completed Linear tickets, verify against PR state, auto-mark done, flag stale"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_linear_triage: "omnimarket.nodes.node_linear_triage"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: mutating
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["linear", "triage", "housekeeping", "tickets", "prs"]
+pack: "linear"
+display_name: "Linear Triage"
+node_role: "effect"

@@ -1,0 +1,71 @@
+---
+name: node_linear_triage
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Scan all non-completed Linear tickets, verify status against actual GitHub PR state,
+  auto-mark merged tickets done, flag stale tickets, and detect completed epics.
+
+handler:
+  module: omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage
+  class: HandlerLinearTriage
+  input_model: omnimarket.nodes.node_linear_triage.models.model_linear_triage_state.ModelLinearTriageStartCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: false
+  timeout_ms: 600000
+
+inputs:
+  threshold_days:
+    type: int
+    description: "Tickets updated within this many days are 'recent' and get PR-verified (default 14)"
+    required: false
+    default: 14
+  dry_run:
+    type: bool
+    description: "Assess and report without writing any changes to Linear"
+    required: false
+    default: false
+  team:
+    type: str
+    description: "Linear team name (default: Omninode)"
+    required: false
+    default: "Omninode"
+
+outputs:
+  total_scanned:
+    type: int
+    description: "Total non-done tickets scanned"
+  recent_count:
+    type: int
+    description: "Tickets updated within threshold_days"
+  stale_count:
+    type: int
+    description: "Tickets updated beyond threshold_days"
+  marked_done:
+    type: int
+    description: "Tickets auto-marked done (merged PR confirmed)"
+  marked_done_superseded:
+    type: int
+    description: "Tickets marked done via sibling merged PR"
+  epics_closed:
+    type: int
+    description: "Epics closed because all children are done"
+  stale_flagged:
+    type: int
+    description: "Tickets flagged as stale for human review"
+  orphaned:
+    type: int
+    description: "Tickets without a parent epic"
+
+terminal_event: onex.evt.omnimarket.linear-triage-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.linear-triage-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.linear-triage-completed.v1
