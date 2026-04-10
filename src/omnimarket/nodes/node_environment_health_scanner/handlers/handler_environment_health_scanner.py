@@ -10,6 +10,12 @@ from __future__ import annotations
 import os
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from omnimarket.nodes.node_environment_health_scanner.handlers.prober_projections import (
+        ModelProjectionSpec,
+    )
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -238,7 +244,9 @@ class NodeEnvironmentHealthScanner:
                 continue
         return sorted(topics)
 
-    def _collect_projection_specs(self, ssh_target: str | None) -> list[object]:
+    def _collect_projection_specs(
+        self, ssh_target: str | None
+    ) -> list[ModelProjectionSpec]:
         """Query projection table row counts and timestamps via SSH psql."""
         import subprocess
 
