@@ -22,8 +22,11 @@ class EnumPrLifecyclePhase(StrEnum):
     Phase Transitions:
         IDLE -> INVENTORYING: Sweep command received, collect PR state
         INVENTORYING -> TRIAGED: Inventory complete, classify PRs by block reason
+        TRIAGED -> REBASING: Stale (BEHIND/UNKNOWN) PRs found and auto-rebase enabled
         TRIAGED -> FIXING: Blocked PRs found, dispatch fix actions
         TRIAGED -> MERGING: No blocked PRs, proceed to merge eligible
+        REBASING -> MERGING: Rebase attempts complete, proceed to merge
+        REBASING -> FAILED: Rebase error
         FIXING -> MERGING: Fix actions dispatched, proceed to merge
         MERGING -> COMPLETE: Merge actions dispatched, sweep complete
         Any -> FAILED: Unrecoverable error
@@ -32,6 +35,7 @@ class EnumPrLifecyclePhase(StrEnum):
     IDLE = "idle"
     INVENTORYING = "inventorying"
     TRIAGED = "triaged"
+    REBASING = "rebasing"
     FIXING = "fixing"
     MERGING = "merging"
     COMPLETE = "complete"
@@ -43,6 +47,8 @@ class EnumPrLifecycleEventTrigger(StrEnum):
 
     START_RECEIVED = "start_received"
     INVENTORY_COMPLETE = "inventory_complete"
+    REBASE_PENDING = "rebase_pending"
+    REBASE_COMPLETE = "rebase_complete"
     FIXES_PENDING = "fixes_pending"
     NO_FIXES_NEEDED = "no_fixes_needed"
     FIXES_COMPLETE = "fixes_complete"

@@ -40,6 +40,62 @@ logger = logging.getLogger(__name__)
 HandlerType = Literal["NODE_HANDLER"]
 HandlerCategory = Literal["COMPUTE"]
 
+# ---------------------------------------------------------------------------
+# DAG dependency ordering (OMN-8205)
+# ---------------------------------------------------------------------------
+
+# Canonical dependency order (repo slug -> priority tier, lower = earlier).
+# Add new repos here with the appropriate tier number.
+_REPO_DEPENDENCY_TIERS: dict[str, int] = {
+    "omnibase_compat": 0,
+    "omnibase_spi": 1,
+    "omnibase_core": 2,
+    "omnibase_infra": 3,
+    "omnimarket": 4,
+    "omniclaude": 5,
+    "omniintelligence": 6,
+    "omnimemory": 7,
+    "omninode_infra": 8,
+    "onex_change_control": 9,
+    "omnidash": 10,
+    "omniweb": 11,
+    # Unknown repos: tier 99 (merge last) — add new repos here
+}
+
+_UNKNOWN_TIER = 99
+_GREEN_CATEGORY = "green"
+
+
+def _repo_slug(repo: str) -> str:
+    """Extract the bare repo slug from an owner/repo string."""
+    return repo.split("/")[-1]
+
+
+def _apply_dag_ordering(prs: list[Any]) -> list[Any]:
+    """Sort PRs into dependency-safe merge order.
+
+    Rules:
+    - Sort by (tier, green_first) where GREEN PRs within a tier sort before non-green.
+    - Stable sort: same-tier same-status PRs preserve original order.
+    - Unknown repos: tier 99, merge last.
+
+    Args:
+        prs: List of TriageRecord-like objects with .repo and .category attributes.
+
+    Returns:
+        New list sorted in dependency-safe order.
+    """
+
+    def _sort_key(pr: Any) -> tuple[int, int]:
+        tier = _REPO_DEPENDENCY_TIERS.get(_repo_slug(pr.repo), _UNKNOWN_TIER)
+        # GREEN sorts first (0), non-green sorts second (1)
+        is_non_green = 0 if getattr(pr, "category", "") == _GREEN_CATEGORY else 1
+        return (tier, is_non_green)
+
+    return sorted(prs, key=_sort_key)
+
+
+# ---------------------------------------------------------------------------
 # Valid FSM transitions: (from_phase, trigger) -> to_phase
 _TRANSITIONS: dict[
     tuple[EnumPrLifecyclePhase, EnumPrLifecycleEventTrigger],
@@ -59,6 +115,10 @@ _TRANSITIONS: dict[
     ): EnumPrLifecyclePhase.FAILED,
     (
         EnumPrLifecyclePhase.TRIAGED,
+        EnumPrLifecycleEventTrigger.REBASE_PENDING,
+    ): EnumPrLifecyclePhase.REBASING,
+    (
+        EnumPrLifecyclePhase.TRIAGED,
         EnumPrLifecycleEventTrigger.FIXES_PENDING,
     ): EnumPrLifecyclePhase.FIXING,
     (
@@ -67,6 +127,14 @@ _TRANSITIONS: dict[
     ): EnumPrLifecyclePhase.MERGING,
     (
         EnumPrLifecyclePhase.TRIAGED,
+        EnumPrLifecycleEventTrigger.ERROR,
+    ): EnumPrLifecyclePhase.FAILED,
+    (
+        EnumPrLifecyclePhase.REBASING,
+        EnumPrLifecycleEventTrigger.REBASE_COMPLETE,
+    ): EnumPrLifecyclePhase.MERGING,
+    (
+        EnumPrLifecyclePhase.REBASING,
         EnumPrLifecycleEventTrigger.ERROR,
     ): EnumPrLifecyclePhase.FAILED,
     (
@@ -90,6 +158,7 @@ _TRANSITIONS: dict[
 # Map to_phase -> intent type emitted on transition (for non-dry-run paths)
 _PHASE_INTENTS: dict[EnumPrLifecyclePhase, EnumPrLifecycleIntentType] = {
     EnumPrLifecyclePhase.INVENTORYING: EnumPrLifecycleIntentType.START_INVENTORY,
+    EnumPrLifecyclePhase.REBASING: EnumPrLifecycleIntentType.START_REBASE,
     EnumPrLifecyclePhase.FIXING: EnumPrLifecycleIntentType.START_FIX,
     EnumPrLifecyclePhase.MERGING: EnumPrLifecycleIntentType.START_MERGE,
     EnumPrLifecyclePhase.COMPLETE: EnumPrLifecycleIntentType.SWEEP_COMPLETE,

@@ -78,9 +78,26 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default="",
         description="Comma-separated repo slugs to filter (empty = all).",
     )
+    # Merge-sweep upgrade capabilities (OMN-8197)
     enable_auto_rebase: bool = Field(
         default=True,
-        description="Auto-rebase stale (Track A-update) PR branches before merge.",
+        description="Auto-rebase stale branches (BEHIND/UNKNOWN) before merge attempt.",
+    )
+    use_dag_ordering: bool = Field(
+        default=True,
+        description="Merge PRs in repo dependency order (omnibase_compat first, omnidash last).",
+    )
+    enable_trivial_comment_resolution: bool = Field(
+        default=True,
+        description="Auto-resolve trivial CodeRabbit/bot review threads before merge.",
+    )
+    enable_admin_merge_fallback: bool = Field(
+        default=False,
+        description="Admin-merge PRs stuck in queue past threshold (opt-in only).",
+    )
+    admin_fallback_threshold_minutes: int = Field(
+        default=30,
+        description="Minutes before a merge-queued PR is considered stuck.",
     )
 
 
@@ -94,7 +111,6 @@ class ModelPrLifecycleResult(BaseModel):
     prs_merged: int = Field(default=0, ge=0)
     prs_fixed: int = Field(default=0, ge=0)
     prs_skipped: int = Field(default=0, ge=0)
-    prs_rebased: int = Field(default=0, ge=0)
     final_state: str = Field(default="COMPLETE")
     error_message: str | None = Field(default=None)
 
@@ -108,7 +124,6 @@ class EnumOrchestratorState(StrEnum):
     IDLE = "IDLE"
     INVENTORYING = "INVENTORYING"
     TRIAGING = "TRIAGING"
-    REBASING = "REBASING"
     MERGING = "MERGING"
     FIXING = "FIXING"
     COMPLETE = "COMPLETE"
@@ -127,7 +142,6 @@ class _SweepState:
     prs_merged: int = 0
     prs_fixed: int = 0
     prs_skipped: int = 0
-    prs_rebased: int = 0
     error_message: str | None = None
 
     # Inter-phase data
@@ -415,54 +429,11 @@ class HandlerPrLifecycleOrchestrator:
             )
             state.prs_skipped = len(skip_prs)
 
-            # Phase: REBASING (auto-rebase stale merge PRs before merging)
-            prev_phase_from = "TRIAGING"
-            if merge_prs and command.enable_auto_rebase and not command.fix_only:
-                # Identify stale PRs (Track A-update: behind base)
-                stale_pr_numbers = {
-                    pr.pr_number
-                    for pr in inv_result.prs
-                    if pr.merge_state_status == "BEHIND"
-                }
-                stale_merge_prs = tuple(
-                    tr for tr in merge_prs if tr.pr_number in stale_pr_numbers
-                )
-                if stale_merge_prs:
-                    state.fsm = EnumOrchestratorState.REBASING
-                    await self._publish_phase_event(
-                        "TRIAGING", "REBASING", command.correlation_id
-                    )
-                    from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_auto_rebase import (
-                        HandlerAutoRebase,
-                    )
-
-                    rebase_handler = HandlerAutoRebase()
-                    for tr in stale_merge_prs:
-                        rebase_result = await rebase_handler.handle(
-                            pr_number=tr.pr_number,
-                            repo=tr.repo,
-                            dry_run=command.dry_run,
-                        )
-                        if rebase_result.success:
-                            state.prs_rebased += 1
-                        else:
-                            logger.warning(
-                                "[PR-LIFECYCLE-ORCH] rebase failed pr=%d repo=%s: %s",
-                                tr.pr_number,
-                                tr.repo,
-                                rebase_result.error_message,
-                            )
-                    logger.info(
-                        "[PR-LIFECYCLE-ORCH] rebase completed: %d rebased",
-                        state.prs_rebased,
-                    )
-                    prev_phase_from = "REBASING"
-
             # Phase: MERGING (skip if fix_only)
             if merge_prs and not command.fix_only:
                 state.fsm = EnumOrchestratorState.MERGING
                 await self._publish_phase_event(
-                    prev_phase_from, "MERGING", command.correlation_id
+                    "TRIAGING", "MERGING", command.correlation_id
                 )
 
                 assert self._merge is not None
@@ -487,7 +458,7 @@ class HandlerPrLifecycleOrchestrator:
 
                 next_from = "MERGING"
             else:
-                next_from = prev_phase_from
+                next_from = "TRIAGING"
 
             # Phase: FIXING (skip if merge_only)
             if fix_prs and not command.merge_only:
@@ -548,7 +519,6 @@ class HandlerPrLifecycleOrchestrator:
             prs_merged=state.prs_merged,
             prs_fixed=state.prs_fixed,
             prs_skipped=state.prs_skipped,
-            prs_rebased=state.prs_rebased,
             final_state=state.fsm.value,
             error_message=state.error_message,
         )
