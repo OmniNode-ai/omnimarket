@@ -1,0 +1,66 @@
+---
+name: session_bootstrap
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Overnight session bootstrapper. Reads ModelOvernightContract, writes
+  contract snapshot to .onex_state/, sets up timer configs, and emits
+  session-bootstrap-completed event. Runs FIRST each evening.
+
+handler:
+  module: omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap
+  class: HandlerSessionBootstrap
+  input_model: omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap.ModelBootstrapCommand
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  session_id:
+    type: uuid
+    description: "Unique session ID (caller generates)"
+    required: true
+  contract:
+    type: object
+    description: "ModelOvernightContract — session-level verification contract"
+    required: true
+  state_dir:
+    type: str
+    description: "Base path for contract snapshot (default: .onex_state)"
+    required: false
+    default: ".onex_state"
+  dry_run:
+    type: bool
+    description: "Skip filesystem writes when true"
+    required: false
+    default: false
+
+outputs:
+  session_id:
+    type: str
+    description: "Session ID echoed from command"
+  status:
+    type: str
+    description: "ready | degraded | failed"
+  contract_path:
+    type: str
+    description: "Absolute path written (or (dry-run) if dry_run)"
+  timer_configs:
+    type: list
+    description: "Human-readable list of configured timers"
+  warnings:
+    type: list
+    description: "Advisory warnings (non-fatal)"
+
+terminal_event: onex.evt.omnimarket.session-bootstrap-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.session-bootstrap-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.session-bootstrap-completed.v1
