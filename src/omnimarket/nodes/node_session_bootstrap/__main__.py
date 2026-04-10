@@ -20,14 +20,14 @@ from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap 
     HandlerSessionBootstrap,
     ModelBootstrapCommand,
 )
-from omnimarket.nodes.node_session_bootstrap.models.model_overnight_contract import (
-    ModelOvernightContract,
+from omnimarket.nodes.node_session_bootstrap.models.model_session_contract import (
+    ModelSessionContract,
 )
 
 
 def main() -> None:
     today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
-    parser = argparse.ArgumentParser(description="Run the overnight session bootstrap.")
+    parser = argparse.ArgumentParser(description="Run the session bootstrap.")
     parser.add_argument(
         "--session-id",
         type=str,
@@ -37,7 +37,7 @@ def main() -> None:
     parser.add_argument(
         "--session-label",
         type=str,
-        default=f"{today} overnight",
+        default=f"{today} session",
         help="Human-readable session label",
     )
     parser.add_argument(
@@ -75,7 +75,7 @@ def main() -> None:
 
     phases = [p.strip() for p in args.phases_expected.split(",") if p.strip()]
 
-    contract = ModelOvernightContract(
+    contract = ModelSessionContract(
         session_id=args.session_id,
         session_label=args.session_label,
         phases_expected=phases,

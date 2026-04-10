@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerSessionBootstrap — Overnight session bootstrapper.
+"""HandlerSessionBootstrap — Session bootstrapper.
 
-Reads ModelOvernightContract, writes a contract snapshot to .onex_state/,
+Reads ModelSessionContract, writes a contract snapshot to .onex_state/,
 derives timer configurations from expected phases, and returns a structured
-result. Runs FIRST each evening to initialize the session.
+result. Runs FIRST each session to initialize the session.
 
 This handler is pure — no external I/O in the handler itself. Filesystem
 writes are gated by dry_run. Callers pass an absolute state_dir path.
@@ -19,8 +19,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_session_bootstrap.models.model_overnight_contract import (
-    ModelOvernightContract,
+from omnimarket.nodes.node_session_bootstrap.models.model_session_contract import (
+    ModelSessionContract,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class ModelBootstrapCommand(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
-    contract: ModelOvernightContract
+    contract: ModelSessionContract
     state_dir: str = ".onex_state"
     dry_run: bool = False
 
@@ -72,7 +72,7 @@ class ModelBootstrapResult(BaseModel):
 class HandlerSessionBootstrap:
     """Session bootstrap orchestrator.
 
-    Pure handler — no direct I/O. Validates the overnight contract, derives
+    Pure handler — no direct I/O. Validates the session contract, derives
     timer configs from expected phases, writes contract JSON to disk (unless
     dry_run), and returns ModelBootstrapResult.
     """
@@ -137,7 +137,7 @@ class HandlerSessionBootstrap:
         """Write contract JSON to state_dir and return the absolute path."""
         state_dir = os.path.abspath(command.state_dir)
         os.makedirs(state_dir, exist_ok=True)
-        filename = f"overnight-contract-{command.session_id}.json"
+        filename = f"session-contract-{command.session_id}.json"
         path = os.path.join(state_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(command.contract.model_dump_json(indent=2))
