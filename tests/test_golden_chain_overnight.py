@@ -30,7 +30,7 @@ class TestOvernightGoldenChain:
     async def test_dry_run_all_phases_succeed(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """dry_run mode should run all 4 phases and return COMPLETED."""
+        """dry_run mode should run all 5 phases and return COMPLETED."""
         handler = HandlerOvernight()
         command = ModelOvernightCommand(
             correlation_id="dry-001",
@@ -39,7 +39,7 @@ class TestOvernightGoldenChain:
         result = handler.handle(command)
 
         assert result.session_status == EnumOvernightStatus.COMPLETED
-        assert len(result.phases_run) == 4
+        assert len(result.phases_run) == 5
         assert len(result.phases_failed) == 0
         assert result.dry_run is True
 
@@ -55,6 +55,7 @@ class TestOvernightGoldenChain:
         result = handler.handle(command)
 
         expected_order = [
+            EnumPhase.NIGHTLY_LOOP.value,
             EnumPhase.BUILD_LOOP.value,
             EnumPhase.MERGE_SWEEP.value,
             EnumPhase.CI_WATCH.value,
@@ -95,7 +96,7 @@ class TestOvernightGoldenChain:
         assert result.session_status == EnumOvernightStatus.COMPLETED
 
     async def test_skip_both_optional_phases(self, event_bus: EventBusInmemory) -> None:
-        """Skipping both optional phases still completes with ci_watch and platform_readiness."""
+        """Skipping both optional phases still completes with nightly_loop, ci_watch, platform_readiness."""
         handler = HandlerOvernight()
         command = ModelOvernightCommand(
             correlation_id="skip-both",
@@ -105,7 +106,8 @@ class TestOvernightGoldenChain:
         )
         result = handler.handle(command)
 
-        assert len(result.phases_run) == 2
+        assert len(result.phases_run) == 3
+        assert EnumPhase.NIGHTLY_LOOP.value in result.phases_run
         assert EnumPhase.CI_WATCH.value in result.phases_run
         assert EnumPhase.PLATFORM_READINESS.value in result.phases_run
         assert result.session_status == EnumOvernightStatus.COMPLETED
@@ -121,6 +123,7 @@ class TestOvernightGoldenChain:
         )
         # ci_watch fails, everything else succeeds
         phase_results = {
+            EnumPhase.NIGHTLY_LOOP: True,
             EnumPhase.BUILD_LOOP: True,
             EnumPhase.MERGE_SWEEP: True,
             EnumPhase.CI_WATCH: False,
@@ -142,6 +145,7 @@ class TestOvernightGoldenChain:
             dry_run=False,
         )
         phase_results = {
+            EnumPhase.NIGHTLY_LOOP: True,
             EnumPhase.BUILD_LOOP: False,
         }
         result = handler.handle(command, phase_results=phase_results)
@@ -149,26 +153,27 @@ class TestOvernightGoldenChain:
         assert EnumPhase.BUILD_LOOP.value in result.phases_failed
         # merge_sweep and later should NOT have run
         assert EnumPhase.MERGE_SWEEP.value not in result.phases_run
-        assert result.session_status == EnumOvernightStatus.FAILED
+        # nightly_loop succeeded, build_loop failed → PARTIAL (1 failed, 2 ran)
+        assert result.session_status == EnumOvernightStatus.PARTIAL
 
     async def test_all_phases_fail_yields_failed_status(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """build_loop failing alone = FAILED (halts immediately, nothing else ran)."""
+        """nightly_loop failing alone = FAILED (halts immediately, nothing else ran)."""
         handler = HandlerOvernight()
         command = ModelOvernightCommand(
             correlation_id="all-fail",
             dry_run=False,
         )
+        # nightly_loop fails first — pipeline halts before any other phase
         phase_results = {
-            EnumPhase.BUILD_LOOP: False,
-            EnumPhase.MERGE_SWEEP: False,
-            EnumPhase.CI_WATCH: False,
-            EnumPhase.PLATFORM_READINESS: False,
+            EnumPhase.NIGHTLY_LOOP: False,
         }
         result = handler.handle(command, phase_results=phase_results)
 
         assert result.session_status == EnumOvernightStatus.FAILED
+        assert EnumPhase.NIGHTLY_LOOP.value in result.phases_failed
+        assert EnumPhase.BUILD_LOOP.value not in result.phases_run
 
     async def test_correlation_id_preserved(self, event_bus: EventBusInmemory) -> None:
         """correlation_id should round-trip through the result."""
@@ -245,4 +250,4 @@ class TestOvernightGoldenChain:
 
         assert parsed["session_status"] == "completed"
         assert parsed["dry_run"] is True
-        assert len(parsed["phases_run"]) == 4
+        assert len(parsed["phases_run"]) == 5
