@@ -32,9 +32,13 @@ import subprocess
 import textwrap
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import UUID, uuid4
 
 import httpx
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
@@ -98,7 +102,7 @@ _MODEL_COST_PER_1K: dict[str, float] = {
 }
 
 
-def _build_event_bus() -> object | None:
+def _build_event_bus() -> ProtocolEventBusPublisher | None:
     """Build a live Kafka event bus if KAFKA_BOOTSTRAP_SERVERS is set."""
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
     if not bootstrap:
@@ -111,7 +115,7 @@ def _build_event_bus() -> object | None:
             EventBusKafka,
         )
 
-        bus = EventBusKafka()
+        bus = cast(ProtocolEventBusPublisher, EventBusKafka())
         logger.info("[BUILD-LOOP] EventBusKafka connected to %s", bootstrap)
         return bus
     except Exception as exc:
