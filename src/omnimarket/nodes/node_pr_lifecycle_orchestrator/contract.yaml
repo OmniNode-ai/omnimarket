@@ -15,9 +15,9 @@ description: >
     - ProtocolFixHandler           (node_pr_lifecycle_fix_effect)
     - ProtocolStateReducerHandler  (node_pr_lifecycle_state_reducer)
 
-  FSM: IDLE -> INVENTORYING -> TRIAGING -> [MERGING|FIXING|SKIPPED] -> COMPLETE
+  FSM: IDLE -> INVENTORYING -> TRIAGING -> [REBASING|MERGING|FIXING|SKIPPED] -> COMPLETE
   Entry flags control which transitions are enabled:
-    dry_run, inventory_only, fix_only, merge_only, repos (CSV filter)
+    dry_run, inventory_only, fix_only, merge_only, enable_auto_rebase, repos (CSV filter)
 
 handler_routing:
   routing_strategy: operation_match
@@ -65,6 +65,11 @@ inputs:
     description: "Comma-separated repo slugs to filter (empty = all)"
     required: false
     default: ""
+  enable_auto_rebase:
+    type: bool
+    description: "Auto-rebase stale (Track A-update) PR branches before merge"
+    required: false
+    default: true
 
 outputs:
   prs_inventoried:
@@ -120,6 +125,7 @@ fsm:
     - IDLE
     - INVENTORYING
     - TRIAGING
+    - REBASING
     - MERGING
     - FIXING
     - COMPLETE
@@ -139,14 +145,23 @@ fsm:
       to: COMPLETE
       trigger: "inventory_only flag set"
     - from: TRIAGING
+      to: REBASING
+      trigger: "Track A-update PRs present and enable_auto_rebase=True"
+    - from: TRIAGING
       to: MERGING
-      trigger: "triage completed, merge not skipped"
+      trigger: "triage completed, merge not skipped, no stale PRs or rebase skipped"
     - from: TRIAGING
       to: FIXING
       trigger: "triage completed, fix_only flag set"
     - from: TRIAGING
       to: COMPLETE
       trigger: "triage completed, dry_run or no actionable PRs"
+    - from: REBASING
+      to: MERGING
+      trigger: "rebase attempts complete"
+    - from: REBASING
+      to: FAILED
+      trigger: "error"
     - from: MERGING
       to: FIXING
       trigger: "merge completed, not merge_only"

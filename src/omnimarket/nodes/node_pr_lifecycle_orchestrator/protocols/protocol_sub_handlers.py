@@ -48,6 +48,10 @@ class PrRecord(BaseModel):
         default=0,
         description="Count of unresolved CodeRabbit threads.",
     )
+    merge_state_status: str | None = Field(
+        default=None,
+        description="GitHub merge state: CLEAN | DIRTY | BLOCKED | BEHIND | UNKNOWN",
+    )
 
 
 class EnumPrCategory(StrEnum):

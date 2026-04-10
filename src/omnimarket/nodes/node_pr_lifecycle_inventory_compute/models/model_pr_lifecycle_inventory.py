@@ -8,9 +8,10 @@ Related:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelPrCheckRun(BaseModel):
@@ -62,6 +63,18 @@ class ModelPrState(BaseModel):
     ci_passing: bool | None = None  # None when checks not yet complete
 
 
+class ModelStuckQueueEntry(BaseModel):
+    """A PR that has been in the merge queue longer than the stuck threshold."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int
+    repo: str
+    title: str
+    queue_entered_at: datetime
+    queue_age_minutes: float
+
+
 class ModelPrInventoryOutput(BaseModel):
     """Output of pr_lifecycle_inventory_compute.
 
@@ -74,4 +87,8 @@ class ModelPrInventoryOutput(BaseModel):
     collection_errors: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Errors encountered during collection (e.g. PR not found)",
+    )
+    stuck_queue_prs: list[ModelStuckQueueEntry] = Field(
+        default_factory=list,
+        description="PRs that have been queued past the stuck threshold (default 30 min).",
     )

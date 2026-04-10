@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+from datetime import UTC, datetime
 from typing import Literal
 
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
@@ -22,7 +23,10 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecy
     ModelPrInventoryOutput,
     ModelPrReview,
     ModelPrState,
+    ModelStuckQueueEntry,
 )
+
+_STUCK_QUEUE_THRESHOLD_MINUTES = 30
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +73,94 @@ class HandlerPrLifecycleInventory:
                 logger.warning("Failed to collect PR state: %s", msg)
                 errors.append(msg)
 
+        stuck = self._detect_stuck_queue_prs(input_model.repo, pr_states)
+
         return ModelPrInventoryOutput(
             repo=input_model.repo,
             pr_states=tuple(pr_states),
             total_collected=len(pr_states),
             collection_errors=tuple(errors),
+            stuck_queue_prs=stuck,
         )
+
+    def _detect_stuck_queue_prs(
+        self, repo: str, pr_states: list[ModelPrState]
+    ) -> list[ModelStuckQueueEntry]:
+        """Detect PRs that have been stuck in the merge queue past the threshold.
+
+        A PR is "stuck" if merge_state_status == "QUEUED" AND queue age > 30 minutes.
+        Wraps the mergeQueueEntry gh API call in try/except — repos without merge queue
+        support silently return an empty list.
+
+        Args:
+            repo: GitHub repo slug.
+            pr_states: Collected PR states to check.
+
+        Returns:
+            List of stuck queue entries (may be empty).
+        """
+        queued_prs = [p for p in pr_states if p.merge_state_status == "QUEUED"]
+        if not queued_prs:
+            return []
+
+        stuck: list[ModelStuckQueueEntry] = []
+        now = datetime.now(tz=UTC)
+
+        for pr in queued_prs:
+            try:
+                result = subprocess.run(
+                    [
+                        "gh",
+                        "pr",
+                        "view",
+                        str(pr.pr_number),
+                        "--repo",
+                        repo,
+                        "--json",
+                        "mergeQueueEntry",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    continue
+                data: dict[str, object] = json.loads(result.stdout)
+                entry = data.get("mergeQueueEntry")
+                if not entry or not isinstance(entry, dict):
+                    # Repo plan doesn't support merge queues — skip silently
+                    continue
+                enqueued_at_raw = entry.get("enqueuedAt")
+                if not enqueued_at_raw:
+                    continue
+                enqueued_at = datetime.fromisoformat(
+                    str(enqueued_at_raw).replace("Z", "+00:00")
+                )
+                age_minutes = (now - enqueued_at).total_seconds() / 60
+                if age_minutes > _STUCK_QUEUE_THRESHOLD_MINUTES:
+                    stuck.append(
+                        ModelStuckQueueEntry(
+                            pr_number=pr.pr_number,
+                            repo=repo,
+                            title=pr.title,
+                            queue_entered_at=enqueued_at,
+                            queue_age_minutes=age_minutes,
+                        )
+                    )
+                    logger.warning(
+                        "Stuck merge queue PR detected: %s#%s age=%.1f min",
+                        repo,
+                        pr.pr_number,
+                        age_minutes,
+                    )
+            except Exception as exc:
+                logger.debug(
+                    "Could not check merge queue entry for %s#%s: %s",
+                    repo,
+                    pr.pr_number,
+                    exc,
+                )
+
+        return stuck
 
     def _collect_pr_state(self, repo: str, pr_number: int) -> ModelPrState:
         """Collect state for a single PR via gh CLI.

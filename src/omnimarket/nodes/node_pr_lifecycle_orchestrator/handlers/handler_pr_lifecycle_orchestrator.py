@@ -78,6 +78,27 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default="",
         description="Comma-separated repo slugs to filter (empty = all).",
     )
+    # Merge-sweep upgrade capabilities (OMN-8197)
+    enable_auto_rebase: bool = Field(
+        default=True,
+        description="Auto-rebase stale branches (BEHIND/UNKNOWN) before merge attempt.",
+    )
+    use_dag_ordering: bool = Field(
+        default=True,
+        description="Merge PRs in repo dependency order (omnibase_compat first, omnidash last).",
+    )
+    enable_trivial_comment_resolution: bool = Field(
+        default=True,
+        description="Auto-resolve trivial CodeRabbit/bot review threads before merge.",
+    )
+    enable_admin_merge_fallback: bool = Field(
+        default=False,
+        description="Admin-merge PRs stuck in queue past threshold (opt-in only).",
+    )
+    admin_fallback_threshold_minutes: int = Field(
+        default=30,
+        description="Minutes before a merge-queued PR is considered stuck.",
+    )
 
 
 class ModelPrLifecycleResult(BaseModel):
