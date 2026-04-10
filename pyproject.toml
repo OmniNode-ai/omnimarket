@@ -102,6 +102,7 @@ node_overnight = "omnimarket.nodes.node_overnight.handlers.handler_overnight:Han
 node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer:HandlerPrLifecycleStateReducer"
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:HandlerPrLifecycleOrchestrator"
 node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge:HandlerPrLifecycleMerge"
+node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier:HandlerOverseerVerifier"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup:NodeRetentionCleanup"
 
 [project.entry-points."onex.node_package"]
