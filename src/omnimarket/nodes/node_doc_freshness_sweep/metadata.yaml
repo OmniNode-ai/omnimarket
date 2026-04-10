@@ -1,0 +1,24 @@
+name: node_doc_freshness_sweep
+version: "1.0.0"
+description: "Scan documentation files across repos for broken references, stale content, and CLAUDE.md accuracy"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_doc_freshness_sweep: "omnimarket.nodes.node_doc_freshness_sweep"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "onex_change_control"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["sweep", "documentation", "freshness", "quality", "claude-md"]
+pack: "quality"
+display_name: "Doc Freshness Sweep"
+node_role: "inventory"

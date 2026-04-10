@@ -114,6 +114,9 @@ node_integration_test_runner = "omnimarket.nodes.node_integration_test_runner.ha
 node_similarity_compute = "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute:HandlerSimilarityCompute"
 node_persona_builder_compute = "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify:HandlerPersonaClassify"
 node_semantic_analyzer_compute = "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute:HandlerSemanticCompute"
+node_database_sweep = "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep:NodeDatabaseSweep"
+node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep:NodeDuplicationSweep"
+node_doc_freshness_sweep = "omnimarket.nodes.node_doc_freshness_sweep.handlers.handler_doc_freshness_sweep:NodeDocFreshnessSweep"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
@@ -180,6 +183,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnibase_infra.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "onex_change_control.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
