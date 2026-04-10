@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Similarity COMPUTE - ONEX Contract
+# COMPUTE node for vector similarity calculations. Pure computation, no I/O operations.
+
+# === REQUIRED ROOT FIELDS ===
+name: "node_similarity_compute"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: "Pure compute node for vector similarity calculations. Supports cosine and euclidean distance
+  metrics with optional threshold matching. No I/O operations."
+node_type: "COMPUTE"
+input_model: "ModelSimilarityComputeRequest"
+output_model: "ModelSimilarityComputeResponse"
+
+# NOTE: No io_operations section - this is a COMPUTE node, not an EFFECT node.
+# All operations are pure in-memory calculations with no external I/O.
+
+# === ALGORITHM CONFIGURATION (Required for COMPUTE nodes) ===
+# Defines the computational algorithm with factors and weights
+algorithm:
+  algorithm_type: "vector_similarity"
+  factors:
+    cosine_distance:
+      weight: 0.5
+      calculation_method: "cosine_similarity"
+    euclidean_distance:
+      weight: 0.5
+      calculation_method: "euclidean_norm"
+  normalization_method: "min_max"
+  precision_digits: 6
+
+# === DEPENDENCIES ===
+# COMPUTE nodes have no external service dependencies - pure computation only
+dependencies:
+  # Protocol Dependencies
+  - name: ProtocolVectorOperations
+    dependency_type: protocol
+    description: Vector mathematics operations protocol
+    required: false
+
+# === PERFORMANCE ===
+# Sub-millisecond target for pure computation
+performance:
+  single_operation_max_ms: 1
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  performance_validation_enabled: true
+  constraint_definitions:
+    operation: "Literal['cosine_distance', 'euclidean_distance', 'compare'] - computation operation to
+      perform"
+    metric: "Literal['cosine', 'euclidean'] - distance metric for compare operation"
+    status: "Literal['success', 'error'] - operation result status"
+    vector_a: "list[float] - first vector for comparison (required)"
+    vector_b: "list[float] - second vector for comparison (required, must match vector_a dimensions)"
+    threshold: "float (0.0-1.0) - optional similarity threshold for is_match determination"
+    distance: "float - computed distance value"
+    similarity: "float (0.0-1.0) - normalized similarity score (for cosine)"
+    is_match: "bool - True if similarity >= threshold"
+    dimensions: "int - number of dimensions in input vectors"
+
+# === HANDLER ROUTING ===
+# Declarative handler dispatch configuration following ONEX patterns.
+# The node delegates to handlers based on operation type.
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    # Calculate cosine distance between two vectors
+    - routing_key: "cosine_distance"
+      handler_key: "HandlerSimilarityCompute.cosine_distance"
+      priority: 0
+      output_events: []
+    # Calculate Euclidean (L2) distance between two vectors
+    - routing_key: "euclidean_distance"
+      handler_key: "HandlerSimilarityCompute.euclidean_distance"
+      priority: 0
+      output_events: []
+    # Full vector comparison with optional threshold matching
+    - routing_key: "compare"
+      handler_key: "HandlerSimilarityCompute.compare"
+      priority: 0
+      output_events: []
+  default_handler: null
+
+# === TAGS ===
+tags:
+  - memory
+  - compute
+  - similarity
+  - vector
+  - cosine
+  - euclidean
+  - distance
+  - math

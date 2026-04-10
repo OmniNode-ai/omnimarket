@@ -32,6 +32,7 @@ dependencies = [
     "omnibase_core>=0.39.0",
     "omnibase-compat>=0.3.1",
     "omnibase-infra>=0.32.0",
+    "omninode-memory>=0.15.0",
     "pydantic>=2.12.5,<3.0.0",
     "pyyaml>=6.0.2,<7.0.0",
     "aiokafka>=0.11.0",
@@ -108,6 +109,10 @@ node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup.handlers.handl
 node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap:HandlerSessionBootstrap"
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem:HandlerSessionPostMortem"
 node_onboarding = "omnimarket.nodes.node_onboarding.handlers.handler_onboarding:HandlerOnboarding"
+# Memory domain — Wave 1 compute nodes (OMN-8297)
+node_similarity_compute = "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute:HandlerSimilarityCompute"
+node_persona_builder_compute = "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify:HandlerPersonaClassify"
+node_semantic_analyzer_compute = "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute:HandlerSemanticCompute"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
@@ -115,6 +120,7 @@ omnimarket = "omnimarket.nodes"
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
 omnibase-compat = { path = "../omnibase_compat", editable = true }
+omninode-memory = { path = "../omnimemory", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
@@ -170,6 +176,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnibase_infra.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "omnimemory.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

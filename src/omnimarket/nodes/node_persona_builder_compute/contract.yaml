@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Persona Builder COMPUTE - ONEX Contract
+# Pure COMPUTE node that classifies persona signals into an updated PersonaProfile.
+# No I/O — takes signals and an optional existing profile, produces a new snapshot.
+
+name: "node_persona_builder_compute"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Pure compute node that takes a batch of PersonaSignal events and an optional existing PersonaProfile,
+  then produces an updated PersonaProfile. Classification uses heuristic rules and threshold scoring (no
+  ML). Conservatism rules prevent thrashing on weak evidence. Phase 3 Adaptive Personalization (OMN-7305).
+node_type: "COMPUTE"
+input_model: "ModelPersonaClassifyRequest"
+output_model: "ModelPersonaClassifyResult"
+
+algorithm:
+  algorithm_type: "persona_classification"
+  factors:
+    technical_level:
+      weight: 1.0
+      calculation_method: "mode_with_confidence_threshold"
+      threshold: 0.7
+      min_sessions: 3
+    vocabulary_complexity:
+      weight: 1.0
+      calculation_method: "exponential_moving_average"
+      alpha: 0.2
+    preferred_tone:
+      weight: 1.0
+      calculation_method: "mode_of_recent"
+      window_size: 10
+    domain_familiarity:
+      weight: 1.0
+      calculation_method: "incremental_exposure"
+      increment: 0.1
+      cap: 1.0
+  normalization_method: "none"
+
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    - routing_key: "classify"
+      handler_key: "HandlerPersonaClassify.classify"
+      priority: 0
+      output_events: []
+  default_handler: null
+
+tags:
+  - persona
+  - compute
+  - classification
+  - personalization
+  - phase-3

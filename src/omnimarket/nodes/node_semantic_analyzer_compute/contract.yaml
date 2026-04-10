@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Semantic Analyzer COMPUTE - ONEX Contract
+# COMPUTE node for semantic analysis operations. Orchestrates transformations
+# and delegates I/O to injected provider protocols.
+
+# === REQUIRED ROOT FIELDS ===
+name: "node_semantic_analyzer_compute"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Compute node for semantic analysis including embedding generation, entity extraction, and topic modeling.
+  Delegates I/O to provider protocols (ProtocolEmbeddingProvider, ProtocolLLMProvider) to maintain compute
+  purity. Supports deterministic and best-effort extraction modes.
+node_type: "COMPUTE"
+input_model: "ModelSemanticAnalyzerComputeRequest"
+output_model: "ModelSemanticAnalyzerComputeResponse"
+
+# === ALGORITHM CONFIGURATION ===
+algorithm:
+  algorithm_type: "semantic_analysis"
+  factors:
+    embedding_generation:
+      weight: 0.4
+      calculation_method: "vector_embedding"
+      provider_protocol: "ProtocolEmbeddingProvider"
+    entity_extraction:
+      weight: 0.3
+      calculation_method: "ner_extraction"
+      modes: ["deterministic", "best_effort"]
+    topic_modeling:
+      weight: 0.3
+      calculation_method: "keyword_extraction"
+  normalization_method: "none"
+  precision_digits: 6
+
+# === DEPENDENCIES ===
+# Provider protocols for I/O abstraction
+dependencies:
+  - name: ProtocolEmbeddingProvider
+    dependency_type: protocol
+    description: "Protocol for embedding generation (required)"
+    required: true
+  - name: ProtocolLLMProvider
+    dependency_type: protocol
+    description: "Protocol for LLM-based operations (optional, for best_effort entity extraction)"
+    required: false
+
+# === PERFORMANCE ===
+# Targets for different operations
+performance:
+  single_operation_max_ms: 100  # For embed operation with local/cached
+  batch_operation_max_ms: 5000  # For full analysis with external providers
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  performance_validation_enabled: true
+  constraint_definitions:
+    content: "str - text content to analyze (required, non-empty)"
+    analysis_type: "Literal['full', 'embedding_only', 'entities_only'] - type of analysis"
+    entity_extraction_mode: "Literal['deterministic', 'best_effort'] - extraction strategy"
+    embedding: "list[float] - vector embedding (dimensions depend on model)"
+    entities: "list[ModelSemanticEntity] - extracted entities with types and spans"
+    confidence_score: "float (0.0-1.0) - analysis confidence score"
+    processing_time_ms: "int - processing time in milliseconds"
+
+# === HANDLER ROUTING ===
+# Declarative handler dispatch configuration following ONEX patterns.
+# The node delegates to handlers based on operation type.
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    # Generate embedding vector for content
+    - routing_key: "embed"
+      handler_key: "HandlerSemanticCompute.embed"
+      priority: 0
+      output_events: []
+    # Extract named entities from content
+    - routing_key: "extract_entities"
+      handler_key: "HandlerSemanticCompute.extract_entities"
+      priority: 0
+      output_events: []
+    # Full semantic analysis (embedding + entities + topics)
+    - routing_key: "analyze"
+      handler_key: "HandlerSemanticCompute.analyze"
+      priority: 0
+      output_events: []
+  default_handler: null
+
+# === TAGS ===
+tags:
+  - memory
+  - compute
+  - semantic
+  - analysis
+  - embedding
+  - entity-extraction
+  - nlp
+  - topics
+  - intelligence
