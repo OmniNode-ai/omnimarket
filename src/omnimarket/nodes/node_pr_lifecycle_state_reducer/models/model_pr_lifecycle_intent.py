@@ -27,6 +27,7 @@ class EnumPrLifecycleIntentType(StrEnum):
     """
 
     START_INVENTORY = "pr_lifecycle.start_inventory"
+    START_REBASE = "pr_lifecycle.start_rebase"
     START_FIX = "pr_lifecycle.start_fix"
     START_MERGE = "pr_lifecycle.start_merge"
     SWEEP_COMPLETE = "pr_lifecycle.sweep_complete"

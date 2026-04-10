@@ -1,0 +1,149 @@
+---
+name: autopilot_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  4-phase autonomous close-out pipeline orchestrator.
+  Dispatches to sub-nodes via Kafka publish and FSM state tracking.
+
+  Phase A: Worktree health sweep (node_worktree_triage or prune script)
+  Phase B: Merge sweep (node_pr_lifecycle_orchestrator)
+  Phase C: Infra health gate (node_platform_diagnostics)
+  Phase D: Quality sweeps (aislop_sweep, dod_verify, gap)
+
+  Circuit breaker: 3 consecutive phase failures -> FAILED.
+  Each phase records pass | pass_repaired | warn | fail | halt | skipped.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerAutopilotOrchestrator
+        module: omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator
+      event_model:
+        name: ModelAutopilotStartCommand
+        module: omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_start_command
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Unique pipeline run ID"
+    required: true
+  mode:
+    type: str
+    description: "close-out | build"
+    required: false
+    default: "close-out"
+  dry_run:
+    type: bool
+    description: "Run without side effects"
+    required: false
+    default: false
+  require_gate:
+    type: bool
+    description: "Opt into Slack HIGH_RISK gate before release"
+    required: false
+    default: false
+  autonomous:
+    type: bool
+    description: "No human gates"
+    required: false
+    default: true
+
+outputs:
+  overall_status:
+    type: str
+    description: "complete | halted | circuit_breaker | failed"
+  halt_reason:
+    type: str
+    description: "Phase that triggered halt, or empty on complete"
+  phases_completed:
+    type: int
+    description: "Count of phases that reached pass or warn"
+  phases_failed:
+    type: int
+    description: "Count of phases that reached fail or halt"
+
+terminal_event: onex.evt.omnimarket.autopilot-orchestrator-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.autopilot-orchestrator-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.autopilot-orchestrator-phase-transition.v1
+    - onex.evt.omnimarket.autopilot-orchestrator-completed.v1
+    - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
+    - onex.cmd.omnimarket.platform-diagnostics-start.v1
+    - onex.cmd.omnimarket.aislop-sweep-start.v1
+    - onex.cmd.omnimarket.dod-verify-start.v1
+
+fsm:
+  states:
+    - IDLE
+    - PHASE_A_WORKTREE
+    - PHASE_B_MERGE_SWEEP
+    - PHASE_C_INFRA_GATE
+    - PHASE_D_QUALITY_SWEEPS
+    - COMPLETE
+    - HALTED
+    - FAILED
+  initial_state: IDLE
+  terminal_states:
+    - COMPLETE
+    - HALTED
+    - FAILED
+  transitions:
+    - from: IDLE
+      to: PHASE_A_WORKTREE
+      trigger: "start command received"
+    - from: PHASE_A_WORKTREE
+      to: PHASE_B_MERGE_SWEEP
+      trigger: "worktree sweep completed (pass | warn | fail)"
+    - from: PHASE_B_MERGE_SWEEP
+      to: PHASE_C_INFRA_GATE
+      trigger: "merge sweep completed"
+    - from: PHASE_C_INFRA_GATE
+      to: PHASE_D_QUALITY_SWEEPS
+      trigger: "infra gate passed"
+    - from: PHASE_C_INFRA_GATE
+      to: HALTED
+      trigger: "infra gate failed (halt authority)"
+    - from: PHASE_D_QUALITY_SWEEPS
+      to: COMPLETE
+      trigger: "quality sweeps completed"
+    - from: PHASE_D_QUALITY_SWEEPS
+      to: HALTED
+      trigger: "hard-gate quality check failed"
+    - from: PHASE_A_WORKTREE
+      to: FAILED
+      trigger: "circuit breaker"
+    - from: PHASE_B_MERGE_SWEEP
+      to: FAILED
+      trigger: "circuit breaker"
+    - from: PHASE_D_QUALITY_SWEEPS
+      to: FAILED
+      trigger: "circuit breaker"
+
+metadata:
+  description: "Autopilot orchestrator — 4-phase close-out pipeline FSM"
+  author: "OmniNode Platform Team"
+  created: "2026-04-10"
+  tags:
+    - "autopilot"
+    - "orchestrator"
+    - "pipeline"
+    - "close-out"
+    - "fsm"
+    - "OMN-6872"
+  related_tickets:
+    - "OMN-6872"
+    - "OMN-6867"
+    - "OMN-8087"

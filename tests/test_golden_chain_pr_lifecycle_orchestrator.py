@@ -143,11 +143,16 @@ class MockMerge:
 
 
 class MockFix:
-    def __init__(self, *, prs_dispatched: int = 0, fail: bool = False) -> None:
-        self._prs_dispatched = prs_dispatched
+    def __init__(
+        self, *, prs_dispatched: int | None = None, fail: bool = False
+    ) -> None:
+        self._prs_dispatched = prs_dispatched  # None = use len(prs_to_fix)
         self._fail = fail
         self.call_count = 0
         self.last_dry_run: bool = False
+        self.dispatched_pr_numbers: list[int] = []
+        self._in_flight = 0
+        self.max_in_flight = 0
 
     async def handle(
         self,
@@ -156,12 +161,27 @@ class MockFix:
         prs_to_fix: tuple[TriageRecord, ...],
         dry_run: bool = False,
     ) -> FixResult:
-        self.call_count += 1
-        self.last_dry_run = dry_run
-        if self._fail:
-            msg = "fix failed"
-            raise RuntimeError(msg)
-        return FixResult(prs_dispatched=self._prs_dispatched, prs_skipped=0)
+        import asyncio
+
+        self._in_flight += 1
+        if self._in_flight > self.max_in_flight:
+            self.max_in_flight = self._in_flight
+        try:
+            await asyncio.sleep(0)  # yield to allow concurrent tasks to enter
+            self.call_count += 1
+            self.last_dry_run = dry_run
+            self.dispatched_pr_numbers.extend(pr.pr_number for pr in prs_to_fix)
+            if self._fail:
+                msg = "fix failed"
+                raise RuntimeError(msg)
+            count = (
+                self._prs_dispatched
+                if self._prs_dispatched is not None
+                else len(prs_to_fix)
+            )
+            return FixResult(prs_dispatched=count, prs_skipped=0)
+        finally:
+            self._in_flight -= 1
 
 
 # ---------------------------------------------------------------------------
@@ -515,3 +535,107 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert result.final_state == "COMPLETE"
         assert result.prs_merged == 1
         assert fix.call_count == 0
+
+    async def test_parallel_fix_dispatch_n_prs(self) -> None:
+        """N fix-intent PRs dispatch N parallel fix calls (one per PR)."""
+        n = 5
+        fix_triage = tuple(
+            TriageRecord(
+                pr_number=200 + i,
+                repo="OmniNode-ai/omnimarket",
+                category=EnumPrCategory.RED,
+            )
+            for i in range(n)
+        )
+        fix_intents = tuple(
+            ReducerIntent(
+                pr_number=200 + i,
+                repo="OmniNode-ai/omnimarket",
+                intent=EnumReducerIntent.FIX,
+            )
+            for i in range(n)
+        )
+        fix_prs_raw = tuple(
+            PrRecord(
+                pr_number=200 + i,
+                repo="OmniNode-ai/omnimarket",
+                checks_status="failure",
+            )
+            for i in range(n)
+        )
+
+        inventory = MockInventory(prs=fix_prs_raw)
+        triage = MockTriage(classified=fix_triage)
+        reducer = MockReducer(intents=fix_intents)
+        fix = MockFix()  # prs_dispatched=None -> uses len(prs_to_fix)=1 per call
+
+        orch = _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            fix=fix,
+        )
+        result = await orch.handle(_make_command(max_parallel_polish=n))
+
+        assert result.final_state == "COMPLETE"
+        # Each PR got its own fix call
+        assert fix.call_count == n
+        # Total dispatched = n (1 per call)
+        assert result.prs_fixed == n
+        # Every PR number was dispatched
+        assert sorted(fix.dispatched_pr_numbers) == list(range(200, 200 + n))
+        # With max_parallel_polish=n all tasks can run concurrently
+        assert fix.max_in_flight > 1
+
+    async def test_parallel_fix_respects_max_parallel_cap(self) -> None:
+        """max_parallel_polish=1 serializes fix dispatches (call_count still == N)."""
+        n = 3
+        fix_triage = tuple(
+            TriageRecord(
+                pr_number=300 + i,
+                repo="OmniNode-ai/omnimarket",
+                category=EnumPrCategory.RED,
+            )
+            for i in range(n)
+        )
+        fix_intents = tuple(
+            ReducerIntent(
+                pr_number=300 + i,
+                repo="OmniNode-ai/omnimarket",
+                intent=EnumReducerIntent.FIX,
+            )
+            for i in range(n)
+        )
+        fix_prs_raw = tuple(
+            PrRecord(
+                pr_number=300 + i,
+                repo="OmniNode-ai/omnimarket",
+                checks_status="failure",
+            )
+            for i in range(n)
+        )
+
+        inventory = MockInventory(prs=fix_prs_raw)
+        triage = MockTriage(classified=fix_triage)
+        reducer = MockReducer(intents=fix_intents)
+        fix = MockFix()
+
+        orch = _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            fix=fix,
+        )
+        # max_parallel_polish=1 means fully serialized, but N calls still happen
+        result = await orch.handle(_make_command(max_parallel_polish=1))
+
+        assert result.final_state == "COMPLETE"
+        assert fix.call_count == n
+        assert result.prs_fixed == n
+        # Semaphore cap of 1 means only 1 task in flight at a time
+        assert fix.max_in_flight == 1
+
+    async def test_max_parallel_polish_default_is_20(self) -> None:
+        """ModelPrLifecycleStartCommand defaults max_parallel_polish to 20."""
+        cmd = _make_command()
+        assert cmd.max_parallel_polish == 20
