@@ -561,7 +561,7 @@ class HandlerPrLifecycleOrchestrator:
                 *(_fix_one(pr) for pr in fix_prs), return_exceptions=True
             )
         )
-        errors = [r for r in gathered if isinstance(r, BaseException)]
+        errors: list[Exception] = [r for r in gathered if isinstance(r, Exception)]
         if errors:
             raise ExceptionGroup("fix dispatch errors", errors)
         return [r for r in gathered if isinstance(r, FixResult)]

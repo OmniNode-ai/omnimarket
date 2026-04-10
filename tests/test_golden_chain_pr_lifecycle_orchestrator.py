@@ -161,10 +161,13 @@ class MockFix:
         prs_to_fix: tuple[TriageRecord, ...],
         dry_run: bool = False,
     ) -> FixResult:
+        import asyncio
+
         self._in_flight += 1
         if self._in_flight > self.max_in_flight:
             self.max_in_flight = self._in_flight
         try:
+            await asyncio.sleep(0)  # yield to allow concurrent tasks to enter
             self.call_count += 1
             self.last_dry_run = dry_run
             self.dispatched_pr_numbers.extend(pr.pr_number for pr in prs_to_fix)
