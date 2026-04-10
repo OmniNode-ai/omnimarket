@@ -16,8 +16,9 @@ import logging
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from omnimarket.nodes.node_session_post_mortem.handlers.adapter_pr_collector import (
     collect_pr_status,
@@ -33,8 +34,23 @@ logger = logging.getLogger(__name__)
 # Friction type for stalled agents
 _STALL_FRICTION_TYPE = "agent_stall"
 
-# Type alias for injectable friction reader
+# Type alias for injectable friction reader (callable form)
 FrictionReader = Callable[[str], list[ModelFrictionEvent]]
+
+# Re-export ModelFrictionEvent under the local alias expected by tests
+ModelFrictionEventLocal = ModelFrictionEvent
+
+
+@runtime_checkable
+class FrictionReaderProtocol(Protocol):
+    """Protocol for injectable friction readers.
+
+    Implementations provide read_friction_events(path) -> list of events.
+    """
+
+    def read_friction_events(self, path: str) -> list[ModelFrictionEvent]:
+        """Read friction events from a directory path."""
+        ...
 
 
 class ModelPostMortemCommand(BaseModel):
@@ -65,6 +81,27 @@ class ModelPostMortemHandlerResult(BaseModel):
     report: ModelPostMortemReport
     dry_run: bool = False
 
+    @property
+    def friction_events(self) -> list[ModelFrictionEvent]:
+        """Convenience accessor for report.friction_events."""
+        return list(self.report.friction_events)
+
+    @property
+    def carry_forward_items(self) -> list[str]:
+        """Convenience accessor for report.carry_forward_items."""
+        return list(self.report.carry_forward_items)
+
+    @property
+    def stalled_agents(self) -> list[str]:
+        """Convenience accessor for report.stalled_agents."""
+        return list(self.report.stalled_agents)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completed_at(self) -> datetime:
+        """Convenience accessor for report.completed_at (serialized in model_dump_json)."""
+        return self.report.completed_at
+
 
 class HandlerSessionPostMortem:
     """Session post-mortem collector.
@@ -73,17 +110,25 @@ class HandlerSessionPostMortem:
     testability. No direct filesystem access in the handler itself.
 
     Args:
-        friction_reader: Callable that reads friction events from a directory.
+        friction_reader: FrictionReaderProtocol instance or callable that reads
+                         friction events from a directory path.
                          Defaults to the real adapter_friction_reader.
     """
 
-    def __init__(self, friction_reader: FrictionReader | None = None) -> None:
+    def __init__(
+        self,
+        friction_reader: FrictionReaderProtocol | FrictionReader | None = None,
+    ) -> None:
         if friction_reader is None:
             from omnimarket.nodes.node_session_post_mortem.handlers.adapter_friction_reader import (
                 read_friction_events,
             )
 
             self._friction_reader: FrictionReader = read_friction_events
+        elif isinstance(friction_reader, FrictionReaderProtocol):
+            # Protocol object — wrap its read_friction_events method
+            _proto = friction_reader
+            self._friction_reader = _proto.read_friction_events
         else:
             self._friction_reader = friction_reader
 
@@ -263,7 +308,9 @@ class HandlerSessionPostMortem:
 
 __all__: list[str] = [
     "FrictionReader",
+    "FrictionReaderProtocol",
     "HandlerSessionPostMortem",
+    "ModelFrictionEventLocal",
     "ModelPostMortemCommand",
     "ModelPostMortemHandlerResult",
 ]
