@@ -52,7 +52,9 @@ class LinearClientProtocol(Protocol):
         after: str | None = None,
     ) -> Any: ...
 
-    def list_children(self, *, parent_id: str, limit: int = 50) -> Any: ...
+    def list_children(
+        self, *, parent_id: str, limit: int = 50, after: str | None = None
+    ) -> Any: ...
 
     def get_issue(self, *, issue_id: str) -> Any: ...
 
@@ -127,17 +129,21 @@ class LinearHttpClient:
         """
         return self._post(query, {"team": team, "limit": limit})
 
-    def list_children(self, *, parent_id: str, limit: int = 50) -> Any:
-        query = """
-        query ListChildren($parentId: String!, $limit: Int!) {
+    def list_children(
+        self, *, parent_id: str, limit: int = 50, after: str | None = None
+    ) -> Any:
+        after_clause = f', after: "{after}"' if after else ""
+        query = f"""
+        query ListChildren($parentId: String!, $limit: Int!) {{
           issues(
-            first: $limit,
-            filter: { parent: { id: { eq: $parentId } } },
+            first: $limit{after_clause},
+            filter: {{ parent: {{ id: {{ eq: $parentId }} }} }},
             includeArchived: true
-          ) {
-            nodes { id identifier state { name } }
-          }
-        }
+          ) {{
+            pageInfo {{ hasNextPage endCursor }}
+            nodes {{ id identifier state {{ name }} }}
+          }}
+        }}
         """
         return self._post(query, {"parentId": parent_id, "limit": limit})
 
@@ -405,12 +411,23 @@ class HandlerLinearTriage:
                 )
 
                 if not dry_run:
-                    client.save_issue(issue_id=ticket.id, state="Done")
-                    client.save_comment(
-                        issue_id=ticket.id,
-                        body=f"Auto-closed by linear-triage: PR #{merged_pr.get('number')} merged {merged_at}\n{pr_url}",
-                    )
-                    marked_done += 1
+                    try:
+                        client.save_issue(issue_id=ticket.id, state="Done")
+                        client.save_comment(
+                            issue_id=ticket.id,
+                            body=f"Auto-closed by linear-triage: PR #{merged_pr.get('number')} merged {merged_at}\n{pr_url}",
+                        )
+                        marked_done += 1
+                    except Exception as exc:
+                        actions.append(
+                            ModelTriageAction(
+                                ticket_id=ticket.identifier,
+                                ticket_title=ticket.title,
+                                action=EnumTriageAction.FLAG_STALE,
+                                evidence=f"Mutation failed: {exc}",
+                            )
+                        )
+                        continue
 
                 actions.append(
                     ModelTriageAction(
@@ -441,12 +458,15 @@ class HandlerLinearTriage:
                             else EnumTriageAction.MARK_DONE_SUPERSEDED
                         )
                         if not dry_run:
-                            client.save_issue(issue_id=ticket.id, state="Done")
-                            client.save_comment(
-                                issue_id=ticket.id,
-                                body=f"Auto-closed by linear-triage: work delivered via sibling PR #{sibling.get('number')} in {sibling.get('repo')} merged {sibling.get('mergedAt')}\n{sibling.get('url')}\n(Original PR #{closed_pr_num} was closed as superseded)",
-                            )
-                            marked_done_superseded += 1
+                            try:
+                                client.save_issue(issue_id=ticket.id, state="Done")
+                                client.save_comment(
+                                    issue_id=ticket.id,
+                                    body=f"Auto-closed by linear-triage: work delivered via sibling PR #{sibling.get('number')} in {sibling.get('repo')} merged {sibling.get('mergedAt')}\n{sibling.get('url')}\n(Original PR #{closed_pr_num} was closed as superseded)",
+                                )
+                                marked_done_superseded += 1
+                            except Exception:
+                                continue
 
                         actions.append(
                             ModelTriageAction(
@@ -488,8 +508,21 @@ class HandlerLinearTriage:
             if ticket.state in _DONE_STATES:
                 continue
 
-            children_data = client.list_children(parent_id=ticket.id, limit=50)
-            children = children_data.get("data", {}).get("issues", {}).get("nodes", [])
+            # Paginate children to avoid truncated results
+            children: list[dict[str, Any]] = []
+            child_cursor: str | None = None
+            while True:
+                children_data = client.list_children(
+                    parent_id=ticket.id, limit=50, after=child_cursor
+                )
+                batch = children_data.get("data", {}).get("issues", {}).get("nodes", [])
+                children.extend(batch)
+                child_page = (
+                    children_data.get("data", {}).get("issues", {}).get("pageInfo", {})
+                )
+                if not child_page.get("hasNextPage"):
+                    break
+                child_cursor = str(child_page["endCursor"])
             if not children:
                 continue
 
@@ -505,12 +538,15 @@ class HandlerLinearTriage:
                     else EnumTriageAction.MARK_DONE_EPIC
                 )
                 if not dry_run:
-                    client.save_issue(issue_id=ticket.id, state="Done")
-                    client.save_comment(
-                        issue_id=ticket.id,
-                        body=f"Auto-closed by linear-triage: all {len(children)} child tickets are Done.\nChildren: {child_ids}",
-                    )
-                    epics_closed += 1
+                    try:
+                        client.save_issue(issue_id=ticket.id, state="Done")
+                        client.save_comment(
+                            issue_id=ticket.id,
+                            body=f"Auto-closed by linear-triage: all {len(children)} child tickets are Done.\nChildren: {child_ids}",
+                        )
+                        epics_closed += 1
+                    except Exception:
+                        continue
 
                 actions.append(
                     ModelTriageAction(
