@@ -107,6 +107,10 @@ node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier.handlers.handl
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup:NodeRetentionCleanup"
 node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap:HandlerSessionBootstrap"
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem:HandlerSessionPostMortem"
+node_integration_test_runner = "omnimarket.nodes.node_integration_test_runner.handlers.handler_integration_test_runner:HandlerIntegrationTestRunner"
+
+[project.scripts]
+onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
