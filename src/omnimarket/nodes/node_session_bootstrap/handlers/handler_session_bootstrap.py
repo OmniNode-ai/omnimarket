@@ -2,91 +2,127 @@
 # SPDX-License-Identifier: MIT
 """HandlerSessionBootstrap — Overnight session bootstrapper.
 
-Reads ModelOvernightContract, writes contract snapshot to .onex_state/,
-sets up timer configs, and emits session-bootstrap-completed event.
-Runs FIRST each evening before any other overnight phase.
+Reads ModelOvernightContract, writes a contract snapshot to .onex_state/,
+derives timer configurations from expected phases, and returns a structured
+result. Runs FIRST each evening to initialize the session.
 
-The handler is pure — it owns no external I/O beyond filesystem writes
-controlled by the dry_run flag.
+This handler is pure — no external I/O in the handler itself. Filesystem
+writes are gated by dry_run. Callers pass an absolute state_dir path.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_session_bootstrap.models.model_overnight_contract import (
+    ModelOvernightContract,
+)
 
 logger = logging.getLogger(__name__)
 
+# Timer configs always included regardless of phases
+_DEFAULT_TIMERS: list[str] = [
+    "merge_sweep (every 20min)",
+    "health_check (every 10min)",
+    "agent_watchdog (every 5min)",
+]
+
+# Advisory cost ceiling threshold for warnings
+_COST_CEILING_WARNING_THRESHOLD: float = 20.0
+
+
+class ModelBootstrapCommand(BaseModel):
+    """Input command for the session bootstrap handler."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    contract: ModelOvernightContract
+    state_dir: str = ".onex_state"
+    dry_run: bool = False
+
 
 class EnumBootstrapStatus(StrEnum):
-    """Bootstrap completion status."""
+    """Terminal status for a bootstrap run."""
 
     READY = "ready"
     DEGRADED = "degraded"
     FAILED = "failed"
 
 
-class ModelBootstrapCommand(BaseModel, extra="forbid"):
-    """Input command for HandlerSessionBootstrap."""
+class ModelBootstrapResult(BaseModel):
+    """Result produced by HandlerSessionBootstrap."""
 
-    session_id: str
-    contract: dict[
-        str, object
-    ]  # ModelOvernightContract passed as dict for now (Task 1 adds the type)
-    state_dir: str = ".onex_state"
-    dry_run: bool = False
-
-
-class ModelBootstrapResult(BaseModel, extra="forbid"):
-    """Output result from HandlerSessionBootstrap."""
+    model_config = ConfigDict(extra="forbid")
 
     session_id: str
     status: EnumBootstrapStatus
     contract_path: str
-    timer_configs: list[str]
-    warnings: list[str]
-    dry_run: bool
-    bootstrapped_at: datetime
+    timer_configs: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    dry_run: bool = False
+    bootstrapped_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
 
 class HandlerSessionBootstrap:
-    """Bootstrap handler — skeleton stub (full implementation in Task 4)."""
+    """Session bootstrap orchestrator.
+
+    Pure handler — no direct I/O. Validates the overnight contract, derives
+    timer configs from expected phases, writes contract JSON to disk (unless
+    dry_run), and returns ModelBootstrapResult.
+    """
 
     def handle(self, command: ModelBootstrapCommand) -> ModelBootstrapResult:
-        """Bootstrap the overnight session."""
+        """Execute session bootstrap.
+
+        Args:
+            command: Bootstrap command including session_id, contract, and flags.
+
+        Returns:
+            ModelBootstrapResult with status, contract_path, and timer_configs.
+        """
         warnings: list[str] = []
 
-        # Validate contract basics
-        phases_expected = command.contract.get("phases_expected", [])
-        if not phases_expected:
-            warnings.append("phases_expected is empty — session has no defined phases")
-
-        cost_ceiling = command.contract.get("cost_ceiling_usd", 10.0)
-        if isinstance(cost_ceiling, float | int) and cost_ceiling > 20.0:
+        # Validate phases_expected
+        if not command.contract.phases_expected:
             warnings.append(
-                f"cost_ceiling_usd={cost_ceiling} exceeds recommended 20.0 advisory limit"
+                "phases_expected is empty — no phases will be tracked for this session"
+            )
+            logger.warning("Bootstrap: phases_expected is empty")
+
+        # Advisory cost ceiling check
+        if command.contract.cost_ceiling_usd > _COST_CEILING_WARNING_THRESHOLD:
+            warnings.append(
+                f"cost_ceiling_usd={command.contract.cost_ceiling_usd} exceeds "
+                f"advisory threshold of {_COST_CEILING_WARNING_THRESHOLD}"
             )
 
-        # Derive timer configs from phases
-        timer_configs: list[str] = [
-            "merge_sweep: every 20min",
-            "health_check: every 10min",
-            "agent_watchdog: every 5min",
-        ]
+        # Derive timer configs
+        timer_configs = list(_DEFAULT_TIMERS)
+        for phase in command.contract.phases_expected:
+            phase_timer = f"{phase} (phase timer)"
+            if phase_timer not in timer_configs:
+                timer_configs.append(phase_timer)
 
-        # Determine contract path
-        if command.dry_run:
-            contract_path = "(dry-run)"
-        else:
-            contract_path = (
-                f"{command.state_dir}/overnight-contract-{command.session_id}.json"
-            )
-            # Full implementation (Task 4) will write the file here
-
+        # Determine status
         status = EnumBootstrapStatus.DEGRADED if warnings else EnumBootstrapStatus.READY
+
+        # Write contract to disk (unless dry_run)
+        contract_path = "(dry-run)"
+        if not command.dry_run:
+            contract_path = self._write_contract(command)
+
+        logger.info(
+            "Bootstrap complete: session_id=%s status=%s contract_path=%s",
+            command.session_id,
+            status.value,
+            contract_path,
+        )
 
         return ModelBootstrapResult(
             session_id=command.session_id,
@@ -95,5 +131,22 @@ class HandlerSessionBootstrap:
             timer_configs=timer_configs,
             warnings=warnings,
             dry_run=command.dry_run,
-            bootstrapped_at=datetime.now(UTC),
         )
+
+    def _write_contract(self, command: ModelBootstrapCommand) -> str:
+        """Write contract JSON to state_dir and return the absolute path."""
+        state_dir = os.path.abspath(command.state_dir)
+        os.makedirs(state_dir, exist_ok=True)
+        filename = f"overnight-contract-{command.session_id}.json"
+        path = os.path.join(state_dir, filename)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(command.contract.model_dump_json(indent=2))
+        return path
+
+
+__all__: list[str] = [
+    "EnumBootstrapStatus",
+    "HandlerSessionBootstrap",
+    "ModelBootstrapCommand",
+    "ModelBootstrapResult",
+]

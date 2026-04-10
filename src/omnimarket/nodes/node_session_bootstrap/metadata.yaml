@@ -1,6 +1,6 @@
 name: node_session_bootstrap
 version: "1.0.0"
-description: "Overnight session bootstrapper — reads ModelOvernightContract, writes contract snapshot, sets up timer configs, emits session-bootstrap-completed"
+description: "Overnight session bootstrapper — reads contract, writes snapshot, configures timers"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -15,9 +15,10 @@ capabilities:
   side_effect_class: mutating
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase_compat"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["bootstrap", "orchestrator", "session", "overnight", "pipeline"]
+tags: ["bootstrap", "orchestrator", "overnight", "session", "contract"]
 pack: "overnight_pipeline"
 display_name: "Session Bootstrap"
 node_role: "orchestrator"
