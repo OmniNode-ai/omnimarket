@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Local definition of ModelOvernightContract for node_session_bootstrap.
+"""Local definition of ModelSessionContract for node_session_bootstrap.
 
-Mirrors the wire type in omnibase_compat.overseer.model_overnight_contract.
+Mirrors the wire type in omnibase_compat.overseer.model_session_contract.
 When omnibase_compat >= 0.4.0 ships this model, this file can be removed and
 the import updated to point at the canonical location.
 """
@@ -14,8 +14,8 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 
-class ModelOvernightContract(BaseModel, frozen=True, extra="forbid"):
-    """Session-level verification contract for overnight autonomous sessions.
+class ModelSessionContract(BaseModel, frozen=True, extra="forbid"):
+    """Session-level verification contract for autonomous sessions.
 
     Read by node_session_bootstrap at session start to configure timers,
     phase expectations, and advisory cost ceilings. Frozen and extra-forbid
@@ -33,4 +33,4 @@ class ModelOvernightContract(BaseModel, frozen=True, extra="forbid"):
     schema_version: str = "1.0"
 
 
-__all__: list[str] = ["ModelOvernightContract"]
+__all__: list[str] = ["ModelSessionContract"]

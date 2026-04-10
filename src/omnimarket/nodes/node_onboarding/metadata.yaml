@@ -1,0 +1,24 @@
+name: node_onboarding
+version: "1.0.0"
+description: "Contract-driven progressive onboarding for new users and employees"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_onboarding: "omnimarket.nodes.node_onboarding"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_infra>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["onboarding", "new-employee", "setup", "progressive-disclosure"]
+pack: "onboarding"
+display_name: "Onboarding"
+node_role: "orchestrator"

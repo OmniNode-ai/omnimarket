@@ -5,9 +5,9 @@ node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Overnight session bootstrapper. Reads ModelOvernightContract, writes
+  Session bootstrapper. Reads ModelSessionContract, writes
   contract snapshot to .onex_state/, sets up timer configs, and emits
-  session-bootstrap-completed event. Runs FIRST each evening.
+  session-bootstrap-completed event. Runs FIRST each session.
 
 handler:
   module: omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap
@@ -27,7 +27,7 @@ inputs:
     required: true
   contract:
     type: object
-    description: "ModelOvernightContract — session-level verification contract"
+    description: "ModelSessionContract — session-level verification contract"
     required: true
   state_dir:
     type: str
