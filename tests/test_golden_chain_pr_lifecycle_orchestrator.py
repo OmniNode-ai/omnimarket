@@ -151,6 +151,8 @@ class MockFix:
         self.call_count = 0
         self.last_dry_run: bool = False
         self.dispatched_pr_numbers: list[int] = []
+        self._in_flight = 0
+        self.max_in_flight = 0
 
     async def handle(
         self,
@@ -159,18 +161,24 @@ class MockFix:
         prs_to_fix: tuple[TriageRecord, ...],
         dry_run: bool = False,
     ) -> FixResult:
-        self.call_count += 1
-        self.last_dry_run = dry_run
-        self.dispatched_pr_numbers.extend(pr.pr_number for pr in prs_to_fix)
-        if self._fail:
-            msg = "fix failed"
-            raise RuntimeError(msg)
-        count = (
-            self._prs_dispatched
-            if self._prs_dispatched is not None
-            else len(prs_to_fix)
-        )
-        return FixResult(prs_dispatched=count, prs_skipped=0)
+        self._in_flight += 1
+        if self._in_flight > self.max_in_flight:
+            self.max_in_flight = self._in_flight
+        try:
+            self.call_count += 1
+            self.last_dry_run = dry_run
+            self.dispatched_pr_numbers.extend(pr.pr_number for pr in prs_to_fix)
+            if self._fail:
+                msg = "fix failed"
+                raise RuntimeError(msg)
+            count = (
+                self._prs_dispatched
+                if self._prs_dispatched is not None
+                else len(prs_to_fix)
+            )
+            return FixResult(prs_dispatched=count, prs_skipped=0)
+        finally:
+            self._in_flight -= 1
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +581,8 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert result.prs_fixed == n
         # Every PR number was dispatched
         assert sorted(fix.dispatched_pr_numbers) == list(range(200, 200 + n))
+        # With max_parallel_polish=n all tasks can run concurrently
+        assert fix.max_in_flight > 1
 
     async def test_parallel_fix_respects_max_parallel_cap(self) -> None:
         """max_parallel_polish=1 serializes fix dispatches (call_count still == N)."""
@@ -619,6 +629,8 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert result.final_state == "COMPLETE"
         assert fix.call_count == n
         assert result.prs_fixed == n
+        # Semaphore cap of 1 means only 1 task in flight at a time
+        assert fix.max_in_flight == 1
 
     async def test_max_parallel_polish_default_is_20(self) -> None:
         """ModelPrLifecycleStartCommand defaults max_parallel_polish to 20."""

@@ -536,10 +536,19 @@ class HandlerPrLifecycleOrchestrator:
 
         async def _fix_one(pr: TriageRecord) -> FixResult:
             async with semaphore:
-                return await self._fix.handle(  # type: ignore[union-attr]
+                raw = await self._fix.handle(  # type: ignore[union-attr]
                     correlation_id=correlation_id,
                     prs_to_fix=(pr,),
                     dry_run=dry_run,
+                )
+                # The real fix handler returns ModelPrLifecycleFixResult (per-PR).
+                # Map it to the aggregated FixResult the orchestrator expects.
+                if isinstance(raw, FixResult):
+                    return raw
+                fix_applied: bool = getattr(raw, "fix_applied", False)
+                return FixResult(
+                    prs_dispatched=1 if fix_applied else 0,
+                    prs_skipped=0 if fix_applied else 1,
                 )
 
         logger.info(
@@ -547,7 +556,15 @@ class HandlerPrLifecycleOrchestrator:
             len(fix_prs),
             max_parallel,
         )
-        return list(await asyncio.gather(*(_fix_one(pr) for pr in fix_prs)))
+        gathered: list[FixResult | BaseException] = list(
+            await asyncio.gather(
+                *(_fix_one(pr) for pr in fix_prs), return_exceptions=True
+            )
+        )
+        errors = [r for r in gathered if isinstance(r, BaseException)]
+        if errors:
+            raise ExceptionGroup("fix dispatch errors", errors)
+        return [r for r in gathered if isinstance(r, FixResult)]
 
     def _build_result(
         self, state: _SweepState, correlation_id: UUID
