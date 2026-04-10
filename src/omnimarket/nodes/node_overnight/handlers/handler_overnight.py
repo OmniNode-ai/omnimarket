@@ -19,6 +19,7 @@ import logging
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from omnibase_compat.overseer.model_overnight_contract import ModelOvernightContract
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ class ModelOvernightCommand(BaseModel):
     skip_build_loop: bool = False
     skip_merge_sweep: bool = False
     dry_run: bool = False
+    overnight_contract: ModelOvernightContract | None = None
 
 
 class ModelPhaseResult(BaseModel):
@@ -86,6 +88,7 @@ class ModelOvernightResult(BaseModel):
     phases_skipped: list[str] = Field(default_factory=list)
     phase_results: list[ModelPhaseResult] = Field(default_factory=list)
     dry_run: bool = False
+    halt_reason: str | None = None
     started_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
     completed_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
@@ -96,6 +99,11 @@ class HandlerOvernight:
     Pure FSM — sequences phases, accumulates results, derives terminal status.
     No external I/O. In dry_run mode, all phases succeed synthetically.
 
+    When an overnight_contract is provided via the command, the handler
+    enforces cost ceiling and halt-on-failure checks after each phase.
+    Accumulated cost is supplied by the caller via phase_costs; if not
+    provided, cost checks are skipped (backwards-compatible).
+
     The caller (RuntimeLocal or test harness) is responsible for wiring
     the actual node handler calls for each phase. This handler models the
     sequencing contract only.
@@ -105,20 +113,28 @@ class HandlerOvernight:
         self,
         command: ModelOvernightCommand,
         phase_results: dict[EnumPhase, bool] | None = None,
+        phase_costs: dict[EnumPhase, float] | None = None,
     ) -> ModelOvernightResult:
         """Run the overnight pipeline.
 
         Args:
-            command: Start command with skip flags and dry_run.
+            command: Start command with skip flags, dry_run, and optional contract.
             phase_results: Optional per-phase success overrides for testing.
                            If None, all non-skipped phases succeed (dry_run path).
+            phase_costs: Optional per-phase cost in USD. Used for cost ceiling
+                         enforcement when overnight_contract is set.
 
         Returns:
-            ModelOvernightResult with per-phase outcomes and terminal status.
+            ModelOvernightResult with per-phase outcomes, terminal status, and
+            optional halt_reason if a contract halt condition was triggered.
         """
         started_at = datetime.now(tz=UTC)
         results: list[ModelPhaseResult] = []
         overrides = phase_results or {}
+        costs = phase_costs or {}
+        contract = command.overnight_contract
+        accumulated_cost: float = 0.0
+        halt_reason: str | None = None
 
         for phase in _PHASE_SEQUENCE:
             skipped = self._should_skip(phase, command)
@@ -140,6 +156,8 @@ class HandlerOvernight:
                 success = overrides.get(phase, True)
                 error_msg = None if success else f"Phase {phase.value} failed"
 
+            accumulated_cost += costs.get(phase, 0.0)
+
             results.append(
                 ModelPhaseResult(
                     phase=phase,
@@ -148,6 +166,18 @@ class HandlerOvernight:
                     error_message=error_msg,
                 )
             )
+
+            if contract is not None:
+                halt = self._check_halt_conditions(
+                    contract=contract,
+                    phase=phase,
+                    phase_success=success,
+                    accumulated_cost=accumulated_cost,
+                )
+                if halt is not None:
+                    halt_reason = halt
+                    logger.error("Overnight halt triggered: %s", halt_reason)
+                    break
 
             if not success:
                 # On failure, stop the pipeline unless it's a non-critical phase.
@@ -167,7 +197,9 @@ class HandlerOvernight:
         ]
         phases_skipped = [r.phase.value for r in results if r.skipped]
 
-        if not phases_failed:
+        if halt_reason is not None:
+            status = EnumOvernightStatus.FAILED
+        elif not phases_failed:
             status = EnumOvernightStatus.COMPLETED
         elif len(phases_failed) < len(phases_run):
             status = EnumOvernightStatus.PARTIAL
@@ -182,9 +214,40 @@ class HandlerOvernight:
             phases_skipped=phases_skipped,
             phase_results=results,
             dry_run=command.dry_run,
+            halt_reason=halt_reason,
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
         )
+
+    def _check_halt_conditions(
+        self,
+        *,
+        contract: ModelOvernightContract,
+        phase: EnumPhase,
+        phase_success: bool,
+        accumulated_cost: float,
+    ) -> str | None:
+        """Check all contract halt conditions after a phase completes.
+
+        Returns a halt_reason string if any condition is triggered, else None.
+        """
+        for halt_cond in contract.halt_conditions:
+            if (
+                halt_cond.check_type == "cost_ceiling"
+                and accumulated_cost >= halt_cond.threshold
+            ):
+                return (
+                    f"cost_ceiling: {accumulated_cost:.2f} >= "
+                    f"{halt_cond.threshold:.2f} USD"
+                )
+
+        # Check halt_on_failure for the completed phase against contract phase specs
+        if not phase_success:
+            for phase_spec in contract.phases:
+                if phase_spec.phase_name == phase.value and phase_spec.halt_on_failure:
+                    return f"halt_on_failure: phase {phase.value} failed"
+
+        return None
 
     def _should_skip(self, phase: EnumPhase, command: ModelOvernightCommand) -> bool:
         """Return True if this phase should be skipped per command flags."""
@@ -200,6 +263,7 @@ __all__: list[str] = [
     "EnumPhase",
     "HandlerOvernight",
     "ModelOvernightCommand",
+    "ModelOvernightContract",
     "ModelOvernightResult",
     "ModelPhaseResult",
 ]
