@@ -3,7 +3,11 @@
 """HandlerOvernight — Overnight session FSM orchestrator.
 
 Sequences the autonomous overnight pipeline in phase order:
-  build_loop_orchestrator -> merge_sweep -> ci_watch -> platform_readiness
+  nightly_loop_controller -> build_loop_orchestrator -> merge_sweep ->
+  ci_watch -> platform_readiness
+
+nightly_loop_controller runs first to read standing orders and dispatch
+mechanical tickets. The build loop then processes what it dispatched.
 
 Each phase is represented as a named step with its own success/failure state.
 In dry_run mode, all phases are simulated as successful. The handler itself
@@ -11,6 +15,9 @@ is pure — it owns no external I/O, only phase sequencing and state tracking.
 
 Integration with the actual node handlers happens at the RuntimeLocal layer
 via the event bus. This handler is responsible for the sequencing contract.
+
+Related:
+    - OMN-8025: Overseer seam integration epic — nightly loop trigger wiring
 """
 
 from __future__ import annotations
@@ -27,14 +34,17 @@ logger = logging.getLogger(__name__)
 class EnumPhase(StrEnum):
     """Overnight pipeline phases in execution order."""
 
+    NIGHTLY_LOOP = "nightly_loop_controller"
     BUILD_LOOP = "build_loop_orchestrator"
     MERGE_SWEEP = "merge_sweep"
     CI_WATCH = "ci_watch"
     PLATFORM_READINESS = "platform_readiness"
 
 
-# Canonical phase sequence
+# Canonical phase sequence — nightly_loop_controller runs first so it can
+# dispatch tickets before the build loop processes them.
 _PHASE_SEQUENCE: list[EnumPhase] = [
+    EnumPhase.NIGHTLY_LOOP,
     EnumPhase.BUILD_LOOP,
     EnumPhase.MERGE_SWEEP,
     EnumPhase.CI_WATCH,
@@ -57,6 +67,7 @@ class ModelOvernightCommand(BaseModel):
 
     correlation_id: str
     max_cycles: int = 0
+    skip_nightly_loop: bool = False
     skip_build_loop: bool = False
     skip_merge_sweep: bool = False
     dry_run: bool = False
@@ -151,10 +162,10 @@ class HandlerOvernight:
 
             if not success:
                 # On failure, stop the pipeline unless it's a non-critical phase.
-                # build_loop failure stops everything; other phases continue.
-                if phase == EnumPhase.BUILD_LOOP:
+                # nightly_loop or build_loop failure stops everything; other phases continue.
+                if phase in (EnumPhase.NIGHTLY_LOOP, EnumPhase.BUILD_LOOP):
                     logger.warning(
-                        "build_loop_orchestrator failed — halting overnight pipeline"
+                        "%s failed — halting overnight pipeline", phase.value
                     )
                     break
                 logger.warning(
@@ -188,6 +199,8 @@ class HandlerOvernight:
 
     def _should_skip(self, phase: EnumPhase, command: ModelOvernightCommand) -> bool:
         """Return True if this phase should be skipped per command flags."""
+        if phase == EnumPhase.NIGHTLY_LOOP and command.skip_nightly_loop:
+            return True
         if phase == EnumPhase.BUILD_LOOP and command.skip_build_loop:
             return True
         if phase == EnumPhase.MERGE_SWEEP and command.skip_merge_sweep:

@@ -7,6 +7,7 @@ handler code — never inline topic strings directly.
 
 Related:
     - OMN-8030: Overseer verifier wiring + DoD events
+    - OMN-8025: Overseer seam integration epic
 """
 
 from __future__ import annotations
@@ -16,8 +17,11 @@ TOPIC_PHASE_TRANSITION = (
 )
 TOPIC_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"
 TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"
-TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.overseer.verify-requested.v1"
-TOPIC_OVERSEER_VERIFICATION_COMPLETED = "onex.evt.overseer.verification-completed.v1"
+# Canonical omnimarket topic names — must match node_overseer_verifier/contract.yaml
+TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"
+TOPIC_OVERSEER_VERIFICATION_COMPLETED = (
+    "onex.evt.omnimarket.overseer-verifier-completed.v1"
+)
 
 __all__: list[str] = [
     "TOPIC_COMPLETED",
