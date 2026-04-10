@@ -1,0 +1,28 @@
+name: node_autopilot_orchestrator
+version: "1.0.0"
+description: "Autopilot orchestrator — 4-phase autonomous close-out pipeline: worktree health sweep (A), merge sweep (B), infra health gate (C), quality sweeps (D)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: autopilot
+node_role: orchestrator
+display_name: "Autopilot Orchestrator"
+entry_points:
+  onex.nodes:
+    node_autopilot_orchestrator: "omnimarket.nodes.node_autopilot_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+entry_flags:
+  dry_run: "Run without side effects"
+  mode: "Execution mode: close-out | build (default: close-out)"
+  require_gate: "Opt into a Slack HIGH_RISK gate before release step"
+  autonomous: "Run without human gates (default: true)"
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["autopilot", "orchestrator", "close-out", "pipeline", "fsm", "OMN-6872"]
