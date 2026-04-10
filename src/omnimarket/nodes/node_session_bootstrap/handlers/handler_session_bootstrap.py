@@ -12,6 +12,7 @@ writes are gated by dry_run. Callers pass an absolute state_dir path.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import UTC, datetime
@@ -139,8 +140,10 @@ class HandlerSessionBootstrap:
         os.makedirs(state_dir, exist_ok=True)
         filename = f"overnight-contract-{command.session_id}.json"
         path = os.path.join(state_dir, filename)
+        payload = command.contract.model_dump()
+        payload["session_id"] = command.session_id
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(command.contract.model_dump_json(indent=2))
+            fh.write(json.dumps(payload, indent=2, default=str))
         return path
 
 
