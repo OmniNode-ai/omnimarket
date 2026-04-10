@@ -25,6 +25,7 @@ Related:
     - OMN-7583: Migrate build loop orchestrator to omnimarket
     - OMN-7575: Build loop migration epic
     - OMN-5113: Autonomous Build Loop epic
+    - OMN-8165: Wire overseer verifier into build loop (Phase 1 advisory seam)
 """
 
 from __future__ import annotations
@@ -75,6 +76,7 @@ from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier 
 from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
     ModelVerifierRequest,
 )
+from omnimarket.protocols.protocol_overseer_verifier import ProtocolOverseerVerifier
 
 if TYPE_CHECKING:
     from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
@@ -118,6 +120,7 @@ class HandlerBuildLoopOrchestrator:
         dispatch: ProtocolBuildDispatchHandler | None = None,
         event_bus: ProtocolEventBusPublisher | None = None,
         contract_path: Path | None = None,
+        overseer_verifier: ProtocolOverseerVerifier | None = None,
     ) -> None:
         contract = _load_contract(contract_path)
         publish_topics: list[str] = contract.get("event_bus", {}).get(
@@ -140,6 +143,9 @@ class HandlerBuildLoopOrchestrator:
         self._dispatch = dispatch
         self._event_bus = event_bus
         self._overseer_verifier = HandlerOverseerVerifier()
+        # Advisory overseer seam (Phase 1 — OMN-8165). Injected via DI for testing;
+        # defaults to None (advisory check uses self._overseer_verifier directly).
+        self._advisory_overseer: ProtocolOverseerVerifier | None = overseer_verifier
 
         # Inter-phase state: carry results between fill -> classify -> build
         self._last_fill_result: tuple[ScoredTicket, ...] = ()
@@ -359,6 +365,15 @@ class HandlerBuildLoopOrchestrator:
                 metrics["tickets_classified"] = len(
                     classify_result.classifications,
                 )
+
+                # Phase 1 advisory overseer seam (OMN-8165): verify classify output
+                # before advancing to BUILDING. Advisory only — ESCALATE is logged
+                # but does not block. Hard gate comes in Phase 2.
+                self._run_advisory_overseer_check(
+                    correlation_id=correlation_id,
+                    classified_count=len(self._last_classify_result),
+                )
+
                 return True, None, metrics
 
             if phase == EnumBuildLoopPhase.BUILDING:
@@ -435,6 +450,54 @@ class HandlerBuildLoopOrchestrator:
                 correlation_id,
             )
             return False, str(exc), metrics
+
+    def _run_advisory_overseer_check(
+        self,
+        *,
+        correlation_id: UUID,
+        classified_count: int,
+    ) -> None:
+        """Advisory overseer check after CLASSIFYING phase (Phase 1 — OMN-8165).
+
+        Runs the deterministic 5-check gate against the CLASSIFYING output.
+        ESCALATE verdict is logged but does NOT block phase progression.
+        This is a soft gate — hard gating is deferred to Phase 2.
+
+        Args:
+            correlation_id: Cycle correlation identifier.
+            classified_count: Number of tickets classified as auto_buildable.
+        """
+        verifier_result = self._overseer_verifier.verify(
+            ModelVerifierRequest(
+                task_id=str(correlation_id),
+                status="classifying_complete",
+                domain="build_loop",
+                node_id="node_build_loop_orchestrator",
+                payload={"classified_count": classified_count},
+            )
+        )
+        verdict = str(verifier_result.get("verdict", "PASS"))
+        summary = str(verifier_result.get("summary", ""))
+
+        if verdict == "ESCALATE":
+            logger.error(
+                "[BUILD-LOOP-ORCH] Overseer ESCALATE after CLASSIFYING "
+                "(advisory — not blocking): %s (correlation_id=%s)",
+                summary,
+                correlation_id,
+            )
+        elif verdict == "FAIL":
+            logger.warning(
+                "[BUILD-LOOP-ORCH] Overseer FAIL after CLASSIFYING "
+                "(advisory — not blocking): %s (correlation_id=%s)",
+                summary,
+                correlation_id,
+            )
+        else:
+            logger.debug(
+                "[BUILD-LOOP-ORCH] Overseer PASS after CLASSIFYING (correlation_id=%s)",
+                correlation_id,
+            )
 
     async def _run_overseer_verify(
         self,

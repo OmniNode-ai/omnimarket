@@ -20,6 +20,14 @@ from __future__ import annotations
 
 import logging
 
+from omnibase_compat.overseer.enum_failure_class import EnumFailureClass
+from omnibase_compat.overseer.enum_verifier_verdict import EnumVerifierVerdict
+from omnibase_compat.overseer.model_context_bundle import ModelContextBundle
+from omnibase_compat.overseer.model_verifier_output import (
+    ModelVerifierCheckResult,
+    ModelVerifierOutput,
+)
+
 from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
     ModelVerifierRequest,
 )
@@ -257,6 +265,68 @@ class HandlerOverseerVerifier:
         # Fallback: return first failed check (should not happen given priority covers all)
         return failed[0]
 
+    def verify_with_context(
+        self,
+        *,
+        context: ModelContextBundle,
+        domain: str,
+        node_id: str,
+    ) -> ModelVerifierOutput:
+        """Run verification using a ModelContextBundle (ProtocolOverseerVerifier interface).
+
+        Bridges the protocol interface (context bundle) to the internal verify()
+        method by constructing a ModelVerifierRequest from the bundle fields.
+        Returns a typed ModelVerifierOutput rather than a raw dict.
+
+        Args:
+            context: Context bundle providing task_id, fsm_state, and summary.
+            domain: Domain the task is running in.
+            node_id: Node ID that produced the output.
+
+        Returns:
+            ModelVerifierOutput with verdict, checks, failure_class, and summary.
+        """
+        request = ModelVerifierRequest(
+            task_id=context.task_id,
+            status=context.fsm_state,
+            domain=domain,
+            node_id=node_id,
+        )
+        raw = self.verify(request)
+        verdict_str = str(raw.get("verdict", "FAIL"))
+        verdict = EnumVerifierVerdict(verdict_str)
+
+        raw_checks = raw.get("checks", [])
+        check_results: list[ModelVerifierCheckResult] = []
+        if isinstance(raw_checks, list):
+            for c in raw_checks:
+                if isinstance(c, dict):
+                    passed = bool(c.get("passed", False))
+                    fc: EnumFailureClass | None = None
+                    if not passed and c.get("failure_class"):
+                        fc = _parse_failure_class(str(c["failure_class"]))
+                    check_results.append(
+                        ModelVerifierCheckResult(
+                            name=str(c.get("name", "")),
+                            passed=passed,
+                            message=str(c.get("message", "")),
+                            failure_class=fc,
+                        )
+                    )
+
+        failure_class: EnumFailureClass | None = None
+        if verdict != EnumVerifierVerdict.PASS:
+            fc_raw = raw.get("failure_class")
+            if fc_raw is not None:
+                failure_class = _parse_failure_class(str(fc_raw))
+
+        return ModelVerifierOutput(
+            verdict=verdict,
+            checks=tuple(check_results),
+            failure_class=failure_class,
+            summary=str(raw.get("summary", "")),
+        )
+
     def _determine_verdict(self, dominant: _CheckResult) -> str:
         """Map dominant failure reason to a verdict string."""
         if dominant.failure_reason in _ESCALATE_REASONS:
@@ -274,6 +344,18 @@ def _checks_to_dicts(checks: list[_CheckResult]) -> list[dict[str, object]]:
         }
         for c in checks
     ]
+
+
+def _parse_failure_class(value: str) -> EnumFailureClass | None:
+    """Parse a failure class string case-insensitively.
+
+    ``_FAILURE_CLASSES`` returns uppercase strings (e.g. ``"DATA_INTEGRITY"``)
+    but ``EnumFailureClass`` uses lowercase values (e.g. ``"data_integrity"``).
+    """
+    try:
+        return EnumFailureClass(value.lower())
+    except ValueError:
+        return None
 
 
 __all__: list[str] = ["HandlerOverseerVerifier"]
