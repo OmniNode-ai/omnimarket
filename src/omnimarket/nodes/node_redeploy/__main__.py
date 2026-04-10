@@ -2,100 +2,134 @@
 # SPDX-License-Identifier: MIT
 """CLI entry point for node_redeploy.
 
-NOTE: This node is currently a structural placeholder. Business logic lives
-in the omniclaude skill (onex:redeploy) and will be migrated here in a
-follow-up ticket. This CLI parses args and emits the start command as JSON
-for contract verification purposes.
+Publishes a rebuild command to the deploy agent via Kafka and waits for the
+completion event. Requires KAFKA_BOOTSTRAP_SERVERS to be set.
 
 Usage:
-    python -m omnimarket.nodes.node_redeploy
-    python -m omnimarket.nodes.node_redeploy --versions omniintelligence=0.8.0
-    python -m omnimarket.nodes.node_redeploy --dry-run
+    python -m omnimarket.nodes.node_redeploy --scope full
+    python -m omnimarket.nodes.node_redeploy --scope runtime --git-ref origin/main
+    python -m omnimarket.nodes.node_redeploy --scope full --dry-run
+    python -m omnimarket.nodes.node_redeploy --scope full --services svc1,svc2
 
-Outputs JSON to stdout: ModelRedeployStartCommand model.
+Outputs JSON result to stdout. Exits 0 on success, 1 on failure/timeout.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import logging
 import sys
 from uuid import uuid4
 
-from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
-    ModelRedeployStartCommand,
+from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumRedeployStatus,
+    ModelRedeployResult,
 )
 
 _log = logging.getLogger(__name__)
 
 
+async def _run_dry(args: argparse.Namespace) -> int:
+    corr_id = str(uuid4())
+    dry_result = {
+        "correlation_id": corr_id,
+        "success": True,
+        "status": EnumRedeployStatus.SUCCESS,
+        "duration_seconds": 0.0,
+        "dry_run": True,
+        "scope": args.scope,
+        "git_ref": args.git_ref,
+    }
+    sys.stdout.write(json.dumps(dry_result, default=str, indent=2) + "\n")
+    return 0
+
+
+async def _run_kafka(args: argparse.Namespace) -> int:
+    from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
+        HandlerRedeployKafka,
+    )
+
+    try:
+        handler = HandlerRedeployKafka.from_env()
+    except RuntimeError as exc:
+        sys.stderr.write(f"ERROR: {exc}\n")
+        sys.stderr.write(
+            "Set KAFKA_BOOTSTRAP_SERVERS=<host:port> to enable Kafka-backed redeploy.\n"
+        )
+        return 1
+
+    services = (
+        [s.strip() for s in args.services.split(",") if s.strip()]
+        if args.services
+        else []
+    )
+
+    handler.timeout_s = args.timeout
+    bus = handler.bus
+    await bus.start()
+    try:
+        result: ModelRedeployResult = await handler.execute(
+            scope=args.scope,
+            git_ref=args.git_ref,
+            services=services,
+            requested_by="node_redeploy-cli",
+        )
+    finally:
+        await bus.close()
+
+    sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    return 0 if result.success else 1
+
+
+async def _run(args: argparse.Namespace) -> int:
+    if args.dry_run:
+        return await _run_dry(args)
+    return await _run_kafka(args)
+
+
 def main() -> None:
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
         description=(
-            "Full post-release runtime redeploy. "
-            "NOTE: handler is a structural placeholder — logic migrates in a follow-up."
+            "Trigger a deploy agent rebuild via Kafka. "
+            "Publishes a rebuild command and polls for the completion event."
         )
     )
     parser.add_argument(
-        "--versions",
+        "--scope",
+        choices=["full", "runtime", "core"],
+        default="full",
+        help="Rebuild scope (default: full)",
+    )
+    parser.add_argument(
+        "--git-ref",
+        default="origin/main",
+        help="Git ref for deploy agent to pull (default: origin/main)",
+    )
+    parser.add_argument(
+        "--services",
         default="",
-        help=(
-            "Comma-separated plugin version pins: pkg=version,pkg2=version2. "
-            "If omitted, auto-detected from latest git tags."
-        ),
-    )
-    parser.add_argument(
-        "--skip-sync",
-        action="store_true",
-        default=False,
-        help="Skip SYNC phase (bare clones already current)",
-    )
-    parser.add_argument(
-        "--skip-dockerfile-update",
-        action="store_true",
-        default=False,
-        help="Skip PIN_UPDATE phase",
-    )
-    parser.add_argument(
-        "--skip-infisical",
-        action="store_true",
-        default=False,
-        help="Skip INFISICAL phase",
-    )
-    parser.add_argument(
-        "--verify-only",
-        action="store_true",
-        default=False,
-        help="Skip to VERIFY phase only (assumes runtime already running)",
+        help="Comma-separated service filter. Empty = scope default.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
-        help="Print step commands without execution",
+        help="Print command payload without publishing to Kafka.",
     )
     parser.add_argument(
-        "--resume",
-        default="",
-        help="Resume from first non-completed phase by run_id",
+        "--timeout",
+        type=float,
+        default=600.0,
+        help="Seconds to wait for completion event (default: 600)",
     )
 
     args = parser.parse_args()
-
-    command = ModelRedeployStartCommand(
-        correlation_id=str(uuid4()),
-        versions=args.versions,
-        skip_sync=args.skip_sync,
-        skip_dockerfile_update=args.skip_dockerfile_update,
-        skip_infisical=args.skip_infisical,
-        verify_only=args.verify_only,
-        dry_run=args.dry_run,
-        resume=args.resume,
-    )
-
-    sys.stdout.write(command.model_dump_json(indent=2) + "\n")
+    exit_code = asyncio.run(_run(args))
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

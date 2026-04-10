@@ -1,77 +1,80 @@
 ---
 name: node_redeploy
-contract_version: {major: 1, minor: 0, patch: 0}
-node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
-  Full post-release runtime redeploy — syncs bare clones, updates Dockerfile plugin pins,
-  rebuilds Docker runtime, seeds Infisical, and verifies health across all services.
+  Triggers a deploy agent rebuild by publishing to the deploy agent command topic
+  and polling for the matching completion event. Pure Kafka publish-monitor pattern.
+  The deploy agent on .201 owns the actual rebuild steps.
 
 handler:
-  module: omnimarket.nodes.node_redeploy.handlers.handler_redeploy
-  class: HandlerRedeploy
-  input_model: omnimarket.nodes.node_redeploy.models.model_redeploy_state.ModelRedeployStartCommand
+  module: omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka
+  class: HandlerRedeployKafka
+  input_model: omnimarket.nodes.node_redeploy.models.model_deploy_agent_events.ModelDeployRebuildCommand
 
 descriptor:
-  node_archetype: compute
+  node_archetype: effect
   purity: impure
   idempotent: true
-  timeout_ms: 3600000
+  timeout_ms: 660000
 
 inputs:
-  versions:
+  scope:
     type: str
-    description: "Comma-separated plugin version pins: omniintelligence=0.8.0,omninode-claude=0.4.0. If omitted, auto-detected from latest git tags."
+    description: "Rebuild scope: full | runtime | core"
     required: false
-  skip_sync:
-    type: bool
-    description: "Skip SYNC phase (bare clones already current)"
-    required: false
-    default: false
-  skip_dockerfile_update:
-    type: bool
-    description: "Skip PIN_UPDATE phase"
-    required: false
-    default: false
-  skip_infisical:
-    type: bool
-    description: "Skip INFISICAL phase unconditionally"
-    required: false
-    default: false
-  verify_only:
-    type: bool
-    description: "Skip to VERIFY phase only (assumes runtime already running)"
-    required: false
-    default: false
-  dry_run:
-    type: bool
-    description: "Print step commands without execution"
-    required: false
-    default: false
-  resume:
+    default: "full"
+  git_ref:
     type: str
-    description: "Resume from first non-completed phase in state file by run_id"
+    description: "Git ref for deploy agent to pull"
     required: false
+    default: "origin/main"
+  services:
+    type: list
+    description: "Optional service filter. Empty = scope default."
+    required: false
+  requested_by:
+    type: str
+    description: "Identity label emitted in the command"
+    required: false
+    default: "node_redeploy"
 
 outputs:
+  correlation_id:
+    type: str
+    description: "UUID used to correlate command with completion event"
+  success:
+    type: bool
+    description: "True if deploy agent reported success"
   status:
     type: str
-    description: "success | failed | dry_run"
-  run_id:
+    description: "success | failed"
+  duration_seconds:
+    type: float
+    description: "Total build duration from deploy agent"
+  git_sha:
     type: str
-    description: "Unique redeploy run identifier"
-  phases:
+    description: "Git SHA that was deployed"
+  services_restarted:
+    type: list
+    description: "Services restarted by deploy agent"
+  phase_results:
     type: object
-    description: "Phase completion status map"
-  pins_applied:
-    type: object
-    description: "Package versions that were pinned"
+    description: "Per-phase result map (git, core, runtime, verification, publish)"
+  errors:
+    type: list
+    description: "Per-phase error messages"
+  timed_out:
+    type: bool
+    description: "True if polling timed out before completion event arrived"
 
-terminal_event: onex.evt.omnimarket.redeploy-completed.v1
+terminal_event: onex.evt.deploy.rebuild-completed.v1
 
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.redeploy-start.v1
+  # Topics this node talks to (deploy agent's topics, not omnimarket topics)
   publish_topics:
-    - onex.evt.omnimarket.redeploy-completed.v1
+    - onex.cmd.deploy.rebuild-requested.v1
+  subscribe_topics:
+    - onex.evt.deploy.rebuild-completed.v1
