@@ -32,9 +32,13 @@ import subprocess
 import textwrap
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import UUID, uuid4
 
 import httpx
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
@@ -96,6 +100,29 @@ _MODEL_COST_PER_1K: dict[str, float] = {
     "gpt-4o-mini": 0.00015,
     "qwen3-coder-30b": 0.0,  # local — no cost
 }
+
+
+def _build_event_bus() -> ProtocolEventBusPublisher | None:
+    """Build a live Kafka event bus if KAFKA_BOOTSTRAP_SERVERS is set."""
+    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
+    if not bootstrap:
+        logger.warning(
+            "[BUILD-LOOP] KAFKA_BOOTSTRAP_SERVERS not set — events will not be emitted"
+        )
+        return None
+    try:
+        from omnibase_infra.event_bus.event_bus_kafka import (
+            EventBusKafka,
+        )
+
+        bus = cast(ProtocolEventBusPublisher, EventBusKafka())
+        logger.info("[BUILD-LOOP] EventBusKafka connected to %s", bootstrap)
+        return bus
+    except Exception as exc:
+        logger.warning(
+            "[BUILD-LOOP] EventBusKafka init failed: %s — running without Kafka", exc
+        )
+        return None
 
 
 def _estimate_cost(model: str, total_tokens: int) -> float:
@@ -1249,7 +1276,7 @@ async def run_build_loop(
         rsd_fill=LiveRsdFillHandler(),
         classify=LiveTicketClassifyHandler(),
         dispatch=LiveBuildDispatchHandler(dry_run_global=dry_run),
-        event_bus=None,  # No Kafka for standalone execution
+        event_bus=_build_event_bus(),
     )
 
     # Create start command

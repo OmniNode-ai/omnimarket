@@ -3,13 +3,9 @@
 """CLI entry point for node_session_bootstrap.
 
 Usage:
-    python -m omnimarket.nodes.node_session_bootstrap \\
-        --session-id <uuid> \\
-        --phases-expected build_loop,merge_sweep,platform_readiness \\
-        --dry-run
+    python -m omnimarket.nodes.node_session_bootstrap --dry-run
 
 Outputs JSON to stdout: ModelBootstrapResult model.
-Exits 1 if bootstrap FAILED.
 """
 
 from __future__ import annotations
@@ -18,31 +14,37 @@ import argparse
 import os
 import sys
 import uuid
-from datetime import date
+from datetime import UTC, datetime
 
 from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
-    EnumBootstrapStatus,
     HandlerSessionBootstrap,
     ModelBootstrapCommand,
+)
+from omnimarket.nodes.node_session_bootstrap.models.model_overnight_contract import (
+    ModelOvernightContract,
 )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the session bootstrap node.")
+    today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
+    parser = argparse.ArgumentParser(description="Run the overnight session bootstrap.")
     parser.add_argument(
         "--session-id",
+        type=str,
         default=str(uuid.uuid4()),
-        help="Unique session ID (default: generated UUID)",
+        help="Session UUID (default: generated)",
     )
     parser.add_argument(
         "--session-label",
-        default=f"{date.today().isoformat()} overnight",
+        type=str,
+        default=f"{today} overnight",
         help="Human-readable session label",
     )
     parser.add_argument(
         "--phases-expected",
+        type=str,
         default="build_loop,merge_sweep,platform_readiness",
-        help="Comma-separated list of expected phases",
+        help="Comma-separated expected phases",
     )
     parser.add_argument(
         "--max-cycles",
@@ -58,36 +60,34 @@ def main() -> None:
     )
     parser.add_argument(
         "--state-dir",
+        type=str,
         default=".onex_state",
-        help="Base path for contract snapshot (default: .onex_state)",
+        help="Base path for contract snapshot",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
-        help="Simulate without writing to filesystem",
+        help="Skip filesystem writes",
     )
 
     args = parser.parse_args()
 
     phases = [p.strip() for p in args.phases_expected.split(",") if p.strip()]
-    state_dir = os.path.abspath(args.state_dir)
 
-    contract: dict[str, object] = {
-        "session_id": args.session_id,
-        "session_label": args.session_label,
-        "phases_expected": phases,
-        "max_cycles": args.max_cycles,
-        "cost_ceiling_usd": args.cost_ceiling,
-        "halt_on_build_loop_failure": True,
-        "dry_run": args.dry_run,
-        "schema_version": "1.0",
-    }
+    contract = ModelOvernightContract(
+        session_id=args.session_id,
+        session_label=args.session_label,
+        phases_expected=phases,
+        max_cycles=args.max_cycles,
+        cost_ceiling_usd=args.cost_ceiling,
+        started_at=datetime.now(tz=UTC),
+    )
 
     command = ModelBootstrapCommand(
         session_id=args.session_id,
         contract=contract,
-        state_dir=state_dir,
+        state_dir=os.path.abspath(args.state_dir),
         dry_run=args.dry_run,
     )
 
@@ -96,7 +96,7 @@ def main() -> None:
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 
-    if result.status == EnumBootstrapStatus.FAILED:
+    if result.status == "failed":
         sys.exit(1)
 
 

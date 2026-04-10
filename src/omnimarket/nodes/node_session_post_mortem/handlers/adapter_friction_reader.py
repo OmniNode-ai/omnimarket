@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""AdapterFrictionReader — reads friction events from .onex_state/friction/.
+"""adapter_friction_reader — reads .onex_state/friction/ directory.
 
 Best-effort JSON parsing:
-- Valid JSON with expected fields → ModelFrictionEventLocal
+- Valid JSON with expected fields → ModelFrictionEvent
 - Markdown or unparseable → synthetic event with friction_type="raw_file"
 """
 
@@ -15,85 +15,79 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-from omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem import (
-    ModelFrictionEventLocal,
+from omnimarket.nodes.node_session_post_mortem.models.model_post_mortem_report import (
+    ModelFrictionEvent,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class AdapterFrictionReader:
-    """Reads friction events from the friction directory on disk."""
+def read_friction_events(friction_dir: str) -> list[ModelFrictionEvent]:
+    """Read friction events from friction_dir.
 
-    def read_friction_events(self, friction_dir: str) -> list[ModelFrictionEventLocal]:
-        """Read all friction events from the given directory.
+    Scans *.json and *.md files. Returns parsed ModelFrictionEvent instances.
+    Failures in individual files are caught and converted to synthetic events.
 
-        Args:
-            friction_dir: Path to .onex_state/friction/ directory.
+    Args:
+        friction_dir: Path to the friction event directory.
 
-        Returns:
-            List of parsed ModelFrictionEventLocal instances. Never raises.
-        """
-        abs_dir = os.path.abspath(friction_dir)
-        if not os.path.isdir(abs_dir):
-            logger.debug("Friction dir %s does not exist — returning empty", abs_dir)
-            return []
+    Returns:
+        List of ModelFrictionEvent instances (may be empty).
+    """
+    events: list[ModelFrictionEvent] = []
 
-        events: list[ModelFrictionEventLocal] = []
-        for filename in sorted(os.listdir(abs_dir)):
-            filepath = os.path.join(abs_dir, filename)
-            if not os.path.isfile(filepath):
-                continue
-            event = self._parse_file(filepath, filename)
-            if event is not None:
-                events.append(event)
-
+    if not os.path.isdir(friction_dir):
+        logger.debug("Friction dir does not exist: %s", friction_dir)
         return events
 
-    def _parse_file(
-        self, filepath: str, filename: str
-    ) -> ModelFrictionEventLocal | None:
-        """Parse a single friction file. Returns None on unrecoverable error."""
+    for filename in sorted(os.listdir(friction_dir)):
+        if not (filename.endswith(".json") or filename.endswith(".md")):
+            continue
+
+        filepath = os.path.join(friction_dir, filename)
         try:
-            with open(filepath) as f:
-                content = f.read()
+            with open(filepath, encoding="utf-8") as fh:
+                content = fh.read()
         except OSError as exc:
             logger.warning("Could not read friction file %s: %s", filepath, exc)
-            return None
+            continue
 
-        if filename.endswith(".json"):
-            return self._parse_json(content, filename)
-        return self._parse_raw(content, filename)
+        event = _parse_friction_file(filename, content)
+        if event is not None:
+            events.append(event)
 
-    def _parse_json(self, content: str, filename: str) -> ModelFrictionEventLocal:
-        """Parse JSON friction file, falling back to raw on parse error."""
+    return events
+
+
+def _parse_friction_file(filename: str, content: str) -> ModelFrictionEvent | None:
+    """Parse a single friction file into a ModelFrictionEvent.
+
+    Tries JSON parse first; falls back to synthetic raw_file event.
+    """
+    if filename.endswith(".json"):
         try:
             data = json.loads(content)
-            return ModelFrictionEventLocal(
-                event_id=str(data.get("event_id", str(uuid.uuid4()))),
+            return ModelFrictionEvent(
+                event_id=str(data.get("event_id", uuid.uuid4())),
                 ticket_id=data.get("ticket_id"),
                 agent_id=data.get("agent_id"),
                 friction_type=str(data.get("friction_type", "unknown")),
                 description=str(data.get("description", filename)),
-                recorded_at=datetime.fromisoformat(
-                    str(data.get("recorded_at", datetime.now(UTC).isoformat()))
-                ),
+                recorded_at=datetime.fromisoformat(data["recorded_at"])
+                if "recorded_at" in data
+                else datetime.now(UTC),
             )
         except (json.JSONDecodeError, KeyError, ValueError) as exc:
-            logger.debug(
-                "JSON parse failed for %s: %s — treating as raw", filename, exc
-            )
-            return self._parse_raw(content, filename)
+            logger.debug("Could not parse JSON friction file %s: %s", filename, exc)
 
-    def _parse_raw(self, content: str, filename: str) -> ModelFrictionEventLocal:
-        """Create a synthetic friction event from raw file content."""
-        first_line = content.strip().splitlines()[0] if content.strip() else filename
-        return ModelFrictionEventLocal(
-            event_id=str(uuid.uuid4()),
-            friction_type="raw_file",
-            description=first_line[:200],
-            recorded_at=datetime.now(UTC),
-        )
+    # Fallback: synthetic raw_file event
+    first_line = content.splitlines()[0].strip() if content.strip() else filename
+    return ModelFrictionEvent(
+        event_id=str(uuid.uuid4()),
+        friction_type="raw_file",
+        description=first_line[:500],
+        recorded_at=datetime.now(UTC),
+    )
 
 
-__all__: list[str] = ["AdapterFrictionReader"]
+__all__: list[str] = ["read_friction_events"]

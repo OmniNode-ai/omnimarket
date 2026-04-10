@@ -18,47 +18,44 @@ descriptor:
   node_archetype: orchestrator
   purity: pure
   idempotent: true
-  timeout_ms: 60000
+  timeout_ms: 30000
 
 inputs:
   session_id:
-    type: str
-    description: "Unique session ID (caller generates UUID)"
+    type: uuid
+    description: "Unique session ID (caller generates)"
     required: true
   contract:
     type: object
-    description: "ModelOvernightContract defining session parameters"
+    description: "ModelOvernightContract — session-level verification contract"
     required: true
   state_dir:
     type: str
-    description: "Base path for contract snapshot"
+    description: "Base path for contract snapshot (default: .onex_state)"
     required: false
     default: ".onex_state"
   dry_run:
     type: bool
-    description: "Run without writing to filesystem"
+    description: "Skip filesystem writes when true"
     required: false
     default: false
 
 outputs:
   session_id:
     type: str
-    description: "Echo of input session_id"
+    description: "Session ID echoed from command"
   status:
     type: str
     description: "ready | degraded | failed"
   contract_path:
     type: str
-    description: "Absolute path written (or '(dry-run)' if dry_run)"
+    description: "Absolute path written (or (dry-run) if dry_run)"
   timer_configs:
     type: list
     description: "Human-readable list of configured timers"
   warnings:
     type: list
-    description: "Any warnings generated during bootstrap"
-  bootstrapped_at:
-    type: str
-    description: "ISO timestamp when bootstrap completed"
+    description: "Advisory warnings (non-fatal)"
 
 terminal_event: onex.evt.omnimarket.session-bootstrap-completed.v1
 

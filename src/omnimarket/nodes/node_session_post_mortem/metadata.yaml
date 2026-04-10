@@ -1,6 +1,6 @@
 name: node_session_post_mortem
 version: "1.0.0"
-description: "Session post-mortem collector — collects planned vs completed phases, stalled agents, friction events, produces ModelPostMortemReport"
+description: "Session post-mortem collector — collects phases, friction events, PR status, writes report"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -15,9 +15,10 @@ capabilities:
   side_effect_class: mutating
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase_compat"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["post-mortem", "reducer", "session", "overnight", "pipeline", "reporting"]
+tags: ["post-mortem", "reducer", "overnight", "session", "reporting"]
 pack: "overnight_pipeline"
 display_name: "Session Post-Mortem"
 node_role: "reducer"
