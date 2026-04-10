@@ -98,6 +98,29 @@ _MODEL_COST_PER_1K: dict[str, float] = {
 }
 
 
+def _build_event_bus() -> object | None:
+    """Build a live Kafka event bus if KAFKA_BOOTSTRAP_SERVERS is set."""
+    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
+    if not bootstrap:
+        logger.warning(
+            "[BUILD-LOOP] KAFKA_BOOTSTRAP_SERVERS not set — events will not be emitted"
+        )
+        return None
+    try:
+        from omnibase_infra.event_bus.event_bus_kafka import (
+            EventBusKafka,
+        )
+
+        bus = EventBusKafka()
+        logger.info("[BUILD-LOOP] EventBusKafka connected to %s", bootstrap)
+        return bus
+    except Exception as exc:
+        logger.warning(
+            "[BUILD-LOOP] EventBusKafka init failed: %s — running without Kafka", exc
+        )
+        return None
+
+
 def _estimate_cost(model: str, total_tokens: int) -> float:
     """Estimate USD cost for an LLM call based on model and token count."""
     per_1k = _MODEL_COST_PER_1K.get(model, 0.001)  # conservative default
@@ -1249,7 +1272,7 @@ async def run_build_loop(
         rsd_fill=LiveRsdFillHandler(),
         classify=LiveTicketClassifyHandler(),
         dispatch=LiveBuildDispatchHandler(dry_run_global=dry_run),
-        event_bus=None,  # No Kafka for standalone execution
+        event_bus=_build_event_bus(),
     )
 
     # Create start command
