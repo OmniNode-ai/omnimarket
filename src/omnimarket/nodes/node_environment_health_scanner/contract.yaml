@@ -1,0 +1,56 @@
+---
+name: environment_health_scanner
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Live environment health scanner — reads contracts to know what should exist,
+  probes the running environment to verify it does, and emits a structured
+  PASS/WARN/FAIL report per subsystem.
+
+handler:
+  module: omnimarket.nodes.node_environment_health_scanner.handlers.handler_environment_health_scanner
+  class: NodeEnvironmentHealthScanner
+  input_model: omnimarket.nodes.node_environment_health_scanner.handlers.handler_environment_health_scanner.EnvironmentHealthRequest
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 300000
+
+inputs:
+  subsystems:
+    type: list[str]
+    description: "Subsystems to scan. Empty list = all."
+    required: false
+    default: []
+  omni_home:
+    type: str
+    description: "Path to omni_home repository registry"
+    required: false
+  ssh_target:
+    type: str
+    description: "SSH target for .201 infra checks"
+    required: false
+
+outputs:
+  subsystem_results:
+    type: list[SubsystemResult]
+    description: "Per-subsystem PASS/WARN/FAIL with details"
+  overall:
+    type: str
+    description: "Aggregate status: PASS | WARN | FAIL"
+  findings:
+    type: list[ModelHealthFinding]
+    description: "All individual findings"
+
+terminal_event: onex.evt.omnimarket.environment-health-scan-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.environment-health-scan-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.environment-health-scan-finding.v1
+    - onex.evt.omnimarket.environment-health-scan-completed.v1
