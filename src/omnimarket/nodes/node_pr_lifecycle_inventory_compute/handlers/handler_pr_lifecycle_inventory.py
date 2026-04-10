@@ -7,6 +7,7 @@ Pure data collection — no classification or action logic.
 
 Related:
     - OMN-8082: Create pr_lifecycle_inventory_compute Node
+    - OMN-8206: Add stuck merge queue detection
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+from datetime import UTC, datetime
 from typing import Literal
 
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
@@ -22,6 +24,7 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecy
     ModelPrInventoryOutput,
     ModelPrReview,
     ModelPrState,
+    ModelStuckQueueEntry,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,11 +72,18 @@ class HandlerPrLifecycleInventory:
                 logger.warning("Failed to collect PR state: %s", msg)
                 errors.append(msg)
 
+        stuck_queue = self._detect_stuck_queue_prs(
+            repo=input_model.repo,
+            pr_states=pr_states,
+            stuck_threshold_minutes=getattr(input_model, "stuck_threshold_minutes", 30),
+        )
+
         return ModelPrInventoryOutput(
             repo=input_model.repo,
             pr_states=tuple(pr_states),
             total_collected=len(pr_states),
             collection_errors=tuple(errors),
+            stuck_queue_prs=stuck_queue,
         )
 
     def _collect_pr_state(self, repo: str, pr_number: int) -> ModelPrState:
@@ -253,3 +263,93 @@ class HandlerPrLifecycleInventory:
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             logger.debug("Failed to parse reviews for PR #%d: %s", pr_number, exc)
             return []
+
+    def _detect_stuck_queue_prs(
+        self,
+        repo: str,
+        pr_states: list[ModelPrState],
+        stuck_threshold_minutes: float = 30.0,
+    ) -> list[ModelStuckQueueEntry]:
+        """Detect PRs stuck in the merge queue longer than the threshold.
+
+        A PR is "stuck" if merge_state_status == "QUEUED" AND queue age > threshold.
+        If the repo plan doesn't support merge queues (mergeQueueEntry absent), skip silently.
+
+        Args:
+            repo: GitHub repo slug.
+            pr_states: Collected PR states.
+            stuck_threshold_minutes: Age threshold in minutes (default 30).
+
+        Returns:
+            List of stuck queue entries.
+        """
+        stuck: list[ModelStuckQueueEntry] = []
+        for state in pr_states:
+            if state.merge_state_status != "QUEUED":
+                continue
+            try:
+                queue_entry = self._fetch_merge_queue_entry(repo, state.pr_number)
+                if queue_entry is None:
+                    continue
+                entered_at_raw = queue_entry.get("enqueuedAt")
+                if not entered_at_raw:
+                    continue
+                entered_at = datetime.fromisoformat(
+                    str(entered_at_raw).replace("Z", "+00:00")
+                )
+                now = datetime.now(tz=UTC)
+                age_minutes = (now - entered_at).total_seconds() / 60.0
+                if age_minutes > stuck_threshold_minutes:
+                    stuck.append(
+                        ModelStuckQueueEntry(
+                            pr_number=state.pr_number,
+                            repo=repo,
+                            title=state.title,
+                            queue_entered_at=entered_at,
+                            queue_age_minutes=round(age_minutes, 2),
+                        )
+                    )
+                    logger.warning(
+                        "[INVENTORY] stuck queue PR #%d in %s: %.1f min",
+                        state.pr_number,
+                        repo,
+                        age_minutes,
+                    )
+            except Exception as exc:
+                # Graceful: if mergeQueueEntry is absent or any error, skip silently
+                logger.debug(
+                    "Stuck queue check skipped for PR #%d in %s: %s",
+                    state.pr_number,
+                    repo,
+                    exc,
+                )
+        return stuck
+
+    def _fetch_merge_queue_entry(
+        self, repo: str, pr_number: int
+    ) -> dict[str, object] | None:
+        """Fetch mergeQueueEntry for a PR via gh CLI.
+
+        Returns None if field is absent (repo plan doesn't support merge queues).
+        """
+        cmd = [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "mergeQueueEntry",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return None
+        try:
+            data: dict[str, object] = json.loads(result.stdout)
+            entry = data.get("mergeQueueEntry")
+            if entry is None or not isinstance(entry, dict):
+                return None
+            return entry
+        except (json.JSONDecodeError, KeyError):
+            return None
