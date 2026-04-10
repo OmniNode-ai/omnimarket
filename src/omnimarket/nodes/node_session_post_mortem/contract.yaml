@@ -1,0 +1,92 @@
+---
+name: session_post_mortem
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Session post-mortem collector. Collects planned vs completed phases,
+  stalled agents, friction events, PR status, and carry-forward items.
+  Produces ModelPostMortemReport. Writes to docs/post-mortems/ and emits
+  session-post-mortem event.
+
+handler:
+  module: omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem
+  class: HandlerSessionPostMortem
+  input_model: omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem.ModelPostMortemCommand
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  session_id:
+    type: str
+    description: "Unique session ID"
+    required: true
+  session_label:
+    type: str
+    description: "Human-readable session label"
+    required: true
+  phases_planned:
+    type: list
+    description: "Phases planned for this session"
+    required: true
+  phases_completed:
+    type: list
+    description: "Phases that completed successfully"
+    required: true
+  phases_failed:
+    type: list
+    description: "Phases that failed"
+    required: true
+  phases_skipped:
+    type: list
+    description: "Phases that were skipped"
+    required: false
+    default: []
+  friction_dir:
+    type: str
+    description: "Path to scan for friction events"
+    required: false
+    default: ".onex_state/friction"
+  report_dir:
+    type: str
+    description: "Path to write the post-mortem report"
+    required: false
+    default: "docs/post-mortems"
+  dry_run:
+    type: bool
+    description: "Run without writing to filesystem"
+    required: false
+    default: false
+
+outputs:
+  session_id:
+    type: str
+    description: "Echo of input session_id"
+  outcome:
+    type: str
+    description: "completed | partial | failed | aborted"
+  report_path:
+    type: str
+    description: "Absolute path to Markdown report (or '(dry-run)' if dry_run)"
+  phases_completed:
+    type: list
+    description: "Phases that completed"
+  stalled_agents:
+    type: list
+    description: "Agent IDs detected as stalled"
+  friction_events_count:
+    type: int
+    description: "Number of friction events collected"
+
+terminal_event: onex.evt.omnimarket.session-post-mortem.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.session-post-mortem-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.session-post-mortem.v1
