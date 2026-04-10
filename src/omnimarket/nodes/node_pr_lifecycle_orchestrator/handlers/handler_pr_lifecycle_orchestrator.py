@@ -60,6 +60,68 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Dependency DAG ordering (OMN-8205)
+# ---------------------------------------------------------------------------
+
+# Canonical dependency order (repo slug → priority tier, lower = earlier).
+# Add new repos here with the appropriate tier number.
+_REPO_DEPENDENCY_TIERS: dict[str, int] = {
+    "omnibase_compat": 0,
+    "omnibase_spi": 1,
+    "omnibase_core": 2,
+    "omnibase_infra": 3,
+    "omnimarket": 4,
+    "omniclaude": 5,
+    "omniintelligence": 6,
+    "omnimemory": 7,
+    "omninode_infra": 8,
+    "onex_change_control": 9,
+    "omnidash": 10,
+    "omniweb": 11,
+    # Unknown repos: tier 99 (merge last) — add new repos above this comment
+}
+
+_DAG_UNKNOWN_TIER = 99
+
+
+def _repo_slug_from_record(repo: str) -> str:
+    """Extract bare repo name from org/repo format."""
+    return repo.split("/")[-1] if "/" in repo else repo
+
+
+def _apply_dag_ordering(prs: tuple[object, ...]) -> tuple[object, ...]:
+    """Sort PRs by cross-repo dependency DAG tier (stable sort).
+
+    Within each tier, GREEN PRs sort first (stable — preserves original order
+    for same-status PRs). Unknown repos get tier 99 and merge last.
+
+    Args:
+        prs: Tuple of TriageRecord objects (or any object with .repo attribute).
+
+    Returns:
+        New tuple with PRs sorted by dependency tier.
+    """
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+        EnumPrCategory,
+        TriageRecord,
+    )
+
+    def _sort_key(pr: object) -> tuple[int, int]:
+        tr = pr  # type: ignore[assignment]
+        slug = _repo_slug_from_record(getattr(tr, "repo", ""))
+        tier = _REPO_DEPENDENCY_TIERS.get(slug, _DAG_UNKNOWN_TIER)
+        # GREEN = 0 (sort first), others = 1
+        is_green = (
+            0
+            if isinstance(tr, TriageRecord) and tr.category == EnumPrCategory.GREEN
+            else 1
+        )
+        return (tier, is_green)
+
+    return tuple(sorted(prs, key=_sort_key))
+
+
+# ---------------------------------------------------------------------------
 # Input / output models
 # ---------------------------------------------------------------------------
 
@@ -77,6 +139,10 @@ class ModelPrLifecycleStartCommand(BaseModel):
     repos: str = Field(
         default="",
         description="Comma-separated repo slugs to filter (empty = all).",
+    )
+    use_dag_ordering: bool = Field(
+        default=True,
+        description="Order PRs by cross-repo dependency DAG before merging.",
     )
 
 
@@ -406,6 +472,16 @@ class HandlerPrLifecycleOrchestrator:
                 for intent in reducer_result.intents
                 if intent.intent == EnumReducerIntent.SKIP
             )
+
+            # Apply DAG ordering to merge PRs (dependency-safe merge order)
+            if command.use_dag_ordering and merge_prs:
+                from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+                    TriageRecord,
+                )
+
+                merge_prs = cast(
+                    tuple[TriageRecord, ...], _apply_dag_ordering(merge_prs)
+                )
             state.prs_skipped = len(skip_prs)
 
             # Phase: MERGING (skip if fix_only)
