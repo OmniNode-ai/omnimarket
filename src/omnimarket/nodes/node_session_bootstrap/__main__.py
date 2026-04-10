@@ -16,11 +16,12 @@ import sys
 import uuid
 from datetime import UTC, datetime
 
-from omnibase_compat.overseer.model_overnight_contract import ModelOvernightContract
-
 from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
     HandlerSessionBootstrap,
     ModelBootstrapCommand,
+)
+from omnimarket.nodes.node_session_bootstrap.models.model_overnight_contract import (
+    ModelOvernightContract,
 )
 
 

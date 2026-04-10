@@ -17,15 +17,15 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from omnibase_compat.telemetry.model_post_mortem_report import (
-    EnumPostMortemOutcome,
-    ModelFrictionEvent,
-    ModelPostMortemReport,
-)
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_session_post_mortem.handlers.adapter_pr_collector import (
     collect_pr_status,
+)
+from omnimarket.nodes.node_session_post_mortem.models.model_post_mortem_report import (
+    EnumPostMortemOutcome,
+    ModelFrictionEvent,
+    ModelPostMortemReport,
 )
 
 logger = logging.getLogger(__name__)

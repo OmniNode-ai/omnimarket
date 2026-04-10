@@ -15,7 +15,9 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-from omnibase_compat.telemetry.model_post_mortem_report import ModelFrictionEvent
+from omnimarket.nodes.node_session_post_mortem.models.model_post_mortem_report import (
+    ModelFrictionEvent,
+)
 
 logger = logging.getLogger(__name__)
 

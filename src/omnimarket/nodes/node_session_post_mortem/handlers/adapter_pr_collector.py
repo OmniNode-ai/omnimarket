@@ -8,7 +8,9 @@ into merged, open, and failed PR URL lists.
 
 from __future__ import annotations
 
-from omnibase_compat.telemetry.model_post_mortem_report import ModelFrictionEvent
+from omnimarket.nodes.node_session_post_mortem.models.model_post_mortem_report import (
+    ModelFrictionEvent,
+)
 
 # Friction types that indicate PR state
 _PR_MERGED_TYPES: frozenset[str] = frozenset({"pr_merged"})

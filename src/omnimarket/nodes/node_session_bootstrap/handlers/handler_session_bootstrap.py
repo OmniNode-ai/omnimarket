@@ -17,8 +17,11 @@ import os
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from omnibase_compat.overseer.model_overnight_contract import ModelOvernightContract
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_session_bootstrap.models.model_overnight_contract import (
+    ModelOvernightContract,
+)
 
 logger = logging.getLogger(__name__)
 
