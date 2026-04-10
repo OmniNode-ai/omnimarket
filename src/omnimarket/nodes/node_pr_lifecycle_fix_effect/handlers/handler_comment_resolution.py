@@ -175,7 +175,7 @@ class HandlerCommentResolution:
         preserved_count = 0
 
         for comment in comments:
-            comment_id = int(comment.get("id", 0))  # type: ignore[arg-type]
+            comment_id = int(comment.get("id", 0))  # type: ignore[call-overload]
             if self._is_trivial_bot_comment(comment):
                 if not dry_run:
                     await self._adapter.resolve_thread(
