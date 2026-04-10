@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
 """NodeAislopSweep — Detect AI-generated quality anti-patterns.
 
 Scans repository directories for common AI-slop patterns:
@@ -13,10 +15,34 @@ ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+import time
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
+import yaml
+from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
+logger = logging.getLogger(__name__)
+
+
+def _load_sweep_result_topic() -> str:
+    """Load the sweep-result publish topic from this node's contract.yaml."""
+    contract_path = Path(__file__).parent.parent / "contract.yaml"
+    with open(contract_path) as f:
+        data: dict[str, Any] = yaml.safe_load(f)
+    topics: list[str] = data.get("event_bus", {}).get("publish_topics", [])
+    return next((t for t in topics if "sweep-result" in t), "")
+
 
 # ---------------------------------------------------------------------------
 # Models
@@ -180,6 +206,7 @@ class NodeAislopSweep:
     """Scan directories for AI-generated quality anti-patterns.
 
     Pure compute handler — no I/O beyond reading the target directories.
+    Accepts an optional event_bus for emitting sweep result telemetry after each run.
     """
 
     ALL_CHECKS = [
@@ -191,11 +218,19 @@ class NodeAislopSweep:
         "hardcoded-config",
     ]
 
+    def __init__(
+        self,
+        event_bus: ProtocolEventBusPublisher | None = None,
+    ) -> None:
+        self._event_bus = event_bus
+        self._sweep_result_topic = _load_sweep_result_topic()
+
     def handle(self, request: AislopSweepRequest) -> AislopSweepResult:
         """Execute the aislop sweep across target directories."""
         checks = request.checks or self.ALL_CHECKS
         findings: list[ModelSweepFinding] = []
         repos_scanned = 0
+        start_ts = time.monotonic()
 
         for target_dir in request.target_dirs:
             target = Path(target_dir)
@@ -233,12 +268,57 @@ class NodeAislopSweep:
                         self._check_hardcoded_config(repo_name, rel_path, lines)
                     )
 
+        elapsed = time.monotonic() - start_ts
         status = "clean" if not findings else "findings"
-        return AislopSweepResult(
+        result = AislopSweepResult(
             findings=findings,
             repos_scanned=repos_scanned,
             status=status,
             dry_run=request.dry_run,
+        )
+        self._last_result = result
+        self._last_elapsed = elapsed
+        self._last_repos = [
+            Path(d).name for d in request.target_dirs if Path(d).is_dir()
+        ]
+        return result
+
+    async def emit_sweep_result(self, correlation_id: str) -> None:
+        """Emit a ModelSweepResult telemetry event if an event bus is wired.
+
+        Call this after handle() to publish sweep results to the dashboard topic.
+        No-op when event_bus is None or sweep_result_topic is not configured.
+        """
+        if self._event_bus is None or not self._sweep_result_topic:
+            return
+        result = getattr(self, "_last_result", None)
+        elapsed = getattr(self, "_last_elapsed", 0.0)
+        repos = getattr(self, "_last_repos", [])
+        if result is None:
+            return
+
+        critical_count = result.by_severity.get("CRITICAL", 0)
+        sweep_result = ModelSweepResult(
+            sweep_type="aislop",
+            session_id=correlation_id,
+            correlation_id=correlation_id,
+            ran_at=datetime.now(UTC),
+            duration_seconds=elapsed,
+            passed=critical_count == 0,
+            finding_count=result.total_findings,
+            critical_count=critical_count,
+            warning_count=result.by_severity.get("WARNING", 0),
+            repos_scanned=tuple(repos),
+            summary=(
+                f"{critical_count} critical, {result.total_findings} total findings"
+            ),
+        )
+        await self._event_bus.publish(
+            topic=self._sweep_result_topic,
+            key=correlation_id.encode(),
+            value=json.dumps(
+                sweep_result.model_dump(mode="json"), default=str
+            ).encode(),
         )
 
     def _collect_python_files(self, root: Path) -> list[Path]:
