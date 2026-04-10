@@ -38,9 +38,7 @@ def build_event_bus_for_profile(profile: EnumDIProfile) -> Any:
         )
 
     try:
-        from omnibase_infra.event_bus.event_bus_kafka import (  # type: ignore[import-untyped]
-            EventBusKafka,
-        )
+        from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 
         return EventBusKafka()
     except Exception as exc:
