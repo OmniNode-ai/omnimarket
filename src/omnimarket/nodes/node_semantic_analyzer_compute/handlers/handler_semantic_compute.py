@@ -71,10 +71,10 @@ import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 from uuid import UUID, uuid4
 
-from cachetools import LRUCache
+from cachetools import LRUCache  # type: ignore[import-untyped]
 from omnimemory.enums import EnumEntityExtractionMode, EnumSemanticEntityType
 from omnimemory.models.config import (
     ModelHandlerSemanticComputeConfig,
@@ -365,7 +365,7 @@ class HandlerSemanticComputePolicy:
             return False
         # Don't cache very short or very long content
         content_len = len(content)
-        return 10 <= content_len <= self._config.max_content_length
+        return cast(bool, 10 <= content_len <= self._config.max_content_length)
 
     def should_retry(self, attempt: int, error: Exception) -> bool:
         """Determine if an operation should be retried.
@@ -463,8 +463,9 @@ class HandlerSemanticComputePolicy:
         """
         # For deterministic mode, prefer heuristic extraction
         # For best_effort mode, use LLM if available
-        return (
-            self._config.entity_extraction_mode == EnumEntityExtractionMode.BEST_EFFORT
+        return cast(
+            bool,
+            self._config.entity_extraction_mode == EnumEntityExtractionMode.BEST_EFFORT,
         )
 
 
@@ -581,7 +582,7 @@ class HandlerSemanticCompute:
                 self._embedding_provider = embedding_provider
             else:
                 resolved = self._container.get_service_optional(
-                    ProtocolEmbeddingProvider  # type: ignore[type-abstract]
+                    ProtocolEmbeddingProvider
                 )
                 if resolved is not None:
                     self._embedding_provider = resolved
@@ -597,7 +598,7 @@ class HandlerSemanticCompute:
                 self._llm_provider = llm_provider
             else:
                 self._llm_provider = self._container.get_service_optional(
-                    ProtocolLLMProvider  # type: ignore[type-abstract]
+                    ProtocolLLMProvider
                 )
 
             # Set up policy and cache
@@ -953,11 +954,14 @@ class HandlerSemanticCompute:
                 assert (
                     self._embedding_provider is not None
                 )  # For type checker in closure
-                return await self._embedding_provider.generate_embedding(
-                    text=content,
-                    model=effective_model,
-                    correlation_id=correlation_id,
-                    timeout_seconds=timeout,
+                return cast(
+                    list[float],
+                    await self._embedding_provider.generate_embedding(
+                        text=content,
+                        model=effective_model,
+                        correlation_id=correlation_id,
+                        timeout_seconds=timeout,
+                    ),
                 )
 
         embedding = await self._execute_with_retry(_do_embed, "embed")
@@ -1456,14 +1460,17 @@ class HandlerSemanticCompute:
             assert self._llm_provider is not None
             assert self._config is not None
             async with asyncio.timeout(timeout):
-                return await self._llm_provider.complete_structured(
-                    prompt=prompt,
-                    output_schema=self._get_entity_extraction_schema(),
-                    model=self._config.policy_config.default_llm_model,
-                    temperature=temperature,
-                    seed=seed,
-                    correlation_id=correlation_id,
-                    timeout_seconds=timeout,
+                return cast(
+                    dict[str, object],
+                    await self._llm_provider.complete_structured(
+                        prompt=prompt,
+                        output_schema=self._get_entity_extraction_schema(),
+                        model=self._config.policy_config.default_llm_model,
+                        temperature=temperature,
+                        seed=seed,
+                        correlation_id=correlation_id,
+                        timeout_seconds=timeout,
+                    ),
                 )
 
         try:
@@ -1654,7 +1661,7 @@ Return a JSON array of entities with: type, text, confidence (0-1), start, end."
             ),
         )
 
-        return (word_complexity + sentence_complexity) / 2
+        return cast(float, (word_complexity + sentence_complexity) / 2)
 
     def _compute_readability_score(self, content: str) -> float:
         """Compute a simple readability score.
