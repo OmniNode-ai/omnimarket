@@ -59,8 +59,9 @@ class TestGoldenChainOnboarding:
         assert result["dry_run"] is True
         assert result["total_steps"] >= 5
         assert "check_python" in result["resolved_steps"]
-        # Both new_employee and full_platform target the full platform
-        assert result["total_steps"] >= 8
+        # new_employee targets all 4 capabilities (10 steps); full_platform targets 2 (6 steps)
+        min_steps = 8 if policy_name == "new_employee" else 6
+        assert result["total_steps"] >= min_steps
 
     def test_unknown_policy_raises(self) -> None:
         """Unknown policy name raises ValueError."""

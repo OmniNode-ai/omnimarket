@@ -99,7 +99,7 @@ class HandlerOnboarding:
         output = cast(
             ModelOnboardingOutput, asyncio.run(handle_onboarding(input_model))
         )
-        return output.model_dump()
+        return cast(dict[str, Any], output.model_dump())
 
 
 __all__ = ["HandlerOnboarding"]
