@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Local fallback copy — remove after omnimarket pins omnibase_infra >= 0.34.0.
+# Tracked by Path-2 follow-up ticket linked from this node's PR.
+policy_name: "new_employee"
+description: "Full platform onboarding for new employees (target: ~45 min, unvalidated on fresh machine)"
+target_capabilities:
+  - "omnidash_running"
+  - "secrets_configured"
+  - "event_bus_connected"
+  - "first_node_running"
+max_estimated_minutes: 45

@@ -58,6 +58,17 @@ def main() -> None:
             "ceiling and halt_on_failure enforcement."
         ),
     )
+    parser.add_argument(
+        "--dispatch-phases",
+        action="store_true",
+        default=False,
+        help=(
+            "When set, HandlerOvernight invokes the real per-phase dispatcher "
+            "for each non-skipped phase instead of falling through as a "
+            "vacuous-green sequencer. Without this flag the CLI only "
+            "validates the contract and sequences the phase list."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -79,7 +90,7 @@ def main() -> None:
     )
 
     handler = HandlerOvernight()
-    result = handler.handle(command)
+    result = handler.handle(command, dispatch_phases=args.dispatch_phases)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 

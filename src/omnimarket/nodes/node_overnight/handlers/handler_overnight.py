@@ -23,11 +23,13 @@ Related:
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from time import monotonic
 
 from omnibase_compat.overseer.model_overnight_contract import (
     ModelOvernightContract,
@@ -46,6 +48,11 @@ from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     remove_overseer_flag,
     write_overseer_flag,
 )
+from omnimarket.nodes.node_overnight.topics import (
+    TOPIC_OVERNIGHT_COMPLETE,
+    TOPIC_OVERNIGHT_PHASE_END,
+    TOPIC_OVERNIGHT_PHASE_START,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +63,13 @@ PhaseDispatcher = Callable[
     ["ModelOvernightCommand", ModelOvernightContract | None],
     tuple[bool, str | None],
 ]
+
+# OMN-8405: Sync event-publisher seam. HandlerOvernight is synchronous; the
+# asyncio-based ProtocolEventBusPublisher cannot be awaited from here without
+# changing every caller signature. Instead, callers inject a thin callable
+# that adapts their bus to this shape (same pattern as TickEmitter in
+# overseer_tick.py from OMN-8375). Topic strings come from topics.py.
+EventPublisher = Callable[[str, bytes], None]
 
 
 class EnumPhase(StrEnum):
@@ -158,6 +172,7 @@ class HandlerOvernight:
         halt_action_handler: HaltActionHandler | None = None,
         state_root: Path | None = None,
         contract_path: Path | str | None = None,
+        event_bus: EventPublisher | None = None,
     ) -> None:
         """Create an overnight handler.
 
@@ -184,6 +199,11 @@ class HandlerOvernight:
             contract_path: Path to the YAML contract file — embedded in
                 the flag file so the sibling PreToolUse hook can surface
                 it in its block message (OMN-8376).
+            event_bus: Optional sync callable ``(topic, payload_bytes) -> None``
+                used to publish phase-start / phase-end / complete envelopes
+                (OMN-8405). When None, publishing is a no-op so legacy callers
+                and unit tests remain unaffected. Topics come from
+                ``node_overnight/topics.py`` (mirrored in contract.yaml).
         """
         self._dispatchers: dict[EnumPhase, PhaseDispatcher] = (
             dispatchers if dispatchers is not None else dict(_DEFAULT_PHASE_DISPATCHERS)
@@ -193,6 +213,20 @@ class HandlerOvernight:
         self._halt_action_handler = halt_action_handler or _default_halt_action
         self._state_root = state_root
         self._contract_path = contract_path
+        self._event_bus: EventPublisher | None = event_bus
+
+    def _publish(self, topic: str, payload: dict[str, object]) -> None:
+        """Publish an envelope via the injected event bus, swallowing errors.
+
+        The overnight session must never be taken down by a bus outage. A
+        publish failure is logged and execution continues.
+        """
+        if self._event_bus is None:
+            return
+        try:
+            self._event_bus(topic, json.dumps(payload).encode())
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("[OVERNIGHT] event_bus publish to %s failed: %s", topic, exc)
 
     def handle(
         self,
@@ -252,7 +286,20 @@ class HandlerOvernight:
                     )
                     continue
 
-                phase_started_at = datetime.now(tz=UTC)
+                # OMN-8405: phase-start envelope before dispatch so downstream
+                # consumers (overseer tick loop, delegation pipeline) can observe
+                # an overnight run advancing.
+                self._publish(
+                    TOPIC_OVERNIGHT_PHASE_START,
+                    {
+                        "correlation_id": command.correlation_id,
+                        "phase": phase.value,
+                        "dry_run": command.dry_run,
+                        "timestamp": datetime.now(tz=UTC).isoformat(),
+                    },
+                )
+                phase_started_at_wall = datetime.now(tz=UTC)
+                phase_started_mono = monotonic()
 
                 if dispatch_phases and phase not in overrides:
                     success, error_msg = self._dispatch_phase(phase, command, contract)
@@ -264,6 +311,7 @@ class HandlerOvernight:
                     error_msg = None if success else f"Phase {phase.value} failed"
 
                 accumulated_cost += costs.get(phase, 0.0)
+                duration_ms = int((monotonic() - phase_started_mono) * 1000)
 
                 # OMN-8375: probe required_outcomes for the current phase.
                 # Phase only advances when outcomes satisfied — downgrades
@@ -301,7 +349,24 @@ class HandlerOvernight:
                         success=success,
                         skipped=False,
                         error_message=error_msg,
+                        duration_seconds=duration_ms / 1000.0,
                     )
+                )
+
+                # OMN-8405: phase-end envelope after the phase settles (before
+                # halt-condition evaluation so we always emit a terminal signal
+                # even when a halt breaks the loop on the next line).
+                self._publish(
+                    TOPIC_OVERNIGHT_PHASE_END,
+                    {
+                        "correlation_id": command.correlation_id,
+                        "phase": phase.value,
+                        "phase_status": "success" if success else "failed",
+                        "error_message": error_msg,
+                        "duration_ms": duration_ms,
+                        "accumulated_cost_usd": accumulated_cost,
+                        "timestamp": datetime.now(tz=UTC).isoformat(),
+                    },
                 )
 
                 # OMN-8375: emit tick snapshot and refresh the flag file.
@@ -313,7 +378,7 @@ class HandlerOvernight:
                         phase_progress=1.0 if success and outcomes_gate_passed else 0.5,
                         phase_outcomes=phase_outcomes,
                         accumulated_cost=accumulated_cost,
-                        started_at=phase_started_at,
+                        started_at=phase_started_at_wall,
                     )
                     write_overseer_flag(
                         contract_path=self._contract_path,
@@ -337,7 +402,7 @@ class HandlerOvernight:
                         phase_outcomes=phase_outcomes,
                         accumulated_cost=accumulated_cost,
                         consecutive_failures=consecutive_failures,
-                        phase_started_at=phase_started_at,
+                        phase_started_at=phase_started_at_wall,
                     )
                     halt_from_condition = self._process_halt_triggers(
                         triggered, snapshot
@@ -389,6 +454,27 @@ class HandlerOvernight:
         else:
             status = EnumOvernightStatus.FAILED
 
+        completed_at = datetime.now(tz=UTC)
+
+        # OMN-8405: session-complete envelope published exactly once when the
+        # pipeline exits (success, halt, or phase failure — all paths reach
+        # here). Downstream consumers key off this for end-of-run analytics.
+        self._publish(
+            TOPIC_OVERNIGHT_COMPLETE,
+            {
+                "correlation_id": command.correlation_id,
+                "session_status": status.value,
+                "phases_run": phases_run,
+                "phases_failed": phases_failed,
+                "phases_skipped": phases_skipped,
+                "dry_run": command.dry_run,
+                "halt_reason": halt_reason,
+                "accumulated_cost_usd": accumulated_cost,
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+            },
+        )
+
         return ModelOvernightResult(
             correlation_id=command.correlation_id,
             session_status=status,
@@ -399,7 +485,7 @@ class HandlerOvernight:
             dry_run=command.dry_run,
             halt_reason=halt_reason,
             started_at=started_at,
-            completed_at=datetime.now(tz=UTC),
+            completed_at=completed_at,
         )
 
     def _process_halt_triggers(
@@ -660,6 +746,7 @@ _DEFAULT_PHASE_DISPATCHERS: dict[EnumPhase, PhaseDispatcher] = {
 __all__: list[str] = [
     "EnumOvernightStatus",
     "EnumPhase",
+    "EventPublisher",
     "HandlerOvernight",
     "ModelOvernightCommand",
     "ModelOvernightContract",
