@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -72,6 +73,19 @@ class ModelPrLifecycleStartCommand(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: UUID = Field(..., description="Unique sweep run ID.")
+    run_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._-]+$",
+        description=(
+            "Human-readable sweep run identifier used as the result.json "
+            "directory name under $ONEX_STATE_DIR/merge-sweep/{run_id}/. "
+            "Typically YYYYMMDD-HHMMSS-<random6>. "
+            "Restricted to [A-Za-z0-9._-] to prevent path traversal when "
+            "interpolated into filesystem paths."
+        ),
+    )
     dry_run: bool = Field(default=False)
     inventory_only: bool = Field(default=False)
     fix_only: bool = Field(default=False)
@@ -329,7 +343,35 @@ class HandlerPrLifecycleOrchestrator:
         self,
         command: ModelPrLifecycleStartCommand,
     ) -> ModelPrLifecycleResult:
-        """Run the PR lifecycle sweep."""
+        """Run the PR lifecycle sweep and persist the result for skill polling.
+
+        Writes ``$ONEX_STATE_DIR/merge-sweep/{run_id}/result.json`` on both
+        success and failure paths. The merge_sweep skill (v4.0.0+) polls this
+        file to determine orchestrator completion.
+        """
+        try:
+            result = await self._run_sweep(command)
+        except BaseException as exc:
+            # Final safety net — even unexpected errors must produce a result.json
+            # so the polling skill can terminate instead of timing out.
+            logger.exception(
+                "[PR-LIFECYCLE-ORCH] unexpected failure outside FSM: %s", exc
+            )
+            result = ModelPrLifecycleResult(
+                correlation_id=command.correlation_id,
+                final_state=EnumOrchestratorState.FAILED.value,
+                error_message=str(exc),
+            )
+            self._write_result_file(command.run_id, result)
+            raise
+        self._write_result_file(command.run_id, result)
+        return result
+
+    async def _run_sweep(
+        self,
+        command: ModelPrLifecycleStartCommand,
+    ) -> ModelPrLifecycleResult:
+        """Execute the FSM sweep (caller handles result.json persistence)."""
         self._ensure_sub_handlers()
 
         logger.info(
@@ -578,6 +620,63 @@ class HandlerPrLifecycleOrchestrator:
             final_state=state.fsm.value,
             error_message=state.error_message,
         )
+
+    def _write_result_file(self, run_id: str, result: ModelPrLifecycleResult) -> None:
+        """Persist the orchestrator result as ModelSkillResult-shaped JSON.
+
+        The merge_sweep skill polls ``$ONEX_STATE_DIR/merge-sweep/{run_id}/result.json``.
+        A missing ``$ONEX_STATE_DIR`` falls back to ``~/.onex_state`` so that local
+        test runs still produce a file.
+        """
+        state_dir = os.environ.get(
+            "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
+        )
+        base = (Path(state_dir) / "merge-sweep").resolve()
+        out_dir = (base / run_id).resolve()
+        # Defense-in-depth: the model-level regex on run_id already forbids
+        # path separators, but if someone bypasses validation we still refuse
+        # to escape the merge-sweep root.
+        if not out_dir.is_relative_to(base):
+            logger.error(
+                "[PR-LIFECYCLE-ORCH] refusing to write result.json: run_id "
+                "escapes merge-sweep root run_id=%s resolved=%s base=%s",
+                run_id,
+                out_dir,
+                base,
+            )
+            return
+        out_path = out_dir / "result.json"
+
+        is_failure = result.final_state == EnumOrchestratorState.FAILED.value
+        payload: dict[str, Any] = {
+            "skill_name": "merge-sweep",
+            "status": "error" if is_failure else "success",
+            "run_id": run_id,
+            "correlation_id": str(result.correlation_id),
+            "final_state": result.final_state,
+            "prs_inventoried": result.prs_inventoried,
+            "prs_merged": result.prs_merged,
+            "prs_fixed": result.prs_fixed,
+            "prs_skipped": result.prs_skipped,
+            "error_message": result.error_message,
+        }
+
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(payload, indent=2))
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] wrote result.json run_id=%s path=%s",
+                run_id,
+                out_path,
+            )
+        except OSError as exc:
+            # Best-effort: log but do not mask the sweep result for the caller.
+            logger.error(
+                "[PR-LIFECYCLE-ORCH] failed to write result.json run_id=%s path=%s: %s",
+                run_id,
+                out_path,
+                exc,
+            )
 
     async def _publish_phase_event(
         self,

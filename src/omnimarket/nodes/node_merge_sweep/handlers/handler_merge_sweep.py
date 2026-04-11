@@ -387,6 +387,7 @@ class NodeMergeSweep:
             result = await orch.handle(
                 ModelPrLifecycleStartCommand(
                     correlation_id=correlation_id,
+                    run_id=f"merge-sweep-inproc-{correlation_id}",
                     merge_only=True,
                     dry_run=False,
                 )

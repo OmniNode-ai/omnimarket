@@ -20,19 +20,19 @@
 # land concrete model handlers). When concrete handlers are wired in, the workflow
 # automatically picks them up — no workflow change required.
 #
-# Bot identity (omnibot GitHub App):
-#   When OMNIBOT_APP_ID + OMNIBOT_APP_PRIVATE_KEY org secrets are set, comments are
-#   posted as omnibot[bot] via a short-lived installation token. Until the GitHub App
+# Bot identity (onexbot GitHub App):
+#   When ONEXBOT_APP_ID + ONEXBOT_APP_PRIVATE_KEY org secrets are set, comments are
+#   posted as onexbot[bot] via a short-lived installation token. Until the GitHub App
 #   is created, the workflow falls back to GITHUB_TOKEN (posts as jonahgabriel).
 #
 #   To create the app:
 #     https://github.com/organizations/OmniNode-ai/settings/apps/new
-#     Name: omnibot  |  Permissions: pull_requests:write, issues:write
-#     Store app_id as OMNIBOT_APP_ID and the private key as OMNIBOT_APP_PRIVATE_KEY
+#     Name: onexbot  |  Permissions: pull_requests:write, issues:write
+#     Store app_id as ONEXBOT_APP_ID and the private key as ONEXBOT_APP_PRIVATE_KEY
 #     in org-level Actions secrets.
 #
 #   bot_login constants in handler_thread_poster.py and handler_thread_watcher.py
-#   must match the actual app slug: "omnibot[bot]"
+#   must match the actual app slug: "onexbot[bot]"
 
 name: PR Architectural Review
 
@@ -47,7 +47,7 @@ permissions:
 
 jobs:
   # ============================================================================
-  # Token resolution — swap to omnibot GitHub App token when the app exists,
+  # Token resolution — swap to onexbot GitHub App token when the app exists,
   # fall back to GITHUB_TOKEN otherwise. Runs once; both review jobs consume
   # the output token.
   # ============================================================================
@@ -59,16 +59,16 @@ jobs:
       bot_login: ${{ steps.pick.outputs.bot_login }}
 
     steps:
-      - name: Generate omnibot installation token (if app secrets present)
+      - name: Generate onexbot installation token (if app secrets present)
         id: app-token
         # Only attempt if both secrets are non-empty. The `vars.` context would
         # work for non-sensitive values; secrets are used here for both because
         # APP_ID is stored alongside the private key as an org secret.
-        if: ${{ secrets.OMNIBOT_APP_ID != '' && secrets.OMNIBOT_APP_PRIVATE_KEY != '' }}
+        if: ${{ secrets.ONEXBOT_APP_ID != '' && secrets.ONEXBOT_APP_PRIVATE_KEY != '' }}
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.OMNIBOT_APP_ID }}
-          private-key: ${{ secrets.OMNIBOT_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
 
       - name: Pick token and bot login
         id: pick
@@ -76,12 +76,12 @@ jobs:
         run: |
           if [ -n "${{ steps.app-token.outputs.token }}" ]; then
             echo "token=${{ steps.app-token.outputs.token }}" >> "$GITHUB_OUTPUT"
-            echo "bot_login=omnibot[bot]" >> "$GITHUB_OUTPUT"
-            echo "Using omnibot GitHub App token"
+            echo "bot_login=onexbot[bot]" >> "$GITHUB_OUTPUT"
+            echo "Using onexbot GitHub App token"
           else
             echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
             echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"
-            echo "OMNIBOT_APP_ID/OMNIBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as jonahgabriel)"
+            echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as jonahgabriel)"
           fi
 
   # ============================================================================

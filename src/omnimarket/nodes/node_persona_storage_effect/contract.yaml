@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_persona_storage_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT node that writes PersonaSnapshot to Postgres (append-only). Emits persona-snapshot-created event
+  on successful new insert. Idempotent: duplicate (user_id, persona_version) is caught and logged. Phase
+  3 Adaptive Personalization (OMN-7305).
+node_type: "EFFECT"
+input_model: "ModelPersonaStorageRequest"
+output_model: "ModelPersonaStorageResponse"
+
+io_operations:
+  - operation_type: "database_write"
+    atomic: true
+    timeout_seconds: 10
+    validation_enabled: true
+
+event_bus:
+  publish_topics:
+    - "onex.evt.omnimemory.persona-snapshot-created.v1"
+
+tags:
+  - persona
+  - effect
+  - storage
+  - postgres
+  - phase-3
