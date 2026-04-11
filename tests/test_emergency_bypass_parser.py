@@ -221,7 +221,9 @@ class TestBypassOneTimeConsumption:
         call_args = valkey.setex.call_args
         key = call_args[0][0]
         assert "77" in key
-        assert "OmniNode-ai" in key or "omnimarket" in key
+        assert "OmniNode-ai" in key
+        assert "omnimarket" in key
+        assert "77" in key
 
 
 # ---------------------------------------------------------------------------

@@ -282,8 +282,10 @@ class HandlerEmergencyBypassParser:
 
     @staticmethod
     def _valkey_key(repo: str, pr_number: int) -> str:
-        owner, name = [*repo.split("/", 1), "unknown"][:2]
-        return f"review_bot:bypass:{owner}:{name}:{pr_number}"
+        # Use repo as-is (GitHub format is always owner/repo), replace / with :
+        # to keep the key namespace-clean without truncation risk.
+        safe_repo = repo.replace("/", ":")
+        return f"review_bot:bypass:{safe_repo}:{pr_number}"
 
 
 __all__: list[str] = [
