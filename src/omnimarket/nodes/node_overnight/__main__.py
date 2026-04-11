@@ -7,6 +7,10 @@ Usage:
         --dry-run \
         --skip-build-loop
 
+    python -m omnimarket.nodes.node_overnight \
+        --contract-file path/to/overnight-contract.yaml \
+        --dry-run
+
 Outputs JSON to stdout: ModelOvernightResult model.
 """
 
@@ -15,6 +19,10 @@ from __future__ import annotations
 import argparse
 import sys
 import uuid
+from pathlib import Path
+
+import yaml
+from omnibase_compat.overseer.model_overnight_contract import ModelOvernightContract
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     HandlerOvernight,
@@ -40,8 +48,26 @@ def main() -> None:
         default=False,
         help="Run all phases in dry-run mode",
     )
+    parser.add_argument(
+        "--contract-file",
+        type=str,
+        default=None,
+        help=(
+            "Path to a ModelOvernightContract YAML file. When set, the contract "
+            "is loaded and attached to the overnight command, enabling cost "
+            "ceiling and halt_on_failure enforcement."
+        ),
+    )
 
     args = parser.parse_args()
+
+    overnight_contract: ModelOvernightContract | None = None
+    if args.contract_file:
+        contract_path = Path(args.contract_file).expanduser().resolve()
+        if not contract_path.exists():
+            raise FileNotFoundError(f"Contract file not found: {contract_path}")
+        data = yaml.safe_load(contract_path.read_text())
+        overnight_contract = ModelOvernightContract.model_validate(data)
 
     command = ModelOvernightCommand(
         correlation_id=str(uuid.uuid4()),
@@ -49,6 +75,7 @@ def main() -> None:
         skip_build_loop=args.skip_build_loop,
         skip_merge_sweep=args.skip_merge_sweep,
         dry_run=args.dry_run,
+        overnight_contract=overnight_contract,
     )
 
     handler = HandlerOvernight()
