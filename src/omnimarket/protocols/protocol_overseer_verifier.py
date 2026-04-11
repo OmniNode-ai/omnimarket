@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from omnibase_compat.overseer.model_context_bundle import ModelContextBundle
-from omnibase_compat.overseer.model_verifier_output import ModelVerifierOutput
+from onex_change_control.overseer.model_context_bundle import ModelContextBundle
+from onex_change_control.overseer.model_verifier_output import ModelVerifierOutput
 
 
 @runtime_checkable

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from omnibase_compat.overseer.model_overnight_contract import ModelOvernightContract
+from onex_change_control.overseer.model_overnight_contract import ModelOvernightContract
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,

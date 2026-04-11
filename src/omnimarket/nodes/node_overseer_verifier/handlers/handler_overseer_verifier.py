@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import logging
 
-from omnibase_compat.overseer.enum_failure_class import EnumFailureClass
-from omnibase_compat.overseer.enum_verifier_verdict import EnumVerifierVerdict
-from omnibase_compat.overseer.model_context_bundle import ModelContextBundle
-from omnibase_compat.overseer.model_verifier_output import (
+from onex_change_control.overseer.enum_failure_class import EnumFailureClass
+from onex_change_control.overseer.enum_verifier_verdict import EnumVerifierVerdict
+from onex_change_control.overseer.model_context_bundle import ModelContextBundle
+from onex_change_control.overseer.model_verifier_output import (
     ModelVerifierCheckResult,
     ModelVerifierOutput,
 )

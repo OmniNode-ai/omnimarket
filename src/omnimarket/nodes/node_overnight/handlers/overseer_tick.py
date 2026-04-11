@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from omnibase_compat.overseer.model_overnight_contract import (
+from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightContract,
     ModelOvernightHaltCondition,
 )

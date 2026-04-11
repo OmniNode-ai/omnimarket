@@ -1531,7 +1531,7 @@ wheels = [
 [[package]]
 name = "omnibase-compat"
 version = "0.3.1"
-source = { editable = "../omnibase_compat" }
+source = { editable = "../../../../../../Users/jonah/Code/omni_home/omnibase_compat" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
@@ -1561,7 +1561,7 @@ dev = [
 [[package]]
 name = "omnibase-core"
 version = "0.39.0"
-source = { editable = "../omnibase_core" }
+source = { editable = "../../../../../../Users/jonah/Code/omni_home/omnibase_core" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1706,6 +1706,7 @@ dependencies = [
     { name = "omnibase-core" },
     { name = "omnibase-infra" },
     { name = "omninode-memory" },
+    { name = "onex-change-control" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "python-dateutil" },
@@ -1726,10 +1727,11 @@ requires-dist = [
     { name = "aiokafka", specifier = ">=0.11.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", editable = "../omnibase_compat" },
-    { name = "omnibase-core", editable = "../omnibase_core" },
+    { name = "omnibase-compat", editable = "../../../../../../Users/jonah/Code/omni_home/omnibase_compat" },
+    { name = "omnibase-core", editable = "../../../../../../Users/jonah/Code/omni_home/omnibase_core" },
     { name = "omnibase-infra", specifier = ">=0.32.0" },
-    { name = "omninode-memory", editable = "../omnimemory" },
+    { name = "omninode-memory", editable = "../../../../../../Users/jonah/Code/omni_home/omnimemory" },
+    { name = "onex-change-control", editable = "../onex_change_control" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
     { name = "python-dateutil", specifier = ">=2.9.0" },
@@ -1748,7 +1750,7 @@ dev = [
 [[package]]
 name = "omninode-memory"
 version = "0.15.0"
-source = { editable = "../omnimemory" }
+source = { editable = "../../../../../../Users/jonah/Code/omni_home/omnimemory" }
 dependencies = [
     { name = "aiohttp" },
     { name = "alembic" },
@@ -1821,6 +1823,41 @@ dev = [
     { name = "ruff", specifier = ">=0.8.0,<1.0.0" },
     { name = "types-cachetools", specifier = ">=6.2.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
+]
+
+[[package]]
+name = "onex-change-control"
+version = "0.5.0"
+source = { editable = "../onex_change_control" }
+dependencies = [
+    { name = "colorama" },
+    { name = "omnibase-core" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "tomli-w" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "colorama", specifier = ">=0.4.6" },
+    { name = "kafka-python", marker = "extra == 'kafka'", specifier = ">=2.0.5" },
+    { name = "omnibase-core", specifier = ">=0.36.0" },
+    { name = "psycopg2-binary", marker = "extra == 'postgres'", specifier = ">=2.9.9" },
+    { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "tomli-w", specifier = ">=1.0.0" },
+]
+provides-extras = ["kafka", "postgres"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.13.0" },
+    { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "pytest", specifier = ">=8.4.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "ruff", specifier = ">=0.15.6" },
+    { name = "types-colorama", specifier = ">=0.4.15" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250822" },
 ]
 
 [[package]]
@@ -2986,6 +3023,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cf/2f/d44f0f12b3ddb1f0b88f7775652e99c6b5a43fd733badf4ce064bdbfef4a/textual-8.2.3.tar.gz", hash = "sha256:beea7b86b03b03558a2224f0cc35252e60ef8b0c4353b117b2f40972902d976a", size = 1848738, upload-time = "2026-04-05T09:12:45.338Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0e/28/a81d6ce9f4804818bd1231a9a6e4d56ea84ebbe8385c49591444f0234fa2/textual-8.2.3-py3-none-any.whl", hash = "sha256:5008ac581bebf1f6fa0520404261844a231e5715fdbddd10ca73916a3af48ca2", size = 724231, upload-time = "2026-04-05T09:12:48.747Z" },
+]
+
+[[package]]
+name = "tomli-w"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/75/241269d1da26b624c0d5e110e8149093c759b7a286138f4efd61a60e75fe/tomli_w-1.2.0.tar.gz", hash = "sha256:2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021", size = 7184, upload-time = "2025-01-15T12:07:24.262Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/18/c86eb8e0202e32dd3df50d43d7ff9854f8e0603945ff398974c1d91ac1ef/tomli_w-1.2.0-py3-none-any.whl", hash = "sha256:188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90", size = 6675, upload-time = "2025-01-15T12:07:22.074Z" },
 ]
 
 [[package]]

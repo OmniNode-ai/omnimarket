@@ -31,7 +31,7 @@ from enum import StrEnum
 from pathlib import Path
 from time import monotonic
 
-from omnibase_compat.overseer.model_overnight_contract import (
+from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightContract,
     ModelOvernightHaltCondition,
 )

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from omnibase_compat.overseer.model_overnight_contract import (
+from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightContract,
     ModelOvernightPhaseSpec,
 )

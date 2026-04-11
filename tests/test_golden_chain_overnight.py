@@ -11,12 +11,12 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from omnibase_compat.overseer.model_overnight_contract import (
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightContract,
     ModelOvernightHaltCondition,
     ModelOvernightPhaseSpec,
 )
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,
