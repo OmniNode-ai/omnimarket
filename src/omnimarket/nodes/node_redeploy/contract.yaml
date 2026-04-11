@@ -17,7 +17,7 @@ handler:
 descriptor:
   node_archetype: effect
   purity: impure
-  idempotent: true
+  idempotent: false
   timeout_ms: 660000
 
 inputs:
@@ -42,9 +42,6 @@ inputs:
     default: "node_redeploy"
 
 outputs:
-  correlation_id:
-    type: str
-    description: "UUID used to correlate command with completion event"
   success:
     type: bool
     description: "True if deploy agent reported success"

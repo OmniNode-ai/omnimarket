@@ -121,8 +121,9 @@ class HandlerRedeployKafka:
         try:
             scope_enum = EnumRedeployScope(scope)
         except ValueError:
-            logger.warning("Unknown scope %r, defaulting to full", scope)
-            scope_enum = EnumRedeployScope.FULL
+            raise ValueError(  # error-ok: caller supplied invalid scope
+                f"Unknown scope {scope!r}. Valid values: {[s.value for s in EnumRedeployScope]}"
+            ) from None
 
         command = ModelDeployRebuildCommand(
             correlation_id=corr_id,
@@ -259,6 +260,30 @@ class HandlerRedeployKafka:
             errors=completed_event.errors,
             timed_out=False,
         )
+
+    def handle(self, command: Any) -> dict[str, Any]:
+        """Contract-driven entry point — bridges sync runtime to async execute().
+
+        Accepts ModelDeployRebuildCommand or a plain dict; returns model_dump().
+        """
+        from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+            ModelDeployRebuildCommand,
+        )
+
+        if isinstance(command, dict):
+            command = ModelDeployRebuildCommand(**command)
+        result = asyncio.run(
+            self.execute(
+                scope=command.scope.value
+                if hasattr(command.scope, "value")
+                else str(command.scope),
+                git_ref=command.git_ref,
+                services=list(command.services) if command.services else None,
+                requested_by=command.requested_by,
+                correlation_id=command.correlation_id,
+            )
+        )
+        return result.model_dump(mode="json")
 
     @classmethod
     def from_env(cls) -> HandlerRedeployKafka:
