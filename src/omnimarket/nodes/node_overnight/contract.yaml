@@ -72,7 +72,12 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.overnight-start.v1
   publish_topics:
+    # OMN-8405: per-phase start envelope published before each phase dispatches.
+    - onex.evt.omnimarket.overnight.phase-start.v1
+    # OMN-8405: per-phase end envelope published after each phase settles
+    # (success, failure, or skipped). Treated as phase-end in the overseer spec.
     - onex.evt.omnimarket.overnight.phase-completed.v1
+    # OMN-8405: session-wide terminal envelope published once at end of run.
     - onex.evt.omnimarket.overnight.session-completed.v1
     # nightly_loop_controller trigger (OMN-8025)
     - onex.cmd.omnimarket.nightly-loop-start.v1
