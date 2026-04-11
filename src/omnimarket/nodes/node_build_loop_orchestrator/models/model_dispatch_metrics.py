@@ -47,13 +47,21 @@ class ModelDispatchMetrics(BaseModel):
         ge=0.0,
         description="Average generation attempts per ticket (0.0 if no tickets).",
     )
-    total_prompt_tokens: int = Field(
-        ..., ge=0, description="Sum of prompt tokens across all generation attempts."
-    )
-    total_completion_tokens: int = Field(
-        ...,
+    total_prompt_tokens: int | None = Field(
+        default=None,
         ge=0,
-        description="Sum of completion tokens across all generation attempts.",
+        description=(
+            "Sum of prompt tokens across all generation attempts. "
+            "None when no trace had token data (tokenization unavailable)."
+        ),
+    )
+    total_completion_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Sum of completion tokens across all generation attempts. "
+            "None when no trace had token data (tokenization unavailable)."
+        ),
     )
     total_review_tokens: int = Field(
         ..., ge=0, description="Sum of review tokens across all review calls."
