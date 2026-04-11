@@ -72,6 +72,7 @@ query ActiveSprintTickets($teamId: ID!, $limit: Int!) {
       priority
       state { name }
       labels { nodes { name } }
+      children { nodes { id } }
     }
   }
 }
@@ -96,10 +97,15 @@ query BacklogTickets($teamId: ID!, $limit: Int!) {
       priority
       state { name }
       labels { nodes { name } }
+      children { nodes { id } }
     }
   }
 }
 """
+
+# Labels that mark a ticket as a container (epic / parent), even if Linear
+# has no children yet. Leaf work should never use these labels.
+_EPIC_LABEL_NAMES: frozenset[str] = frozenset({"epic", "meta", "parent"})
 
 
 class AdapterLinearFill:
@@ -285,9 +291,31 @@ class AdapterLinearFill:
             labels = tuple(
                 label["name"] for label in (issue.get("labels", {}).get("nodes", []))
             )
+            identifier = issue["identifier"]
+
+            children = issue.get("children", {}).get("nodes", []) or []
+            if children:
+                logger.info(
+                    "build_loop_filter: skipping %s (%s) — "
+                    "epic/parent, not a leaf task (child_count=%d)",
+                    identifier,
+                    issue.get("title", ""),
+                    len(children),
+                )
+                continue
+
+            if any(label.lower() in _EPIC_LABEL_NAMES for label in labels):
+                logger.info(
+                    "build_loop_filter: skipping %s (%s) — "
+                    "epic/parent label, not a leaf task",
+                    identifier,
+                    issue.get("title", ""),
+                )
+                continue
+
             tickets.append(
                 ScoredTicket(
-                    ticket_id=issue["identifier"],
+                    ticket_id=identifier,
                     title=issue.get("title", ""),
                     rsd_score=_PRIORITY_TO_RSD.get(priority, 0.5),
                     priority=priority,
