@@ -61,6 +61,12 @@ handler_routing:
         module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_report_poster"
       description: "Posts final summary PR comment with verdict + finding count. Side-effect (I/O)."
 
+    - operation: "emergency_bypass"
+      handler:
+        name: "HandlerEmergencyBypassParser"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_emergency_bypass_parser"
+      description: "Parses EMERGENCY-BYPASS comments, records audit signal in Kafka + DB. Side-effect (I/O)."
+
   adapters:
     - name: "AdapterGitHubBridge"
       module: "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
@@ -157,6 +163,14 @@ event_bus:
     - onex.evt.omnimarket.pr-review-bot-thread-posted.v1
     - onex.evt.omnimarket.pr-review-bot-thread-verified.v1
     - onex.evt.omnimarket.pr-review-bot-completed.v1
+    - onex.evt.review_bot.bypass_used.v1
+    - onex.evt.review_bot.bypass_rolled_back.v1
+
+runtime_config:
+  review_bot.emergency_bypass_actor:
+    description: "GitHub handle(s) authorized to trigger emergency bypass. Comma-separated for multiple actors."
+    default: "jonahgabriel"
+    required: false
 
 dependencies:
   nodes:
