@@ -21,6 +21,11 @@ from uuid import UUID
 
 import httpx
 
+from omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store import (
+    MAX_DISPATCH_ATTEMPTS,
+    STALL_WINDOW_MINUTES,
+    DispatchHistoryStore,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     RsdFillResult,
     ScoredTicket,
@@ -121,11 +126,13 @@ class AdapterLinearFill:
         api_key: str | None = None,
         team_id: str | None = None,
         team_key: str | None = None,
+        history_store: DispatchHistoryStore | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("LINEAR_API_KEY", "")
         self._team_id = team_id or os.environ.get("LINEAR_TEAM_ID", "")
         self._team_key = team_key or os.environ.get("LINEAR_TEAM_KEY", "OMN")
         self._team_id_resolved = False
+        self._history_store = history_store or DispatchHistoryStore()
 
     async def handle(
         self,
@@ -312,6 +319,32 @@ class AdapterLinearFill:
                     issue.get("title", ""),
                 )
                 continue
+
+            history = self._history_store.load().get(identifier)
+            if history is not None:
+                if history.attempt_count >= MAX_DISPATCH_ATTEMPTS:
+                    logger.warning(
+                        "build_loop_stall: skipping %s — dispatched %d times "
+                        "with no forward progress (first=%s, last=%s, "
+                        "last_correlation_id=%s)",
+                        identifier,
+                        history.attempt_count,
+                        history.first_dispatched_at.isoformat(),
+                        history.last_dispatched_at.isoformat(),
+                        history.last_correlation_id,
+                    )
+                    continue
+
+                if self._history_store.is_stalled(identifier):
+                    logger.warning(
+                        "build_loop_stall: %s still in Backlog %s+ minutes "
+                        "after dispatch (attempt %d/%d, last_correlation_id=%s)",
+                        identifier,
+                        STALL_WINDOW_MINUTES,
+                        history.attempt_count,
+                        MAX_DISPATCH_ATTEMPTS,
+                        history.last_correlation_id,
+                    )
 
             tickets.append(
                 ScoredTicket(
