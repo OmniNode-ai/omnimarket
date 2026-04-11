@@ -170,7 +170,7 @@ class HandlerOvernight:
                 outcomes are reported as unsatisfied — phases do not
                 silently advance.
             tick_emitter: Optional callable that receives the per-phase
-                tick snapshot. Use for Kafka ``onex.evt.overseer.tick.v1``
+                tick snapshot. Use for Kafka ``onex.evt.omnimarket.overseer.tick.v1``
                 publishing. When None, snapshots still land in the local
                 overseer flag file and tick jsonl log.
             halt_action_handler: Optional per-condition action dispatcher.
@@ -264,11 +264,13 @@ class HandlerOvernight:
                     error_msg = None if success else f"Phase {phase.value} failed"
 
                 accumulated_cost += costs.get(phase, 0.0)
-                consecutive_failures = 0 if success else consecutive_failures + 1
 
                 # OMN-8375: probe required_outcomes for the current phase.
                 # Phase only advances when outcomes satisfied — downgrades
                 # success to False when any outcome is missing.
+                # Must run BEFORE consecutive_failures increment so a probe
+                # failure is correctly counted rather than a successful dispatch
+                # being miscounted when the probe flips mid-tick.
                 phase_outcomes: dict[str, bool] = {}
                 outcomes_gate_passed = True
                 if contract is not None:
@@ -290,6 +292,8 @@ class HandlerOvernight:
                             logger.warning("[OVERSEER] %s: %s", phase.value, msg)
                             success = False
                             error_msg = msg
+
+                consecutive_failures = 0 if success else consecutive_failures + 1
 
                 results.append(
                     ModelPhaseResult(
