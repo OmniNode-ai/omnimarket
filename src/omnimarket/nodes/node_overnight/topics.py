@@ -11,7 +11,7 @@ Related:
 
 from __future__ import annotations
 
-TOPIC_OVERSEER_TICK = "onex.evt.overseer.tick.v1"
+TOPIC_OVERSEER_TICK = "onex.evt.omnimarket.overseer.tick.v1"
 
 __all__: list[str] = [
     "TOPIC_OVERSEER_TICK",
