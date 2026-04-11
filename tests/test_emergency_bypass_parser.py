@@ -28,7 +28,7 @@ from omnimarket.nodes.node_pr_review_bot.topics import (
 
 def _make_default_valkey() -> MagicMock:
     v = MagicMock()
-    v.get.return_value = None  # not consumed by default
+    v.set.return_value = True  # atomic claim succeeds by default
     return v
 
 
@@ -192,9 +192,9 @@ class TestBypassMalformedComment:
 @pytest.mark.unit
 class TestBypassOneTimeConsumption:
     def test_second_bypass_on_same_pr_is_rejected(self) -> None:
-        # Valkey returns a truthy value (b"1") meaning bypass already consumed
+        # SET NX returns False meaning key already exists (bypass already consumed)
         valkey = MagicMock()
-        valkey.get.return_value = b"1"
+        valkey.set.return_value = False
 
         handler = _make_handler(valkey_client=valkey)
         result = handler.parse(
@@ -209,7 +209,7 @@ class TestBypassOneTimeConsumption:
 
     def test_first_bypass_sets_valkey_key(self) -> None:
         valkey = MagicMock()
-        valkey.get.return_value = None  # not yet consumed
+        valkey.set.return_value = True  # atomic claim succeeds
         db_conn = MagicMock()
 
         handler = _make_handler(valkey_client=valkey, db_conn=db_conn)
@@ -221,14 +221,14 @@ class TestBypassOneTimeConsumption:
             head_sha="iii999",
         )
         assert result.granted is True
-        # Valkey setex was called to mark as consumed
-        valkey.setex.assert_called_once()
-        call_args = valkey.setex.call_args
-        key = call_args[0][0]
+        # Valkey set(nx=True) was called to atomically claim the slot
+        valkey.set.assert_called_once()
+        call_kwargs = valkey.set.call_args[1]
+        key = valkey.set.call_args[0][0]
         assert "77" in key
         assert "OmniNode-ai" in key
         assert "omnimarket" in key
-        assert "77" in key
+        assert call_kwargs.get("nx") is True
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +241,7 @@ class TestBypassKafkaEvent:
     def test_kafka_event_emitted_on_granted_bypass(self) -> None:
         kafka = MagicMock()
         valkey = MagicMock()
-        valkey.get.return_value = None
+        valkey.set.return_value = True
         db_conn = MagicMock()
 
         handler = _make_handler(
@@ -257,7 +257,7 @@ class TestBypassKafkaEvent:
         assert result.granted is True
         kafka.publish.assert_called_once()
         topic, payload = kafka.publish.call_args[0]
-        assert topic == "onex.evt.review_bot.bypass_used.v1"
+        assert topic == TOPIC_BYPASS_USED
         assert payload["actor"] == "jonahgabriel"
         assert payload["pr_number"] == 55
         assert payload["repo"] == "OmniNode-ai/omnimarket"
@@ -288,7 +288,7 @@ class TestBypassDbAudit:
     def test_db_audit_row_written_on_granted_bypass(self) -> None:
         db_conn = MagicMock()
         valkey = MagicMock()
-        valkey.get.return_value = None
+        valkey.set.return_value = True
 
         handler = _make_handler(db_conn=db_conn, valkey_client=valkey)
         result = handler.parse(
@@ -311,7 +311,7 @@ class TestBypassDbAudit:
         db_conn = MagicMock()
         db_conn.execute.side_effect = Exception("DB write failed")
         valkey = MagicMock()
-        valkey.get.return_value = None
+        valkey.set.return_value = True
 
         handler = _make_handler(
             kafka_publisher=kafka, db_conn=db_conn, valkey_client=valkey
@@ -329,8 +329,8 @@ class TestBypassDbAudit:
         # Compensating Kafka event must have been emitted
         assert kafka.publish.call_count == 2
         topics = [call[0][0] for call in kafka.publish.call_args_list]
-        assert "onex.evt.review_bot.bypass_used.v1" in topics
-        assert "onex.evt.review_bot.bypass_rolled_back.v1" in topics
+        assert TOPIC_BYPASS_USED in topics
+        assert TOPIC_BYPASS_ROLLED_BACK in topics
 
     def test_db_audit_row_not_written_on_rejected_bypass(self) -> None:
         db_conn = MagicMock()
@@ -355,7 +355,7 @@ class TestBypassContractDrivenConfig:
     def test_custom_authorized_actor_list_from_config(self) -> None:
         """Authorized actor list must come from config, not be hardcoded."""
         valkey = MagicMock()
-        valkey.get.return_value = None
+        valkey.set.return_value = True
         db_conn = MagicMock()
 
         handler = _make_handler(

@@ -163,8 +163,8 @@ event_bus:
     - onex.evt.omnimarket.pr-review-bot-thread-posted.v1
     - onex.evt.omnimarket.pr-review-bot-thread-verified.v1
     - onex.evt.omnimarket.pr-review-bot-completed.v1
-    - onex.evt.review_bot.bypass_used.v1
-    - onex.evt.review_bot.bypass_rolled_back.v1
+    - onex.evt.omnimarket.review-bot-bypass-used.v1
+    - onex.evt.omnimarket.review-bot-bypass-rolled-back.v1
 
 runtime_config:
   review_bot.emergency_bypass_actor:

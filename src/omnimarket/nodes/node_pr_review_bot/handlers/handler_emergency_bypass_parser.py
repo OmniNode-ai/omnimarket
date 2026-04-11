@@ -7,9 +7,9 @@ Parses PR comments for the EMERGENCY-BYPASS: <reason> format.
 - One-time per PR: consumed flag stored in Valkey with key
   review_bot:bypass:{owner}:{repo}:{pr_number} and TTL of 3600 s.
 - On valid bypass:
-  1. Emits Kafka event onex.evt.review_bot.bypass_used.v1
+  1. Emits Kafka event onex.evt.omnimarket.review-bot-bypass-used.v1
   2. Writes audit row to review_bot_bypass_log
-  3. If DB write fails, emits compensating event onex.evt.review_bot.bypass_rolled_back.v1
+  3. If DB write fails, emits compensating event onex.evt.omnimarket.review-bot-bypass-rolled-back.v1
 - Never triggers thread resolutions — only records a valid bypass signal.
 """
 
@@ -54,8 +54,8 @@ class ProtocolDbConn(Protocol):
 
 
 class ProtocolValkeyClient(Protocol):
-    def get(self, key: str) -> bytes | None: ...
-    def setex(self, key: str, ttl: int, value: str) -> None: ...
+    def set(self, key: str, value: str, *, ex: int, nx: bool) -> bool: ...
+    def delete(self, key: str) -> int: ...
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +164,12 @@ class HandlerEmergencyBypassParser:
                 rejection_reason=BypassRejectionReason.UNAUTHORIZED_ACTOR,
             )
 
-        # 3. One-time consumption check via Valkey
+        # 3. Atomically claim the one-time bypass slot via Valkey SET NX.
+        #    SET NX returns True only when the key did not exist — this is
+        #    atomic and eliminates the TOCTOU race of a separate get+setex.
         valkey_key = self._valkey_key(repo, pr_number)
-        if self._valkey.get(valkey_key) is not None:
+        claimed = self._valkey.set(valkey_key, "1", ex=_VALKEY_TTL_SECONDS, nx=True)
+        if not claimed:
             logger.warning(
                 "EmergencyBypassParser: bypass already consumed for %s PR #%d",
                 repo,
@@ -222,10 +225,12 @@ class HandlerEmergencyBypassParser:
         except Exception:
             logger.exception(
                 "EmergencyBypassParser: DB write failed for %s PR #%d — "
-                "emitting compensating event",
+                "rolling back Valkey claim and emitting compensating event",
                 repo,
                 pr_number,
             )
+            # Roll back the atomic claim so a retry can succeed
+            self._valkey.delete(valkey_key)
             self._kafka.publish(
                 TOPIC_BYPASS_ROLLED_BACK,
                 {
@@ -246,8 +251,7 @@ class HandlerEmergencyBypassParser:
                 rejection_reason=BypassRejectionReason.AUDIT_FAILURE,
             )
 
-        # 5. Mark as consumed in Valkey
-        self._valkey.setex(valkey_key, _VALKEY_TTL_SECONDS, "1")
+        # 5. Claim was already recorded atomically above; just log success.
         logger.info(
             "EmergencyBypassParser: bypass granted for %s PR #%d by %s (audit_id=%s)",
             repo,
