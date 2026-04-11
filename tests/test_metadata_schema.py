@@ -173,6 +173,23 @@ class TestMetadataSchema:
         assert schema.display_name == "Ticket Pipeline"
         assert schema.node_role == EnumNodeRole.ORCHESTRATOR
 
+    def test_node_role_compute_is_valid_enum_value(self) -> None:
+        """EnumNodeRole must contain COMPUTE for pure-result computation nodes."""
+        assert EnumNodeRole.COMPUTE == "compute"
+
+    def test_node_role_compute_parses_in_metadata(self) -> None:
+        """metadata.yaml with node_role='compute' must parse to EnumNodeRole.COMPUTE."""
+        data = {
+            "name": "node_similarity_compute",
+            "version": "1.0.0",
+            "description": "Computes vector similarity scores.",
+            "pack": "memory",
+            "display_name": "Similarity Compute",
+            "node_role": "compute",
+        }
+        schema = MetadataSchema(**data)
+        assert schema.node_role == EnumNodeRole.COMPUTE
+
     def test_all_nodes_have_pack_field(self) -> None:
         """Every node metadata.yaml must have a pack field set."""
         metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
