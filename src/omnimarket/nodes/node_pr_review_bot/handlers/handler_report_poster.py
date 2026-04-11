@@ -150,7 +150,7 @@ def build_summary_comment(
         verdict_detail = (
             "> **Merge is blocked.** One or more MAJOR/CRITICAL findings were not "
             "verified as resolved by the judge model. Address each failing thread "
-            "and tag `@omnibot-judge verify` to request re-verification."
+            "and tag `@onexbot-judge verify` to request re-verification."
         )
     elif verdict.verdict == EnumPrVerdict.RISKS_NOTED:
         verdict_detail = (
