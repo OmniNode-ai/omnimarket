@@ -15,19 +15,20 @@ from __future__ import annotations
 
 import logging
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 _log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Retention targets — populated from contract.yaml at runtime.
-# NEVER add table names here from external/user input; static allowlist only.
+# Retention targets — loaded from contract.yaml at import time.
+# Table names owned by their respective projection migration files.
+# Update the allowlist only when adding a new projection table.
 # ---------------------------------------------------------------------------
 
-# Table names owned by their respective projection migration files.
-# Update this allowlist only when adding a new projection table.
 _ALLOWED_TABLES: frozenset[str] = frozenset(
     [
         "event_bus_events",
@@ -36,11 +37,62 @@ _ALLOWED_TABLES: frozenset[str] = frozenset(
     ]
 )
 
-_DEFAULT_RETENTION_TARGETS: dict[str, tuple[str, int]] = {
-    "event_bus_events": ("created_at", 14),
-    "agent_actions": ("created_at", 30),
-    "agent_routing_decisions": ("created_at", 30),
-}
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+class RetentionTarget(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    table: str
+    column: str
+    retention_days: int
+    topic_column: str = ""
+    high_volume_topics: tuple[str, ...] = Field(default_factory=tuple)
+    high_volume_retention_days: int = 0
+    never_store_topics: tuple[str, ...] = Field(default_factory=tuple)
+
+
+def _load_targets(contract_path: Path = _CONTRACT_PATH) -> list[RetentionTarget]:
+    """Load retention targets from the node's contract.yaml.
+
+    Raises RuntimeError when the contract is missing or the retention_policy
+    block is absent — retention must always be contract-driven.
+    """
+    if not contract_path.exists():
+        msg = f"contract.yaml not found at {contract_path}"
+        raise RuntimeError(msg)
+    raw = yaml.safe_load(contract_path.read_text())
+    policy = (raw or {}).get("retention_policy") or {}
+    raw_targets = policy.get("targets") or []
+    if not raw_targets:
+        msg = (
+            f"contract.yaml at {contract_path} does not declare a "
+            "retention_policy.targets block"
+        )
+        raise RuntimeError(msg)
+    targets: list[RetentionTarget] = []
+    for entry in raw_targets:
+        table = entry.get("table", "")
+        if table not in _ALLOWED_TABLES:
+            _log.warning("Table %s not in allowlist — skipping", table)
+            continue
+        targets.append(
+            RetentionTarget(
+                table=table,
+                column=entry.get("column", "created_at"),
+                retention_days=int(entry.get("retention_days", 14)),
+                topic_column=entry.get("topic_column", "") or "",
+                high_volume_topics=tuple(entry.get("high_volume_topics", []) or []),
+                high_volume_retention_days=int(
+                    entry.get("high_volume_retention_days", 0) or 0
+                ),
+                never_store_topics=tuple(entry.get("never_store_topics", []) or []),
+            )
+        )
+    return targets
+
+
+_RETENTION_TARGETS: list[RetentionTarget] = _load_targets()
 
 
 # ---------------------------------------------------------------------------
@@ -99,9 +151,13 @@ class RetentionCleanupResult(BaseModel):
 class NodeRetentionCleanup:
     """Prunes stale records from declared projection tables.
 
-    In dry-run mode (--dry-run), runs COUNT(*) queries instead of DELETE
-    to estimate how many rows would be removed, then returns without modifying
-    any data.
+    Applies three deletion passes per target table when contract specifies them:
+      1. never_store_topics — delete ALL rows regardless of age
+      2. high_volume_topics — delete rows older than high_volume_retention_days
+      3. general retention — delete remaining rows older than retention_days
+
+    In dry-run mode (--dry-run), runs COUNT(*) queries instead of DELETE and
+    rolls back without modifying any data.
     """
 
     def handle(self, request: RetentionCleanupRequest) -> RetentionCleanupResult:
@@ -130,21 +186,11 @@ class NodeRetentionCleanup:
             conn.autocommit = False
             try:
                 with conn.cursor() as cur:
-                    for table_name, (
-                        ts_column,
-                        retention_days,
-                    ) in _DEFAULT_RETENTION_TARGETS.items():
-                        if table_name not in _ALLOWED_TABLES:
-                            _log.warning(
-                                "Table %s not in allowlist — skipping", table_name
-                            )
-                            continue
-                        result = self._run_table(
+                    for target in _RETENTION_TARGETS:
+                        result = self._run_target(
                             cur,
                             pgsql,
-                            table_name,
-                            ts_column,
-                            retention_days,
+                            target,
                             dry_run=request.dry_run,
                         )
                         table_results.append(result)
@@ -179,43 +225,132 @@ class NodeRetentionCleanup:
             ),
         )
 
-    def _run_table(
+    def _run_target(
         self,
         cur: Any,
         pgsql: Any,
-        table_name: str,
-        ts_column: str,
-        retention_days: int,
+        target: RetentionTarget,
         dry_run: bool,
     ) -> RetentionTableResult:
         try:
-            if dry_run:
-                query = pgsql.SQL(
-                    "SELECT COUNT(*) FROM {} WHERE {} < NOW() - INTERVAL %s"
-                ).format(
-                    pgsql.Identifier(table_name),
-                    pgsql.Identifier(ts_column),
+            total = 0
+            topic_col = target.topic_column
+            if topic_col and target.never_store_topics:
+                total += self._delete_never_store(
+                    cur,
+                    pgsql,
+                    target.table,
+                    topic_col,
+                    target.never_store_topics,
+                    dry_run,
                 )
-                cur.execute(query, [f"{retention_days} days"])
-                (count,) = cur.fetchone()
-                return RetentionTableResult(
-                    table=table_name,
-                    rows_deleted=count,
-                    estimated=True,
+            if (
+                topic_col
+                and target.high_volume_topics
+                and target.high_volume_retention_days > 0
+            ):
+                total += self._delete_aged(
+                    cur,
+                    pgsql,
+                    target.table,
+                    target.column,
+                    target.high_volume_retention_days,
+                    topic_col=topic_col,
+                    topics=target.high_volume_topics,
+                    dry_run=dry_run,
                 )
-            query = pgsql.SQL("DELETE FROM {} WHERE {} < NOW() - INTERVAL %s").format(
-                pgsql.Identifier(table_name),
-                pgsql.Identifier(ts_column),
+            total += self._delete_aged(
+                cur,
+                pgsql,
+                target.table,
+                target.column,
+                target.retention_days,
+                topic_col="",
+                topics=(),
+                dry_run=dry_run,
             )
-            cur.execute(query, [f"{retention_days} days"])
             return RetentionTableResult(
-                table=table_name,
-                rows_deleted=cur.rowcount,
-                estimated=False,
+                table=target.table,
+                rows_deleted=total,
+                estimated=dry_run,
             )
         except Exception as exc:
             return RetentionTableResult(
-                table=table_name,
+                table=target.table,
                 rows_deleted=0,
                 error=str(exc),
             )
+
+    def _delete_never_store(
+        self,
+        cur: Any,
+        pgsql: Any,
+        table: str,
+        topic_col: str,
+        topics: tuple[str, ...],
+        dry_run: bool,
+    ) -> int:
+        if dry_run:
+            query = pgsql.SQL("SELECT COUNT(*) FROM {} WHERE {} = ANY(%s)").format(
+                pgsql.Identifier(table),
+                pgsql.Identifier(topic_col),
+            )
+            cur.execute(query, [list(topics)])
+            (count,) = cur.fetchone()
+            return int(count)
+        query = pgsql.SQL("DELETE FROM {} WHERE {} = ANY(%s)").format(
+            pgsql.Identifier(table),
+            pgsql.Identifier(topic_col),
+        )
+        cur.execute(query, [list(topics)])
+        return int(cur.rowcount or 0)
+
+    def _delete_aged(
+        self,
+        cur: Any,
+        pgsql: Any,
+        table: str,
+        ts_col: str,
+        retention_days: int,
+        topic_col: str,
+        topics: tuple[str, ...],
+        dry_run: bool,
+    ) -> int:
+        interval = f"{retention_days} days"
+        if topic_col and topics:
+            if dry_run:
+                query = pgsql.SQL(
+                    "SELECT COUNT(*) FROM {} WHERE {} < NOW() - INTERVAL %s AND {} = ANY(%s)"
+                ).format(
+                    pgsql.Identifier(table),
+                    pgsql.Identifier(ts_col),
+                    pgsql.Identifier(topic_col),
+                )
+                cur.execute(query, [interval, list(topics)])
+                (count,) = cur.fetchone()
+                return int(count)
+            query = pgsql.SQL(
+                "DELETE FROM {} WHERE {} < NOW() - INTERVAL %s AND {} = ANY(%s)"
+            ).format(
+                pgsql.Identifier(table),
+                pgsql.Identifier(ts_col),
+                pgsql.Identifier(topic_col),
+            )
+            cur.execute(query, [interval, list(topics)])
+            return int(cur.rowcount or 0)
+        if dry_run:
+            query = pgsql.SQL(
+                "SELECT COUNT(*) FROM {} WHERE {} < NOW() - INTERVAL %s"
+            ).format(
+                pgsql.Identifier(table),
+                pgsql.Identifier(ts_col),
+            )
+            cur.execute(query, [interval])
+            (count,) = cur.fetchone()
+            return int(count)
+        query = pgsql.SQL("DELETE FROM {} WHERE {} < NOW() - INTERVAL %s").format(
+            pgsql.Identifier(table),
+            pgsql.Identifier(ts_col),
+        )
+        cur.execute(query, [interval])
+        return int(cur.rowcount or 0)
