@@ -363,3 +363,199 @@ class TestVerificationLoop:
         assert result.resolved_thread_ids == [str(cited_finding.id)]
         # reviewer called exactly twice (2 models * 1 cited finding)
         assert mock_reviewer.review_hunk.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Finding 4: empty reviewer_models must fail closed (not silently pass)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEmptyReviewerModels:
+    def test_empty_reviewer_models_raises_on_init(self) -> None:
+        """Empty reviewer_models must raise ValueError — fail closed, never open."""
+        mock_reviewer = MagicMock(spec=ProtocolHostileReviewerInvoker)
+        mock_gql = MagicMock(spec=ProtocolGraphQLClient)
+
+        with pytest.raises(ValueError, match="reviewer_models"):
+            HandlerVerificationLoop(
+                reviewer=mock_reviewer,
+                graphql_client=mock_gql,
+                reviewer_models=[],
+            )
+
+    def test_empty_reviewer_models_never_resolves_thread(self) -> None:
+        """all([]) == True is the silent bypass — verify the guard prevents it."""
+        mock_reviewer = MagicMock(spec=ProtocolHostileReviewerInvoker)
+        mock_gql = MagicMock(spec=ProtocolGraphQLClient)
+
+        try:
+            handler = HandlerVerificationLoop(
+                reviewer=mock_reviewer,
+                graphql_client=mock_gql,
+                reviewer_models=[],
+            )
+        except ValueError:
+            return  # correct — guard fired
+
+        # If construction succeeded, run() must not resolve anything
+        finding = _make_finding()
+        commit_body = f"Fix\n\nFixes {finding.id}"
+        result = handler.run(
+            commit_body=commit_body,
+            commit_sha="abc1234",
+            pr_number=1,
+            repo="owner/repo",
+            open_findings=[finding],
+            diff_hunks=[_make_hunk()],
+        )
+        assert result.resolved_thread_ids == []
+        mock_gql.resolve_thread.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Finding 5: commit_sha / finding_position citation forms deleted (dead code)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDeadCitationFormsDeleted:
+    def test_parse_commit_citations_does_not_return_commit_sha(self) -> None:
+        """commit_sha citation form must be removed — dead code deleted."""
+        sha = "abc1234def5678"
+        commit_body = f"Fix\n\nAddressed in commit {sha}"
+        citations = parse_commit_citations(commit_body)
+        # After deletion: no citation with commit_sha should appear
+        assert all(c.commit_sha is None for c in citations), (
+            "commit_sha citation form is dead code and must be deleted"
+        )
+
+    def test_parse_commit_citations_does_not_return_finding_position(self) -> None:
+        """finding_position citation form must be removed — dead code deleted."""
+        commit_body = "Fix validation\n\nResolves: #findings[3]"
+        citations = parse_commit_citations(commit_body)
+        # After deletion: no citation with finding_position should appear
+        assert all(c.finding_position is None for c in citations), (
+            "finding_position citation form is dead code and must be deleted"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Finding 6: empty diff scope must fail closed (no hostile_reviewer call)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEmptyDiffScopeFailClosed:
+    def test_empty_diff_scope_does_not_invoke_reviewer(self) -> None:
+        """When _scope_hunk returns None, hostile_reviewer must NOT be called."""
+        # finding references a file not in diff_hunks → scope is None
+        finding = _make_finding(file_path="src/missing.py")
+        hunk = _make_hunk(file_path="src/other.py")  # different file
+
+        mock_reviewer = MagicMock(spec=ProtocolHostileReviewerInvoker)
+        mock_gql = MagicMock(spec=ProtocolGraphQLClient)
+
+        handler = HandlerVerificationLoop(
+            reviewer=mock_reviewer,
+            graphql_client=mock_gql,
+            reviewer_models=["qwen3-coder"],
+        )
+
+        commit_body = f"Fix\n\nFixes {finding.id}"
+        result = handler.run(
+            commit_body=commit_body,
+            commit_sha="abc1234",
+            pr_number=1,
+            repo="owner/repo",
+            open_findings=[finding],
+            diff_hunks=[hunk],
+        )
+
+        mock_reviewer.review_hunk.assert_not_called()
+        assert str(finding.id) not in result.resolved_thread_ids
+        assert str(finding.id) in result.rejected_thread_ids
+
+
+# ---------------------------------------------------------------------------
+# Finding 7: resolve_thread() return value must be honored
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestResolveThreadReturnValueHonored:
+    def test_failed_resolve_thread_mutation_not_logged_as_resolved(self) -> None:
+        """resolve_thread() returning False must NOT add fid to resolved_thread_ids."""
+        finding = _make_finding()
+        hunk = _make_hunk()
+
+        mock_reviewer = MagicMock(spec=ProtocolHostileReviewerInvoker)
+        mock_reviewer.review_hunk.return_value = {"verdict": "CLEAN", "reasoning": "ok"}
+
+        mock_gql = MagicMock(spec=ProtocolGraphQLClient)
+        mock_gql.resolve_thread.return_value = False  # mutation failed silently
+
+        handler = HandlerVerificationLoop(
+            reviewer=mock_reviewer,
+            graphql_client=mock_gql,
+            reviewer_models=["qwen3-coder"],
+        )
+
+        commit_body = f"Fix\n\nFixes {finding.id}"
+        result = handler.run(
+            commit_body=commit_body,
+            commit_sha="abc1234",
+            pr_number=1,
+            repo="owner/repo",
+            open_findings=[finding],
+            diff_hunks=[hunk],
+        )
+
+        assert str(finding.id) not in result.resolved_thread_ids
+        assert str(finding.id) in result.rejected_thread_ids
+
+
+# ---------------------------------------------------------------------------
+# Finding 3: contract.yaml must parse without YAML errors
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestContractYamlValid:
+    def test_contract_yaml_loads_without_duplicate_key_error(self) -> None:
+        """contract.yaml must be loadable — duplicate metadata.updated key is a parse error."""
+        from pathlib import Path
+
+        import yaml
+
+        contract_path = (
+            Path(__file__).parent.parent
+            / "src/omnimarket/nodes/node_pr_review_bot/contract.yaml"
+        )
+        with open(contract_path) as f:
+            content = f.read()
+
+        # yaml.safe_load raises on duplicate keys with strict loaders;
+        # use a custom loader that raises on duplicates
+        class StrictLoader(yaml.SafeLoader):
+            pass
+
+        def _construct_mapping(loader: yaml.Loader, node: yaml.MappingNode) -> dict:
+            loader.flatten_mapping(node)
+            pairs = loader.construct_pairs(node)
+            keys = [k for k, _ in pairs]
+            seen: set = set()
+            for k in keys:
+                if k in seen:
+                    raise yaml.constructor.ConstructorError(
+                        None, None, f"Duplicate key: {k!r}", node.start_mark
+                    )
+                seen.add(k)
+            return dict(pairs)
+
+        StrictLoader.add_constructor(
+            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+            _construct_mapping,
+        )
+        # Must not raise
+        yaml.load(content, Loader=StrictLoader)
