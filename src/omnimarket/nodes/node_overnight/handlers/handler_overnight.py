@@ -377,7 +377,7 @@ class HandlerBuildLoopExecutor:
                 # OMN-8405: phase-end envelope after the phase settles (before
                 # halt-condition evaluation so we always emit a terminal signal
                 # even when a halt breaks the loop on the next line).
-                # OMN-8437: propagate SKIPPED signal — dispatchers that return
+                # OMN-8486: propagate SKIPPED signal — dispatchers that return
                 # (False, "SKIPPED: ...") must not appear as "failed" in events.
                 if not success and error_msg and error_msg.startswith("SKIPPED:"):
                     _phase_status = "skipped"
@@ -457,6 +457,7 @@ class HandlerBuildLoopExecutor:
                         phase=phase,
                         phase_success=success,
                         accumulated_cost=accumulated_cost,
+                        error_msg=error_msg,
                     )
                     if halt is not None:
                         halt_reason = halt
@@ -578,6 +579,7 @@ class HandlerBuildLoopExecutor:
         phase: EnumPhase,
         phase_success: bool,
         accumulated_cost: float,
+        error_msg: str | None = None,
     ) -> str | None:
         """Check all contract halt conditions after a phase completes.
 
@@ -593,8 +595,11 @@ class HandlerBuildLoopExecutor:
                     f"{halt_cond.threshold:.2f} USD"
                 )
 
-        # Check halt_on_failure for the completed phase against contract phase specs
-        if not phase_success:
+        # Check halt_on_failure for the completed phase against contract phase specs.
+        # OMN-8486: SKIPPED outcomes (error_msg starts with "SKIPPED:") are not
+        # failures — they must not trigger halt_on_failure.
+        is_skipped = error_msg is not None and error_msg.startswith("SKIPPED:")
+        if not phase_success and not is_skipped:
             for phase_spec in contract.phases:
                 if phase_spec.phase_name == phase.value and phase_spec.halt_on_failure:
                     return f"halt_on_failure: phase {phase.value} failed"
@@ -719,8 +724,8 @@ def _dispatch_ci_watch(
     """Dispatch CI watch.
 
     ``HandlerCiWatch`` requires a concrete PR + repo to poll; those are not
-    available at the overnight session level. Returns a typed skip failure so
-    callers see an explicit SKIPPED outcome rather than a silent success.
+    available at the overnight session level. Returns a typed skip so callers
+    see an explicit SKIPPED outcome rather than a silent success.
 
     A follow-up must wire PR refs from the build_loop_orchestrator phase into
     this dispatcher before it can perform real work.
