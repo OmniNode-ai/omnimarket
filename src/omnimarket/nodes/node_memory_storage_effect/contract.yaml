@@ -1,0 +1,243 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Memory Storage EFFECT - ONEX Contract
+# EFFECT node for memory CRUD operations across storage backends.
+
+# === REQUIRED ROOT FIELDS ===
+name: "node_memory_storage_effect"
+contract_version: {major: 0, minor: 2, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: "Memory storage effect node for CRUD operations. P1A: FileSystem backend for snapshot persistence.
+  Phase 2: PostgreSQL, Redis, and Pinecone backends."
+node_type: "EFFECT"
+input_model: "ModelMemoryStorageRequest"
+output_model: "ModelMemoryStorageResponse"
+
+# === IO OPERATIONS (Required for EFFECT nodes) ===
+io_operations:
+  - operation_type: "database_write"
+    atomic: true
+    timeout_seconds: 30
+    validation_enabled: true
+  - operation_type: "database_read"
+    atomic: false
+    timeout_seconds: 10
+    validation_enabled: true
+  - operation_type: "cache_write"
+    atomic: false
+    timeout_seconds: 5
+    validation_enabled: true
+  - operation_type: "cache_read"
+    atomic: false
+    timeout_seconds: 5
+    validation_enabled: true
+
+# === NODE CONFIGURATION ===
+# NOTE: tool_name and main_tool_class are required per ModelContractEffect validation
+tool_specification:
+  tool_name: "memory_storage_effect"
+  main_tool_class: "NodeMemoryStorageEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["operation"]
+  optional: ["snapshot_id", "snapshot", "metadata", "tags"]
+
+output_state:
+  object_type: "object"
+  required: ["status"]
+  optional: ["snapshot", "snapshot_ids", "error_message"]
+
+# === ACTIONS ===
+actions:
+  - name: "store_memory"
+    description: "Store a memory record with metadata and provenance"
+    inputs: ["data", "metadata"]
+    outputs: ["memory_id", "status"]
+
+  - name: "retrieve_memory"
+    description: "Retrieve a memory record by identifier"
+    inputs: ["memory_id"]
+    outputs: ["data", "metadata"]
+
+  - name: "update_memory"
+    description: "Update an existing memory record"
+    inputs: ["memory_id", "data"]
+    outputs: ["status"]
+
+  - name: "delete_memory"
+    description: "Soft delete a memory record with audit trail"
+    inputs: ["memory_id"]
+    outputs: ["status"]
+
+  - name: "list_memories"
+    description: "List memory records with filtering and pagination"
+    inputs: ["filters", "pagination"]
+    outputs: ["memories", "total_count"]
+
+  - name: "health_check"
+    description: "Check node health status"
+    inputs: []
+    outputs: ["status"]
+
+# === HANDLER ROUTING ===
+# Routes operations to the appropriate handler implementation.
+# P1A: FileSystem adapter is the sole handler for all operations.
+# All operations (store, retrieve, update, delete, list) route to the same handler,
+# so default_handler is sufficient - no per-operation handlers needed.
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers: []
+  default_handler: "HandlerFileSystemAdapter"
+
+# === DEPENDENCIES ===
+# P1A: FileSystem backend is primary, other backends deferred to Phase 2
+dependencies:
+  # P1A Primary Backend
+  - name: filesystem
+    dependency_type: service
+    description: FileSystem storage for snapshot persistence (P1A primary)
+    required: true
+
+  # Phase 2 Backends (deferred)
+  - name: postgresql
+    dependency_type: service
+    description: PostgreSQL database for persistent memory storage (Phase 2)
+    required: false
+  - name: redis
+    dependency_type: service
+    description: Redis cache for high-speed temporal memory (Phase 2)
+    required: false
+  - name: pinecone
+    dependency_type: service
+    description: Pinecone vector database for semantic memory (Phase 2)
+    required: false
+
+  # Protocol Dependencies
+  - name: ProtocolMemoryStorage
+    dependency_type: protocol
+    description: Core storage operations protocol
+  - name: ProtocolMemoryOperations
+    dependency_type: protocol
+    description: Memory CRUD operations protocol
+  - name: ProtocolMemoryBase
+    dependency_type: protocol
+    description: Base memory interface protocol
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 100
+
+# === EVENT TYPE CONFIGURATION ===
+# NOTE: Using version per ModelEventTypeSubcontract from omnibase_core
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["memory_stored", "memory_retrieved", "memory_updated", "memory_deleted"]
+  event_categories: ["memory", "effect", "storage"]
+  publish_events: true
+  subscribe_events: false
+  event_routing: "memory"
+  invocation_mode: "orchestrator"
+
+# === INFRASTRUCTURE ===
+infrastructure:
+  storage_backends:
+    - filesystem  # P1A primary
+    # Phase 2 backends (deferred):
+    # - postgresql
+    # - redis
+    # - pinecone
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  performance_validation_enabled: true
+  constraint_definitions:
+    operation: "Literal['store', 'retrieve', 'delete', 'update', 'list']"
+    status: "Literal['success', 'error', 'not_found', 'permission_denied']"
+    snapshot_id: "string type for snapshot identifier (UUID)"
+    snapshot: "ModelMemorySnapshot for storage operations"
+    metadata: "dict type for additional operation metadata"
+    tags: "list of strings for filtering operations"
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+# PURPOSE: Machine-readable configuration of WHERE events are routed.
+#
+# This subcontract provides structured topic routing for:
+#   - RuntimeHostProcess auto-discovery and wiring
+#   - Kafka topic subscription/publication
+#   - Schema validation via topic metadata
+#
+# Contains: topic suffixes (simple strings) + optional schema references.
+#
+# NOTE: This node is orchestrator-invoked (not subscription-driven).
+# It publishes CRUD operation events but does not subscribe to topics.
+#
+# Topic naming: onex.{kind}.omnimemory.{event-name}.v{n}
+#   - kind=cmd for commands/inputs
+#   - kind=evt for events/outputs
+#   - Internal runtime events use onex.internal.* namespace
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  # This node does not subscribe to topics (orchestrator-invoked)
+  subscribe_topics: []
+
+  # Topics this node publishes to (sends events to)
+  publish_topics:
+    - "onex.evt.omnimemory.memory-stored.v1"
+    - "onex.evt.omnimemory.memory-retrieved.v1"
+    - "onex.evt.omnimemory.memory-updated.v1"
+    - "onex.evt.omnimemory.memory-deleted.v1"
+
+  # Metadata for published topics
+  publish_topic_metadata:
+    "onex.evt.omnimemory.memory-stored.v1":
+      schema_ref: "omnimarket.nodes.node_memory_storage_effect.models.model_memory_storage_response.ModelMemoryStorageResponse"
+      description: "Memory storage confirmation event. Emitted when a memory snapshot is successfully
+        persisted to the storage backend."
+    "onex.evt.omnimemory.memory-retrieved.v1":
+      schema_ref: "omnimarket.nodes.node_memory_storage_effect.models.model_memory_storage_response.ModelMemoryStorageResponse"
+      description: "Memory retrieval confirmation event. Emitted when a memory snapshot is successfully
+        retrieved from the storage backend."
+    "onex.evt.omnimemory.memory-updated.v1":
+      schema_ref: "omnimarket.nodes.node_memory_storage_effect.models.model_memory_storage_response.ModelMemoryStorageResponse"
+      description: "Memory update confirmation event. Emitted when a memory snapshot is successfully updated
+        in the storage backend."
+    "onex.evt.omnimemory.memory-deleted.v1":
+      schema_ref: "omnimarket.nodes.node_memory_storage_effect.models.model_memory_storage_response.ModelMemoryStorageResponse"
+      description: "Memory deletion confirmation event. Emitted when a memory snapshot is successfully
+        soft-deleted from the storage backend."
+
+# === TAGS ===
+tags:
+  - memory
+  - storage
+  - effect
+  - crud
+  - filesystem
+  - snapshot
+  # Phase 2 tags (deferred):
+  # - postgresql
+  # - redis
+  # - pinecone

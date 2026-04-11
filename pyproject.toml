@@ -117,6 +117,11 @@ node_semantic_analyzer_compute = "omnimarket.nodes.node_semantic_analyzer_comput
 node_database_sweep = "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep:NodeDatabaseSweep"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep:NodeDuplicationSweep"
 node_doc_freshness_sweep = "omnimarket.nodes.node_doc_freshness_sweep.handlers.handler_doc_freshness_sweep:NodeDocFreshnessSweep"
+node_memory_storage_effect = "omnimarket.nodes.node_memory_storage_effect"
+node_memory_retrieval_effect = "omnimarket.nodes.node_memory_retrieval_effect"
+node_persona_storage_effect = "omnimarket.nodes.node_persona_storage_effect"
+node_persona_retrieval_effect = "omnimarket.nodes.node_persona_retrieval_effect"
+node_agent_learning_retrieval_effect = "omnimarket.nodes.node_agent_learning_retrieval_effect"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
