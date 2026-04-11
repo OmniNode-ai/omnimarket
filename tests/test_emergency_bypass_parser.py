@@ -27,14 +27,18 @@ def _make_default_valkey() -> MagicMock:
     return v
 
 
+_SENTINEL: list[str] = []  # sentinel to distinguish None from explicit []
+
+
 def _make_handler(
     authorized_actors: list[str] | None = None,
     kafka_publisher: object | None = None,
     db_conn: object | None = None,
     valkey_client: object | None = None,
 ) -> HandlerEmergencyBypassParser:
+    actors = ["jonahgabriel"] if authorized_actors is None else authorized_actors
     return HandlerEmergencyBypassParser(
-        authorized_actors=authorized_actors or ["jonahgabriel"],
+        authorized_actors=actors,
         kafka_publisher=kafka_publisher or MagicMock(),
         db_conn=db_conn or MagicMock(),
         valkey_client=valkey_client or _make_default_valkey(),
@@ -371,3 +375,29 @@ class TestBypassContractDrivenConfig:
             head_sha="ppp666",
         )
         assert result_alice.granted is True
+
+    def test_empty_authorized_actors_rejects_all(self) -> None:
+        """Empty authorized_actors = lockdown mode: all bypasses rejected."""
+        handler = _make_handler(authorized_actors=[])
+        result = handler.parse(
+            comment_body="EMERGENCY-BYPASS: lockdown test",
+            actor="jonahgabriel",
+            pr_number=1,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="qqq777",
+        )
+        assert result.granted is False
+        assert result.rejection_reason == BypassRejectionReason.UNAUTHORIZED_ACTOR
+
+    def test_whitespace_only_actors_are_filtered(self) -> None:
+        """Actors that are empty strings after strip are treated as lockdown."""
+        handler = _make_handler(authorized_actors=["", "  "])
+        result = handler.parse(
+            comment_body="EMERGENCY-BYPASS: test",
+            actor="jonahgabriel",
+            pr_number=1,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="rrr888",
+        )
+        assert result.granted is False
+        assert result.rejection_reason == BypassRejectionReason.UNAUTHORIZED_ACTOR

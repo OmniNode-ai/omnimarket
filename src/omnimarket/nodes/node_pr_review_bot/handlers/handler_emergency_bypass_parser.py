@@ -103,6 +103,11 @@ class HandlerEmergencyBypassParser:
     ) -> None:
         # Filter empty strings to support lockdown mode (config set to "")
         self._authorized = {a for a in authorized_actors if a}
+        if not self._authorized:
+            logger.warning(
+                "EmergencyBypassParser: no authorized actors configured — "
+                "all bypass attempts will be rejected (lockdown mode)"
+            )
         self._kafka = kafka_publisher
         self._db = db_conn
         self._valkey = valkey_client
