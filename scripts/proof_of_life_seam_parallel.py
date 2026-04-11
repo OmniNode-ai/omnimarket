@@ -31,9 +31,9 @@ from omnimarket.nodes.node_seam_parallel_executor.models.model_seam_task import 
 
 
 def _print_result(label: str, result: ModelSeamParallelResult) -> None:
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"CASE: {label}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     data = {
         "correlation_id": str(result.correlation_id),
         "all_succeeded": result.all_succeeded,
@@ -52,12 +52,16 @@ def _print_result(label: str, result: ModelSeamParallelResult) -> None:
     print(json.dumps(data, indent=2, default=str))
 
 
-async def _noop_shim_a(payload: dict[str, Any], upstream_outputs: dict[str, Any]) -> str:
+async def _noop_shim_a(
+    payload: dict[str, Any], upstream_outputs: dict[str, Any]
+) -> str:
     """Shim for task A — returns a fixed string."""
     return "result_from_a"
 
 
-async def _noop_shim_b(payload: dict[str, Any], upstream_outputs: dict[str, Any]) -> str:
+async def _noop_shim_b(
+    payload: dict[str, Any], upstream_outputs: dict[str, Any]
+) -> str:
     """Shim for task B — returns a fixed string."""
     return "result_from_b"
 
@@ -105,8 +109,12 @@ async def main() -> int:
     result = await executor.handle(input_model)
     _print_result("2 independent tasks", result)
 
-    assert result.all_succeeded is True, f"Expected all_succeeded=True, got {result.all_succeeded}"
-    assert result.shims_removed is True, f"Expected shims_removed=True, got {result.shims_removed}"
+    assert result.all_succeeded is True, (
+        f"Expected all_succeeded=True, got {result.all_succeeded}"
+    )
+    assert result.shims_removed is True, (
+        f"Expected shims_removed=True, got {result.shims_removed}"
+    )
     assert result.waves_executed == 1, f"Expected 1 wave, got {result.waves_executed}"
 
     # Build shim_outputs by task_id
@@ -158,7 +166,9 @@ async def main() -> int:
     _print_result("dependency chain", result2)
 
     assert result2.all_succeeded is True
-    assert result2.waves_executed == 2, f"Expected 2 waves, got {result2.waves_executed}"
+    assert result2.waves_executed == 2, (
+        f"Expected 2 waves, got {result2.waves_executed}"
+    )
 
     outputs2 = {r.task_id: r.output for r in result2.task_results}
     assert outputs2["task-a"] == "result_from_a"
@@ -169,9 +179,9 @@ async def main() -> int:
     print("ASSERTION: waves_executed == 2  ✓")
     print("ASSERTION: downstream received 'result_from_a' from task-a  ✓")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ALL SEAM-PARALLEL PROOF-OF-LIFE ASSERTIONS PASSED")
-    print("="*60)
+    print("=" * 60)
     return 0
 
 

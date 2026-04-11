@@ -27,9 +27,9 @@ from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request impor
 
 
 def _print_result(label: str, result: dict[str, object]) -> None:
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"CASE: {label}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(json.dumps(result, indent=2, default=str))
 
 
@@ -82,7 +82,7 @@ def main() -> int:
     assert result_escalate["failure_class"] == "PERMANENT", (
         f"Expected failure_class == 'PERMANENT', got {result_escalate['failure_class']!r}"
     )
-    print(f"ASSERTION: verdict == 'ESCALATE'  ✓")
+    print("ASSERTION: verdict == 'ESCALATE'  ✓")
     print(f"ASSERTION: failure_class == {result_escalate['failure_class']!r}  ✓")
 
     # ------------------------------------------------------------------
@@ -107,7 +107,7 @@ def main() -> int:
     assert result_fail["failure_class"] == "DATA_INTEGRITY", (
         f"Expected failure_class == 'DATA_INTEGRITY', got {result_fail['failure_class']!r}"
     )
-    print(f"ASSERTION: verdict == 'ESCALATE'  ✓")
+    print("ASSERTION: verdict == 'ESCALATE'  ✓")
     print(f"ASSERTION: failure_class == {result_fail['failure_class']!r}  ✓")
 
     # ------------------------------------------------------------------
@@ -133,9 +133,9 @@ def main() -> int:
     print("ASSERTION: verdict == 'FAIL'  ✓")
     print("ASSERTION: failure_class == 'CONFIGURATION'  ✓")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("ALL VERIFIER PROOF-OF-LIFE ASSERTIONS PASSED")
-    print("="*60)
+    print("=" * 60)
     return 0
 
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from omnibase_compat.overseer.model_overnight_contract import (
+from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightContract,
     ModelOvernightHaltCondition,
     ModelOvernightPhaseSpec,

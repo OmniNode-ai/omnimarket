@@ -127,7 +127,7 @@ node_persona_retrieval_effect = "omnimarket.nodes.node_persona_retrieval_effect"
 node_agent_learning_retrieval_effect = "omnimarket.nodes.node_agent_learning_retrieval_effect"
 node_llm_eval_harness = "omnimarket.nodes.node_llm_eval_harness"
 node_seam_parallel_executor = "omnimarket.nodes.node_seam_parallel_executor"
-node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_verify_orchestrator.node:NodeSkillOverseerVerifyOrchestrator"
+node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_verify_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
@@ -139,7 +139,7 @@ omnimarket = "omnimarket.nodes"
 omnibase-core = { path = "../omnibase_core", editable = true }
 omnibase-compat = { path = "../omnibase_compat", editable = true }
 omninode-memory = { path = "../omnimemory", editable = true }
-onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", branch = "jonah/omn-8431-add-overseer-to-change-control" }
+onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", branch = "main" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]

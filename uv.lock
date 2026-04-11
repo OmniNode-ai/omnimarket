@@ -1731,7 +1731,7 @@ requires-dist = [
     { name = "omnibase-core", editable = "../omnibase_core" },
     { name = "omnibase-infra", specifier = ">=0.32.0" },
     { name = "omninode-memory", editable = "../omnimemory" },
-    { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?branch=jonah%2Fomn-8431-add-overseer-to-change-control" },
+    { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?branch=main" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
     { name = "python-dateutil", specifier = ">=2.9.0" },
@@ -1828,7 +1828,7 @@ dev = [
 [[package]]
 name = "onex-change-control"
 version = "0.5.0"
-source = { git = "https://github.com/OmniNode-ai/onex_change_control.git?branch=jonah%2Fomn-8431-add-overseer-to-change-control#4e30e4c65dbb1101b9bffcdd06342381baeca7f4" }
+source = { git = "https://github.com/OmniNode-ai/onex_change_control.git?branch=main#1122ff6c5823aa4ec2296754e34113c66a9b7665" }
 dependencies = [
     { name = "colorama" },
     { name = "omnibase-core" },
