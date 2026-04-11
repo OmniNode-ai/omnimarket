@@ -25,6 +25,8 @@ from omnibase_compat.overseer.model_overnight_contract import (
     ModelOvernightHaltCondition,
 )
 
+from omnimarket.nodes.node_overnight.topics import TOPIC_OVERSEER_TICK
+
 logger = logging.getLogger(__name__)
 
 # Probe returns True when the outcome is satisfied.
@@ -40,7 +42,10 @@ HaltActionHandler = Callable[[ModelOvernightHaltCondition, dict[str, Any]], bool
 
 OVERSEER_FLAG_PATH = Path(".onex_state/overseer-active.flag")
 OVERSEER_TICK_LOG = Path(".onex_state/overseer-ticks.jsonl")
-OVERSEER_TICK_TOPIC = "onex.evt.overseer.tick.v1"
+# Re-exported alias for the contract-declared topic. The source of truth lives
+# in node_overnight/topics.py (and contract.yaml publish_topics). Callers that
+# previously imported OVERSEER_TICK_TOPIC from this module keep working.
+OVERSEER_TICK_TOPIC = TOPIC_OVERSEER_TICK
 
 
 def resolve_state_root(explicit: Path | None = None) -> Path:

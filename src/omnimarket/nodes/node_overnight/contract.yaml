@@ -76,3 +76,7 @@ event_bus:
     - onex.evt.omnimarket.overnight.session-completed.v1
     # nightly_loop_controller trigger (OMN-8025)
     - onex.cmd.omnimarket.nightly-loop-start.v1
+    # OMN-8375: overseer tick re-injection — snapshot emitted every phase tick
+    # so the controlling session can surface contract_path / current_phase /
+    # phase_progress / next_required_outcome / approaching_halt_conditions.
+    - onex.evt.overseer.tick.v1
