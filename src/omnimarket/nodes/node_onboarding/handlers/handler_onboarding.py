@@ -45,10 +45,9 @@ from omnimarket.nodes.node_onboarding.models.model_onboarding_start_command impo
     ModelOnboardingStartCommand,
 )
 
-# TODO(OMN-onboarding-release-bump): remove _LOCAL_POLICIES_DIR + _load_local_policies
-# after omnimarket pins omnibase_infra >= 0.34.0 and the upstream wheel ships
-# new_employee.yaml. Tracked by the Path-2 follow-up ticket linked from this
-# node's PR.
+# TODO(OMN-8270): remove _LOCAL_POLICIES_DIR + _load_local_policies after
+# omnimarket pins omnibase_infra >= 0.34.0 and the upstream wheel ships
+# new_employee.yaml.
 _LOCAL_POLICIES_DIR = Path(__file__).resolve().parent.parent / "policies"
 
 
@@ -94,7 +93,7 @@ class HandlerOnboarding:
         if not target_capabilities:
             # Merge upstream + local fallback policies; local takes precedence
             # so a yaml shipped with this node can fill gaps in older
-            # omnibase_infra wheels (see TODO at module top).
+            # omnibase_infra wheels (see OMN-8270 removal note above).
             policies: dict[str, dict[str, Any]] = dict(load_builtin_policies())
             policies.update(_load_local_policies())
             policy_data = policies.get(command.policy_name)
