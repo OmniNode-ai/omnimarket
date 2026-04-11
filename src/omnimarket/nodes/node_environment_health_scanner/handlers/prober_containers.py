@@ -175,7 +175,7 @@ def _parse_docker_ps_json(raw: str) -> list[dict[str, object]]:
                     "name": name,
                     "running": row.get("State", "") == "running",
                     "healthy": "(healthy)" in status_str,
-                    "restart_count": row.get("RestartCount", 0),
+                    "restart_count": 0,  # RestartCount not in docker ps; needs docker inspect
                 }
             )
         return result

@@ -33,15 +33,16 @@ def probe_emit_daemon(
 ) -> ModelSubsystemResult:
     findings: list[ModelHealthFinding] = []
 
-    # Check 1: socket exists
-    if not Path(socket_path).exists():
+    # Check 1: socket exists as a socket (not a directory or regular file)
+    socket_p = Path(socket_path)
+    if not socket_p.exists() or not socket_p.is_socket():
         findings.append(
             ModelHealthFinding(
                 subsystem=EnumSubsystem.EMIT_DAEMON,
                 severity=EnumHealthFindingSeverity.FAIL,
                 subject="socket",
                 message=f"Emit daemon socket not found: {socket_path}",
-                evidence=f"Path.exists() returned False for {socket_path}",
+                evidence=f"Path.is_socket() returned False for {socket_path}",
             )
         )
 
