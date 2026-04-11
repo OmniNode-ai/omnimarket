@@ -62,14 +62,11 @@ class ModelSubsystemResult(BaseModel):
     raw_detail: str = ""
 
 
-_DEFAULT_SSH_TARGET = "jonah@192.168.86.201"
-
-
 class EnvironmentHealthRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     subsystems: list[str] = Field(default_factory=list)
     omni_home: str = ""
-    ssh_target: str | None = _DEFAULT_SSH_TARGET
+    ssh_target: str | None = None
     now_override: str | None = None  # ISO datetime string for test injection
 
 
@@ -118,9 +115,7 @@ class NodeEnvironmentHealthScanner:
             else {s.value for s in EnumSubsystem}
         )
         omni_home = request.omni_home or os.environ.get("OMNI_HOME", "")
-        ssh_target = request.ssh_target or os.environ.get(
-            "ONEX_INFRA_SSH_TARGET", _DEFAULT_SSH_TARGET
-        )
+        ssh_target = request.ssh_target or os.environ.get("ONEX_INFRA_SSH_TARGET")
         onex_state_dir = os.environ.get(
             "ONEX_STATE_DIR", str(Path.home() / ".onex_state")
         )
