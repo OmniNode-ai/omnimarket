@@ -84,6 +84,18 @@ class ModelPipelineState(BaseModel):
     dry_run: bool = Field(default=False)
     pr_number: int | None = Field(default=None)
     error_message: str | None = Field(default=None)
+    source_correlation_id: str | None = Field(
+        default=None,
+        description=(
+            "Upstream correlation ID from the dispatcher that produced this run "
+            "(e.g. build_loop cycle). Used by the skill surface to stamp the PR "
+            "body and Linear comment."
+        ),
+    )
+    source: str | None = Field(
+        default=None,
+        description="Name of the upstream dispatcher (e.g. 'build_loop').",
+    )
 
 
 __all__: list[str] = [

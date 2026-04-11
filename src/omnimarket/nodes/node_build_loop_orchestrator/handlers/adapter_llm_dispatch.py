@@ -657,6 +657,7 @@ class AdapterLlmDispatch:
                     "implementation_plan": accepted_code or "",
                     "review_result": review_result,
                     "correlation_id": str(correlation_id),
+                    "source": "build_loop",
                     "generated_at": datetime.now(tz=UTC).isoformat(),
                     "routed_to_tier": tier.value,
                     "delegated_to": coder_endpoint.model_id,
@@ -1566,6 +1567,7 @@ class AdapterLlmDispatch:
                 "title": target.title,
                 "dry_run": True,
                 "correlation_id": str(correlation_id),
+                "source": "build_loop",
             },
         )
 

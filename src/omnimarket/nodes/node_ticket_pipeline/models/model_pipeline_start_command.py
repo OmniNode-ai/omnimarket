@@ -21,6 +21,18 @@ class ModelPipelineStartCommand(BaseModel):
         default=None, description="Resume from specified phase."
     )
     requested_at: datetime = Field(..., description="When the command was issued.")
+    source_correlation_id: str | None = Field(
+        default=None,
+        description=(
+            "Upstream correlation ID from the dispatcher that produced this run "
+            "(e.g. build_loop cycle). Rendered into the PR body and Linear comment "
+            "so a merged PR can be traced back to its originating cycle."
+        ),
+    )
+    source: str | None = Field(
+        default=None,
+        description="Name of the upstream dispatcher (e.g. 'build_loop').",
+    )
 
 
 __all__: list[str] = ["ModelPipelineStartCommand"]

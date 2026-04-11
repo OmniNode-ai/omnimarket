@@ -62,6 +62,19 @@ def main() -> None:
         default=False,
         help="Log phase decisions without side effects",
     )
+    parser.add_argument(
+        "--source-correlation-id",
+        default=None,
+        help=(
+            "Upstream correlation ID from the dispatcher that produced this run "
+            "(e.g. build_loop cycle). Rendered into the PR body and Linear comment."
+        ),
+    )
+    parser.add_argument(
+        "--source",
+        default=None,
+        help="Name of the upstream dispatcher (e.g. 'build_loop').",
+    )
 
     args = parser.parse_args()
 
@@ -72,6 +85,8 @@ def main() -> None:
         dry_run=args.dry_run,
         skip_to=args.skip_to,
         requested_at=datetime.now(UTC),
+        source_correlation_id=args.source_correlation_id,
+        source=args.source,
     )
 
     handler = HandlerTicketPipeline()

@@ -274,3 +274,99 @@ class TestTicketPipelineGoldenChain:
         # Advance from CREATE_PR with pr_number
         state, _ = handler.advance(state, phase_success=True, pr_number=42)
         assert state.pr_number == 42
+
+    async def test_source_correlation_id_threaded_through_pipeline(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OMN-8393: upstream correlation_id (e.g. build_loop) propagates through
+        the full pipeline — start command -> state -> every phase event stays
+        consistent with it, unchanged by the pipeline's own correlation_id.
+        """
+        handler = HandlerTicketPipeline()
+        upstream_correlation_id = "ff65b7c6-8e71-4f1f-bb11-3b2b9f11aaaa"
+        command = ModelPipelineStartCommand(
+            correlation_id=uuid4(),
+            ticket_id="OMN-8393",
+            requested_at=datetime.now(tz=UTC),
+            source_correlation_id=upstream_correlation_id,
+            source="build_loop",
+        )
+
+        state, events, completed = handler.run_full_pipeline(command)
+
+        # Upstream correlation survives the full run
+        assert state.source_correlation_id == upstream_correlation_id
+        assert state.source == "build_loop"
+        assert state.current_phase == EnumPipelinePhase.DONE
+        # Pipeline's own correlation_id is distinct from the upstream one
+        assert str(state.correlation_id) != upstream_correlation_id
+        # Completed event carries the pipeline correlation_id (not the upstream)
+        assert str(completed.correlation_id) == str(state.correlation_id)
+        # FSM still ran all 9 transitions
+        assert len(events) == 9
+        assert all(e.success for e in events)
+
+    async def test_source_correlation_id_defaults_to_none(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """When no upstream dispatcher is set, source fields remain None."""
+        handler = HandlerTicketPipeline()
+        command = _make_command()
+
+        state, _events, _completed = handler.run_full_pipeline(command)
+
+        assert state.source_correlation_id is None
+        assert state.source is None
+
+    async def test_source_correlation_id_in_start_command_payload(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OMN-8393: a dispatcher (e.g. build_loop) can publish a start command
+        carrying correlation_id + source on the bus, and ticket_pipeline picks
+        them up into state. This is the golden chain assertion for propagation
+        through the dispatch path.
+        """
+        handler = HandlerTicketPipeline()
+        captured_states: list[dict[str, object]] = []
+
+        async def on_command(message: object) -> None:
+            payload = json.loads(message.value)  # type: ignore[union-attr]
+            cmd = ModelPipelineStartCommand(
+                correlation_id=payload["correlation_id"],
+                ticket_id=payload["ticket_id"],
+                requested_at=datetime.now(tz=UTC),
+                source_correlation_id=payload.get("source_correlation_id"),
+                source=payload.get("source"),
+            )
+            state, _events, _completed = handler.run_full_pipeline(cmd)
+            captured_states.append(state.model_dump(mode="json"))
+
+        await event_bus.start()
+        await event_bus.subscribe(
+            CMD_TOPIC, on_message=on_command, group_id="test-ticket-pipeline-corr"
+        )
+
+        upstream_correlation_id = "aaaa1111-2222-3333-4444-555566667777"
+        cmd_payload = json.dumps(
+            {
+                "correlation_id": str(uuid4()),
+                "ticket_id": "OMN-8393",
+                "source_correlation_id": upstream_correlation_id,
+                "source": "build_loop",
+            }
+        ).encode()
+        await event_bus.publish(CMD_TOPIC, key=None, value=cmd_payload)
+
+        assert len(captured_states) == 1
+        assert captured_states[0]["source_correlation_id"] == upstream_correlation_id
+        assert captured_states[0]["source"] == "build_loop"
+        assert (
+            captured_states[0][
+                "final_phase"
+                if "final_phase" in captured_states[0]
+                else "current_phase"
+            ]
+            == "done"
+        )
+
+        await event_bus.close()

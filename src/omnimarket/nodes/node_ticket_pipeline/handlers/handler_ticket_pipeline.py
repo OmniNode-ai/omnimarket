@@ -47,6 +47,8 @@ class HandlerTicketPipeline:
             skip_test_iterate=command.skip_test_iterate,
             dry_run=command.dry_run,
             max_consecutive_failures=3,
+            source_correlation_id=command.source_correlation_id,
+            source=command.source,
         )
 
     def advance(
