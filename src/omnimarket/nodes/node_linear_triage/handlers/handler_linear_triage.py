@@ -508,11 +508,11 @@ class HandlerLinearTriage:
         )
 
         # --- Phase 5b: Epic completion detection ---
-        # Build set of ticket IDs that have children
-        parent_ids = {t.parent_id for t in all_tickets if t.parent_id}
-        for ticket in all_tickets:
-            if ticket.id not in parent_ids:
-                continue
+        # Epics with all-done children are absent from parent_ids (derived from
+        # non-done child references) but still non-done themselves. Check all
+        # root-level non-done tickets (no parent = potential epic) via list_children.
+        candidate_epics = [t for t in all_tickets if not t.parent_id]
+        for ticket in candidate_epics:
             if ticket.state in _DONE_STATES:
                 continue
 
