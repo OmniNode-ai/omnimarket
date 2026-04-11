@@ -11,7 +11,7 @@ authors = [
 ]
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12"
 keywords = [
     "onex",
     "marketplace",
@@ -139,7 +139,7 @@ omnimarket = "omnimarket.nodes"
 omnibase-core = { path = "../omnibase_core", editable = true }
 omnibase-compat = { path = "../omnibase_compat", editable = true }
 omninode-memory = { path = "../omnimemory", editable = true }
-onex-change-control = { path = "./onex_change_control", editable = true }
+onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", branch = "jonah/omn-8431-add-overseer-to-change-control" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
