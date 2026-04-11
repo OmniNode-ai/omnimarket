@@ -24,7 +24,6 @@ import sys
 from uuid import uuid4
 
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
-    EnumRedeployStatus,
     ModelRedeployResult,
 )
 
@@ -32,17 +31,29 @@ _log = logging.getLogger(__name__)
 
 
 async def _run_dry(args: argparse.Namespace) -> int:
-    corr_id = str(uuid4())
-    dry_result = {
-        "correlation_id": corr_id,
-        "success": True,
-        "status": EnumRedeployStatus.SUCCESS,
-        "duration_seconds": 0.0,
-        "dry_run": True,
-        "scope": args.scope,
-        "git_ref": args.git_ref,
-    }
-    sys.stdout.write(json.dumps(dry_result, default=str, indent=2) + "\n")
+    from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+        ModelDeployRebuildCommand,
+    )
+
+    services = (
+        [s.strip() for s in args.services.split(",") if s.strip()]
+        if args.services
+        else []
+    )
+    command = ModelDeployRebuildCommand(
+        correlation_id=str(uuid4()),
+        requested_by="node_redeploy-cli",
+        scope=args.scope,
+        services=services,
+        git_ref=args.git_ref,
+    )
+    sys.stdout.write(
+        json.dumps(
+            {"dry_run": True, "would_publish": command.model_dump(mode="json")},
+            indent=2,
+        )
+        + "\n"
+    )
     return 0
 
 
