@@ -101,7 +101,8 @@ class HandlerEmergencyBypassParser:
         db_conn: ProtocolDbConn,
         valkey_client: ProtocolValkeyClient,
     ) -> None:
-        self._authorized = set(authorized_actors)
+        # Filter empty strings to support lockdown mode (config set to "")
+        self._authorized = {a for a in authorized_actors if a}
         self._kafka = kafka_publisher
         self._db = db_conn
         self._valkey = valkey_client
