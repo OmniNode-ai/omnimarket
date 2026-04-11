@@ -356,12 +356,20 @@ class HandlerOvernight:
                 # OMN-8405: phase-end envelope after the phase settles (before
                 # halt-condition evaluation so we always emit a terminal signal
                 # even when a halt breaks the loop on the next line).
+                # OMN-8437: propagate SKIPPED signal — dispatchers that return
+                # (False, "SKIPPED: ...") must not appear as "failed" in events.
+                if not success and error_msg and error_msg.startswith("SKIPPED:"):
+                    _phase_status = "skipped"
+                elif success:
+                    _phase_status = "success"
+                else:
+                    _phase_status = "failed"
                 self._publish(
                     TOPIC_OVERNIGHT_PHASE_END,
                     {
                         "correlation_id": command.correlation_id,
                         "phase": phase.value,
-                        "phase_status": "success" if success else "failed",
+                        "phase_status": _phase_status,
                         "error_message": error_msg,
                         "duration_ms": duration_ms,
                         "accumulated_cost_usd": accumulated_cost,
