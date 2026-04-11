@@ -465,7 +465,15 @@ class HandlerLinearTriage:
                                     body=f"Auto-closed by linear-triage: work delivered via sibling PR #{sibling.get('number')} in {sibling.get('repo')} merged {sibling.get('mergedAt')}\n{sibling.get('url')}\n(Original PR #{closed_pr_num} was closed as superseded)",
                                 )
                                 marked_done_superseded += 1
-                            except Exception:
+                            except Exception as exc:
+                                actions.append(
+                                    ModelTriageAction(
+                                        ticket_id=ticket.identifier,
+                                        ticket_title=ticket.title,
+                                        action=EnumTriageAction.FLAG_STALE,
+                                        evidence=f"Sibling mutation failed: {exc}",
+                                    )
+                                )
                                 continue
 
                         actions.append(
@@ -545,7 +553,15 @@ class HandlerLinearTriage:
                             body=f"Auto-closed by linear-triage: all {len(children)} child tickets are Done.\nChildren: {child_ids}",
                         )
                         epics_closed += 1
-                    except Exception:
+                    except Exception as exc:
+                        actions.append(
+                            ModelTriageAction(
+                                ticket_id=ticket.identifier,
+                                ticket_title=ticket.title,
+                                action=EnumTriageAction.FLAG_STALE,
+                                evidence=f"Epic mutation failed: {exc}",
+                            )
+                        )
                         continue
 
                 actions.append(
