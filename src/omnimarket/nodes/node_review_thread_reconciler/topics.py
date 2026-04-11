@@ -12,7 +12,7 @@ Related:
 from __future__ import annotations
 
 TOPIC_CMD_RECONCILE = "onex.cmd.omnimarket.review-thread-reconcile.v1"
-TOPIC_EVT_THREAD_REOPENED = "onex.evt.review_bot.thread_reopened.v1"
+TOPIC_EVT_THREAD_REOPENED = "onex.evt.omnimarket.review-thread-reopened.v1"
 
 __all__: list[str] = [
     "TOPIC_CMD_RECONCILE",

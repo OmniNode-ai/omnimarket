@@ -69,13 +69,13 @@ outputs:
     type: str
     description: "Actor who originally resolved the thread"
 
-terminal_event: onex.evt.review_bot.thread_reopened.v1
+terminal_event: onex.evt.omnimarket.review-thread-reopened.v1
 
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.review-thread-reconcile.v1
   publish_topics:
-    - onex.evt.review_bot.thread_reopened.v1
+    - onex.evt.omnimarket.review-thread-reopened.v1
 
 dod_evidence:
   - kind: tests
@@ -83,7 +83,7 @@ dod_evidence:
     command: "uv run pytest tests/ -k 'reconciler' -v"
   - kind: kafka
     description: "thread_reopened event emitted on non-bot resolve"
-    command: "rpk topic consume onex.evt.review_bot.thread_reopened.v1 --num 1"
+    command: "rpk topic consume onex.evt.omnimarket.review-thread-reopened.v1 --num 1"
   - kind: runtime_health
     description: "End-to-end thread re-open within 30s"
     command: "uv run pytest tests/e2e/test_reconciler_e2e.py -v"

@@ -5,7 +5,7 @@
 Listens on onex.cmd.omnimarket.review-thread-reconcile.v1.
 For each event, checks resolved_by against the configurable allowed_actors list.
 If the resolver is not in the list, calls GitHub GraphQL to unresolve the thread,
-posts a policy reminder comment, and emits onex.evt.review_bot.thread_reopened.v1.
+posts a policy reminder comment, and emits onex.evt.omnimarket.review-thread-reopened.v1.
 """
 
 from __future__ import annotations
