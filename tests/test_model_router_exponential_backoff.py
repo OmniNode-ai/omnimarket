@@ -9,7 +9,7 @@ Failing signal: ImportError or fixed/no sleep between retries.
 from __future__ import annotations
 
 import contextlib
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
@@ -17,8 +17,8 @@ from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
 )
-from omnimarket.nodes.node_model_router.models.model_routing_request import (
-    ModelRoutingRequest,
+from omnimarket.nodes.node_model_router.models.model_routing_result import (
+    ModelRoutingResult,
 )
 
 
@@ -57,22 +57,21 @@ async def test_model_router_exponential_backoff_between_retries() -> None:
     async def capture_sleep(delay: float) -> None:
         sleep_calls.append(delay)
 
+    call_count = 0
+
+    async def failing_work() -> ModelRoutingResult:
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError(f"transient failure #{call_count}")
+
     with (
-        patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health,
         patch(
             "omnimarket.nodes.node_model_router.handlers.handler_model_router.asyncio.sleep",
             side_effect=capture_sleep,
         ),
+        contextlib.suppress(RuntimeError),
     ):
-        mock_health.return_value = True
-        request = ModelRoutingRequest(
-            prompt="Fail me with retries",
-            role="fixer",
-            correlation_id="test-corr-5",
-            force_retry_fail=True,
-        )
-        with contextlib.suppress(Exception):
-            await router.route_async(request)
+        await router.execute_with_retries(failing_work)
 
     assert len(sleep_calls) >= 2, f"Expected at least 2 sleep calls, got {sleep_calls}"
 
@@ -81,3 +80,4 @@ async def test_model_router_exponential_backoff_between_retries() -> None:
 
     assert 0.8 <= delay_0 <= 1.2, f"Attempt 0→1 delay {delay_0} not in [0.8, 1.2]"
     assert 1.6 <= delay_1 <= 2.4, f"Attempt 1→2 delay {delay_1} not in [1.6, 2.4]"
+    assert call_count == 3, f"Expected 3 attempts, got {call_count}"

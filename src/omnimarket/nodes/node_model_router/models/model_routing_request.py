@@ -20,10 +20,6 @@ class ModelRoutingRequest(BaseModel):
     correlation_id: str = Field(
         ..., description="Trace/correlation ID for the originating call."
     )
-    force_retry_fail: bool = Field(
-        default=False,
-        description="Test-only: if True, handler raises RuntimeError to exercise retry loop.",
-    )
 
 
 __all__: list[str] = ["ModelRoutingRequest"]

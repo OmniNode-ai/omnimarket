@@ -25,6 +25,7 @@ import logging
 import os
 import random
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -90,9 +91,6 @@ class HandlerModelRouter:
         use_fallback = primary_key in self._degraded or not await self._check_health(
             primary_key
         )
-
-        if not use_fallback and request.force_retry_fail:
-            return await self._execute_with_retries(primary_key, request)
 
         if use_fallback:
             await self._record_failure(primary_key, request.correlation_id)
@@ -221,9 +219,15 @@ class HandlerModelRouter:
     # Retry with exponential backoff                                       #
     # ------------------------------------------------------------------ #
 
-    async def _execute_with_retries(
-        self, model_key: str, request: ModelRoutingRequest
+    async def execute_with_retries(
+        self,
+        work: Callable[[], Awaitable[ModelRoutingResult]],
     ) -> ModelRoutingResult:
+        """Execute async callable with exponential backoff retry.
+
+        Retries up to policy.max_retries times. Delay between attempts:
+        min(1 * 2^attempt, 30s) ± 20% jitter.
+        """
         last_exc: Exception | None = None
         for attempt in range(self._policy.max_retries):
             if attempt > 0:
@@ -231,15 +235,8 @@ class HandlerModelRouter:
                 jitter = base * _BACKOFF_JITTER * (2 * random.random() - 1)
                 await asyncio.sleep(base + jitter)
             try:
-                if request.force_retry_fail:
-                    raise RuntimeError("force_retry_fail triggered")
-                return ModelRoutingResult(
-                    model_key=model_key,
-                    endpoint_url=self._registry[model_key]["base_url"],
-                    used_fallback=False,
-                    correlation_id=request.correlation_id,
-                )
-            except RuntimeError as exc:
+                return await work()
+            except Exception as exc:
                 last_exc = exc
         raise RuntimeError(
             f"All {self._policy.max_retries} retries exhausted"
