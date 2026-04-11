@@ -128,7 +128,7 @@ def test_node_overnight_contracts_pass_topic_naming_lint() -> None:
             sys.executable,
             str(_LINT_PY),
             "--scan-contracts",
-            str(_NODE_OVERNIGHT_CONTRACTS.parent),
+            str(_NODE_OVERNIGHT_CONTRACTS),
             "--no-baseline",
         ],
         capture_output=True,
