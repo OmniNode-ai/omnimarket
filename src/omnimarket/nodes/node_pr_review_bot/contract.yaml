@@ -67,6 +67,12 @@ handler_routing:
         module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_emergency_bypass_parser"
       description: "Parses EMERGENCY-BYPASS comments, records audit signal in Kafka + DB. Side-effect (I/O)."
 
+    - operation: "verify_push"
+      handler:
+        name: "HandlerVerificationLoop"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_verification_loop"
+      description: "Commit-citation parser + hostile_reviewer gate + conditional resolveReviewThread. Triggered on push to open PR. Side-effect (I/O)."
+
   adapters:
     - name: "AdapterGitHubBridge"
       module: "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
@@ -158,6 +164,7 @@ terminal_event: onex.evt.omnimarket.pr-review-bot-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pr-review-bot-start.v1
+    - onex.cmd.omnimarket.pr-review-bot-verify-push.v1
   publish_topics:
     - onex.evt.omnimarket.pr-review-bot-phase-transition.v1
     - onex.evt.omnimarket.pr-review-bot-thread-posted.v1
@@ -165,6 +172,9 @@ event_bus:
     - onex.evt.omnimarket.pr-review-bot-completed.v1
     - onex.evt.omnimarket.review-bot-bypass-used.v1
     - onex.evt.omnimarket.review-bot-bypass-rolled-back.v1
+    - onex.evt.review_bot.thread_verified.v1
+    - onex.evt.review_bot.thread_resolve_failed.v1
+    - onex.evt.review_bot.thread_resolved.v1
 
 runtime_config:
   review_bot.emergency_bypass_actor:
@@ -206,3 +216,21 @@ metadata:
     - "OMN-7966"
     - "OMN-7967"
     - "OMN-7968"
+    - "OMN-8494"
+  updated: "2026-04-11"
+
+dod_evidence:
+  ticket_id: "OMN-8494"
+  evidence_requirements:
+    - kind: "tests"
+      description: "Citation parser and hostile_reviewer integration unit tests"
+      command: "uv run pytest tests/test_verification_loop.py -v"
+    - kind: "kafka"
+      description: "thread_verified and thread_resolved events emitted"
+      command: "rpk topic consume onex.evt.review_bot.thread_verified.v1 --num 1"
+    - kind: "runtime_health"
+      description: "Integration: citing commit triggers bot resolution"
+      command: "uv run pytest tests/e2e/test_verification_loop_e2e.py -v"
+    - kind: "ci"
+      description: "Verification loop triggers on push to PR branch"
+      command: "gh run list --workflow=pr-review-bot.yml --limit 5"
