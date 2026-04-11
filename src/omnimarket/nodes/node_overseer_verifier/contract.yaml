@@ -124,11 +124,35 @@ dependencies:
     - "omnibase_core>=0.39.0"
     - "pydantic>=2.0.0"
 
+dod_evidence:
+  - type: pytest
+    description: >
+      Golden chain test confirms HandlerOverseerVerifier returns PASS for a
+      valid input envelope with all five check dimensions exercised synchronously.
+      Asserts observable side effect: result["verdict"] == "PASS" and
+      input_completeness check passed.
+    check: uv run pytest tests/test_golden_chain_overseer_verifier.py::test_input_completeness_check_pass -v
+  - type: integration
+    description: >
+      Contract YAML is parseable and its dod_evidence list validates against
+      ModelDodEvidence schema (type, description, check fields all within limits).
+      Confirms the seed is schema-valid at the omnibase_core boundary.
+    check: >-
+      uv run python -c "import yaml; from omnibase_core.models.contracts.model_contract_base
+      import ModelDodEvidence; d=yaml.safe_load(open('src/omnimarket/nodes/node_overseer_verifier/contract.yaml'));
+      [ModelDodEvidence.model_validate(e) for e in d['dod_evidence']]; print('OK')"
+  - type: bash_script
+    description: >
+      HandlerOverseerVerifier is importable from its declared handler module path,
+      confirming the entry point resolves and the package is correctly installed.
+    check: >-
+      uv run python -c "from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import HandlerOverseerVerifier; print('OK')"
+
 metadata:
   description: "Overseer Verifier — deterministic 5-dimension verification gate for overseer outputs"
   author: "OmniNode Platform Team"
   created: "2026-04-09"
-  updated: "2026-04-09"
+  updated: "2026-04-11"
   tags:
     - "overseer"
     - "verifier"
@@ -140,3 +164,4 @@ metadata:
   related_tickets:
     - "OMN-8031"
     - "OMN-8025"
+    - "OMN-8520"
