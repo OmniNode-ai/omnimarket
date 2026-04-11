@@ -47,13 +47,13 @@ except ImportError as _occ_import_err:
     _OCC_AVAILABLE = False
     _occ_err_msg = str(_occ_import_err)
     # Define None stubs so type checkers/tests see the names
-    EnumDocStalenessVerdict = None
-    ModelDocFreshnessSweepReport = None
-    ModelRepoDocSummary = None
-    extract_all_references = None
-    resolve_references = None
-    build_freshness_result = None
-    get_recently_changed_files = None
+    EnumDocStalenessVerdict = None  # type: ignore[misc, assignment]
+    ModelDocFreshnessSweepReport = None  # type: ignore[misc, assignment]
+    ModelRepoDocSummary = None  # type: ignore[misc, assignment]
+    extract_all_references = None  # type: ignore[assignment]
+    resolve_references = None  # type: ignore[assignment]
+    build_freshness_result = None  # type: ignore[assignment]
+    get_recently_changed_files = None  # type: ignore[assignment]
 
 # Repos to scan by default (must exist under omni_home)
 _DEFAULT_REPOS = [
