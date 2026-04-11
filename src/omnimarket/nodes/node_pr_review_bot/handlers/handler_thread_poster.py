@@ -34,8 +34,8 @@ from omnimarket.nodes.node_pr_review_bot.models.models import (
 logger = logging.getLogger(__name__)
 
 # Bot identity marker — must match find_bot_thread_for_finding() in the bridge.
-_BOT_LOGIN = "omnibot"
-_FINDING_MARKER_TEMPLATE = "<!-- omnibot:finding:{finding_id} -->"
+_BOT_LOGIN = "onexbot[bot]"
+_FINDING_MARKER_TEMPLATE = "<!-- onexbot:finding:{finding_id} -->"
 
 # Severities that get individual threads (all others go into the summary comment).
 _THREAD_SEVERITIES: frozenset[EnumFindingSeverity] = frozenset(
@@ -69,7 +69,7 @@ def _build_thread_body(finding: ReviewFinding) -> str:
         f"{suggestion_block}\n\n"
         "**Resolution required before merge.** This thread will be verified by the "
         "judge model before it can be dismissed. Post a reply explaining the fix and "
-        "tag `@omnibot-judge verify`."
+        "tag `@onexbot-judge verify`."
     )
 
 

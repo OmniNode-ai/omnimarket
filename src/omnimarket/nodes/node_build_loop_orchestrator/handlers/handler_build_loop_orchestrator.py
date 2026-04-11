@@ -39,6 +39,10 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import yaml
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.protocols.event_bus.protocol_event_envelope import (
+    ProtocolEventEnvelope,
+)
 
 from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
     HandlerBuildLoop,
@@ -386,10 +390,17 @@ class HandlerBuildLoopOrchestrator:
                 # Publish delegation payloads via event bus
                 if self._event_bus is not None:
                     for dp in dispatch_result.delegation_payloads:
-                        await self._event_bus.publish(
+                        envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
+                            payload=dp.payload,
+                            correlation_id=str(
+                                dp.payload.get("correlation_id") or correlation_id
+                            ),
+                            event_type="delegation-requested",
+                            source_tool="HandlerBuildLoopOrchestrator",
+                        )
+                        await self._event_bus.publish_envelope(
+                            envelope=cast(ProtocolEventEnvelope[object], envelope),
                             topic=dp.topic,
-                            key=None,
-                            value=json.dumps(dp.payload, default=str).encode(),
                         )
 
                 metrics["tickets_dispatched"] = dispatch_result.total_dispatched
