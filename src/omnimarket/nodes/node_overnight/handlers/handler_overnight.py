@@ -72,6 +72,20 @@ PhaseDispatcher = Callable[
 EventPublisher = Callable[[str, bytes], None]
 
 
+class EnumHaltDecision(StrEnum):
+    """Return value from _process_halt_triggers.
+
+    HALT     — at least one condition fired and the action handler stopped.
+    RECOVERED — condition(s) fired but the action handler resolved them; the
+                pipeline must NOT run legacy halt gates for this phase.
+    NO_HALT  — no conditions triggered at all.
+    """
+
+    HALT = "halt"
+    RECOVERED = "recovered"
+    NO_HALT = "no_halt"
+
+
 class EnumPhase(StrEnum):
     """Overnight pipeline phases in execution order."""
 
@@ -404,13 +418,23 @@ class HandlerOvernight:
                         consecutive_failures=consecutive_failures,
                         phase_started_at=phase_started_at_wall,
                     )
-                    halt_from_condition = self._process_halt_triggers(
+                    halt_decision, halt_msg = self._process_halt_triggers(
                         triggered, snapshot
                     )
-                    if halt_from_condition is not None:
-                        halt_reason = halt_from_condition
+                    if halt_decision == EnumHaltDecision.HALT:
+                        halt_reason = halt_msg
                         logger.error("Overnight halt triggered: %s", halt_reason)
                         break
+
+                    if halt_decision == EnumHaltDecision.RECOVERED:
+                        # Action handler resolved the condition — skip legacy gates
+                        # for this phase so a recovered failure does not trigger
+                        # halt_on_failure or the critical-phase stop.
+                        logger.info(
+                            "[OVERSEER] halt condition recovered for %s — continuing",
+                            phase.value,
+                        )
+                        continue
 
                     # Legacy halt checks (cost ceiling aggregate + halt_on_failure).
                     halt = self._check_halt_conditions(
@@ -492,11 +516,19 @@ class HandlerOvernight:
         self,
         triggered: list[tuple[ModelOvernightHaltCondition, str]],
         snapshot: dict[str, object],
-    ) -> str | None:
+    ) -> tuple[EnumHaltDecision, str | None]:
         """Route each triggered halt condition through its on_halt handler.
 
-        Returns a halt_reason string if any handler reports "stop", else None.
+        Returns (EnumHaltDecision, halt_reason):
+          - (HALT, reason)      — condition fired and handler stopped the pipeline.
+          - (RECOVERED, None)   — condition fired but handler resolved it; skip
+                                  legacy halt gates for this phase.
+          - (NO_HALT, None)     — no conditions triggered.
         """
+        if not triggered:
+            return EnumHaltDecision.NO_HALT, None
+
+        any_recovered = False
         for cond, reason in triggered:
             logger.warning(
                 "[OVERSEER] halt condition triggered: %s (%s) → %s",
@@ -512,10 +544,17 @@ class HandlerOvernight:
                     cond.condition_id,
                     exc,
                 )
-                return f"halt_action_handler failed for {cond.condition_id}: {exc}"
+                return (
+                    EnumHaltDecision.HALT,
+                    f"halt_action_handler failed for {cond.condition_id}: {exc}",
+                )
             if not should_continue:
-                return f"{cond.condition_id}: {reason}"
-        return None
+                return EnumHaltDecision.HALT, f"{cond.condition_id}: {reason}"
+            any_recovered = True
+
+        if any_recovered:
+            return EnumHaltDecision.RECOVERED, None
+        return EnumHaltDecision.NO_HALT, None
 
     def _check_halt_conditions(
         self,
@@ -744,6 +783,7 @@ _DEFAULT_PHASE_DISPATCHERS: dict[EnumPhase, PhaseDispatcher] = {
 
 
 __all__: list[str] = [
+    "EnumHaltDecision",
     "EnumOvernightStatus",
     "EnumPhase",
     "EventPublisher",
