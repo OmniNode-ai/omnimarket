@@ -285,6 +285,71 @@ def test_process_halt_triggers_halt_sets_halt_reason(
     assert "unrecoverable" in result.halt_reason
 
 
+@pytest.mark.unit
+def test_process_halt_triggers_halt_wins_when_mixed_with_recovery(
+    tmp_path: Path,
+) -> None:
+    """When multiple conditions trigger and one recovers but another halts, HALT wins.
+
+    All conditions must be processed; the first halt encountered stops the pipeline
+    regardless of any earlier recoveries.
+    """
+    cond_recoverable = ModelOvernightHaltCondition(
+        condition_id="recoverable_cond",
+        description="can recover",
+        check_type="required_outcome_missing",
+        outcome="outcome_a",
+        on_halt="dispatch_skill",
+        skill="onex:delegate",
+    )
+    cond_halt = ModelOvernightHaltCondition(
+        condition_id="hard_stop_cond",
+        description="hard stop",
+        check_type="required_outcome_missing",
+        outcome="outcome_b",
+        on_halt="hard_halt",
+    )
+    contract = _make_contract(
+        phases=(
+            ModelOvernightPhaseSpec(phase_name="nightly_loop_controller"),
+            ModelOvernightPhaseSpec(
+                phase_name="build_loop_orchestrator",
+                required_outcomes=("outcome_a", "outcome_b"),
+                halt_conditions=(cond_recoverable, cond_halt),
+            ),
+            ModelOvernightPhaseSpec(phase_name="merge_sweep"),
+            ModelOvernightPhaseSpec(phase_name="ci_watch"),
+            ModelOvernightPhaseSpec(phase_name="platform_readiness"),
+        )
+    )
+    handled: list[str] = []
+
+    def mixed_handler(
+        cond: ModelOvernightHaltCondition, snap: dict[str, object]
+    ) -> bool:
+        handled.append(cond.condition_id)
+        return cond.condition_id == "recoverable_cond"
+
+    handler = HandlerOvernight(
+        state_root=tmp_path,
+        outcome_probe=lambda _: False,
+        halt_action_handler=mixed_handler,
+    )
+    result = handler.handle(
+        ModelOvernightCommand(
+            correlation_id="test-f2-mixed",
+            dry_run=True,
+            overnight_contract=contract,
+        )
+    )
+    # Both conditions must have been processed
+    assert "recoverable_cond" in handled
+    assert "hard_stop_cond" in handled
+    # The halt condition wins — pipeline stops
+    assert result.halt_reason is not None
+    assert "hard_stop_cond" in result.halt_reason
+
+
 # ---------------------------------------------------------------------------
 # Finding 3: OVERSEER_TICK_TOPIC must come from contract/topics.py, not hardcoded
 # ---------------------------------------------------------------------------
