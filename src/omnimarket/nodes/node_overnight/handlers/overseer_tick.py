@@ -113,7 +113,7 @@ def append_tick_log(
 
     Parallels the event emission step — gives observers a local artifact
     when no Kafka publisher is wired. Matches the shape that would be
-    published to ``onex.evt.overseer.tick.v1``.
+    published to ``onex.evt.omnimarket.overseer.tick.v1``.
     """
     root = resolve_state_root(state_root)
     log_path = root / OVERSEER_TICK_LOG
@@ -134,7 +134,7 @@ def build_tick_snapshot(
 ) -> dict[str, Any]:
     """Build a tick snapshot dict ready for flag write, log append, or event emit.
 
-    Fields match the contract of ``onex.evt.overseer.tick.v1``:
+    Fields match the contract of ``onex.evt.omnimarket.overseer.tick.v1``:
       - contract_path
       - current_phase
       - phase_progress
@@ -306,6 +306,11 @@ def _pr_blocked_minutes(pr_number: int) -> float | None:
     Uses ``gh`` to avoid wiring a new GitHub client. Returns None when the
     PR cannot be queried, isn't blocked, or gh is unavailable — callers
     treat None as "cannot evaluate" and skip the condition.
+
+    The blocked-since timestamp is derived from the most recent
+    ``review_requested`` or ``convert_to_draft`` timeline event rather than
+    ``updatedAt``, which moves on every comment and would produce incorrect
+    durations.
     """
     try:
         result = subprocess.run(
@@ -315,7 +320,7 @@ def _pr_blocked_minutes(pr_number: int) -> float | None:
                 "view",
                 str(pr_number),
                 "--json",
-                "mergeStateStatus,updatedAt,state",
+                "mergeStateStatus,state,statusCheckRollup,timelineItems",
             ],
             check=False,
             capture_output=True,
@@ -333,14 +338,40 @@ def _pr_blocked_minutes(pr_number: int) -> float | None:
         return None
     if data.get("mergeStateStatus") != "BLOCKED":
         return None
-    updated_raw = data.get("updatedAt")
-    if not isinstance(updated_raw, str):
+
+    # Walk timeline items in reverse to find the most recent event that
+    # caused the BLOCKED state. ``review_requested`` and ``convert_to_draft``
+    # are the canonical state-transition events; fall back to the most recent
+    # failed status check's ``completedAt`` if neither is present.
+    blocked_since: datetime | None = None
+    for item in reversed(data.get("timelineItems", [])):
+        event_type = item.get("__typename", "")
+        if event_type in ("ReviewRequestedEvent", "ConvertToDraftEvent"):
+            raw = item.get("createdAt") or item.get("updatedAt")
+            if isinstance(raw, str):
+                try:
+                    blocked_since = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    break
+                except ValueError:
+                    continue
+
+    if blocked_since is None:
+        # Fallback: most recent failed status check completion time.
+        for check in data.get("statusCheckRollup", []):
+            if check.get("conclusion") in ("FAILURE", "TIMED_OUT", "ACTION_REQUIRED"):
+                raw = check.get("completedAt")
+                if isinstance(raw, str):
+                    try:
+                        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                        if blocked_since is None or ts > blocked_since:
+                            blocked_since = ts
+                    except ValueError:
+                        continue
+
+    if blocked_since is None:
         return None
-    try:
-        updated_at = datetime.fromisoformat(updated_raw.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    delta = datetime.now(tz=UTC) - updated_at
+
+    delta = datetime.now(tz=UTC) - blocked_since
     return delta.total_seconds() / 60.0
 
 
