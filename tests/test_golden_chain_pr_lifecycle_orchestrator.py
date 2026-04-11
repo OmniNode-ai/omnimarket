@@ -11,6 +11,7 @@ Related:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -215,7 +216,10 @@ _INTENT_FIX = ReducerIntent(
 
 
 def _make_command(**kwargs: object) -> ModelPrLifecycleStartCommand:
-    defaults: dict[str, object] = {"correlation_id": uuid4()}
+    defaults: dict[str, object] = {
+        "correlation_id": uuid4(),
+        "run_id": "20260411-000000-test01",
+    }
     defaults.update(kwargs)
     return ModelPrLifecycleStartCommand(**defaults)  # type: ignore[arg-type]
 
@@ -639,3 +643,64 @@ class TestPrLifecycleOrchestratorGoldenChain:
         """ModelPrLifecycleStartCommand defaults max_parallel_polish to 20."""
         cmd = _make_command()
         assert cmd.max_parallel_polish == 20
+
+
+@pytest.mark.unit
+class TestPrLifecycleOrchestratorResultFile:
+    """OMN-8391: orchestrator persists result.json for merge_sweep polling."""
+
+    async def test_success_writes_result_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Successful sweep writes a ModelSkillResult-shaped result.json."""
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        orch = _make_orchestrator(inventory=MockInventory(prs=()))
+        cmd = _make_command(run_id="20260411-120000-abc123")
+
+        result = await orch.handle(cmd)
+        assert result.final_state == "COMPLETE"
+
+        result_path = (
+            tmp_path / "merge-sweep" / "20260411-120000-abc123" / "result.json"
+        )
+        assert result_path.exists(), f"result.json missing at {result_path}"
+
+        payload = json.loads(result_path.read_text())
+        assert payload["skill_name"] == "merge-sweep"
+        assert payload["status"] == "success"
+        assert payload["run_id"] == "20260411-120000-abc123"
+        assert payload["final_state"] == "COMPLETE"
+        assert payload["correlation_id"] == str(cmd.correlation_id)
+
+    async def test_failure_writes_result_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Failed sweep still writes result.json so the skill can terminate."""
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+
+        class ExplodingInventory:
+            async def handle(
+                self,
+                *,
+                correlation_id: UUID,
+                repos: tuple[str, ...] = (),
+                dry_run: bool = False,
+            ) -> InventoryResult:
+                raise RuntimeError("boom")
+
+        orch = _make_orchestrator(inventory=ExplodingInventory())  # type: ignore[arg-type]
+        cmd = _make_command(run_id="20260411-120001-fail99")
+
+        result = await orch.handle(cmd)
+        assert result.final_state == "FAILED"
+        assert result.error_message == "boom"
+
+        result_path = (
+            tmp_path / "merge-sweep" / "20260411-120001-fail99" / "result.json"
+        )
+        assert result_path.exists()
+
+        payload = json.loads(result_path.read_text())
+        assert payload["status"] == "error"
+        assert payload["final_state"] == "FAILED"
+        assert payload["error_message"] == "boom"
