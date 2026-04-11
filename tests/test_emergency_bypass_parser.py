@@ -7,6 +7,7 @@ TDD: all 6 DoD cases must pass.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +15,10 @@ import pytest
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_emergency_bypass_parser import (
     BypassRejectionReason,
     HandlerEmergencyBypassParser,
+)
+from omnimarket.nodes.node_pr_review_bot.topics import (
+    TOPIC_BYPASS_ROLLED_BACK,
+    TOPIC_BYPASS_USED,
 )
 
 # ---------------------------------------------------------------------------
@@ -403,3 +408,155 @@ class TestBypassContractDrivenConfig:
         )
         assert result.granted is False
         assert result.rejection_reason == BypassRejectionReason.UNAUTHORIZED_ACTOR
+
+
+# ---------------------------------------------------------------------------
+# (g) Topic namespace — must use omnimarket-namespaced topics  [Finding 1]
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBypassTopicNamespace:
+    def test_bypass_used_topic_uses_omnimarket_namespace(self) -> None:
+        """TOPIC_BYPASS_USED must follow onex.evt.omnimarket.* convention."""
+        assert TOPIC_BYPASS_USED.startswith("onex.evt.omnimarket."), (
+            f"Expected omnimarket namespace but got: {TOPIC_BYPASS_USED}"
+        )
+
+    def test_bypass_rolled_back_topic_uses_omnimarket_namespace(self) -> None:
+        """TOPIC_BYPASS_ROLLED_BACK must follow onex.evt.omnimarket.* convention."""
+        assert TOPIC_BYPASS_ROLLED_BACK.startswith("onex.evt.omnimarket."), (
+            f"Expected omnimarket namespace but got: {TOPIC_BYPASS_ROLLED_BACK}"
+        )
+
+    def test_kafka_event_published_to_namespaced_topic(self) -> None:
+        """Handler must publish to the omnimarket-namespaced topic, not review_bot.*."""
+        kafka = MagicMock()
+        valkey = MagicMock()
+        valkey.set.return_value = True
+        db_conn = MagicMock()
+
+        handler = _make_handler(
+            kafka_publisher=kafka, valkey_client=valkey, db_conn=db_conn
+        )
+        result = handler.parse(
+            comment_body="EMERGENCY-BYPASS: namespace check",
+            actor="jonahgabriel",
+            pr_number=88,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="sss999",
+        )
+        assert result.granted is True
+        topic = kafka.publish.call_args_list[0][0][0]
+        assert topic.startswith("onex.evt.omnimarket."), (
+            f"Expected omnimarket namespace but got: {topic}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# (h) Concurrent bypass — atomic SET NX prevents TOCTOU race  [Finding 2]
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBypassTOCTOUAtomicClaim:
+    def test_atomic_set_nx_used_instead_of_get_then_setex(self) -> None:
+        """Handler must call valkey.set(..., nx=True) not get() + setex()."""
+        valkey = MagicMock()
+        valkey.set.return_value = True  # claim succeeded
+        db_conn = MagicMock()
+
+        handler = _make_handler(valkey_client=valkey, db_conn=db_conn)
+        result = handler.parse(
+            comment_body="EMERGENCY-BYPASS: atomic test",
+            actor="jonahgabriel",
+            pr_number=101,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="ttt000",
+        )
+        assert result.granted is True
+        # Must NOT call .get() or .setex()
+        valkey.get.assert_not_called()
+        valkey.setex.assert_not_called()
+        # Must call .set() with nx=True
+        valkey.set.assert_called_once()
+        call_kwargs = valkey.set.call_args[1]
+        assert call_kwargs.get("nx") is True
+        assert "ex" in call_kwargs
+
+    def test_atomic_set_nx_returns_false_means_already_consumed(self) -> None:
+        """When SET NX returns falsy, bypass is already consumed — reject."""
+        valkey = MagicMock()
+        valkey.set.return_value = False  # key already exists
+
+        handler = _make_handler(valkey_client=valkey)
+        result = handler.parse(
+            comment_body="EMERGENCY-BYPASS: second attempt",
+            actor="jonahgabriel",
+            pr_number=102,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="uuu111",
+        )
+        assert result.granted is False
+        assert result.rejection_reason == BypassRejectionReason.ALREADY_CONSUMED
+
+    def test_concurrent_bypass_only_one_succeeds(self) -> None:
+        """Two concurrent bypass calls: exactly one must be granted."""
+        call_count = 0
+
+        def atomic_set(key: str, value: str, *, ex: int, nx: bool) -> bool:
+            nonlocal call_count
+            call_count += 1
+            # Only the first caller wins; subsequent callers get False
+            return call_count == 1
+
+        valkey = MagicMock()
+        valkey.set.side_effect = atomic_set
+        db_conn = MagicMock()
+        kafka = MagicMock()
+
+        handler = _make_handler(
+            kafka_publisher=kafka, valkey_client=valkey, db_conn=db_conn
+        )
+
+        async def _run_both() -> list[bool]:
+            async def _call() -> bool:
+                result = handler.parse(
+                    comment_body="EMERGENCY-BYPASS: concurrent attempt",
+                    actor="jonahgabriel",
+                    pr_number=200,
+                    repo="OmniNode-ai/omnimarket",
+                    head_sha="vvv222",
+                )
+                return result.granted
+
+            return list(await asyncio.gather(_call(), _call()))
+
+        results = asyncio.run(_run_both())
+        granted = [r for r in results if r]
+        rejected = [r for r in results if not r]
+        assert len(granted) == 1, f"Expected exactly 1 granted, got {granted}"
+        assert len(rejected) == 1, f"Expected exactly 1 rejected, got {rejected}"
+
+    def test_valkey_key_deleted_on_db_failure_after_atomic_claim(self) -> None:
+        """If DB write fails after atomic claim, the Valkey key must be deleted (rollback)."""
+        valkey = MagicMock()
+        valkey.set.return_value = True
+        db_conn = MagicMock()
+        db_conn.execute.side_effect = Exception("DB down")
+        kafka = MagicMock()
+
+        handler = _make_handler(
+            kafka_publisher=kafka, valkey_client=valkey, db_conn=db_conn
+        )
+        result = handler.parse(
+            comment_body="EMERGENCY-BYPASS: db failure rollback",
+            actor="jonahgabriel",
+            pr_number=300,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="www333",
+        )
+        assert result.granted is False
+        assert result.rejection_reason == BypassRejectionReason.AUDIT_FAILURE
+        # Valkey key must be deleted to roll back the atomic claim
+        valkey.delete.assert_called_once()
