@@ -80,8 +80,8 @@ def _make_trace(
     review: ModelReviewResult | None = None,
     coder_model: str = "qwen3-coder-30b",
     reviewer_model: str | None = None,
-    prompt_tokens: int = 100,
-    completion_tokens: int = 200,
+    prompt_tokens: int | None = 100,
+    completion_tokens: int | None = 200,
     wall_clock_ms: int = 500,
 ) -> ModelDispatchTrace:
     return ModelDispatchTrace(
@@ -346,6 +346,40 @@ def test_compute_metrics_review_rejection_rate() -> None:
     assert abs(m.review_rejection_rate - 2 / 3) < 1e-9
 
 
+def test_compute_metrics_review_unavailable_counts_as_rejection() -> None:
+    """Single ticket, single gate-passing attempt with failure_kind=review_unavailable.
+
+    DoD (OMN-8499): review_rejection_rate must be 1.0, not 0.0.
+    Asserts on serialized JSON value to match ticket dod_evidence.
+    """
+    trace = ModelDispatchTrace(
+        correlation_id="corr-avail",
+        ticket_id="OMN-1",
+        attempt=1,
+        timestamp="2026-04-11T00:00:00+00:00",
+        coder_model="qwen3-coder-30b",
+        reviewer_model=None,
+        prompt_tokens=100,
+        completion_tokens=200,
+        prompt_chars=500,
+        generation_raw="{}",
+        quality_gate=_gate(pass_all=True),
+        review_result=None,
+        accepted=False,
+        wall_clock_ms=500,
+        failure_kind="review_unavailable",
+    )
+    m = _compute_metrics(correlation_id="corr-avail", traces=[trace])
+
+    assert m.rejected_count == 1
+    assert m.total_tickets == 1
+    # Serialized JSON side-effect assertion (matches dod_evidence)
+    data = json.loads(m.model_dump_json())
+    assert data["review_rejection_rate"] == 1.0, (
+        f"Expected review_rejection_rate=1.0 for review_unavailable outcome, got {data['review_rejection_rate']}"
+    )
+
+
 def test_compute_metrics_reviewer_model_from_first_trace() -> None:
     """reviewer_model taken from first trace that has it."""
     traces = [
@@ -577,3 +611,95 @@ async def test_handle_dry_run_does_not_write_metrics(tmp_path: Path) -> None:
 
     metrics_dir = state_dir / "dispatch-metrics"
     assert not metrics_dir.exists() or not any(metrics_dir.iterdir())
+
+
+# ---------------------------------------------------------------------------
+# OMN-8500: tokens=null when tokenization unavailable
+# ---------------------------------------------------------------------------
+
+
+def test_trace_tokens_null_serializes_as_json_null() -> None:
+    """ModelDispatchTrace with no token data must serialize tokens as JSON null."""
+    trace = ModelDispatchTrace(
+        correlation_id="c1",
+        ticket_id="OMN-1",
+        attempt=1,
+        timestamp="2026-04-11T00:00:00+00:00",
+        coder_model="qwen3-coder-30b",
+        reviewer_model=None,
+        prompt_tokens=None,
+        completion_tokens=None,
+        prompt_chars=12847,
+        generation_raw="some non-empty output",
+        quality_gate=ModelQualityGateResult(
+            ruff_pass=True, import_pass=True, test_pass=True, errors=[]
+        ),
+        review_result=None,
+        accepted=True,
+        wall_clock_ms=1000,
+    )
+    data = json.loads(trace.model_dump_json())
+    assert data["prompt_tokens"] is None, (
+        f"expected null, got {data['prompt_tokens']!r}"
+    )
+    assert data["completion_tokens"] is None, (
+        f"expected null, got {data['completion_tokens']!r}"
+    )
+
+
+def test_trace_tokens_int_serializes_as_int() -> None:
+    """When real token counts are provided, they must serialize as integers."""
+    trace = ModelDispatchTrace(
+        correlation_id="c1",
+        ticket_id="OMN-1",
+        attempt=1,
+        timestamp="2026-04-11T00:00:00+00:00",
+        coder_model="qwen3-coder-30b",
+        reviewer_model=None,
+        prompt_tokens=512,
+        completion_tokens=128,
+        prompt_chars=2000,
+        generation_raw="code here",
+        quality_gate=ModelQualityGateResult(
+            ruff_pass=True, import_pass=True, test_pass=True, errors=[]
+        ),
+        review_result=None,
+        accepted=True,
+        wall_clock_ms=500,
+    )
+    data = json.loads(trace.model_dump_json())
+    assert data["prompt_tokens"] == 512
+    assert data["completion_tokens"] == 128
+
+
+def test_compute_metrics_all_null_tokens_produces_null_totals() -> None:
+    """When all traces have no token data, aggregate totals must be null."""
+    traces = [
+        _make_trace(ticket_id="OMN-1", prompt_tokens=None, completion_tokens=None),
+        _make_trace(ticket_id="OMN-2", prompt_tokens=None, completion_tokens=None),
+    ]
+    m = _compute_metrics(correlation_id="c1", traces=traces)
+    assert m.total_prompt_tokens is None
+    assert m.total_completion_tokens is None
+
+    data = json.loads(m.model_dump_json())
+    assert data["total_prompt_tokens"] is None
+    assert data["total_completion_tokens"] is None
+
+
+def test_compute_metrics_mixed_tokens_sums_non_null() -> None:
+    """When some traces have token data and some don't, sum only non-null values."""
+    traces = [
+        _make_trace(ticket_id="OMN-1", prompt_tokens=100, completion_tokens=50),
+        _make_trace(ticket_id="OMN-2", prompt_tokens=None, completion_tokens=None),
+    ]
+    m = _compute_metrics(correlation_id="c1", traces=traces)
+    assert m.total_prompt_tokens == 100
+    assert m.total_completion_tokens == 50
+
+
+def test_compute_metrics_empty_traces_token_totals_null() -> None:
+    """Empty trace list must produce null token totals, not zero."""
+    m = _compute_metrics(correlation_id="c1", traces=[])
+    assert m.total_prompt_tokens is None
+    assert m.total_completion_tokens is None

@@ -220,8 +220,8 @@ def _compute_metrics(
             total_generation_attempts=0,
             total_review_iterations=0,
             avg_attempts_per_ticket=0.0,
-            total_prompt_tokens=0,
-            total_completion_tokens=0,
+            total_prompt_tokens=None,
+            total_completion_tokens=None,
             total_review_tokens=0,
             total_wall_clock_ms=0,
             coder_model="none",
@@ -247,8 +247,17 @@ def _compute_metrics(
 
     avg_attempts = total_attempts / len(tickets) if tickets else 0.0
 
-    total_prompt_tokens = sum(t.prompt_tokens for t in traces)
-    total_completion_tokens = sum(t.completion_tokens for t in traces)
+    # Treat None as "unavailable" — emit null in aggregate only when ALL traces lack data
+    prompt_token_values = [
+        t.prompt_tokens for t in traces if t.prompt_tokens is not None
+    ]
+    completion_token_values = [
+        t.completion_tokens for t in traces if t.completion_tokens is not None
+    ]
+    total_prompt_tokens = sum(prompt_token_values) if prompt_token_values else None
+    total_completion_tokens = (
+        sum(completion_token_values) if completion_token_values else None
+    )
     total_review_tokens = sum(
         t.review_result.review_tokens for t in traces if t.review_result is not None
     )
@@ -270,12 +279,15 @@ def _compute_metrics(
     )
     quality_gate_failure_rate = gate_failed / total_attempts if total_attempts else 0.0
 
-    # Review rejection rate: fraction of gate-passing attempts rejected by reviewer
+    # Review rejection rate: fraction of gate-passing attempts that were rejected
+    # or could not be reviewed (review_unavailable). Both outcomes mean the ticket
+    # was not accepted, so both count against the rate.
     gate_passing = [t for t in traces if t.quality_gate.all_pass]
     reviewed_rejected = sum(
         1
         for t in gate_passing
-        if t.review_result is not None and not t.review_result.approved
+        if t.failure_kind == "review_unavailable"
+        or (t.review_result is not None and not t.review_result.approved)
     )
     review_rejection_rate = (
         reviewed_rejected / len(gate_passing) if gate_passing else 0.0
@@ -783,8 +795,8 @@ class AdapterLlmDispatch:
                     timestamp=datetime.now(tz=UTC).isoformat(),
                     coder_model=coder_endpoint.model_id,
                     reviewer_model=None,
-                    prompt_tokens=0,
-                    completion_tokens=0,
+                    prompt_tokens=None,
+                    completion_tokens=None,
                     prompt_chars=prompt_chars,
                     generation_raw=raw,
                     quality_gate=gate,
@@ -817,8 +829,8 @@ class AdapterLlmDispatch:
                     timestamp=datetime.now(tz=UTC).isoformat(),
                     coder_model=coder_endpoint.model_id,
                     reviewer_model=None,
-                    prompt_tokens=0,
-                    completion_tokens=0,
+                    prompt_tokens=None,
+                    completion_tokens=None,
                     prompt_chars=prompt_chars,
                     generation_raw=raw,
                     quality_gate=gate,
@@ -849,8 +861,8 @@ class AdapterLlmDispatch:
                     timestamp=datetime.now(tz=UTC).isoformat(),
                     coder_model=coder_endpoint.model_id,
                     reviewer_model=None,
-                    prompt_tokens=0,
-                    completion_tokens=0,
+                    prompt_tokens=None,
+                    completion_tokens=None,
                     prompt_chars=prompt_chars,
                     generation_raw=raw,
                     quality_gate=gate_result,
@@ -893,8 +905,8 @@ class AdapterLlmDispatch:
                         timestamp=datetime.now(tz=UTC).isoformat(),
                         coder_model=coder_endpoint.model_id,
                         reviewer_model=reviewer_model_id,
-                        prompt_tokens=0,
-                        completion_tokens=0,
+                        prompt_tokens=None,
+                        completion_tokens=None,
                         prompt_chars=prompt_chars,
                         generation_raw=raw,
                         quality_gate=gate_result,
@@ -927,8 +939,8 @@ class AdapterLlmDispatch:
                         timestamp=datetime.now(tz=UTC).isoformat(),
                         coder_model=coder_endpoint.model_id,
                         reviewer_model=reviewer_model_id,
-                        prompt_tokens=0,
-                        completion_tokens=0,
+                        prompt_tokens=None,
+                        completion_tokens=None,
                         prompt_chars=prompt_chars,
                         generation_raw=raw,
                         quality_gate=gate_result,
@@ -954,8 +966,8 @@ class AdapterLlmDispatch:
                     timestamp=datetime.now(tz=UTC).isoformat(),
                     coder_model=coder_endpoint.model_id,
                     reviewer_model=None,
-                    prompt_tokens=0,
-                    completion_tokens=0,
+                    prompt_tokens=None,
+                    completion_tokens=None,
                     prompt_chars=prompt_chars,
                     generation_raw=raw,
                     quality_gate=gate_result,
@@ -981,8 +993,8 @@ class AdapterLlmDispatch:
                 timestamp=datetime.now(tz=UTC).isoformat(),
                 coder_model=coder_endpoint.model_id,
                 reviewer_model=reviewer_model_id,
-                prompt_tokens=0,
-                completion_tokens=0,
+                prompt_tokens=None,
+                completion_tokens=None,
                 prompt_chars=prompt_chars,
                 generation_raw=raw,
                 quality_gate=gate_result,

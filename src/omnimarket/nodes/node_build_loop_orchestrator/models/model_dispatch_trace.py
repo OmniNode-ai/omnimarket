@@ -90,9 +90,15 @@ class ModelDispatchTrace(BaseModel):
         default=None,
         description="Model ID used for review (None if review was skipped).",
     )
-    prompt_tokens: int = Field(default=0, ge=0, description="Tokens in the prompt.")
-    completion_tokens: int = Field(
-        default=0, ge=0, description="Tokens in the completion."
+    prompt_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Tokens in the prompt. None when tokenization was not performed.",
+    )
+    completion_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Tokens in the completion. None when tokenization was not performed.",
     )
     prompt_chars: int = Field(
         default=0,
