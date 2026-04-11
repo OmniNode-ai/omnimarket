@@ -81,7 +81,11 @@ class ModelLinearTriageCompletedEvent(BaseModel):
     status: str = "completed"
     correlation_id: str = ""
     total_scanned: int = 0
+    recent_count: int = 0
+    stale_count: int = 0
     marked_done: int = 0
+    marked_done_superseded: int = 0
+    epics_closed: int = 0
     stale_flagged: int = 0
     orphaned: int = 0
     dry_run: bool = False
