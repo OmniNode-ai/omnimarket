@@ -16,9 +16,3 @@ onex.cmd.deploy.rebuild-requested.v1
 onex.evt.savings.estimation-completed.v1
 onex.evt.model-router.routing-decision.v1
 onex.evt.baselines.computation-completed.v1
-
-# TODO(OMN-8507): 6-segment topics in node_overnight (structural violation)
-onex.evt.omnimarket.overnight.phase-start.v1
-onex.evt.omnimarket.overnight.phase-completed.v1
-onex.evt.omnimarket.overnight.session-completed.v1
-onex.evt.omnimarket.overseer.tick.v1

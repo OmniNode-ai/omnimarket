@@ -113,7 +113,7 @@ def append_tick_log(
 
     Parallels the event emission step — gives observers a local artifact
     when no Kafka publisher is wired. Matches the shape that would be
-    published to ``onex.evt.omnimarket.overseer.tick.v1``.
+    published to ``onex.evt.omnimarket.overseer-tick.v1``.
     """
     root = resolve_state_root(state_root)
     log_path = root / OVERSEER_TICK_LOG
@@ -134,7 +134,7 @@ def build_tick_snapshot(
 ) -> dict[str, Any]:
     """Build a tick snapshot dict ready for flag write, log append, or event emit.
 
-    Fields match the contract of ``onex.evt.omnimarket.overseer.tick.v1``:
+    Fields match the contract of ``onex.evt.omnimarket.overseer-tick.v1``:
       - contract_path
       - current_phase
       - phase_progress

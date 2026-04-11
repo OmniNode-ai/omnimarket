@@ -109,3 +109,53 @@ def test_lint_accepts_omnimarket_producer_in_fixture_contract(tmp_path: Path) ->
     assert result.returncode == 0, (
         f"Expected exit 0, got {result.returncode}\nstderr: {result.stderr}"
     )
+
+
+_NODE_OVERNIGHT_CONTRACTS = (
+    Path(__file__).parents[2] / "src/omnimarket/nodes/node_overnight"
+)
+_NODE_OVERNIGHT_SRC = Path(__file__).parents[2] / "src/omnimarket/nodes/node_overnight"
+
+
+@pytest.mark.skipif(
+    not _LINT_PY.exists(), reason="omnibase_infra not available at sibling path"
+)
+@pytest.mark.unit
+def test_node_overnight_contracts_pass_topic_naming_lint() -> None:
+    """node_overnight contract.yaml topics must conform to the 5-segment spec (OMN-8507)."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(_LINT_PY),
+            "--scan-contracts",
+            str(_NODE_OVERNIGHT_CONTRACTS.parent),
+            "--no-baseline",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"node_overnight contract topics violate naming spec:\n{result.stderr}"
+    )
+
+
+@pytest.mark.skipif(
+    not _LINT_PY.exists(), reason="omnibase_infra not available at sibling path"
+)
+@pytest.mark.unit
+def test_node_overnight_python_passes_topic_naming_lint() -> None:
+    """node_overnight Python source must not contain 6-segment topic literals (OMN-8507)."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(_LINT_PY),
+            "--scan-python",
+            str(_NODE_OVERNIGHT_SRC),
+            "--no-baseline",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"node_overnight Python source contains violating topic literals:\n{result.stderr}"
+    )

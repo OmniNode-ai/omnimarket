@@ -117,9 +117,11 @@ jobs:
           OMNIBASE_INFRA_PATH: ../omnibase_infra
         run: |
           uv run python ../omnibase_infra/scripts/validation/lint_topic_names.py \
-            --scan-contracts src/omnimarket/nodes
+            --scan-contracts src/omnimarket/nodes \
+            --baseline scripts/validation/topic_naming_baseline.txt
           uv run python ../omnibase_infra/scripts/validation/lint_topic_names.py \
-            --scan-python src/omnimarket
+            --scan-python src/omnimarket \
+            --baseline scripts/validation/topic_naming_baseline.txt
 
   # ============================================================================
   # GATE AGGREGATOR

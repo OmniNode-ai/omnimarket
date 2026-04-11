@@ -14,10 +14,10 @@ Related:
 
 from __future__ import annotations
 
-TOPIC_OVERSEER_TICK = "onex.evt.omnimarket.overseer.tick.v1"
-TOPIC_OVERNIGHT_PHASE_START = "onex.evt.omnimarket.overnight.phase-start.v1"
-TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight.phase-completed.v1"
-TOPIC_OVERNIGHT_COMPLETE = "onex.evt.omnimarket.overnight.session-completed.v1"
+TOPIC_OVERSEER_TICK = "onex.evt.omnimarket.overseer-tick.v1"
+TOPIC_OVERNIGHT_PHASE_START = "onex.evt.omnimarket.overnight-phase-start.v1"
+TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight-phase-completed.v1"
+TOPIC_OVERNIGHT_COMPLETE = "onex.evt.omnimarket.overnight-session-completed.v1"
 
 __all__: list[str] = [
     "TOPIC_OVERNIGHT_COMPLETE",

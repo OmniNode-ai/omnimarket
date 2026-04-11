@@ -26,7 +26,7 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.overnight-start.v1"
-EVT_TOPIC = "onex.evt.omnimarket.overnight.session-completed.v1"
+EVT_TOPIC = "onex.evt.omnimarket.overnight-session-completed.v1"
 
 
 def _make_contract(

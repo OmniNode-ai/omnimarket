@@ -219,7 +219,7 @@ class HandlerBuildLoopExecutor:
                 outcomes are reported as unsatisfied — phases do not
                 silently advance.
             tick_emitter: Optional callable that receives the per-phase
-                tick snapshot. Use for Kafka ``onex.evt.omnimarket.overseer.tick.v1``
+                tick snapshot. Use for Kafka ``onex.evt.omnimarket.overseer-tick.v1``
                 publishing. When None, snapshots still land in the local
                 overseer flag file and tick jsonl log.
             halt_action_handler: Optional per-condition action dispatcher.
