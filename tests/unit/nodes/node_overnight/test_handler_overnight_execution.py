@@ -219,3 +219,48 @@ def test_pure_fsm_mode_unchanged_when_dispatch_phases_false() -> None:
 
     assert called == []
     assert result.session_status == EnumOvernightStatus.COMPLETED
+
+
+def test_skipped_dispatcher_not_counted_as_failed() -> None:
+    """SKIPPED: prefix must propagate to ModelPhaseResult.skipped=True.
+
+    Before the fix, skipped=False was hardcoded in the results.append() call,
+    so phases_failed and session_status treated skipped phases as failures.
+    """
+
+    def skip_dispatcher(command: ModelOvernightCommand, contract):
+        return False, "SKIPPED: no open PRs"
+
+    def ok(command: ModelOvernightCommand, contract):
+        return True, None
+
+    handler = HandlerOvernight(
+        dispatchers={
+            EnumPhase.NIGHTLY_LOOP: ok,
+            EnumPhase.BUILD_LOOP: ok,
+            EnumPhase.MERGE_SWEEP: skip_dispatcher,
+            EnumPhase.CI_WATCH: ok,
+            EnumPhase.PLATFORM_READINESS: ok,
+        }
+    )
+
+    result = handler.handle(
+        ModelOvernightCommand(
+            correlation_id="exec-test-skipped",
+            dry_run=True,
+            overnight_contract=_make_contract(),
+        ),
+        dispatch_phases=True,
+    )
+
+    assert result.phases_failed == [], "skipped phase must not appear in phases_failed"
+    assert "merge_sweep" in result.phases_skipped, (
+        "skipped phase must appear in phases_skipped"
+    )
+    assert result.session_status == EnumOvernightStatus.COMPLETED
+
+    skipped_result = next(
+        r for r in result.phase_results if r.phase == EnumPhase.MERGE_SWEEP
+    )
+    assert skipped_result.skipped is True
+    assert skipped_result.success is True
