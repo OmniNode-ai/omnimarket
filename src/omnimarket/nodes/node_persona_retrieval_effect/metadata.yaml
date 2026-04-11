@@ -1,0 +1,24 @@
+name: node_persona_retrieval_effect
+version: "1.0.0"
+description: "Retrieves persona profiles from the memory fabric for agent context injection"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_persona_retrieval_effect: "omnimarket.nodes.node_persona_retrieval_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omninode-memory>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["persona", "retrieval", "memory", "effect"]
+pack: "memory"
+display_name: "Persona Retrieval Effect"
+node_role: "effect"

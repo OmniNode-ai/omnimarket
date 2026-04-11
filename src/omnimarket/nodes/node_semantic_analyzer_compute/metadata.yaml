@@ -1,0 +1,25 @@
+name: node_semantic_analyzer_compute
+version: "1.0.0"
+description: "Performs semantic analysis on text inputs using embedding models for similarity and classification"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_semantic_analyzer_compute: "omnimarket.nodes.node_semantic_analyzer_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omninode-memory>=0.1.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["semantic", "analysis", "embeddings", "compute"]
+pack: "memory"
+display_name: "Semantic Analyzer Compute"
+node_role: "compute"

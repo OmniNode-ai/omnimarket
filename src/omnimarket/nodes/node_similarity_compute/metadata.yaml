@@ -1,0 +1,25 @@
+name: node_similarity_compute
+version: "1.0.0"
+description: "Computes vector similarity scores between embeddings for semantic search and deduplication"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_similarity_compute: "omnimarket.nodes.node_similarity_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omninode-memory>=0.1.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["similarity", "embeddings", "compute", "vector"]
+pack: "memory"
+display_name: "Similarity Compute"
+node_role: "compute"

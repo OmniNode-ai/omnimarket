@@ -1,0 +1,24 @@
+name: node_persona_builder_compute
+version: "1.0.0"
+description: "Classifies and builds agent persona profiles from session and interaction history"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_persona_builder_compute: "omnimarket.nodes.node_persona_builder_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omninode-memory>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["persona", "classification", "compute", "memory"]
+pack: "memory"
+display_name: "Persona Builder Compute"
+node_role: "compute"

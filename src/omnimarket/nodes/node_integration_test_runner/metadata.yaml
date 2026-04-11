@@ -1,0 +1,24 @@
+name: node_integration_test_runner
+version: "1.0.0"
+description: "Discovers all onex.nodes entry points and re-runs golden chain tests with configurable DI profile"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_integration_test_runner: "omnimarket.nodes.node_integration_test_runner"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pytest>=8.4.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["testing", "integration", "runner", "compute"]
+pack: "testing"
+display_name: "Integration Test Runner"
+node_role: "compute"
