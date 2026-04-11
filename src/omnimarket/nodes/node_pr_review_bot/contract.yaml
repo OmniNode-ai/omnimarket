@@ -72,6 +72,31 @@ handler_routing:
         name: "HandlerVerificationLoop"
         module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_verification_loop"
       description: "Commit-citation parser + hostile_reviewer gate + conditional resolveReviewThread. Triggered on push to open PR. Side-effect (I/O)."
+      payload:
+        commit_body:
+          type: str
+          description: "Full commit message body to parse for citations"
+          required: true
+        commit_sha:
+          type: str
+          description: "SHA of the triggering commit"
+          required: true
+        pr_number:
+          type: int
+          description: "PR number the push targets"
+          required: true
+        repo:
+          type: str
+          description: "GitHub repo (owner/repo)"
+          required: true
+        open_findings:
+          type: list
+          description: "List of ReviewFinding objects currently open on the PR"
+          required: true
+        diff_hunks:
+          type: list
+          description: "List of DiffHunk objects from the push diff"
+          required: true
 
   adapters:
     - name: "AdapterGitHubBridge"
@@ -172,9 +197,9 @@ event_bus:
     - onex.evt.omnimarket.pr-review-bot-completed.v1
     - onex.evt.omnimarket.review-bot-bypass-used.v1
     - onex.evt.omnimarket.review-bot-bypass-rolled-back.v1
-    - onex.evt.review_bot.thread_verified.v1
-    - onex.evt.review_bot.thread_resolve_failed.v1
-    - onex.evt.review_bot.thread_resolved.v1
+    - onex.evt.omnimarket.thread_verified.v1
+    - onex.evt.omnimarket.thread_resolve_failed.v1
+    - onex.evt.omnimarket.thread_resolved.v1
 
 runtime_config:
   review_bot.emergency_bypass_actor:
@@ -200,7 +225,7 @@ metadata:
   description: "PR Review Bot — automated multi-model review with judge verification gate"
   author: "OmniNode Team"
   created: "2026-04-09"
-  updated: "2026-04-09"
+  updated: "2026-04-11"
   tags:
     - "review"
     - "pr-bot"
@@ -217,7 +242,6 @@ metadata:
     - "OMN-7967"
     - "OMN-7968"
     - "OMN-8494"
-  updated: "2026-04-11"
 
 dod_evidence:
   ticket_id: "OMN-8494"
@@ -227,7 +251,7 @@ dod_evidence:
       command: "uv run pytest tests/test_verification_loop.py -v"
     - kind: "kafka"
       description: "thread_verified and thread_resolved events emitted"
-      command: "rpk topic consume onex.evt.review_bot.thread_verified.v1 --num 1"
+      command: "rpk topic consume onex.evt.omnimarket.thread_verified.v1 --num 1"
     - kind: "runtime_health"
       description: "Integration: citing commit triggers bot resolution"
       command: "uv run pytest tests/e2e/test_verification_loop_e2e.py -v"

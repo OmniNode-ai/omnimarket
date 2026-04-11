@@ -38,10 +38,6 @@ _FIXES_PATTERN = re.compile(
 _RESOLVES_THREAD_PATTERN = re.compile(
     r"(?i)\bresolves\s+thread\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
-_ADDRESSED_IN_COMMIT_PATTERN = re.compile(
-    r"(?i)\baddressed\s+in\s+commit\s+([0-9a-f]{7,40})\b"
-)
-_RESOLVES_FINDINGS_POSITIONAL = re.compile(r"(?i)\bresolves\s*:\s*#findings\[(\d+)\]")
 
 
 @dataclass(frozen=True)
@@ -49,18 +45,14 @@ class CommitCitation:
     """A single citation extracted from a commit message body."""
 
     thread_id: str | None = None
-    commit_sha: str | None = None
-    finding_position: int | None = None
 
 
 def parse_commit_citations(commit_body: str) -> list[CommitCitation]:
-    """Extract structured citations from a commit message body.
+    """Extract thread-id citations from a commit message body.
 
     Recognized formats:
     - ``Fixes <uuid>``
     - ``Resolves thread <uuid>``
-    - ``Addressed in commit <sha>``
-    - ``Resolves: #findings[N]``
 
     Prose acknowledgments ("will fix", "acknowledged", task-tracker prefixes) are never matched.
     False positives are acceptable — hostile_reviewer is the gate, not the parser.
@@ -72,12 +64,6 @@ def parse_commit_citations(commit_body: str) -> list[CommitCitation]:
 
     for m in _RESOLVES_THREAD_PATTERN.finditer(commit_body):
         citations.append(CommitCitation(thread_id=m.group(1)))
-
-    for m in _ADDRESSED_IN_COMMIT_PATTERN.finditer(commit_body):
-        citations.append(CommitCitation(commit_sha=m.group(1)))
-
-    for m in _RESOLVES_FINDINGS_POSITIONAL.finditer(commit_body):
-        citations.append(CommitCitation(finding_position=int(m.group(1))))
 
     return citations
 
@@ -165,6 +151,11 @@ class HandlerVerificationLoop:
         graphql_client: ProtocolGraphQLClient,
         reviewer_models: list[str],
     ) -> None:
+        if not reviewer_models:
+            raise ValueError(
+                "reviewer_models must not be empty — no reviewers configured means "
+                "no verification is possible; fail closed rather than silently pass."
+            )
         self._reviewer = reviewer
         self._gql = graphql_client
         self._reviewer_models = reviewer_models
@@ -198,7 +189,15 @@ class HandlerVerificationLoop:
                 continue
 
             scoped_hunk = self._scope_hunk(finding, diff_hunks)
-            diff_content = scoped_hunk.content if scoped_hunk else ""
+            if scoped_hunk is None:
+                logger.info(
+                    "No matching diff hunk for finding %s in commit %s — leaving thread open",
+                    fid,
+                    commit_sha,
+                )
+                result.rejected_thread_ids.append(fid)
+                continue
+            diff_content = scoped_hunk.content
             finding_context = (
                 f"Finding: {finding.title}\n"
                 f"Severity: {finding.severity}\n"
@@ -235,12 +234,19 @@ class HandlerVerificationLoop:
             if all_clean:
                 logger.info("All models CLEAN for finding %s — resolving thread", fid)
                 try:
-                    self._gql.resolve_thread(
+                    resolved = self._gql.resolve_thread(
                         pr_number=pr_number,
                         repo=repo,
                         thread_id=fid,
                     )
-                    result.resolved_thread_ids.append(fid)
+                    if resolved:
+                        result.resolved_thread_ids.append(fid)
+                    else:
+                        logger.warning(
+                            "resolveReviewThread returned False for %s — mutation failed silently",
+                            fid,
+                        )
+                        result.rejected_thread_ids.append(fid)
                 except Exception as exc:
                     logger.exception("resolveReviewThread failed for %s: %s", fid, exc)
                     result.rejected_thread_ids.append(fid)

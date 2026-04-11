@@ -84,14 +84,6 @@ class TestCommitCitationParser:
         assert len(citations) == 1
         assert citations[0].thread_id == tid
 
-    def test_commit_citation_parser_extracts_addressed_in_commit_sha(self) -> None:
-        """'Addressed in commit <sha>' format extracts sha as citation."""
-        sha = "abc1234def5678"
-        commit_body = f"Fix null check\n\nAddressed in commit {sha}"
-        citations = parse_commit_citations(commit_body)
-        assert len(citations) == 1
-        assert citations[0].commit_sha == sha
-
     def test_commit_citation_parser_extracts_resolves_thread(self) -> None:
         """'Resolves thread <thread_id>' format is extracted."""
         tid = "a1b2c3d4-0000-0000-0000-000000000002"
@@ -99,13 +91,6 @@ class TestCommitCitationParser:
         citations = parse_commit_citations(commit_body)
         assert len(citations) == 1
         assert citations[0].thread_id == tid
-
-    def test_commit_citation_parser_extracts_resolves_findings_positional(self) -> None:
-        """'Resolves: #findings[N]' format is extracted with position."""
-        commit_body = "Fix validation\n\nResolves: #findings[3]"
-        citations = parse_commit_citations(commit_body)
-        assert len(citations) == 1
-        assert citations[0].finding_position == 3
 
     def test_commit_citation_parser_ignores_prose_acknowledgment(self) -> None:
         """'will fix', 'acknowledged', 'I will address' are NOT citations."""
