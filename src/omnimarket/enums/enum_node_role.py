@@ -23,6 +23,7 @@ class EnumNodeRole(StrEnum):
         ORCHESTRATOR: Coordinates other nodes; emits intents, no result.
         REDUCER: Pure state transition; delta(state, event) -> (new_state, intents[]).
         EFFECT: Executes side effects (I/O, API calls, mutations).
+        COMPUTE: Pure computation that returns a typed result; no side effects.
         INTERNAL: Internal implementation detail; not part of public pipeline surface.
     """
 
@@ -34,4 +35,5 @@ class EnumNodeRole(StrEnum):
     ORCHESTRATOR = "orchestrator"
     REDUCER = "reducer"
     EFFECT = "effect"
+    COMPUTE = "compute"
     INTERNAL = "internal"
