@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Semantic Analyzer Compute
+#
+# Migrated from omnimemory (OMN-8297, Wave 1)
+# Semantic analysis: embedding generation, entity extraction, full analysis.
+# Delegates I/O to ProtocolEmbeddingProvider / ProtocolLLMProvider via omnimemory.
+#
+# Related Tickets:
+#   - OMN-8297: Wave 1 omnimemory → omnimarket migration
+name: "node_semantic_analyzer_compute"
+node_type: "COMPUTE"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Semantic analysis compute node: embedding generation, entity extraction, and full analysis. Delegates I/O to ProtocolEmbeddingProvider/ProtocolLLMProvider. Implementation re-exported from omnimemory. Migrated OMN-8297."
+input_model:
+  name: "ModelSemanticAnalyzerComputeRequest"
+  module: "omnimarket.nodes.node_semantic_analyzer_compute.models.model_semantic_analyzer_compute_request"
+  description: "Content, operation type, and optional model override."
+output_model:
+  name: "ModelSemanticAnalyzerComputeResponse"
+  module: "omnimarket.nodes.node_semantic_analyzer_compute.models.model_semantic_analyzer_compute_response"
+  description: "Embedding, entities, topics, scores, and metadata."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "embed"
+      handler:
+        name: "HandlerSemanticCompute"
+        module: "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute"
+    - operation: "extract_entities"
+      handler:
+        name: "HandlerSemanticCompute"
+        module: "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute"
+    - operation: "analyze"
+      handler:
+        name: "HandlerSemanticCompute"
+        module: "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute"
+metadata:
+  description: "Semantic analyzer compute node migrated from omnimemory"
+  author: "OmniNode Team"
+  created: "2026-04-10"
+  tags:
+    - "compute"
+    - "semantic"
+    - "embedding"
+    - "entity-extraction"
+    - "nlp"
+    - "memory"
+    - "OMN-8297"
+  related_tickets:
+    - "OMN-8297"

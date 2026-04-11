@@ -1,0 +1,48 @@
+---
+name: duplication_sweep
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Detect duplicate definitions across repos: Drizzle table names in omnidash schemas (D1),
+  Kafka topic registration conflicts between omniclaude TopicBase and kafka_boundaries.yaml (D2),
+  migration prefix collisions via check-migration-conflicts (D3), and cross-repo Pydantic
+  model name collisions in production code (D4).
+
+handler:
+  module: omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep
+  class: NodeDuplicationSweep
+  input_model: omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep.DuplicationSweepRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  omni_home:
+    type: str
+    description: "Root path of the omni_home repo registry"
+    required: false
+  checks:
+    type: list[str]
+    description: "Specific check IDs to run: D1, D2, D3, D4 (default: all)"
+    required: false
+
+outputs:
+  check_results:
+    type: list[ModelDuplicationCheckResult]
+    description: "Per-check results with findings"
+  overall_status:
+    type: str
+    description: "PASS if no FAIL checks, FAIL otherwise"
+
+terminal_event: onex.evt.omnimarket.duplication-sweep-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.duplication-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.duplication-sweep-completed.v1

@@ -1,0 +1,531 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# pr-arch-review.yml
+#
+# Automatic architectural PR review on every pull request.
+#
+# Two-phase approach:
+#   1. arch-lint      — static pattern checks (no model needed, always runs)
+#   2. pr-review-bot  — WorkflowRunner FSM pipeline (posts structured GitHub threads)
+#
+# Phase 1 catches:
+#   - Hardcoded Kafka topic strings in handler code
+#   - Manual handler wiring that bypasses the DI container
+#   - Reinvented DI patterns outside the contract system
+#   - event_bus=None bypass
+#   - Direct handler instantiation outside workflow_runner / WorkflowPackage entry points
+#
+# Phase 2 runs the full node_pr_review_bot FSM (stub reviewers until OMN-7969–OMN-7972
+# land concrete model handlers). When concrete handlers are wired in, the workflow
+# automatically picks them up — no workflow change required.
+#
+# Bot identity (omnibot GitHub App):
+#   When OMNIBOT_APP_ID + OMNIBOT_APP_PRIVATE_KEY org secrets are set, comments are
+#   posted as omnibot[bot] via a short-lived installation token. Until the GitHub App
+#   is created, the workflow falls back to GITHUB_TOKEN (posts as jonahgabriel).
+#
+#   To create the app:
+#     https://github.com/organizations/OmniNode-ai/settings/apps/new
+#     Name: omnibot  |  Permissions: pull_requests:write, issues:write
+#     Store app_id as OMNIBOT_APP_ID and the private key as OMNIBOT_APP_PRIVATE_KEY
+#     in org-level Actions secrets.
+#
+#   bot_login constants in handler_thread_poster.py and handler_thread_watcher.py
+#   must match the actual app slug: "omnibot[bot]"
+
+name: PR Architectural Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  # ============================================================================
+  # Token resolution — swap to omnibot GitHub App token when the app exists,
+  # fall back to GITHUB_TOKEN otherwise. Runs once; both review jobs consume
+  # the output token.
+  # ============================================================================
+  resolve-bot-token:
+    name: Resolve Bot Token
+    runs-on: ubuntu-latest
+    outputs:
+      token: ${{ steps.pick.outputs.token }}
+      bot_login: ${{ steps.pick.outputs.bot_login }}
+
+    steps:
+      - name: Generate omnibot installation token (if app secrets present)
+        id: app-token
+        # Only attempt if both secrets are non-empty. The `vars.` context would
+        # work for non-sensitive values; secrets are used here for both because
+        # APP_ID is stored alongside the private key as an org secret.
+        if: ${{ secrets.OMNIBOT_APP_ID != '' && secrets.OMNIBOT_APP_PRIVATE_KEY != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.OMNIBOT_APP_ID }}
+          private-key: ${{ secrets.OMNIBOT_APP_PRIVATE_KEY }}
+
+      - name: Pick token and bot login
+        id: pick
+        shell: bash
+        run: |
+          if [ -n "${{ steps.app-token.outputs.token }}" ]; then
+            echo "token=${{ steps.app-token.outputs.token }}" >> "$GITHUB_OUTPUT"
+            echo "bot_login=omnibot[bot]" >> "$GITHUB_OUTPUT"
+            echo "Using omnibot GitHub App token"
+          else
+            echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
+            echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"
+            echo "OMNIBOT_APP_ID/OMNIBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as jonahgabriel)"
+          fi
+
+  # ============================================================================
+  # Phase 1 — Static architectural lint (fast, no infra)
+  # ============================================================================
+  arch-lint:
+    name: Architectural Compliance Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [resolve-bot-token]
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run architectural lint
+        id: lint
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ERRORS=0
+          WARNINGS=0
+          REPORT=""
+
+          # -----------------------------------------------------------------------
+          # Rule 1: No hardcoded Kafka topic strings in handler code.
+          #
+          # Topics must be declared in contract.yaml and read at runtime via the
+          # contract loader. Hardcoded strings like "onex.evt.foo.bar.v1" in Python
+          # handler files are forbidden (CLAUDE.md + omnimarket/CLAUDE.md invariant).
+          #
+          # Exclude: contract.yaml files (they ARE the source of truth),
+          #          test files (topic fixtures are acceptable there),
+          #          scripts/lint_no_hardcoded_topics.py itself.
+          # -----------------------------------------------------------------------
+          TOPIC_HITS=$(grep -rn --include='*.py' \
+            -E '"onex\.(cmd|evt)\.[a-z_]+\.[a-z_-]+\.v[0-9]+"' \
+            src/ \
+            --exclude-dir=__pycache__ \
+            --exclude='lint_no_hardcoded_topics.py' \
+            2>/dev/null || true)
+
+          if [ -n "$TOPIC_HITS" ]; then
+            echo "::error::ARCH-TOPIC-001: Hardcoded Kafka topic string(s) found in handler code."
+            echo "  Topics must be declared in contract.yaml and read at runtime, never hardcoded."
+            echo "$TOPIC_HITS" | while IFS= read -r line; do
+              echo "  $line"
+            done
+            REPORT="${REPORT}### ARCH-TOPIC-001: Hardcoded topic strings\n\n\`\`\`\n${TOPIC_HITS}\n\`\`\`\n\nTopics must be declared in \`contract.yaml\` (\`event_bus.publish_topics\` / \`subscribe_topics\`) and read at runtime via the contract loader. Never hardcode topic strings in Python handler code.\n\n"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # -----------------------------------------------------------------------
+          # Rule 2: No event_bus=None bypass.
+          #
+          # Passing event_bus=None bypasses the DI container and breaks the
+          # contract system. See: feedback_no_manual_wiring.md
+          # -----------------------------------------------------------------------
+          BUS_NONE_HITS=$(grep -rn --include='*.py' \
+            'event_bus\s*=\s*None' \
+            src/ \
+            --exclude-dir=__pycache__ \
+            2>/dev/null | grep -v '^\s*#' || true)
+
+          if [ -n "$BUS_NONE_HITS" ]; then
+            echo "::error::ARCH-DI-001: event_bus=None bypass detected."
+            echo "  Always resolve handlers via the DI container. Never pass event_bus=None."
+            echo "$BUS_NONE_HITS" | while IFS= read -r line; do
+              echo "  $line"
+            done
+            REPORT="${REPORT}### ARCH-DI-001: event_bus=None bypass\n\n\`\`\`\n${BUS_NONE_HITS}\n\`\`\`\n\nAlways resolve handlers via the DI container. Never bypass with \`event_bus=None\`.\n\n"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # -----------------------------------------------------------------------
+          # Rule 3: No manual handler wiring that bypasses the container.
+          #
+          # Handler classes must not be instantiated directly in application code
+          # outside of: workflow_runner.py, WorkflowPackage entry points,
+          # conftest.py / test files, and adapter modules.
+          # -----------------------------------------------------------------------
+          MANUAL_WIRE_HITS=$(grep -rn --include='*.py' \
+            -E 'Handler[A-Z][A-Za-z]+\(' \
+            src/ \
+            --exclude-dir=__pycache__ \
+            2>/dev/null \
+            | grep -v 'workflow_runner\.py' \
+            | grep -v 'adapter_' \
+            | grep -v '__init__\.py' \
+            | grep -v 'class Handler' \
+            | grep -v 'isinstance(' \
+            | grep -v '#' \
+            || true)
+
+          if [ -n "$MANUAL_WIRE_HITS" ]; then
+            echo "::warning::ARCH-DI-002: Direct Handler instantiation outside workflow_runner / adapter layers."
+            echo "  Handler classes should be wired only in workflow_runner.py or adapter modules."
+            echo "$MANUAL_WIRE_HITS" | while IFS= read -r line; do
+              echo "  $line"
+            done
+            REPORT="${REPORT}### ARCH-DI-002: Direct Handler instantiation (warning)\n\n\`\`\`\n${MANUAL_WIRE_HITS}\n\`\`\`\n\nHandler classes should be wired only in \`workflow_runner.py\` or adapter modules. Direct instantiation elsewhere bypasses the contract system.\n\n"
+            WARNINGS=$((WARNINGS + 1))
+          fi
+
+          # -----------------------------------------------------------------------
+          # Rule 4: No reinvented DI — DIContainer / ServiceLocator patterns
+          # from outside omnibase_core.
+          # -----------------------------------------------------------------------
+          DI_REINVENT_HITS=$(grep -rn --include='*.py' \
+            -E 'class\s+(DIContainer|ServiceLocator|DependencyContainer|InjectionContext)\b' \
+            src/ \
+            --exclude-dir=__pycache__ \
+            2>/dev/null || true)
+
+          if [ -n "$DI_REINVENT_HITS" ]; then
+            echo "::error::ARCH-DI-003: Reinvented DI container detected."
+            echo "  Use omnibase_core's contract system, not a hand-rolled DI container."
+            echo "$DI_REINVENT_HITS" | while IFS= read -r line; do
+              echo "  $line"
+            done
+            REPORT="${REPORT}### ARCH-DI-003: Reinvented DI container\n\n\`\`\`\n${DI_REINVENT_HITS}\n\`\`\`\n\nUse omnibase_core's contract system, not a hand-rolled DI container.\n\n"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # -----------------------------------------------------------------------
+          # Rule 5: contract.yaml topics follow onex.{cmd|evt}.{producer}.{name}.v{N}
+          # -----------------------------------------------------------------------
+          CONTRACT_TOPIC_VIOLATIONS=$(find src/ -name 'contract.yaml' -exec \
+            grep -Hn 'onex\.' {} \; 2>/dev/null \
+            | grep -vE 'onex\.(cmd|evt)\.[a-z_]+\.[a-z_-]+\.v[0-9]+' \
+            | grep -v '#' \
+            || true)
+
+          if [ -n "$CONTRACT_TOPIC_VIOLATIONS" ]; then
+            echo "::error::ARCH-TOPIC-002: contract.yaml topic(s) do not follow onex.{cmd|evt}.{producer}.{name}.v{N} convention."
+            echo "$CONTRACT_TOPIC_VIOLATIONS" | while IFS= read -r line; do
+              echo "  $line"
+            done
+            REPORT="${REPORT}### ARCH-TOPIC-002: Non-standard topic names in contract.yaml\n\n\`\`\`\n${CONTRACT_TOPIC_VIOLATIONS}\n\`\`\`\n\nAll topics must follow the \`onex.{cmd|evt}.{producer}.{event-name}.v{N}\` convention.\n\n"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # -----------------------------------------------------------------------
+          # Summary
+          # -----------------------------------------------------------------------
+          echo ""
+          echo "=== Architectural Lint Summary ==="
+          echo "Errors  : $ERRORS"
+          echo "Warnings: $WARNINGS"
+
+          {
+            echo "ARCH_LINT_ERRORS=$ERRORS"
+            echo "ARCH_LINT_WARNINGS=$WARNINGS"
+          } >> "$GITHUB_ENV"
+
+          if [ -n "$REPORT" ]; then
+            printf '%s' "$REPORT" > /tmp/arch_lint_report.md
+          else
+            echo "_No architectural violations found._" > /tmp/arch_lint_report.md
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Post architectural lint summary as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          BOT_LOGIN: ${{ needs.resolve-bot-token.outputs.bot_login }}
+        with:
+          github-token: ${{ needs.resolve-bot-token.outputs.token }}
+          script: |
+            const fs = require('fs');
+            const errors = parseInt(process.env.ARCH_LINT_ERRORS || '0');
+            const warnings = parseInt(process.env.ARCH_LINT_WARNINGS || '0');
+            const botLogin = process.env.BOT_LOGIN || '';
+
+            let report = '';
+            try {
+              report = fs.readFileSync('/tmp/arch_lint_report.md', 'utf8');
+            } catch (e) {
+              report = '_Lint report not available._';
+            }
+
+            const badge = errors > 0 ? '**BLOCKED**' : warnings > 0 ? '**WARNINGS**' : '**PASSED**';
+            const icon = errors > 0 ? '🚫' : warnings > 0 ? '⚠️' : '✅';
+
+            const body = [
+              `## ${icon} Architectural Review — ${badge}`,
+              '',
+              `**Errors**: ${errors}  `,
+              `**Warnings**: ${warnings}`,
+              '',
+              '### What this checks',
+              '',
+              '| Rule | Description |',
+              '|------|-------------|',
+              '| ARCH-TOPIC-001 | No hardcoded Kafka topic strings in handler code |',
+              '| ARCH-DI-001 | No `event_bus=None` bypass |',
+              '| ARCH-DI-002 | No direct Handler instantiation outside workflow_runner/adapters |',
+              '| ARCH-DI-003 | No reinvented DI containers |',
+              '| ARCH-TOPIC-002 | contract.yaml topics follow `onex.{cmd|evt}.{producer}.{name}.v{N}` |',
+              '',
+              '---',
+              '',
+              report,
+              '',
+              '_Powered by [node_pr_review_bot](src/omnimarket/nodes/node_pr_review_bot/)_',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            // Match existing comment by bot login to support upsert across token types
+            const botComment = comments.find(c =>
+              (c.user.login === botLogin || c.user.type === 'Bot') &&
+              c.body.includes('Architectural Review')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  # ============================================================================
+  # Phase 2 — WorkflowRunner FSM pipeline
+  # Calls node_pr_review_bot.workflow_runner.run_review() directly.
+  # Stub reviewers run until OMN-7969–OMN-7972 land concrete model handlers.
+  # ============================================================================
+  pr-review-bot:
+    name: PR Review Bot (FSM Pipeline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [resolve-bot-token]
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run PR review bot pipeline
+        id: review
+        env:
+          GITHUB_TOKEN: ${{ needs.resolve-bot-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          uv run python - <<'PYEOF'
+          import sys
+          import os
+          import json
+
+          pr_number = int(os.environ["PR_NUMBER"])
+          repo = os.environ["REPO"]
+
+          from omnimarket.nodes.node_pr_review_bot.models.models import EnumFindingSeverity
+          from omnimarket.nodes.node_pr_review_bot.workflow_runner import run_review
+
+          result = run_review(
+              pr_number=pr_number,
+              repo=repo,
+              reviewer_models=["qwen3-coder-30b", "qwen3-14b"],
+              judge_model="deepseek-r1",
+              severity_threshold=EnumFindingSeverity.MAJOR,
+              dry_run=False,
+              max_findings_per_pr=20,
+          )
+
+          verdict = result.verdict
+          out = {
+              "correlation_id": str(result.correlation_id),
+              "verdict": verdict.verdict,
+              "total_findings": verdict.total_findings,
+              "threads_posted": verdict.threads_posted,
+              "threads_verified_pass": verdict.threads_verified_pass,
+              "threads_verified_fail": verdict.threads_verified_fail,
+              "phases_completed": len(result.events),
+              "final_phase": str(result.final_state.current_phase),
+              "duration_ms": verdict.duration_ms,
+          }
+          print(json.dumps(out, indent=2))
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"verdict={verdict.verdict}\n")
+              f.write(f"total_findings={verdict.total_findings}\n")
+              f.write(f"correlation_id={out['correlation_id']}\n")
+          PYEOF
+
+      - name: Post review bot summary as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          REVIEW_VERDICT: ${{ steps.review.outputs.verdict }}
+          REVIEW_FINDINGS: ${{ steps.review.outputs.total_findings }}
+          REVIEW_CORRELATION_ID: ${{ steps.review.outputs.correlation_id }}
+          BOT_LOGIN: ${{ needs.resolve-bot-token.outputs.bot_login }}
+        with:
+          github-token: ${{ needs.resolve-bot-token.outputs.token }}
+          script: |
+            const verdict = process.env.REVIEW_VERDICT || 'unknown';
+            const findings = process.env.REVIEW_FINDINGS || '0';
+            const correlationId = process.env.REVIEW_CORRELATION_ID || '';
+            const botLogin = process.env.BOT_LOGIN || '';
+            const stepOutcome = '${{ steps.review.outcome }}';
+
+            const verdictEmoji = {
+              'clean': '✅',
+              'risks_noted': '⚠️',
+              'blocking_issue': '🚫',
+            }[verdict] || '❓';
+
+            const verdictLabel = {
+              'clean': 'CLEAN',
+              'risks_noted': 'RISKS NOTED',
+              'blocking_issue': 'BLOCKED',
+            }[verdict] || verdict.toUpperCase();
+
+            let statusNote = '';
+            if (stepOutcome === 'failure') {
+              statusNote = '\n\n> **Note**: The review pipeline encountered an error. ' +
+                'Check the [Actions log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.';
+            } else if (verdict === 'clean' || findings === '0') {
+              statusNote = '\n\n> **Note**: Reviewer models are running as stubs (OMN-7969–OMN-7972 pending). ' +
+                'Architectural findings from Phase 1 (arch-lint) are the authoritative signal until model handlers land.';
+            }
+
+            const body = [
+              `## ${verdictEmoji} PR Review Bot — ${verdictLabel}`,
+              '',
+              `**Findings**: ${findings}  `,
+              `**Run ID**: \`${correlationId}\``,
+              statusNote,
+              '',
+              '---',
+              '',
+              '**Verdict semantics**',
+              '',
+              '| Verdict | Meaning |',
+              '|---------|---------|',
+              '| `clean` | No blocking findings |',
+              '| `risks_noted` | Findings noted; threads passed verification |',
+              '| `blocking_issue` | MAJOR/CRITICAL findings not resolved — do not merge |',
+              '',
+              '_Powered by [node_pr_review_bot](src/omnimarket/nodes/node_pr_review_bot/) — FSM pipeline with multi-model review fan-out_',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              (c.user.login === botLogin || c.user.type === 'Bot') &&
+              c.body.includes('PR Review Bot')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  # ============================================================================
+  # GATE AGGREGATOR
+  # arch-lint is required to pass. pr-review-bot is informational only
+  # (does not block merge) until concrete model handlers land.
+  # ============================================================================
+  pr-arch-review-gate:
+    name: PR Arch Review Gate
+    runs-on: ubuntu-latest
+    needs: [arch-lint, pr-review-bot]
+    if: always()
+    steps:
+      - name: Evaluate gate
+        run: |
+          echo "=== PR Arch Review Gate ==="
+          FAILED=false
+
+          ARCH_LINT="${{ needs.arch-lint.result }}"
+          PR_BOT="${{ needs.pr-review-bot.result }}"
+
+          echo "arch-lint  : $ARCH_LINT"
+          echo "pr-review-bot (informational): $PR_BOT"
+
+          # arch-lint is a hard gate — structural violations block merge
+          if [ "$ARCH_LINT" != "success" ] && [ "$ARCH_LINT" != "skipped" ]; then
+            echo "::error::arch-lint failed — architectural violations must be resolved before merge."
+            FAILED=true
+          fi
+
+          # pr-review-bot is informational until concrete model handlers land (OMN-7969–OMN-7972)
+          if [ "$PR_BOT" != "success" ] && [ "$PR_BOT" != "skipped" ]; then
+            echo "::warning::pr-review-bot did not complete successfully (informational, does not block merge)."
+          fi
+
+          if [ "$FAILED" = "true" ]; then
+            echo ""
+            echo "PR Arch Review Gate FAILED"
+            exit 1
+          fi
+          echo ""
+          echo "PR Arch Review Gate PASSED"

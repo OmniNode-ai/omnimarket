@@ -1,0 +1,74 @@
+---
+name: integration_test_runner
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Discovers all onex.nodes entry points, finds each node's golden chain test module,
+  and re-runs those tests with a configurable DI profile. Local profile uses
+  EventBusInmemory (unit mode). Staging/production profiles swap to EventBusKafka
+  and real clients — the same test code runs against real infrastructure without
+  any test changes.
+
+handler:
+  module: omnimarket.nodes.node_integration_test_runner.handlers.handler_integration_test_runner
+  class: HandlerIntegrationTestRunner
+  input_model: omnimarket.nodes.node_integration_test_runner.models.model_test_runner_request.ModelIntegrationTestRunnerRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 600000
+
+inputs:
+  profile:
+    type: str
+    description: "DI profile: local | staging | production"
+    required: false
+    default: local
+  feature:
+    type: str
+    description: "Run only this node's tests (e.g. node_create_ticket)"
+    required: false
+  all_nodes:
+    type: bool
+    description: "Run all discovered node tests (default false)"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Discover tests but do not execute them"
+    required: false
+    default: false
+  timeout_per_node_s:
+    type: int
+    description: "Per-node test timeout in seconds"
+    required: false
+    default: 120
+
+outputs:
+  nodes_run:
+    type: int
+    description: "Number of nodes whose tests were actually executed"
+  nodes_passed:
+    type: int
+    description: "Nodes where all tests passed"
+  nodes_failed:
+    type: int
+    description: "Nodes with at least one test failure"
+  overall_status:
+    type: str
+    description: "pass | fail | error | skipped | dry_run"
+  node_results:
+    type: list[ModelNodeTestResult]
+    description: "Per-node test results with per-test details"
+
+terminal_event: onex.evt.omnimarket.integration-test-runner-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.integration-test-runner-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.integration-test-runner-completed.v1

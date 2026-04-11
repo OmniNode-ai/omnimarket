@@ -1,0 +1,62 @@
+---
+name: database_sweep
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Projection table health and migration tracking — checks row count and staleness
+  for every table in omnidash_analytics, plus migration state across all ONEX
+  databases (Alembic + Drizzle). Reports HEALTHY/STALE/EMPTY/MISSING/ORPHAN status
+  per table and CURRENT/PENDING/AHEAD/FAILED/NO_TABLE per database.
+
+handler:
+  module: omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep
+  class: NodeDatabaseSweep
+  input_model: omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep.DatabaseSweepRequest
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  omni_home:
+    type: str
+    description: "Root path of the omni_home repo registry"
+    required: false
+  table:
+    type: str
+    description: "Scan a single table only (default: all tables)"
+    required: false
+  staleness_threshold_hours:
+    type: int
+    description: "Hours before data is considered stale (default: 24)"
+    required: false
+    default: 24
+  dry_run:
+    type: bool
+    description: "If true, report findings without creating Linear tickets"
+    required: false
+    default: false
+
+outputs:
+  table_results:
+    type: list[ModelTableHealthResult]
+    description: "Per-table health classification results"
+  migration_results:
+    type: list[ModelMigrationStateResult]
+    description: "Per-database migration state results"
+  summary:
+    type: object
+    description: "Aggregated counts by table status and migration state"
+
+terminal_event: onex.evt.omnimarket.database-sweep-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.database-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.database-sweep-table-checked.v1
+    - onex.evt.omnimarket.database-sweep-completed.v1
