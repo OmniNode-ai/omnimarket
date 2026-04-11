@@ -1,0 +1,24 @@
+name: node_model_router
+version: "1.0.0"
+description: "Contract-driven LLM routing substrate — local-first endpoint resolution from model_registry.yaml"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_model_router: "omnimarket.nodes.node_model_router.handlers.handler_model_router:HandlerModelRouter"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-compat>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["routing", "llm", "contract-driven", "local-first", "OMN-8443"]
+pack: "core"
+display_name: "Model Router"
+node_role: "internal"

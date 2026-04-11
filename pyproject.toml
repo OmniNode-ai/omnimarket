@@ -128,6 +128,7 @@ node_agent_learning_retrieval_effect = "omnimarket.nodes.node_agent_learning_ret
 node_llm_eval_harness = "omnimarket.nodes.node_llm_eval_harness"
 node_seam_parallel_executor = "omnimarket.nodes.node_seam_parallel_executor"
 node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_verify_orchestrator"
+node_model_router = "omnimarket.nodes.node_model_router.handlers.handler_model_router:HandlerModelRouter"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

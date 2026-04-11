@@ -14,14 +14,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
 )
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
+from omnimarket.nodes.node_model_router.topics import TOPIC_MODEL_ROUTING_DEGRADED
 
-DEGRADED_TOPIC = "onex.evt.omnimarket.model-routing.degraded.v1"
+DEGRADED_TOPIC = TOPIC_MODEL_ROUTING_DEGRADED
 
 
 @pytest.mark.asyncio
@@ -63,7 +65,7 @@ async def test_model_router_publishes_degradation_event() -> None:
         for _ in range(3):
             await router.route_async(request)
 
-    history = bus.get_event_history(topic=DEGRADED_TOPIC)
+    history = await bus.get_event_history(topic=DEGRADED_TOPIC)
     assert len(history) >= 1, (
         f"Expected degradation event on {DEGRADED_TOPIC}, got none"
     )
