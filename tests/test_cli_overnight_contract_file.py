@@ -98,6 +98,8 @@ def test_dispatch_phases_flag_threads_to_handler(tmp_path):
             str(contract_file),
             "--dispatch-phases",
             "--skip-build-loop",
+            "--skip-merge-sweep",
+            "--dry-run",
         ],
         capture_output=True,
         text=True,
