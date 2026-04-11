@@ -483,9 +483,9 @@ class AdapterGitHubBridge(GitHubBridgeProtocol):
         """Return existing bot thread for a finding, or None (R10 dedup).
 
         Bot threads embed the finding ID in the body as a unique marker:
-        ``<!-- omnibot:finding:{finding_id} -->``
+        ``<!-- onexbot:finding:{finding_id} -->``
         """
-        marker = f"<!-- omnibot:finding:{finding_id} -->"
+        marker = f"<!-- onexbot:finding:{finding_id} -->"
         threads = await self.fetch_review_threads(repo, pr_number)
         for thread in threads:
             if thread.user_login == bot_login and marker in thread.body:

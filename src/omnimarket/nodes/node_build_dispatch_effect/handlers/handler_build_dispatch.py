@@ -28,6 +28,9 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store import (
+    DispatchHistoryStore,
+)
 from omnimarket.nodes.node_build_dispatch_effect.models.model_build_dispatch_outcome import (
     ModelBuildDispatchOutcome,
 )
@@ -101,6 +104,13 @@ class HandlerBuildDispatch:
     Failures on individual tickets do not block other dispatches.
     """
 
+    def __init__(
+        self,
+        *,
+        history_store: DispatchHistoryStore | None = None,
+    ) -> None:
+        self._history_store = history_store or DispatchHistoryStore()
+
     @property
     def handler_type(self) -> HandlerType:
         return "node_handler"
@@ -163,6 +173,22 @@ class HandlerBuildDispatch:
                     correlation_id=correlation_id,
                 )
                 delegation_payloads.append(payload)
+                try:
+                    record = self._history_store.record_dispatch(
+                        ticket_id=target.ticket_id,
+                        correlation_id=str(correlation_id),
+                    )
+                    logger.info(
+                        "dispatch_history: recorded %s (attempt %d)",
+                        target.ticket_id,
+                        record.attempt_count,
+                    )
+                except OSError as store_exc:
+                    logger.warning(
+                        "dispatch_history: failed to record %s: %s",
+                        target.ticket_id,
+                        store_exc,
+                    )
                 logger.info(
                     "Dispatched ticket-pipeline for %s: %s",
                     target.ticket_id,

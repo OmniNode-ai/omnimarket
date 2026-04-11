@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: llm_eval_harness
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Benchmark LLM output quality per model and task type against a fixed task
+  corpus. Produces structured eval results that feed the delegation router's
+  scoring system, replacing heuristic seed values once >=20 samples exist.
+
+handler:
+  module: omnimarket.nodes.node_llm_eval_harness.handlers.handler_llm_eval_harness
+  class: NodeLlmEvalHarness
+  input_model: omnimarket.nodes.node_llm_eval_harness.handlers.handler_llm_eval_harness.LlmEvalRequest
+
+descriptor:
+  node_archetype: compute
+  purity: nondeterministic  # LLM calls
+  idempotent: false
+  timeout_ms: 600000
+
+inputs:
+  models:
+    type: list[str]
+    description: "Model keys to benchmark (must match model_registry.yaml)"
+    required: true
+  task_types:
+    type: list[str]
+    description: "EvalTaskType values to run (e.g. CODE_GENERATION, CLASSIFICATION)"
+    required: false
+    default: []
+  max_tasks_per_type:
+    type: int
+    description: "Cap tasks executed per (model, task_type) pair"
+    required: false
+    default: 5
+  dry_run:
+    type: bool
+    description: "If true, skip LLM calls and emit a shaped zero-value result"
+    required: false
+    default: false
+
+outputs:
+  samples:
+    type: list[LlmEvalSample]
+    description: "Per-(model, task) score records"
+  summary:
+    type: object
+    description: "Aggregated {model_key: {task_type: mean_score}} rollup"
+
+terminal_event: onex.evt.omnimarket.llm-eval-harness-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.llm-eval-harness-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.llm-eval-harness-sample.v1
+    - onex.evt.omnimarket.llm-eval-harness-completed.v1

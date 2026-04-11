@@ -2,17 +2,17 @@
 name: retention_cleanup
 contract_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
 node_type: effect
 node_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
 description: >
   Prunes stale records from projection tables per declarative retention policy.
   Deletes never-store topics immediately, high-volume topics after 3 days,
-  and general events after 14 days. Tables and retention windows are
+  and general events after 5 days. Tables and retention windows are
   declared in this contract — changes require a contract bump, not a handler edit.
 handler:
   module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
@@ -33,20 +33,22 @@ retention_policy:
   targets:
     - table: event_bus_events
       column: created_at
-      retention_days: 14
+      topic_column: topic
+      retention_days: 5
       high_volume_topics:
-        - tool-executed
-        - tool-content
-        - wiring-health-snapshot
-        - promotion-check-requested
-        - node-introspection
+        - onex.evt.omniclaude.tool-executed.v1
+        - onex.cmd.omniintelligence.tool-content.v1
+        - onex.evt.omnibase-infra.wiring-health-snapshot.v1
+        - onex.evt.platform.node-introspection.v1
+        - onex.cmd.omniintelligence.promotion-check-requested.v1
+        - onex.evt.omnibase-infra.baselines-computed.v1
       high_volume_retention_days: 3
       never_store_topics:
-        - node-heartbeat
-        - pattern-learned
-        - pattern-stored
-        - pattern-projection
-        - pattern-learning-cmd
+        - onex.evt.platform.node-heartbeat.v1
+        - onex.evt.omniintelligence.pattern-learned.v1
+        - onex.cmd.omniintelligence.pattern-stored.v1
+        - onex.evt.omniintelligence.pattern-projection.v1
+        - onex.cmd.omniintelligence.pattern-learning-cmd.v1
     - table: agent_actions
       column: created_at
       retention_days: 30

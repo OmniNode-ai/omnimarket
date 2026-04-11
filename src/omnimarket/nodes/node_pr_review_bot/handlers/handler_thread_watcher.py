@@ -5,7 +5,7 @@ Implements ProtocolThreadWatcher from handler_fsm.py.
 Responsibilities:
 - Poll GitHub review comments for each POSTED thread to detect resolution.
 - A thread is considered resolved when a reply containing the
-  ``@omnibot-judge verify`` trigger is present (explicit opt-in resolution),
+  ``@onexbot-judge verify`` trigger is present (explicit opt-in resolution),
   OR when the GitHub ``resolved`` flag is set on the comment.
 - Updates ThreadState objects in-place with reply content, resolved_at
   timestamp, and status transition (POSTED -> RESOLVED).
@@ -46,7 +46,7 @@ from omnimarket.nodes.node_pr_review_bot.models.models import (
 logger = logging.getLogger(__name__)
 
 # Trigger phrase that a PR author posts to request judge verification
-_VERIFY_TRIGGER = "@omnibot-judge verify"
+_VERIFY_TRIGGER = "@onexbot-judge verify"
 # Maximum judge re-verify requests per finding (design doc R6)
 _MAX_VERIFY_ATTEMPTS = 3
 
@@ -69,7 +69,7 @@ class HandlerThreadWatcher(ProtocolThreadWatcher):
         *,
         poll_interval_seconds: float = 30.0,
         max_wait_seconds: float = 600.0,
-        bot_login: str = "omnibot-review",
+        bot_login: str = "onexbot[bot]",
     ) -> None:
         self._bridge = github_bridge
         self._poll_interval = poll_interval_seconds
@@ -244,7 +244,7 @@ class HandlerThreadWatcher(ProtocolThreadWatcher):
         # GitHub REST does not reliably expose the resolved flag on individual
         # comments. We treat the thread as resolved when:
         # 1. The GitHub ``resolved`` field is True on the root comment, OR
-        # 2. A non-bot reply containing ``@omnibot-judge verify`` is found.
+        # 2. A non-bot reply containing ``@onexbot-judge verify`` is found.
         is_github_resolved = root_thread.resolved
         has_verify_trigger = len(verify_requests) > 0
 

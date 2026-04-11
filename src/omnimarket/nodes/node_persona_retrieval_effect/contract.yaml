@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_persona_retrieval_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Read-only EFFECT node that retrieves the latest PersonaSnapshot for a user_id/agent_id from Postgres.
+  No event bus (read-only). Phase 3 Adaptive Personalization (OMN-7305).
+node_type: "EFFECT"
+input_model: "ModelPersonaRetrievalRequest"
+output_model: "ModelPersonaRetrievalResponse"
+
+io_operations:
+  - operation_type: "database_read"
+    atomic: false
+    timeout_seconds: 5
+    validation_enabled: true
+
+tags:
+  - persona
+  - effect
+  - retrieval
+  - postgres
+  - phase-3

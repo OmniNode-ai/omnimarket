@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_llm_eval_harness
+version: "1.0.0"
+description: "Benchmark LLM output quality per model and task type for delegation router scoring"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_llm_eval_harness: "omnimarket.nodes.node_llm_eval_harness"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["eval", "llm", "router", "delegation", "benchmark"]
+pack: "delegation"
+display_name: "LLM Eval Harness"
+node_role: "report"
