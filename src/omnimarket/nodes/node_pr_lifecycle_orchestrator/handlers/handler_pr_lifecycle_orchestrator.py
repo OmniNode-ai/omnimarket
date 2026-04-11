@@ -76,10 +76,14 @@ class ModelPrLifecycleStartCommand(BaseModel):
     run_id: str = Field(
         ...,
         min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._-]+$",
         description=(
             "Human-readable sweep run identifier used as the result.json "
             "directory name under $ONEX_STATE_DIR/merge-sweep/{run_id}/. "
-            "Typically YYYYMMDD-HHMMSS-<random6>."
+            "Typically YYYYMMDD-HHMMSS-<random6>. "
+            "Restricted to [A-Za-z0-9._-] to prevent path traversal when "
+            "interpolated into filesystem paths."
         ),
     )
     dry_run: bool = Field(default=False)
@@ -627,7 +631,20 @@ class HandlerPrLifecycleOrchestrator:
         state_dir = os.environ.get(
             "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
         )
-        out_dir = Path(state_dir) / "merge-sweep" / run_id
+        base = (Path(state_dir) / "merge-sweep").resolve()
+        out_dir = (base / run_id).resolve()
+        # Defense-in-depth: the model-level regex on run_id already forbids
+        # path separators, but if someone bypasses validation we still refuse
+        # to escape the merge-sweep root.
+        if not out_dir.is_relative_to(base):
+            logger.error(
+                "[PR-LIFECYCLE-ORCH] refusing to write result.json: run_id "
+                "escapes merge-sweep root run_id=%s resolved=%s base=%s",
+                run_id,
+                out_dir,
+                base,
+            )
+            return
         out_path = out_dir / "result.json"
 
         is_failure = result.final_state == EnumOrchestratorState.FAILED.value
