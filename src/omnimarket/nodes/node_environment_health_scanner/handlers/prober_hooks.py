@@ -61,8 +61,8 @@ def probe_hooks(log_dir: str) -> ModelSubsystemResult:
                     for hook_name, counts in raw.items():
                         if not isinstance(counts, dict):
                             continue
-                        total = counts.get("total", 0)
-                        errors = counts.get("errors", 0)
+                        total = int(counts.get("total", 0) or 0)
+                        errors = int(counts.get("errors", 0) or 0)
                         if total == 0:
                             continue
                         rate = errors / total
@@ -132,16 +132,21 @@ def probe_hooks(log_dir: str) -> ModelSubsystemResult:
             checks = 1
             try:
                 raw_content = violations_path.read_text()
-                # Count non-empty lines, treating "[]" (empty JSON array) as no violations
-                violation_lines = [
-                    ln
-                    for ln in raw_content.splitlines()
-                    if ln.strip() and ln.strip() not in ("[]", "{}", "")
-                ]
-                if violation_lines:
+                # Try parsing as a JSON array first; fall back to JSONL line count
+                stripped = raw_content.strip()
+                try:
+                    parsed = json.loads(stripped)
+                    violation_count = len(parsed) if isinstance(parsed, list) else 0
+                except json.JSONDecodeError:
+                    violation_count = sum(
+                        1
+                        for ln in raw_content.splitlines()
+                        if ln.strip() and ln.strip() not in ("[]", "{}", "")
+                    )
+                if violation_count:
                     severity = (
                         EnumHealthFindingSeverity.FAIL
-                        if len(violation_lines) >= 20
+                        if violation_count >= 20
                         else EnumHealthFindingSeverity.WARN
                     )
                     findings.append(
@@ -149,7 +154,7 @@ def probe_hooks(log_dir: str) -> ModelSubsystemResult:
                             subsystem=EnumSubsystem.HOOKS,
                             severity=severity,
                             subject="violations.log",
-                            message=f"{len(violation_lines)} hook violation(s) recorded",
+                            message=f"{violation_count} hook violation(s) recorded",
                             evidence=str(violations_path),
                         )
                     )

@@ -59,7 +59,19 @@ def probe_model_endpoints(
                     )
                 )
                 continue
-            body = resp.json()
+            try:
+                body = resp.json()
+            except Exception:
+                findings.append(
+                    ModelHealthFinding(
+                        subsystem=EnumSubsystem.MODEL_ENDPOINTS,
+                        severity=EnumHealthFindingSeverity.WARN,
+                        subject=spec.env_var,
+                        message=f"Endpoint {spec.env_var} returned non-JSON body",
+                        evidence=f"GET {models_url}",
+                    )
+                )
+                continue
             models = body.get("data", [])
             if not models:
                 findings.append(
