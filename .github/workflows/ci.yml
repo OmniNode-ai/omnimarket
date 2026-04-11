@@ -18,6 +18,8 @@ jobs:
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Clone onex_change_control
+        run: git clone --depth=1 https://github.com/OmniNode-ai/onex_change_control.git ./onex_change_control
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -60,6 +62,8 @@ jobs:
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Clone onex_change_control
+        run: git clone --depth=1 https://github.com/OmniNode-ai/onex_change_control.git ./onex_change_control
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -81,6 +85,8 @@ jobs:
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Clone onex_change_control
+        run: git clone --depth=1 https://github.com/OmniNode-ai/onex_change_control.git ./onex_change_control
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:

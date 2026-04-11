@@ -136,10 +136,10 @@ onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cl
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { path = "/Users/jonah/Code/omni_home/omnibase_core", editable = true }
-omnibase-compat = { path = "/Users/jonah/Code/omni_home/omnibase_compat", editable = true }
-omninode-memory = { path = "/Users/jonah/Code/omni_home/omnimemory", editable = true }
-onex-change-control = { path = "/Volumes/PRO-G40/Code/omni_worktrees/OMN-8431/onex_change_control", editable = true }
+omnibase-core = { path = "../omnibase_core", editable = true }
+omnibase-compat = { path = "../omnibase_compat", editable = true }
+omninode-memory = { path = "../omnimemory", editable = true }
+onex-change-control = { path = "./onex_change_control", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
