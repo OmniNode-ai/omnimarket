@@ -270,12 +270,15 @@ def _compute_metrics(
     )
     quality_gate_failure_rate = gate_failed / total_attempts if total_attempts else 0.0
 
-    # Review rejection rate: fraction of gate-passing attempts rejected by reviewer
+    # Review rejection rate: fraction of gate-passing attempts that were rejected
+    # or could not be reviewed (review_unavailable). Both outcomes mean the ticket
+    # was not accepted, so both count against the rate.
     gate_passing = [t for t in traces if t.quality_gate.all_pass]
     reviewed_rejected = sum(
         1
         for t in gate_passing
-        if t.review_result is not None and not t.review_result.approved
+        if t.failure_kind == "review_unavailable"
+        or (t.review_result is not None and not t.review_result.approved)
     )
     review_rejection_rate = (
         reviewed_rejected / len(gate_passing) if gate_passing else 0.0

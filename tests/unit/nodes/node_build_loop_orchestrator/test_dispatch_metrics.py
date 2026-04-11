@@ -346,6 +346,40 @@ def test_compute_metrics_review_rejection_rate() -> None:
     assert abs(m.review_rejection_rate - 2 / 3) < 1e-9
 
 
+def test_compute_metrics_review_unavailable_counts_as_rejection() -> None:
+    """Single ticket, single gate-passing attempt with failure_kind=review_unavailable.
+
+    DoD (OMN-8499): review_rejection_rate must be 1.0, not 0.0.
+    Asserts on serialized JSON value to match ticket dod_evidence.
+    """
+    trace = ModelDispatchTrace(
+        correlation_id="corr-avail",
+        ticket_id="OMN-1",
+        attempt=1,
+        timestamp="2026-04-11T00:00:00+00:00",
+        coder_model="qwen3-coder-30b",
+        reviewer_model=None,
+        prompt_tokens=100,
+        completion_tokens=200,
+        prompt_chars=500,
+        generation_raw="{}",
+        quality_gate=_gate(pass_all=True),
+        review_result=None,
+        accepted=False,
+        wall_clock_ms=500,
+        failure_kind="review_unavailable",
+    )
+    m = _compute_metrics(correlation_id="corr-avail", traces=[trace])
+
+    assert m.rejected_count == 1
+    assert m.total_tickets == 1
+    # Serialized JSON side-effect assertion (matches dod_evidence)
+    data = json.loads(m.model_dump_json())
+    assert data["review_rejection_rate"] == 1.0, (
+        f"Expected review_rejection_rate=1.0 for review_unavailable outcome, got {data['review_rejection_rate']}"
+    )
+
+
 def test_compute_metrics_reviewer_model_from_first_trace() -> None:
     """reviewer_model taken from first trace that has it."""
     traces = [
