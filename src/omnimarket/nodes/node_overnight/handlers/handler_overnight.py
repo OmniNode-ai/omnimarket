@@ -362,13 +362,20 @@ class HandlerBuildLoopExecutor:
                             success = False
                             error_msg = msg
 
-                consecutive_failures = 0 if success else consecutive_failures + 1
+                is_skipped = (
+                    not success
+                    and error_msg is not None
+                    and error_msg.startswith("SKIPPED:")
+                )
+                consecutive_failures = (
+                    0 if (success or is_skipped) else consecutive_failures + 1
+                )
 
                 results.append(
                     ModelPhaseResult(
                         phase=phase,
-                        success=success,
-                        skipped=False,
+                        success=success or is_skipped,
+                        skipped=is_skipped,
                         error_message=error_msg,
                         duration_seconds=duration_ms / 1000.0,
                     )
@@ -377,9 +384,7 @@ class HandlerBuildLoopExecutor:
                 # OMN-8405: phase-end envelope after the phase settles (before
                 # halt-condition evaluation so we always emit a terminal signal
                 # even when a halt breaks the loop on the next line).
-                # OMN-8486: propagate SKIPPED signal — dispatchers that return
-                # (False, "SKIPPED: ...") must not appear as "failed" in events.
-                if not success and error_msg and error_msg.startswith("SKIPPED:"):
+                if is_skipped:
                     _phase_status = "skipped"
                 elif success:
                     _phase_status = "success"
@@ -464,7 +469,7 @@ class HandlerBuildLoopExecutor:
                         logger.error("Overnight halt triggered: %s", halt_reason)
                         break
 
-                if not success:
+                if not success and not is_skipped:
                     # On failure, stop the pipeline unless it's a non-critical phase.
                     # nightly_loop or build_loop failure stops everything; other phases continue.
                     if phase in (EnumPhase.NIGHTLY_LOOP, EnumPhase.BUILD_LOOP):
