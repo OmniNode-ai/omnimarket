@@ -79,6 +79,25 @@ class HandlerModelRouter:
         self._streak: dict[str, int] = {}
         self._degraded: set[str] = set()
 
+        self._validate_registry()
+
+    # ------------------------------------------------------------------ #
+    # Validation                                                           #
+    # ------------------------------------------------------------------ #
+
+    def _validate_registry(self) -> None:
+        missing = []
+        if self._policy.primary not in self._registry:
+            missing.append(self._policy.primary)
+        if (
+            self._policy.fallback is not None
+            and self._policy.fallback not in self._registry
+        ):
+            missing.append(self._policy.fallback)
+        if missing:
+            msg = f"Registry missing required model keys: {missing}"
+            raise ValueError(msg)
+
     # ------------------------------------------------------------------ #
     # Public API                                                           #
     # ------------------------------------------------------------------ #

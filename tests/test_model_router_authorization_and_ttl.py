@@ -120,3 +120,22 @@ async def test_model_router_recovery_clears_health_cache() -> None:
 
     assert "qwen3-coder-30b" not in router._degraded
     assert "qwen3-coder-30b" not in router._health_cache
+
+
+def test_model_router_missing_primary_in_registry_raises() -> None:
+    """Constructor must raise ValueError when primary model_key is absent from registry."""
+    policy = ModelRoutingPolicy(primary="nonexistent-model")
+    with pytest.raises(ValueError, match="Registry missing required model keys"):
+        HandlerModelRouter(policy=policy, registry=_REGISTRY)
+
+
+def test_model_router_missing_fallback_in_registry_raises() -> None:
+    """Constructor must raise ValueError when fallback model_key is absent from registry."""
+    policy = ModelRoutingPolicy(
+        primary="qwen3-coder-30b",
+        fallback="nonexistent-fallback",
+        fallback_allowed_roles=["fixer"],
+        reason_for_fallback="test",
+    )
+    with pytest.raises(ValueError, match="Registry missing required model keys"):
+        HandlerModelRouter(policy=policy, registry=_REGISTRY)
