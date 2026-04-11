@@ -1,0 +1,24 @@
+# Topic naming baseline — pre-existing violations suppressed during initial enforcement rollout.
+# All topics listed here were present in merged contracts before OMN-8507 (W6.10) introduced
+# the producer-segment allowlist check. Fix these violations in separate follow-up tickets.
+# Do NOT add new topics here — new violations are BLOCKED.
+#
+# Format: one topic string per line. Lines starting with '#' are ignored.
+
+# TODO(OMN-8507): build-loop producer should be omnimarket
+onex.evt.build-loop.dod-checked.v1
+
+# TODO(OMN-8507): deploy producer should be omnibase-infra
+onex.evt.deploy.rebuild-completed.v1
+onex.cmd.deploy.rebuild-requested.v1
+
+# TODO(OMN-8507): savings/model-router/baselines producers should be omnimarket
+onex.evt.savings.estimation-completed.v1
+onex.evt.model-router.routing-decision.v1
+onex.evt.baselines.computation-completed.v1
+
+# TODO(OMN-8507): 6-segment topics in node_overnight (structural violation)
+onex.evt.omnimarket.overnight.phase-start.v1
+onex.evt.omnimarket.overnight.phase-completed.v1
+onex.evt.omnimarket.overnight.session-completed.v1
+onex.evt.omnimarket.overseer.tick.v1

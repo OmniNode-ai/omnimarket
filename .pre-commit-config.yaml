@@ -40,6 +40,17 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=1000]
 
+  # Topic naming lint — producer-segment allowlist (OMN-8507)
+  # Requires omnibase_infra at $OMNIBASE_INFRA_PATH or ../omnibase_infra.
+  - repo: local
+    hooks:
+      - id: topic-naming-lint
+        name: Topic Naming Lint
+        language: system
+        entry: bash scripts/validation/run_topic_lint.sh
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Ruff — standalone pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
   # because uv.sources relative paths (../omnibase_core) resolve against the worktree
