@@ -46,9 +46,9 @@ def test_ci_watch_dispatcher_returns_failure_without_prs() -> None:
         "_dispatch_ci_watch returned (False, None) — "
         "error message must describe the skip reason."
     )
-    assert "SKIPPED" in error or "no PR" in error.lower() or "pr_context" in error.lower(), (
-        f"Error message {error!r} does not clearly indicate a PR-context skip."
-    )
+    assert (
+        "SKIPPED" in error or "no PR" in error.lower() or "pr_context" in error.lower()
+    ), f"Error message {error!r} does not clearly indicate a PR-context skip."
 
 
 @pytest.mark.unit
