@@ -27,9 +27,25 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 
-from omnibase_compat.overseer.model_overnight_contract import ModelOvernightContract
+from omnibase_compat.overseer.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightHaltCondition,
+)
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
+    HaltActionHandler,
+    OutcomeProbe,
+    TickEmitter,
+    append_tick_log,
+    build_tick_snapshot,
+    evaluate_halt_conditions,
+    probe_required_outcomes,
+    remove_overseer_flag,
+    write_overseer_flag,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +152,12 @@ class HandlerOvernight:
     def __init__(
         self,
         dispatchers: dict[EnumPhase, PhaseDispatcher] | None = None,
+        *,
+        outcome_probe: OutcomeProbe | None = None,
+        tick_emitter: TickEmitter | None = None,
+        halt_action_handler: HaltActionHandler | None = None,
+        state_root: Path | None = None,
+        contract_path: Path | str | None = None,
     ) -> None:
         """Create an overnight handler.
 
@@ -143,10 +165,34 @@ class HandlerOvernight:
             dispatchers: Optional phase -> dispatcher map. Defaults to
                 ``_DEFAULT_PHASE_DISPATCHERS`` when None. Tests inject
                 mocks here to assert per-phase invocation.
+            outcome_probe: Resolver for ``required_outcomes`` declared on
+                phase specs. When None (or missing an outcome), unresolved
+                outcomes are reported as unsatisfied — phases do not
+                silently advance.
+            tick_emitter: Optional callable that receives the per-phase
+                tick snapshot. Use for Kafka ``onex.evt.overseer.tick.v1``
+                publishing. When None, snapshots still land in the local
+                overseer flag file and tick jsonl log.
+            halt_action_handler: Optional per-condition action dispatcher.
+                Returns True when the action resolved the condition and
+                the pipeline can continue; False halts. When None, the
+                default handler routes ``on_halt`` values (``hard_halt``
+                → stop, ``halt_and_notify`` → stop, ``dispatch_skill`` →
+                log + stop so humans can act — real dispatch requires a
+                skill runner injection).
+            state_root: Override for the `.onex_state/` parent dir (tests).
+            contract_path: Path to the YAML contract file — embedded in
+                the flag file so the sibling PreToolUse hook can surface
+                it in its block message (OMN-8376).
         """
         self._dispatchers: dict[EnumPhase, PhaseDispatcher] = (
             dispatchers if dispatchers is not None else dict(_DEFAULT_PHASE_DISPATCHERS)
         )
+        self._outcome_probe = outcome_probe
+        self._tick_emitter = tick_emitter
+        self._halt_action_handler = halt_action_handler or _default_halt_action
+        self._state_root = state_root
+        self._contract_path = contract_path
 
     def handle(
         self,
@@ -175,63 +221,154 @@ class HandlerOvernight:
         contract = command.overnight_contract
         accumulated_cost: float = 0.0
         halt_reason: str | None = None
+        consecutive_failures = 0
 
-        for phase in _PHASE_SEQUENCE:
-            skipped = self._should_skip(phase, command)
+        # OMN-8375: stamp .onex_state/overseer-active.flag on contract load so
+        # the sibling PreToolUse hook (OMN-8376) can block foreground drift.
+        # Removed in the finally block regardless of outcome.
+        flag_written = False
+        if contract is not None:
+            write_overseer_flag(
+                contract_path=self._contract_path,
+                current_phase="initializing",
+                session_id=contract.session_id,
+                started_at=started_at,
+                snapshot={"phases_completed": [], "status": "initializing"},
+                state_root=self._state_root,
+            )
+            flag_written = True
 
-            if skipped:
+        try:
+            for phase in _PHASE_SEQUENCE:
+                skipped = self._should_skip(phase, command)
+
+                if skipped:
+                    results.append(
+                        ModelPhaseResult(
+                            phase=phase,
+                            success=True,
+                            skipped=True,
+                        )
+                    )
+                    continue
+
+                phase_started_at = datetime.now(tz=UTC)
+
+                if dispatch_phases and phase not in overrides:
+                    success, error_msg = self._dispatch_phase(phase, command, contract)
+                elif command.dry_run:
+                    success = True
+                    error_msg = None
+                else:
+                    success = overrides.get(phase, True)
+                    error_msg = None if success else f"Phase {phase.value} failed"
+
+                accumulated_cost += costs.get(phase, 0.0)
+                consecutive_failures = 0 if success else consecutive_failures + 1
+
+                # OMN-8375: probe required_outcomes for the current phase.
+                # Phase only advances when outcomes satisfied — downgrades
+                # success to False when any outcome is missing.
+                phase_outcomes: dict[str, bool] = {}
+                outcomes_gate_passed = True
+                if contract is not None:
+                    phase_spec = next(
+                        (p for p in contract.phases if p.phase_name == phase.value),
+                        None,
+                    )
+                    if phase_spec is not None and phase_spec.required_outcomes:
+                        phase_outcomes = probe_required_outcomes(
+                            phase_spec.required_outcomes,
+                            self._outcome_probe,
+                        )
+                        if not all(phase_outcomes.values()):
+                            outcomes_gate_passed = False
+                            missing = [k for k, v in phase_outcomes.items() if not v]
+                            msg = (
+                                f"required_outcomes not satisfied: {', '.join(missing)}"
+                            )
+                            logger.warning("[OVERSEER] %s: %s", phase.value, msg)
+                            success = False
+                            error_msg = msg
+
                 results.append(
                     ModelPhaseResult(
                         phase=phase,
-                        success=True,
-                        skipped=True,
+                        success=success,
+                        skipped=False,
+                        error_message=error_msg,
                     )
                 )
-                continue
 
-            if dispatch_phases and phase not in overrides:
-                success, error_msg = self._dispatch_phase(phase, command, contract)
-            elif command.dry_run:
-                success = True
-                error_msg = None
-            else:
-                success = overrides.get(phase, True)
-                error_msg = None if success else f"Phase {phase.value} failed"
+                # OMN-8375: emit tick snapshot and refresh the flag file.
+                if contract is not None:
+                    snapshot = build_tick_snapshot(
+                        contract=contract,
+                        contract_path=self._contract_path,
+                        current_phase=phase.value,
+                        phase_progress=1.0 if success and outcomes_gate_passed else 0.5,
+                        phase_outcomes=phase_outcomes,
+                        accumulated_cost=accumulated_cost,
+                        started_at=phase_started_at,
+                    )
+                    write_overseer_flag(
+                        contract_path=self._contract_path,
+                        current_phase=phase.value,
+                        session_id=contract.session_id,
+                        started_at=started_at,
+                        snapshot=snapshot,
+                        state_root=self._state_root,
+                    )
+                    append_tick_log(snapshot, state_root=self._state_root)
+                    if self._tick_emitter is not None:
+                        try:
+                            self._tick_emitter(snapshot)
+                        except Exception as exc:
+                            logger.warning("[OVERSEER] tick_emitter raised: %s", exc)
 
-            accumulated_cost += costs.get(phase, 0.0)
+                    # Evaluate declarative halt conditions (new OMN-8375 types).
+                    triggered = evaluate_halt_conditions(
+                        contract=contract,
+                        current_phase=phase.value,
+                        phase_outcomes=phase_outcomes,
+                        accumulated_cost=accumulated_cost,
+                        consecutive_failures=consecutive_failures,
+                        phase_started_at=phase_started_at,
+                    )
+                    halt_from_condition = self._process_halt_triggers(
+                        triggered, snapshot
+                    )
+                    if halt_from_condition is not None:
+                        halt_reason = halt_from_condition
+                        logger.error("Overnight halt triggered: %s", halt_reason)
+                        break
 
-            results.append(
-                ModelPhaseResult(
-                    phase=phase,
-                    success=success,
-                    skipped=False,
-                    error_message=error_msg,
-                )
-            )
+                    # Legacy halt checks (cost ceiling aggregate + halt_on_failure).
+                    halt = self._check_halt_conditions(
+                        contract=contract,
+                        phase=phase,
+                        phase_success=success,
+                        accumulated_cost=accumulated_cost,
+                    )
+                    if halt is not None:
+                        halt_reason = halt
+                        logger.error("Overnight halt triggered: %s", halt_reason)
+                        break
 
-            if contract is not None:
-                halt = self._check_halt_conditions(
-                    contract=contract,
-                    phase=phase,
-                    phase_success=success,
-                    accumulated_cost=accumulated_cost,
-                )
-                if halt is not None:
-                    halt_reason = halt
-                    logger.error("Overnight halt triggered: %s", halt_reason)
-                    break
-
-            if not success:
-                # On failure, stop the pipeline unless it's a non-critical phase.
-                # nightly_loop or build_loop failure stops everything; other phases continue.
-                if phase in (EnumPhase.NIGHTLY_LOOP, EnumPhase.BUILD_LOOP):
+                if not success:
+                    # On failure, stop the pipeline unless it's a non-critical phase.
+                    # nightly_loop or build_loop failure stops everything; other phases continue.
+                    if phase in (EnumPhase.NIGHTLY_LOOP, EnumPhase.BUILD_LOOP):
+                        logger.warning(
+                            "%s failed — halting overnight pipeline", phase.value
+                        )
+                        break
                     logger.warning(
-                        "%s failed — halting overnight pipeline", phase.value
+                        "Phase %s failed — continuing to next phase", phase.value
                     )
-                    break
-                logger.warning(
-                    "Phase %s failed — continuing to next phase", phase.value
-                )
+        finally:
+            if flag_written:
+                remove_overseer_flag(state_root=self._state_root)
 
         phases_run = [r.phase.value for r in results if not r.skipped]
         phases_failed = [
@@ -260,6 +397,35 @@ class HandlerOvernight:
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
         )
+
+    def _process_halt_triggers(
+        self,
+        triggered: list[tuple[ModelOvernightHaltCondition, str]],
+        snapshot: dict[str, object],
+    ) -> str | None:
+        """Route each triggered halt condition through its on_halt handler.
+
+        Returns a halt_reason string if any handler reports "stop", else None.
+        """
+        for cond, reason in triggered:
+            logger.warning(
+                "[OVERSEER] halt condition triggered: %s (%s) → %s",
+                cond.condition_id,
+                reason,
+                cond.on_halt,
+            )
+            try:
+                should_continue = self._halt_action_handler(cond, snapshot)
+            except Exception as exc:
+                logger.exception(
+                    "[OVERSEER] halt_action_handler raised for %s: %s",
+                    cond.condition_id,
+                    exc,
+                )
+                return f"halt_action_handler failed for {cond.condition_id}: {exc}"
+            if not should_continue:
+                return f"{cond.condition_id}: {reason}"
+        return None
 
     def _check_halt_conditions(
         self,
@@ -444,6 +610,38 @@ def _dispatch_platform_readiness(
     success = result.overall != EnumReadinessStatus.FAIL
     error = None if success else f"platform_readiness blockers: {result.blockers}"
     return success, error
+
+
+def _default_halt_action(
+    cond: ModelOvernightHaltCondition,
+    snapshot: dict[str, object],
+) -> bool:
+    """Default action router for triggered halt conditions (OMN-8375).
+
+    Behavior:
+      - ``hard_halt``: return False (pipeline stops).
+      - ``halt_and_notify``: log at ERROR, return False.
+      - ``dispatch_skill``: log the requested skill. Without a skill runner
+        injected, we cannot actually invoke it here — the snapshot is
+        persisted (flag file + tick log + emitter) so the sibling hook
+        + controlling session can act. Returns False to stop the pipeline;
+        callers that want autonomous recovery inject a custom
+        ``halt_action_handler`` that returns True after dispatch.
+    """
+    if cond.on_halt == "dispatch_skill":
+        logger.error(
+            "[OVERSEER] dispatch_skill requested: %s — no runner wired, halting",
+            cond.skill or "(none)",
+        )
+        return False
+    if cond.on_halt == "halt_and_notify":
+        logger.error(
+            "[OVERSEER] halt_and_notify: %s — snapshot emitted, stopping pipeline",
+            cond.condition_id,
+        )
+        return False
+    # hard_halt or unknown → stop
+    return False
 
 
 _DEFAULT_PHASE_DISPATCHERS: dict[EnumPhase, PhaseDispatcher] = {
