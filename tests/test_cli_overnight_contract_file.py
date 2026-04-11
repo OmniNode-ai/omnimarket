@@ -14,9 +14,13 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import yaml
+
+from omnimarket.nodes.node_overnight import __main__ as overnight_main
 
 
 @pytest.mark.unit
@@ -46,9 +50,9 @@ def test_contract_file_loads_valid_yaml(tmp_path):
         timeout=30,
     )
 
-    assert result.returncode == 0, (
-        f"CLI exited non-zero.\nstderr: {result.stderr}\nstdout: {result.stdout}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"CLI exited non-zero.\nstderr: {result.stderr}\nstdout: {result.stdout}"
 
     payload = json.loads(result.stdout)
     assert payload["dry_run"] is True
@@ -70,14 +74,14 @@ def test_dispatch_phases_flag_present_in_help():
 
 @pytest.mark.unit
 def test_dispatch_phases_flag_threads_to_handler(tmp_path):
-    """--dispatch-phases invokes the real phase dispatcher path (OMN-8404).
+    """--dispatch-phases is threaded to HandlerOvernight.handle (OMN-8404).
 
-    Without the flag, phases fall through as vacuous-green with ~0.0s
-    duration_seconds. With the flag, the default dispatchers run and produce
-    real phase results (success or captured failure). This test asserts the
-    flag is threaded through to ``HandlerOvernight.handle(dispatch_phases=...)``
-    by verifying the subprocess completes and reports results for the single
-    requested phase in both modes.
+    Mocks HandlerOvernight so the test directly asserts the CLI passes
+    ``dispatch_phases=True`` as a kwarg. Without mocking, a smoke-test based
+    assertion can pass even if the CLI stops forwarding the flag, because
+    vacuous-green and real-dispatch paths both return ``session_status``
+    values. The inverse case (flag omitted → ``dispatch_phases=False``) is
+    also asserted so a regression removing the forwarding is caught.
     """
     contract_data = {
         "session_id": "test-cli-dispatch-phases",
@@ -89,28 +93,49 @@ def test_dispatch_phases_flag_threads_to_handler(tmp_path):
     contract_file = tmp_path / "test-contract.yaml"
     contract_file.write_text(yaml.safe_dump(contract_data))
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "omnimarket.nodes.node_overnight",
-            "--contract-file",
-            str(contract_file),
-            "--dispatch-phases",
-            "--skip-build-loop",
-            "--skip-merge-sweep",
-            "--dry-run",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
+    fake_result = SimpleNamespace(
+        session_status="completed",
+        model_dump_json=lambda **_kwargs: '{"session_status":"completed"}',
     )
-    assert result.returncode == 0, (
-        f"CLI exited non-zero.\nstderr: {result.stderr}\nstdout: {result.stdout}"
-    )
-    payload = json.loads(result.stdout)
-    assert payload["session_status"] in ("completed", "partial", "failed")
-    assert "build_loop_orchestrator" in payload["phases_skipped"]
+
+    # With --dispatch-phases → handle() called with dispatch_phases=True
+    with (
+        patch.object(overnight_main, "HandlerOvernight") as mocked_cls,
+        patch.object(
+            sys,
+            "argv",
+            [
+                "node_overnight",
+                "--contract-file",
+                str(contract_file),
+                "--dispatch-phases",
+            ],
+        ),
+    ):
+        mocked_cls.return_value.handle.return_value = fake_result
+        overnight_main.main()
+
+    _, kwargs = mocked_cls.return_value.handle.call_args
+    assert kwargs["dispatch_phases"] is True
+
+    # Without --dispatch-phases → handle() called with dispatch_phases=False
+    with (
+        patch.object(overnight_main, "HandlerOvernight") as mocked_cls,
+        patch.object(
+            sys,
+            "argv",
+            [
+                "node_overnight",
+                "--contract-file",
+                str(contract_file),
+            ],
+        ),
+    ):
+        mocked_cls.return_value.handle.return_value = fake_result
+        overnight_main.main()
+
+    _, kwargs = mocked_cls.return_value.handle.call_args
+    assert kwargs["dispatch_phases"] is False
 
 
 @pytest.mark.unit
