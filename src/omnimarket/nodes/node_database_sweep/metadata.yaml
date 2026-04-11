@@ -1,0 +1,23 @@
+name: node_database_sweep
+version: "1.0.0"
+description: "Projection table health and migration tracking — checks row counts, staleness, and migration state across all ONEX databases"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_database_sweep: "omnimarket.nodes.node_database_sweep"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["sweep", "database", "projections", "migrations", "health"]
+pack: "infrastructure"
+display_name: "Database Sweep"
+node_role: "inventory"

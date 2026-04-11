@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Similarity Compute
+#
+# Migrated from omnimemory (OMN-8297, Wave 1)
+# Pure computation: cosine and euclidean vector similarity, no I/O.
+#
+# Related Tickets:
+#   - OMN-8296: Pre-work — add omninode-memory dep to omnimarket
+#   - OMN-8297: Wave 1 omnimemory → omnimarket migration
+name: "node_similarity_compute"
+node_type: "COMPUTE"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Pure compute node for vector similarity calculations. Supports cosine and euclidean distance metrics with optional threshold matching. No I/O operations. Migrated from omnimemory."
+input_model:
+  name: "ModelSimilarityComputeRequest"
+  module: "omnimarket.nodes.node_similarity_compute.models.model_similarity_compute_request"
+  description: "Vector pair plus operation and optional threshold."
+output_model:
+  name: "ModelSimilarityComputeResponse"
+  module: "omnimarket.nodes.node_similarity_compute.models.model_similarity_compute_response"
+  description: "Distance, similarity, and optional is_match flag."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "cosine_distance"
+      handler:
+        name: "HandlerSimilarityCompute"
+        module: "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute"
+    - operation: "euclidean_distance"
+      handler:
+        name: "HandlerSimilarityCompute"
+        module: "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute"
+    - operation: "compare"
+      handler:
+        name: "HandlerSimilarityCompute"
+        module: "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute"
+metadata:
+  description: "Vector similarity compute node migrated from omnimemory"
+  author: "OmniNode Team"
+  created: "2026-04-10"
+  tags:
+    - "compute"
+    - "similarity"
+    - "vector"
+    - "cosine"
+    - "euclidean"
+    - "memory"
+    - "OMN-8297"
+  related_tickets:
+    - "OMN-8297"
+    - "OMN-8296"

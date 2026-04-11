@@ -39,6 +39,7 @@ dependencies = [
     "python-dateutil>=2.9.0",
     "psycopg2-binary>=2.9.10",
     "httpx>=0.27.0",
+    "omninode-memory>=0.1.0",
 ]
 
 [project.urls]
@@ -95,6 +96,7 @@ node_baseline_capture = "omnimarket.nodes.node_baseline_capture.handlers.handler
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare:HandlerBaselineCompare"
 node_pr_lifecycle_triage_compute = "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage:HandlerPrLifecycleTriage"
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller.handlers.handler_nightly_loop_controller:HandlerNightlyLoopController"
+node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier:HandlerOverseerVerifier"
 node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory:HandlerPrLifecycleInventory"
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix:HandlerPrLifecycleFix"
 node_ci_watch = "omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch:HandlerCiWatch"
@@ -103,13 +105,22 @@ node_overnight = "omnimarket.nodes.node_overnight.handlers.handler_overnight:Han
 node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer:HandlerPrLifecycleStateReducer"
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:HandlerPrLifecycleOrchestrator"
 node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge:HandlerPrLifecycleMerge"
-node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier:HandlerOverseerVerifier"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup:NodeRetentionCleanup"
 node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scanner.handlers.handler_environment_health_scanner:NodeEnvironmentHealthScanner"
 node_autopilot_orchestrator = "omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator:HandlerAutopilotOrchestrator"
 node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap:HandlerSessionBootstrap"
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mortem:HandlerSessionPostMortem"
 node_onboarding = "omnimarket.nodes.node_onboarding.handlers.handler_onboarding:HandlerOnboarding"
+node_integration_test_runner = "omnimarket.nodes.node_integration_test_runner.handlers.handler_integration_test_runner:HandlerIntegrationTestRunner"
+node_similarity_compute = "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute:HandlerSimilarityCompute"
+node_persona_builder_compute = "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify:HandlerPersonaClassify"
+node_semantic_analyzer_compute = "omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute:HandlerSemanticCompute"
+node_database_sweep = "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep:NodeDatabaseSweep"
+node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep:NodeDuplicationSweep"
+node_doc_freshness_sweep = "omnimarket.nodes.node_doc_freshness_sweep.handlers.handler_doc_freshness_sweep:NodeDocFreshnessSweep"
+
+[project.scripts]
+onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
@@ -117,6 +128,7 @@ omnimarket = "omnimarket.nodes"
 [tool.uv.sources]
 omnibase-core = { path = "../omnibase_core", editable = true }
 omnibase-compat = { path = "../omnibase_compat", editable = true }
+omninode-memory = { path = "../omnimemory", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
@@ -172,6 +184,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnibase_infra.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "onex_change_control.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "omnimemory.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

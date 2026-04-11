@@ -26,6 +26,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -49,6 +50,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ProtocolTriageHandler,
     PrTriageResult,
     ReducerResult,
+    TriageRecord,
 )
 
 if TYPE_CHECKING:
@@ -77,6 +79,11 @@ class ModelPrLifecycleStartCommand(BaseModel):
     repos: str = Field(
         default="",
         description="Comma-separated repo slugs to filter (empty = all).",
+    )
+    max_parallel_polish: int = Field(
+        default=20,
+        ge=1,
+        description="Maximum concurrent pr-polish agents dispatched during Track B (FIXING phase).",
     )
     # Merge-sweep upgrade capabilities (OMN-8197)
     enable_auto_rebase: bool = Field(
@@ -468,17 +475,18 @@ class HandlerPrLifecycleOrchestrator:
                 )
 
                 assert self._fix is not None
-                fix_result = await self._fix.handle(
+                fix_results = await self._dispatch_fix_parallel(
+                    fix_prs=fix_prs,
                     correlation_id=command.correlation_id,
-                    prs_to_fix=fix_prs,
                     dry_run=command.dry_run,
+                    max_parallel=command.max_parallel_polish,
                 )
-                state.prs_fixed = fix_result.prs_dispatched
-                state.prs_skipped += fix_result.prs_skipped
+                state.prs_fixed = sum(r.prs_dispatched for r in fix_results)
+                state.prs_skipped += sum(r.prs_skipped for r in fix_results)
                 logger.info(
                     "[PR-LIFECYCLE-ORCH] fix completed: %d dispatched, %d skipped",
-                    fix_result.prs_dispatched,
-                    fix_result.prs_skipped,
+                    state.prs_fixed,
+                    sum(r.prs_skipped for r in fix_results),
                 )
                 next_from = "FIXING"
 
@@ -509,6 +517,54 @@ class HandlerPrLifecycleOrchestrator:
             state.prs_skipped,
         )
         return self._build_result(state, command.correlation_id)
+
+    async def _dispatch_fix_parallel(
+        self,
+        *,
+        fix_prs: tuple[TriageRecord, ...],
+        correlation_id: UUID,
+        dry_run: bool,
+        max_parallel: int,
+    ) -> list[FixResult]:
+        """Fan out fix dispatch across all PRs in parallel, bounded by max_parallel.
+
+        Each PR gets its own call to the fix handler so they run concurrently.
+        A semaphore caps simultaneous in-flight dispatches to max_parallel.
+        """
+        assert self._fix is not None
+        semaphore = asyncio.Semaphore(max_parallel)
+
+        async def _fix_one(pr: TriageRecord) -> FixResult:
+            async with semaphore:
+                raw = await self._fix.handle(  # type: ignore[union-attr]
+                    correlation_id=correlation_id,
+                    prs_to_fix=(pr,),
+                    dry_run=dry_run,
+                )
+                # The real fix handler returns ModelPrLifecycleFixResult (per-PR).
+                # Map it to the aggregated FixResult the orchestrator expects.
+                if isinstance(raw, FixResult):
+                    return raw
+                fix_applied: bool = getattr(raw, "fix_applied", False)
+                return FixResult(
+                    prs_dispatched=1 if fix_applied else 0,
+                    prs_skipped=0 if fix_applied else 1,
+                )
+
+        logger.info(
+            "[PR-LIFECYCLE-ORCH] dispatching %d fix agents (max_parallel=%d)",
+            len(fix_prs),
+            max_parallel,
+        )
+        gathered: list[FixResult | BaseException] = list(
+            await asyncio.gather(
+                *(_fix_one(pr) for pr in fix_prs), return_exceptions=True
+            )
+        )
+        errors: list[Exception] = [r for r in gathered if isinstance(r, Exception)]
+        if errors:
+            raise ExceptionGroup("fix dispatch errors", errors)
+        return [r for r in gathered if isinstance(r, FixResult)]
 
     def _build_result(
         self, state: _SweepState, correlation_id: UUID

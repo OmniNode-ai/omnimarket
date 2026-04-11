@@ -48,6 +48,9 @@ jobs:
       - name: Clone omnibase_spi
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_spi.git ../omnibase_spi
 
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:

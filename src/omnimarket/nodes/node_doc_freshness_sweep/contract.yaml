@@ -1,0 +1,62 @@
+---
+name: doc_freshness_sweep
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Scan documentation files across ONEX platform repos for broken references,
+  stale content, and CLAUDE.md accuracy. Delegates to onex_change_control scanners
+  for reference extraction, resolution, and staleness scoring.
+
+handler:
+  module: omnimarket.nodes.node_doc_freshness_sweep.handlers.handler_doc_freshness_sweep
+  class: NodeDocFreshnessSweep
+  input_model: omnimarket.nodes.node_doc_freshness_sweep.handlers.handler_doc_freshness_sweep.DocFreshnessSweepRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 300000
+
+inputs:
+  omni_home:
+    type: str
+    description: "Root path of the omni_home repo registry"
+    required: false
+  repos:
+    type: list[str]
+    description: "Repo names to scan (default: all repos under omni_home)"
+    required: false
+  claude_md_only:
+    type: bool
+    description: "Only check CLAUDE.md files (faster)"
+    required: false
+    default: false
+  broken_only:
+    type: bool
+    description: "Only report broken references, skip staleness"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Preview findings without creating tickets"
+    required: false
+    default: false
+
+outputs:
+  report:
+    type: ModelDocFreshnessSweepReport
+    description: "Full freshness sweep report with per-repo breakdowns"
+  status:
+    type: str
+    description: "healthy | issues_found | error"
+
+terminal_event: onex.evt.omnimarket.doc-freshness-sweep-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.doc-freshness-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.doc-freshness-sweep-completed.v1

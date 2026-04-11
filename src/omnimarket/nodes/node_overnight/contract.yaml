@@ -6,10 +6,12 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Overnight session orchestrator. Sequences the autonomous overnight
-  pipeline: build_loop_orchestrator -> merge_sweep -> ci_watch ->
-  platform_readiness. Emits a session-completed event with per-phase
-  summary. No LLM in the orchestration layer — each node handles its own
-  logic deterministically.
+  pipeline: nightly_loop_controller -> build_loop_orchestrator ->
+  merge_sweep -> ci_watch -> platform_readiness. nightly_loop_controller
+  runs first to dispatch mechanical tickets; the build loop processes them.
+  Emits a session-completed event with per-phase summary. No LLM in the
+  orchestration layer — each node handles its own logic deterministically.
+  (OMN-8025: nightly_loop trigger wired into overnight pipeline)
 
 handler:
   module: omnimarket.nodes.node_overnight.handlers.handler_overnight
@@ -32,6 +34,11 @@ inputs:
     description: "Maximum build loop cycles (0 = unlimited)"
     required: false
     default: 0
+  skip_nightly_loop:
+    type: bool
+    description: "Skip nightly_loop_controller phase"
+    required: false
+    default: false
   skip_build_loop:
     type: bool
     description: "Skip build loop phase"
@@ -67,3 +74,5 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.overnight.phase-completed.v1
     - onex.evt.omnimarket.overnight.session-completed.v1
+    # nightly_loop_controller trigger (OMN-8025)
+    - onex.cmd.omnimarket.nightly-loop-start.v1

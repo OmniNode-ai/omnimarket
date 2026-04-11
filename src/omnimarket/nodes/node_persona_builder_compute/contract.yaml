@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Persona Builder Compute
+#
+# Migrated from omnimemory (OMN-8297, Wave 1)
+# Pure computation: incremental persona classification from signals, no I/O.
+#
+# Related Tickets:
+#   - OMN-8297: Wave 1 omnimemory → omnimarket migration
+name: "node_persona_builder_compute"
+node_type: "COMPUTE"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Pure compute node that classifies PersonaSignal events into an updated PersonaProfile. Heuristic rules with conservatism to prevent thrashing. No I/O. Migrated from omnimemory."
+input_model:
+  name: "ModelPersonaClassifyRequest"
+  module: "omnimarket.nodes.node_persona_builder_compute.models.model_classify_request"
+  description: "Batch of persona signals plus optional existing profile."
+output_model:
+  name: "ModelPersonaClassifyResult"
+  module: "omnimarket.nodes.node_persona_builder_compute.models.model_classify_result"
+  description: "Updated persona snapshot with processing metadata."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "classify"
+      handler:
+        name: "HandlerPersonaClassify"
+        module: "omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify"
+metadata:
+  description: "Persona builder compute node migrated from omnimemory"
+  author: "OmniNode Team"
+  created: "2026-04-10"
+  tags:
+    - "compute"
+    - "persona"
+    - "classification"
+    - "personalization"
+    - "memory"
+    - "OMN-8297"
+  related_tickets:
+    - "OMN-8297"
