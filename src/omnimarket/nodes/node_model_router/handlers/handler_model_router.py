@@ -154,8 +154,14 @@ class HandlerModelRouter:
             await self._emit_degradation_event(model_key, correlation_id)
 
     def _record_success(self, model_key: str) -> None:
+        was_degraded = model_key in self._degraded
         self._streak.pop(model_key, None)
         self._degraded.discard(model_key)
+        self._health_cache.pop(model_key, None)
+        if was_degraded:
+            logger.info(
+                "Primary endpoint '%s' recovered from degraded state", model_key
+            )
 
     async def _emit_degradation_event(
         self, model_key: str, correlation_id: str
