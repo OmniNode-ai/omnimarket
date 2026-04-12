@@ -48,6 +48,15 @@ _PHASE1_CRON_NAMES: frozenset[str] = frozenset({"build-dispatch-pulse"})
 # Session modes that activate build_dispatch_pulse
 _BUILD_DISPATCH_ACTIVE_MODES: frozenset[str] = frozenset({"build"})
 
+# Publish topics declared in contract.yaml — single source of truth.
+# Update here if contract.yaml publish_topics changes.
+_TOPIC_SESSION_CRON_HEALTH_VIOLATION = (
+    "onex.evt.omnimarket.session-cron-health-violation.v1"
+)
+_TOPIC_SESSION_BOOTSTRAP_COMPLETED = (
+    "onex.evt.omnimarket.session-bootstrap-completed.v2"
+)
+
 
 def _interval_to_cron(interval_min: int) -> str:
     """Convert an interval in minutes to a cron expression.
@@ -147,6 +156,7 @@ def build_pulse_prompt(
     timeout_budget_ms: int,
     session_id: str,
     state_dir: str,
+    model_routing_preference: str = "local-first",
 ) -> str:
     """Generate the prompt template for a pulse cron job.
 
@@ -160,6 +170,16 @@ def build_pulse_prompt(
     stall_threshold_sec = int(tick_timeout_sec * 0.33)
     dead_threshold_sec = int(tick_timeout_sec * 0.66)
 
+    # Derive fallback agent string from routing preference.
+    _routing_to_agent = {
+        "local-first": "Agent(model=local)",
+        "frontier-only": "Agent(model=opus)",
+        "hybrid": "Agent(model=sonnet)",
+    }
+    fallback_agent = _routing_to_agent.get(
+        model_routing_preference, "Agent(model=sonnet)"
+    )
+
     if cron_name == "build-dispatch-pulse":
         return (
             f"## build_dispatch_pulse -- Session {session_id}\n\n"
@@ -168,21 +188,21 @@ def build_pulse_prompt(
             f"2. If prev tick exists: for each task_id in prev_tick.dispatched_task_ids,\n"
             f"   verify {state_dir}/dispatch-events/{{prev_tick_id}}-{{task_id}}.json exists.\n"
             f"   If any task_id has no matching file -> HALLUCINATED PASS -> emit\n"
-            f"   onex.evt.omnimarket.session-cron-health-violation.v1.\n\n"
+            f"   {_TOPIC_SESSION_CRON_HEALTH_VIOLATION}.\n\n"
             f"### Stall detection (before dispatching new work)\n"
             f"For each in-progress task in TaskList:\n"
             f"  - STALLED if >{stall_threshold_sec}s since last update -> SendMessage (1-turn grace).\n"
             f"  - DEAD if >{dead_threshold_sec}s since last update -> respawn with narrowed scope.\n"
             f"  - Cap respawns at 3. After 3rd failure -> escalate to user.\n"
             f"  - Log respawns to {state_dir}/friction/respawn-{{task_id}}-attempt-{{n}}.json\n\n"
-            f"### Dispatch\n"
+            f"### Dispatch (routing={model_routing_preference})\n"
             f"1. Acquire dispatch lease: {state_dir}/dispatch-lock.json\n"
             f"2. Pull Linear active sprint. Classify unworked tickets (mechanical vs reasoning).\n"
             f"3. For each unworked ticket:\n"
             f"   a. Generate tick_id = tick-YYYYMMDD-HHMM.\n"
             f"   b. Check if node_dispatch_worker is deployed and consuming.\n"
             f"      YES -> dispatch via dogfood path, write dispatch-event file.\n"
-            f"      NO  -> dispatch via Agent(model=sonnet), write dispatch-event file.\n"
+            f"      NO  -> dispatch via {fallback_agent}, write dispatch-event file.\n"
             f"   c. Write {state_dir}/dispatch-events/{{tick_id}}-{{task_id}}.json\n"
             f"      {{ tick_id, task_id, ticket_id, dispatch_path, model_used, timestamp }}\n"
             f"   d. Write {state_dir}/task-contracts/{{task_id}}.json (ModelTaskContract).\n"
@@ -192,7 +212,7 @@ def build_pulse_prompt(
             f"dispatched = len(dispatched_task_ids)\n\n"
             f"Gate 1 -- VACUOUS_PULSE:\n"
             f"  If backlog_unworked_count > 0 AND dispatched == 0:\n"
-            f"    Emit onex.evt.omnimarket.session-cron-health-violation.v1\n"
+            f"    Emit {_TOPIC_SESSION_CRON_HEALTH_VIOLATION}\n"
             f"    Write {state_dir}/friction/vacuous-pulse-{{timestamp}}.json\n"
             f"    Write {state_dir}/pulse-ticks/{{tick_id}}.json (verdict=fail)\n"
             f"    STOP -- do not report success.\n\n"
@@ -307,76 +327,84 @@ class HandlerSessionBootstrap:
 
         if command.session_mode in _BUILD_DISPATCH_ACTIVE_MODES:
             existing_crons = self._list_existing_crons()
-            existing_names: set[str] = {c.get("name", "") for c in existing_crons}
-
-            for spec in _REQUIRED_CRONS:
-                # Phase filter: only create phase-1 crons
-                if spec.cron_name not in _PHASE1_CRON_NAMES:
-                    logger.debug("Skipping phase-2 cron: %s", spec.cron_name)
-                    continue
-
-                if command.session_mode not in spec.active_modes:
-                    logger.debug(
-                        "Cron %s not active in mode %s -- skipping",
-                        spec.cron_name,
-                        command.session_mode,
-                    )
-                    continue
-
-                if spec.cron_name in existing_names:
-                    # C5: cron already registered -- skip, record existing ID
-                    existing_id = next(
-                        (
-                            c.get("id", spec.cron_name)
-                            for c in existing_crons
-                            if c.get("name") == spec.cron_name
-                        ),
-                        spec.cron_name,
-                    )
-                    logger.info(
-                        "Cron already registered: %s (id=%s)",
-                        spec.cron_name,
-                        existing_id,
-                    )
-                    crons_registered.append(existing_id)
-                    continue
-
-                if command.dry_run:
-                    logger.info("dry_run: would CronCreate %s", spec.cron_name)
-                    crons_registered.append(f"(dry-run:{spec.cron_name})")
-                    continue
-
-                # Create the cron
-                prompt = build_pulse_prompt(
-                    cron_name=spec.cron_name,
-                    timeout_budget_ms=spec.timeout_budget_ms,
-                    session_id=command.session_id,
-                    state_dir=command.state_dir,
+            if existing_crons is None:
+                # CronList failed — skip registration entirely to avoid creating duplicates.
+                _bump_status(
+                    EnumBootstrapStatus.DEGRADED,
+                    "CronList unavailable — skipping cron registration to avoid duplicates",
                 )
-                cron_expr = _interval_to_cron(spec.interval_min)
-                job_id = self._create_cron(cron_expr, prompt, recurring=True)
+            else:
+                existing_names: set[str] = {c.get("name", "") for c in existing_crons}
 
-                if job_id:
-                    logger.info(
-                        "CronCreate succeeded: %s -> %s", spec.cron_name, job_id
-                    )
-                    crons_registered.append(job_id)
-                else:
-                    failed_cron_count += 1
-                    _bump_status(
-                        EnumBootstrapStatus.DEGRADED,
-                        f"CronCreate failed for {spec.cron_name}",
-                    )
+                for spec in _REQUIRED_CRONS:
+                    # Phase filter: only create phase-1 crons
+                    if spec.cron_name not in _PHASE1_CRON_NAMES:
+                        logger.debug("Skipping phase-2 cron: %s", spec.cron_name)
+                        continue
 
-            # If all phase-1 crons failed, mark as FAILED
-            phase1_required = sum(
-                1
-                for s in _REQUIRED_CRONS
-                if s.cron_name in _PHASE1_CRON_NAMES
-                and command.session_mode in s.active_modes
-            )
-            if phase1_required > 0 and failed_cron_count >= phase1_required:
-                current_status = EnumBootstrapStatus.FAILED
+                    if command.session_mode not in spec.active_modes:
+                        logger.debug(
+                            "Cron %s not active in mode %s -- skipping",
+                            spec.cron_name,
+                            command.session_mode,
+                        )
+                        continue
+
+                    if spec.cron_name in existing_names:
+                        # C5: cron already registered -- skip, record existing ID
+                        existing_id = next(
+                            (
+                                c.get("id", spec.cron_name)
+                                for c in existing_crons
+                                if c.get("name") == spec.cron_name
+                            ),
+                            spec.cron_name,
+                        )
+                        logger.info(
+                            "Cron already registered: %s (id=%s)",
+                            spec.cron_name,
+                            existing_id,
+                        )
+                        crons_registered.append(existing_id)
+                        continue
+
+                    if command.dry_run:
+                        logger.info("dry_run: would CronCreate %s", spec.cron_name)
+                        crons_registered.append(f"(dry-run:{spec.cron_name})")
+                        continue
+
+                    # Create the cron
+                    prompt = build_pulse_prompt(
+                        cron_name=spec.cron_name,
+                        timeout_budget_ms=spec.timeout_budget_ms,
+                        session_id=command.session_id,
+                        state_dir=command.state_dir,
+                        model_routing_preference=command.model_routing_preference,
+                    )
+                    cron_expr = _interval_to_cron(spec.interval_min)
+                    job_id = self._create_cron(cron_expr, prompt, recurring=True)
+
+                    if job_id:
+                        logger.info(
+                            "CronCreate succeeded: %s -> %s", spec.cron_name, job_id
+                        )
+                        crons_registered.append(job_id)
+                    else:
+                        failed_cron_count += 1
+                        _bump_status(
+                            EnumBootstrapStatus.DEGRADED,
+                            f"CronCreate failed for {spec.cron_name}",
+                        )
+
+                # If all phase-1 crons failed, mark as FAILED
+                phase1_required = sum(
+                    1
+                    for s in _REQUIRED_CRONS
+                    if s.cron_name in _PHASE1_CRON_NAMES
+                    and command.session_mode in s.active_modes
+                )
+                if phase1_required > 0 and failed_cron_count >= phase1_required:
+                    current_status = EnumBootstrapStatus.FAILED
 
         # Write cron IDs to disk
         if not command.dry_run and crons_registered:
@@ -409,16 +437,24 @@ class HandlerSessionBootstrap:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _list_existing_crons(self) -> list[dict[str, str]]:
-        """Call CronList and return list of job dicts.  Never raises."""
+    def _list_existing_crons(self) -> list[dict[str, str]] | None:
+        """Call CronList and return list of job dicts, or None on error.
+
+        Returns None (not an empty list) on failure so callers can distinguish
+        "CronList unreachable" from "no crons registered".  Callers must skip
+        CronCreate when None is returned to avoid creating duplicates.
+        """
         try:
             result = self._cron_list_fn()
             if isinstance(result, list):
                 return [dict(c) for c in result]
             return []
         except Exception as exc:
-            logger.warning("CronList failed -- treating as empty: %s", exc)
-            return []
+            logger.warning(
+                "CronList failed — skipping cron registration to avoid duplicates: %s",
+                exc,
+            )
+            return None
 
     def _create_cron(self, cron: str, prompt: str, recurring: bool) -> str | None:
         """Call CronCreate and return job ID, or None on failure."""

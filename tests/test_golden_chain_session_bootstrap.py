@@ -205,7 +205,9 @@ class TestGoldenChainSessionBootstrap:
             )
             result = handler.handle(cmd)
 
-        assert create_calls == [], "CronCreate must NOT be called when cron already exists"
+        assert create_calls == [], (
+            "CronCreate must NOT be called when cron already exists"
+        )
         assert "existing-job-42" in result.crons_registered
 
     def test_cron_create_called_when_not_registered(self) -> None:

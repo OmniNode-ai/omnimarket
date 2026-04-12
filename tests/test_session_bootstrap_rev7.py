@@ -115,7 +115,9 @@ class TestEnumDodCheckType:
         restored = ModelDodEvidenceCheck.model_validate(data)
         assert restored.check_type == EnumDodCheckType.PR_OPENED
 
-    def test_model_task_contract_roundtrip(self, sample_contract: ModelTaskContract) -> None:
+    def test_model_task_contract_roundtrip(
+        self, sample_contract: ModelTaskContract
+    ) -> None:
         """ModelTaskContract serializes to JSON and back cleanly."""
         data = sample_contract.model_dump_json()
         parsed = ModelTaskContract.model_validate_json(data)
@@ -123,11 +125,15 @@ class TestEnumDodCheckType:
         assert parsed.ticket_id == sample_contract.ticket_id
         assert parsed.dod_evidence[0].check_type == EnumDodCheckType.PR_OPENED
 
-    def test_stall_timeout_seconds_defaults_none(self, sample_contract: ModelTaskContract) -> None:
+    def test_stall_timeout_seconds_defaults_none(
+        self, sample_contract: ModelTaskContract
+    ) -> None:
         """stall_timeout_seconds defaults to None (no override)."""
         assert sample_contract.stall_timeout_seconds is None
 
-    def test_run_dod_check_pr_opened_without_gh(self, sample_contract: ModelTaskContract) -> None:
+    def test_run_dod_check_pr_opened_without_gh(
+        self, sample_contract: ModelTaskContract
+    ) -> None:
         """run_dod_check(PR_OPENED) fails gracefully when gh is not configured."""
         # In test environment, gh may fail with non-zero exit or timeout.
         # We just verify the function returns (bool, str) without raising.
@@ -139,7 +145,9 @@ class TestEnumDodCheckType:
         self, sample_contract: ModelTaskContract
     ) -> None:
         """rendered_output check returns True (deferred, phase 2)."""
-        passed, detail = run_dod_check(sample_contract, EnumDodCheckType.RENDERED_OUTPUT)
+        passed, detail = run_dod_check(
+            sample_contract, EnumDodCheckType.RENDERED_OUTPUT
+        )
         assert passed is True
         assert "deferred" in detail.lower()
 
@@ -189,7 +197,11 @@ class TestDispatchLease:
             ).isoformat()
             with open(lock_path, "w") as f:
                 json.dump(
-                    {"tick_id": "old-tick", "acquired_at": old_ts, "holder": "old-holder"},
+                    {
+                        "tick_id": "old-tick",
+                        "acquired_at": old_ts,
+                        "holder": "old-holder",
+                    },
                     f,
                 )
 
@@ -208,7 +220,11 @@ class TestDispatchLease:
 
     def test_context_manager_releases_on_exception(self) -> None:
         """dispatch_lease context manager releases even when body raises."""
-        with tempfile.TemporaryDirectory() as state_dir, pytest.raises(RuntimeError), dispatch_lease(state_dir, "tick-err", "err-holder"):
+        with (
+            tempfile.TemporaryDirectory() as state_dir,
+            pytest.raises(RuntimeError),
+            dispatch_lease(state_dir, "tick-err", "err-holder"),
+        ):
             raise RuntimeError("simulated dispatch error")
 
     def test_context_manager_releases_on_exception_no_lock_after(self) -> None:
@@ -223,6 +239,7 @@ class TestDispatchLease:
             assert read_dispatch_lease(tmp) is None
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_read_returns_none_when_no_lock(self) -> None:
