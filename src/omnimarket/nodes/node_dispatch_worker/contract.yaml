@@ -1,0 +1,106 @@
+---
+name: node_dispatch_worker
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+template_version: "1.0.0"
+template_steward: "team-lead"
+
+description: >
+  Validate and compile a worker dispatch spec into a role-templated agent prompt.
+  Pure prep — reads TaskList state, validates inputs, compiles role templates with
+  collision fences, and returns structured spawn args. Does NOT call Agent(),
+  TaskCreate, or any external APIs.
+
+handler:
+  module: omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker
+  class: HandlerDispatchWorker
+  input_model: omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command.ModelDispatchWorkerCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: false
+  timeout_ms: 10000
+
+inputs:
+  name:
+    type: str
+    required: true
+    description: "Worker handle (used in task subject and agent name)"
+  team:
+    type: str
+    required: true
+    description: "Team name for task scoping"
+  role:
+    type: str
+    required: true
+    description: "Worker role: watcher|fixer|designer|auditor|synthesizer|sweep|ops"
+  scope:
+    type: str
+    required: true
+    description: "Goal description for the worker"
+  targets:
+    type: list
+    required: true
+    description: "Tickets/PRs/paths this worker owns"
+  collision_fences:
+    type: list
+    required: false
+    default: []
+    description: "Auto-populated from TaskList if empty"
+  reports_to:
+    type: str
+    required: false
+    default: "team-lead"
+    description: "Agent name to SendMessage reports to"
+  wall_clock_cap_min:
+    type: int
+    required: false
+    description: "Wall-clock cap in minutes (defaults by role: watcher=90, fixer=90, designer=120, auditor=60, synthesizer=90, sweep=10, ops=480)"
+  model:
+    type: str
+    required: false
+    default: "sonnet"
+    description: "Model to pass to Agent() spawn args"
+  replace:
+    type: bool
+    required: false
+    default: false
+    description: "Kill existing in_progress worker with same name and restart"
+
+outputs:
+  validated_task_description:
+    type: str
+    description: "Ready-to-pass to TaskCreate()"
+  validated_prompt_template:
+    type: str
+    description: "Ready-to-pass to Agent(prompt=...)"
+  proposed_agent_spawn_args:
+    type: dict
+    description: "name, team_name, model, subagent_type args for Agent()"
+  collision_fence_embeds:
+    type: list
+    description: "Auto-populated fence list (for audit)"
+  rejected_reason:
+    type: str
+    description: "Non-empty string if the node rejected the request"
+
+terminal_event: onex.evt.omnimarket.dispatch-worker-compiled.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dispatch-worker-compile.v1
+  publish_topics:
+    - onex.evt.omnimarket.dispatch-worker-compiled.v1
+
+dod_evidence:
+  PYTEST:
+    description: all 5 integration tests pass
+    command: uv run pytest tests/ -k "test_dispatch_worker" -v
+    pass_criteria: all 5 tests pass; golden template outputs match fixtures
+  CI:
+    description: template behavioral invariants check passes
+    command: python check_template_behavioral_invariants.py
+    pass_criteria: all role template invariants green; template_version bumped if content changed

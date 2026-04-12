@@ -1,0 +1,23 @@
+name: node_dispatch_worker
+version: "1.0.0"
+description: "Compile worker dispatch spec into role-templated agent prompt with collision fences"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dispatch_worker: "omnimarket.nodes.node_dispatch_worker"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["dispatch", "worker", "team", "orchestration", "role-templates"]
+pack: "orchestration"
+display_name: "Dispatch Worker"
+node_role: "compute"
