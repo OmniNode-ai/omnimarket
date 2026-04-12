@@ -68,6 +68,77 @@ def _check_pr_opened(contract: ModelTaskContract) -> tuple[bool, str]:
         return False, f"pr_opened check error: {exc}"
 
 
+def _check_pr_merged(contract: ModelTaskContract) -> tuple[bool, str]:
+    """Verify the PR for this task's branch is actually merged.
+
+    Uses 'gh pr view' live query — never reads from cached Linear attachment
+    metadata, which only knows a PR exists, not whether it merged.
+    Returns PASS only when state == "MERGED" and mergedAt is non-null.
+    Linked-but-open and closed-unmerged PRs both return INCOMPLETE.
+    """
+    try:
+        import json
+
+        # Find the PR number first
+        list_result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                contract.target_repo,
+                "--head",
+                contract.target_branch_pattern,
+                "--json",
+                "number",
+                "--limit",
+                "1",
+                "--state",
+                "all",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if list_result.returncode != 0:
+            return False, f"gh pr list failed: {list_result.stderr.strip()}"
+        prs = json.loads(list_result.stdout or "[]")
+        if not prs:
+            return False, "No PR found for branch pattern"
+        pr_number = prs[0]["number"]
+
+        view_result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--repo",
+                contract.target_repo,
+                "--json",
+                "state,mergedAt",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if view_result.returncode != 0:
+            return False, f"gh pr view failed: {view_result.stderr.strip()}"
+        data = json.loads(view_result.stdout)
+        state = data.get("state", "")
+        merged_at = data.get("mergedAt")
+        if state == "MERGED" and merged_at:
+            return True, f"PR #{pr_number} merged at {merged_at}"
+        return (
+            False,
+            f"PR #{pr_number} not merged (state={state!r}, mergedAt={merged_at!r})",
+        )
+    except subprocess.TimeoutExpired:
+        return False, "pr_merged check timed out"
+    except Exception as exc:
+        return False, f"pr_merged check error: {exc}"
+
+
 def _check_tests_pass(contract: ModelTaskContract) -> tuple[bool, str]:
     """Check CI status on PR head via GitHub API (best-effort; may be pending)."""
     try:
@@ -116,17 +187,33 @@ def _check_golden_chain(contract: ModelTaskContract) -> tuple[bool, str]:
     Delegates to 'onex run node_golden_chain_sweep' with repo scoping.
     Repo name derived from contract.target_repo (e.g. 'OmniNode-ai/omnimarket').
     """
-    repo_name = contract.target_repo.split("/")[-1] if "/" in contract.target_repo else contract.target_repo
+    repo_name = (
+        contract.target_repo.split("/")[-1]
+        if "/" in contract.target_repo
+        else contract.target_repo
+    )
     try:
         result = subprocess.run(
-            ["uv", "run", "onex", "run", "node_golden_chain_sweep", "--", "--repo", repo_name],
+            [
+                "uv",
+                "run",
+                "onex",
+                "run",
+                "node_golden_chain_sweep",
+                "--",
+                "--repo",
+                repo_name,
+            ],
             capture_output=True,
             text=True,
             timeout=120,
         )
         if result.returncode == 0:
             return True, f"Golden chain passed for {repo_name}"
-        return False, f"Golden chain failed: {result.stderr.strip() or result.stdout.strip()}"
+        return (
+            False,
+            f"Golden chain failed: {result.stderr.strip() or result.stdout.strip()}",
+        )
     except subprocess.TimeoutExpired:
         return False, "golden_chain check timed out (120s)"
     except Exception as exc:
@@ -146,7 +233,11 @@ def _check_pre_commit_clean(contract: ModelTaskContract) -> tuple[bool, str]:
         return False, "ONEX_WORKTREES_ROOT not set — cannot locate worktree"
     # Derive ticket prefix from ticket_id (e.g. OMN-8505)
     ticket_prefix = contract.ticket_id.upper()
-    repo_name = contract.target_repo.split("/")[-1] if "/" in contract.target_repo else contract.target_repo
+    repo_name = (
+        contract.target_repo.split("/")[-1]
+        if "/" in contract.target_repo
+        else contract.target_repo
+    )
     worktree_path = os.path.join(worktrees_root, ticket_prefix, repo_name)
     if not os.path.isdir(worktree_path):
         return False, f"Worktree not found: {worktree_path}"
@@ -205,7 +296,10 @@ def _check_overseer_5check(contract: ModelTaskContract) -> tuple[bool, str]:
         )
         if result.returncode == 0:
             return True, f"Overseer 5-check passed for {contract.ticket_id}"
-        return False, f"Overseer 5-check failed: {result.stderr.strip() or result.stdout.strip()}"
+        return (
+            False,
+            f"Overseer 5-check failed: {result.stderr.strip() or result.stdout.strip()}",
+        )
     except subprocess.TimeoutExpired:
         return False, "overseer_5check timed out (120s)"
     except Exception as exc:
@@ -216,6 +310,7 @@ def _check_overseer_5check(contract: ModelTaskContract) -> tuple[bool, str]:
 # All params come from ModelTaskContract fields; no shell injection possible.
 DOD_VERIFICATION_REGISTRY: dict[EnumDodCheckType, DodVerifier] = {
     EnumDodCheckType.PR_OPENED: _check_pr_opened,
+    EnumDodCheckType.PR_MERGED: _check_pr_merged,
     EnumDodCheckType.TESTS_PASS: _check_tests_pass,
     EnumDodCheckType.GOLDEN_CHAIN: _check_golden_chain,
     EnumDodCheckType.PRE_COMMIT_CLEAN: _check_pre_commit_clean,

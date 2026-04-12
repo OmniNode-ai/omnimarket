@@ -15,6 +15,7 @@ import json
 import os
 import tempfile
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -115,7 +116,9 @@ class TestEnumDodCheckType:
         restored = ModelDodEvidenceCheck.model_validate(data)
         assert restored.check_type == EnumDodCheckType.PR_OPENED
 
-    def test_model_task_contract_roundtrip(self, sample_contract: ModelTaskContract) -> None:
+    def test_model_task_contract_roundtrip(
+        self, sample_contract: ModelTaskContract
+    ) -> None:
         """ModelTaskContract serializes to JSON and back cleanly."""
         data = sample_contract.model_dump_json()
         parsed = ModelTaskContract.model_validate_json(data)
@@ -123,11 +126,15 @@ class TestEnumDodCheckType:
         assert parsed.ticket_id == sample_contract.ticket_id
         assert parsed.dod_evidence[0].check_type == EnumDodCheckType.PR_OPENED
 
-    def test_stall_timeout_seconds_defaults_none(self, sample_contract: ModelTaskContract) -> None:
+    def test_stall_timeout_seconds_defaults_none(
+        self, sample_contract: ModelTaskContract
+    ) -> None:
         """stall_timeout_seconds defaults to None (no override)."""
         assert sample_contract.stall_timeout_seconds is None
 
-    def test_run_dod_check_pr_opened_without_gh(self, sample_contract: ModelTaskContract) -> None:
+    def test_run_dod_check_pr_opened_without_gh(
+        self, sample_contract: ModelTaskContract
+    ) -> None:
         """run_dod_check(PR_OPENED) fails gracefully when gh is not configured."""
         # In test environment, gh may fail with non-zero exit or timeout.
         # We just verify the function returns (bool, str) without raising.
@@ -139,9 +146,89 @@ class TestEnumDodCheckType:
         self, sample_contract: ModelTaskContract
     ) -> None:
         """rendered_output check returns True (deferred, phase 2)."""
-        passed, detail = run_dod_check(sample_contract, EnumDodCheckType.RENDERED_OUTPUT)
+        passed, detail = run_dod_check(
+            sample_contract, EnumDodCheckType.RENDERED_OUTPUT
+        )
         assert passed is True
         assert "deferred" in detail.lower()
+
+    def _make_gh_run(
+        self, list_stdout: str, view_stdout: str | None = None
+    ) -> MagicMock:
+        """Build a side_effect list for subprocess.run calls in _check_pr_merged."""
+        list_result = MagicMock()
+        list_result.returncode = 0
+        list_result.stdout = list_stdout
+        list_result.stderr = ""
+        results = [list_result]
+        if view_stdout is not None:
+            view_result = MagicMock()
+            view_result.returncode = 0
+            view_result.stdout = view_stdout
+            view_result.stderr = ""
+            results.append(view_result)
+        return results
+
+    @patch(
+        "omnimarket.nodes.node_session_bootstrap.dod_verification_registry.subprocess.run"
+    )
+    def test_pr_merged_returns_pass_when_merged(
+        self, mock_run: MagicMock, sample_contract: ModelTaskContract
+    ) -> None:
+        """PR with state=MERGED and mergedAt set → PASS."""
+        mock_run.side_effect = self._make_gh_run(
+            list_stdout='[{"number": 42}]',
+            view_stdout='{"state": "MERGED", "mergedAt": "2026-04-11T22:00:00Z"}',
+        )
+        passed, detail = run_dod_check(sample_contract, EnumDodCheckType.PR_MERGED)
+        assert passed is True
+        assert "42" in detail
+
+    @patch(
+        "omnimarket.nodes.node_session_bootstrap.dod_verification_registry.subprocess.run"
+    )
+    def test_pr_merged_returns_incomplete_when_open(
+        self, mock_run: MagicMock, sample_contract: ModelTaskContract
+    ) -> None:
+        """PR that exists but is still open → INCOMPLETE."""
+        mock_run.side_effect = self._make_gh_run(
+            list_stdout='[{"number": 99}]',
+            view_stdout='{"state": "OPEN", "mergedAt": null}',
+        )
+        passed, detail = run_dod_check(sample_contract, EnumDodCheckType.PR_MERGED)
+        assert passed is False
+        assert "OPEN" in detail or "not merged" in detail.lower()
+
+    @patch(
+        "omnimarket.nodes.node_session_bootstrap.dod_verification_registry.subprocess.run"
+    )
+    def test_pr_merged_returns_incomplete_when_closed_unmerged(
+        self, mock_run: MagicMock, sample_contract: ModelTaskContract
+    ) -> None:
+        """PR closed without merging → INCOMPLETE (closed != merged)."""
+        mock_run.side_effect = self._make_gh_run(
+            list_stdout='[{"number": 77}]',
+            view_stdout='{"state": "CLOSED", "mergedAt": null}',
+        )
+        passed, detail = run_dod_check(sample_contract, EnumDodCheckType.PR_MERGED)
+        assert passed is False
+        assert "CLOSED" in detail or "not merged" in detail.lower()
+
+    @patch(
+        "omnimarket.nodes.node_session_bootstrap.dod_verification_registry.subprocess.run"
+    )
+    def test_pr_merged_returns_incomplete_when_no_pr(
+        self, mock_run: MagicMock, sample_contract: ModelTaskContract
+    ) -> None:
+        """No PR found for branch → INCOMPLETE."""
+        list_result = MagicMock()
+        list_result.returncode = 0
+        list_result.stdout = "[]"
+        list_result.stderr = ""
+        mock_run.return_value = list_result
+        passed, detail = run_dod_check(sample_contract, EnumDodCheckType.PR_MERGED)
+        assert passed is False
+        assert "no pr" in detail.lower() or "not found" in detail.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +276,11 @@ class TestDispatchLease:
             ).isoformat()
             with open(lock_path, "w") as f:
                 json.dump(
-                    {"tick_id": "old-tick", "acquired_at": old_ts, "holder": "old-holder"},
+                    {
+                        "tick_id": "old-tick",
+                        "acquired_at": old_ts,
+                        "holder": "old-holder",
+                    },
                     f,
                 )
 
@@ -208,7 +299,11 @@ class TestDispatchLease:
 
     def test_context_manager_releases_on_exception(self) -> None:
         """dispatch_lease context manager releases even when body raises."""
-        with tempfile.TemporaryDirectory() as state_dir, pytest.raises(RuntimeError), dispatch_lease(state_dir, "tick-err", "err-holder"):
+        with (
+            tempfile.TemporaryDirectory() as state_dir,
+            pytest.raises(RuntimeError),
+            dispatch_lease(state_dir, "tick-err", "err-holder"),
+        ):
             raise RuntimeError("simulated dispatch error")
 
     def test_context_manager_releases_on_exception_no_lock_after(self) -> None:
@@ -223,6 +318,7 @@ class TestDispatchLease:
             assert read_dispatch_lease(tmp) is None
         finally:
             import shutil
+
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_read_returns_none_when_no_lock(self) -> None:
