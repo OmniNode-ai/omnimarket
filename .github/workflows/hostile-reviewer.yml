@@ -42,6 +42,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Clean stale dependency clones
+        run: rm -rf ../omniintelligence ../omnibase_core ../omnibase_compat
+
       - name: Clone omniintelligence
         run: |
           OMNIINTELLIGENCE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omniintelligence.git HEAD | cut -f1)
