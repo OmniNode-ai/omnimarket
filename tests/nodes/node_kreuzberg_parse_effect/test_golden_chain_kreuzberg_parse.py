@@ -51,10 +51,12 @@ def make_config(
     )
 
 
-def make_publish_capture() -> tuple[
-    Callable[[str, dict[str, object]], Coroutine[Any, Any, None]],
-    list[PublishRecord],
-]:
+def make_publish_capture() -> (
+    tuple[
+        Callable[[str, dict[str, object]], Coroutine[Any, Any, None]],
+        list[PublishRecord],
+    ]
+):
     published: list[PublishRecord] = []
 
     async def capture(topic: str, payload: dict[str, object]) -> None:
@@ -242,7 +244,7 @@ class TestIdempotency:
         slug = hashlib.sha256(str(md_file).encode()).hexdigest()
         cache_file = text_store / f"{slug}.txt"
         cache_file.write_text(
-            f"fingerprint:{fingerprint}\nextracted text", encoding="utf-8"
+            f"fingerprint:{fingerprint}:1.0.0\nextracted text", encoding="utf-8"
         )
 
         config = make_config(tmp_path)

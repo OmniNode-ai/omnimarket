@@ -112,8 +112,18 @@ async def call_kreuzberg_extract(
             status_code=200,
             detail="kreuzberg returned null content",
         )
+    if not isinstance(content, str):
+        raise KreuzbergExtractionError(
+            status_code=200,
+            detail=f"kreuzberg returned non-string content type: {type(content).__name__}",
+        )
+    if not content:
+        raise KreuzbergExtractionError(
+            status_code=200,
+            detail="kreuzberg returned empty string content",
+        )
 
-    return KreuzbergExtractResult(extracted_text=str(content))
+    return KreuzbergExtractResult(extracted_text=content)
 
 
 def read_cached_text(text_path: Path) -> tuple[str, str] | None:

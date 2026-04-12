@@ -21,7 +21,7 @@ class ModelKreuzbergParseConfig(BaseModel):
 
     kreuzberg_url: str = Field(...)
     text_store_path: str = Field(...)
-    document_root: str = Field(default="/")
+    document_root: str = Field(...)
 
     @field_validator("document_root")
     @classmethod

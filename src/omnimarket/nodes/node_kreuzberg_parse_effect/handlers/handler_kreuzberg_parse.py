@@ -75,9 +75,15 @@ def _compute_document_id(
     content_hash: str,
     parser_version: str,
 ) -> UUID:
-    raw = (source_url + content_hash + parser_version).encode("utf-8")
+    # Use NUL-delimited fields to avoid hash collisions from concatenation ambiguity.
+    raw = "\x00".join([source_url, content_hash, parser_version]).encode("utf-8")
     digest = hashlib.sha256(raw).digest()
     return uuid.UUID(bytes=digest[:16])
+
+
+def _cache_fingerprint(content_hash: str, parser_version: str) -> str:
+    """Combine content hash and parser version so cache is invalidated on parser rollout."""
+    return f"{content_hash}:{parser_version}"
 
 
 def _source_url_slug(source_url: str) -> str:
@@ -110,11 +116,6 @@ class HandlerKreuzbergParse:
         now = datetime.now(tz=UTC)
 
         document_root = Path(config.document_root)
-        if str(document_root) == "/":
-            _log.warning(
-                "document_root is set to filesystem root ('/'). "
-                "Set KREUZBERG_DOCUMENT_ROOT to a tighter path in production."
-            )
         try:
             validated_path = _validate_source_path(source_url, document_root)
         except ValueError as exc:
@@ -143,10 +144,11 @@ class HandlerKreuzbergParse:
         text_store = Path(config.text_store_path)
         text_path = text_store / f"{slug}.txt"
 
+        expected_fingerprint = _cache_fingerprint(content_hash, config.parser_version)
         cached = await asyncio.to_thread(read_cached_text, text_path)
         if cached is not None:
             stored_fingerprint, cached_text = cached
-            if stored_fingerprint == content_hash:
+            if stored_fingerprint == expected_fingerprint:
                 _log.debug(
                     "Idempotent: re-emitting indexed event without re-parsing",
                     extra={"source_url": source_url},
@@ -180,6 +182,59 @@ class HandlerKreuzbergParse:
                 )
 
         try:
+            file_size = await asyncio.to_thread(lambda: validated_path.stat().st_size)
+        except OSError as exc:
+            _log.warning(
+                "Failed to stat source file",
+                extra={"source_url": source_url, "error": str(exc)},
+            )
+            failed_event = ModelDocumentParseFailedEvent(
+                correlation_id=event.correlation_id,
+                emitted_at_utc=now,
+                source_url=source_url,
+                content_hash=content_hash,
+                error_code="parse_error",
+                error_detail=f"Failed to stat source file: {exc}",
+                parser_version=config.parser_version,
+            )
+            await publish_callback(failed_topic, failed_event.model_dump(mode="json"))
+            return ModelKreuzbergParseResult(
+                indexed_count=0,
+                failed_count=1,
+                skipped_too_large_count=0,
+                timeout_count=0,
+            )
+
+        if file_size > config.max_doc_bytes:
+            _log.warning(
+                "Document too large for kreuzberg",
+                extra={
+                    "source_url": source_url,
+                    "size_bytes": file_size,
+                    "max_doc_bytes": config.max_doc_bytes,
+                },
+            )
+            failed_event = ModelDocumentParseFailedEvent(
+                correlation_id=event.correlation_id,
+                emitted_at_utc=now,
+                source_url=source_url,
+                content_hash=content_hash,
+                error_code="too_large",
+                error_detail=(
+                    f"Document size {file_size} bytes exceeds "
+                    f"max_doc_bytes={config.max_doc_bytes}"
+                ),
+                parser_version=config.parser_version,
+            )
+            await publish_callback(failed_topic, failed_event.model_dump(mode="json"))
+            return ModelKreuzbergParseResult(
+                indexed_count=0,
+                failed_count=0,
+                skipped_too_large_count=1,
+                timeout_count=0,
+            )
+
+        try:
             file_bytes: bytes = await asyncio.to_thread(validated_path.read_bytes)
         except OSError as exc:
             _log.warning(
@@ -200,35 +255,6 @@ class HandlerKreuzbergParse:
                 indexed_count=0,
                 failed_count=1,
                 skipped_too_large_count=0,
-                timeout_count=0,
-            )
-
-        if len(file_bytes) > config.max_doc_bytes:
-            _log.warning(
-                "Document too large for kreuzberg",
-                extra={
-                    "source_url": source_url,
-                    "size_bytes": len(file_bytes),
-                    "max_doc_bytes": config.max_doc_bytes,
-                },
-            )
-            failed_event = ModelDocumentParseFailedEvent(
-                correlation_id=event.correlation_id,
-                emitted_at_utc=now,
-                source_url=source_url,
-                content_hash=content_hash,
-                error_code="too_large",
-                error_detail=(
-                    f"Document size {len(file_bytes)} bytes exceeds "
-                    f"max_doc_bytes={config.max_doc_bytes}"
-                ),
-                parser_version=config.parser_version,
-            )
-            await publish_callback(failed_topic, failed_event.model_dump(mode="json"))
-            return ModelKreuzbergParseResult(
-                indexed_count=0,
-                failed_count=0,
-                skipped_too_large_count=1,
                 timeout_count=0,
             )
 
@@ -293,7 +319,7 @@ class HandlerKreuzbergParse:
 
         try:
             await asyncio.to_thread(
-                write_cached_text, text_path, content_hash, extracted_text
+                write_cached_text, text_path, expected_fingerprint, extracted_text
             )
 
             if len(extracted_text) < config.inline_text_max_chars:
