@@ -1,5 +1,7 @@
 
-from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import HandlerLinearTriage
+from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
+    HandlerLinearTriage,
+)
 
 
 class NodeLinearTriage(HandlerLinearTriage):

@@ -14,9 +14,9 @@ from omnimarket.nodes.node_persona_retrieval_effect.models import (
 )
 
 __all__ = [
-    "NodePersonaRetrievalEffect",
     "ModelPersonaRetrievalRequest",
     "ModelPersonaRetrievalResponse",
+    "NodePersonaRetrievalEffect",
 ]
 
 class NodePersonaRetrievalEffect:

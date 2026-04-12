@@ -7,7 +7,9 @@ from omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_a
 )
 
 __all__ = [
-    "NodeFindingAggregatorCompute","HandlerFindingAggregator"]
+    "HandlerFindingAggregator",
+    "NodeFindingAggregatorCompute",
+]
 
 class NodeFindingAggregatorCompute(HandlerFindingAggregator):
     """ONEX entry-point wrapper for HandlerFindingAggregator."""

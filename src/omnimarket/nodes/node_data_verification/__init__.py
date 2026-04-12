@@ -19,7 +19,6 @@ from omnimarket.nodes.node_data_verification.models.model_data_verification_stat
 )
 
 __all__ = [
-    "NodeDataVerification",
     "DataSource",
     "EnumDataCheck",
     "EnumVerificationStatus",
@@ -29,6 +28,7 @@ __all__ = [
     "ModelDataVerificationResult",
     "ModelDataVerificationStartCommand",
     "ModelSampleRow",
+    "NodeDataVerification",
 ]
 
 class NodeDataVerification(HandlerDataVerification):

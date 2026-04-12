@@ -21,7 +21,6 @@ from omnimarket.nodes.node_build_dispatch_effect.models.model_delegation_payload
 )
 
 __all__ = [
-    "NodeBuildDispatchEffect",
     "EnumBuildability",
     "HandlerBuildDispatch",
     "ModelBuildDispatchInput",
@@ -29,6 +28,7 @@ __all__ = [
     "ModelBuildDispatchResult",
     "ModelBuildTarget",
     "ModelDelegationPayload",
+    "NodeBuildDispatchEffect",
 ]
 
 class NodeBuildDispatchEffect(HandlerBuildDispatch):

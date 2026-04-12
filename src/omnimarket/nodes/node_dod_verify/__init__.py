@@ -17,7 +17,6 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 )
 
 __all__ = [
-    "NodeDodVerify",
     "EnumDodVerifyStatus",
     "EnumEvidenceCheckStatus",
     "HandlerDodVerify",
@@ -25,6 +24,7 @@ __all__ = [
     "ModelDodVerifyStartCommand",
     "ModelDodVerifyState",
     "ModelEvidenceCheckResult",
+    "NodeDodVerify",
 ]
 
 class NodeDodVerify(HandlerDodVerify):

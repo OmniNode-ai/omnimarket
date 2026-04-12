@@ -1,5 +1,7 @@
 
-from omnimarket.nodes.node_pr_health_monitor.handlers.handler_pr_health_monitor import HandlerPrHealthMonitor
+from omnimarket.nodes.node_pr_health_monitor.handlers.handler_pr_health_monitor import (
+    HandlerPrHealthMonitor,
+)
 
 
 class NodePrHealthMonitor(HandlerPrHealthMonitor):

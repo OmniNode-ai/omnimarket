@@ -9,12 +9,12 @@ from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage 
 )
 
 __all__ = [
-    "NodeCoderabbitTriage",
     "EnumThreadSeverity",
     "HandlerCoderabbitTriage",
     "ModelCoderabbitTriageCommand",
     "ModelCoderabbitTriageResult",
     "ModelThreadClassification",
+    "NodeCoderabbitTriage",
 ]
 
 class NodeCoderabbitTriage(HandlerCoderabbitTriage):

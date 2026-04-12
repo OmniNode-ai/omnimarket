@@ -19,7 +19,6 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 )
 
 __all__ = [
-    "NodeProcessWatchdog",
     "CheckTarget",
     "EnumCheckStatus",
     "EnumCheckTarget",
@@ -29,6 +28,7 @@ __all__ = [
     "ModelWatchdogCompletedEvent",
     "ModelWatchdogReport",
     "ModelWatchdogStartCommand",
+    "NodeProcessWatchdog",
 ]
 
 class NodeProcessWatchdog(HandlerProcessWatchdog):

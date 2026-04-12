@@ -14,13 +14,13 @@ from omnimarket.nodes.node_integration_test_runner.models.model_test_runner_resu
 )
 
 __all__ = [
-    "NodeIntegrationTestRunner",
     "EnumDIProfile",
     "EnumTestRunStatus",
     "HandlerIntegrationTestRunner",
     "ModelIntegrationTestRunnerRequest",
     "ModelIntegrationTestRunnerResult",
     "ModelNodeTestResult",
+    "NodeIntegrationTestRunner",
 ]
 
 class NodeIntegrationTestRunner(HandlerIntegrationTestRunner):

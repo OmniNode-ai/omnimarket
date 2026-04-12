@@ -18,13 +18,13 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_state import (
 )
 
 __all__ = [
-    "NodePrPolish",
     "EnumPrPolishPhase",
     "HandlerPrPolish",
     "ModelPrPolishCompletedEvent",
     "ModelPrPolishPhaseEvent",
     "ModelPrPolishStartCommand",
     "ModelPrPolishState",
+    "NodePrPolish",
 ]
 
 class NodePrPolish(HandlerPrPolish):

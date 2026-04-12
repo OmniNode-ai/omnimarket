@@ -9,10 +9,10 @@ from omnimarket.nodes.node_create_ticket.models.model_create_ticket_state import
 )
 
 __all__ = [
-    "NodeCreateTicket",
     "HandlerCreateTicket",
     "ModelCreateTicketCompletedEvent",
     "ModelCreateTicketStartCommand",
+    "NodeCreateTicket",
 ]
 
 class NodeCreateTicket(HandlerCreateTicket):

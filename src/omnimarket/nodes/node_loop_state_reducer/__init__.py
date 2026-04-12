@@ -7,7 +7,9 @@ from omnimarket.nodes.node_loop_state_reducer.handlers.handler_loop_state import
 )
 
 __all__ = [
-    "NodeLoopStateReducer","HandlerLoopState"]
+    "HandlerLoopState",
+    "NodeLoopStateReducer",
+]
 
 class NodeLoopStateReducer(HandlerLoopState):
     """ONEX entry-point wrapper for HandlerLoopState."""

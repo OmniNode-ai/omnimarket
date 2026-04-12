@@ -7,10 +7,10 @@ from omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch import (
 )
 
 __all__ = [
-    "NodeCiWatch",
     "HandlerCiWatch",
     "ModelCiWatchCommand",
     "ModelCiWatchResult",
+    "NodeCiWatch",
 ]
 
 class NodeCiWatch(HandlerCiWatch):

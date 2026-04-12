@@ -9,10 +9,10 @@ from omnimarket.nodes.node_ticket_work.models.model_ticket_work_state import (
 )
 
 __all__ = [
-    "NodeTicketWork",
     "HandlerTicketWork",
     "ModelTicketWorkCompletedEvent",
     "ModelTicketWorkStartCommand",
+    "NodeTicketWork",
 ]
 
 class NodeTicketWork(HandlerTicketWork):

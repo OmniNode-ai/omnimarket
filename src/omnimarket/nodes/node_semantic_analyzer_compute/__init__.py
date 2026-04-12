@@ -11,7 +11,9 @@ from omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_c
 )
 
 __all__ = [
-    "NodeSemanticAnalyzerCompute","HandlerSemanticCompute"]
+    "HandlerSemanticCompute",
+    "NodeSemanticAnalyzerCompute",
+]
 
 class NodeSemanticAnalyzerCompute:
     """ONEX entry-point marker for node_semantic_analyzer_compute."""

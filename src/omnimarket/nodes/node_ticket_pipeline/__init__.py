@@ -17,12 +17,12 @@ from .models import (
 )
 
 __all__ = [
-    "NodeTicketPipeline",
     "HandlerTicketPipeline",
     "ModelPipelineCompletedEvent",
     "ModelPipelinePhaseEvent",
     "ModelPipelineStartCommand",
     "ModelPipelineState",
+    "NodeTicketPipeline",
 ]
 
 

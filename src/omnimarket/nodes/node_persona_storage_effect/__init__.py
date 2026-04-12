@@ -14,9 +14,9 @@ from omnimarket.nodes.node_persona_storage_effect.models import (
 )
 
 __all__ = [
-    "NodePersonaStorageEffect",
     "ModelPersonaStorageRequest",
     "ModelPersonaStorageResponse",
+    "NodePersonaStorageEffect",
 ]
 
 class NodePersonaStorageEffect:

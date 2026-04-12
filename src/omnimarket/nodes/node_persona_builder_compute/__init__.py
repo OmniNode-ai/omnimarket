@@ -10,7 +10,9 @@ from omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_clas
 )
 
 __all__ = [
-    "NodePersonaBuilderCompute","HandlerPersonaClassify"]
+    "HandlerPersonaClassify",
+    "NodePersonaBuilderCompute",
+]
 
 class NodePersonaBuilderCompute(HandlerPersonaClassify):
     """ONEX entry-point wrapper for HandlerPersonaClassify."""

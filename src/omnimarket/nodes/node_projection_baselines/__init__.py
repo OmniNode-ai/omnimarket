@@ -3,7 +3,9 @@ from omnimarket.nodes.node_projection_baselines.handlers.handler_projection_base
 )
 
 __all__ = [
-    "NodeProjectionBaselines","HandlerProjectionBaselines"]
+    "HandlerProjectionBaselines",
+    "NodeProjectionBaselines",
+]
 
 class NodeProjectionBaselines(HandlerProjectionBaselines):
     """ONEX entry-point wrapper for HandlerProjectionBaselines."""

@@ -7,7 +7,9 @@ from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
 )
 
 __all__ = [
-    "NodeRsdFillCompute","HandlerRsdFill"]
+    "HandlerRsdFill",
+    "NodeRsdFillCompute",
+]
 
 class NodeRsdFillCompute(HandlerRsdFill):
     """ONEX entry-point wrapper for HandlerRsdFill."""

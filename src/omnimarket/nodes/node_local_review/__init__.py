@@ -18,13 +18,13 @@ from omnimarket.nodes.node_local_review.models.model_local_review_state import (
 )
 
 __all__ = [
-    "NodeLocalReview",
     "EnumLocalReviewPhase",
     "HandlerLocalReview",
     "ModelLocalReviewCompletedEvent",
     "ModelLocalReviewPhaseEvent",
     "ModelLocalReviewStartCommand",
     "ModelLocalReviewState",
+    "NodeLocalReview",
 ]
 
 class NodeLocalReview(HandlerLocalReview):

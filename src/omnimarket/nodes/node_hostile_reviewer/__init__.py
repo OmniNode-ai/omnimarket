@@ -59,7 +59,6 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
 )
 
 __all__ = [
-    "NodeHostileReviewer",
     "AdapterInferenceBridge",
     "EnumFindingCategory",
     "EnumFindingSeverity",
@@ -88,13 +87,16 @@ __all__ = [
     "ModelReviewFinding",
     "ModelWorkflowInput",
     "ModelWorkflowOutput",
+    "NodeHostileReviewer",
     "build_prompt",
     "compute_convergence",
     "parse_model_response",
     "run_hostile_review_workflow",
     "run_review_orchestration",
 ]
-from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import HandlerPromptBuilder
+from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import (
+    HandlerPromptBuilder,
+)
 
 
 class NodeHostileReviewer(HandlerPromptBuilder):

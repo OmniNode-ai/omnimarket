@@ -9,10 +9,10 @@ from omnimarket.nodes.node_plan_to_tickets.models.model_plan_to_tickets_state im
 )
 
 __all__ = [
-    "NodePlanToTickets",
     "HandlerPlanToTickets",
     "ModelPlanToTicketsCompletedEvent",
     "ModelPlanToTicketsStartCommand",
+    "NodePlanToTickets",
 ]
 
 class NodePlanToTickets(HandlerPlanToTickets):

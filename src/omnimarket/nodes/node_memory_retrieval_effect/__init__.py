@@ -16,11 +16,11 @@ from omnimarket.nodes.node_memory_retrieval_effect.models import (
 )
 
 __all__ = [
-    "NodeMemoryRetrievalEffect",
     "ModelHandlerMemoryRetrievalConfig",
     "ModelMemoryRetrievalRequest",
     "ModelMemoryRetrievalResponse",
     "ModelSearchResult",
+    "NodeMemoryRetrievalEffect",
 ]
 
 class NodeMemoryRetrievalEffect:

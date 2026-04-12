@@ -9,8 +9,8 @@ and judge model verification before thread resolution.
 from omnimarket.nodes.node_pr_review_bot.node import HandlerPrReviewBot
 
 __all__ = [
-    "NodePrReviewBot",
     "HandlerPrReviewBot",
+    "NodePrReviewBot",
 ]
 
 

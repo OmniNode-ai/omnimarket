@@ -17,12 +17,12 @@ from omnimarket.nodes.node_agent_learning_retrieval_effect.models import (
 )
 
 __all__ = [
-    "NodeAgentLearningRetrievalEffect",
     "EnumRetrievalMatchType",
     "EnumRetrievalTaskType",
     "ModelAgentLearningRetrievalRequest",
     "ModelAgentLearningRetrievalResponse",
     "ModelRetrievedLearning",
+    "NodeAgentLearningRetrievalEffect",
 ]
 
 class NodeAgentLearningRetrievalEffect:

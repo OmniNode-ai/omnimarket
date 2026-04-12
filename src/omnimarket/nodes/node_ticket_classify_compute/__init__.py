@@ -7,7 +7,9 @@ from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_class
 )
 
 __all__ = [
-    "NodeTicketClassifyCompute","HandlerTicketClassify"]
+    "HandlerTicketClassify",
+    "NodeTicketClassifyCompute",
+]
 
 class NodeTicketClassifyCompute(HandlerTicketClassify):
     """ONEX entry-point wrapper for HandlerTicketClassify."""

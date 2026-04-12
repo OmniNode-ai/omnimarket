@@ -10,15 +10,17 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 )
 
 __all__ = [
-    "NodeOvernight",
     "EnumOvernightStatus",
     "EnumPhase",
     "HandlerOvernight",
     "ModelOvernightCommand",
     "ModelOvernightResult",
     "ModelPhaseResult",
+    "NodeOvernight",
 ]
-from omnimarket.nodes.node_overnight.handlers.handler_overnight import HandlerBuildLoopExecutor
+from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
+    HandlerBuildLoopExecutor,
+)
 
 
 class NodeOvernight(HandlerBuildLoopExecutor):

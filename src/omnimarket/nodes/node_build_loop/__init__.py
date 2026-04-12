@@ -18,13 +18,13 @@ from omnimarket.nodes.node_build_loop.models.model_phase_transition_event import
 )
 
 __all__ = [
-    "NodeBuildLoop",
     "EnumBuildLoopPhase",
     "HandlerBuildLoop",
     "ModelLoopCompletedEvent",
     "ModelLoopStartCommand",
     "ModelLoopState",
     "ModelPhaseTransitionEvent",
+    "NodeBuildLoop",
 ]
 
 class NodeBuildLoop(HandlerBuildLoop):
