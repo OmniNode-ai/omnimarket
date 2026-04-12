@@ -8,6 +8,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.nodes.node_kreuzberg_parse_effect.topics import (
+    TOPIC_DOCUMENT_INDEXED,
+    TOPIC_DOCUMENT_PARSE_FAILED,
+)
+
 
 class ModelKreuzbergParseConfig(BaseModel):
     """Configuration for HandlerKreuzbergParse."""
@@ -31,9 +36,5 @@ class ModelKreuzbergParseConfig(BaseModel):
     max_doc_bytes: int = Field(default=50_000_000, ge=1)
     timeout_ms: int = Field(default=30_000, ge=1)
     inline_text_max_chars: int = Field(default=4096, ge=1)
-    publish_topic_indexed: str = Field(
-        default="onex.evt.omnimemory.document-indexed.v1"
-    )
-    publish_topic_parse_failed: str = Field(
-        default="onex.evt.omnimemory.document-parse-failed.v1"
-    )
+    publish_topic_indexed: str = Field(default=TOPIC_DOCUMENT_INDEXED)
+    publish_topic_parse_failed: str = Field(default=TOPIC_DOCUMENT_PARSE_FAILED)
