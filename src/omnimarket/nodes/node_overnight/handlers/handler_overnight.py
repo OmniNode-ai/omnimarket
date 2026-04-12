@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerOvernight — Overnight session FSM orchestrator.
+"""HandlerBuildLoopExecutor — outer session FSM for the autonomous build loop.
 
-Sequences the autonomous overnight pipeline in phase order:
+Sequences the autonomous build loop pipeline in phase order:
   nightly_loop_controller -> build_loop_orchestrator -> merge_sweep ->
   ci_watch -> platform_readiness
 
@@ -15,10 +15,13 @@ is True, the handler invokes the real compute-node handler for each phase
 (MVP wiring — OMN-8371). Without dispatch_phases, the handler stays a pure
 FSM and the caller supplies phase_results directly.
 
+HandlerOvernight is a backwards-compatible alias (deprecated, W2.10 / OMN-8448).
+
 Related:
     - OMN-8025: Overseer seam integration epic — nightly loop trigger wiring
     - OMN-8371: Minimum viable executor wiring — dispatch phases to compute
       node handlers instead of running as a pure FSM
+    - OMN-8448: Rename HandlerOvernight -> HandlerBuildLoopExecutor
 """
 
 from __future__ import annotations
@@ -158,11 +161,13 @@ class ModelOvernightResult(BaseModel):
     completed_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
 
-class HandlerOvernight:
-    """Overnight session orchestrator.
+class HandlerBuildLoopExecutor:
+    """HandlerBuildLoopExecutor — outer session FSM for the autonomous build loop.
 
-    Sequences phases, accumulates results, derives terminal status. Can run
-    in two modes:
+    Sequences phases, accumulates results, derives terminal status. Pairs with
+    HandlerBuildLoopOrchestrator (inner cycle: fill → classify → build → verify).
+
+    Can run in two modes:
 
     - Pure FSM (default): no external I/O. Caller supplies phase_results to
       drive per-phase success. Used by existing unit tests.
@@ -175,6 +180,8 @@ class HandlerOvernight:
     enforces cost ceiling and halt-on-failure checks after each phase.
     Accumulated cost is supplied by the caller via phase_costs; if not
     provided, cost checks are skipped (backwards-compatible).
+
+    Note: HandlerOvernight is a deprecated alias preserved until Phase 4 (W2.10).
     """
 
     def __init__(
@@ -791,11 +798,15 @@ _DEFAULT_PHASE_DISPATCHERS: dict[EnumPhase, PhaseDispatcher] = {
 }
 
 
+# Backwards-compatible alias — preserved until Phase 4 (W2.10 / OMN-8448)
+HandlerOvernight = HandlerBuildLoopExecutor
+
 __all__: list[str] = [
     "EnumHaltDecision",
     "EnumOvernightStatus",
     "EnumPhase",
     "EventPublisher",
+    "HandlerBuildLoopExecutor",
     "HandlerOvernight",
     "ModelOvernightCommand",
     "ModelOvernightContract",
