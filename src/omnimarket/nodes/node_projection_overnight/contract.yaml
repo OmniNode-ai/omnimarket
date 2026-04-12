@@ -1,0 +1,36 @@
+---
+name: projection_overnight
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Projects overnight session events into the overnight_sessions and
+  overnight_session_phases tables. UPSERT by session_id.
+  Source topics: phase-start.v1, phase-completed.v1, session-completed.v1.
+
+handler:
+  module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+  class: HandlerProjectionOvernightSessionComplete
+
+terminal_event: onex.evt.omnimarket.projection-overnight-applied.v1
+
+db_io:
+  db_tables:
+    - name: overnight_sessions
+      migration: "schema_overnight_sessions.sql"
+      access: write
+      database: omnibase_infra
+      role: projection
+    - name: overnight_session_phases
+      migration: "schema_overnight_sessions.sql"
+      access: write
+      database: omnibase_infra
+      role: projection
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.overnight.phase-start.v1
+    - onex.evt.omnimarket.overnight.phase-completed.v1
+    - onex.evt.omnimarket.overnight.session-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-overnight-applied.v1

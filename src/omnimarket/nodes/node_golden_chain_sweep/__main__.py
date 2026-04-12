@@ -29,6 +29,7 @@ from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_swee
 )
 from omnimarket.nodes.node_golden_chain_sweep.topics import (
     LLM_ROUTING_DECISION_TOPIC,
+    OVERNIGHT_SESSION_COMPLETE_TOPIC,
     PATTERN_STORED_TOPIC,
     ROUTING_DECISION_TOPIC,
     RUN_EVALUATED_TOPIC,
@@ -67,6 +68,12 @@ _DEFAULT_CHAINS = [
         head_topic=RUN_EVALUATED_TOPIC,
         tail_table="session_outcomes",
         expected_fields=["correlation_id"],
+    ),
+    ModelChainDefinition(
+        name="overnight",
+        head_topic=OVERNIGHT_SESSION_COMPLETE_TOPIC,
+        tail_table="overnight_sessions",
+        expected_fields=["session_id", "session_status"],
     ),
 ]
 

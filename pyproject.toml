@@ -73,6 +73,7 @@ node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outc
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
 node_projection_savings = "omnimarket.nodes.node_projection_savings"
 node_projection_delegation = "omnimarket.nodes.node_projection_delegation"
+node_projection_overnight = "omnimarket.nodes.node_projection_overnight"
 node_projection_baselines = "omnimarket.nodes.node_projection_baselines"
 node_projection_registration = "omnimarket.nodes.node_projection_registration"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
