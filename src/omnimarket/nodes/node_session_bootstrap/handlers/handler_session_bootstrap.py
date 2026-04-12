@@ -33,6 +33,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.nodes.node_session_bootstrap.models.model_session_contract import (
     ModelSessionContract,
 )
+from omnimarket.nodes.node_session_bootstrap.topics import (
+    TOPIC_SESSION_CRON_HEALTH_VIOLATION as _TOPIC_SESSION_CRON_HEALTH_VIOLATION,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +50,6 @@ _PHASE1_CRON_NAMES: frozenset[str] = frozenset({"build-dispatch-pulse"})
 
 # Session modes that activate build_dispatch_pulse
 _BUILD_DISPATCH_ACTIVE_MODES: frozenset[str] = frozenset({"build"})
-
-# Publish topics declared in contract.yaml — single source of truth.
-# Update here if contract.yaml publish_topics changes.
-_TOPIC_SESSION_CRON_HEALTH_VIOLATION = (
-    "onex.evt.omnimarket.session-cron-health-violation.v1"
-)
-_TOPIC_SESSION_BOOTSTRAP_COMPLETED = (
-    "onex.evt.omnimarket.session-bootstrap-completed.v2"
-)
 
 
 def _interval_to_cron(interval_min: int) -> str:
