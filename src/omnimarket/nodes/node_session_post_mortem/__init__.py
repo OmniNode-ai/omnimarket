@@ -9,7 +9,11 @@ from omnimarket.nodes.node_session_post_mortem.handlers.handler_session_post_mor
 )
 
 __all__ = [
+    "NodeSessionPostMortem",
     "HandlerSessionPostMortem",
     "ModelPostMortemCommand",
     "ModelPostMortemHandlerResult",
 ]
+
+class NodeSessionPostMortem(HandlerSessionPostMortem):
+    """ONEX entry-point wrapper for HandlerSessionPostMortem."""

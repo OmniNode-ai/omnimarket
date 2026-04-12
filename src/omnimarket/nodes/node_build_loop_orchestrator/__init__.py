@@ -27,6 +27,7 @@ from .protocols import (
 )
 
 __all__ = [
+    "NodeBuildLoopOrchestrator",
     "ModelDispatchMetrics",
     "ModelDispatchTrace",
     "ModelLiveRunnerConfig",
@@ -42,3 +43,8 @@ __all__ = [
     "ProtocolTicketClassifyHandler",
     "ProtocolVerifyHandler",
 ]
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import HandlerBuildLoopOrchestrator
+
+
+class NodeBuildLoopOrchestrator(HandlerBuildLoopOrchestrator):
+    """ONEX entry-point wrapper for HandlerBuildLoopOrchestrator."""

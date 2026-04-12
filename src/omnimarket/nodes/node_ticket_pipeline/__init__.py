@@ -17,9 +17,14 @@ from .models import (
 )
 
 __all__ = [
+    "NodeTicketPipeline",
     "HandlerTicketPipeline",
     "ModelPipelineCompletedEvent",
     "ModelPipelinePhaseEvent",
     "ModelPipelineStartCommand",
     "ModelPipelineState",
 ]
+
+
+class NodeTicketPipeline(HandlerTicketPipeline):
+    """ONEX entry-point wrapper for HandlerTicketPipeline."""

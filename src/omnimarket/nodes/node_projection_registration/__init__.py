@@ -2,4 +2,8 @@ from omnimarket.nodes.node_projection_registration.handlers.handler_projection_r
     HandlerProjectionRegistration,
 )
 
-__all__ = ["HandlerProjectionRegistration"]
+__all__ = [
+    "NodeProjectionRegistration","HandlerProjectionRegistration"]
+
+class NodeProjectionRegistration(HandlerProjectionRegistration):
+    """ONEX entry-point wrapper for HandlerProjectionRegistration."""

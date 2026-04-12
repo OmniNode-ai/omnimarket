@@ -15,6 +15,7 @@ from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
 )
 
 __all__ = [
+    "NodeRedeploy",
     "HandlerRedeploy",
     "HandlerRedeployKafka",
     "ModelDeployRebuildCommand",
@@ -23,3 +24,6 @@ __all__ = [
     "ModelRedeployResult",
     "ModelRedeployStartCommand",
 ]
+
+class NodeRedeploy(HandlerRedeployKafka):
+    """ONEX entry-point wrapper for HandlerRedeployKafka."""

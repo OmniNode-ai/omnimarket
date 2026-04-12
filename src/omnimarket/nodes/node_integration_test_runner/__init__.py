@@ -14,6 +14,7 @@ from omnimarket.nodes.node_integration_test_runner.models.model_test_runner_resu
 )
 
 __all__ = [
+    "NodeIntegrationTestRunner",
     "EnumDIProfile",
     "EnumTestRunStatus",
     "HandlerIntegrationTestRunner",
@@ -21,3 +22,6 @@ __all__ = [
     "ModelIntegrationTestRunnerResult",
     "ModelNodeTestResult",
 ]
+
+class NodeIntegrationTestRunner(HandlerIntegrationTestRunner):
+    """ONEX entry-point wrapper for HandlerIntegrationTestRunner."""

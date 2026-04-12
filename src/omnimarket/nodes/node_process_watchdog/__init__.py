@@ -19,6 +19,7 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 )
 
 __all__ = [
+    "NodeProcessWatchdog",
     "CheckTarget",
     "EnumCheckStatus",
     "EnumCheckTarget",
@@ -29,3 +30,6 @@ __all__ = [
     "ModelWatchdogReport",
     "ModelWatchdogStartCommand",
 ]
+
+class NodeProcessWatchdog(HandlerProcessWatchdog):
+    """ONEX entry-point wrapper for HandlerProcessWatchdog."""

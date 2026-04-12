@@ -2,4 +2,8 @@ from omnimarket.nodes.node_projection_session_outcome.handlers.handler_projectio
     HandlerProjectionSessionOutcome,
 )
 
-__all__ = ["HandlerProjectionSessionOutcome"]
+__all__ = [
+    "NodeProjectionSessionOutcome","HandlerProjectionSessionOutcome"]
+
+class NodeProjectionSessionOutcome(HandlerProjectionSessionOutcome):
+    """ONEX entry-point wrapper for HandlerProjectionSessionOutcome."""

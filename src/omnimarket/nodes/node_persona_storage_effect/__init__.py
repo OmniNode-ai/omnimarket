@@ -14,6 +14,11 @@ from omnimarket.nodes.node_persona_storage_effect.models import (
 )
 
 __all__ = [
+    "NodePersonaStorageEffect",
     "ModelPersonaStorageRequest",
     "ModelPersonaStorageResponse",
 ]
+
+class NodePersonaStorageEffect:
+    """ONEX entry-point marker for node_persona_storage_effect."""
+    __onex_node_type__ = "node_persona_storage_effect"

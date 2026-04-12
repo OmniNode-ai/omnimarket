@@ -19,6 +19,7 @@ from omnimarket.nodes.node_data_verification.models.model_data_verification_stat
 )
 
 __all__ = [
+    "NodeDataVerification",
     "DataSource",
     "EnumDataCheck",
     "EnumVerificationStatus",
@@ -29,3 +30,6 @@ __all__ = [
     "ModelDataVerificationStartCommand",
     "ModelSampleRow",
 ]
+
+class NodeDataVerification(HandlerDataVerification):
+    """ONEX entry-point wrapper for HandlerDataVerification."""

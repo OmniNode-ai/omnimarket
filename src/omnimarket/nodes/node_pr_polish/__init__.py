@@ -18,6 +18,7 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_state import (
 )
 
 __all__ = [
+    "NodePrPolish",
     "EnumPrPolishPhase",
     "HandlerPrPolish",
     "ModelPrPolishCompletedEvent",
@@ -25,3 +26,6 @@ __all__ = [
     "ModelPrPolishStartCommand",
     "ModelPrPolishState",
 ]
+
+class NodePrPolish(HandlerPrPolish):
+    """ONEX entry-point wrapper for HandlerPrPolish."""

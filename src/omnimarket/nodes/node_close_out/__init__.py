@@ -18,6 +18,7 @@ from omnimarket.nodes.node_close_out.models.model_close_out_state import (
 )
 
 __all__ = [
+    "NodeCloseOut",
     "EnumCloseOutPhase",
     "HandlerCloseOut",
     "ModelCloseOutCompletedEvent",
@@ -25,3 +26,6 @@ __all__ = [
     "ModelCloseOutStartCommand",
     "ModelCloseOutState",
 ]
+
+class NodeCloseOut(HandlerCloseOut):
+    """ONEX entry-point wrapper for HandlerCloseOut."""

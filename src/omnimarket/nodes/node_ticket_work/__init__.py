@@ -9,7 +9,11 @@ from omnimarket.nodes.node_ticket_work.models.model_ticket_work_state import (
 )
 
 __all__ = [
+    "NodeTicketWork",
     "HandlerTicketWork",
     "ModelTicketWorkCompletedEvent",
     "ModelTicketWorkStartCommand",
 ]
+
+class NodeTicketWork(HandlerTicketWork):
+    """ONEX entry-point wrapper for HandlerTicketWork."""

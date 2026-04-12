@@ -10,8 +10,12 @@ from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap 
 )
 
 __all__ = [
+    "NodeSessionBootstrap",
     "EnumBootstrapStatus",
     "HandlerSessionBootstrap",
     "ModelBootstrapCommand",
     "ModelBootstrapResult",
 ]
+
+class NodeSessionBootstrap(HandlerSessionBootstrap):
+    """ONEX entry-point wrapper for HandlerSessionBootstrap."""

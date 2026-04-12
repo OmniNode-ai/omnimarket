@@ -14,6 +14,11 @@ from omnimarket.nodes.node_persona_retrieval_effect.models import (
 )
 
 __all__ = [
+    "NodePersonaRetrievalEffect",
     "ModelPersonaRetrievalRequest",
     "ModelPersonaRetrievalResponse",
 ]
+
+class NodePersonaRetrievalEffect:
+    """ONEX entry-point marker for node_persona_retrieval_effect."""
+    __onex_node_type__ = "node_persona_retrieval_effect"

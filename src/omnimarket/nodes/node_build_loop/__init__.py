@@ -18,6 +18,7 @@ from omnimarket.nodes.node_build_loop.models.model_phase_transition_event import
 )
 
 __all__ = [
+    "NodeBuildLoop",
     "EnumBuildLoopPhase",
     "HandlerBuildLoop",
     "ModelLoopCompletedEvent",
@@ -25,3 +26,6 @@ __all__ = [
     "ModelLoopState",
     "ModelPhaseTransitionEvent",
 ]
+
+class NodeBuildLoop(HandlerBuildLoop):
+    """ONEX entry-point wrapper for HandlerBuildLoop."""

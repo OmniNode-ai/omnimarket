@@ -17,9 +17,14 @@ from omnimarket.nodes.node_agent_learning_retrieval_effect.models import (
 )
 
 __all__ = [
+    "NodeAgentLearningRetrievalEffect",
     "EnumRetrievalMatchType",
     "EnumRetrievalTaskType",
     "ModelAgentLearningRetrievalRequest",
     "ModelAgentLearningRetrievalResponse",
     "ModelRetrievedLearning",
 ]
+
+class NodeAgentLearningRetrievalEffect:
+    """ONEX entry-point marker for node_agent_learning_retrieval_effect."""
+    __onex_node_type__ = "node_agent_learning_retrieval_effect"

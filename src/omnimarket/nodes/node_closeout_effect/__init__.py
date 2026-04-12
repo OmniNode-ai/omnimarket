@@ -19,9 +19,13 @@ from omnimarket.nodes.node_closeout_effect.protocols import (
 )
 
 __all__ = [
+    "NodeCloseoutEffect",
     "HandlerCloseout",
     "ModelCloseoutInput",
     "ModelCloseoutResult",
     "ProtocolMergeSweeper",
     "ProtocolQualityGateChecker",
 ]
+
+class NodeCloseoutEffect(HandlerCloseout):
+    """ONEX entry-point wrapper for HandlerCloseout."""

@@ -18,6 +18,7 @@ from omnimarket.nodes.node_local_review.models.model_local_review_state import (
 )
 
 __all__ = [
+    "NodeLocalReview",
     "EnumLocalReviewPhase",
     "HandlerLocalReview",
     "ModelLocalReviewCompletedEvent",
@@ -25,3 +26,6 @@ __all__ = [
     "ModelLocalReviewStartCommand",
     "ModelLocalReviewState",
 ]
+
+class NodeLocalReview(HandlerLocalReview):
+    """ONEX entry-point wrapper for HandlerLocalReview."""

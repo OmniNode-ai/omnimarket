@@ -6,4 +6,8 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecy
     HandlerPrLifecycleStateReducer,
 )
 
-__all__ = ["HandlerPrLifecycleStateReducer"]
+__all__ = [
+    "NodePrLifecycleStateReducer","HandlerPrLifecycleStateReducer"]
+
+class NodePrLifecycleStateReducer(HandlerPrLifecycleStateReducer):
+    """ONEX entry-point wrapper for HandlerPrLifecycleStateReducer."""

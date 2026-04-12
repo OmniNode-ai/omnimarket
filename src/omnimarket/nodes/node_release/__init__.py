@@ -7,7 +7,11 @@ from omnimarket.nodes.node_release.models.model_release_state import (
 )
 
 __all__ = [
+    "NodeRelease",
     "HandlerRelease",
     "ModelReleaseCompletedEvent",
     "ModelReleaseStartCommand",
 ]
+
+class NodeRelease(HandlerRelease):
+    """ONEX entry-point wrapper for HandlerRelease."""

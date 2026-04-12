@@ -9,7 +9,11 @@ from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state impo
 )
 
 __all__ = [
+    "NodeDesignToPlan",
     "HandlerDesignToPlan",
     "ModelDesignToPlanCompletedEvent",
     "ModelDesignToPlanStartCommand",
 ]
+
+class NodeDesignToPlan(HandlerDesignToPlan):
+    """ONEX entry-point wrapper for HandlerDesignToPlan."""
