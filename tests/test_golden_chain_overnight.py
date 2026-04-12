@@ -458,13 +458,13 @@ class TestDispatchCiWatchSkip:
         )
         success, error_msg = _dispatch_ci_watch(command, contract=None)
 
-        assert (
-            success is False
-        ), "ci_watch must not return True (vacuous-green) without PR context"
+        assert success is False, (
+            "ci_watch must not return True (vacuous-green) without PR context"
+        )
         assert error_msg is not None, "ci_watch must return an error_msg, not None"
-        assert error_msg.startswith(
-            "SKIPPED:"
-        ), f"ci_watch error_msg must start with 'SKIPPED:' to signal a typed skip, got: {error_msg!r}"
+        assert error_msg.startswith("SKIPPED:"), (
+            f"ci_watch error_msg must start with 'SKIPPED:' to signal a typed skip, got: {error_msg!r}"
+        )
 
     def test_ci_watch_skip_message_describes_missing_pr_context(self) -> None:
         """The SKIP message should mention the missing PR context."""
@@ -474,9 +474,9 @@ class TestDispatchCiWatchSkip:
         _success, error_msg = _dispatch_ci_watch(command, contract=None)
 
         assert error_msg is not None
-        assert (
-            "PR" in error_msg or "pr" in error_msg.lower()
-        ), "SKIP message should reference missing PR context"
+        assert "PR" in error_msg or "pr" in error_msg.lower(), (
+            "SKIP message should reference missing PR context"
+        )
 
     def test_ci_watch_skip_is_not_none_error(self) -> None:
         """(False, None) is ambiguous — must be (False, 'SKIPPED: ...')."""
@@ -485,6 +485,6 @@ class TestDispatchCiWatchSkip:
         )
         success, error_msg = _dispatch_ci_watch(command, contract=None)
 
-        assert not (
-            success is False and error_msg is None
-        ), "(False, None) is a silent failure, not a typed skip"
+        assert not (success is False and error_msg is None), (
+            "(False, None) is a silent failure, not a typed skip"
+        )
