@@ -55,24 +55,24 @@ class TestDispatchWorkerGoldenChain:
         handler = HandlerDispatchWorker()
         result = handler.handle(_cmd(role=EnumWorkerRole.fixer))
 
-        assert result.rejected_reason == "", (
-            f"Unexpected rejection: {result.rejected_reason}"
-        )
+        assert (
+            result.rejected_reason == ""
+        ), f"Unexpected rejection: {result.rejected_reason}"
         prompt = result.validated_prompt_template
 
         assert "TDD-FIRST SEQUENCE" in prompt, "Missing TDD-FIRST SEQUENCE header"
         assert "Step 1: Read the ticket contract" in prompt, "Missing Step 1"
         assert "Step 2: Write ONE failing integration test" in prompt, "Missing Step 2"
         assert "Step 3: Run the test" in prompt, "Missing Step 3"
-        assert "Step 4: Only after Step 3, begin implementation" in prompt, (
-            "Missing Step 4"
-        )
+        assert (
+            "Step 4: Only after Step 3, begin implementation" in prompt
+        ), "Missing Step 4"
         assert "Step 5: Implementation is done when" in prompt, "Missing Step 5"
 
         # hostile_reviewer gate must also be present in fixer
-        assert 'Skill(skill="onex:hostile_reviewer"' in prompt, (
-            "Missing hostile_reviewer gate"
-        )
+        assert (
+            'Skill(skill="onex:hostile_reviewer"' in prompt
+        ), "Missing hostile_reviewer gate"
 
     def test_dispatch_worker_designer_template_invokes_hostile_reviewer(self) -> None:
         """Designer template must invoke hostile_reviewer skill explicitly.
@@ -97,9 +97,9 @@ class TestDispatchWorkerGoldenChain:
         assert "hostile_reviewer is MANDATORY" in prompt
         assert "Do NOT do manual roleplay" in prompt
         # slug should be derived from scope
-        assert "vggp-designer-design" in prompt or "design-vggp-inference" in prompt, (
-            "Missing expected derived slug marker in designer prompt"
-        )
+        assert (
+            "vggp-designer-design" in prompt or "design-vggp-inference" in prompt
+        ), "Missing expected derived slug marker in designer prompt"
 
     def test_dispatch_worker_collision_fence_present(self) -> None:
         """Collision fences from task dir files are embedded in the compiled prompt.
@@ -249,9 +249,9 @@ class TestDispatchWorkerGoldenChain:
                 existing_task_subjects=[],
             )
             assert result.rejected_reason == "", f"Role {role}: unexpected rejection"
-            assert str(expected_cap) in result.validated_prompt_template, (
-                f"Role {role}: expected cap {expected_cap} not found in prompt"
-            )
+            assert (
+                str(expected_cap) in result.validated_prompt_template
+            ), f"Role {role}: expected cap {expected_cap} not found in prompt"
 
     def test_dispatch_worker_dedup_rejects_live_worker(self) -> None:
         """Dispatching a worker whose name matches an in_progress task is rejected.
@@ -276,9 +276,9 @@ class TestDispatchWorkerGoldenChain:
             _cmd(name="pr-202-fix", replace=True),
             existing_task_subjects=existing_subjects,
         )
-        assert result_replace.rejected_reason == "", (
-            "replace=True should bypass rejection"
-        )
+        assert (
+            result_replace.rejected_reason == ""
+        ), "replace=True should bypass rejection"
         assert result_replace.validated_task_description != ""
 
     def test_dispatch_worker_completed_worker_allows_restart(self) -> None:

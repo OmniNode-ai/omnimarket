@@ -419,15 +419,15 @@ class TestBypassContractDrivenConfig:
 class TestBypassTopicNamespace:
     def test_bypass_used_topic_uses_omnimarket_namespace(self) -> None:
         """TOPIC_BYPASS_USED must follow onex.evt.omnimarket.* convention."""
-        assert TOPIC_BYPASS_USED.startswith("onex.evt.omnimarket."), (
-            f"Expected omnimarket namespace but got: {TOPIC_BYPASS_USED}"
-        )
+        assert TOPIC_BYPASS_USED.startswith(
+            "onex.evt.omnimarket."
+        ), f"Expected omnimarket namespace but got: {TOPIC_BYPASS_USED}"
 
     def test_bypass_rolled_back_topic_uses_omnimarket_namespace(self) -> None:
         """TOPIC_BYPASS_ROLLED_BACK must follow onex.evt.omnimarket.* convention."""
-        assert TOPIC_BYPASS_ROLLED_BACK.startswith("onex.evt.omnimarket."), (
-            f"Expected omnimarket namespace but got: {TOPIC_BYPASS_ROLLED_BACK}"
-        )
+        assert TOPIC_BYPASS_ROLLED_BACK.startswith(
+            "onex.evt.omnimarket."
+        ), f"Expected omnimarket namespace but got: {TOPIC_BYPASS_ROLLED_BACK}"
 
     def test_kafka_event_published_to_namespaced_topic(self) -> None:
         """Handler must publish to the omnimarket-namespaced topic, not review_bot.*."""
@@ -448,9 +448,9 @@ class TestBypassTopicNamespace:
         )
         assert result.granted is True
         topic = kafka.publish.call_args_list[0][0][0]
-        assert topic.startswith("onex.evt.omnimarket."), (
-            f"Expected omnimarket namespace but got: {topic}"
-        )
+        assert topic.startswith(
+            "onex.evt.omnimarket."
+        ), f"Expected omnimarket namespace but got: {topic}"
 
 
 # ---------------------------------------------------------------------------

@@ -932,9 +932,9 @@ class TestHealthEndpoint:
 
                     health = json.loads(line)
                     assert health["healthy"] is True
-                    assert elapsed_ms < 100, (
-                        f"Health took {elapsed_ms:.1f}ms, budget is 100ms"
-                    )
+                    assert (
+                        elapsed_ms < 100
+                    ), f"Health took {elapsed_ms:.1f}ms, budget is 100ms"
                 finally:
                     writer.close()
                     await writer.wait_closed()

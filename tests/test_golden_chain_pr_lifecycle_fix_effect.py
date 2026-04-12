@@ -263,7 +263,7 @@ class TestPrLifecycleFixEffectGoldenChain:
         for reason in EnumPrBlockReason:
             command = _make_command(block_reason=reason)
             result = await handler.handle(command)
-            assert result.fix_applied is True, (
-                f"reason={reason} should route successfully"
-            )
+            assert (
+                result.fix_applied is True
+            ), f"reason={reason} should route successfully"
             assert result.error is None, f"reason={reason} should not error"

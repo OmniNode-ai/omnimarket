@@ -35,9 +35,9 @@ class TestMetadataSchema:
     def test_all_node_metadata_files_valid(self) -> None:
         """Every metadata.yaml in the nodes directory should validate."""
         metadata_files = list(_NODES_DIR.rglob("metadata.yaml"))
-        assert len(metadata_files) >= 3, (
-            f"Expected at least 3 metadata files, found {len(metadata_files)}"
-        )
+        assert (
+            len(metadata_files) >= 3
+        ), f"Expected at least 3 metadata files, found {len(metadata_files)}"
 
         for meta_path in metadata_files:
             with meta_path.open() as f:
@@ -224,9 +224,9 @@ class TestMetadataSchema:
             schema = MetadataSchema(**data)
             if schema.display_name is None or not str(schema.display_name).strip():
                 missing_display.append(meta_path.parent.name)
-        assert not missing_display, (
-            f"Nodes missing display_name field: {missing_display}"
-        )
+        assert (
+            not missing_display
+        ), f"Nodes missing display_name field: {missing_display}"
 
     def test_entry_flags_defaults_to_none(self) -> None:
         """Nodes without entry_flags default to None."""
@@ -277,9 +277,9 @@ class TestMetadataSchema:
                 data = yaml.safe_load(f)
             schema = MetadataSchema(**data)
             if "entry_flags" not in data:
-                assert schema.entry_flags is None, (
-                    f"{meta_path} unexpectedly has entry_flags set"
-                )
+                assert (
+                    schema.entry_flags is None
+                ), f"{meta_path} unexpectedly has entry_flags set"
 
     def test_existing_metadata_files_backward_compatible(self) -> None:
         """All existing metadata.yaml files parse without error (backward compat)."""

@@ -66,9 +66,9 @@ async def test_model_router_publishes_degradation_event() -> None:
             await router.route_async(request)
 
     history = await bus.get_event_history(topic=DEGRADED_TOPIC)
-    assert len(history) >= 1, (
-        f"Expected degradation event on {DEGRADED_TOPIC}, got none"
-    )
+    assert (
+        len(history) >= 1
+    ), f"Expected degradation event on {DEGRADED_TOPIC}, got none"
 
     payload = json.loads(history[0].value)
     assert payload["primary"] == "qwen3-coder-30b"

@@ -348,9 +348,9 @@ class TestGenerateAdaptersForNode:
         )
 
         for key in ("skill_md", "mdc", "instructions_md"):
-            assert paths_a[key].read_text() == paths_b[key].read_text(), (
-                f"{key} output is not deterministic"
-            )
+            assert (
+                paths_a[key].read_text() == paths_b[key].read_text()
+            ), f"{key} output is not deterministic"
 
     def test_display_name_fallback(self, tmp_path: Path) -> None:
         """When display_name is absent from metadata, fall back to slug title-case."""
