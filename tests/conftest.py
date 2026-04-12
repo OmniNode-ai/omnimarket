@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncGenerator, Generator
+from urllib.parse import quote_plus
 
 import asyncpg
 import pytest
 import pytest_asyncio
+
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 
@@ -32,17 +34,22 @@ _POSTGRES_DB = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
 
 def _integration_dsn() -> str:
     return (
-        f"postgresql://{_POSTGRES_USER}:{_POSTGRES_PASSWORD}"
+        f"postgresql://{quote_plus(_POSTGRES_USER)}:{quote_plus(_POSTGRES_PASSWORD)}"
         f"@{_POSTGRES_HOST}:{_POSTGRES_PORT}/{_POSTGRES_DB}"
     )
 
 
 @pytest_asyncio.fixture
-async def postgres_fixture() -> AsyncGenerator[asyncpg.Connection, None]:
+async def postgres_fixture(
+    request: pytest.FixtureRequest,
+) -> AsyncGenerator[asyncpg.Connection, None]:
     """Real asyncpg connection to 192.168.86.201:5436.
 
-    Skips automatically when POSTGRES_PASSWORD is unset (CI without .env).
+    Skips automatically when not under @pytest.mark.integration or when
+    POSTGRES_PASSWORD is unset (CI without .env).
     """
+    if not request.node.get_closest_marker("integration"):
+        pytest.skip("postgres_fixture requires @pytest.mark.integration")
     if not _POSTGRES_PASSWORD:
         pytest.skip("POSTGRES_PASSWORD not set — skipping integration postgres fixture")
     conn: asyncpg.Connection = await asyncpg.connect(_integration_dsn())
