@@ -323,6 +323,9 @@ def _query_active_fences(
             except Exception:
                 continue
 
+            if not isinstance(data, dict):
+                continue
+
             if data.get("status") != "in_progress":
                 continue
 
@@ -337,10 +340,16 @@ def _query_active_fences(
                 continue
 
             task_target_set = {t.lower() for t in task_targets if isinstance(t, str)}
-            # Exclude own targets; include all other workers' claimed targets
+            overlapping = task_target_set & current_target_set
+            if not overlapping:
+                continue
+
+            # Emit the conflicting worker's OTHER targets (collision surface).
+            # If all their targets overlap ours, fall back to the shared ones.
             non_own = task_target_set - current_target_set
+            emit_set = non_own if non_own else overlapping
             for t in task_targets:
-                if isinstance(t, str) and t.lower() in non_own:
+                if isinstance(t, str) and t.lower() in emit_set:
                     fences.append(f"{t} (owned by {owner})")
     except Exception as exc:
         logger.warning(
@@ -489,10 +498,10 @@ class HandlerDispatchWorker:
         }
         missing = [k for k in role_required_ids.get(command.role, []) if not ctx[k]]
         if missing:
-            logger.warning(
-                "Role %s missing required identifiers %s — prompt may contain empty placeholders",
-                command.role,
-                missing,
+            raise ValueError(
+                f"Role {command.role!r} requires identifiers {missing} "
+                "but they could not be derived from targets. "
+                "Include a repo#PR or OMN-XXXX ticket in targets."
             )
 
         role_body = _ROLE_TEMPLATES[command.role]

@@ -97,10 +97,8 @@ class TestDispatchWorkerGoldenChain:
         assert "hostile_reviewer is MANDATORY" in prompt
         assert "Do NOT do manual roleplay" in prompt
         # slug should be derived from scope
-        assert (
-            "vggp-designer-design" in prompt
-            or "design-vggp-inference" in prompt
-            or "design" in prompt
+        assert "vggp-designer-design" in prompt or "design-vggp-inference" in prompt, (
+            "Missing expected derived slug marker in designer prompt"
         )
 
     def test_dispatch_worker_collision_fence_present(self) -> None:
@@ -141,24 +139,27 @@ class TestDispatchWorkerGoldenChain:
                 (team_dir / f"task-{i:03d}.json").write_text(json.dumps(t))
 
             handler = HandlerDispatchWorker()
-            # current worker owns OMN-8375, not omnimarket#202 or omnibase_core#796
+            # current worker owns omnimarket#202 (overlaps first in_progress task)
+            # so fence should emit the first task's OTHER targets (none) → falls
+            # back to the overlapping target; second task (omnibase_core#796) has
+            # no overlap so it is NOT fenced (overlap-only policy)
             result = handler.handle(
                 _cmd(
                     name="new-worker",
-                    targets=["OMN-8375"],
+                    targets=["omnimarket#202", "OMN-8375"],
                     collision_fences=[],
                 ),
                 tasks_dir=tasks_dir,
             )
 
         assert result.rejected_reason == ""
-        # Both in_progress targets from other workers should be in the fence
+        # omnimarket#202 overlaps pr-202-fix; no non-own targets → fall back to
+        # shared target in fence
         assert "omnimarket#202" in result.validated_prompt_template
-        assert "omnibase_core#796" in result.validated_prompt_template
         # completed task's target should NOT be in fences
         assert "OMN-9999" not in "\n".join(result.collision_fence_embeds)
-        # 2 fences: omnimarket#202 and omnibase_core#796
-        assert len(result.collision_fence_embeds) == 2
+        # exactly 1 fence: the overlapping omnimarket#202 target
+        assert len(result.collision_fence_embeds) == 1
 
     def test_dispatch_worker_result_has_task_report(self) -> None:
         """Result contains validated_task_description in expected format.
@@ -201,7 +202,7 @@ class TestDispatchWorkerGoldenChain:
                 name="golden-fixer",
                 role=EnumWorkerRole.fixer,
                 scope="golden fixture scope",
-                targets=["OMN-0001"],
+                targets=["OMN-0001", "omnimarket#1"],
                 reports_to="team-lead",
                 wall_clock_cap_min=90,
                 model="sonnet",
@@ -242,7 +243,7 @@ class TestDispatchWorkerGoldenChain:
                     name=f"cap-test-{role.value}",
                     role=role,
                     scope=f"Test scope for {role.value}",
-                    targets=["OMN-0001"],
+                    targets=["OMN-0001", "omnimarket#1"],
                     wall_clock_cap_min=None,
                 ),
                 existing_task_subjects=[],
