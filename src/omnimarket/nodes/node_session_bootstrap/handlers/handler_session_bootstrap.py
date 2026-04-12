@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -228,8 +229,8 @@ class HandlerSessionBootstrap:
 
     def __init__(
         self,
-        cron_list_fn: object = None,
-        cron_create_fn: object = None,
+        cron_list_fn: Callable[[], list[dict[str, str]]] | None = None,
+        cron_create_fn: Callable[..., str | None] | None = None,
     ) -> None:
         """
         Args:
