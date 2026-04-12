@@ -48,7 +48,7 @@ _DEFAULT_CHAINS = [
         name="pattern_learning",
         head_topic=PATTERN_STORED_TOPIC,
         tail_table="pattern_learning_artifacts",
-        expected_fields=["correlation_id"],
+        expected_fields=["pattern_id"],
     ),
     ModelChainDefinition(
         name="delegation",
