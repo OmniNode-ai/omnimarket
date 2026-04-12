@@ -62,9 +62,11 @@ class TestNavigationHistoryReducerGoldenChain:
 
     def test_model_request_frozen(self) -> None:
         """ModelNavigationHistoryRequest is immutable."""
+        from pydantic import ValidationError
+
         session = _make_success_session()
         request = ModelNavigationHistoryRequest(session=session)
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             request.session = _make_success_session()  # type: ignore[misc]
 
     def test_plan_step_roundtrip(self) -> None:
@@ -83,6 +85,8 @@ class TestNavigationHistoryReducerGoldenChain:
 
     def test_plan_step_frozen(self) -> None:
         """ModelPlanStep is immutable."""
+        from pydantic import ValidationError
+
         step = ModelPlanStep(
             step_index=0,
             from_state_id="a",
@@ -90,7 +94,7 @@ class TestNavigationHistoryReducerGoldenChain:
             action="test",
             executed_at=datetime.now(tz=UTC),
         )
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             step.step_index = 99  # type: ignore[misc]
 
     def test_handler_importable(self) -> None:

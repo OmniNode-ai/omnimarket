@@ -107,7 +107,9 @@ class TestAgentCoordinatorOrchestratorGoldenChain:
 
     def test_extra_fields_rejected(self) -> None:
         """Extra fields in request raise ValidationError (extra=forbid)."""
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             ModelAgentCoordinatorRequest(  # type: ignore[call-overload]
                 action=EnumAgentCoordinatorAction.SUBSCRIBE,
                 agent_id="x",

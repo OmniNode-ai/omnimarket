@@ -107,20 +107,24 @@ class TestMemoryLifecycleOrchestratorGoldenChain:
 
     def test_expire_command_frozen(self) -> None:
         """ModelExpireMemoryCommand is immutable (frozen=True)."""
+        from pydantic import ValidationError
+
         cmd = ModelExpireMemoryCommand(
             memory_id=uuid4(),
             expected_revision=0,
         )
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             cmd.memory_id = uuid4()  # type: ignore[misc]
 
     def test_archive_command_frozen(self) -> None:
         """ModelArchiveMemoryCommand is immutable (frozen=True)."""
+        from pydantic import ValidationError
+
         cmd = ModelArchiveMemoryCommand(
             memory_id=uuid4(),
             expected_revision=0,
         )
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             cmd.memory_id = uuid4()  # type: ignore[misc]
 
     def test_nodes_importable_from_package(self) -> None:

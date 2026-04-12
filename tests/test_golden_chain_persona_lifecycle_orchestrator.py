@@ -42,13 +42,17 @@ class TestPersonaLifecycleOrchestratorGoldenChain:
 
     def test_request_frozen(self) -> None:
         """ModelPersonaLifecycleRequest is immutable."""
+        from pydantic import ValidationError
+
         req = ModelPersonaLifecycleRequest(operation="on_tick")
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             req.operation = "on_demand"  # type: ignore[misc]
 
     def test_invalid_operation_rejected(self) -> None:
         """Invalid operation value raises ValidationError."""
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             ModelPersonaLifecycleRequest(operation="invalid_op")  # type: ignore[arg-type]
 
     def test_response_importable(self) -> None:
