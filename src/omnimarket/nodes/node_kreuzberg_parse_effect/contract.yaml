@@ -1,0 +1,141 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: kreuzberg_parse_effect
+# Subscribes to document-discovered / document-changed events and calls kreuzberg
+# to extract text, then emits document-indexed or document-parse-failed events.
+
+name: node_kreuzberg_parse_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "a4e72f19-3c8b-4d56-b0a1-7f9e2d45c830"
+node_type: EFFECT
+input_model: "ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent"
+output_model: "ModelKreuzbergParseResult"
+description: |
+  KreuzbergParseEffect consumes document-discovered and document-changed events,
+  calls the kreuzberg HTTP service to extract plain text from the raw document,
+  and emits document-indexed (kreuzberg variant) or document-parse-failed events.
+
+  Hard limits:
+    - Documents > 50 MB: emit parse-failed with error_code=too_large, no kreuzberg call.
+    - Requests exceeding 30 s: emit parse-failed with error_code=timeout.
+
+  Idempotency:
+    Before calling kreuzberg, check if <text_store_path>/<sha256_of_source_url>.txt
+    already exists and contains a matching content_fingerprint. If so, re-emit the
+    indexed event without re-parsing (same document_id).
+
+  Consumer group (when wired to document-discovered / document-changed topics):
+  {env}.omnimarket.kreuzberg_parse_effect.consume.v1
+
+# =============================================================================
+# PUBLISHED EVENTS (Kafka) - Documentation Layer
+# =============================================================================
+published_events:
+  - topic_suffix: "onex.evt.omnimemory.document-indexed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-indexed.v1"
+    event_type: "DocumentIndexedKreuzberg"
+    trigger: "Document successfully parsed by kreuzberg"
+    description: "Emitted after kreuzberg extracts text from a document."
+
+  - topic_suffix: "onex.evt.omnimemory.document-parse-failed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-parse-failed.v1"
+    event_type: "DocumentParseFailed"
+    trigger: "Document too large, kreuzberg timeout, or kreuzberg HTTP error"
+    description: "Emitted when kreuzberg cannot parse a document."
+
+# =============================================================================
+# SUBSCRIBED EVENTS (Kafka) - Documentation Layer
+# =============================================================================
+subscribed_events:
+  - topic_suffix: "onex.evt.omnimemory.document-discovered.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-discovered.v1"
+    event_type: "DocumentDiscovered"
+    description: "Triggers a kreuzberg parse for newly discovered documents."
+
+  - topic_suffix: "onex.evt.omnimemory.document-changed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-changed.v1"
+    event_type: "DocumentChanged"
+    description: "Triggers a kreuzberg re-parse for documents with updated content."
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events:
+    - "document_indexed"
+    - "document_parse_failed"
+  event_categories: ["parse", "document", "kreuzberg", "effect"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "parse"
+  invocation_mode: "subscription"
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.evt.omnimemory.document-discovered.v1"
+    - "onex.evt.omnimemory.document-changed.v1"
+
+  publish_topics:
+    - "onex.evt.omnimemory.document-indexed.v1"
+    - "onex.evt.omnimemory.document-parse-failed.v1"
+
+  subscribe_topic_metadata:
+    "onex.evt.omnimemory.document-discovered.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent"
+      description: "Document discovered event from FilesystemCrawlerEffect or other crawlers."
+
+    "onex.evt.omnimemory.document-changed.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_changed_event.ModelDocumentChangedEvent"
+      description: "Document changed event from FilesystemCrawlerEffect or other crawlers."
+
+  publish_topic_metadata:
+    "onex.evt.omnimemory.document-indexed.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_indexed_kreuzberg_event.ModelDocumentIndexedKreuzbergEvent"
+      description: "Document indexed (kreuzberg) event."
+
+    "onex.evt.omnimemory.document-parse-failed.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_parse_failed_event.ModelDocumentParseFailedEvent"
+      description: "Document parse failed event."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "document_discovered"
+      handler_class: "HandlerKreuzbergParse"
+      handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
+    - operation: "document_changed"
+      handler_class: "HandlerKreuzbergParse"
+      handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
+
+# === CONFIGURATION FIELDS ===
+config_fields:
+  KREUZBERG_URL:
+    default: "http://localhost:8090"
+    description: "Base URL of the kreuzberg Docker service"
+  KREUZBERG_TEXT_STORE_PATH:
+    required: true
+    description: "Filesystem path where extracted text files are stored"
+  KREUZBERG_DOCUMENT_ROOT:
+    default: "/"
+    description: "Root directory that source_ref paths must be confined to."
+  KREUZBERG_PARSER_VERSION:
+    required: true
+    description: "Semver string identifying the kreuzberg parser version"
+  KREUZBERG_MAX_DOC_BYTES:
+    default: 50000000
+    description: "Maximum document size in bytes before emitting too_large parse failure"
+  KREUZBERG_TIMEOUT_MS:
+    default: 30000
+    description: "HTTP request timeout in milliseconds for kreuzberg extract calls"
+  KREUZBERG_INLINE_TEXT_MAX_CHARS:
+    default: 4096
+    description: "Maximum character length for inline text storage"

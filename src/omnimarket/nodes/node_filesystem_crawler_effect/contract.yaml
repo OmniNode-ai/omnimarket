@@ -1,0 +1,124 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: filesystem_crawler_effect
+# Walks configured filesystem path prefixes for .md files and emits document lifecycle events
+
+name: node_filesystem_crawler_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "cb6d3224-5f18-4da1-be8c-e5a15a1c659e"
+node_type: EFFECT
+input_model: "ModelCrawlTickCommand"
+output_model: "ModelFilesystemCrawlResult"
+description: |
+  FilesystemCrawlerEffect walks configured path prefixes for .md files
+  and emits document lifecycle events using a two-stage mtime → SHA-256
+  change detection strategy.
+
+  Change detection (per design §5):
+    1. mtime fast-path: if stat.st_mtime is unchanged, skip without re-hashing.
+    2. If mtime changed: compute SHA-256(content). If hash also unchanged,
+       update last_crawled_at_utc only.
+    3. Not in state table: emit document.discovered.v1 + document.indexed.v1.
+    4. Content changed: emit document.changed.v1 + document.indexed.v1.
+    5. State table entries not found in walk: emit document.removed.v1.
+
+  Consumer group (when wired to crawl-tick topic):
+  {env}.omnimarket.filesystem_crawler_effect.consume.v1
+
+# =============================================================================
+# PUBLISHED EVENTS (Kafka) - Documentation Layer
+# =============================================================================
+published_events:
+  - topic_suffix: "onex.evt.omnimemory.document-discovered.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-discovered.v1"
+    event_type: "DocumentDiscovered"
+    trigger: "New .md file found with no prior crawl state"
+    description: "Emitted when a .md file is found for the first time."
+
+  - topic_suffix: "onex.evt.omnimemory.document-changed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-changed.v1"
+    event_type: "DocumentChanged"
+    trigger: "Previously crawled .md file has a different SHA-256 fingerprint"
+    description: "Emitted when a known file's content has changed."
+
+  - topic_suffix: "onex.evt.omnimemory.document-removed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-removed.v1"
+    event_type: "DocumentRemoved"
+    trigger: "State table entry not found in filesystem walk"
+    description: "Emitted for files present in crawl state but absent from the current walk."
+
+  - topic_suffix: "onex.evt.omnimemory.document-indexed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.document-indexed.v1"
+    event_type: "DocumentIndexed"
+    trigger: "Document successfully crawled and indexed (discovered or changed)"
+    description: "Emitted after a document is fully crawled and written to the index."
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events:
+    - "document_discovered"
+    - "document_changed"
+    - "document_removed"
+    - "document_indexed"
+  event_categories: ["crawl", "document", "filesystem", "effect"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "crawl"
+  invocation_mode: "subscription"
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimemory.crawl-tick.v1"
+
+  publish_topics:
+    - "onex.evt.omnimemory.document-discovered.v1"
+    - "onex.evt.omnimemory.document-changed.v1"
+    - "onex.evt.omnimemory.document-removed.v1"
+    - "onex.evt.omnimemory.document-indexed.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimemory.crawl-tick.v1":
+      schema_ref: "omnimemory.models.crawl.ModelCrawlTickCommand"
+      description: "Crawl tick command issued by CrawlSchedulerEffect or manual trigger."
+
+  publish_topic_metadata:
+    "onex.evt.omnimemory.document-discovered.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent"
+      description: "Document discovered event."
+
+    "onex.evt.omnimemory.document-changed.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_changed_event.ModelDocumentChangedEvent"
+      description: "Document changed event."
+
+    "onex.evt.omnimemory.document-removed.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_removed_event.ModelDocumentRemovedEvent"
+      description: "Document removed event."
+
+    "onex.evt.omnimemory.document-indexed.v1":
+      schema_ref: "omnimemory.models.crawl.model_document_indexed_event.ModelDocumentIndexedEvent"
+      description: "Document indexed event."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "crawl_tick"
+      handler_class: "HandlerFilesystemCrawler"
+      handler_module: "omnimarket.nodes.node_filesystem_crawler_effect.handlers.handler_filesystem_crawler"
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "ProtocolCrawlStateRepository"
+    type: "protocol"
+    required: true
+    description: "Repository for loading and persisting crawl state records (stays in omnimemory)"
