@@ -11,6 +11,6 @@ Related:
 
 from __future__ import annotations
 
-TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing.degraded.v1"
+TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"
 
 __all__: list[str] = ["TOPIC_MODEL_ROUTING_DEGRADED"]
