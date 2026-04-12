@@ -10,8 +10,8 @@ error handling, and handler initialization lifecycle.
 from __future__ import annotations
 
 import pytest
-
 from omnibase_core.container import ModelONEXContainer
+
 from omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute import (
     HandlerSimilarityCompute,
 )

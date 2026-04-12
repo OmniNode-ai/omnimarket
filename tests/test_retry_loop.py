@@ -342,15 +342,15 @@ async def test_feedback_is_replaced_not_accumulated(tmp_path: Path) -> None:
     # Coder calls are at indices 0, 2, 4 in all_user_prompts.
     coder_prompts = [p for i, p in enumerate(all_user_prompts) if i % 2 == 0]
     assert len(coder_prompts) >= 3
-    assert (
-        "issue-A" in coder_prompts[1]
-    ), "2nd coder prompt must contain issue-A feedback"
-    assert (
-        "issue-B" in coder_prompts[2]
-    ), "3rd coder prompt must contain issue-B feedback"
-    assert (
-        "issue-A" not in coder_prompts[2]
-    ), "3rd coder prompt must NOT contain issue-A (replaced)"
+    assert "issue-A" in coder_prompts[1], (
+        "2nd coder prompt must contain issue-A feedback"
+    )
+    assert "issue-B" in coder_prompts[2], (
+        "3rd coder prompt must contain issue-B feedback"
+    )
+    assert "issue-A" not in coder_prompts[2], (
+        "3rd coder prompt must NOT contain issue-A (replaced)"
+    )
 
 
 # ---------------------------------------------------------------------------

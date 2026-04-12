@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch import (
     EnumCiTerminalStatus,
     HandlerCiWatch,

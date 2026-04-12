@@ -144,6 +144,6 @@ class TestHandlerOnboarding:
             # resolve_policy should receive None (not []) for skip_steps
             call_args = mock_resolve.call_args
             # Third positional arg is skip_steps
-            assert (
-                call_args[0][2] is None
-            ), f"Expected skip_steps=None for empty list, got {call_args[0][2]}"
+            assert call_args[0][2] is None, (
+                f"Expected skip_steps=None for empty list, got {call_args[0][2]}"
+            )

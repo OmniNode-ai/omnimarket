@@ -175,9 +175,9 @@ def test_process_halt_triggers_recovered_does_not_set_halt_reason(
     # Recovery was invoked
     assert "recoverable_condition" in recovered_conditions
     # A recovered condition must NOT produce a halt_reason
-    assert (
-        result.halt_reason is None
-    ), f"Expected halt_reason=None after recovery, got: {result.halt_reason!r}"
+    assert result.halt_reason is None, (
+        f"Expected halt_reason=None after recovery, got: {result.halt_reason!r}"
+    )
 
 
 @pytest.mark.unit
@@ -240,9 +240,9 @@ def test_process_halt_triggers_recovered_skips_legacy_halt_on_failure_gate(
         "Legacy _check_halt_conditions ran after recovery — this is the Finding 2 bug."
     )
     # Pipeline should have continued past build_loop to merge_sweep etc.
-    assert (
-        "merge_sweep" in result.phases_run
-    ), "Pipeline should continue past the recovered phase"
+    assert "merge_sweep" in result.phases_run, (
+        "Pipeline should continue past the recovered phase"
+    )
 
 
 @pytest.mark.unit
@@ -500,12 +500,12 @@ def test_overseer_tick_topic_uses_omnimarket_namespace() -> None:
     Bug: original topic was 'onex.evt.overseer.tick.v1' — missing the
     'omnimarket' namespace required by '**/nodes/node_*/contract.yaml' convention.
     """
-    assert (
-        "omnimarket" in TOPIC_OVERSEER_TICK
-    ), f"TOPIC_OVERSEER_TICK={TOPIC_OVERSEER_TICK!r} must contain 'omnimarket' namespace"
-    assert (
-        TOPIC_OVERSEER_TICK == "onex.evt.omnimarket.overseer.tick.v1"
-    ), f"Expected 'onex.evt.omnimarket.overseer.tick.v1', got {TOPIC_OVERSEER_TICK!r}"
+    assert "omnimarket" in TOPIC_OVERSEER_TICK, (
+        f"TOPIC_OVERSEER_TICK={TOPIC_OVERSEER_TICK!r} must contain 'omnimarket' namespace"
+    )
+    assert TOPIC_OVERSEER_TICK == "onex.evt.omnimarket.overseer.tick.v1", (
+        f"Expected 'onex.evt.omnimarket.overseer.tick.v1', got {TOPIC_OVERSEER_TICK!r}"
+    )
 
 
 @pytest.mark.unit

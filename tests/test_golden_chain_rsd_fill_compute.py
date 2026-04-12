@@ -12,8 +12,8 @@ import json
 from uuid import uuid4
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
     HandlerRsdFill,
 )

@@ -375,9 +375,9 @@ def test_compute_metrics_review_unavailable_counts_as_rejection() -> None:
     assert m.total_tickets == 1
     # Serialized JSON side-effect assertion (matches dod_evidence)
     data = json.loads(m.model_dump_json())
-    assert (
-        data["review_rejection_rate"] == 1.0
-    ), f"Expected review_rejection_rate=1.0 for review_unavailable outcome, got {data['review_rejection_rate']}"
+    assert data["review_rejection_rate"] == 1.0, (
+        f"Expected review_rejection_rate=1.0 for review_unavailable outcome, got {data['review_rejection_rate']}"
+    )
 
 
 def test_compute_metrics_reviewer_model_from_first_trace() -> None:
@@ -639,12 +639,12 @@ def test_trace_tokens_null_serializes_as_json_null() -> None:
         wall_clock_ms=1000,
     )
     data = json.loads(trace.model_dump_json())
-    assert (
-        data["prompt_tokens"] is None
-    ), f"expected null, got {data['prompt_tokens']!r}"
-    assert (
-        data["completion_tokens"] is None
-    ), f"expected null, got {data['completion_tokens']!r}"
+    assert data["prompt_tokens"] is None, (
+        f"expected null, got {data['prompt_tokens']!r}"
+    )
+    assert data["completion_tokens"] is None, (
+        f"expected null, got {data['completion_tokens']!r}"
+    )
 
 
 def test_trace_tokens_int_serializes_as_int() -> None:

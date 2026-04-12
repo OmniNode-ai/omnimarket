@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan import (
     HandlerDesignToPlan,
 )

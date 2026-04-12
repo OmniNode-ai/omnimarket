@@ -7,8 +7,8 @@ import os
 from typing import Any
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_integration_test_runner.models.model_test_runner_request import (
     EnumDIProfile,
 )

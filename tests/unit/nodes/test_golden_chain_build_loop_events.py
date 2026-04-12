@@ -18,8 +18,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_build_loop.models.model_loop_state import EnumBuildLoopPhase
 from omnimarket.nodes.node_build_loop.models.model_phase_transition_event import (
     ModelPhaseTransitionEvent,
@@ -81,9 +81,9 @@ async def test_build_loop_phase_transition_events() -> None:
     history = await bus.get_event_history(limit=20, topic=TOPIC_PHASE_TRANSITION)
 
     # Must have at least 5 phase events for a standard cycle (6 transitions published)
-    assert (
-        len(history) >= 5
-    ), f"Expected >= 5 phase transition events, got {len(history)}"
+    assert len(history) >= 5, (
+        f"Expected >= 5 phase transition events, got {len(history)}"
+    )
 
     # Extract to_phase values from all events
     received_phases = []
@@ -91,16 +91,16 @@ async def test_build_loop_phase_transition_events() -> None:
         raw = json.loads(msg.value.decode("utf-8"))
 
         # Field-level assertions for each event
-        assert (
-            raw["correlation_id"] is not None
-        ), "correlation_id (cycle_id) must be non-null"
+        assert raw["correlation_id"] is not None, (
+            "correlation_id (cycle_id) must be non-null"
+        )
         assert raw["to_phase"] is not None, "to_phase must be non-null"
         assert raw["timestamp"] is not None, "timestamp must be non-null"
         assert raw["success"] is True
 
-        assert (
-            UUID(raw["correlation_id"]) == cycle_id
-        ), "All events in one cycle must share the same correlation_id (cycle_id)"
+        assert UUID(raw["correlation_id"]) == cycle_id, (
+            "All events in one cycle must share the same correlation_id (cycle_id)"
+        )
 
         received_phases.append(raw["to_phase"])
 
@@ -175,8 +175,8 @@ async def test_phase_transition_cycle_id_consistency() -> None:
 
     for msg in history:
         raw = json.loads(msg.value.decode("utf-8"))
-        assert (
-            UUID(raw["correlation_id"]) == cycle_id
-        ), "All events must share the same cycle_id (correlation_id) as join key"
+        assert UUID(raw["correlation_id"]) == cycle_id, (
+            "All events must share the same cycle_id (correlation_id) as join key"
+        )
 
     await bus.close()

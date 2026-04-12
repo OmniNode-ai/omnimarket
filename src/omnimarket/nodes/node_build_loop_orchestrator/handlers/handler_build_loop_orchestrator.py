@@ -39,11 +39,11 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import yaml
-
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.protocols.event_bus.protocol_event_envelope import (
     ProtocolEventEnvelope,
 )
+
 from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
     HandlerBuildLoop,
 )

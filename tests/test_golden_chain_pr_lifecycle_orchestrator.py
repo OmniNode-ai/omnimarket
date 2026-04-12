@@ -15,8 +15,8 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleResult,

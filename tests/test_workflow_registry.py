@@ -40,9 +40,9 @@ class TestWorkflowRegistry:
         eps = entry_points(group="onex.nodes")
         ep = next((e for e in eps if e.name == "node_golden_chain_sweep"), None)
         assert ep is not None
-        assert (
-            ep.value == "omnimarket.nodes.node_golden_chain_sweep"
-        ), f"Expected package-form entry point, got: {ep.value}"
+        assert ep.value == "omnimarket.nodes.node_golden_chain_sweep", (
+            f"Expected package-form entry point, got: {ep.value}"
+        )
 
     def test_workflow_yaml_exists(self) -> None:
         """golden_chain_sweep_workflow.yaml must exist at repo root."""
@@ -77,9 +77,9 @@ class TestWorkflowRegistry:
         chain_names = {c["name"] for c in chains}
         missing = set(REGISTERED_CHAINS) - chain_names
         unexpected = chain_names - set(REGISTERED_CHAINS)
-        assert (
-            chain_names == set(REGISTERED_CHAINS)
-        ), f"Chain mismatch — missing: {sorted(missing)}, unexpected: {sorted(unexpected)}"
+        assert chain_names == set(REGISTERED_CHAINS), (
+            f"Chain mismatch — missing: {sorted(missing)}, unexpected: {sorted(unexpected)}"
+        )
 
     def test_handler_importable(self) -> None:
         """NodeGoldenChainSweep handler must be importable."""
