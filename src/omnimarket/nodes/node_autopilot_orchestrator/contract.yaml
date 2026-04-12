@@ -47,11 +47,6 @@ inputs:
     description: "Run without side effects"
     required: false
     default: false
-  require_gate:
-    type: bool
-    description: "Opt into Slack HIGH_RISK gate before release"
-    required: false
-    default: false
   autonomous:
     type: bool
     description: "No human gates"

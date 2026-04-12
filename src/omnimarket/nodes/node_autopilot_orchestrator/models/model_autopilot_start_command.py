@@ -19,13 +19,9 @@ class ModelAutopilotStartCommand(BaseModel):
         description="Execution mode: close-out | build.",
     )
     dry_run: bool = Field(default=False, description="No side effects if true.")
-    require_gate: bool = Field(
-        default=False,
-        description="Opt into Slack HIGH_RISK gate before release.",
-    )
     autonomous: bool = Field(
         default=True,
-        description="Run without human gates.",
+        description="Run without human gates (always true; gate removed).",
     )
 
 

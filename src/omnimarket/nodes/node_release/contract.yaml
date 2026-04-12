@@ -44,12 +44,12 @@ inputs:
     default: false
   autonomous:
     type: bool
-    description: "Skip Slack HIGH_RISK gate; intended for nightly autopilot runs"
+    description: "Deprecated — gate removed; field kept for backward compatibility"
     required: false
     default: false
   gate_attestation:
     type: str
-    description: "Pre-issued gate token to bypass Slack HIGH_RISK gate"
+    description: "Pre-issued gate token for audit trail"
     required: false
 
 outputs:
