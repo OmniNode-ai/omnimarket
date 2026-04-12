@@ -3,6 +3,7 @@
 """CLI entry point for node_golden_chain_sweep.
 
 Validates end-to-end Kafka-to-DB-projection golden chains.
+Chain definitions are loaded from golden_chains.yaml at startup.
 Pre-collected projection data is passed via --projected-rows JSON.
 
 Usage:
@@ -24,64 +25,19 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep import (
     GoldenChainSweepRequest,
-    ModelChainDefinition,
     NodeGoldenChainSweep,
 )
-from omnimarket.nodes.node_golden_chain_sweep.topics import (
-    LLM_ROUTING_DECISION_TOPIC,
-    OVERNIGHT_SESSION_COMPLETE_TOPIC,
-    PATTERN_STORED_TOPIC,
-    ROUTING_DECISION_TOPIC,
-    RUN_EVALUATED_TOPIC,
-    TASK_DELEGATED_TOPIC,
-)
+from omnimarket.nodes.node_golden_chain_sweep.registry import load_registry
 
 _log = logging.getLogger(__name__)
-
-_DEFAULT_CHAINS = [
-    ModelChainDefinition(
-        name="registration",
-        head_topic=ROUTING_DECISION_TOPIC,
-        tail_table="agent_routing_decisions",
-        expected_fields=["correlation_id", "selected_agent"],
-    ),
-    ModelChainDefinition(
-        name="pattern_learning",
-        head_topic=PATTERN_STORED_TOPIC,
-        tail_table="pattern_learning_artifacts",
-        expected_fields=["pattern_id"],
-    ),
-    ModelChainDefinition(
-        name="delegation",
-        head_topic=TASK_DELEGATED_TOPIC,
-        tail_table="delegation_events",
-        expected_fields=["correlation_id"],
-    ),
-    ModelChainDefinition(
-        name="routing",
-        head_topic=LLM_ROUTING_DECISION_TOPIC,
-        tail_table="llm_routing_decisions",
-        expected_fields=["correlation_id"],
-    ),
-    ModelChainDefinition(
-        name="evaluation",
-        head_topic=RUN_EVALUATED_TOPIC,
-        tail_table="session_outcomes",
-        expected_fields=["correlation_id"],
-    ),
-    ModelChainDefinition(
-        name="overnight",
-        head_topic=OVERNIGHT_SESSION_COMPLETE_TOPIC,
-        tail_table="overnight_sessions",
-        expected_fields=["session_id", "session_status"],
-    ),
-]
-
-_CHAIN_MAP = {c.name: c for c in _DEFAULT_CHAINS}
 
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+
+    # Load chain definitions from YAML registry (falls back to [] if file missing)
+    _all_chains = load_registry()
+    _chain_map = {c.name: c for c in _all_chains}
 
     parser = argparse.ArgumentParser(
         description="Validate golden chains from Kafka topics to DB projections."
@@ -89,7 +45,7 @@ def main() -> None:
     parser.add_argument(
         "--chains",
         default="",
-        help="Comma-separated chain names to validate (default: all 5 chains)",
+        help="Comma-separated chain names to validate (default: all registry chains)",
     )
     parser.add_argument(
         "--timeout-ms",
@@ -110,9 +66,9 @@ def main() -> None:
 
     chain_filter = [c.strip() for c in args.chains.split(",") if c.strip()]
     chains = (
-        [_CHAIN_MAP[n] for n in chain_filter if n in _CHAIN_MAP]
+        [_chain_map[n] for n in chain_filter if n in _chain_map]
         if chain_filter
-        else _DEFAULT_CHAINS
+        else _all_chains
     )
 
     try:
