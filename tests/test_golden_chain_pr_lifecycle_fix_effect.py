@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
     HandlerPrLifecycleFix,
 )
@@ -263,7 +263,7 @@ class TestPrLifecycleFixEffectGoldenChain:
         for reason in EnumPrBlockReason:
             command = _make_command(block_reason=reason)
             result = await handler.handle(command)
-            assert result.fix_applied is True, (
-                f"reason={reason} should route successfully"
-            )
+            assert (
+                result.fix_applied is True
+            ), f"reason={reason} should route successfully"
             assert result.error is None, f"reason={reason} should not error"

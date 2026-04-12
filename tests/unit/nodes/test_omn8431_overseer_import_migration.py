@@ -31,9 +31,9 @@ class TestOmnimarketOverseerImportMigration:
         import omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier as mod
 
         src = inspect.getsource(mod)
-        assert "omnibase_compat.overseer" not in src, (
-            "handler_overseer_verifier still imports from omnibase_compat.overseer"
-        )
+        assert (
+            "omnibase_compat.overseer" not in src
+        ), "handler_overseer_verifier still imports from omnibase_compat.overseer"
 
     def test_no_compat_overseer_in_protocol(self) -> None:
         import inspect
@@ -41,9 +41,9 @@ class TestOmnimarketOverseerImportMigration:
         import omnimarket.protocols.protocol_overseer_verifier as mod
 
         src = inspect.getsource(mod)
-        assert "omnibase_compat.overseer" not in src, (
-            "protocol_overseer_verifier still imports from omnibase_compat.overseer"
-        )
+        assert (
+            "omnibase_compat.overseer" not in src
+        ), "protocol_overseer_verifier still imports from omnibase_compat.overseer"
 
     def test_overseer_verify_orchestrator_in_omnimarket(self) -> None:
         from omnimarket.nodes.node_skill_overseer_verify_orchestrator.node import (

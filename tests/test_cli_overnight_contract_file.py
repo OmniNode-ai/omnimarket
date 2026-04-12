@@ -50,9 +50,9 @@ def test_contract_file_loads_valid_yaml(tmp_path):
         timeout=30,
     )
 
-    assert result.returncode == 0, (
-        f"CLI exited non-zero.\nstderr: {result.stderr}\nstdout: {result.stdout}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"CLI exited non-zero.\nstderr: {result.stderr}\nstdout: {result.stdout}"
 
     payload = json.loads(result.stdout)
     assert payload["dry_run"] is True

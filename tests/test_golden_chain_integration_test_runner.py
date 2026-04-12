@@ -6,11 +6,11 @@ import subprocess
 import sys
 
 import pytest
+
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
-
 from omnimarket.nodes.node_integration_test_runner.di_profiles import (
     build_conftest_plugin_for_profile,
     build_event_bus_for_profile,
@@ -112,7 +112,7 @@ class TestDIProfiles:
 
         os.environ.pop("KAFKA_BOOTSTRAP_SERVERS", None)
         bus = build_event_bus_for_profile(EnumDIProfile.STAGING)
-        assert isinstance(bus, (ProtocolEventBusPublisher, EventBusInmemory))
+        assert isinstance(bus, ProtocolEventBusPublisher | EventBusInmemory)
 
     def test_local_profile_env_vars_injected_into_conftest_plugin(self) -> None:
         """build_conftest_plugin_for_profile(LOCAL) returns a pytest plugin

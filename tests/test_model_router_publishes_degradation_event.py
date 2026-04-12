@@ -12,9 +12,9 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
 )
@@ -66,9 +66,9 @@ async def test_model_router_publishes_degradation_event() -> None:
             await router.route_async(request)
 
     history = await bus.get_event_history(topic=DEGRADED_TOPIC)
-    assert len(history) >= 1, (
-        f"Expected degradation event on {DEGRADED_TOPIC}, got none"
-    )
+    assert (
+        len(history) >= 1
+    ), f"Expected degradation event on {DEGRADED_TOPIC}, got none"
 
     payload = json.loads(history[0].value)
     assert payload["primary"] == "qwen3-coder-30b"

@@ -485,6 +485,6 @@ def test_run_all_dimensions_uses_asyncio_gather(ctx: CheckContext) -> None:
     assert len(results) == 7
     # If sequential: ~7 * 0.05 = 0.35s. If parallel: ~0.05s + overhead.
     # Allow generous margin but assert well under sequential time.
-    assert elapsed < 0.25, (
-        f"run_all_dimensions took {elapsed:.3f}s — likely not parallel"
-    )
+    assert (
+        elapsed < 0.25
+    ), f"run_all_dimensions took {elapsed:.3f}s — likely not parallel"

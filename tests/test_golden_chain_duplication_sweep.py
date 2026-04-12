@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep import (
     DuplicationSweepRequest,
     NodeDuplicationSweep,
