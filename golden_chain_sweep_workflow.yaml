@@ -3,7 +3,7 @@
 #
 # Invoked via:
 #   uv run onex run golden_chain_sweep_workflow.yaml
-#   uv run python -m omnimarket.nodes.node_golden_chain_sweep --chains registration,routing
+#   uv run python -m omnimarket.nodes.node_golden_chain_sweep --chains overnight,pr_lifecycle,delegation,aislop_sweep,autopilot,overseer_verifier
 #
 # RuntimeLocal single-handler execution path:
 #   1. Loads this contract
