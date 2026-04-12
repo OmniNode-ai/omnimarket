@@ -137,6 +137,10 @@ node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
 node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
 node_intent_query_effect = "omnimarket.nodes.node_intent_query_effect"
 node_intent_event_consumer_effect = "omnimarket.nodes.node_intent_event_consumer_effect"
+node_memory_lifecycle_orchestrator = "omnimarket.nodes.node_memory_lifecycle_orchestrator"
+node_navigation_history_reducer = "omnimarket.nodes.node_navigation_history_reducer"
+node_persona_lifecycle_orchestrator = "omnimarket.nodes.node_persona_lifecycle_orchestrator"
+node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
