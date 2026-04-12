@@ -362,6 +362,17 @@ def test_try_import_handler_valid() -> None:
 
 
 @pytest.mark.unit
+def test_try_import_handler_package_form_no_class() -> None:
+    """Package-form entry points (no class name) must not be flagged as broken."""
+    ok, error = _try_import_handler(
+        "omnimarket.nodes.node_runtime_sweep",
+        "",
+    )
+    assert ok is True
+    assert error == ""
+
+
+@pytest.mark.unit
 def test_try_import_handler_bad_module() -> None:
     ok, error = _try_import_handler("omnimarket.does_not_exist", "SomeClass")
     assert ok is False
@@ -381,6 +392,28 @@ def test_probe_entry_points_detects_broken() -> None:
     )
     assert result.status.value == "FAIL"
     assert any("node_broken" in f.subject for f in result.findings)
+
+
+@pytest.mark.unit
+def test_probe_entry_points_package_form_passes() -> None:
+    """Package-form entry points (omnimarket convention) must pass without findings."""
+    result = probe_entry_points(
+        entry_point_specs=[
+            {
+                "name": "node_runtime_sweep",
+                "module": "omnimarket.nodes.node_runtime_sweep",
+                "class": "",
+            },
+            {
+                "name": "node_aislop_sweep",
+                "module": "omnimarket.nodes.node_aislop_sweep",
+                "class": "",
+            },
+        ]
+    )
+    assert result.status.value == "PASS"
+    assert result.check_count == 2
+    assert result.findings == []
 
 
 @pytest.mark.unit
