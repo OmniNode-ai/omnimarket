@@ -41,11 +41,11 @@ description: >
 # Strongly typed I/O models (shared across all skill nodes)
 input_model:
   name: ModelSkillRequest
-  module: omniclaude.shared.models
+  module: omnimarket.nodes.node_skill_overseer_verify_orchestrator.models
 
 output_model:
   name: ModelSkillResult
-  module: omniclaude.shared.models
+  module: omnimarket.nodes.node_skill_overseer_verify_orchestrator.models
 
 # Execution backend configuration
 execution:
@@ -56,11 +56,11 @@ execution:
 # Event bus configuration
 event_bus:
   subscribe:
-    topic: "onex.cmd.omniclaude.overseer_verify.v1"
-    consumer_group: "omniclaude.skill.overseer_verify"
+    topic: "onex.cmd.omnimarket.overseer_verify.v1"
+    consumer_group: "omnimarket.skill.overseer_verify"
   publish:
-    success_topic: "onex.evt.omniclaude.overseer_verify-completed.v1"
-    failure_topic: "onex.evt.omniclaude.overseer_verify-failed.v1"
+    success_topic: "onex.evt.omnimarket.overseer_verify-completed.v1"
+    failure_topic: "onex.evt.omnimarket.overseer_verify-failed.v1"
 
 # Capabilities
 capabilities:
@@ -83,7 +83,6 @@ io_operations:
       - status: SkillResultStatus
       - output: str | None
       - error: str | None
-      - correlation_id: UUID
     idempotent: false
 
 # Dependencies
@@ -91,7 +90,7 @@ dependencies:
   - name: handler_skill_requested
     type: handler
     function: handle_skill_requested
-    module: omniclaude.shared
+    module: omnimarket.nodes.node_skill_overseer_verify_orchestrator.handlers
     pluggable: false
 
 # Error handling
