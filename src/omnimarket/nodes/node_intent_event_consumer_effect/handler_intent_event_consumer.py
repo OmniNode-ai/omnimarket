@@ -73,12 +73,12 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
-from omnibase_core.models.events import ModelIntentStoredEvent
 from omnimemory.models.events import ModelIntentClassifiedEvent
 from omnimemory.models.utils.model_health_status import HealthStatus
 from omnimemory.utils.concurrency import CircuitBreaker, CircuitBreakerState
 from pydantic import ValidationError
 
+from omnibase_core.models.events import ModelIntentStoredEvent
 from omnimarket.nodes.node_intent_event_consumer_effect.models import (
     ModelIntentEventConsumerConfig,
     ModelIntentEventConsumerHealth,
@@ -88,7 +88,7 @@ from omnimarket.nodes.node_intent_event_consumer_effect.utils import (
 )
 
 if TYPE_CHECKING:
-    from omnimarket.nodes.node_intent_storage_effect.adapters.adapter_intent_storage import (  # type: ignore[import-not-found]
+    from omnimarket.nodes.node_intent_storage_effect.adapters.adapter_intent_storage import (
         HandlerIntentStorageAdapter,
     )
 
