@@ -269,3 +269,58 @@ def test_invariant_wins_over_outcome_when_input_passes() -> None:
     assert result["verdict"] == "ESCALATE"
     checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
     assert checks["invariant_preservation"]["passed"] is False
+
+
+# ---------------------------------------------------------------------------
+# 7. invariant_registry (OMN-8505)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_invariant_registry_is_queryable_for_model_session_contract() -> None:
+    """Invariant registry returns non-empty invariants for model_session_contract."""
+    from omnimarket.nodes.node_overseer_verifier.invariant_registry import (
+        INVARIANT_REGISTRY,
+    )
+
+    invariants = INVARIANT_REGISTRY.get("model_session_contract", [])
+    assert len(invariants) > 0, (
+        "model_session_contract must have at least one invariant"
+    )
+
+
+@pytest.mark.unit
+def test_invariant_registry_queryable_for_build_loop_contract() -> None:
+    """Invariant registry returns entries for build_loop_contract."""
+    from omnimarket.nodes.node_overseer_verifier.invariant_registry import (
+        INVARIANT_REGISTRY,
+    )
+
+    invariants = INVARIANT_REGISTRY.get("build_loop_contract", [])
+    assert len(invariants) > 0, "build_loop_contract must have at least one invariant"
+
+
+@pytest.mark.unit
+def test_invariant_registry_returns_empty_list_for_unknown_contract() -> None:
+    """Unknown contract key returns empty list (graceful default)."""
+    from omnimarket.nodes.node_overseer_verifier.invariant_registry import (
+        INVARIANT_REGISTRY,
+    )
+
+    invariants = INVARIANT_REGISTRY.get("nonexistent_contract_xyz", [])
+    assert invariants == []
+
+
+@pytest.mark.unit
+def test_invariant_registry_entries_have_required_fields() -> None:
+    """Each invariant entry has 'name' and 'description' fields."""
+    from omnimarket.nodes.node_overseer_verifier.invariant_registry import (
+        INVARIANT_REGISTRY,
+    )
+
+    for contract_key, entries in INVARIANT_REGISTRY.items():
+        for entry in entries:
+            assert "name" in entry, f"{contract_key}: entry missing 'name'"
+            assert "description" in entry, (
+                f"{contract_key}: entry missing 'description'"
+            )
