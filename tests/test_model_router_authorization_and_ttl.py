@@ -58,20 +58,39 @@ async def test_model_router_unauthorized_role_raises_on_degradation() -> None:
 
 @pytest.mark.asyncio
 async def test_model_router_health_cache_expires_after_ttl() -> None:
-    """Health cache entry older than 30s must trigger a fresh /health check."""
+    """Health cache entry older than 30s must trigger a real /health check."""
+    from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
+        _HEALTH_CACHE_TTL_S,
+    )
+
     policy = ModelRoutingPolicy(primary="qwen3-coder-30b")
     router = HandlerModelRouter(policy=policy, registry=_REGISTRY)
 
-    router._health_cache["qwen3-coder-30b"] = (False, time.monotonic() - 31.0)
+    now = time.monotonic()
+    expired_ts = now - (_HEALTH_CACHE_TTL_S + 1.0)
+    router._health_cache["qwen3-coder-30b"] = (False, expired_ts)
 
-    call_count = 0
+    fake_response = AsyncMock()
+    fake_response.status_code = 200
 
-    async def fresh_check(model_key: str) -> bool:
-        nonlocal call_count
-        call_count += 1
-        return True
+    http_call_count = 0
 
-    with patch.object(router, "_check_health", side_effect=fresh_check):
+    class FakeAsyncClient:
+        async def __aenter__(self) -> FakeAsyncClient:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def get(self, url: str) -> AsyncMock:
+            nonlocal http_call_count
+            http_call_count += 1
+            return fake_response
+
+    with (
+        patch("time.monotonic", return_value=now),
+        patch("httpx.AsyncClient", return_value=FakeAsyncClient()),
+    ):
         request = ModelRoutingRequest(
             prompt="Test",
             role="fixer",
@@ -80,7 +99,7 @@ async def test_model_router_health_cache_expires_after_ttl() -> None:
         result = await router.route_async(request)
 
     assert result.model_key == "qwen3-coder-30b"
-    assert call_count >= 1, "Expected fresh health check after TTL expiry"
+    assert http_call_count >= 1, "Expected real HTTP health check after TTL expiry"
 
 
 @pytest.mark.asyncio

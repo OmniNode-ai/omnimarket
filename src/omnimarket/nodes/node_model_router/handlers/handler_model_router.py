@@ -90,6 +90,11 @@ class HandlerModelRouter:
         if self._policy.primary not in self._registry:
             missing.append(self._policy.primary)
         if (
+            self._policy.ci_override is not None
+            and self._policy.ci_override.primary not in self._registry
+        ):
+            missing.append(self._policy.ci_override.primary)
+        if (
             self._policy.fallback is not None
             and self._policy.fallback not in self._registry
         ):
@@ -142,9 +147,10 @@ class HandlerModelRouter:
     async def refresh_health_cache(self, model_key: str) -> None:
         """Force a health check for model_key and update the in-process cache."""
         healthy = await self._check_health(model_key)
-        self._health_cache[model_key] = (healthy, time.monotonic())
-        if not healthy:
-            await self._record_failure(model_key, "health-refresh")
+        if healthy:
+            self._record_success(model_key)
+            return
+        await self._record_failure(model_key, "health-refresh")
 
     # ------------------------------------------------------------------ #
     # Internal routing helpers                                            #
@@ -165,8 +171,9 @@ class HandlerModelRouter:
         return role in self._policy.fallback_allowed_roles
 
     async def _record_failure(self, model_key: str, correlation_id: str) -> None:
-        self._streak[model_key] = self._streak.get(model_key, 0) + 1
-        if self._streak[model_key] >= _STREAK_CAP:
+        streak = self._streak.get(model_key, 0) + 1
+        self._streak[model_key] = streak
+        if streak == _STREAK_CAP:
             self._degraded.add(model_key)
             await self._emit_degradation_event(model_key, correlation_id)
 
@@ -174,8 +181,8 @@ class HandlerModelRouter:
         was_degraded = model_key in self._degraded
         self._streak.pop(model_key, None)
         self._degraded.discard(model_key)
-        self._health_cache.pop(model_key, None)
         if was_degraded:
+            self._health_cache.pop(model_key, None)
             logger.info(
                 "Primary endpoint '%s' recovered from degraded state", model_key
             )
@@ -184,7 +191,7 @@ class HandlerModelRouter:
         self, model_key: str, correlation_id: str
     ) -> None:
         event = ModelRoutingDegradedEvent(
-            primary=self._policy.primary,
+            primary=self._resolve_primary_key(),
             reason=f"Consecutive failure streak cap ({_STREAK_CAP}) reached",
             attempts=self._streak.get(model_key, _STREAK_CAP),
             elapsed_ms=0.0,
