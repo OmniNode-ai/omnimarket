@@ -15,11 +15,11 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-
 from omnibase_core.models.events import (
     ModelIntentQueryRequestedEvent,
     ModelIntentQueryResponseEvent,
 )
+
 from omnimarket.nodes.node_intent_query_effect.handlers import HandlerIntentQuery
 from omnimarket.nodes.node_intent_query_effect.models import (
     ModelHandlerIntentQueryConfig,
