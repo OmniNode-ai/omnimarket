@@ -922,4 +922,5 @@ __all__: list[str] = [
     "ModelOvernightResult",
     "ModelPhaseResult",
     "PhaseDispatcher",
+    "_dispatch_ci_watch",
 ]

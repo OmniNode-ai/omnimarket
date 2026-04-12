@@ -23,6 +23,7 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumPhase,
     HandlerOvernight,
     ModelOvernightCommand,
+    _dispatch_ci_watch,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.overnight-start.v1"
@@ -439,3 +440,51 @@ class TestOvernightContractEnforcement:
         parsed = json.loads(result.model_dump_json())
         assert "halt_reason" in parsed
         assert parsed["halt_reason"] is not None
+
+
+@pytest.mark.unit
+class TestDispatchCiWatchSkip:
+    """Unit tests for _dispatch_ci_watch — OMN-8486.
+
+    ci_watch requires a concrete PR ref that is not available at the overnight
+    session level. The dispatcher must return an explicit SKIP result, never a
+    vacuous-green (True, None).
+    """
+
+    def test_ci_watch_returns_skip_not_success(self) -> None:
+        """_dispatch_ci_watch must return (False, 'SKIPPED: ...'), not (True, None)."""
+        command = ModelOvernightCommand(
+            correlation_id="ci-watch-skip-test", dry_run=False
+        )
+        success, error_msg = _dispatch_ci_watch(command, contract=None)
+
+        assert (
+            success is False
+        ), "ci_watch must not return True (vacuous-green) without PR context"
+        assert error_msg is not None, "ci_watch must return an error_msg, not None"
+        assert error_msg.startswith(
+            "SKIPPED:"
+        ), f"ci_watch error_msg must start with 'SKIPPED:' to signal a typed skip, got: {error_msg!r}"
+
+    def test_ci_watch_skip_message_describes_missing_pr_context(self) -> None:
+        """The SKIP message should mention the missing PR context."""
+        command = ModelOvernightCommand(
+            correlation_id="ci-watch-msg-test", dry_run=True
+        )
+        _success, error_msg = _dispatch_ci_watch(command, contract=None)
+
+        assert error_msg is not None
+        assert (
+            "PR" in error_msg or "pr" in error_msg.lower()
+        ), "SKIP message should reference missing PR context"
+
+    def test_ci_watch_skip_is_not_none_error(self) -> None:
+        """(False, None) is ambiguous — must be (False, 'SKIPPED: ...')."""
+        command = ModelOvernightCommand(
+            correlation_id="ci-watch-not-none", dry_run=False
+        )
+        success, error_msg = _dispatch_ci_watch(command, contract=None)
+
+        assert not (
+            success is False and error_msg is None
+        ), "(False, None) is a silent failure, not a typed skip"
