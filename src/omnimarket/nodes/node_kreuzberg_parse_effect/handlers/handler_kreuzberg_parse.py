@@ -140,7 +140,10 @@ class HandlerKreuzbergParse:
                 timeout_count=0,
             )
 
-        slug = _source_url_slug(source_url)
+        # Use the canonicalized path for all identity derivation so that relative
+        # and absolute spellings of the same file produce the same document_id/cache key.
+        canonical_source_url = str(validated_path)
+        slug = _source_url_slug(canonical_source_url)
         text_store = Path(config.text_store_path)
         text_path = text_store / f"{slug}.txt"
 
@@ -154,7 +157,7 @@ class HandlerKreuzbergParse:
                     extra={"source_url": source_url},
                 )
                 document_id = _compute_document_id(
-                    source_url, content_hash, config.parser_version
+                    canonical_source_url, content_hash, config.parser_version
                 )
                 extracted_text_ref = (
                     cached_text
@@ -358,7 +361,7 @@ class HandlerKreuzbergParse:
                 )
 
         document_id = _compute_document_id(
-            source_url, content_hash, config.parser_version
+            canonical_source_url, content_hash, config.parser_version
         )
         indexed_event = ModelDocumentIndexedKreuzbergEvent(
             correlation_id=event.correlation_id,
