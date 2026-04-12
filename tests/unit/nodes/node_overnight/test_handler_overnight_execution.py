@@ -26,6 +26,7 @@ def _make_contract(halt_on_build_loop_failure: bool = False) -> ModelOvernightCo
     return ModelOvernightContract(
         session_id="test-overnight",
         created_at=datetime.now(tz=UTC),
+        required_outcomes=(),
         phases=(
             ModelOvernightPhaseSpec(
                 phase_name="nightly_loop_controller",

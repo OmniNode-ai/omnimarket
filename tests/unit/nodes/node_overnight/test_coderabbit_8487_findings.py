@@ -52,6 +52,7 @@ def _make_contract(
         "session_id": "omn-8487-test",
         "created_at": datetime.now(tz=UTC),
         "phases": phases or default_phases,
+        "required_outcomes": (),
     }
     if halt_conditions is not None:
         kwargs["halt_conditions"] = halt_conditions

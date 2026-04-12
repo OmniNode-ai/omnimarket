@@ -167,6 +167,10 @@ class ModelOvernightResult(BaseModel):
     halt_reason: str | None = None
     started_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
     completed_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
+    # OMN-8371: full contract enforcement fields
+    standing_orders: tuple[str, ...] = Field(default_factory=tuple)
+    missing_required_outcomes: list[str] = Field(default_factory=list)
+    evidence: dict[str, dict[str, bool]] = Field(default_factory=dict)
 
 
 class HandlerBuildLoopExecutor:
@@ -378,6 +382,7 @@ class HandlerBuildLoopExecutor:
             optional halt_reason if a contract halt condition was triggered.
         """
         started_at = datetime.now(tz=UTC)
+        started_mono = monotonic()
         results: list[ModelPhaseResult] = []
         overrides = phase_results or {}
         costs = phase_costs or {}
@@ -385,6 +390,16 @@ class HandlerBuildLoopExecutor:
         accumulated_cost: float = 0.0
         halt_reason: str | None = None
         consecutive_failures = 0
+        # OMN-8371: per-phase evidence: phase_name -> {outcome_name -> satisfied}
+        evidence: dict[str, dict[str, bool]] = {}
+
+        # OMN-8371: log standing_orders at session start so agents can observe them
+        if contract is not None and contract.standing_orders:
+            logger.info(
+                "[OVERNIGHT] standing_orders for session %s:", contract.session_id
+            )
+            for order in contract.standing_orders:
+                logger.info("[OVERNIGHT]   • %s", order)
 
         # OMN-8375: stamp .onex_state/overseer-active.flag on contract load so
         # the sibling PreToolUse hook (OMN-8376) can block foreground drift.
@@ -430,6 +445,17 @@ class HandlerBuildLoopExecutor:
                 phase_started_at_wall = datetime.now(tz=UTC)
                 phase_started_mono = monotonic()
 
+                # OMN-8371: check max_duration_seconds before dispatching each phase
+                if contract is not None:
+                    elapsed = monotonic() - started_mono
+                    if elapsed >= contract.max_duration_seconds:
+                        halt_reason = (
+                            f"max_duration_seconds exceeded: "
+                            f"{elapsed:.0f}s >= {contract.max_duration_seconds}s"
+                        )
+                        logger.error("[OVERNIGHT] %s", halt_reason)
+                        break
+
                 if dispatch_phases and phase not in overrides:
                     success, error_msg = self._dispatch_phase(phase, command, contract)
                 elif command.dry_run:
@@ -441,6 +467,25 @@ class HandlerBuildLoopExecutor:
 
                 accumulated_cost += costs.get(phase, 0.0)
                 duration_ms = int((monotonic() - phase_started_mono) * 1000)
+
+                # OMN-8371: enforce phase timeout_seconds — treat exceeded timeout as failure
+                if contract is not None and success:
+                    _phase_spec_timeout = next(
+                        (p for p in contract.phases if p.phase_name == phase.value),
+                        None,
+                    )
+                    if (
+                        _phase_spec_timeout is not None
+                        and duration_ms / 1000.0 >= _phase_spec_timeout.timeout_seconds
+                    ):
+                        timeout_msg = (
+                            f"phase timeout exceeded: "
+                            f"{duration_ms}ms >= "
+                            f"{_phase_spec_timeout.timeout_seconds * 1000}ms"
+                        )
+                        logger.warning("[OVERNIGHT] %s: %s", phase.value, timeout_msg)
+                        success = False
+                        error_msg = timeout_msg
 
                 # OMN-8375: probe required_outcomes for the current phase.
                 # Phase only advances when outcomes satisfied — downgrades
@@ -469,6 +514,34 @@ class HandlerBuildLoopExecutor:
                             logger.warning("[OVERSEER] %s: %s", phase.value, msg)
                             success = False
                             error_msg = msg
+                    # OMN-8371: evaluate success_criteria via outcome probe
+                    if (
+                        phase_spec is not None
+                        and phase_spec.success_criteria
+                        and success
+                    ):
+                        criteria_results = probe_required_outcomes(
+                            tuple(phase_spec.success_criteria),
+                            self._outcome_probe,
+                        )
+                        if not all(criteria_results.values()):
+                            unmet = [k for k, v in criteria_results.items() if not v]
+                            criteria_msg = (
+                                f"success_criteria not met: {', '.join(unmet)}"
+                            )
+                            logger.warning(
+                                "[OVERSEER] %s: %s", phase.value, criteria_msg
+                            )
+                            success = False
+                            error_msg = criteria_msg
+                    # OMN-8371: collect evidence for this phase
+                    combined: dict[str, bool] = dict(phase_outcomes)
+                    if phase_spec is not None and phase_spec.success_criteria:
+                        for c in phase_spec.success_criteria:
+                            if c not in combined:
+                                combined[c] = False
+                    if combined:
+                        evidence[phase.value] = combined
 
                 consecutive_failures = 0 if success else consecutive_failures + 1
 
@@ -592,6 +665,30 @@ class HandlerBuildLoopExecutor:
         ]
         phases_skipped = [r.phase.value for r in results if r.skipped]
 
+        # OMN-8371: validate session-level required_outcomes at the end of the run.
+        # Only enforced when an outcome_probe is wired — without a probe, outcomes
+        # cannot be checked and the session proceeds (backwards-compatible).
+        missing_required_outcomes: list[str] = []
+        if (
+            contract is not None
+            and contract.required_outcomes
+            and halt_reason is None
+            and self._outcome_probe is not None
+        ):
+            for outcome_name in contract.required_outcomes:
+                satisfied = probe_required_outcomes(
+                    (outcome_name,), self._outcome_probe
+                ).get(outcome_name, False)
+                if not satisfied:
+                    missing_required_outcomes.append(outcome_name)
+            if missing_required_outcomes:
+                outcomes_fail_reason = (
+                    f"required_outcomes not satisfied at session end: "
+                    f"{', '.join(missing_required_outcomes)}"
+                )
+                logger.error("[OVERNIGHT] %s", outcomes_fail_reason)
+                halt_reason = outcomes_fail_reason
+
         if halt_reason is not None:
             status = EnumOvernightStatus.FAILED
         elif not phases_failed:
@@ -633,6 +730,9 @@ class HandlerBuildLoopExecutor:
             halt_reason=halt_reason,
             started_at=started_at,
             completed_at=completed_at,
+            standing_orders=contract.standing_orders if contract is not None else (),
+            missing_required_outcomes=missing_required_outcomes,
+            evidence=evidence,
         )
 
     def _process_halt_triggers(
