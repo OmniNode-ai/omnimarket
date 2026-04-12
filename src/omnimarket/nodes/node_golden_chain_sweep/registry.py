@@ -53,7 +53,9 @@ def load_registry(
     default: list[ModelChainDefinition] = fallback if fallback is not None else []
 
     if not registry_path.exists():
-        _log.warning("golden_chains.yaml not found at %s — using fallback", registry_path)
+        _log.warning(
+            "golden_chains.yaml not found at %s — using fallback", registry_path
+        )
         return default
 
     try:

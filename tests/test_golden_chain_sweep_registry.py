@@ -45,7 +45,13 @@ class TestLoadRegistry:
         chains = load_registry()
         assert len(chains) == 5
         names = {c.name for c in chains}
-        assert names == {"registration", "pattern_learning", "delegation", "routing", "evaluation"}
+        assert names == {
+            "registration",
+            "pattern_learning",
+            "delegation",
+            "routing",
+            "evaluation",
+        }
 
     def test_loads_custom_yaml(self, tmp_path: Path) -> None:
         registry_file = tmp_path / "golden_chains.yaml"
@@ -83,9 +89,7 @@ class TestLoadRegistry:
     def test_fallback_on_invalid_yaml(self, tmp_path: Path) -> None:
         bad_file = tmp_path / "bad.yaml"
         bad_file.write_text("{ invalid yaml ][")
-        fallback = [
-            ModelChainDefinition(name="fb", head_topic="t", tail_table="tt")
-        ]
+        fallback = [ModelChainDefinition(name="fb", head_topic="t", tail_table="tt")]
         result = load_registry(path=bad_file, fallback=fallback)
         assert result == fallback
 
@@ -102,7 +106,11 @@ class TestLoadRegistry:
             yaml.dump(
                 {
                     "chains": [
-                        {"name": "good", "head_topic": "t.good", "tail_table": "tbl_good"},
+                        {
+                            "name": "good",
+                            "head_topic": "t.good",
+                            "tail_table": "tbl_good",
+                        },
                         {"missing_required": True},
                     ]
                 }
@@ -122,7 +130,10 @@ class TestLoadRegistry:
     def test_bundled_chains_have_correct_topics(self) -> None:
         chains = load_registry()
         chain_map = {c.name: c for c in chains}
-        assert chain_map["registration"].head_topic == "onex.evt.omniclaude.routing-decision.v1"
+        assert (
+            chain_map["registration"].head_topic
+            == "onex.evt.omniclaude.routing-decision.v1"
+        )
         assert chain_map["routing"].tail_table == "llm_routing_decisions"
         assert "correlation_id" in chain_map["delegation"].expected_fields
 
