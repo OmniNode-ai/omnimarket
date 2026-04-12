@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from omnibase_core.enums.intelligence.enum_intent_category import EnumIntentCategory
 from omnibase_core.models.intelligence import ModelIntentClassificationOutput
+
 from omnimarket.nodes.node_intent_storage_effect import (
     HandlerIntentStorageAdapter,
     ModelIntentStorageRequest,

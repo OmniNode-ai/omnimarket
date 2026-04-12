@@ -24,6 +24,7 @@ from omnibase_core.models.events import (
     ModelIntentQueryResponseEvent,
     ModelIntentRecordPayload,
 )
+
 from omnimarket.nodes.node_intent_query_effect.models.model_handler_intent_query_config import (
     ModelHandlerIntentQueryConfig,
 )

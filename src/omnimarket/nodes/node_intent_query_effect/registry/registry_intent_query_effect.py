@@ -32,9 +32,9 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from omnibase_core.container import ModelONEXContainer
     from omnimemory.handlers.adapters.models import ModelAdapterIntentGraphConfig
 
-    from omnibase_core.container import ModelONEXContainer
     from omnimarket.nodes.node_intent_query_effect.handlers import HandlerIntentQuery
     from omnimarket.nodes.node_intent_query_effect.models import (
         ModelHandlerIntentQueryConfig,

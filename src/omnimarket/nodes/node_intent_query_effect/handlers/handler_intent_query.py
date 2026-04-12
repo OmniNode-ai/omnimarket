@@ -41,11 +41,11 @@ from collections.abc import Mapping
 from datetime import UTC
 from typing import TYPE_CHECKING
 
+from omnibase_core.models.events import ModelIntentRecordPayload
 from omnimemory.handlers.adapters import AdapterIntentGraph
 from omnimemory.handlers.adapters.models import ModelAdapterIntentGraphConfig
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnibase_core.models.events import ModelIntentRecordPayload
 from omnimarket.nodes.node_intent_query_effect.models import (
     ModelHandlerIntentQueryConfig,
     ModelIntentQueryRequestedEvent,
