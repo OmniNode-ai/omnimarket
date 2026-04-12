@@ -51,6 +51,7 @@ from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     remove_overseer_flag,
     write_overseer_flag,
 )
+from omnimarket.nodes.node_overnight.protocols.di import DependencyResolutionError
 from omnimarket.nodes.node_overnight.protocols.protocol_phase_handlers import (
     ProtocolBuildLoopPhaseHandler,
     ProtocolCiWatchHandler,
@@ -260,6 +261,88 @@ class HandlerBuildLoopExecutor:
         self._platform_readiness: ProtocolPlatformReadinessHandler | None = (
             platform_readiness
         )
+
+    # OMN-8450: resolve helpers — override these in tests to inject failures
+    def _resolve_nightly_loop(self) -> ProtocolNightlyLoopHandler:
+        from omnimarket.nodes.node_overnight.protocols.stub_handlers import (
+            _PlaceholderNightlyLoop,
+        )
+
+        return _PlaceholderNightlyLoop()
+
+    def _resolve_build_loop(self) -> ProtocolBuildLoopPhaseHandler:
+        from omnimarket.nodes.node_overnight.protocols.stub_handlers import (
+            _PlaceholderBuildLoop,
+        )
+
+        return _PlaceholderBuildLoop()
+
+    def _resolve_merge_sweep(self) -> ProtocolMergeSweepHandler:
+        from omnimarket.nodes.node_overnight.protocols.stub_handlers import (
+            _PlaceholderMergeSweep,
+        )
+
+        return _PlaceholderMergeSweep()
+
+    def _resolve_ci_watch(self) -> ProtocolCiWatchHandler:
+        from omnimarket.nodes.node_overnight.protocols.stub_handlers import (
+            _PlaceholderCiWatch,
+        )
+
+        return _PlaceholderCiWatch()
+
+    def _resolve_platform_readiness(self) -> ProtocolPlatformReadinessHandler:
+        from omnimarket.nodes.node_overnight.protocols.stub_handlers import (
+            _PlaceholderPlatformReadiness,
+        )
+
+        return _PlaceholderPlatformReadiness()
+
+    def _ensure_sub_handlers(self) -> None:
+        """Resolve all 5 protocol DI slots. Raises DependencyResolutionError on failure.
+
+        Placeholder handlers are used as defaults until Wave 3 wires real implementations.
+        event_bus is never reset — the injected value is always preserved.
+        """
+        if self._nightly_loop is None:
+            try:
+                self._nightly_loop = self._resolve_nightly_loop()
+            except DependencyResolutionError:
+                raise
+            except Exception as exc:
+                raise DependencyResolutionError("nightly_loop", str(exc)) from exc
+
+        if self._build_loop is None:
+            try:
+                self._build_loop = self._resolve_build_loop()
+            except DependencyResolutionError:
+                raise
+            except Exception as exc:
+                raise DependencyResolutionError("build_loop", str(exc)) from exc
+
+        if self._merge_sweep is None:
+            try:
+                self._merge_sweep = self._resolve_merge_sweep()
+            except DependencyResolutionError:
+                raise
+            except Exception as exc:
+                raise DependencyResolutionError("merge_sweep", str(exc)) from exc
+
+        if self._ci_watch is None:
+            try:
+                self._ci_watch = self._resolve_ci_watch()
+            except DependencyResolutionError:
+                raise
+            except Exception as exc:
+                raise DependencyResolutionError("ci_watch", str(exc)) from exc
+
+        if self._platform_readiness is None:
+            try:
+                self._platform_readiness = self._resolve_platform_readiness()
+            except DependencyResolutionError:
+                raise
+            except Exception as exc:
+                raise DependencyResolutionError("platform_readiness", str(exc)) from exc
 
     def _publish(self, topic: str, payload: dict[str, object]) -> None:
         """Publish an envelope via the injected event bus, swallowing errors.
@@ -827,6 +910,7 @@ _DEFAULT_PHASE_DISPATCHERS: dict[EnumPhase, PhaseDispatcher] = {
 HandlerOvernight = HandlerBuildLoopExecutor
 
 __all__: list[str] = [
+    "DependencyResolutionError",
     "EnumHaltDecision",
     "EnumOvernightStatus",
     "EnumPhase",
