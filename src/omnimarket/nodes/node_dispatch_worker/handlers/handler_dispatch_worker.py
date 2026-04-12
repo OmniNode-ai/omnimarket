@@ -337,9 +337,10 @@ def _query_active_fences(
                 continue
 
             task_target_set = {t.lower() for t in task_targets if isinstance(t, str)}
-            overlapping = task_target_set & current_target_set
+            # Exclude own targets; include all other workers' claimed targets
+            non_own = task_target_set - current_target_set
             for t in task_targets:
-                if isinstance(t, str) and t.lower() in overlapping:
+                if isinstance(t, str) and t.lower() in non_own:
                     fences.append(f"{t} (owned by {owner})")
     except Exception as exc:
         logger.warning(
