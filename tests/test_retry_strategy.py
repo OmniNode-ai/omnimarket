@@ -12,8 +12,6 @@ Covers the five DoD test cases:
 
 from __future__ import annotations
 
-import pytest
-
 from omnimarket.nodes.node_routing_policy_engine.handlers.handler_retry_strategy import (
     EnumFailureClass,
     EnumRetryType,
