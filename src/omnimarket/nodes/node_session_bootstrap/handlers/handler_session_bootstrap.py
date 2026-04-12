@@ -509,23 +509,25 @@ class HandlerSessionBootstrap:
 # ------------------------------------------------------------------
 
 
-def _default_cron_list() -> list[dict[str, str]]:
-    """Default CronList stub -- returns empty list.
+def _default_cron_list() -> list[dict[str, str]]:  # stub-ok
+    """Default CronList no-op — returns empty list.
 
     In production, the Claude Code agent replaces this with a real CronList
     tool call.  Injected via constructor so tests can override without monkeypatching.
     """
-    logger.debug("_default_cron_list called (stub -- no real cron infrastructure)")
+    logger.debug("_default_cron_list called (no-op — no real cron infrastructure)")
     return []
 
 
-def _default_cron_create(cron: str, prompt: str, recurring: bool) -> str | None:
-    """Default CronCreate stub -- returns None (no job created).
+def _default_cron_create(
+    cron: str, prompt: str, recurring: bool
+) -> str | None:  # stub-ok
+    """Default CronCreate no-op — returns None (no job created).
 
     In production, the Claude Code agent replaces this with a real CronCreate
     tool call.
     """
-    logger.debug("_default_cron_create called (stub -- no real cron infrastructure)")
+    logger.debug("_default_cron_create called (no-op — no real cron infrastructure)")
     return None
 
 
