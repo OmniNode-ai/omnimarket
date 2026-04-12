@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Literal
+from uuid import UUID
 
 from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_event import (
     EnumPrLifecycleEventTrigger,
@@ -224,7 +225,7 @@ class HandlerPrLifecycleStateReducer:
     def handler_category(self) -> HandlerCategory:
         return "COMPUTE"
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def handle_dict(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to delta() with ModelPrLifecycleState and ModelPrLifecycleEvent
@@ -239,6 +240,95 @@ class HandlerPrLifecycleStateReducer:
             "state": new_state.model_dump(mode="json"),
             "intents": [i.model_dump(mode="json") for i in intents],
         }
+
+    async def handle(
+        self,
+        *args: Any,
+        correlation_id: UUID | None = None,
+        classified: tuple[Any, ...] | None = None,
+        dry_run: bool = False,
+        inventory_only: bool = False,
+        fix_only: bool = False,
+        merge_only: bool = False,
+        **_kwargs: Any,
+    ) -> Any:
+        """Unified entry point: dispatches to orchestrator or RuntimeLocal shim.
+
+        When called with orchestrator kwargs (correlation_id, classified), acts as
+        ProtocolStateReducerHandler — classifying triage records into intents and
+        returning a ReducerResult.
+
+        When called with a positional dict (RuntimeLocal shim path), delegates to
+        handle_dict() for FSM delta computation.
+
+        Entry flag semantics (orchestrator path):
+          - inventory_only: skip all PRs (no merge, no fix)
+          - fix_only: only FIX intents, no MERGE
+          - merge_only: only MERGE intents, no FIX
+          - dry_run: compute and return intents, orchestrator will not execute them
+        """
+        # RuntimeLocal shim: positional dict argument
+        if args:
+            return self.handle_dict(args[0])
+
+        # Orchestrator path: keyword args matching ProtocolStateReducerHandler
+        from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+            EnumPrCategory,
+            EnumReducerIntent,
+            ReducerIntent,
+            ReducerResult,
+        )
+
+        classified_prs: tuple[Any, ...] = classified if classified is not None else ()
+        intents: list[ReducerIntent] = []
+
+        for pr in classified_prs:
+            if inventory_only:
+                intent = EnumReducerIntent.SKIP
+            elif pr.category == EnumPrCategory.GREEN:
+                intent = EnumReducerIntent.SKIP if fix_only else EnumReducerIntent.MERGE
+            elif pr.category in (
+                EnumPrCategory.RED,
+                EnumPrCategory.CONFLICTED,
+                EnumPrCategory.NEEDS_REVIEW,
+            ):
+                intent = EnumReducerIntent.SKIP if merge_only else EnumReducerIntent.FIX
+            else:
+                intent = EnumReducerIntent.SKIP
+
+            intents.append(
+                ReducerIntent(
+                    pr_number=pr.pr_number,
+                    repo=pr.repo,
+                    intent=intent,
+                    reason=pr.block_reason,
+                )
+            )
+
+        merge_count = sum(1 for i in intents if i.intent == EnumReducerIntent.MERGE)
+        fix_count = sum(1 for i in intents if i.intent == EnumReducerIntent.FIX)
+        skip_count = sum(1 for i in intents if i.intent == EnumReducerIntent.SKIP)
+
+        logger.info(
+            "[STATE-REDUCER] correlation_id=%s classified=%d merge=%d fix=%d skip=%d "
+            "dry_run=%s inventory_only=%s fix_only=%s merge_only=%s",
+            correlation_id,
+            len(classified_prs),
+            merge_count,
+            fix_count,
+            skip_count,
+            dry_run,
+            inventory_only,
+            fix_only,
+            merge_only,
+        )
+
+        return ReducerResult(
+            intents=tuple(intents),
+            merge_count=merge_count,
+            fix_count=fix_count,
+            skip_count=skip_count,
+        )
 
     def delta(
         self,

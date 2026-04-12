@@ -645,7 +645,7 @@ class TestPrLifecycleStateReducerGoldenChain:
     # ------------------------------------------------------------------ #
 
     def test_handle_dict_shim_idle_to_inventorying(self) -> None:
-        """handle() dict shim correctly routes to delta()."""
+        """handle_dict() shim correctly routes to delta()."""
         handler = HandlerPrLifecycleStateReducer()
         cid = str(uuid4())
         input_data = {
@@ -662,7 +662,7 @@ class TestPrLifecycleStateReducerGoldenChain:
             },
         }
 
-        result = handler.handle(input_data)
+        result = handler.handle_dict(input_data)
 
         assert result["state"]["phase"] == "inventorying"
         assert len(result["intents"]) == 1
@@ -679,7 +679,7 @@ class TestPrLifecycleStateReducerGoldenChain:
 
         async def on_command(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
-            result = handler.handle(payload)
+            result = handler.handle_dict(payload)
             completed_events.append(result)
             await event_bus.publish(
                 RESULT_TOPIC,
