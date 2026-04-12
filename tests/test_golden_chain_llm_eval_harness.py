@@ -13,8 +13,8 @@ from __future__ import annotations
 import json
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_llm_eval_harness.handlers.handler_llm_eval_harness import (
     EnumLlmEvalTaskType,
     FakeLlmClient,

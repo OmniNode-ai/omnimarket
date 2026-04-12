@@ -6,11 +6,11 @@ import subprocess
 import sys
 
 import pytest
+
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
-
 from omnimarket.nodes.node_integration_test_runner.di_profiles import (
     build_conftest_plugin_for_profile,
     build_event_bus_for_profile,

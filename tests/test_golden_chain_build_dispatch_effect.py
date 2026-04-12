@@ -17,8 +17,8 @@ import json
 from uuid import uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch import (
     _DELEGATION_EVENT_TYPE,
     HandlerBuildDispatch,

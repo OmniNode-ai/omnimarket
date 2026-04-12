@@ -25,8 +25,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from omnibase_core.models.omnimemory import ModelMemorySnapshot
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.omnimemory import ModelMemorySnapshot
 
 __all__ = ["ModelMemoryStorageResponse"]
 

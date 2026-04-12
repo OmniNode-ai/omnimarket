@@ -73,12 +73,12 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
-from omnibase_core.models.events import ModelIntentStoredEvent
 from omnimemory.models.events import ModelIntentClassifiedEvent
 from omnimemory.models.utils.model_health_status import HealthStatus
 from omnimemory.utils.concurrency import CircuitBreaker, CircuitBreakerState
 from pydantic import ValidationError
 
+from omnibase_core.models.events import ModelIntentStoredEvent
 from omnimarket.nodes.node_intent_event_consumer_effect.models import (
     ModelIntentEventConsumerConfig,
     ModelIntentEventConsumerHealth,
@@ -88,7 +88,7 @@ from omnimarket.nodes.node_intent_event_consumer_effect.utils import (
 )
 
 if TYPE_CHECKING:
-    from omnimarket.nodes.node_intent_storage_effect.adapters.adapter_intent_storage import (
+    from omnimarket.nodes.node_intent_storage_effect.adapters.adapter_intent_storage import (  # type: ignore[import-not-found]
         HandlerIntentStorageAdapter,
     )
 
@@ -381,9 +381,7 @@ class HandlerIntentEventConsumer:
             # Store the intent
             start_time = datetime.now(UTC)
             result = await self._storage_adapter.execute(storage_request)
-            storage_latency_ms = (
-                datetime.now(UTC) - start_time
-            ).total_seconds() * 1000
+            storage_latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
             if result.status == "success":
                 # Validate intent_id is present for successful store
