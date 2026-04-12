@@ -134,6 +134,9 @@ node_model_router = "omnimarket.nodes.node_model_router"
 node_dispatch_worker = "omnimarket.nodes.node_dispatch_worker"
 node_filesystem_crawler_effect = "omnimarket.nodes.node_filesystem_crawler_effect"
 node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
+node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
+node_intent_query_effect = "omnimarket.nodes.node_intent_query_effect"
+node_intent_event_consumer_effect = "omnimarket.nodes.node_intent_event_consumer_effect"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
