@@ -10,8 +10,25 @@ the import updated to point at the canonical location.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
+
+
+class EnumSessionMode(StrEnum):
+    """Controls which crons are activated and what halt conditions apply."""
+
+    BUILD = "build"
+    CLOSE_OUT = "close-out"
+    REPORTING = "reporting"
+
+
+class EnumModelRoutingPreference(StrEnum):
+    """Routing preference passed to dogfood gate at dispatch time."""
+
+    LOCAL_FIRST = "local-first"
+    FRONTIER_ONLY = "frontier-only"
+    HYBRID = "hybrid"
 
 
 class ModelSessionContract(BaseModel, frozen=True, extra="forbid"):
@@ -20,6 +37,8 @@ class ModelSessionContract(BaseModel, frozen=True, extra="forbid"):
     Read by node_session_bootstrap at session start to configure timers,
     phase expectations, and advisory cost ceilings. Frozen and extra-forbid
     for schema safety.
+
+    Rev 7 additions: session_mode, active_sprint_id, model_routing_preference.
     """
 
     session_id: str
@@ -32,5 +51,14 @@ class ModelSessionContract(BaseModel, frozen=True, extra="forbid"):
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     schema_version: str = "1.0"
 
+    # Rev 7 fields
+    session_mode: EnumSessionMode = EnumSessionMode.BUILD
+    active_sprint_id: str = "auto-detect"
+    model_routing_preference: EnumModelRoutingPreference = EnumModelRoutingPreference.LOCAL_FIRST
 
-__all__: list[str] = ["ModelSessionContract"]
+
+__all__: list[str] = [
+    "EnumModelRoutingPreference",
+    "EnumSessionMode",
+    "ModelSessionContract",
+]

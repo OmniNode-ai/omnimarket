@@ -1,13 +1,14 @@
 ---
 name: session_bootstrap
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 2, minor: 0, patch: 0}
 node_type: orchestrator
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 2, minor: 0, patch: 0}
 
 description: >
-  Session bootstrapper. Reads ModelSessionContract, writes
-  contract snapshot to .onex_state/, sets up timer configs, and emits
-  session-bootstrap-completed event. Runs FIRST each session.
+  Session bootstrapper. Reads session inputs, writes contract snapshot to
+  .onex_state/, creates required CronCreate jobs idempotently (CronList
+  pre-check), registers post-tick verifier, and emits
+  session-bootstrap-completed.v2. Runs FIRST each session.
 
 handler:
   module: omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap
@@ -16,7 +17,10 @@ handler:
 
 descriptor:
   node_archetype: orchestrator
-  purity: pure
+  purity: impure
+  # idempotent with respect to cron registration: handler checks CronList before
+  # calling CronCreate — does not create duplicate crons on re-run. State files
+  # (.onex_state/session-crons-*.json) are overwritten, not appended.
   idempotent: true
   timeout_ms: 30000
 
@@ -25,6 +29,21 @@ inputs:
     type: uuid
     description: "Unique session ID (caller generates)"
     required: true
+  session_mode:
+    type: str
+    required: true
+    enum: [build, close-out, reporting]
+    description: "Controls which crons are activated and what halt conditions apply"
+  active_sprint_id:
+    type: str
+    required: false
+    default: "auto-detect"
+    description: "Linear cycle ID, or 'auto-detect' to query Linear for active sprint"
+  model_routing_preference:
+    type: str
+    required: false
+    default: "local-first"
+    enum: [local-first, frontier-only, hybrid]
   contract:
     type: object
     description: "ModelSessionContract — session-level verification contract"
@@ -36,7 +55,7 @@ inputs:
     default: ".onex_state"
   dry_run:
     type: bool
-    description: "Skip filesystem writes when true"
+    description: "Skip filesystem writes and CronCreate when true"
     required: false
     default: false
 
@@ -50,17 +69,70 @@ outputs:
   contract_path:
     type: str
     description: "Absolute path written (or (dry-run) if dry_run)"
-  timer_configs:
+  crons_registered:
     type: list
-    description: "Human-readable list of configured timers"
+    description: "List of CronJob IDs created or confirmed by bootstrap"
   warnings:
     type: list
     description: "Advisory warnings (non-fatal)"
 
-terminal_event: onex.evt.omnimarket.session-bootstrap-completed.v1
+required_crons:
+  build_dispatch_pulse:
+    # Phase 1 only. merge_sweep and overseer_verify are phase 2 additions.
+    cron_name: build-dispatch-pulse
+    prompt_template_key: BUILD_DISPATCH_PULSE_PROMPT
+    timeout_budget_ms: 300000
+    description: >
+      Pull Linear sprint, classify unworked tickets, dispatch workers via
+      node_dispatch_worker (dogfood path) or Agent (fallback). Verify output
+      via CronOutputVerificationRoutine after each tick.
+    interval_min: 30
+    active_modes: [build]
+    health_thresholds:
+      dispatch_count_per_tick_min: 1
+      condition: "if backlog_unworked_count > 0"
+      failure_class: VACUOUS_PULSE
+
+  # Phase 2 additions (not activated in v2.0 — listed for contract completeness):
+  merge_sweep:
+    cron_name: merge-sweep
+    prompt_template_key: MERGE_SWEEP_PROMPT
+    timeout_budget_ms: 600000
+    description: >
+      Trigger pr_lifecycle_orchestrator via Kafka command topic. Monitor
+      completion event. Merge green PRs.
+    interval_min: 30
+    active_modes: [build, close-out]
+    health_thresholds:
+      must_not_timeout: true
+      failure_class: MERGE_SWEEP_TIMEOUT
+
+  overseer_verify:
+    cron_name: overseer-verify
+    prompt_template_key: OVERSEER_VERIFY_PROMPT
+    timeout_budget_ms: 120000
+    description: >
+      Run 5-check overseer gate on recently-completed tickets. Escalate on
+      any invariant violation.
+    interval_min: 60
+    active_modes: [build, close-out, reporting]
+    health_thresholds:
+      overseer_escalate_count_max: 0
+      failure_class: OVERSEER_VIOLATION
+
+dogfood_gate:
+  dispatch_worker_node_name: node_dispatch_worker
+  dispatch_worker_entry_point: omnimarket.nodes.node_dispatch_worker
+  dispatch_worker_command_topic: onex.cmd.omnimarket.dispatch-worker-start.v1
+  local_model_preference: "local-first"
+  log_bypass_as_dogfood_available: WARNING
+  log_bypass_as_dogfood_unavailable: INFO
+
+terminal_event: onex.evt.omnimarket.session-bootstrap-completed.v2
 
 event_bus:
   subscribe_topics:
-    - onex.cmd.omnimarket.session-bootstrap-start.v1
+    - onex.cmd.omnimarket.session-bootstrap-start.v2
   publish_topics:
-    - onex.evt.omnimarket.session-bootstrap-completed.v1
+    - onex.evt.omnimarket.session-bootstrap-completed.v2
+    - onex.evt.omnimarket.session-cron-health-violation.v1
