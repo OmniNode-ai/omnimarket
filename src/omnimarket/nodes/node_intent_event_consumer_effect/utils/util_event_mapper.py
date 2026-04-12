@@ -6,12 +6,12 @@
 Maps incoming intent-classified events to storage requests.
 """
 
+from omnimemory.models.events import ModelIntentClassifiedEvent
+
 from omnibase_core.enums.intelligence import EnumIntentCategory
 from omnibase_core.models.intelligence import (
     ModelIntentClassificationOutput,
 )
-from omnimemory.models.events import ModelIntentClassifiedEvent
-
 from omnimarket.nodes.node_intent_storage_effect.models import ModelIntentStorageRequest
 
 

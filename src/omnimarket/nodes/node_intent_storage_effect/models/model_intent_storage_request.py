@@ -14,11 +14,12 @@ import logging
 from typing import Literal, Self
 from uuid import UUID
 
+from omnimemory.utils.pii_detector import PIIDetector
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from omnibase_core.models.intelligence import (
     ModelIntentClassificationOutput,
 )
-from omnimemory.utils.pii_detector import PIIDetector
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = ["ModelIntentStorageRequest"]
 
