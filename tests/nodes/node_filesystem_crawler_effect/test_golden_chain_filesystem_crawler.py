@@ -80,12 +80,10 @@ def make_mock_repo() -> MagicMock:
     return repo
 
 
-def make_publish_capture() -> (
-    tuple[
-        Callable[[str, dict[str, object]], Coroutine[object, object, None]],
-        list[PublishRecord],
-    ]
-):
+def make_publish_capture() -> tuple[
+    Callable[[str, dict[str, object]], Coroutine[object, object, None]],
+    list[PublishRecord],
+]:
     published: list[PublishRecord] = []
 
     async def capture(topic: str, payload: dict[str, object]) -> None:

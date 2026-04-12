@@ -47,9 +47,9 @@ def test_node_contract_schema_refs_point_at_omnimarket(node_name: str) -> None:
         resources.files("omnimarket.nodes") / node_name / "contract.yaml"  # type: ignore[arg-type]
     )
     text = contract_path.read_text()
-    assert (
-        'schema_ref: "omnimemory.nodes' not in text
-    ), f"{node_name} still has stale omnimemory schema_ref"
+    assert 'schema_ref: "omnimemory.nodes' not in text, (
+        f"{node_name} still has stale omnimemory schema_ref"
+    )
 
 
 @pytest.mark.unit

@@ -100,9 +100,9 @@ def test_ci_watch_phase_end_event_has_skipped_status_not_success() -> None:
         c[1]["phase"]: c[1] for c in bus.calls if c[0] == TOPIC_OVERNIGHT_PHASE_END
     }
 
-    assert (
-        EnumPhase.CI_WATCH.value in phase_end_events
-    ), "No phase-end event emitted for ci_watch phase"
+    assert EnumPhase.CI_WATCH.value in phase_end_events, (
+        "No phase-end event emitted for ci_watch phase"
+    )
     ci_watch_event = phase_end_events[EnumPhase.CI_WATCH.value]
 
     assert ci_watch_event["phase_status"] == "skipped", (
@@ -110,6 +110,6 @@ def test_ci_watch_phase_end_event_has_skipped_status_not_success() -> None:
         f"got {ci_watch_event['phase_status']!r}. "
         "A phantom SUCCESS would mask the missing PR context."
     )
-    assert (
-        ci_watch_event["phase_status"] != "success"
-    ), "ci_watch phase_status must not be 'success' when no PR context provided."
+    assert ci_watch_event["phase_status"] != "success", (
+        "ci_watch phase_status must not be 'success' when no PR context provided."
+    )

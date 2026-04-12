@@ -13,8 +13,8 @@ import json
 from uuid import uuid4
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_closeout_effect.handlers.handler_closeout import (
     HandlerCloseout,
 )

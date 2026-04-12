@@ -235,6 +235,6 @@ class TestGoldenChainOverseerPart1:
             assert task_result.status == EnumSeamTaskStatus.COMPLETED
             assert isinstance(task_result.output, dict)
             verdict = verifier.verify(_result_to_verifier_request(task_result.output))
-            assert (
-                verdict["verdict"] == "PASS"
-            ), f"Verifier failed for {task_result.task_id}: {verdict['summary']}"
+            assert verdict["verdict"] == "PASS", (
+                f"Verifier failed for {task_result.task_id}: {verdict['summary']}"
+            )

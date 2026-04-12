@@ -12,13 +12,13 @@ from __future__ import annotations
 from uuid import UUID
 
 import pytest
+from omnibase_core.container import ModelONEXContainer
 from omnimemory.enums import EnumEntityExtractionMode
 from omnimemory.models.config import (
     ModelHandlerSemanticComputeConfig,
     ModelSemanticComputePolicyConfig,
 )
 
-from omnibase_core.container import ModelONEXContainer
 from omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute import (
     HandlerSemanticCompute,
 )
