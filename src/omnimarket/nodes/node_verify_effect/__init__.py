@@ -11,5 +11,6 @@ __all__ = [
     "NodeVerifyEffect",
 ]
 
+
 class NodeVerifyEffect(HandlerVerify):
     """ONEX entry-point wrapper for HandlerVerify."""

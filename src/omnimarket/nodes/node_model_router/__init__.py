@@ -3,6 +3,7 @@
 
 """node_model_router — contract-driven LLM routing substrate."""
 
+
 class NodeModelRouter:
     """ONEX entry-point marker for node_model_router."""
 

@@ -27,5 +27,6 @@ __all__ = [
     "ProtocolQualityGateChecker",
 ]
 
+
 class NodeCloseoutEffect(HandlerCloseout):
     """ONEX entry-point wrapper for HandlerCloseout."""

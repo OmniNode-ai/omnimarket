@@ -11,5 +11,6 @@ __all__ = [
     "NodeRsdFillCompute",
 ]
 
+
 class NodeRsdFillCompute(HandlerRsdFill):
     """ONEX entry-point wrapper for HandlerRsdFill."""

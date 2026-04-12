@@ -19,6 +19,8 @@ __all__ = [
     "NodeMemoryStorageEffect",
 ]
 
+
 class NodeMemoryStorageEffect:
     """ONEX entry-point marker for node_memory_storage_effect."""
+
     __onex_node_type__ = "node_memory_storage_effect"

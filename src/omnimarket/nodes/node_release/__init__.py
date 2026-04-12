@@ -13,5 +13,6 @@ __all__ = [
     "NodeRelease",
 ]
 
+
 class NodeRelease(HandlerRelease):
     """ONEX entry-point wrapper for HandlerRelease."""

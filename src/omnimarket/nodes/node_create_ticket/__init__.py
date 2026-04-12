@@ -15,5 +15,6 @@ __all__ = [
     "NodeCreateTicket",
 ]
 
+
 class NodeCreateTicket(HandlerCreateTicket):
     """ONEX entry-point wrapper for HandlerCreateTicket."""

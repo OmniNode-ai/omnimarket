@@ -15,5 +15,6 @@ __all__ = [
     "NodePlanToTickets",
 ]
 
+
 class NodePlanToTickets(HandlerPlanToTickets):
     """ONEX entry-point wrapper for HandlerPlanToTickets."""

@@ -14,6 +14,7 @@ __all__ = [
     "NodeSimilarityCompute",
 ]
 
+
 class NodeSimilarityCompute:
     """ONEX entry-point marker for node_similarity_compute."""
 

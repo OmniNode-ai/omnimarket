@@ -25,6 +25,8 @@ __all__ = [
     "NodeAgentLearningRetrievalEffect",
 ]
 
+
 class NodeAgentLearningRetrievalEffect:
     """ONEX entry-point marker for node_agent_learning_retrieval_effect."""
+
     __onex_node_type__ = "node_agent_learning_retrieval_effect"

@@ -27,5 +27,6 @@ __all__ = [
     "NodeDodVerify",
 ]
 
+
 class NodeDodVerify(HandlerDodVerify):
     """ONEX entry-point wrapper for HandlerDodVerify."""

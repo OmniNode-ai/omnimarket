@@ -27,5 +27,6 @@ __all__ = [
     "NodeCloseOut",
 ]
 
+
 class NodeCloseOut(HandlerCloseOut):
     """ONEX entry-point wrapper for HandlerCloseOut."""

@@ -11,5 +11,6 @@ __all__ = [
     "NodePrSnapshotEffect",
 ]
 
+
 class NodePrSnapshotEffect(HandlerPrSnapshot):
     """ONEX entry-point wrapper for HandlerPrSnapshot."""

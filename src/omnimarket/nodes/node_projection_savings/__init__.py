@@ -7,5 +7,6 @@ __all__ = [
     "NodeProjectionSavings",
 ]
 
+
 class NodeProjectionSavings(HandlerProjectionSavings):
     """ONEX entry-point wrapper for HandlerProjectionSavings."""

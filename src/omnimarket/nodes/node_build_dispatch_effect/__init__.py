@@ -31,5 +31,6 @@ __all__ = [
     "NodeBuildDispatchEffect",
 ]
 
+
 class NodeBuildDispatchEffect(HandlerBuildDispatch):
     """ONEX entry-point wrapper for HandlerBuildDispatch."""

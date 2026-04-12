@@ -11,5 +11,6 @@ __all__ = [
     "NodeFindingAggregatorCompute",
 ]
 
+
 class NodeFindingAggregatorCompute(HandlerFindingAggregator):
     """ONEX entry-point wrapper for HandlerFindingAggregator."""

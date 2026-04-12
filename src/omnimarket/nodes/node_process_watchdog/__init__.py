@@ -31,5 +31,6 @@ __all__ = [
     "NodeProcessWatchdog",
 ]
 
+
 class NodeProcessWatchdog(HandlerProcessWatchdog):
     """ONEX entry-point wrapper for HandlerProcessWatchdog."""

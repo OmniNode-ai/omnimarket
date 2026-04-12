@@ -11,5 +11,6 @@ __all__ = [
     "NodePrLifecycleStateReducer",
 ]
 
+
 class NodePrLifecycleStateReducer(HandlerPrLifecycleStateReducer):
     """ONEX entry-point wrapper for HandlerPrLifecycleStateReducer."""

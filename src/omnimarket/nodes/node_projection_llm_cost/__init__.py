@@ -7,5 +7,6 @@ __all__ = [
     "NodeProjectionLlmCost",
 ]
 
+
 class NodeProjectionLlmCost(HandlerProjectionLlmCost):
     """ONEX entry-point wrapper for HandlerProjectionLlmCost."""

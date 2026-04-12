@@ -1,4 +1,3 @@
-
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     HandlerLinearTriage,
 )

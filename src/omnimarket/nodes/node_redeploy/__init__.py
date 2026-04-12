@@ -25,5 +25,6 @@ __all__ = [
     "NodeRedeploy",
 ]
 
+
 class NodeRedeploy(HandlerRedeployKafka):
     """ONEX entry-point wrapper for HandlerRedeployKafka."""

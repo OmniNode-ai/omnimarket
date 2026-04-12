@@ -15,6 +15,8 @@ __all__ = [
     "NodeSemanticAnalyzerCompute",
 ]
 
+
 class NodeSemanticAnalyzerCompute:
     """ONEX entry-point marker for node_semantic_analyzer_compute."""
+
     __onex_node_type__ = "node_semantic_analyzer_compute"

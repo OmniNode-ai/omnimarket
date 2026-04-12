@@ -17,5 +17,6 @@ __all__ = [
     "NodeCoderabbitTriage",
 ]
 
+
 class NodeCoderabbitTriage(HandlerCoderabbitTriage):
     """ONEX entry-point wrapper for HandlerCoderabbitTriage."""

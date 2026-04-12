@@ -27,5 +27,6 @@ __all__ = [
     "NodePrPolish",
 ]
 
+
 class NodePrPolish(HandlerPrPolish):
     """ONEX entry-point wrapper for HandlerPrPolish."""

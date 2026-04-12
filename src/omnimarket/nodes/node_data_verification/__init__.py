@@ -31,5 +31,6 @@ __all__ = [
     "NodeDataVerification",
 ]
 
+
 class NodeDataVerification(HandlerDataVerification):
     """ONEX entry-point wrapper for HandlerDataVerification."""

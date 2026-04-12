@@ -11,5 +11,6 @@ __all__ = [
     "NodePlatformDiagnostics",
 ]
 
+
 class NodePlatformDiagnostics(HandlerPlatformDiagnostics):
     """ONEX entry-point wrapper for HandlerPlatformDiagnostics."""

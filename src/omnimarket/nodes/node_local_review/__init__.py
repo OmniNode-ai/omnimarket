@@ -27,5 +27,6 @@ __all__ = [
     "NodeLocalReview",
 ]
 
+
 class NodeLocalReview(HandlerLocalReview):
     """ONEX entry-point wrapper for HandlerLocalReview."""

@@ -7,5 +7,6 @@ __all__ = [
     "NodeProjectionRegistration",
 ]
 
+
 class NodeProjectionRegistration(HandlerProjectionRegistration):
     """ONEX entry-point wrapper for HandlerProjectionRegistration."""

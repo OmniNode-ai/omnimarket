@@ -11,5 +11,6 @@ __all__ = [
     "NodeTicketClassifyCompute",
 ]
 
+
 class NodeTicketClassifyCompute(HandlerTicketClassify):
     """ONEX entry-point wrapper for HandlerTicketClassify."""

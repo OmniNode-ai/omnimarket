@@ -17,5 +17,6 @@ __all__ = [
     "NodeSessionBootstrap",
 ]
 
+
 class NodeSessionBootstrap(HandlerSessionBootstrap):
     """ONEX entry-point wrapper for HandlerSessionBootstrap."""

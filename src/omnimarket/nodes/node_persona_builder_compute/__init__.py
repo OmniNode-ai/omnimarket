@@ -14,5 +14,6 @@ __all__ = [
     "NodePersonaBuilderCompute",
 ]
 
+
 class NodePersonaBuilderCompute(HandlerPersonaClassify):
     """ONEX entry-point wrapper for HandlerPersonaClassify."""

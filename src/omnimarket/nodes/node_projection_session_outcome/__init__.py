@@ -7,5 +7,6 @@ __all__ = [
     "NodeProjectionSessionOutcome",
 ]
 
+
 class NodeProjectionSessionOutcome(HandlerProjectionSessionOutcome):
     """ONEX entry-point wrapper for HandlerProjectionSessionOutcome."""

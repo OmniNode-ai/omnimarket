@@ -19,6 +19,8 @@ __all__ = [
     "NodePersonaRetrievalEffect",
 ]
 
+
 class NodePersonaRetrievalEffect:
     """ONEX entry-point marker for node_persona_retrieval_effect."""
+
     __onex_node_type__ = "node_persona_retrieval_effect"
