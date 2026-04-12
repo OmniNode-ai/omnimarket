@@ -11,8 +11,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     ModelSweepFinding,

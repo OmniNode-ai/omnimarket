@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_plan_to_tickets.handlers.handler_plan_to_tickets import (
     HandlerPlanToTickets,
     ModelPlanToTicketsRequest,

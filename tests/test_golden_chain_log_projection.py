@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.logging.structured_logger import LOG_ENTRY_TOPIC, StructuredEventLogger
 from omnimarket.nodes.node_log_projection.handlers.handler_log_projection import (
     EnumLogLevel,

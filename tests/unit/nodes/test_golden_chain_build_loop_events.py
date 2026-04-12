@@ -18,8 +18,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_build_loop.models.model_loop_state import EnumBuildLoopPhase
 from omnimarket.nodes.node_build_loop.models.model_phase_transition_event import (
     ModelPhaseTransitionEvent,

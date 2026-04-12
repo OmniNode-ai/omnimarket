@@ -142,7 +142,7 @@ class HandlerRedeployKafka:
                 return
             try:
                 raw = message.value
-                if isinstance(raw, (bytes, bytearray)):
+                if isinstance(raw, bytes | bytearray):
                     payload = json.loads(raw.decode())
                 elif isinstance(raw, str):
                     payload = json.loads(raw)

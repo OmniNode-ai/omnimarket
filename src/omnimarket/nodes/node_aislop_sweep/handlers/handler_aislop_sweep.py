@@ -24,8 +24,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
-from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
