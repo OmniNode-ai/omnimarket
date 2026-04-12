@@ -12,6 +12,7 @@ Related:
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -40,10 +41,10 @@ class NullSideEffectObserver:
         self._emissions: list[dict[str, Any]] = []
 
     def record_emission(self, *, topic: str, payload: dict[str, Any]) -> None:
-        self._emissions.append({"topic": topic, "payload": payload})
+        self._emissions.append({"topic": topic, "payload": copy.deepcopy(payload)})
 
     def get_emissions(self) -> list[dict[str, Any]]:
-        return list(self._emissions)
+        return copy.deepcopy(self._emissions)
 
 
 __all__: list[str] = ["NullSideEffectObserver", "SideEffectObserver"]

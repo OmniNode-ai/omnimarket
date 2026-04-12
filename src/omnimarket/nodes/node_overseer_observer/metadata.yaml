@@ -17,6 +17,10 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+compatibility:
+  python: ">=3.12"
+  omnibase_core: ">=0.39.0,<1.0.0"
+  platform: ["local", "runtime"]
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["overseer", "observer", "stub", "phase-0", "OMN-8506", "OMN-8025"]

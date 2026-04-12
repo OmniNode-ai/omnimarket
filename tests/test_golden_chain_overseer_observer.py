@@ -50,11 +50,14 @@ def test_null_side_effect_observer_record_and_get() -> None:
 @pytest.mark.unit
 def test_null_side_effect_observer_get_returns_copy() -> None:
     obs = NullSideEffectObserver()
-    obs.record_emission(topic="onex.evt.test.v1", payload={})
+    obs.record_emission(topic="onex.evt.test.v1", payload={"k": "v"})
     first = obs.get_emissions()
     second = obs.get_emissions()
     assert first == second
     assert first is not second
+    first[0]["payload"]["k"] = "changed"
+    latest = obs.get_emissions()
+    assert latest[0]["payload"]["k"] == "v"
 
 
 @pytest.mark.unit

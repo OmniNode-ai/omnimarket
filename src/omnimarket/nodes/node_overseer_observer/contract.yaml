@@ -55,7 +55,7 @@ dod_evidence:
     check: uv run pytest tests/test_golden_chain_overseer_observer.py -v
   - type: bash_script
     description: >
-      rg confirms both stub classes are present in src/omnimarket/.
+      Python import check confirms both stub classes are importable and pass isinstance checks.
     check: >-
       uv run python -c "
       from omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer import SideEffectObserver, NullSideEffectObserver;
