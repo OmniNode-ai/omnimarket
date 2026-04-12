@@ -97,9 +97,9 @@ event_bus:
 
 dod_evidence:
   PYTEST:
-    description: all 5 integration tests pass
+    description: all 8 integration tests pass
     command: uv run pytest tests/ -k "test_dispatch_worker" -v
-    pass_criteria: all 5 tests pass; golden template outputs match fixtures
+    pass_criteria: all 8 tests pass; golden template outputs match fixtures
   CI:
     description: template behavioral invariants check passes
     command: python check_template_behavioral_invariants.py

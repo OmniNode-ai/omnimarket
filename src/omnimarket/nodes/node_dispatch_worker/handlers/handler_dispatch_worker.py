@@ -62,14 +62,14 @@ _COMMON_PREAMBLE = """\
 You are `{name}` in team `{team}`.
 
 ## Identity
-Claim the task whose subject starts with "{name}" via TaskUpdate (owner={name}, status=in_progress).
+Claim the task whose subject starts with "[{role}] {name}:" via TaskUpdate (owner={name}, status=in_progress).
 
 ## Collision fences — ABSOLUTE RULE
 You MUST NOT touch any of the following tickets, PRs, or files. They are owned by other workers:
 {collision_fences_block}
 
 ## Worktree isolation
-All code changes happen in /Volumes/PRO-G40/Code/omni_worktrees/{ticket}/{repo}/. NEVER commit inside the
+All code changes happen in {worktree_root}/{ticket}/{repo}/. NEVER commit inside the
 canonical omni_home/<repo>/ clone. NEVER use --amend. NEW commits only.
 
 ## No sub-agents
@@ -143,21 +143,21 @@ After implementation, before PR creation, run:
 Address every MAJOR+ finding. Re-run. Converge (≤3 rounds). THEN open the PR.
 
 ## Additional fixer clauses
-- Create worktree: /Volumes/PRO-G40/Code/omni_worktrees/{ticket}/{repo}/
+- Create worktree: {worktree_root}/{ticket}/{repo}/
 - Push branch, open PR, enable auto-merge.
 - Watch CI (same loop as watcher role). Cap total wall-clock at {wall_clock_cap_min} min.
 """
 
 _ROLE_DESIGNER = """\
 ## What you produce
-- /Users/jonah/omni_home/docs/design/{slug}-design.md (§1 through §N covering the problem space)
-- /Users/jonah/omni_home/docs/plans/{date}-{slug}-plan.md (phased tasks, DoD per task, wave ordering)
+- {omni_home}/docs/design/{slug}-design.md (§1 through §N covering the problem space)
+- {omni_home}/docs/plans/{date}-{slug}-plan.md (phased tasks, DoD per task, wave ordering)
 
 ## Design method
 1. Read all relevant context listed in {targets}.
 2. Draft design doc covering each §N in {scope}.
 3. Run hostile_reviewer on your draft:
-   Skill(skill="onex:hostile_reviewer", args="/Users/jonah/omni_home/docs/design/{slug}-design.md")
+   Skill(skill="onex:hostile_reviewer", args="{omni_home}/docs/design/{slug}-design.md")
    Minimum 2 rounds. Address every MAJOR+ finding as a §Revision-N section.
 4. Draft plan from converged design.
 5. Plans dispatched for implementation must include TDD-first constraint in every task description.
@@ -176,7 +176,7 @@ _ROLE_AUDITOR = """\
 Audit only. You do NOT modify files, commit, push, or file tickets.
 
 1. Read all files/repos referenced in {targets}.
-2. Produce findings doc at /Users/jonah/omni_home/docs/diagnosis-{slug}-{date}.md with:
+2. Produce findings doc at {omni_home}/docs/diagnosis-{slug}-{date}.md with:
    - §1 Methodology (what you read, what commands you ran)
    - §2 Findings table (item | severity | file path | recommendation)
    - §3 Summary counts and the single most alarming finding
@@ -191,7 +191,7 @@ _ROLE_SYNTHESIZER = """\
 Read the design docs listed in {targets}. Identify cross-domain interface conflicts and gaps.
 Produce ONE consolidated reconciliation doc.
 
-Output: /Users/jonah/omni_home/docs/design/{slug}-synthesized.md
+Output: {omni_home}/docs/design/{slug}-synthesized.md
 Sections:
   - §Decisions (cross-domain decisions made)
   - §Conflicts (what was in conflict and how resolved)
@@ -199,7 +199,7 @@ Sections:
   - §Interface contracts (explicit input/output contracts at every domain boundary)
 
 Run hostile_reviewer on your synthesis before reporting:
-  Skill(skill="onex:hostile_reviewer", args="/Users/jonah/omni_home/docs/design/{slug}-synthesized.md")
+  Skill(skill="onex:hostile_reviewer", args="{omni_home}/docs/design/{slug}-synthesized.md")
 """
 
 _ROLE_SWEEP = """\
@@ -215,7 +215,7 @@ _ROLE_OPS = """\
 ## What you do
 Wait for DMs from {reports_to} via inbox. Each DM is an admin request. Execute it. Reply one line.
 
-Audit log: append every action to /Users/jonah/omni_home/.onex_state/{name}/actions-{date}.log
+Audit log: append every action to {omni_home}/.onex_state/{name}/actions-{date}.log
   Format: ISO timestamp | request summary | command | exit code | stdout first line
 
 Supported actions: gh pr ready, gh pr merge, gh pr comment, gh pr edit, gh pr view,
@@ -230,7 +230,7 @@ Rules:
 - Do NOT mark task completed until shutdown_request received.
 
 On startup:
-  mkdir -p /Users/jonah/omni_home/.onex_state/{name}
+  mkdir -p {omni_home}/.onex_state/{name}
   Write startup entry to audit log.
   SendMessage {reports_to} one line: "{name} ready, listening for requests"
 """
@@ -327,12 +327,19 @@ def _query_active_fences(
                 continue
 
             owner = data.get("owner", "unknown")
-            task_targets = data.get("metadata", {}).get("targets", [])
+            metadata = data.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            task_targets = metadata.get("targets", [])
             if isinstance(task_targets, str):
                 task_targets = [task_targets]
+            if not isinstance(task_targets, list):
+                continue
 
+            task_target_set = {t.lower() for t in task_targets if isinstance(t, str)}
+            overlapping = task_target_set & current_target_set
             for t in task_targets:
-                if t.lower() not in current_target_set:
+                if isinstance(t, str) and t.lower() in overlapping:
                     fences.append(f"{t} (owned by {owner})")
     except Exception as exc:
         logger.warning(
@@ -421,7 +428,7 @@ class HandlerDispatchWorker:
         # "in_progress" state is encoded in the subjects list by convention;
         # callers pass only in_progress subjects when checking dedup.
         for subj in existing_subjects:
-            if subj.startswith(command.name):
+            if re.match(rf"^(?:\[[^\]]+\]\s+)?{re.escape(command.name)}(?::|$)", subj):
                 if command.replace:
                     return ""  # replace requested, allow through
                 return (
@@ -442,6 +449,11 @@ class HandlerDispatchWorker:
         target_pr = _extract_target_pr(command.targets)
         target_repo = repo
 
+        omni_home = os.environ.get("OMNI_HOME", os.path.expanduser("~/omni_home"))
+        worktree_root = os.environ.get(
+            "OMNI_WORKTREES", os.path.join(os.path.dirname(omni_home), "omni_worktrees")
+        )
+
         ctx: dict[str, object] = defaultdict(
             str,
             {
@@ -460,8 +472,27 @@ class HandlerDispatchWorker:
                 "target_repo": target_repo,
                 "slug": slug,
                 "date": today,
+                "omni_home": omni_home,
+                "worktree_root": worktree_root,
             },
         )
+
+        role_required_ids: dict[EnumWorkerRole, list[str]] = {
+            EnumWorkerRole.watcher: ["target_pr", "repo"],
+            EnumWorkerRole.fixer: ["ticket", "repo"],
+            EnumWorkerRole.designer: ["slug"],
+            EnumWorkerRole.auditor: ["slug"],
+            EnumWorkerRole.synthesizer: ["slug"],
+            EnumWorkerRole.sweep: [],
+            EnumWorkerRole.ops: [],
+        }
+        missing = [k for k in role_required_ids.get(command.role, []) if not ctx[k]]
+        if missing:
+            logger.warning(
+                "Role %s missing required identifiers %s — prompt may contain empty placeholders",
+                command.role,
+                missing,
+            )
 
         role_body = _ROLE_TEMPLATES[command.role]
         preamble = _COMMON_PREAMBLE.format_map(ctx)
@@ -492,9 +523,11 @@ class HandlerDispatchWorker:
                     data = json.loads(task_file.read_text())
                 except Exception:
                     continue
+                if not isinstance(data, dict):
+                    continue
                 if data.get("status") == "in_progress":
                     subj = data.get("subject", "")
-                    if subj:
+                    if subj and isinstance(subj, str):
                         subjects.append(subj)
         except Exception as exc:
             logger.warning("Failed to read task subjects from %s: %s", team_dir, exc)

@@ -57,12 +57,27 @@ class ModelDispatchWorkerCommand(BaseModel):
             raise ValueError(f"name must match ^[a-z0-9_-]{{1,64}}$ (got {v!r})")
         return v
 
+    @field_validator("team")
+    @classmethod
+    def validate_team(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("team must be a non-empty string")
+        return v.strip()
+
+    @field_validator("targets")
+    @classmethod
+    def validate_targets(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("targets must contain at least one entry")
+        return v
+
     @field_validator("reports_to")
     @classmethod
     def validate_reports_to(cls, v: str) -> str:
-        if not v.strip():
+        normalized = v.strip()
+        if not normalized:
             raise ValueError("reports_to must be a non-empty string")
-        return v
+        return normalized
 
 
 __all__: list[str] = ["EnumWorkerRole", "ModelDispatchWorkerCommand"]
