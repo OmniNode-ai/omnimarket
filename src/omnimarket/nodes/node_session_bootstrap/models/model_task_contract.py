@@ -26,6 +26,7 @@ class EnumDodCheckType(StrEnum):
     """
 
     PR_OPENED = "pr_opened"
+    PR_MERGED = "pr_merged"
     TESTS_PASS = "tests_pass"
     GOLDEN_CHAIN = "golden_chain"
     PRE_COMMIT_CLEAN = "pre_commit_clean"
