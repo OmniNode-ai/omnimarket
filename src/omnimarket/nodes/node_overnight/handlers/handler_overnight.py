@@ -51,6 +51,13 @@ from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     remove_overseer_flag,
     write_overseer_flag,
 )
+from omnimarket.nodes.node_overnight.protocols.protocol_phase_handlers import (
+    ProtocolBuildLoopPhaseHandler,
+    ProtocolCiWatchHandler,
+    ProtocolMergeSweepHandler,
+    ProtocolNightlyLoopHandler,
+    ProtocolPlatformReadinessHandler,
+)
 from omnimarket.nodes.node_overnight.topics import (
     TOPIC_OVERNIGHT_COMPLETE,
     TOPIC_OVERNIGHT_PHASE_END,
@@ -194,8 +201,13 @@ class HandlerBuildLoopExecutor:
         state_root: Path | None = None,
         contract_path: Path | str | None = None,
         event_bus: EventPublisher | None = None,
+        nightly_loop: ProtocolNightlyLoopHandler | None = None,
+        build_loop: ProtocolBuildLoopPhaseHandler | None = None,
+        merge_sweep: ProtocolMergeSweepHandler | None = None,
+        ci_watch: ProtocolCiWatchHandler | None = None,
+        platform_readiness: ProtocolPlatformReadinessHandler | None = None,
     ) -> None:
-        """Create an overnight handler.
+        """Create a build loop executor handler.
 
         Args:
             dispatchers: Optional phase -> dispatcher map. Defaults to
@@ -225,6 +237,11 @@ class HandlerBuildLoopExecutor:
                 (OMN-8405). When None, publishing is a no-op so legacy callers
                 and unit tests remain unaffected. Topics come from
                 ``node_overnight/topics.py`` (mirrored in contract.yaml).
+            nightly_loop: DI slot for ProtocolNightlyLoopHandler (OMN-8449).
+            build_loop: DI slot for ProtocolBuildLoopPhaseHandler (OMN-8449).
+            merge_sweep: DI slot for ProtocolMergeSweepHandler (OMN-8449).
+            ci_watch: DI slot for ProtocolCiWatchHandler (OMN-8449).
+            platform_readiness: DI slot for ProtocolPlatformReadinessHandler (OMN-8449).
         """
         self._dispatchers: dict[EnumPhase, PhaseDispatcher] = (
             dispatchers if dispatchers is not None else dict(_DEFAULT_PHASE_DISPATCHERS)
@@ -235,6 +252,14 @@ class HandlerBuildLoopExecutor:
         self._state_root = state_root
         self._contract_path = contract_path
         self._event_bus: EventPublisher | None = event_bus
+        # OMN-8449: 5 protocol DI slots — populated by _ensure_sub_handlers() (OMN-8450)
+        self._nightly_loop: ProtocolNightlyLoopHandler | None = nightly_loop
+        self._build_loop: ProtocolBuildLoopPhaseHandler | None = build_loop
+        self._merge_sweep: ProtocolMergeSweepHandler | None = merge_sweep
+        self._ci_watch: ProtocolCiWatchHandler | None = ci_watch
+        self._platform_readiness: ProtocolPlatformReadinessHandler | None = (
+            platform_readiness
+        )
 
     def _publish(self, topic: str, payload: dict[str, object]) -> None:
         """Publish an envelope via the injected event bus, swallowing errors.
