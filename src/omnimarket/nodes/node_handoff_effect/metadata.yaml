@@ -1,0 +1,23 @@
+name: node_handoff_effect
+version: "1.0.0"
+description: "Handoff effect node -- captures session state and writes handoff artifact for next-session pickup"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_handoff_effect: "omnimarket.nodes.node_handoff_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "handoff", "session", "continuity", "git"]
+pack: "workflow"
+display_name: "Handoff Effect"
+node_role: "effect"

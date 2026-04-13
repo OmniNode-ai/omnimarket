@@ -143,6 +143,7 @@ node_navigation_history_reducer = "omnimarket.nodes.node_navigation_history_redu
 node_persona_lifecycle_orchestrator = "omnimarket.nodes.node_persona_lifecycle_orchestrator"
 node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_orchestrator"
 node_swarm_supervisor_orchestrator = "omnimarket.nodes.node_swarm_supervisor_orchestrator"
+node_handoff_effect = "omnimarket.nodes.node_handoff_effect"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
