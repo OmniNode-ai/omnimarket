@@ -100,14 +100,14 @@ input_state:
 output_state:
   object_type: "object"
   required: ["correlation_id", "embedded_count", "failed_count"]
-  optional: ["batch_size_used"]
+  optional: ["batch_size_used", "vector_ids", "qdrant_collection"]
 
 # === ACTIONS ===
 actions:
   - name: "embed_batch"
     description: "Embed a batch of code entities and store vectors in Qdrant"
-    inputs: ["correlation_id", "batch_size", "embedding_endpoint_override"]
-    outputs: ["correlation_id", "embedded_count", "failed_count"]
+    inputs: ["correlation_id", "batch_size", "embedding_endpoint_override", "qdrant_collection_override"]
+    outputs: ["correlation_id", "embedded_count", "failed_count", "vector_ids", "qdrant_collection"]
 
   - name: "health_check"
     description: "Verify embedding endpoint and Qdrant reachability"
