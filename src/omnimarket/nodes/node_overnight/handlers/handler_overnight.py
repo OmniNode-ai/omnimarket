@@ -754,7 +754,10 @@ class HandlerBuildLoopExecutor:
             )
             if phase_spec is not None and phase_spec.dispatch_items:
                 item_success, item_error = _execute_dispatch_items(
-                    phase_spec.dispatch_items, command
+                    phase_spec.dispatch_items,
+                    command,
+                    timeout_seconds=phase_spec.timeout_seconds,
+                    halt_on_failure=phase_spec.halt_on_failure,
                 )
                 if not item_success:
                     return False, item_error
@@ -775,6 +778,9 @@ class HandlerBuildLoopExecutor:
 def _execute_dispatch_items(
     dispatch_items: tuple[object, ...],
     command: ModelOvernightCommand,
+    *,
+    timeout_seconds: int = 300,
+    halt_on_failure: bool = False,
 ) -> tuple[bool, str | None]:
     """Execute each dispatch_item declared in a phase spec (OMN-8406).
 
@@ -786,9 +792,21 @@ def _execute_dispatch_items(
     ``blocked_on_human``, ``cron``) are logged and skipped at this layer —
     they require a session context that the overnight executor does not own.
 
+    Args:
+        dispatch_items: Items declared in the phase spec.
+        command: The overnight command (used for dry_run flag).
+        timeout_seconds: Per-subprocess timeout, taken from the phase spec's
+            ``timeout_seconds`` field. Defaults to 300 when not set.
+        halt_on_failure: When True, any subprocess error (including
+            FileNotFoundError) immediately returns a failure. When False,
+            the error is logged and the loop continues to the next item.
+            Mirrors the halt_on_failure semantics of ModelOvernightPhaseSpec.
+
     Returns (success, error_message).
     """
     from onex_change_control.overseer.model_dispatch_item import ModelDispatchItem
+
+    last_error: str | None = None
 
     for item in dispatch_items:
         if not isinstance(item, ModelDispatchItem):
@@ -806,7 +824,10 @@ def _execute_dispatch_items(
         if not skill:
             msg = f"dispatch_item {item.theme_id}: skill_or_command is empty"
             logger.error("[OVERNIGHT] %s", msg)
-            return False, msg
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
 
         logger.info(
             "[OVERNIGHT] dispatch_item %s: invoking skill %r (dry_run=%s)",
@@ -824,22 +845,29 @@ def _execute_dispatch_items(
                 ["claude", "-p", f"/{skill}"],
                 capture_output=True,
                 text=True,
-                timeout=item.timeout_seconds
-                if hasattr(item, "timeout_seconds")
-                else 300,
+                timeout=timeout_seconds,
             )
         except FileNotFoundError:
             msg = f"dispatch_item {item.theme_id}: 'claude' not found in PATH"
             logger.error("[OVERNIGHT] %s", msg)
-            return False, msg
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
         except subprocess.TimeoutExpired:
             msg = f"dispatch_item {item.theme_id}: skill {skill!r} timed out"
             logger.error("[OVERNIGHT] %s", msg)
-            return False, msg
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
         except Exception as exc:
             msg = f"dispatch_item {item.theme_id}: subprocess error: {exc}"
             logger.exception("[OVERNIGHT] %s", msg)
-            return False, msg
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
 
         if proc.returncode != 0:
             stderr_snippet = (proc.stderr or "").strip()[:500]
@@ -848,7 +876,10 @@ def _execute_dispatch_items(
                 f"{proc.returncode}: {stderr_snippet}"
             )
             logger.error("[OVERNIGHT] %s", msg)
-            return False, msg
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
 
         logger.info(
             "[OVERNIGHT] dispatch_item %s: skill %r completed successfully",
@@ -856,6 +887,8 @@ def _execute_dispatch_items(
             skill,
         )
 
+    if last_error is not None:
+        return False, last_error
     return True, None
 
 
