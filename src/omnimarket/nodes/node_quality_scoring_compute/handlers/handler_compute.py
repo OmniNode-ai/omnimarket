@@ -356,7 +356,7 @@ def _create_safe_error_output(
                 onex_compliant=False,
                 recommendations=[],
                 metadata=ModelQualityScoringMetadata(
-                    status="error",
+                    status=STATUS_COMPUTE_ERROR,
                     message="Critical error in error handling",
                     processing_time_ms=0.0,
                 ),

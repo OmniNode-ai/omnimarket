@@ -39,6 +39,7 @@ Example:
 from __future__ import annotations
 
 import ast
+import math
 import re
 import sys
 from typing import Final, Literal, get_args
@@ -1391,7 +1392,7 @@ def _validate_weights(weights: dict[str, float]) -> None:
         )
 
     total = sum(weights.values())
-    if not (0.99 <= total <= 1.01):
+    if not math.isclose(total, 1.0, abs_tol=1e-9):
         raise QualityScoringValidationError(f"Weights must sum to 1.0, got {total:.4f}")
 
     for key, value in weights.items():
