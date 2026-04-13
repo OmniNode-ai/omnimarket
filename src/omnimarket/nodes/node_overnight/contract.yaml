@@ -54,6 +54,17 @@ inputs:
     description: "Run all phases in dry-run mode"
     required: false
     default: false
+  # OMN-8407: self-perpetuating loop trigger fields
+  enable_self_loop:
+    type: bool
+    description: "Re-emit start command after completion to create autonomous loop"
+    required: false
+    default: true
+  loop_delay_seconds:
+    type: int
+    description: "Seconds between loop iterations (delay on the requeued start command)"
+    required: false
+    default: 300
 
 outputs:
   session_status:
@@ -85,3 +96,8 @@ event_bus:
     # so the controlling session can surface contract_path / current_phase /
     # phase_progress / next_required_outcome / approaching_halt_conditions.
     - onex.evt.omnimarket.overseer-tick.v1
+    # OMN-8407: self-perpetuating loop trigger — handler re-emits this command
+    # after each run (with delay_seconds set) so the overseer loop runs on .201
+    # without external cron jobs. Fires only when enable_self_loop=True and an
+    # event_bus is wired.
+    - onex.cmd.omnimarket.overnight-start.v1

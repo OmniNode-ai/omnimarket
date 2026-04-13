@@ -19,6 +19,7 @@ from omnimarket.nodes.node_overnight.topics import (
     TOPIC_OVERNIGHT_COMPLETE,
     TOPIC_OVERNIGHT_PHASE_END,
     TOPIC_OVERNIGHT_PHASE_START,
+    TOPIC_OVERNIGHT_START,
 )
 
 
@@ -47,14 +48,17 @@ def test_publishes_phase_start_end_and_complete_for_every_non_skipped_phase() ->
 
     handler.handle(_cmd())
 
-    # 5 phases x (start + end) + 1 complete = 11 envelopes
-    assert len(bus.calls) == 11, [c[0] for c in bus.calls]
+    # 5 phases x (start + end) + 1 complete + 1 self-loop requeue = 12 envelopes
+    assert len(bus.calls) == 12, [c[0] for c in bus.calls]
 
     topics = [c[0] for c in bus.calls]
     assert topics.count(TOPIC_OVERNIGHT_PHASE_START) == 5
     assert topics.count(TOPIC_OVERNIGHT_PHASE_END) == 5
     assert topics.count(TOPIC_OVERNIGHT_COMPLETE) == 1
-    assert topics[-1] == TOPIC_OVERNIGHT_COMPLETE
+    assert topics.count(TOPIC_OVERNIGHT_START) == 1
+    # complete fires before the self-loop requeue
+    assert topics[-2] == TOPIC_OVERNIGHT_COMPLETE
+    assert topics[-1] == TOPIC_OVERNIGHT_START
 
 
 def test_phase_start_precedes_phase_end_for_same_phase() -> None:
@@ -65,8 +69,9 @@ def test_phase_start_precedes_phase_end_for_same_phase() -> None:
 
     # Pair-match: every time a phase-start fires, the very next call for that
     # phase must be its phase-end (skips/reorderings would break this).
+    _phase_topics = {TOPIC_OVERNIGHT_PHASE_START, TOPIC_OVERNIGHT_PHASE_END}
     order: list[tuple[str, str]] = [
-        (c[0], c[1]["phase"]) for c in bus.calls if c[0] != TOPIC_OVERNIGHT_COMPLETE
+        (c[0], c[1]["phase"]) for c in bus.calls if c[0] in _phase_topics
     ]
     for i in range(0, len(order), 2):
         start_topic, start_phase = order[i]
@@ -88,7 +93,8 @@ def test_skipped_phases_emit_no_phase_envelopes() -> None:
         )
     )
 
-    phase_events = [c for c in bus.calls if c[0] != TOPIC_OVERNIGHT_COMPLETE]
+    _phase_topics = {TOPIC_OVERNIGHT_PHASE_START, TOPIC_OVERNIGHT_PHASE_END}
+    phase_events = [c for c in bus.calls if c[0] in _phase_topics]
     emitted_phases = {c[1]["phase"] for c in phase_events}
     assert EnumPhase.NIGHTLY_LOOP.value not in emitted_phases
     assert EnumPhase.BUILD_LOOP.value not in emitted_phases

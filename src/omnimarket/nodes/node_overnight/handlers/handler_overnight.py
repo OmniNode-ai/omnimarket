@@ -64,6 +64,7 @@ from omnimarket.nodes.node_overnight.topics import (
     TOPIC_OVERNIGHT_COMPLETE,
     TOPIC_OVERNIGHT_PHASE_END,
     TOPIC_OVERNIGHT_PHASE_START,
+    TOPIC_OVERNIGHT_START,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,14 @@ class ModelOvernightCommand(BaseModel):
     skip_merge_sweep: bool = False
     dry_run: bool = False
     overnight_contract: ModelOvernightContract | None = None
+    # OMN-8407: self-perpetuating loop trigger. When True, the handler re-emits
+    # onex.cmd.omnimarket.overnight-start.v1 after session completion so the
+    # overseer loop runs autonomously on .201 without Claude Code crons.
+    # Set to False for one-shot runs (tests, manual invocations).
+    enable_self_loop: bool = True
+    # Seconds the runtime should wait before delivering the requeued start command.
+    # Default 300 = 5 minutes between overseer loop iterations.
+    loop_delay_seconds: int = 300
 
 
 class ModelPhaseResult(BaseModel):
@@ -622,6 +631,34 @@ class HandlerBuildLoopExecutor:
                 "completed_at": completed_at.isoformat(),
             },
         )
+
+        # OMN-8407: self-perpetuating loop trigger. After every completed run
+        # (including partial/failed — the loop must keep turning), re-emit the
+        # start command with a delay so the omninode-runtime delivers it after
+        # loop_delay_seconds. This creates a self-driving overseer loop on .201
+        # without Claude Code crons. Only fires when enable_self_loop=True AND
+        # an event_bus is wired — dry_run or no-bus callers are unaffected.
+        if command.enable_self_loop and self._event_bus is not None:
+            import uuid
+
+            self._publish(
+                TOPIC_OVERNIGHT_START,
+                {
+                    "correlation_id": str(uuid.uuid4()),
+                    "max_cycles": command.max_cycles,
+                    "skip_nightly_loop": command.skip_nightly_loop,
+                    "skip_build_loop": command.skip_build_loop,
+                    "skip_merge_sweep": command.skip_merge_sweep,
+                    "dry_run": command.dry_run,
+                    "enable_self_loop": True,
+                    "loop_delay_seconds": command.loop_delay_seconds,
+                    "delay_seconds": command.loop_delay_seconds,
+                },
+            )
+            logger.info(
+                "[OVERNIGHT] self-loop requeued — next start in %ds (correlation_id fresh)",
+                command.loop_delay_seconds,
+            )
 
         return ModelOvernightResult(
             correlation_id=command.correlation_id,
