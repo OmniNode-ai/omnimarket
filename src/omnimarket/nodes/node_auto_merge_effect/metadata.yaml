@@ -1,0 +1,23 @@
+name: node_auto_merge_effect
+version: "1.0.0"
+description: "Auto-merge effect node -- merges a GitHub PR after CI gates pass via gh CLI"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_auto_merge_effect: "omnimarket.nodes.node_auto_merge_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "auto-merge", "github", "pr", "ci-gate"]
+pack: "workflow"
+display_name: "Auto Merge Effect"
+node_role: "effect"
