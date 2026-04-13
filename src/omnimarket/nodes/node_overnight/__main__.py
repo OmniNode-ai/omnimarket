@@ -20,6 +20,11 @@ Usage:
         --dispatch-phases \
         --dry-run
 
+    python -m omnimarket.nodes.node_overnight \
+        --contract-file path/to/overnight-contract.yaml \
+        --dispatch-phases \
+        --publish-events
+
 Flags:
     --dispatch-phases / -d
         Invoke the real per-phase compute-node dispatcher for each non-skipped
@@ -27,12 +32,21 @@ Flags:
         but treats every phase as vacuous-green (0 ms, 0 dispatches). Set this
         flag to perform actual overnight work (OMN-8402).
 
+    --publish-events
+        Construct a sync Kafka producer using KAFKA_BOOTSTRAP_SERVERS and inject
+        it as the event_bus into HandlerOvernight. Phase-start, phase-end, and
+        session-complete envelopes are published to the topics declared in
+        contract.yaml (OMN-8403). Without this flag, event publishing is a no-op
+        (event_bus=None default).
+
 Outputs JSON to stdout: ModelOvernightResult model.
 """
 
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -41,12 +55,62 @@ import yaml
 from onex_change_control.overseer.model_overnight_contract import ModelOvernightContract
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
+    EventPublisher,
     HandlerOvernight,
     ModelOvernightCommand,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def _build_kafka_publisher() -> EventPublisher | None:
+    """Construct a sync Kafka publisher from KAFKA_BOOTSTRAP_SERVERS.
+
+    Uses confluent_kafka.Producer for synchronous fire-and-forget publishing.
+    Returns None (no-op) when KAFKA_BOOTSTRAP_SERVERS is not set or when
+    confluent_kafka is unavailable.
+
+    The overnight session must never be taken down by a bus outage — callers
+    should treat None as a signal to skip publishing, not as an error.
+    """
+    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "").strip()
+    if not bootstrap:
+        logger.warning(
+            "[OVERNIGHT] KAFKA_BOOTSTRAP_SERVERS not set — event publishing disabled"
+        )
+        return None
+
+    try:
+        from confluent_kafka import Producer  # type: ignore[import-untyped]
+    except ImportError:
+        logger.warning(
+            "[OVERNIGHT] confluent_kafka not available — event publishing disabled"
+        )
+        return None
+
+    try:
+        producer = Producer({"bootstrap.servers": bootstrap})
+    except Exception as exc:
+        logger.warning(
+            "[OVERNIGHT] Kafka producer init failed: %s — event publishing disabled",
+            exc,
+        )
+        return None
+
+    def _publish(topic: str, payload: bytes) -> None:
+        try:
+            producer.produce(topic, value=payload)
+            producer.poll(0)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("[OVERNIGHT] Kafka produce to %s failed: %s", topic, exc)
+
+    logger.info("[OVERNIGHT] Kafka event publisher ready (broker: %s)", bootstrap)
+    return _publish
+
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
     parser = argparse.ArgumentParser(
         description="Run the overnight autonomous pipeline."
     )
@@ -85,16 +149,31 @@ def main() -> None:
             "validates the contract and sequences the phase list."
         ),
     )
+    parser.add_argument(
+        "--publish-events",
+        action="store_true",
+        default=False,
+        help=(
+            "Publish phase-start, phase-end, and session-complete Kafka envelopes "
+            "via KAFKA_BOOTSTRAP_SERVERS. Topics are declared in contract.yaml. "
+            "When not set, event publishing is a no-op (OMN-8403)."
+        ),
+    )
 
     args = parser.parse_args()
 
     overnight_contract: ModelOvernightContract | None = None
+    contract_path: Path | None = None
     if args.contract_file:
         contract_path = Path(args.contract_file).expanduser().resolve()
         if not contract_path.exists():
             raise FileNotFoundError(f"Contract file not found: {contract_path}")
         data = yaml.safe_load(contract_path.read_text())
         overnight_contract = ModelOvernightContract.model_validate(data)
+
+    event_bus: EventPublisher | None = None
+    if args.publish_events:
+        event_bus = _build_kafka_publisher()
 
     command = ModelOvernightCommand(
         correlation_id=str(uuid.uuid4()),
@@ -105,7 +184,10 @@ def main() -> None:
         overnight_contract=overnight_contract,
     )
 
-    handler = HandlerOvernight()
+    handler = HandlerOvernight(
+        event_bus=event_bus,
+        contract_path=contract_path,
+    )
     result = handler.handle(command, dispatch_phases=args.dispatch_phases)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
