@@ -159,7 +159,7 @@ def _build_request(cmd: dict[str, Any], state_dir: str) -> ModelMergeSweepReques
 
 async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
     try:
-        from aiokafka import (  # type: ignore[import-not-found]
+        from aiokafka import (  # type: ignore[import-untyped]
             AIOKafkaConsumer,
             AIOKafkaProducer,
         )
