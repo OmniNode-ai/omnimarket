@@ -10,6 +10,7 @@ returns a valid ModelHealthDimensionResult without leaking.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -43,7 +44,7 @@ def _make_dim(
     )
 
 
-def _green_probe(name: str) -> callable:
+def _green_probe(name: str) -> Callable[[], ModelHealthDimensionResult]:
     def probe() -> ModelHealthDimensionResult:
         return _make_dim(name, EnumDimensionStatus.GREEN)
 
@@ -51,7 +52,9 @@ def _green_probe(name: str) -> callable:
     return probe
 
 
-def _red_probe(name: str, blocks: bool = False) -> callable:
+def _red_probe(
+    name: str, blocks: bool = False
+) -> Callable[[], ModelHealthDimensionResult]:
     def probe() -> ModelHealthDimensionResult:
         return _make_dim(name, EnumDimensionStatus.RED, blocks_dispatch=blocks)
 
@@ -59,7 +62,9 @@ def _red_probe(name: str, blocks: bool = False) -> callable:
     return probe
 
 
-def _yellow_probe(name: str, blocks: bool = False) -> callable:
+def _yellow_probe(
+    name: str, blocks: bool = False
+) -> Callable[[], ModelHealthDimensionResult]:
     def probe() -> ModelHealthDimensionResult:
         return _make_dim(name, EnumDimensionStatus.YELLOW, blocks_dispatch=blocks)
 
@@ -190,7 +195,7 @@ class TestPhase1SkipHealth:
     def test_skip_health_bypasses_probes(self) -> None:
         called = []
 
-        def probe():
+        def probe() -> ModelHealthDimensionResult:
             called.append(True)
             return _make_dim("dim_1", EnumDimensionStatus.GREEN)
 
