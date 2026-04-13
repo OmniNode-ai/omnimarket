@@ -146,10 +146,31 @@ jobs:
   # GATE AGGREGATOR
   # Required status check for branch protection and merge queue.
   # ============================================================================
+
+  contract-compliance:
+    name: Contract Compliance Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Clone onex_change_control
+        run: git clone --depth=1 https://github.com/OmniNode-ai/onex_change_control.git /tmp/onex_change_control
+      - name: Install pyyaml
+        run: pip install pyyaml
+      - name: Run contract compliance check
+        run: |
+          python /tmp/onex_change_control/scripts/ci/run_contract_compliance_check.py \
+            --pr ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --contracts-dir /tmp/onex_change_control/contracts
+        env:
+          EMERGENCY_BYPASS: ${{ secrets.EMERGENCY_BYPASS || '' }}
+          GH_TOKEN: ${{ github.token }}
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, topic-naming-lint, runtime-sweep]
+    needs: [lint, typecheck, test, topic-naming-lint, runtime-sweep, contract-compliance]
     if: always()
     steps:
       - name: Check CI results
@@ -162,7 +183,8 @@ jobs:
             "typecheck=${{ needs.typecheck.result }}" \
             "test=${{ needs.test.result }}" \
             "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
-            "runtime-sweep=${{ needs.runtime-sweep.result }}"; do
+            "runtime-sweep=${{ needs.runtime-sweep.result }}" \
+            "contract-compliance=${{ needs.contract-compliance.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
