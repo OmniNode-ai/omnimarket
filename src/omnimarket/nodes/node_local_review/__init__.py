@@ -24,4 +24,9 @@ __all__ = [
     "ModelLocalReviewPhaseEvent",
     "ModelLocalReviewStartCommand",
     "ModelLocalReviewState",
+    "NodeLocalReview",
 ]
+
+
+class NodeLocalReview(HandlerLocalReview):
+    """ONEX entry-point wrapper for HandlerLocalReview."""

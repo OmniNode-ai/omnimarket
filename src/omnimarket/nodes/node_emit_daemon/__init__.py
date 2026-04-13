@@ -57,3 +57,10 @@ def __getattr__(name: str) -> object:
     raise AttributeError(
         f"module 'omnimarket.nodes.node_emit_daemon' has no attribute {name!r}"
     )
+
+
+from omnimarket.nodes.node_emit_daemon.handlers import HandlerEmitDaemon  # noqa: E402
+
+
+class NodeEmitDaemon(HandlerEmitDaemon):
+    """ONEX entry-point wrapper for HandlerEmitDaemon."""

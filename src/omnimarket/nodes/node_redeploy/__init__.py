@@ -22,4 +22,9 @@ __all__ = [
     "ModelRedeployCompletedEvent",
     "ModelRedeployResult",
     "ModelRedeployStartCommand",
+    "NodeRedeploy",
 ]
+
+
+class NodeRedeploy(HandlerRedeployKafka):
+    """ONEX entry-point wrapper for HandlerRedeployKafka."""

@@ -12,4 +12,9 @@ __all__ = [
     "HandlerDesignToPlan",
     "ModelDesignToPlanCompletedEvent",
     "ModelDesignToPlanStartCommand",
+    "NodeDesignToPlan",
 ]
+
+
+class NodeDesignToPlan(HandlerDesignToPlan):
+    """ONEX entry-point wrapper for HandlerDesignToPlan."""

@@ -10,4 +10,9 @@ __all__ = [
     "HandlerCiWatch",
     "ModelCiWatchCommand",
     "ModelCiWatchResult",
+    "NodeCiWatch",
 ]
+
+
+class NodeCiWatch(HandlerCiWatch):
+    """ONEX entry-point wrapper for HandlerCiWatch."""

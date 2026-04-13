@@ -9,4 +9,13 @@ from omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_comput
     HandlerSimilarityCompute,
 )
 
-__all__ = ["HandlerSimilarityCompute"]
+__all__ = [
+    "HandlerSimilarityCompute",
+    "NodeSimilarityCompute",
+]
+
+
+class NodeSimilarityCompute:
+    """ONEX entry-point marker for node_similarity_compute."""
+
+    __onex_node_type__ = "node_similarity_compute"

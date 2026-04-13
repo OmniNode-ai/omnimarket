@@ -22,6 +22,11 @@ __all__ = [
     "HandlerCloseout",
     "ModelCloseoutInput",
     "ModelCloseoutResult",
+    "NodeCloseoutEffect",
     "ProtocolMergeSweeper",
     "ProtocolQualityGateChecker",
 ]
+
+
+class NodeCloseoutEffect(HandlerCloseout):
+    """ONEX entry-point wrapper for HandlerCloseout."""

@@ -24,4 +24,9 @@ __all__ = [
     "ModelCloseOutPhaseEvent",
     "ModelCloseOutStartCommand",
     "ModelCloseOutState",
+    "NodeCloseOut",
 ]
+
+
+class NodeCloseOut(HandlerCloseOut):
+    """ONEX entry-point wrapper for HandlerCloseOut."""

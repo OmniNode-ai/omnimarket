@@ -24,4 +24,9 @@ __all__ = [
     "ModelPrPolishPhaseEvent",
     "ModelPrPolishStartCommand",
     "ModelPrPolishState",
+    "NodePrPolish",
 ]
+
+
+class NodePrPolish(HandlerPrPolish):
+    """ONEX entry-point wrapper for HandlerPrPolish."""

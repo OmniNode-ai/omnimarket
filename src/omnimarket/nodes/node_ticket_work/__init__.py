@@ -12,4 +12,9 @@ __all__ = [
     "HandlerTicketWork",
     "ModelTicketWorkCompletedEvent",
     "ModelTicketWorkStartCommand",
+    "NodeTicketWork",
 ]
+
+
+class NodeTicketWork(HandlerTicketWork):
+    """ONEX entry-point wrapper for HandlerTicketWork."""

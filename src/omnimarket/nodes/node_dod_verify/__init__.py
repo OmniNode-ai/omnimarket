@@ -24,4 +24,9 @@ __all__ = [
     "ModelDodVerifyStartCommand",
     "ModelDodVerifyState",
     "ModelEvidenceCheckResult",
+    "NodeDodVerify",
 ]
+
+
+class NodeDodVerify(HandlerDodVerify):
+    """ONEX entry-point wrapper for HandlerDodVerify."""

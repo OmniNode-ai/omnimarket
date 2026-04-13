@@ -14,4 +14,9 @@ __all__ = [
     "HandlerSessionBootstrap",
     "ModelBootstrapCommand",
     "ModelBootstrapResult",
+    "NodeSessionBootstrap",
 ]
+
+
+class NodeSessionBootstrap(HandlerSessionBootstrap):
+    """ONEX entry-point wrapper for HandlerSessionBootstrap."""

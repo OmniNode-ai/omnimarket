@@ -2,4 +2,11 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     HandlerProjectionSavings,
 )
 
-__all__ = ["HandlerProjectionSavings"]
+__all__ = [
+    "HandlerProjectionSavings",
+    "NodeProjectionSavings",
+]
+
+
+class NodeProjectionSavings(HandlerProjectionSavings):
+    """ONEX entry-point wrapper for HandlerProjectionSavings."""

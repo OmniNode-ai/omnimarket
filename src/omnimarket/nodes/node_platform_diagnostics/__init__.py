@@ -6,4 +6,11 @@ from omnimarket.nodes.node_platform_diagnostics.handlers.handler_platform_diagno
     HandlerPlatformDiagnostics,
 )
 
-__all__ = ["HandlerPlatformDiagnostics"]
+__all__ = [
+    "HandlerPlatformDiagnostics",
+    "NodePlatformDiagnostics",
+]
+
+
+class NodePlatformDiagnostics(HandlerPlatformDiagnostics):
+    """ONEX entry-point wrapper for HandlerPlatformDiagnostics."""

@@ -124,13 +124,32 @@ jobs:
             --baseline scripts/validation/topic_naming_baseline.txt
 
   # ============================================================================
+  # RUNTIME SWEEP GATE (OMN-8611)
+  # Verifies every onex.nodes entry point in pyproject.toml has a module
+  # directory, __init__.py, and contract.yaml. Fails if any are broken.
+  # NOTE: This gate must pass on main — land AFTER fix-market-entry-points
+  # PR merges (the PR fixing 96 broken entry points).
+  # ============================================================================
+  runtime-sweep:
+    name: Runtime Sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify entry point wiring
+        run: python scripts/ci/run_runtime_sweep.py
+
+  # ============================================================================
   # GATE AGGREGATOR
   # Required status check for branch protection and merge queue.
   # ============================================================================
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, topic-naming-lint]
+    needs: [lint, typecheck, test, topic-naming-lint, runtime-sweep]
     if: always()
     steps:
       - name: Check CI results
@@ -142,7 +161,8 @@ jobs:
             "lint=${{ needs.lint.result }}" \
             "typecheck=${{ needs.typecheck.result }}" \
             "test=${{ needs.test.result }}" \
-            "topic-naming-lint=${{ needs.topic-naming-lint.result }}"; do
+            "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
+            "runtime-sweep=${{ needs.runtime-sweep.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
