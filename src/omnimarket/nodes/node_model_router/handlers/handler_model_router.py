@@ -40,7 +40,8 @@ from omnimarket.nodes.node_model_router.models.model_routing_request import (
 from omnimarket.nodes.node_model_router.models.model_routing_result import (
     ModelRoutingResult,
 )
-from omnimarket.nodes.node_model_router.topics import TOPIC_MODEL_ROUTING_DEGRADED
+
+TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"
 
 logger = logging.getLogger(__name__)
 

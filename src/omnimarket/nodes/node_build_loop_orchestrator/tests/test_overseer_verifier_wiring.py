@@ -20,10 +20,11 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_o
     _VERIFIER_TIMEOUT_SECONDS,
     HandlerBuildLoopOrchestrator,
 )
-from omnimarket.nodes.node_build_loop_orchestrator.topics import (
-    TOPIC_OVERSEER_VERIFICATION_COMPLETED,
-    TOPIC_OVERSEER_VERIFY_REQUESTED,
+
+TOPIC_OVERSEER_VERIFICATION_COMPLETED = (
+    "onex.evt.omnimarket.overseer-verifier-completed.v1"
 )
+TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"
 
 
 class _FakeMessage:

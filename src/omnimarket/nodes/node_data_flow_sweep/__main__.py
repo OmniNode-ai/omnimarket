@@ -27,11 +27,10 @@ from omnimarket.nodes.node_data_flow_sweep.handlers.handler_data_flow_sweep impo
     ModelFlowInput,
     NodeDataFlowSweep,
 )
-from omnimarket.nodes.node_data_flow_sweep.topics import (
-    NODE_INTROSPECTION_TOPIC,
-    PATTERN_LEARNED_TOPIC,
-    ROUTING_DECISION_TOPIC,
-)
+
+NODE_INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
+PATTERN_LEARNED_TOPIC = "onex.evt.omniintelligence.pattern-learned.v1"
+ROUTING_DECISION_TOPIC = "onex.evt.omniclaude.routing-decision.v1"
 
 _log = logging.getLogger(__name__)
 

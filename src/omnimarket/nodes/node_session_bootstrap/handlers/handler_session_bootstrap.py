@@ -33,8 +33,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.nodes.node_session_bootstrap.models.model_session_contract import (
     ModelSessionContract,
 )
-from omnimarket.nodes.node_session_bootstrap.topics import (
-    TOPIC_SESSION_CRON_HEALTH_VIOLATION as _TOPIC_SESSION_CRON_HEALTH_VIOLATION,
+
+_TOPIC_SESSION_CRON_HEALTH_VIOLATION = (
+    "onex.evt.omnimarket.session-cron-health-violation.v1"
 )
 
 logger = logging.getLogger(__name__)

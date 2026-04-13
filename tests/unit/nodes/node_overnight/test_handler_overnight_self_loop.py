@@ -24,10 +24,9 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     HandlerOvernight,
     ModelOvernightCommand,
 )
-from omnimarket.nodes.node_overnight.topics import (
-    TOPIC_OVERNIGHT_COMPLETE,
-    TOPIC_OVERNIGHT_START,
-)
+
+TOPIC_OVERNIGHT_COMPLETE = "onex.evt.omnimarket.overnight-session-completed.v1"
+TOPIC_OVERNIGHT_START = "onex.cmd.omnimarket.overnight-start.v1"
 
 
 class _RecordingBus:

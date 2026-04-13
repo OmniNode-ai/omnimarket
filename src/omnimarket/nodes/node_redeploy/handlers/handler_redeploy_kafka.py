@@ -36,10 +36,9 @@ from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
     ModelDeployRebuildCompleted,
     ModelRedeployResult,
 )
-from omnimarket.nodes.node_redeploy.topics import (
-    TOPIC_DEPLOY_REBUILD_COMPLETED,
-    TOPIC_DEPLOY_REBUILD_REQUESTED,
-)
+
+TOPIC_DEPLOY_REBUILD_COMPLETED = "onex.evt.deploy.rebuild-completed.v1"
+TOPIC_DEPLOY_REBUILD_REQUESTED = "onex.cmd.deploy.rebuild-requested.v1"
 
 logger = logging.getLogger(__name__)
 

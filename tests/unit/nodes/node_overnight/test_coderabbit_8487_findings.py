@@ -30,7 +30,8 @@ from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     _pr_blocked_minutes,
     build_tick_snapshot,
 )
-from omnimarket.nodes.node_overnight.topics import TOPIC_OVERSEER_TICK
+
+TOPIC_OVERSEER_TICK = OVERSEER_TICK_TOPIC  # same constant, now sourced from handler
 
 
 def _make_contract(

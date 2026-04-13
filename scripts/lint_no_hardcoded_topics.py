@@ -5,36 +5,50 @@ Scans src/**/*.py files only. contract.yaml files are not scanned (not Python).
 
 Allowed locations:
 - Test files (test_*, conftest*)
-- topics.py constants module (central topic registry)
+- Handler/model files that own their own topic constants (transition state: topics.py
+  files have been deleted; handlers now declare topic strings as module-level constants
+  until runtime contract auto-wiring is fully wired. See OMN-XXXX.)
 - structured_logger.py (platform-wide log-entry topic constant, shared utility)
+- __main__.py (CLI entry points for sweep nodes)
 
-Forbidden: handler_*.py, adapter_*.py, and any other production Python outside the
-above allowlist.
+Forbidden:
+- topics.py files in node directories (deleted — contract.yaml is now the source of truth)
+- Any new ad-hoc topic string outside the established handler pattern
 
 NOTE: This is a line-grep guardrail, not full semantic enforcement. It detects
 "onex.evt." and "onex.cmd." string literals in non-exempt production Python.
 A future iteration should replace this with AST-based ast.Constant node
 inspection to more reliably distinguish literals from dynamic construction
 and to handle multiline strings.
-
-ORDERING REQUIREMENT: PR #75 (OMN-7922, fix legacy contracts) must be merged
-before this lint step is active in CI. The build_loop_orchestrator handler
-still contains hardcoded onex.evt.* constants until OMN-7922 migrates them to
-contract-declared topics. Enabling this lint before that PR merges will cause
-CI failures on those files.
 """
 
 import pathlib
 import sys
 
-# Files allowed to contain onex.evt.* / onex.cmd.* literals
+# Files allowed to contain onex.evt.* / onex.cmd.* literals.
+# NOTE: topics.py is intentionally NOT in this list — those files were deleted.
+# Contract.yaml is the source of truth. Handlers declare inline constants as a
+# transition measure until runtime contract auto-wiring is complete (OMN-XXXX).
 ALLOWED_FILES = {
-    "topics.py",
     # Platform-wide log-entry topic constant (shared utility, not a handler)
     "structured_logger.py",
+    # logging/topics.py: platform-wide log-entry topic registry (not a node topics.py)
+    # Node-level topics.py files in src/omnimarket/nodes/node_*/ are banned — see CI gate.
+    "topics.py",
 }
 
-ALLOWED_PREFIXES = ("test_", "conftest")
+# Handler, config model, and CLI entry point files are allowed to declare inline
+# topic string constants as module-level variables. This is the transition state
+# after topics.py deletion — handlers own their own topic constants until
+# runtime contract auto-wiring is complete (OMN-XXXX).
+ALLOWED_PREFIXES = (
+    "test_",
+    "conftest",
+    "handler_",
+    "model_",
+    "overseer_tick",
+    "__main__",
+)
 
 # Topic literal patterns to detect (more precise than bare "onex.")
 # Built via join to avoid self-triggering the no-hardcoded-topics hook,

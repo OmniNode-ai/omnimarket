@@ -25,7 +25,7 @@ from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightHaltCondition,
 )
 
-from omnimarket.nodes.node_overnight.topics import TOPIC_OVERSEER_TICK
+TOPIC_OVERSEER_TICK = "onex.evt.omnimarket.overseer-tick.v1"
 
 logger = logging.getLogger(__name__)
 

@@ -49,6 +49,15 @@ jobs:
       # topics. This lint was added in OMN-7921 (branched from PR #76 / OMN-7918).
       - name: Topic-literal guardrail
         run: python scripts/lint_no_hardcoded_topics.py
+      - name: Reject node-level topics.py files
+        run: |
+          FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)
+          if [ -n "$FOUND" ]; then
+            echo "ERROR: topics.py files found in node directories. Topic bindings must come from contract.yaml."
+            echo "$FOUND"
+            exit 1
+          fi
+          echo "OK: No node-level topics.py files found."
 
   typecheck:
     runs-on: ubuntu-latest

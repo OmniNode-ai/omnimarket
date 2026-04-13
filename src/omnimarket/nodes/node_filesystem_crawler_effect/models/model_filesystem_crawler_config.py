@@ -6,12 +6,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_filesystem_crawler_effect.topics import (
-    TOPIC_DOCUMENT_CHANGED,
-    TOPIC_DOCUMENT_DISCOVERED,
-    TOPIC_DOCUMENT_INDEXED,
-    TOPIC_DOCUMENT_REMOVED,
-)
+TOPIC_DOCUMENT_CHANGED = "onex.evt.omnimemory.document-changed.v1"
+TOPIC_DOCUMENT_DISCOVERED = "onex.evt.omnimemory.document-discovered.v1"
+TOPIC_DOCUMENT_INDEXED = "onex.evt.omnimemory.document-indexed.v1"
+TOPIC_DOCUMENT_REMOVED = "onex.evt.omnimemory.document-removed.v1"
 
 
 class ModelFilesystemCrawlerConfig(BaseModel):

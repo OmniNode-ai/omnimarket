@@ -25,12 +25,9 @@ from omnimarket.nodes.node_review_thread_reconciler.handlers.handler_review_thre
 from omnimarket.nodes.node_review_thread_reconciler.protocols.protocol_github_client import (
     ProtocolGitHubReviewClient,
 )
-from omnimarket.nodes.node_review_thread_reconciler.topics import (
-    TOPIC_CMD_RECONCILE as CMD_TOPIC,
-)
-from omnimarket.nodes.node_review_thread_reconciler.topics import (
-    TOPIC_EVT_THREAD_REOPENED as EVT_TOPIC,
-)
+
+CMD_TOPIC = "onex.cmd.omnimarket.review-thread-reconcile.v1"
+EVT_TOPIC = "onex.evt.omnimarket.review-thread-reopened.v1"
 
 _ALLOWED_BOT = "pr-review-bot[bot]"
 _BYPASS_USER = "jonahgabriel"

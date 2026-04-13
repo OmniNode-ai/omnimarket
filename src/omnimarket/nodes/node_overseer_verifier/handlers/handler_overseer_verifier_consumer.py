@@ -57,10 +57,9 @@ from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier 
 from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
     ModelVerifierRequest,
 )
-from omnimarket.nodes.node_overseer_verifier.topics import (
-    TOPIC_OVERSEER_VERIFIER_COMPLETED,
-    TOPIC_OVERSEER_VERIFY,
-)
+
+TOPIC_OVERSEER_VERIFIER_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"
+TOPIC_OVERSEER_VERIFY = "onex.cmd.omnimarket.overseer-verify.v1"
 
 logger = logging.getLogger(__name__)
 

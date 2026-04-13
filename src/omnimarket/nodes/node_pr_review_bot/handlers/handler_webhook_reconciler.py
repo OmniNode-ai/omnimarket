@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
-from omnimarket.nodes.node_pr_review_bot.topics import TOPIC_THREAD_REOPENED
+TOPIC_THREAD_REOPENED = "onex.evt.omnimarket.review-bot-thread-reopened.v1"
 
 logger = logging.getLogger(__name__)
 

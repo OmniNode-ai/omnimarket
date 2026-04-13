@@ -8,10 +8,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_kreuzberg_parse_effect.topics import (
-    TOPIC_DOCUMENT_INDEXED,
-    TOPIC_DOCUMENT_PARSE_FAILED,
-)
+TOPIC_DOCUMENT_INDEXED = "onex.evt.omnimemory.document-indexed.v1"
+TOPIC_DOCUMENT_PARSE_FAILED = "onex.evt.omnimemory.document-parse-failed.v1"
 
 
 class ModelKreuzbergParseConfig(BaseModel):

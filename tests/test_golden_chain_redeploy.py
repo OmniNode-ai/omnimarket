@@ -29,12 +29,9 @@ from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
 from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
     EnumRedeployPhase,
 )
-from omnimarket.nodes.node_redeploy.topics import (
-    TOPIC_DEPLOY_REBUILD_COMPLETED as _EVT_TOPIC,
-)
-from omnimarket.nodes.node_redeploy.topics import (
-    TOPIC_DEPLOY_REBUILD_REQUESTED as _CMD_TOPIC,
-)
+
+_EVT_TOPIC = "onex.evt.deploy.rebuild-completed.v1"
+_CMD_TOPIC = "onex.cmd.deploy.rebuild-requested.v1"
 
 CMD_TOPIC = "onex.cmd.omnimarket.redeploy-start.v1"
 PHASE_TOPIC = "onex.evt.omnimarket.redeploy-phase-transition.v1"

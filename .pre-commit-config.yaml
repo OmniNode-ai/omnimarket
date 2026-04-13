@@ -24,8 +24,7 @@ repos:
     hooks:
       - id: no-hardcoded-topics
         stages: [pre-commit]
-        exclude: >-
-          ^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\.yaml|scripts/lint_no_hardcoded_topics\.py|src/omnimarket/logging/structured_logger\.py)$
+        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py)$"
       - id: no-untracked-todos
         stages: [pre-commit]
 

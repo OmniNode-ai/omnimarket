@@ -15,7 +15,8 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     ModelOvernightCommand,
     _dispatch_ci_watch,
 )
-from omnimarket.nodes.node_overnight.topics import TOPIC_OVERNIGHT_PHASE_END
+
+TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight-phase-completed.v1"
 
 
 class _RecordingBus:

@@ -17,9 +17,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_review_thread_reconciler.topics import (
-    TOPIC_EVT_THREAD_REOPENED,
-)
+TOPIC_EVT_THREAD_REOPENED = "onex.evt.omnimarket.review-thread-reopened.v1"
 
 if TYPE_CHECKING:
     from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory

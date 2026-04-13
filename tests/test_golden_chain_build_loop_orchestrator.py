@@ -37,10 +37,11 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     VerifyResult,
 )
 
-# Topic string for test assertions — matches contract.yaml publish_topics
+# Topic strings for test assertions — match contract.yaml publish_topics
 TOPIC_PHASE_TRANSITION = (
     "onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1"
 )
+TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"
 
 # --- Mock sub-handlers ---
 
@@ -398,10 +399,6 @@ class TestDoDVerificationGating:
 
     async def test_dod_emits_event_on_pass(self) -> None:
         """DoD PASS emits onex.evt.build-loop.dod-checked.v1 for each target."""
-        from omnimarket.nodes.node_build_loop_orchestrator.topics import (
-            TOPIC_DOD_CHECKED,
-        )
-
         event_bus = EventBusInmemory()
         await event_bus.start()
         targets = (
@@ -479,10 +476,6 @@ class TestDoDVerificationGating:
     async def test_dod_fail_emits_fail_event(self) -> None:
         """DoD FAIL emits dod-checked event with verdict=FAIL."""
         from unittest.mock import patch
-
-        from omnimarket.nodes.node_build_loop_orchestrator.topics import (
-            TOPIC_DOD_CHECKED,
-        )
 
         event_bus = EventBusInmemory()
         await event_bus.start()

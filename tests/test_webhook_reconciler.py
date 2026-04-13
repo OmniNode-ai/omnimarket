@@ -11,7 +11,8 @@ import pytest
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_webhook_reconciler import (
     HandlerWebhookReconciler,
 )
-from omnimarket.nodes.node_pr_review_bot.topics import TOPIC_THREAD_REOPENED
+
+TOPIC_THREAD_REOPENED = "onex.evt.omnimarket.review-bot-thread-reopened.v1"
 
 BOT_LOGIN = "onexbot[bot]"
 

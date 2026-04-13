@@ -12,7 +12,8 @@ from omnimarket.nodes.node_pr_review_bot.handlers.handler_commit_citation_verifi
     STATUS_CONTEXT,
     HandlerCommitCitationVerifier,
 )
-from omnimarket.nodes.node_pr_review_bot.topics import TOPIC_THREAD_RESOLVED
+
+TOPIC_THREAD_RESOLVED = "onex.evt.omnimarket.review-bot-thread-resolved.v1"
 
 BOT_LOGIN = "onexbot[bot]"
 

@@ -9,11 +9,9 @@ list format per OMN-1746 for EventBusSubcontractWiring compatibility.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_intent_event_consumer_effect.topics import (
-    TOPIC_INTENT_CLASSIFIED,
-    TOPIC_INTENT_CLASSIFIED_DLQ,
-    TOPIC_INTENT_STORED,
-)
+TOPIC_INTENT_CLASSIFIED = "onex.evt.omniintelligence.intent-classified.v1"
+TOPIC_INTENT_CLASSIFIED_DLQ = "onex.evt.omniintelligence.intent-classified-dlq.v1"
+TOPIC_INTENT_STORED = "onex.evt.omnimemory.intent-stored.v1"
 
 
 # omnimemory-model-exempt: handler config
