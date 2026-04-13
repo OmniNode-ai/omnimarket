@@ -97,9 +97,23 @@ class HandlerCodeEmbeddingEffect:
                     embedded_count=0,
                     failed_count=0,
                     qdrant_collection=collection,
+                    batch_size_used=effective_batch_size,
                 )
 
-        _ensure_collection(resolved_client, collection, vector_size)
+        try:
+            _ensure_collection(resolved_client, collection, vector_size)
+        except Exception:
+            logger.exception(
+                "Qdrant collection setup failed — skipping embedding batch (correlation_id=%s)",
+                correlation_id,
+            )
+            return ModelCodeEmbeddingResult(
+                correlation_id=correlation_id,
+                embedded_count=0,
+                failed_count=0,
+                qdrant_collection=collection,
+                batch_size_used=effective_batch_size,
+            )
 
         entities = await repository.get_entities_needing_embedding(
             limit=effective_batch_size
@@ -272,7 +286,7 @@ async def _get_embedding(
         embedding: list[float] = data["data"][0]["embedding"]
         return embedding
     except (httpx.HTTPError, KeyError, IndexError):
-        logger.warning("Embedding generation failed for text[:80]=%r", text[:80])
+        logger.warning("Embedding generation failed for endpoint=%r", endpoint)
         return None
 
 

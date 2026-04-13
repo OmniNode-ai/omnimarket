@@ -113,9 +113,15 @@ class HandlerCodeEnrichmentEffect:
         enrichment_version = os.environ.get(
             "CODE_ENRICHMENT_VERSION", DEFAULT_ENRICHMENT_VERSION
         )
-        effective_batch_size = batch_size or int(
-            os.environ.get(
-                "CODE_ENRICHMENT_BATCH_SIZE", str(DEFAULT_ENRICHMENT_BATCH_SIZE)
+        if batch_size is not None and batch_size <= 0:
+            raise ValueError(f"batch_size must be a positive integer, got {batch_size}")
+        effective_batch_size = (
+            batch_size
+            if batch_size is not None and batch_size > 0
+            else int(
+                os.environ.get(
+                    "CODE_ENRICHMENT_BATCH_SIZE", str(DEFAULT_ENRICHMENT_BATCH_SIZE)
+                )
             )
         )
 
@@ -147,11 +153,26 @@ class HandlerCodeEnrichmentEffect:
                         entity=entity,
                     )
                     if result is not None:
-                        classification = result.get("classification", "other")
-                        confidence = result.get("confidence", 0.0)
+                        raw_classification = result.get("classification", "other")
+                        raw_confidence = result.get("confidence", 0.0)
 
-                        if confidence < confidence_threshold:
+                        try:
+                            confidence = float(raw_confidence)
+                        except (TypeError, ValueError):
+                            logger.warning(
+                                "LLM returned non-numeric confidence %r for %s — defaulting to 0.0",
+                                raw_confidence,
+                                entity.get("entity_name"),
+                            )
+                            confidence = 0.0
+
+                        if (
+                            raw_classification not in ENRICHMENT_CLASSIFICATIONS
+                            or confidence < confidence_threshold
+                        ):
                             classification = "other"
+                        else:
+                            classification = raw_classification
 
                         await repository.update_enrichment(
                             entity_id=str(entity["id"]),
@@ -194,7 +215,7 @@ async def _enrich_single_entity(
     fallback_endpoint: str,
     entity: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """Call LLM for a single entity, falling back to fallback_endpoint on connection error."""
+    """Call LLM for a single entity, falling back to fallback_endpoint only on connection error."""
     prompt = PROMPT_TEMPLATE.format(
         entity_name=entity.get("entity_name", ""),
         bases=", ".join(entity.get("bases") or []),
@@ -203,27 +224,28 @@ async def _enrich_single_entity(
         classifications=", ".join(ENRICHMENT_CLASSIFICATIONS),
     )
 
-    for endpoint in _endpoint_sequence(primary_endpoint, fallback_endpoint):
-        result = await _call_llm(
-            client, endpoint, prompt, entity.get("entity_name", "")
+    result, primary_connect_error = await _call_llm(
+        client, primary_endpoint, prompt, entity.get("entity_name", "")
+    )
+    if result is not None:
+        return result
+
+    if (
+        primary_connect_error
+        and fallback_endpoint
+        and fallback_endpoint != primary_endpoint
+    ):
+        logger.warning(
+            "Primary LLM unreachable (%s), trying fallback for %s",
+            primary_endpoint,
+            entity.get("entity_name"),
         )
-        if result is not None:
-            return result
-        if endpoint == primary_endpoint and fallback_endpoint:
-            logger.warning(
-                "Primary LLM unreachable (%s), trying fallback for %s",
-                primary_endpoint,
-                entity.get("entity_name"),
-            )
+        fallback_result, _ = await _call_llm(
+            client, fallback_endpoint, prompt, entity.get("entity_name", "")
+        )
+        return fallback_result
 
     return None
-
-
-def _endpoint_sequence(primary: str, fallback: str) -> list[str]:
-    endpoints = [primary]
-    if fallback and fallback != primary:
-        endpoints.append(fallback)
-    return endpoints
 
 
 async def _call_llm(
@@ -231,7 +253,13 @@ async def _call_llm(
     endpoint: str,
     prompt: str,
     entity_name: str,
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, bool]:
+    """Call the LLM endpoint and return (result, connect_error_flag).
+
+    connect_error_flag is True only when the primary was unreachable (ConnectError),
+    signalling that a fallback attempt is warranted. Non-connection errors (bad JSON,
+    HTTP errors) return False so fallback is not triggered.
+    """
     try:
         response = await client.post(
             f"{endpoint}/v1/chat/completions",
@@ -246,13 +274,13 @@ async def _call_llm(
         if content.startswith("```"):
             content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         result: dict[str, Any] = json.loads(content)
-        return result
+        return result, False
     except httpx.ConnectError:
         logger.warning("LLM connection failed at %s for %s", endpoint, entity_name)
-        return None
+        return None, True
     except (httpx.HTTPError, json.JSONDecodeError, KeyError, IndexError):
         logger.warning("LLM enrichment failed at %s for %s", endpoint, entity_name)
-        return None
+        return None, False
 
 
 __all__ = [
