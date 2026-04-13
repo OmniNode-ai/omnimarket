@@ -145,6 +145,9 @@ node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_o
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
 
+[project.entry-points."onex.domain_plugins"]
+omnimarket = "omnimarket.runtime.plugin:PluginOmnimarket"
+
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
 
