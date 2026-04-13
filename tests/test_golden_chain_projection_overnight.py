@@ -272,9 +272,9 @@ class TestOvernightProjectionContractWiring:
         with open(self._contract_path()) as f:
             contract = yaml.safe_load(f)
         subscribe = contract["event_bus"]["subscribe_topics"]
-        assert "onex.evt.omnimarket.overnight.phase-start.v1" in subscribe
-        assert "onex.evt.omnimarket.overnight.phase-completed.v1" in subscribe
-        assert "onex.evt.omnimarket.overnight.session-completed.v1" in subscribe
+        assert "onex.evt.omnimarket.overnight-phase-start.v1" in subscribe
+        assert "onex.evt.omnimarket.overnight-phase-completed.v1" in subscribe
+        assert "onex.evt.omnimarket.overnight-session-completed.v1" in subscribe
 
     def test_contract_publish_topics(self) -> None:
         with open(self._contract_path()) as f:
