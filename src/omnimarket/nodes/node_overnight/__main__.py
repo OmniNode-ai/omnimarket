@@ -100,7 +100,13 @@ def _build_kafka_publisher() -> EventPublisher | None:
     def _publish(topic: str, payload: bytes) -> None:
         try:
             producer.produce(topic, value=payload)
-            producer.poll(0)
+            undelivered = producer.flush(5.0)
+            if undelivered:
+                logger.warning(
+                    "[OVERNIGHT] Kafka produce to %s timed out with %s undelivered message(s)",
+                    topic,
+                    undelivered,
+                )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("[OVERNIGHT] Kafka produce to %s failed: %s", topic, exc)
 
