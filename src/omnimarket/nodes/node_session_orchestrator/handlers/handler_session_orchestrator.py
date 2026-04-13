@@ -12,9 +12,16 @@ Phase 3 (dispatch): STUB — logs intent only, does not dispatch.
   TODO(OMN-8367): Wire TeamCreate dispatch with correlation chain propagation.
   See design doc §Dispatch Targets.
 
-Dimension probes are injected at construction time for testability. Production
-probes call existing skills via subprocess or SSH. No hardcoded IPs or topic
-strings — all config comes from contract.yaml or env.
+Probe callables are injected at construction time for testability. Production
+probes call existing skills via subprocess or SSH. All config comes from env vars
+or contract.yaml — no hardcoded paths, IPs, or usernames.
+
+Required env vars for SSH probes:
+  ONEX_INFRA_HOST — hostname or IP of the infra server (e.g. 192.168.86.201)
+  ONEX_INFRA_USER — SSH username (e.g. jonah)
+
+Optional env vars:
+  OMNI_HOME     — path to the omni_home canonical registry (for golden chain + repo sync)
 """
 
 from __future__ import annotations
@@ -28,9 +35,34 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Env var helpers — fail-fast on required vars (no defaults for infra paths)
+# ---------------------------------------------------------------------------
+
+
+def _require_env(name: str) -> str:
+    """Return env var value; raise RuntimeError if unset."""
+    val = os.environ.get(name, "")
+    if not val:
+        raise RuntimeError(
+            f"Required env var {name!r} is not set. "
+            f"Set it before invoking node_session_orchestrator."
+        )
+    return val
+
+
+def _infra_host() -> str:
+    return _require_env("ONEX_INFRA_HOST")
+
+
+def _infra_user() -> str:
+    return _require_env("ONEX_INFRA_USER")
+
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -46,6 +78,11 @@ class EnumDimensionStatus(StrEnum):
 class EnumGateDecision(StrEnum):
     PROCEED = "PROCEED"
     FIX_ONLY = "FIX_ONLY"
+    # HALT is reserved for future use (e.g. catastrophic dimensions that
+    # prevent even fix-dispatch). Currently _compute_gate only emits
+    # PROCEED or FIX_ONLY.
+    # TODO(OMN-8367): Implement HALT per design doc §Gate Decisions when
+    # dimension-level catastrophic thresholds are defined.
     HALT = "HALT"
 
 
@@ -92,6 +129,10 @@ class ModelSessionOrchestratorCommand(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str = Field(default="")
+    correlation_id: str = Field(
+        default="",
+        description="Propagated correlation chain: sess-id.disp-id.ticket-id.pr-id",
+    )
     mode: str = Field(default="interactive")
     dry_run: bool = False
     skip_health: bool = False
@@ -104,6 +145,7 @@ class ModelSessionOrchestratorResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
+    correlation_id: str = ""
     status: EnumSessionStatus
     halt_reason: str = ""
     health_report: ModelSessionHealthReport | None = None
@@ -194,7 +236,13 @@ def _probe_pr_inventory() -> ModelHealthDimensionResult:
 
 
 def _probe_golden_chain() -> ModelHealthDimensionResult:
-    """Dimension 2: Golden Chain — invoke onex:golden_chain_sweep via subprocess."""
+    """Dimension 2: Golden Chain — invoke onex:golden_chain_sweep via subprocess.
+
+    Runs in the caller's cwd (inherit from process). Set OMNI_HOME to point
+    at the omnimarket worktree if needed.
+    """
+    omni_home = os.environ.get("OMNI_HOME")
+    run_cwd = omni_home if omni_home else None
     try:
         result = subprocess.run(
             [
@@ -209,7 +257,7 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
             capture_output=True,
             text=True,
             timeout=60,
-            cwd=os.environ.get("OMNI_HOME", "/Users/jonah/Code/omni_home/omnimarket"),
+            cwd=run_cwd,
         )
         if result.returncode == 0:
             status = EnumDimensionStatus.GREEN
@@ -247,7 +295,6 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
 
 def _probe_linear_sync() -> ModelHealthDimensionResult:
     """Dimension 3: Linear Sync — ticket status vs PR state mismatch."""
-    # Lightweight: check if Linear API is reachable; full sync is expensive
     linear_key = os.environ.get("LINEAR_API_KEY", "")
     if not linear_key:
         return ModelHealthDimensionResult(
@@ -273,10 +320,25 @@ def _probe_linear_sync() -> ModelHealthDimensionResult:
 
 
 def _probe_runtime_health() -> ModelHealthDimensionResult:
-    """Dimension 4: Runtime Health — check .201 via SSH + port probe."""
-    server_host = os.environ.get("ONEX_INFRA_HOST", "192.168.86.201")
+    """Dimension 4: Runtime Health — check infra server via SSH.
+
+    Requires ONEX_INFRA_HOST and ONEX_INFRA_USER env vars.
+    """
     try:
-        # SSH check: docker ps count
+        host = _infra_host()
+        user = _infra_user()
+    except RuntimeError as exc:
+        return ModelHealthDimensionResult(
+            dimension="runtime_health",
+            status=EnumDimensionStatus.RED,
+            source="live_probe",
+            timestamp=_now(),
+            stale_after=timedelta(minutes=5),
+            details={"error": str(exc)},
+            actionable_items=[str(exc)],
+            blocks_dispatch=True,
+        )
+    try:
         result = subprocess.run(
             [
                 "ssh",
@@ -284,7 +346,7 @@ def _probe_runtime_health() -> ModelHealthDimensionResult:
                 "ConnectTimeout=5",
                 "-o",
                 "StrictHostKeyChecking=no",
-                f"jonah@{server_host}",
+                f"{user}@{host}",
                 "docker ps --format '{{.Names}}' | wc -l",
             ],
             capture_output=True,
@@ -299,11 +361,10 @@ def _probe_runtime_health() -> ModelHealthDimensionResult:
                 timestamp=_now(),
                 stale_after=timedelta(minutes=5),
                 details={"error": f"SSH failed: {result.stderr[:100]}"},
-                actionable_items=[f"Cannot SSH to {server_host} — runtime unreachable"],
+                actionable_items=[f"Cannot SSH to {host} — runtime unreachable"],
                 blocks_dispatch=True,
             )
         container_count = int(result.stdout.strip() or "0")
-        # Expect at least 20 containers (infra + runtime)
         if container_count < 20:
             status = EnumDimensionStatus.RED
             actionable = [f"Only {container_count} containers running; expected ≥ 20"]
@@ -319,7 +380,7 @@ def _probe_runtime_health() -> ModelHealthDimensionResult:
             source="live_probe",
             timestamp=_now(),
             stale_after=timedelta(minutes=5),
-            details={"container_count": container_count, "host": server_host},
+            details={"container_count": container_count, "host": host},
             actionable_items=actionable,
             blocks_dispatch=(status == EnumDimensionStatus.RED),
         )
@@ -331,7 +392,7 @@ def _probe_runtime_health() -> ModelHealthDimensionResult:
             timestamp=_now(),
             stale_after=timedelta(minutes=5),
             details={"error": str(exc)[:200]},
-            actionable_items=[f"Runtime health probe failed: {exc!s}"],
+            actionable_items=[f"Runtime health probe raised: {exc!s}"],
             blocks_dispatch=True,
         )
 
@@ -382,8 +443,24 @@ def _probe_plugin_currency() -> ModelHealthDimensionResult:
 
 
 def _probe_deploy_agent() -> ModelHealthDimensionResult:
-    """Dimension 6: Deploy Agent — check systemd service on .201."""
-    server_host = os.environ.get("ONEX_INFRA_HOST", "192.168.86.201")
+    """Dimension 6: Deploy Agent — check systemd service on infra server.
+
+    Requires ONEX_INFRA_HOST and ONEX_INFRA_USER env vars.
+    """
+    try:
+        host = _infra_host()
+        user = _infra_user()
+    except RuntimeError as exc:
+        return ModelHealthDimensionResult(
+            dimension="deploy_agent",
+            status=EnumDimensionStatus.RED,
+            source="live_probe",
+            timestamp=_now(),
+            stale_after=timedelta(minutes=5),
+            details={"error": str(exc)},
+            actionable_items=[str(exc)],
+            blocks_dispatch=True,
+        )
     try:
         result = subprocess.run(
             [
@@ -392,7 +469,7 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
                 "ConnectTimeout=5",
                 "-o",
                 "StrictHostKeyChecking=no",
-                f"jonah@{server_host}",
+                f"{user}@{host}",
                 "systemctl is-active deploy-agent.service",
             ],
             capture_output=True,
@@ -407,12 +484,13 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
             source="live_probe",
             timestamp=_now(),
             stale_after=timedelta(minutes=5),
-            details={"systemd_state": result.stdout.strip(), "host": server_host},
+            details={"systemd_state": result.stdout.strip(), "host": host},
             actionable_items=(
                 []
                 if active
                 else [
-                    f"deploy-agent.service inactive — run: ssh jonah@{server_host} sudo systemctl start deploy-agent"
+                    f"deploy-agent.service inactive — run: "
+                    f"ssh {user}@{host} sudo systemctl start deploy-agent"
                 ]
             ),
             blocks_dispatch=(status == EnumDimensionStatus.RED),
@@ -425,14 +503,30 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
             timestamp=_now(),
             stale_after=timedelta(minutes=5),
             details={"error": str(exc)[:200]},
-            actionable_items=["Deploy agent probe failed — SSH unavailable"],
+            actionable_items=["Deploy agent probe raised — SSH unavailable"],
             blocks_dispatch=True,
         )
 
 
 def _probe_observability() -> ModelHealthDimensionResult:
-    """Dimension 7: Observability — check Redpanda consumer lag."""
-    server_host = os.environ.get("ONEX_INFRA_HOST", "192.168.86.201")
+    """Dimension 7: Observability — check Redpanda consumer lag.
+
+    Requires ONEX_INFRA_HOST and ONEX_INFRA_USER env vars.
+    """
+    try:
+        host = _infra_host()
+        user = _infra_user()
+    except RuntimeError as exc:
+        return ModelHealthDimensionResult(
+            dimension="observability",
+            status=EnumDimensionStatus.YELLOW,
+            source="live_probe",
+            timestamp=_now(),
+            stale_after=timedelta(minutes=10),
+            details={"error": str(exc)},
+            actionable_items=[str(exc)],
+            blocks_dispatch=False,
+        )
     try:
         result = subprocess.run(
             [
@@ -441,7 +535,7 @@ def _probe_observability() -> ModelHealthDimensionResult:
                 "ConnectTimeout=5",
                 "-o",
                 "StrictHostKeyChecking=no",
-                f"jonah@{server_host}",
+                f"{user}@{host}",
                 "docker exec omnibase-infra-redpanda rpk cluster health 2>&1 | head -5",
             ],
             capture_output=True,
@@ -472,14 +566,28 @@ def _probe_observability() -> ModelHealthDimensionResult:
             timestamp=_now(),
             stale_after=timedelta(minutes=10),
             details={"error": str(exc)[:200]},
-            actionable_items=["Observability probe failed"],
+            actionable_items=["Observability probe raised"],
             blocks_dispatch=False,
         )
 
 
 def _probe_repo_sync() -> ModelHealthDimensionResult:
-    """Dimension 8: Repo Sync — check canonical repos behind origin/main."""
-    omni_home = os.environ.get("OMNI_HOME", "/Users/jonah/Code/omni_home")
+    """Dimension 8: Repo Sync — check canonical repos behind origin/main.
+
+    Uses OMNI_HOME env var; if unset, skips the check with YELLOW.
+    """
+    omni_home = os.environ.get("OMNI_HOME", "")
+    if not omni_home:
+        return ModelHealthDimensionResult(
+            dimension="repo_sync",
+            status=EnumDimensionStatus.YELLOW,
+            source="inventory",
+            timestamp=_now(),
+            stale_after=timedelta(minutes=30),
+            details={"reason": "OMNI_HOME not set — cannot check repo sync"},
+            actionable_items=["Set OMNI_HOME to the canonical omni_home path"],
+            blocks_dispatch=False,
+        )
     canonical_repos = [
         "omniclaude",
         "omnibase_core",
@@ -567,6 +675,7 @@ class HandlerSessionOrchestrator:
         self, command: ModelSessionOrchestratorCommand
     ) -> ModelSessionOrchestratorResult:
         session_id = command.session_id or self._generate_session_id()
+        correlation_id = command.correlation_id or session_id
 
         if command.skip_health:
             logger.warning(
@@ -581,6 +690,7 @@ class HandlerSessionOrchestrator:
         if command.phase == 1:
             return ModelSessionOrchestratorResult(
                 session_id=session_id,
+                correlation_id=correlation_id,
                 status=EnumSessionStatus.COMPLETE
                 if gate_ok
                 else EnumSessionStatus.HALTED,
@@ -607,6 +717,7 @@ class HandlerSessionOrchestrator:
                     )
             return ModelSessionOrchestratorResult(
                 session_id=session_id,
+                correlation_id=correlation_id,
                 status=EnumSessionStatus.HALTED,
                 halt_reason=halt_reason,
                 health_report=health_report,
@@ -625,6 +736,7 @@ class HandlerSessionOrchestrator:
         if command.phase == 2:
             return ModelSessionOrchestratorResult(
                 session_id=session_id,
+                correlation_id=correlation_id,
                 status=EnumSessionStatus.COMPLETE,
                 health_report=health_report,
                 dispatch_queue=dispatch_queue,
@@ -633,15 +745,21 @@ class HandlerSessionOrchestrator:
 
         # Phase 3: Dispatch — STUB
         # TODO(OMN-8367): Implement TeamCreate dispatch. For each item in dispatch_queue:
-        # - Create correlation chain: {session_id}.disp-{seq}.{ticket_id}.{pr_id}
-        # - Dispatch via TeamCreate or Kafka (onex.cmd.omnimarket.dispatch-worker-start.v1)
+        # - Build correlation chain: {correlation_id}.disp-{seq}.{ticket_id}.{pr_id}
+        # - Dispatch via TeamCreate or Kafka topic from contract.yaml
+        #   (onex.cmd.omnimarket.session-orchestrator-start.v1)
         # - Collect dispatch receipts
-        # - Write in-flight state to .onex_state/session/in_flight.yaml
+        # - Write in-flight state to {state_dir}/in_flight.yaml
+        # NOTE(OMN-8367 inter-layer bridge): The omniclaude skill wrapper subscribes to
+        # onex.cmd.omniclaude.session.v1, while this backing node subscribes to
+        # onex.cmd.omnimarket.session-orchestrator-start.v1. The bridge between these
+        # two topics is NOT yet wired. A dedicated sub-ticket is needed.
         dispatch_receipts = self._run_phase3_stub(session_id, dispatch_queue, command)
         logger.info("Phase 3 STUB: dispatch logged only for session %s", session_id)
 
         return ModelSessionOrchestratorResult(
             session_id=session_id,
+            correlation_id=correlation_id,
             status=EnumSessionStatus.COMPLETE,
             health_report=health_report,
             dispatch_queue=dispatch_queue,
@@ -753,8 +871,6 @@ class HandlerSessionOrchestrator:
                 ],
             }
             with open(path, "w", encoding="utf-8") as fh:
-                import yaml  # local import to avoid top-level dep on pyyaml
-
                 yaml.dump(payload, fh, default_flow_style=False)
             logger.info("Health snapshot written: %s", path)
         except Exception as exc:
@@ -793,7 +909,7 @@ class HandlerSessionOrchestrator:
     ) -> list[str]:
         # TODO(OMN-8367): Replace with real dispatch.
         # For each item in dispatch_queue:
-        #   - Build CorrelationChain: {session_id}.disp-{seq}.{ticket_id}.{pr_id}
+        #   - Build correlation chain: {correlation_id}.disp-{seq}.{ticket_id}.{pr_id}
         #   - Dispatch via TeamCreate or Kafka topic from contract.yaml
         #   - Write in-flight state to {state_dir}/in_flight.yaml
         if not dispatch_queue:

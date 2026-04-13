@@ -20,9 +20,15 @@ descriptor:
   node_archetype: orchestrator
   purity: impure
   idempotent: false
-  timeout_ms: 120000
+  # 8 sequential probes x ~15s each = up to 120s before orchestrator logic runs.
+  # Raised to 300s to accommodate slow SSH timeouts + orchestrator overhead.
+  timeout_ms: 300000
 
 inputs:
+  correlation_id:
+    type: uuid
+    required: true
+    description: "Propagated correlation chain: sess-id.disp-id.ticket-id.pr-id"
   session_id:
     type: str
     required: false
@@ -60,23 +66,66 @@ inputs:
 outputs:
   session_id:
     type: str
+  correlation_id:
+    type: str
+    description: "Propagated correlation chain, same as input or derived from session_id."
   status:
     type: str
-    description: "complete | halted | error"
+    enum: [complete, halted, error]
   halt_reason:
     type: str
     description: "Phase and reason that caused halt, or empty string on complete."
   health_report:
     type: object
-    description: "ModelSessionHealthReport — one result per dimension."
+    description: >
+      ModelSessionHealthReport -- one ModelHealthDimensionResult per dimension.
+      Fields: session_id, dimensions[], overall_status, gate_decision, produced_at.
   dispatch_queue:
     type: list
-    description: "Ordered list of work items (Phase 2 output). Empty in Phase 1-only run."
+    description: >
+      Ordered list of work item IDs (Phase 2 RSD output). Empty in Phase 1-only run.
+      TODO(OMN-8367): Type as list[ModelRSDQueueItem] once Phase 2 is implemented.
   dispatch_receipts:
     type: list
-    description: "Receipts for dispatched items (Phase 3 output). Empty in stub."
+    description: >
+      Receipts for dispatched items (Phase 3 output). Empty in stub.
+      TODO(OMN-8367): Type as list[ModelDispatchReceipt] once Phase 3 is implemented.
   dry_run:
     type: bool
+
+dod_evidence:
+  phase_1:
+    description: "Phase 1 health gate evidence"
+    artifacts:
+      - path: "{state_dir}/last_health.yaml"
+        description: "Health snapshot written after each Phase 1 run (gate decision + per-dimension status)"
+      - path: "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py"
+        description: "Unit + integration tests covering gate logic, RED/YELLOW/GREEN paths, exception handling"
+    gate_decision_values: [PROCEED, FIX_ONLY]
+    blocking_dimensions: [golden_chain, runtime_health, deploy_agent]
+  phase_2:
+    description: "Phase 2 RSD scoring -- STUB"
+    # TODO(OMN-8367): Add DoD evidence when Phase 2 is implemented (sub-ticket required).
+    status: stub
+  phase_3:
+    description: "Phase 3 dispatch -- STUB"
+    # TODO(OMN-8367): Add DoD evidence when Phase 3 is implemented (sub-ticket required).
+    # NOTE: omniclaude skill subscribes to onex.cmd.omniclaude.session.v1 but this node
+    # subscribes to onex.cmd.omnimarket.session-orchestrator-start.v1 -- inter-layer bridge
+    # is NOT yet wired. Sub-ticket required before Phase 3 can be implemented.
+    status: stub
+
+env_requirements:
+  required:
+    - name: ONEX_INFRA_HOST
+      description: "Hostname/IP of infra server (SSH probes for runtime_health, deploy_agent, observability)"
+    - name: ONEX_INFRA_USER
+      description: "SSH username for infra server"
+  optional:
+    - name: OMNI_HOME
+      description: "Path to canonical omni_home registry (golden_chain + repo_sync probes)"
+    - name: LINEAR_API_KEY
+      description: "Linear API key (linear_sync probe)"
 
 event_bus:
   subscribe_topics:
@@ -109,7 +158,7 @@ health_dimensions:
 
   - id: 4
     name: runtime_health
-    description: "Container down or port unreachable on .201"
+    description: "Container down or port unreachable on infra server"
     blocks_dispatch_on_red: true
     blocks_dispatch_on_yellow: true
 

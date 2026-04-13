@@ -1,15 +1,18 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for HandlerSessionOrchestrator (OMN-8367 PoC).
+"""Unit and integration tests for HandlerSessionOrchestrator (OMN-8367 PoC).
 
-All external probes are faked — no SSH, no subprocess, no network calls.
-Tests cover Phase 1 health gate logic; Phases 2 and 3 are stubs (tested for
-stub behavior, not real behavior).
+Unit tests (default): inject fabricated probe callables — no SSH, no subprocess, no network.
+Integration tests (@pytest.mark.integration): call the real _probe_runtime_health and
+_probe_deploy_agent with SSH unavailable (bad host env) and assert the exception path
+returns a valid ModelHealthDimensionResult without leaking.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
     EnumDimensionStatus,
@@ -18,6 +21,8 @@ from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchest
     HandlerSessionOrchestrator,
     ModelHealthDimensionResult,
     ModelSessionOrchestratorCommand,
+    _probe_deploy_agent,
+    _probe_runtime_health,
 )
 
 
@@ -88,6 +93,25 @@ class TestPhase1AllGreen:
         )
         result = handler.handle(cmd)
         assert result.session_id == "sess-test-01"
+
+    def test_correlation_id_propagated(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[_green_probe("dim_1")])
+        cmd = ModelSessionOrchestratorCommand(
+            session_id="sess-test-01",
+            correlation_id="sess-test-01.disp-001",
+            dry_run=True,
+            phase=1,
+        )
+        result = handler.handle(cmd)
+        assert result.correlation_id == "sess-test-01.disp-001"
+
+    def test_correlation_id_defaults_to_session_id(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[_green_probe("dim_1")])
+        cmd = ModelSessionOrchestratorCommand(
+            session_id="sess-test-02", correlation_id="", dry_run=True, phase=1
+        )
+        result = handler.handle(cmd)
+        assert result.correlation_id == "sess-test-02"
 
 
 class TestPhase1RedBlocking:
@@ -211,19 +235,16 @@ class TestPhase3Stub:
     def test_phase3_returns_stub_receipts_for_nonempty_queue(self) -> None:
         probes = [_green_probe(f"d{i}") for i in range(8)]
         handler = HandlerSessionOrchestrator(probes=probes)
-        # Phase 0 = all phases; queue will be empty from stub Phase 2
         cmd = ModelSessionOrchestratorCommand(dry_run=True, phase=0)
         result = handler.handle(cmd)
 
         assert result.status == EnumSessionStatus.COMPLETE
-        # Queue is empty (stub Phase 2), so receipts are empty too
         assert result.dispatch_receipts == []
 
     def test_phase3_stub_with_manual_queue(self) -> None:
         """Verify stub dispatch path produces STUB receipts for nonempty queue."""
         probes = [_green_probe(f"d{i}") for i in range(8)]
         handler = HandlerSessionOrchestrator(probes=probes)
-        # Directly test the stub method
         receipts = handler._run_phase3_stub(  # noqa: SLF001
             "sess-test",
             ["OMN-1234", "PR-42"],
@@ -260,3 +281,107 @@ class TestGateDecisionLogic:
         overall, decision = handler._compute_gate(dims)  # noqa: SLF001
         assert overall == EnumDimensionStatus.YELLOW
         assert decision == EnumGateDecision.PROCEED
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — real probe exception paths (no mocks, SSH unavailable)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestRealProbeExceptionPaths:
+    """Test that real probe functions return valid ModelHealthDimensionResult
+    even when SSH is unavailable. Exercises the actual subprocess/env code paths,
+    not fabricated callables.
+
+    Run with: pytest -m integration src/.../tests/
+    Excluded from the default unit test run.
+    """
+
+    def test_probe_runtime_health_missing_env_returns_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When ONEX_INFRA_HOST is unset, probe must return RED with env error — not raise."""
+        monkeypatch.delenv("ONEX_INFRA_HOST", raising=False)
+        monkeypatch.delenv("ONEX_INFRA_USER", raising=False)
+
+        result = _probe_runtime_health()
+
+        assert isinstance(result, ModelHealthDimensionResult)
+        assert result.dimension == "runtime_health"
+        assert result.status == EnumDimensionStatus.RED
+        assert result.blocks_dispatch is True
+        assert len(result.actionable_items) > 0
+        assert "Traceback" not in str(result.details)
+        assert "ONEX_INFRA_HOST" in str(result.details) or "ONEX_INFRA_HOST" in str(
+            result.actionable_items
+        )
+
+    def test_probe_runtime_health_bad_host_returns_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When host is set to an unreachable address, probe must return RED — not raise."""
+        monkeypatch.setenv("ONEX_INFRA_HOST", "192.0.2.1")  # TEST-NET, RFC 5737
+        monkeypatch.setenv("ONEX_INFRA_USER", "testuser")
+
+        result = _probe_runtime_health()
+
+        assert isinstance(result, ModelHealthDimensionResult)
+        assert result.dimension == "runtime_health"
+        assert result.status == EnumDimensionStatus.RED
+        assert result.blocks_dispatch is True
+        assert "Traceback" not in str(result.details)
+
+    def test_probe_deploy_agent_missing_env_returns_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When ONEX_INFRA_USER is unset, probe must return RED with env error — not raise."""
+        monkeypatch.setenv("ONEX_INFRA_HOST", "192.0.2.1")
+        monkeypatch.delenv("ONEX_INFRA_USER", raising=False)
+
+        result = _probe_deploy_agent()
+
+        assert isinstance(result, ModelHealthDimensionResult)
+        assert result.dimension == "deploy_agent"
+        assert result.status == EnumDimensionStatus.RED
+        assert result.blocks_dispatch is True
+        assert "Traceback" not in str(result.details)
+        assert "ONEX_INFRA_USER" in str(result.details) or "ONEX_INFRA_USER" in str(
+            result.actionable_items
+        )
+
+    def test_probe_deploy_agent_bad_host_returns_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When host is unreachable, probe must return RED — not raise."""
+        monkeypatch.setenv("ONEX_INFRA_HOST", "192.0.2.1")
+        monkeypatch.setenv("ONEX_INFRA_USER", "testuser")
+
+        result = _probe_deploy_agent()
+
+        assert isinstance(result, ModelHealthDimensionResult)
+        assert result.dimension == "deploy_agent"
+        assert result.status == EnumDimensionStatus.RED
+        assert result.blocks_dispatch is True
+        assert "Traceback" not in str(result.details)
+
+    def test_probe_result_is_valid_frozen_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify the returned object is a well-formed frozen ModelHealthDimensionResult."""
+        monkeypatch.delenv("ONEX_INFRA_HOST", raising=False)
+        monkeypatch.delenv("ONEX_INFRA_USER", raising=False)
+
+        result = _probe_runtime_health()
+
+        with pytest.raises((TypeError, Exception)):
+            result.status = EnumDimensionStatus.GREEN  # type: ignore[misc]
+
+        assert isinstance(result.dimension, str)
+        assert isinstance(result.status, EnumDimensionStatus)
+        assert isinstance(result.source, str)
+        assert isinstance(result.timestamp, datetime)
+        assert isinstance(result.stale_after, timedelta)
+        assert isinstance(result.details, dict)
+        assert isinstance(result.actionable_items, list)
+        assert isinstance(result.blocks_dispatch, bool)

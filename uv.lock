@@ -1531,7 +1531,7 @@ wheels = [
 [[package]]
 name = "omnibase-compat"
 version = "0.3.1"
-source = { editable = "../../../omni_home/omnibase_compat" }
+source = { editable = "../omnibase_compat" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
@@ -1561,7 +1561,7 @@ dev = [
 [[package]]
 name = "omnibase-core"
 version = "0.39.0"
-source = { editable = "../../../omni_home/omnibase_core" }
+source = { editable = "../omnibase_core" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1727,10 +1727,10 @@ requires-dist = [
     { name = "aiokafka", specifier = ">=0.11.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", editable = "../../../omni_home/omnibase_compat" },
-    { name = "omnibase-core", editable = "../../../omni_home/omnibase_core" },
+    { name = "omnibase-compat", editable = "../omnibase_compat" },
+    { name = "omnibase-core", editable = "../omnibase_core" },
     { name = "omnibase-infra", specifier = ">=0.32.0" },
-    { name = "omninode-memory", editable = "../../../omni_home/omnimemory" },
+    { name = "omninode-memory", editable = "../omnimemory" },
     { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?branch=main" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
@@ -1750,7 +1750,7 @@ dev = [
 [[package]]
 name = "omninode-memory"
 version = "0.15.0"
-source = { editable = "../../../omni_home/omnimemory" }
+source = { editable = "../omnimemory" }
 dependencies = [
     { name = "aiohttp" },
     { name = "alembic" },

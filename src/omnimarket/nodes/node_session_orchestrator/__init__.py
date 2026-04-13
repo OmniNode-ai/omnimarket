@@ -12,6 +12,11 @@ from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchest
     ModelSessionOrchestratorResult,
 )
 
+
+class NodeSessionOrchestrator(HandlerSessionOrchestrator):
+    """ONEX entry-point wrapper for HandlerSessionOrchestrator."""
+
+
 __all__ = [
     "EnumSessionStatus",
     "HandlerSessionOrchestrator",
@@ -19,7 +24,3 @@ __all__ = [
     "ModelSessionOrchestratorResult",
     "NodeSessionOrchestrator",
 ]
-
-
-class NodeSessionOrchestrator(HandlerSessionOrchestrator):
-    """ONEX entry-point wrapper for HandlerSessionOrchestrator."""
