@@ -2,10 +2,6 @@
 # SPDX-License-Identifier: MIT
 ---
 # ONEX Node Contract - Quality Scoring Compute Node
-# =============================================================================
-# IMPLEMENTATION STATUS: STUB (Interface defined, implementation pending)
-# Tracking: https://github.com/OmniNode-ai/omniintelligence/issues/13
-# =============================================================================
 contract_version:
   major: 1
   minor: 0
@@ -44,6 +40,10 @@ operations:
       - content
       - language
       - project_name
+      - onex_preset
+      - dimension_weights
+      - onex_compliance_threshold
+      - min_quality_threshold
     output_fields:
       - success
       - quality_score

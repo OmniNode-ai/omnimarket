@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from omnibase_core.nodes.node_compute import NodeCompute
 
-from omnimarket.nodes.node_quality_scoring_compute.handlers import (
+from omnimarket.nodes.node_quality_scoring_compute.handlers.handler_compute import (
     handle_quality_scoring_compute,
 )
 from omnimarket.nodes.node_quality_scoring_compute.models import (

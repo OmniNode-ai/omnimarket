@@ -92,9 +92,6 @@ from omnimarket.nodes.node_quality_scoring_compute.handlers.exceptions import (
     QualityScoringComputeError,
     QualityScoringValidationError,
 )
-from omnimarket.nodes.node_quality_scoring_compute.handlers.handler_compute import (
-    handle_quality_scoring_compute,
-)
 from omnimarket.nodes.node_quality_scoring_compute.handlers.handler_quality_scoring import (
     ANALYSIS_VERSION,
     DEFAULT_WEIGHTS,
@@ -134,7 +131,6 @@ __all__ = [
     "create_error_dimensions",
     "get_threshold_for_preset",
     "get_weights_for_preset",
-    "handle_quality_scoring_compute",
     "radon_available",
     "score_code_quality",
 ]

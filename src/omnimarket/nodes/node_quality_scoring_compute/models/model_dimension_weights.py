@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import math
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -13,7 +15,7 @@ class ModelDimensionWeights(BaseModel):
 
     Weights control the relative importance of each quality dimension
     in the overall score calculation. All weights must sum to 1.0
-    (within tolerance of 0.99-1.01).
+    (within floating-point near-equality, abs_tol=1e-9).
 
     Default weights follow the six-dimension standard:
         - complexity (0.20): Cyclomatic complexity scoring
@@ -74,9 +76,9 @@ class ModelDimensionWeights(BaseModel):
             + self.patterns
             + self.architectural
         )
-        if not (0.99 <= total <= 1.01):
+        if not math.isclose(total, 1.0, abs_tol=1e-9):
             raise ValueError(
-                f"Dimension weights must sum to 1.0 (got {total:.4f}). "
+                f"Dimension weights must sum to 1.0 (got {total:.10f}). "
                 f"Current weights: complexity={self.complexity}, "
                 f"maintainability={self.maintainability}, "
                 f"documentation={self.documentation}, "

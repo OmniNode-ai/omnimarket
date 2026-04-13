@@ -484,9 +484,7 @@ def score_code_quality(
 
     # Check if language is supported for full analysis
     if normalized_language not in SUPPORTED_LANGUAGES:
-        return _create_unsupported_language_result(
-            normalized_language, effective_threshold
-        )
+        return _create_unsupported_language_result(normalized_language)
 
     try:
         # Compute dimension scores
@@ -517,15 +515,15 @@ def score_code_quality(
         return _create_syntax_error_result(normalized_language, str(e))
 
     except QualityScoringComputeError:
-        # Re-raise compute errors as invariant violations
+        # Re-raise compute errors so handler_compute.py can surface them as compute_error
         raise
 
     except Exception as e:
-        # Unknown errors - return structured output per CLAUDE.md
-        return _create_validation_error_result(
-            f"Unexpected error during quality scoring: {e}",
-            language=normalized_language,
-        )
+        # Internal scorer fault — raise as QualityScoringComputeError so the caller
+        # can distinguish "bad input" (validation_error) from "scorer bug" (compute_error).
+        raise QualityScoringComputeError(
+            f"Unexpected error during quality scoring: {e}"
+        ) from e
 
 
 # =============================================================================
@@ -1426,16 +1424,16 @@ def _compute_weighted_score(
 
 
 def _create_unsupported_language_result(
-    language: str, onex_threshold: float
+    language: str,
 ) -> QualityScoringResult:
     """Create result for unsupported language.
 
     Args:
         language: The unsupported language name.
-        onex_threshold: ONEX compliance threshold.
 
     Returns:
         QualityScoringResult with baseline scores and recommendation.
+        Always sets onex_compliant=False since full analysis was not performed.
     """
     baseline_score = UNSUPPORTED_LANGUAGE_BASELINE
     dimensions: DimensionScores = {
