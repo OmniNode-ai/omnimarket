@@ -231,7 +231,7 @@ PARTIAL_HANDLER_BONUS_MULTIPLIER: Final[float] = (
 
 # Local package name for import categorization (derived from module's package)
 LOCAL_PACKAGE_NAME: Final[str] = (
-    __name__.split(".")[0] if __name__ != "__main__" else "omniintelligence"
+    __name__.split(".")[0] if __name__ != "__main__" else "omnimarket"
 )
 
 # Import grouping detection - common stdlib modules
@@ -347,7 +347,6 @@ STDLIB_MODULES: Final[frozenset[str]] = frozenset(
         "warnings",
         # Type hints and annotations
         "typing",
-        "typing_extensions",
         # Testing
         "doctest",
         "unittest",
