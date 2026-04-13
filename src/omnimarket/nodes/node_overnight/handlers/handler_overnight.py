@@ -788,7 +788,7 @@ def _execute_dispatch_items(
 
     Returns (success, error_message).
     """
-    from onex_change_control.overseer.model_overnight_contract import ModelDispatchItem
+    from onex_change_control.overseer.model_dispatch_item import ModelDispatchItem
 
     for item in dispatch_items:
         if not isinstance(item, ModelDispatchItem):
