@@ -28,4 +28,9 @@ __all__ = [
     "ModelDataVerificationResult",
     "ModelDataVerificationStartCommand",
     "ModelSampleRow",
+    "NodeDataVerification",
 ]
+
+
+class NodeDataVerification(HandlerDataVerification):
+    """ONEX entry-point wrapper for HandlerDataVerification."""

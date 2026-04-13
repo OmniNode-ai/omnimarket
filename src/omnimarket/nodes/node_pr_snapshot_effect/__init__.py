@@ -6,4 +6,11 @@ from omnimarket.nodes.node_pr_snapshot_effect.handlers.handler_pr_snapshot impor
     HandlerPrSnapshot,
 )
 
-__all__ = ["HandlerPrSnapshot"]
+__all__ = [
+    "HandlerPrSnapshot",
+    "NodePrSnapshotEffect",
+]
+
+
+class NodePrSnapshotEffect(HandlerPrSnapshot):
+    """ONEX entry-point wrapper for HandlerPrSnapshot."""

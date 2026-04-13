@@ -18,3 +18,8 @@ TOPIC_THREAD_VERIFIED = "onex.evt.omnimarket.pr-review-bot-thread-verified.v1"
 TOPIC_COMPLETED = "onex.evt.omnimarket.pr-review-bot-completed.v1"
 TOPIC_BYPASS_USED = "onex.evt.omnimarket.review-bot-bypass-used.v1"
 TOPIC_BYPASS_ROLLED_BACK = "onex.evt.omnimarket.review-bot-bypass-rolled-back.v1"
+
+# OMN-8492: reconciler topics
+TOPIC_THREAD_REOPENED = "onex.evt.omnimarket.review-bot-thread-reopened.v1"
+TOPIC_THREAD_RESOLVED = "onex.evt.omnimarket.review-bot-thread-resolved.v1"
+TOPIC_BYPASS_USED_RECONCILER = "onex.evt.omnimarket.review-bot-bypass-used.v1"

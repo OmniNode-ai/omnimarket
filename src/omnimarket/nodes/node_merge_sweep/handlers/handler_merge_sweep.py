@@ -71,6 +71,14 @@ class ModelPRInfo(BaseModel):
     review_decision: str | None = None  # APPROVED | CHANGES_REQUESTED | None
     required_checks_pass: bool = True
     labels: list[str] = Field(default_factory=list)
+    review_bot_gate_passed: bool | None = Field(
+        default=None,
+        description=(
+            "State of the review-bot/all-findings-resolved commit status. "
+            "None = not yet set (treated as pending). "
+            "True = all findings resolved by bot. False = findings still open."
+        ),
+    )
 
 
 class ModelClassifiedPR(BaseModel):
@@ -490,6 +498,9 @@ class NodeMergeSweep:
     def _is_merge_ready(self, pr: ModelPRInfo, require_approval: bool) -> bool:
         if pr.mergeable != "MERGEABLE":
             return False
+        # OMN-8492: review-bot gate explicitly failed — not merge-ready
+        if pr.review_bot_gate_passed is False:
+            return False
         if pr.merge_state_status.upper() == "BLOCKED":
             return False  # BLOCKED PRs may need thread resolution
         if not pr.required_checks_pass:
@@ -499,9 +510,21 @@ class NodeMergeSweep:
         return True
 
     def _needs_thread_resolution(self, pr: ModelPRInfo) -> bool:
-        """MERGEABLE + BLOCKED + GREEN = blocked by required_conversation_resolution."""
+        """Blocked by review-bot gate or unresolved conversation threads.
+
+        OMN-8492: merge-sweep now treats review-bot/all-findings-resolved as
+        the single authoritative gate. A PR with review_bot_gate_passed=False
+        (or None with BLOCKED status) goes to Track A-resolve so merge-sweep
+        waits for the bot to clear it, rather than trying to inspect CodeRabbit
+        threads directly.
+        """
         if pr.mergeable != "MERGEABLE":
             return False
+        # Explicit gate failure from the review bot status check
+        if pr.review_bot_gate_passed is False:
+            return True
+        # Legacy path: MERGEABLE + BLOCKED + all other checks green means
+        # the only blocker is required_conversation_resolution. Gate not yet set.
         if pr.merge_state_status.upper() != "BLOCKED":
             return False
         if not pr.required_checks_pass:

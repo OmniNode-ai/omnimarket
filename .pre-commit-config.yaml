@@ -51,6 +51,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-8611: entry-point format check (fast, triggers on pyproject.toml changes)
+      # Validates that all [project.entry-points."onex.nodes"] entries are valid
+      # dotted module paths. Does not verify filesystem — CI runtime_sweep does that.
+      - id: entry-point-format
+        name: Entry point format check
+        language: system
+        entry: python scripts/ci/check_entry_point_format.py
+        files: ^pyproject\.toml$
+        pass_filenames: true
+        stages: [pre-commit]
+
   # Ruff — standalone pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
   # because uv.sources relative paths (../omnibase_core) resolve against the worktree

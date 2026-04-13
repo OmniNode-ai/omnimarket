@@ -10,4 +10,11 @@ from omnimarket.nodes.node_pr_review_bot.node import HandlerPrReviewBot
 
 __all__ = [
     "HandlerPrReviewBot",
+    "NodePrReviewBot",
 ]
+
+
+class NodePrReviewBot:
+    """ONEX entry-point marker for node_pr_review_bot."""
+
+    __onex_node_type__ = "node_pr_review_bot"

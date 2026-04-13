@@ -24,4 +24,9 @@ __all__ = [
     "ModelLoopStartCommand",
     "ModelLoopState",
     "ModelPhaseTransitionEvent",
+    "NodeBuildLoop",
 ]
+
+
+class NodeBuildLoop(HandlerBuildLoop):
+    """ONEX entry-point wrapper for HandlerBuildLoop."""
