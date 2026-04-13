@@ -32,6 +32,10 @@ from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_res
 
 logger = logging.getLogger(__name__)
 
+# Topic bindings from contract.yaml event_bus
+TOPIC_CODE_ENTITIES_EXTRACTED: str = "onex.evt.omnimarket.code-entities-extracted.v1"
+TOPIC_CODE_EMBEDDED: str = "onex.evt.omnimarket.code-embedded.v1"
+
 DEFAULT_QDRANT_COLLECTION = "code_patterns"
 DEFAULT_EMBEDDING_BATCH_SIZE = 50
 DEFAULT_VECTOR_SIZE = 4096
