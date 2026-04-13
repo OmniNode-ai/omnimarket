@@ -11,6 +11,22 @@ Usage:
         --contract-file path/to/overnight-contract.yaml \
         --dry-run
 
+    python -m omnimarket.nodes.node_overnight \
+        --contract-file path/to/overnight-contract.yaml \
+        --dispatch-phases
+
+    python -m omnimarket.nodes.node_overnight \
+        --contract-file path/to/overnight-contract.yaml \
+        --dispatch-phases \
+        --dry-run
+
+Flags:
+    --dispatch-phases / -d
+        Invoke the real per-phase compute-node dispatcher for each non-skipped
+        phase. Without this flag the CLI validates and sequences the phase list
+        but treats every phase as vacuous-green (0 ms, 0 dispatches). Set this
+        flag to perform actual overnight work (OMN-8402).
+
 Outputs JSON to stdout: ModelOvernightResult model.
 """
 
