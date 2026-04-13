@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -720,6 +721,11 @@ class HandlerBuildLoopExecutor:
         Returns (success, error_message). Unknown phases and dispatcher
         exceptions are logged and reported as failures so halt_on_failure
         semantics still apply.
+
+        When a contract is present and the matching phase spec declares
+        ``dispatch_items``, those items are executed after the per-phase
+        dispatcher succeeds (OMN-8406). A failure in any dispatch_item
+        propagates as a phase failure so halt_on_failure semantics apply.
         """
         dispatcher = self._dispatchers.get(phase)
         if dispatcher is None:
@@ -729,11 +735,31 @@ class HandlerBuildLoopExecutor:
 
         logger.info("[OVERNIGHT] Dispatching phase %s", phase.value)
         try:
-            return dispatcher(command, contract)
+            success, error_msg = dispatcher(command, contract)
         except Exception as exc:
             msg = f"Phase {phase.value} dispatcher raised: {exc}"
             logger.exception("[OVERNIGHT] %s", msg)
             return False, msg
+
+        if not success:
+            return success, error_msg
+
+        # OMN-8406: execute dispatch_items declared in the contract phase spec.
+        # This is the "real executor" path — skills/commands named in dispatch_items
+        # are invoked here so overnight runs do real work, not just FSM sequencing.
+        if contract is not None:
+            phase_spec = next(
+                (p for p in contract.phases if p.phase_name == phase.value),
+                None,
+            )
+            if phase_spec is not None and phase_spec.dispatch_items:
+                item_success, item_error = _execute_dispatch_items(
+                    phase_spec.dispatch_items, command
+                )
+                if not item_success:
+                    return False, item_error
+
+        return success, error_msg
 
     def _should_skip(self, phase: EnumPhase, command: ModelOvernightCommand) -> bool:
         """Return True if this phase should be skipped per command flags."""
@@ -744,6 +770,93 @@ class HandlerBuildLoopExecutor:
         if phase == EnumPhase.MERGE_SWEEP and command.skip_merge_sweep:
             return True
         return False
+
+
+def _execute_dispatch_items(
+    dispatch_items: tuple[object, ...],
+    command: ModelOvernightCommand,
+) -> tuple[bool, str | None]:
+    """Execute each dispatch_item declared in a phase spec (OMN-8406).
+
+    Items with ``dispatch_mode == "skill"`` are invoked via ``claude -p
+    /<skill_or_command>`` subprocess. Any non-zero exit code or missing
+    skill_or_command causes a failure so halt_on_failure semantics apply.
+
+    Items with other dispatch modes (``agent_team``, ``foreground_required``,
+    ``blocked_on_human``, ``cron``) are logged and skipped at this layer —
+    they require a session context that the overnight executor does not own.
+
+    Returns (success, error_message).
+    """
+    from onex_change_control.overseer.model_overnight_contract import ModelDispatchItem
+
+    for item in dispatch_items:
+        if not isinstance(item, ModelDispatchItem):
+            continue
+
+        if item.dispatch_mode != "skill":
+            logger.info(
+                "[OVERNIGHT] dispatch_item %s: mode=%s — skipped (not skill)",
+                item.theme_id,
+                item.dispatch_mode,
+            )
+            continue
+
+        skill = item.skill_or_command
+        if not skill:
+            msg = f"dispatch_item {item.theme_id}: skill_or_command is empty"
+            logger.error("[OVERNIGHT] %s", msg)
+            return False, msg
+
+        logger.info(
+            "[OVERNIGHT] dispatch_item %s: invoking skill %r (dry_run=%s)",
+            item.theme_id,
+            skill,
+            command.dry_run,
+        )
+
+        if command.dry_run:
+            logger.info("[OVERNIGHT] dry_run — skipping skill invocation for %s", skill)
+            continue
+
+        try:
+            proc = subprocess.run(
+                ["claude", "-p", f"/{skill}"],
+                capture_output=True,
+                text=True,
+                timeout=item.timeout_seconds
+                if hasattr(item, "timeout_seconds")
+                else 300,
+            )
+        except FileNotFoundError:
+            msg = f"dispatch_item {item.theme_id}: 'claude' not found in PATH"
+            logger.error("[OVERNIGHT] %s", msg)
+            return False, msg
+        except subprocess.TimeoutExpired:
+            msg = f"dispatch_item {item.theme_id}: skill {skill!r} timed out"
+            logger.error("[OVERNIGHT] %s", msg)
+            return False, msg
+        except Exception as exc:
+            msg = f"dispatch_item {item.theme_id}: subprocess error: {exc}"
+            logger.exception("[OVERNIGHT] %s", msg)
+            return False, msg
+
+        if proc.returncode != 0:
+            stderr_snippet = (proc.stderr or "").strip()[:500]
+            msg = (
+                f"dispatch_item {item.theme_id}: skill {skill!r} exited "
+                f"{proc.returncode}: {stderr_snippet}"
+            )
+            logger.error("[OVERNIGHT] %s", msg)
+            return False, msg
+
+        logger.info(
+            "[OVERNIGHT] dispatch_item %s: skill %r completed successfully",
+            item.theme_id,
+            skill,
+        )
+
+    return True, None
 
 
 def _dispatch_nightly_loop(
@@ -923,4 +1036,5 @@ __all__: list[str] = [
     "ModelPhaseResult",
     "PhaseDispatcher",
     "_dispatch_ci_watch",
+    "_execute_dispatch_items",
 ]
