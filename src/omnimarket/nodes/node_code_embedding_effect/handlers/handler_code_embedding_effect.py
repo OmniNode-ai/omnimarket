@@ -79,11 +79,16 @@ class HandlerCodeEmbeddingEffect:
         collection = qdrant_collection_override or os.environ.get(
             "QDRANT_CODE_COLLECTION", DEFAULT_QDRANT_COLLECTION
         )
-        effective_batch_size = batch_size or int(
-            os.environ.get(
-                "CODE_EMBEDDING_BATCH_SIZE", str(DEFAULT_EMBEDDING_BATCH_SIZE)
+        if batch_size is None:
+            effective_batch_size = int(
+                os.environ.get(
+                    "CODE_EMBEDDING_BATCH_SIZE", str(DEFAULT_EMBEDDING_BATCH_SIZE)
+                )
             )
-        )
+        elif batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+        else:
+            effective_batch_size = batch_size
         vector_size = int(
             os.environ.get("CODE_EMBEDDING_VECTOR_SIZE", str(DEFAULT_VECTOR_SIZE))
         )
