@@ -236,6 +236,10 @@ module = "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["radon", "radon.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = [
     "omnimarket.nodes.node_pr_lifecycle_inventory_compute.*",
     "omnimarket.nodes.node_pr_lifecycle_triage_compute.*",
