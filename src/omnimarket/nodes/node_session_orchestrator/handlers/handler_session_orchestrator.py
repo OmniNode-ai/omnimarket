@@ -64,6 +64,10 @@ def _infra_user() -> str:
     return _require_env("ONEX_INFRA_USER")
 
 
+def _ssh_host_key_checking() -> str:
+    return os.environ.get("SSH_STRICT_HOST_KEY_CHECKING", "accept-new")
+
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -345,7 +349,7 @@ def _probe_runtime_health() -> ModelHealthDimensionResult:
                 "-o",
                 "ConnectTimeout=5",
                 "-o",
-                "StrictHostKeyChecking=no",
+                f"StrictHostKeyChecking={_ssh_host_key_checking()}",
                 f"{user}@{host}",
                 "docker ps --format '{{.Names}}' | wc -l",
             ],
@@ -468,7 +472,7 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
                 "-o",
                 "ConnectTimeout=5",
                 "-o",
-                "StrictHostKeyChecking=no",
+                f"StrictHostKeyChecking={_ssh_host_key_checking()}",
                 f"{user}@{host}",
                 "systemctl is-active deploy-agent.service",
             ],
@@ -476,6 +480,17 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
             text=True,
             timeout=15,
         )
+        if result.returncode != 0:
+            return ModelHealthDimensionResult(
+                dimension="deploy_agent",
+                status=EnumDimensionStatus.RED,
+                source="live_probe",
+                timestamp=_now(),
+                stale_after=timedelta(minutes=5),
+                details={"error": f"SSH failed: {result.stderr[:100]}", "host": host},
+                actionable_items=[f"Cannot SSH to {host} — deploy agent state unknown"],
+                blocks_dispatch=True,
+            )
         active = result.stdout.strip() == "active"
         status = EnumDimensionStatus.GREEN if active else EnumDimensionStatus.RED
         return ModelHealthDimensionResult(
@@ -534,7 +549,7 @@ def _probe_observability() -> ModelHealthDimensionResult:
                 "-o",
                 "ConnectTimeout=5",
                 "-o",
-                "StrictHostKeyChecking=no",
+                f"StrictHostKeyChecking={_ssh_host_key_checking()}",
                 f"{user}@{host}",
                 "docker exec omnibase-infra-redpanda rpk cluster health 2>&1 | head -5",
             ],
@@ -609,6 +624,12 @@ def _probe_repo_sync() -> ModelHealthDimensionResult:
                 text=True,
                 timeout=10,
             )
+            if result.returncode != 0:
+                logger.warning(
+                    "git rev-list failed for %s: %s", repo, result.stderr.strip()[:80]
+                )
+                behind.append(f"{repo} (check failed: {result.stderr.strip()[:80]})")
+                continue
             count = int(result.stdout.strip() or "0")
             if count > 0:
                 behind.append(f"{repo} ({count} commits behind)")
@@ -746,14 +767,13 @@ class HandlerSessionOrchestrator:
         # Phase 3: Dispatch — STUB
         # TODO(OMN-8367): Implement TeamCreate dispatch. For each item in dispatch_queue:
         # - Build correlation chain: {correlation_id}.disp-{seq}.{ticket_id}.{pr_id}
-        # - Dispatch via TeamCreate or Kafka topic from contract.yaml
-        #   (onex.cmd.omnimarket.session-orchestrator-start.v1)
+        # - Dispatch via TeamCreate or the session-orchestrator-start topic (see contract.yaml)
         # - Collect dispatch receipts
         # - Write in-flight state to {state_dir}/in_flight.yaml
         # NOTE(OMN-8367 inter-layer bridge): The omniclaude skill wrapper subscribes to
-        # onex.cmd.omniclaude.session.v1, while this backing node subscribes to
-        # onex.cmd.omnimarket.session-orchestrator-start.v1. The bridge between these
-        # two topics is NOT yet wired. A dedicated sub-ticket is needed.
+        # the omniclaude session topic (see contract.yaml), while this backing node
+        # subscribes to the session-orchestrator-start topic (see contract.yaml).
+        # The bridge between these two topics is NOT yet wired. A dedicated sub-ticket is needed.
         dispatch_receipts = self._run_phase3_stub(session_id, dispatch_queue, command)
         logger.info("Phase 3 STUB: dispatch logged only for session %s", session_id)
 
