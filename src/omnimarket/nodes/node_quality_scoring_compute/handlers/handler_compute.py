@@ -178,11 +178,12 @@ def _execute_scoring(
             processing_time,
         )
 
-    # Check against minimum quality threshold
+    # success=True means execution completed; threshold outcome is in metadata.status
+    # and onex_compliant. Callers should not use `success` to check pass/fail policy.
     meets_threshold = result["quality_score"] >= input_data.min_quality_threshold
 
     return ModelQualityScoringOutput(
-        success=meets_threshold,
+        success=True,
         quality_score=result["quality_score"],
         dimensions=result["dimensions"],
         onex_compliant=result["onex_compliant"],

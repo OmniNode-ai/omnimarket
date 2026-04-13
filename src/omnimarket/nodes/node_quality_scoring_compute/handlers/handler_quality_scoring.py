@@ -1087,18 +1087,27 @@ def _check_has_public_items(tree: ast.AST) -> bool:
 def _count_imports_inside_functions(tree: ast.AST) -> int:
     """Count imports that occur inside function bodies (circular import risk).
 
+    Uses a worklist approach to visit each function body exactly once, avoiding
+    double-counting imports in nested functions (which ast.walk would visit
+    multiple times — once per enclosing function and once for the function itself).
+
     Args:
         tree: Parsed AST of the Python source code.
 
     Returns:
-        Number of import statements found inside functions.
+        Number of import statements found inside functions (each counted once).
     """
     count = 0
-    for node in ast.walk(tree):
+    visited: set[int] = set()
+    worklist = list(ast.walk(tree))
+    for node in worklist:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             for child in ast.walk(node):
                 if isinstance(child, ast.Import | ast.ImportFrom):
-                    count += 1
+                    node_id = id(child)
+                    if node_id not in visited:
+                        visited.add(node_id)
+                        count += 1
     return count
 
 
@@ -1442,7 +1451,7 @@ def _create_unsupported_language_result(
         success=True,
         quality_score=baseline_score,
         dimensions=dimensions,
-        onex_compliant=baseline_score >= onex_threshold,
+        onex_compliant=False,  # unsupported languages are never ONEX-compliant
         recommendations=[
             f"[unsupported_language] Full analysis not available for '{language}'. "
             f"Only Python is fully supported. Baseline scores applied."
