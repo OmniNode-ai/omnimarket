@@ -196,6 +196,97 @@ def test_execute_dispatch_items_timeout_returns_failure() -> None:
     assert "timed out" in error.lower() or "timeout" in error.lower()
 
 
+def test_execute_dispatch_items_uses_phase_spec_timeout() -> None:
+    """timeout_seconds from the phase spec is passed to subprocess.run, not hardcoded 300."""
+    items = (
+        _make_contract_with_skill("merge_sweep", "onex:merge_sweep")
+        .phases[0]
+        .dispatch_items
+    )
+    command = ModelOvernightCommand(correlation_id="test-timeout-param", dry_run=False)
+
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stderr = ""
+
+    with patch("subprocess.run", return_value=fake_result) as mock_run:
+        success, error = _execute_dispatch_items(items, command, timeout_seconds=120)
+
+    assert success is True
+    assert error is None
+    _call_kwargs = mock_run.call_args
+    assert _call_kwargs.kwargs.get("timeout") == 120
+
+
+def test_execute_dispatch_items_file_not_found_halt_on_failure_true_halts() -> None:
+    """FileNotFoundError with halt_on_failure=True returns failure immediately."""
+    items = (
+        _make_contract_with_skill("merge_sweep", "onex:merge_sweep")
+        .phases[0]
+        .dispatch_items
+    )
+    command = ModelOvernightCommand(correlation_id="test-fnf-halt", dry_run=False)
+
+    with patch("subprocess.run", side_effect=FileNotFoundError("no claude")):
+        success, error = _execute_dispatch_items(items, command, halt_on_failure=True)
+
+    assert success is False
+    assert error is not None
+    assert "not found" in error.lower() or "claude" in error.lower()
+
+
+def test_execute_dispatch_items_file_not_found_halt_on_failure_false_continues() -> (
+    None
+):
+    """FileNotFoundError with halt_on_failure=False logs and continues to next item."""
+    from onex_change_control.overseer.model_overnight_contract import (
+        ModelDispatchItem,
+    )
+
+    item1 = ModelDispatchItem(
+        theme_id="item-fnf",
+        title="Item that raises FileNotFoundError",
+        target_repo="omnimarket",
+        dispatch_mode="skill",
+        skill_or_command="onex:skill_a",
+        priority="P1",
+    )
+    item2 = ModelDispatchItem(
+        theme_id="item-ok",
+        title="Item that succeeds",
+        target_repo="omnimarket",
+        dispatch_mode="skill",
+        skill_or_command="onex:skill_b",
+        priority="P1",
+    )
+
+    command = ModelOvernightCommand(correlation_id="test-fnf-continue", dry_run=False)
+
+    fake_ok = MagicMock()
+    fake_ok.returncode = 0
+    fake_ok.stderr = ""
+
+    call_count = 0
+
+    def side_effect(*args: object, **kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise FileNotFoundError("no claude")
+        return fake_ok
+
+    with patch("subprocess.run", side_effect=side_effect):
+        success, error = _execute_dispatch_items(
+            (item1, item2), command, halt_on_failure=False
+        )
+
+    # item1 failed, item2 succeeded — last_error set so overall failure reported
+    # but item2 WAS attempted (call_count == 2)
+    assert call_count == 2
+    assert success is False
+    assert error is not None
+
+
 # ---------------------------------------------------------------------------
 # Integration: bogus skill name → phase failure → non-zero result
 # Acceptance criterion from OMN-8406: "contract with a bogus skill name
