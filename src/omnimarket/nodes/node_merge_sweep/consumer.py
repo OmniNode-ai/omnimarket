@@ -31,14 +31,12 @@ import sys
 from typing import Any
 
 from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+    TOPIC_MERGE_SWEEP_COMPLETED,
+    TOPIC_MERGE_SWEEP_START,
     ModelFailureHistoryEntry,
     ModelMergeSweepRequest,
     ModelPRInfo,
     NodeMergeSweep,
-)
-from omnimarket.nodes.node_merge_sweep.topics import (
-    TOPIC_MERGE_SWEEP_COMPLETED,
-    TOPIC_MERGE_SWEEP_START,
 )
 
 _log = logging.getLogger(__name__)

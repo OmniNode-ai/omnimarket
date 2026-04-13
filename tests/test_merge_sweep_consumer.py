@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-from omnimarket.nodes.node_merge_sweep.topics import (
+from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
     TOPIC_MERGE_SWEEP_COMPLETED,
     TOPIC_MERGE_SWEEP_START,
 )
