@@ -81,6 +81,7 @@ def _fetch_prs(repo: str) -> list[dict[str, Any]]:
         ],
         capture_output=True,
         text=True,
+        timeout=30,
     )
     if result.returncode != 0:
         _log.warning("gh pr list failed for %s: %s", repo, result.stderr.strip())

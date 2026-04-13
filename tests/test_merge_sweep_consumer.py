@@ -8,6 +8,7 @@ translates a Kafka command payload into a ModelMergeSweepRequest.
 
 from __future__ import annotations
 
+import pathlib
 from unittest.mock import patch
 
 import pytest
@@ -36,9 +37,7 @@ class TestMergeSweepTopics:
 class TestBuildRequest:
     """_build_request translates Kafka command payload → ModelMergeSweepRequest."""
 
-    def test_defaults_used_when_command_is_empty(
-        self, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_defaults_used_when_command_is_empty(self, tmp_path: pathlib.Path) -> None:
         from omnimarket.nodes.node_merge_sweep.consumer import _build_request
 
         with patch(
@@ -54,7 +53,7 @@ class TestBuildRequest:
         assert req.use_lifecycle_ordering is False
         assert req.prs == []
 
-    def test_command_overrides_defaults(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_command_overrides_defaults(self, tmp_path: pathlib.Path) -> None:
         from omnimarket.nodes.node_merge_sweep.consumer import _build_request
 
         cmd = {
@@ -80,7 +79,7 @@ class TestBuildRequest:
         assert req.use_lifecycle_ordering is True
         assert req.run_id == "test-123"
 
-    def test_repos_list_accepted(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_repos_list_accepted(self, tmp_path: pathlib.Path) -> None:
         from omnimarket.nodes.node_merge_sweep.consumer import _build_request
 
         cmd = {"repos": ["OmniNode-ai/omniclaude", "OmniNode-ai/omnidash"]}
