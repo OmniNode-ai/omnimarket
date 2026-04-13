@@ -9,8 +9,8 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
     DimensionInput,
     NodePlatformReadiness,

@@ -1,0 +1,152 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: intent_event_consumer_effect
+# Consumes intent-classified events from omniintelligence and persists to graph storage
+
+name: node_intent_event_consumer_effect
+contract_version: {major: 0, minor: 2, patch: 0}
+node_version: {major: 0, minor: 2, patch: 0}
+uuid: "6fc349b1-34f0-4760-b547-6e8bebf0c9c0"
+node_type: EFFECT
+input_model: "ModelIntentClassifiedEvent"
+output_model: "ModelIntentStoredEvent"
+description: |
+  Consumes intent-classified.v1 events from omniintelligence Kafka topic
+  and persists them to Memgraph using HandlerIntentStorageAdapter.
+
+  Consumer group is derived from node identity per ADR:
+  {env}.omnimemory.intent_event_consumer_effect.consume.v1
+
+# =============================================================================
+# PUBLISHED EVENTS (Kafka) - Documentation Layer
+# =============================================================================
+# PURPOSE: Human-readable documentation of WHAT events this node produces.
+#
+# This section provides rich metadata for:
+#   - IntentTypeExtractor (capability inference)
+#   - Contract validation and diff computation
+#   - Human understanding of node behavior
+#
+# NOTE: This is intentionally separate from event_bus (below) which handles
+# WHERE events are routed. Both are needed for Effect nodes:
+#   - published_events = documentation layer (WHAT)
+#   - event_bus = runtime routing layer (WHERE)
+#
+# Topic naming: onex.{kind}.{producer}.{event-name}.v{n}
+#   - kind=evt for events/outputs
+# =============================================================================
+published_events:
+  - topic_suffix: "onex.evt.omnimemory.intent-stored.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimemory.intent-stored.v1"
+    event_type: "IntentStored"
+    trigger: "Intent event consumed and stored successfully (or failed)"
+    description: "Emitted when an intent-classified event has been processed. Uses status field to distinguish
+      success/error (not separate event types)."
+    payload_fields:
+      - name: "event_type"
+        type: "string"
+        description: "Always 'onex.omnimemory.intent.stored.v1'"
+      - name: "session_ref"
+        type: "string"
+        description: "Session reference (mapped from session_id at boundary)"
+      - name: "intent_category"
+        type: "string"
+        description: "Classified intent category"
+      - name: "intent_id"
+        type: "string | null"
+        description: "UUID of the stored intent (null on error)"
+      - name: "status"
+        type: "string"
+        description: "success or error"
+      - name: "correlation_id"
+        type: "string"
+        description: "Correlation ID for distributed tracing"
+
+# === EVENT TYPE CONFIGURATION ===
+# Note: Uses canonical ModelIntentStoredEvent from omnibase_core which
+# encodes both success and error via status field (not separate events).
+# Topic suffixes are custom extensions matching intent_query_effect pattern.
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["intent_classified_consumed", "intent_stored"]
+  event_categories: ["intent", "intelligence", "consumer", "effect"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "intent"
+  invocation_mode: "subscription"
+  # NOTE: Topic declarations live in the event_bus section below (source of truth).
+  # Formerly had subscribe_topic_suffix / publish_stored_topic_suffix /
+  # dlq_topic_suffix here -- removed per OMN-2213.
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+# PURPOSE: Machine-readable configuration of WHERE events are routed.
+#
+# This subcontract provides structured topic routing for:
+#   - RuntimeHostProcess auto-discovery and wiring
+#   - Kafka topic subscription/publication
+#   - Schema validation via topic metadata
+#
+# Contains: topic suffixes (simple strings) + optional schema references.
+#
+# NOTE: This is intentionally separate from published_events (above) which
+# documents WHAT events this node produces. Both are needed for Effect nodes:
+#   - published_events = documentation layer (WHAT)
+#   - event_bus = runtime routing layer (WHERE)
+#
+# Topic naming: onex.{kind}[.{producer}].{event-name}.v{n}
+#   - kind=cmd for commands/inputs, kind=evt for events/outputs
+#   - producer=omnimemory for this node's topics
+#   - DLQ topics may use different producer segments (e.g., omniintelligence)
+#   - Internal runtime events use onex.internal.* namespace
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  # Topics this node subscribes to (receives events from)
+  subscribe_topics:
+    - "onex.evt.omniintelligence.intent-classified.v1"
+
+  # Topics this node publishes to (sends events to)
+  # NOTE: DLQ topic included here for publish_topic_metadata consistency
+  publish_topics:
+    - "onex.evt.omnimemory.intent-stored.v1"
+    - "onex.evt.omniintelligence.intent-classified.v1.dlq"
+
+  # Dead letter queue topics (documentation; also listed in publish_topics)
+  dlq_topics:
+    - "onex.evt.omniintelligence.intent-classified.v1.dlq"
+
+  # Metadata for subscribed topics
+  subscribe_topic_metadata:
+    "onex.evt.omniintelligence.intent-classified.v1":
+      schema_ref: "omnimemory.models.events.model_intent_classified_event.ModelIntentClassifiedEvent"
+      description: "Intent classification events from omniintelligence. Contains classified intent data
+        with confidence scores, session references, and classification metadata."
+
+  # Metadata for published topics
+  publish_topic_metadata:
+    "onex.evt.omnimemory.intent-stored.v1":
+      schema_ref: "omnibase_core.models.events.ModelIntentStoredEvent"
+      description: "Intent storage confirmation events. Emitted after successfully persisting a classified
+        intent to Memgraph. Uses status field to indicate success or error."
+    "onex.evt.omniintelligence.intent-classified.v1.dlq":
+      schema_ref: "omnimemory.models.events.model_intent_classified_event.ModelIntentClassifiedEvent"
+      description: "Dead letter queue for intent-classified events that failed processing after max retries.
+        Contains the original event plus error metadata."
+
+# === HANDLER CONFIGURATION ===
+handler_config:
+  handler_class: "HandlerIntentEventConsumer"
+  handler_module: "omnimarket.nodes.node_intent_event_consumer_effect.handler_intent_event_consumer"
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "HandlerIntentStorageAdapter"
+    type: "handler"
+    required: true

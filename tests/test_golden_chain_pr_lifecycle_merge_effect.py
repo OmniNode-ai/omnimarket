@@ -17,8 +17,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge import (
     HandlerPrLifecycleMerge,
     ProtocolGitHubMergeAdapter,

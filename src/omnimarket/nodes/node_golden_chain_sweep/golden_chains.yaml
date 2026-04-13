@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Registry of golden chains for end-to-end Kafka-to-DB-projection validation.
+# Add new chains here — the sweep tool picks them up automatically.
+
+chains:
+  - name: registration
+    head_topic: onex.evt.omniclaude.routing-decision.v1
+    tail_table: agent_routing_decisions
+    expected_fields:
+      - correlation_id
+      - selected_agent
+
+  - name: pattern_learning
+    head_topic: onex.evt.omniintelligence.pattern-stored.v1
+    tail_table: pattern_learning_artifacts
+    expected_fields:
+      - correlation_id
+
+  - name: delegation
+    head_topic: onex.evt.omniclaude.task-delegated.v1
+    tail_table: delegation_events
+    expected_fields:
+      - correlation_id
+
+  - name: routing
+    head_topic: onex.evt.omniclaude.llm-routing-decision.v1
+    tail_table: llm_routing_decisions
+    expected_fields:
+      - correlation_id
+
+  - name: evaluation
+    head_topic: onex.evt.omniintelligence.run-evaluated.v1
+    tail_table: session_outcomes
+    expected_fields:
+      - correlation_id

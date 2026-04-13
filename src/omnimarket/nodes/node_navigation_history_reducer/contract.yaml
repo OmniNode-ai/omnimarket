@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: node_navigation_history_reducer
+# Reduces navigation history events into aggregated session context
+
+name: node_navigation_history_reducer
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: REDUCER
+input_model: "ModelNavigationHistoryRequest"
+output_model: "ModelNavigationHistoryResponse"
+description: |
+  Reduces navigation history events into aggregated session context.
+  Requires pg_dsn, qdrant, and embedding parameters at runtime.
+
+handler_config:
+  handler_class: "HandlerNavigationHistoryReducer"
+  handler_module: "omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer"
+
+tags:
+  - memory
+  - reducer
+  - navigation
