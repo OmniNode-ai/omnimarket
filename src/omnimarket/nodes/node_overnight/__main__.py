@@ -81,7 +81,7 @@ def _build_kafka_publisher() -> EventPublisher | None:
         return None
 
     try:
-        from confluent_kafka import Producer  # type: ignore[import-untyped]
+        from confluent_kafka import Producer
     except ImportError:
         logger.warning(
             "[OVERNIGHT] confluent_kafka not available — event publishing disabled"
