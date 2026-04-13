@@ -152,18 +152,18 @@ event_bus:
     patch: 0
 
   subscribe_topics:
-    - "onex.evt.omniintelligence.code-entities-extracted.v1"
+    - "onex.evt.omnimarket.code-entities-extracted.v1"
 
   publish_topics:
-    - "onex.evt.omniintelligence.code-enriched.v1"
+    - "onex.evt.omnimarket.code-enriched.v1"
 
   subscribe_topic_metadata:
-    "onex.evt.omniintelligence.code-entities-extracted.v1":
+    "onex.evt.omnimarket.code-entities-extracted.v1":
       schema_ref: "omniintelligence.nodes.node_ast_extraction_compute.models.model_code_entities_extracted_event.ModelCodeEntitiesExtractedEvent"
       description: "Batch of code entities extracted from a source file. Parallel consumer with code-embedding node."
 
   publish_topic_metadata:
-    "onex.evt.omniintelligence.code-enriched.v1":
+    "onex.evt.omnimarket.code-enriched.v1":
       schema_ref: "omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_result.ModelCodeEnrichmentResult"
       description: "Enrichment batch completion — reports enriched_count and failed_count."
 

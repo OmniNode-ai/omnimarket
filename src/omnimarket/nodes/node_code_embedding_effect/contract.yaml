@@ -154,18 +154,18 @@ event_bus:
     patch: 0
 
   subscribe_topics:
-    - "onex.evt.omniintelligence.code-entities-extracted.v1"
+    - "onex.evt.omnimarket.code-entities-extracted.v1"
 
   publish_topics:
-    - "onex.evt.omniintelligence.code-embedded.v1"
+    - "onex.evt.omnimarket.code-embedded.v1"
 
   subscribe_topic_metadata:
-    "onex.evt.omniintelligence.code-entities-extracted.v1":
+    "onex.evt.omnimarket.code-entities-extracted.v1":
       schema_ref: "omniintelligence.nodes.node_ast_extraction_compute.models.model_code_entities_extracted_event.ModelCodeEntitiesExtractedEvent"
       description: "Batch of code entities extracted from a source file by node_ast_extraction_compute."
 
   publish_topic_metadata:
-    "onex.evt.omniintelligence.code-embedded.v1":
+    "onex.evt.omnimarket.code-embedded.v1":
       schema_ref: "omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_result.ModelCodeEmbeddingResult"
       description: "Embedding batch completion — reports embedded_count and failed_count."
 
