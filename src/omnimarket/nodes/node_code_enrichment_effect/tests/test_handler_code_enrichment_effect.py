@@ -124,9 +124,9 @@ async def test_successful_enrichment(monkeypatch: pytest.MonkeyPatch) -> None:
         batch_size=10,
     )
 
-    assert result["correlation_id"] == "test-enrich-001"
-    assert result["enriched_count"] == 2
-    assert result["failed_count"] == 0
+    assert result.correlation_id == "test-enrich-001"
+    assert result.enriched_count == 2
+    assert result.failed_count == 0
     assert repo.update_enrichment.call_count == 2
 
     first_call = repo.update_enrichment.call_args_list[0]
@@ -161,8 +161,8 @@ async def test_low_confidence_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
         llm_endpoint_override="http://test:8001",
     )
 
-    assert result["enriched_count"] == 1
-    assert result["failed_count"] == 0
+    assert result.enriched_count == 1
+    assert result.failed_count == 0
 
     call_kwargs = repo.update_enrichment.call_args.kwargs
     assert call_kwargs["classification"] == "other"
@@ -190,8 +190,8 @@ async def test_llm_failure_increments_failed_count(
         llm_endpoint_override="http://test:8001",
     )
 
-    assert result["enriched_count"] == 0
-    assert result["failed_count"] == 1
+    assert result.enriched_count == 0
+    assert result.failed_count == 1
     repo.update_enrichment.assert_not_called()
 
 
@@ -208,9 +208,9 @@ async def test_no_entities_returns_zero_counts() -> None:
         llm_endpoint_override="http://test:8001",
     )
 
-    assert result["correlation_id"] == "test-enrich-004"
-    assert result["enriched_count"] == 0
-    assert result["failed_count"] == 0
+    assert result.correlation_id == "test-enrich-004"
+    assert result.enriched_count == 0
+    assert result.failed_count == 0
 
 
 @pytest.mark.unit
@@ -261,8 +261,8 @@ async def test_fallback_used_when_primary_unreachable(
         llm_endpoint_override="http://primary:8001",
     )
 
-    assert result["enriched_count"] == 1
-    assert result["failed_count"] == 0
+    assert result.enriched_count == 1
+    assert result.failed_count == 0
     assert any("fallback" in u for u in call_urls)
 
 
@@ -280,7 +280,7 @@ async def test_correlation_id_propagated_to_output() -> None:
         llm_endpoint_override="http://test:8001",
     )
 
-    assert result["correlation_id"] == corr
+    assert result.correlation_id == corr
 
 
 # =============================================================================

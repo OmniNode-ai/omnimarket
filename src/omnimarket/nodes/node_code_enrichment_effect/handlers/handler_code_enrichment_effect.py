@@ -28,6 +28,10 @@ from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
+from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_result import (
+    ModelCodeEnrichmentResult,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_ENRICHMENT_BATCH_SIZE = 25
@@ -90,11 +94,8 @@ class HandlerCodeEnrichmentEffect:
         repository: ProtocolCodeEntityRepository,
         llm_endpoint_override: str | None = None,
         batch_size: int | None = None,
-    ) -> dict[str, Any]:
-        """Enrich a batch of unenriched code entities with LLM classification.
-
-        Returns dict with correlation_id, enriched_count, failed_count.
-        """
+    ) -> ModelCodeEnrichmentResult:
+        """Enrich a batch of unenriched code entities with LLM classification."""
         primary_endpoint = llm_endpoint_override or os.environ.get("LLM_CODER_URL", "")
         if not primary_endpoint:
             raise OSError(
@@ -125,11 +126,13 @@ class HandlerCodeEnrichmentEffect:
             logger.info(
                 "No entities needing enrichment (correlation_id=%s)", correlation_id
             )
-            return {
-                "correlation_id": correlation_id,
-                "enriched_count": 0,
-                "failed_count": 0,
-            }
+            return ModelCodeEnrichmentResult(
+                correlation_id=correlation_id,
+                enriched_count=0,
+                failed_count=0,
+                batch_size_used=effective_batch_size,
+                enrichment_version=enrichment_version,
+            )
 
         enriched = 0
         failed = 0
@@ -175,12 +178,13 @@ class HandlerCodeEnrichmentEffect:
             failed,
             correlation_id,
         )
-        return {
-            "correlation_id": correlation_id,
-            "enriched_count": enriched,
-            "failed_count": failed,
-            "batch_size_used": effective_batch_size,
-        }
+        return ModelCodeEnrichmentResult(
+            correlation_id=correlation_id,
+            enriched_count=enriched,
+            failed_count=failed,
+            batch_size_used=effective_batch_size,
+            enrichment_version=enrichment_version,
+        )
 
 
 async def _enrich_single_entity(

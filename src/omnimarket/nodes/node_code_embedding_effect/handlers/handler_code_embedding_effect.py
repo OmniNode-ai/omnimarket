@@ -26,6 +26,10 @@ from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
+from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_result import (
+    ModelCodeEmbeddingResult,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_QDRANT_COLLECTION = "code_patterns"
@@ -41,6 +45,7 @@ class ProtocolCodeEntityRepository(Protocol):
     async def get_entities_needing_embedding(
         self, *, limit: int
     ) -> list[dict[str, Any]]: ...
+
     async def update_embedded_at(self, entity_ids: list[str]) -> None: ...
 
 
@@ -56,11 +61,8 @@ class HandlerCodeEmbeddingEffect:
         embedding_endpoint_override: str | None = None,
         qdrant_collection_override: str | None = None,
         batch_size: int | None = None,
-    ) -> dict[str, Any]:
-        """Embed a batch of code entities and upsert into Qdrant.
-
-        Returns dict with correlation_id, embedded_count, failed_count.
-        """
+    ) -> ModelCodeEmbeddingResult:
+        """Embed a batch of code entities and upsert into Qdrant."""
         endpoint = embedding_endpoint_override or os.environ.get(
             "EMBEDDING_MODEL_URL", ""
         )
@@ -90,11 +92,12 @@ class HandlerCodeEmbeddingEffect:
                     "Qdrant unavailable — skipping embedding batch (correlation_id=%s)",
                     correlation_id,
                 )
-                return {
-                    "correlation_id": correlation_id,
-                    "embedded_count": 0,
-                    "failed_count": 0,
-                }
+                return ModelCodeEmbeddingResult(
+                    correlation_id=correlation_id,
+                    embedded_count=0,
+                    failed_count=0,
+                    qdrant_collection=collection,
+                )
 
         _ensure_collection(resolved_client, collection, vector_size)
 
@@ -105,11 +108,13 @@ class HandlerCodeEmbeddingEffect:
             logger.info(
                 "No entities needing embedding (correlation_id=%s)", correlation_id
             )
-            return {
-                "correlation_id": correlation_id,
-                "embedded_count": 0,
-                "failed_count": 0,
-            }
+            return ModelCodeEmbeddingResult(
+                correlation_id=correlation_id,
+                embedded_count=0,
+                failed_count=0,
+                qdrant_collection=collection,
+                batch_size_used=effective_batch_size,
+            )
 
         embedded_ids: list[str] = []
         failed = 0
@@ -146,12 +151,14 @@ class HandlerCodeEmbeddingEffect:
             failed,
             correlation_id,
         )
-        return {
-            "correlation_id": correlation_id,
-            "embedded_count": len(embedded_ids),
-            "failed_count": failed,
-            "batch_size_used": effective_batch_size,
-        }
+        return ModelCodeEmbeddingResult(
+            correlation_id=correlation_id,
+            embedded_count=len(embedded_ids),
+            failed_count=failed,
+            vector_ids=embedded_ids,
+            qdrant_collection=collection,
+            batch_size_used=effective_batch_size,
+        )
 
 
 def build_embedding_text(entity: dict[str, Any]) -> str:
@@ -180,26 +187,39 @@ def build_embedding_text(entity: dict[str, Any]) -> str:
 
 
 def _build_qdrant_client() -> Any | None:
-    """Build QdrantClient from env vars. Returns None if unavailable."""
+    """Build QdrantClient from env vars.
+
+    Returns None only when qdrant-client is not installed or QDRANT_HOST is unset.
+    Raises on connection failures so bad config is never silently swallowed.
+    """
     try:
         from qdrant_client import QdrantClient
-
-        host = os.environ.get("QDRANT_HOST")
-        if not host:
-            return None
-        port = int(os.environ.get("QDRANT_PORT", "6333"))
-        return QdrantClient(host=host, port=port)
-    except Exception:
+    except ImportError:
+        logger.info("qdrant-client not installed; embedding pipeline will be a no-op")
         return None
+
+    host = os.environ.get("QDRANT_HOST")
+    if not host:
+        logger.info("QDRANT_HOST not set; embedding pipeline will be a no-op")
+        return None
+
+    port = int(os.environ.get("QDRANT_PORT", "6333"))
+    client = QdrantClient(host=host, port=port)
+    client.get_collections()  # connectivity probe — raises on auth/network failure
+    return client
 
 
 def _ensure_collection(client: Any, collection: str, vector_size: int) -> None:
-    """Create Qdrant collection if it does not exist."""
-    try:
-        from qdrant_client.models import Distance, VectorParams
+    """Create Qdrant collection if it does not exist.
 
-        existing = [c.name for c in client.get_collections().collections]
-        if collection not in existing:
+    Raises on unexpected errors so bad config is surfaced, not swallowed.
+    Only suppresses the trivial "already exists" race condition.
+    """
+    from qdrant_client.models import Distance, VectorParams
+
+    existing = [c.name for c in client.get_collections().collections]
+    if collection not in existing:
+        try:
             client.create_collection(
                 collection_name=collection,
                 vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
@@ -207,8 +227,12 @@ def _ensure_collection(client: Any, collection: str, vector_size: int) -> None:
             logger.info(
                 "Created Qdrant collection: %s (dim=%d)", collection, vector_size
             )
-    except Exception:
-        logger.warning("Could not ensure Qdrant collection %s", collection)
+        except Exception:
+            # Re-check — another worker may have created it concurrently
+            existing_after = [c.name for c in client.get_collections().collections]
+            if collection not in existing_after:
+                logger.exception("Failed to create Qdrant collection %s", collection)
+                raise
 
 
 def _upsert_point(

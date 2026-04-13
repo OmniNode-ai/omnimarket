@@ -128,9 +128,9 @@ class TestHandlerCodeEmbeddingEffect:
                 embedding_endpoint_override="http://test-embed:8100",
             )
 
-        assert result["correlation_id"] == "test-corr-001"
-        assert result["embedded_count"] == 1
-        assert result["failed_count"] == 0
+        assert result.correlation_id == "test-corr-001"
+        assert result.embedded_count == 1
+        assert result.failed_count == 0
 
         qdrant.upsert.assert_called_once()
         call_kwargs = qdrant.upsert.call_args.kwargs
@@ -168,8 +168,8 @@ class TestHandlerCodeEmbeddingEffect:
                 embedding_endpoint_override="http://test-embed:8100",
             )
 
-        assert result["embedded_count"] == 0
-        assert result["failed_count"] == 1
+        assert result.embedded_count == 0
+        assert result.failed_count == 1
         repo.update_embedded_at.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -185,9 +185,9 @@ class TestHandlerCodeEmbeddingEffect:
             embedding_endpoint_override="http://test-embed:8100",
         )
 
-        assert result["embedded_count"] == 0
-        assert result["failed_count"] == 0
-        assert result["correlation_id"] == "test-corr-003"
+        assert result.embedded_count == 0
+        assert result.failed_count == 0
+        assert result.correlation_id == "test-corr-003"
 
     @pytest.mark.asyncio
     async def test_missing_embedding_url_raises(self) -> None:
@@ -228,8 +228,8 @@ class TestHandlerCodeEmbeddingEffect:
             if env_backup is not None:
                 os.environ["QDRANT_HOST"] = env_backup
 
-        assert result["embedded_count"] == 0
-        assert result["failed_count"] == 0
+        assert result.embedded_count == 0
+        assert result.failed_count == 0
 
     @pytest.mark.asyncio
     async def test_correlation_id_propagated_to_output(self) -> None:
@@ -245,7 +245,7 @@ class TestHandlerCodeEmbeddingEffect:
             embedding_endpoint_override="http://test-embed:8100",
         )
 
-        assert result["correlation_id"] == corr
+        assert result.correlation_id == corr
 
 
 # =============================================================================
