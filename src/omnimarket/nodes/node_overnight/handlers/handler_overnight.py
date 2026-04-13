@@ -641,6 +641,14 @@ class HandlerBuildLoopExecutor:
         if command.enable_self_loop and self._event_bus is not None:
             import uuid
 
+            delay_seconds = command.loop_delay_seconds
+            if delay_seconds <= 0:
+                logger.warning(
+                    "[OVERNIGHT] invalid loop_delay_seconds=%s; falling back to 300",
+                    delay_seconds,
+                )
+                delay_seconds = 300
+
             self._publish(
                 TOPIC_OVERNIGHT_START,
                 {
@@ -651,13 +659,13 @@ class HandlerBuildLoopExecutor:
                     "skip_merge_sweep": command.skip_merge_sweep,
                     "dry_run": command.dry_run,
                     "enable_self_loop": True,
-                    "loop_delay_seconds": command.loop_delay_seconds,
-                    "delay_seconds": command.loop_delay_seconds,
+                    "loop_delay_seconds": delay_seconds,
+                    "delay_seconds": delay_seconds,
                 },
             )
             logger.info(
                 "[OVERNIGHT] self-loop requeued — next start in %ds (correlation_id fresh)",
-                command.loop_delay_seconds,
+                delay_seconds,
             )
 
         return ModelOvernightResult(
