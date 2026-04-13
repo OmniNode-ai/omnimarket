@@ -16,9 +16,9 @@ Target tables (schema_overnight_sessions.sql):
   overnight_session_phases: id BIGSERIAL PK, session_id FK, phase_name, phase_status, ...
 
 Topics (from node_overnight/topics.py):
-  onex.evt.omnimarket.overnight.phase-start.v1
-  onex.evt.omnimarket.overnight.phase-completed.v1
-  onex.evt.omnimarket.overnight.session-completed.v1
+  onex.evt.omnimarket.overnight-phase-start.v1
+  onex.evt.omnimarket.overnight-phase-completed.v1
+  onex.evt.omnimarket.overnight-session-completed.v1
 
 Related: OMN-8455 (W2.8)
 """
@@ -37,7 +37,7 @@ SESSION_CONFLICT_KEY = "session_id"
 
 
 class ModelOvernightSessionStartEvent(BaseModel):
-    """Inbound event from onex.evt.omnimarket.overnight.phase-start.v1.
+    """Inbound event from onex.evt.omnimarket.overnight-phase-start.v1.
 
     The first phase-start event signals session start; we upsert the session row
     with status=in_progress on every phase-start (idempotent: only sets fields
@@ -55,7 +55,7 @@ class ModelOvernightSessionStartEvent(BaseModel):
 
 
 class ModelOvernightPhaseEndEvent(BaseModel):
-    """Inbound event from onex.evt.omnimarket.overnight.phase-completed.v1."""
+    """Inbound event from onex.evt.omnimarket.overnight-phase-completed.v1."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -69,7 +69,7 @@ class ModelOvernightPhaseEndEvent(BaseModel):
 
 
 class ModelOvernightSessionCompleteEvent(BaseModel):
-    """Inbound event from onex.evt.omnimarket.overnight.session-completed.v1."""
+    """Inbound event from onex.evt.omnimarket.overnight-session-completed.v1."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 

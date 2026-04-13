@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy import HandlerRedeploy
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
     HandlerRedeployKafka,

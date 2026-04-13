@@ -12,8 +12,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_doc_freshness_sweep.handlers.handler_doc_freshness_sweep import (
     DocFreshnessSweepRequest,
     NodeDocFreshnessSweep,

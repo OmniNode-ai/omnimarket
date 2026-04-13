@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any
 
-import asyncpg  # type: ignore[import-untyped]
+import asyncpg
 
 logger = logging.getLogger(__name__)
 

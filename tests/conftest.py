@@ -9,7 +9,6 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 import pytest_asyncio
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 

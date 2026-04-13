@@ -116,11 +116,11 @@ event_bus:
   # NOTE: DLQ topic included here for publish_topic_metadata consistency
   publish_topics:
     - "onex.evt.omnimemory.intent-stored.v1"
-    - "onex.evt.omniintelligence.intent-classified.v1.dlq"
+    - "onex.evt.omniintelligence.intent-classified-dlq.v1"
 
   # Dead letter queue topics (documentation; also listed in publish_topics)
   dlq_topics:
-    - "onex.evt.omniintelligence.intent-classified.v1.dlq"
+    - "onex.evt.omniintelligence.intent-classified-dlq.v1"
 
   # Metadata for subscribed topics
   subscribe_topic_metadata:
@@ -135,7 +135,7 @@ event_bus:
       schema_ref: "omnibase_core.models.events.ModelIntentStoredEvent"
       description: "Intent storage confirmation events. Emitted after successfully persisting a classified
         intent to Memgraph. Uses status field to indicate success or error."
-    "onex.evt.omniintelligence.intent-classified.v1.dlq":
+    "onex.evt.omniintelligence.intent-classified-dlq.v1":
       schema_ref: "omnimemory.models.events.model_intent_classified_event.ModelIntentClassifiedEvent"
       description: "Dead letter queue for intent-classified events that failed processing after max retries.
         Contains the original event plus error metadata."

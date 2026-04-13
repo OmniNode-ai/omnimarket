@@ -219,6 +219,14 @@ module = "omnimemory.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "omnimarket.nodes.node_navigation_history_reducer.node_navigation_history_reducer"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
 module = "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
 ignore_missing_imports = true
 

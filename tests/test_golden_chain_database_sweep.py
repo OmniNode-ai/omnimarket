@@ -11,8 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep import (
     DatabaseSweepRequest,
     ModelMigrationStateResult,

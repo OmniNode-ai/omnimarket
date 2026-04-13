@@ -29,8 +29,8 @@ db_io:
 
 event_bus:
   subscribe_topics:
-    - onex.evt.omnimarket.overnight.phase-start.v1
-    - onex.evt.omnimarket.overnight.phase-completed.v1
-    - onex.evt.omnimarket.overnight.session-completed.v1
+    - onex.evt.omnimarket.overnight-phase-start.v1
+    - onex.evt.omnimarket.overnight-phase-completed.v1
+    - onex.evt.omnimarket.overnight-session-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-overnight-applied.v1

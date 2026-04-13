@@ -29,11 +29,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
-
 from omnibase_compat.routing.model_routing_degraded_event import (
     ModelRoutingDegradedEvent,
 )
 from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
