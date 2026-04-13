@@ -15,7 +15,7 @@ handler:
 descriptor:
   node_archetype: effect
   purity: impure
-  idempotent: true
+  idempotent: false
   timeout_ms: 15000
 
 inputs:

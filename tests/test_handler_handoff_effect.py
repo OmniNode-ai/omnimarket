@@ -37,7 +37,7 @@ def git_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestHandlerHandoffEffect:
     def test_artifact_written_with_expected_fields(
         self, git_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

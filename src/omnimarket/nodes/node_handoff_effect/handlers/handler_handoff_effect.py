@@ -10,10 +10,11 @@ import hashlib
 import logging
 import os
 import subprocess
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import yaml
 
@@ -21,8 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 def _run(args: list[str], cwd: str) -> str:
-    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=10)
-    return result.stdout.strip() if result.returncode == 0 else ""
+    try:
+        result = subprocess.run(
+            args, cwd=cwd, capture_output=True, text=True, timeout=10
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except (subprocess.TimeoutExpired, OSError, subprocess.SubprocessError) as exc:
+        logger.warning("subprocess call failed %s: %s", args, exc)
+        return ""
 
 
 class HandlerHandoffEffect:
@@ -80,13 +87,20 @@ class HandlerHandoffEffect:
         handoff_dir = state_dir / "session" / "handoff"
         handoff_dir.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%d-%H-%M")
-        artifact_path = handoff_dir / f"handoff-{timestamp}-{session_id[:8]}.yaml"
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d-%H-%M-%S-%f")
+        unique_suffix = uuid4().hex[:8]
+        artifact_path = (
+            handoff_dir / f"handoff-{timestamp}-{session_id[:8]}-{unique_suffix}.yaml"
+        )
 
-        tmp_path = artifact_path.with_suffix(".yaml.tmp")
-        with open(tmp_path, "w") as f:
-            yaml.dump(artifact, f, default_flow_style=False, allow_unicode=True)
-        tmp_path.rename(artifact_path)
+        fd, tmp_str = tempfile.mkstemp(dir=handoff_dir, suffix=".yaml.tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                yaml.dump(artifact, f, default_flow_style=False, allow_unicode=True)
+            Path(tmp_str).rename(artifact_path)
+        except Exception:
+            Path(tmp_str).unlink(missing_ok=True)
+            raise
 
         logger.info("Handoff artifact written: %s", artifact_path)
 
