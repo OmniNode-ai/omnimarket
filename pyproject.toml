@@ -144,6 +144,7 @@ node_persona_lifecycle_orchestrator = "omnimarket.nodes.node_persona_lifecycle_o
 node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_orchestrator"
 node_swarm_supervisor_orchestrator = "omnimarket.nodes.node_swarm_supervisor_orchestrator"
 node_handoff_effect = "omnimarket.nodes.node_handoff_effect"
+node_session_orchestrator = "omnimarket.nodes.node_session_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
@@ -152,9 +153,9 @@ onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cl
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { path = "../omnibase_core", editable = true }
-omnibase-compat = { path = "../omnibase_compat", editable = true }
-omninode-memory = { path = "../omnimemory", editable = true }
+omnibase-core = { path = "/Users/jonah/Code/omni_home/omnibase_core", editable = true }
+omnibase-compat = { path = "/Users/jonah/Code/omni_home/omnibase_compat", editable = true }
+omninode-memory = { path = "/Users/jonah/Code/omni_home/omnimemory", editable = true }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", branch = "main" }
 
 [tool.hatch.build.targets.wheel]

@@ -1,0 +1,138 @@
+---
+name: session_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Unified session orchestrator. Three-phase control loop: health gate (Phase 1),
+  RSD priority scoring (Phase 2, STUB), dispatch (Phase 3, STUB). Backed by
+  node_session_orchestrator in omnimarket. Replaces /onex:overnight, /onex:autopilot,
+  /onex:begin_day, /onex:handoff, /onex:crash_recovery.
+  OMN-8367 PoC: Phase 1 (health gate) is implemented. Phases 2 and 3 are stubs.
+
+handler:
+  module: omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator
+  class: HandlerSessionOrchestrator
+  input_model: omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator.ModelSessionOrchestratorCommand
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+
+inputs:
+  session_id:
+    type: str
+    required: false
+    description: "sess-{date}-{time} identifier. Auto-generated if not provided."
+  mode:
+    type: str
+    required: false
+    default: "interactive"
+    enum: [interactive, autonomous]
+    description: "Execution mode. interactive awaits user approval after Phase 1."
+  dry_run:
+    type: bool
+    required: false
+    default: false
+    description: "Print plan without dispatching workers."
+  skip_health:
+    type: bool
+    required: false
+    default: false
+    description: "Skip Phase 1 health gate. Emergency use only."
+  standing_orders_path:
+    type: str
+    required: false
+    default: ".onex_state/session/standing_orders.json"
+  state_dir:
+    type: str
+    required: false
+    default: ".onex_state/session"
+  phase:
+    type: int
+    required: false
+    default: 0
+    description: "Run only a specific phase (1/2/3). 0 = all phases."
+
+outputs:
+  session_id:
+    type: str
+  status:
+    type: str
+    description: "complete | halted | error"
+  halt_reason:
+    type: str
+    description: "Phase and reason that caused halt, or empty string on complete."
+  health_report:
+    type: object
+    description: "ModelSessionHealthReport — one result per dimension."
+  dispatch_queue:
+    type: list
+    description: "Ordered list of work items (Phase 2 output). Empty in Phase 1-only run."
+  dispatch_receipts:
+    type: list
+    description: "Receipts for dispatched items (Phase 3 output). Empty in stub."
+  dry_run:
+    type: bool
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.session-orchestrator-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.session-orchestrator-completed.v1
+    - onex.evt.omnimarket.session-health-transition.v1
+
+terminal_event: onex.evt.omnimarket.session-orchestrator-completed.v1
+
+# Health gate dimensions (Phase 1)
+health_dimensions:
+  - id: 1
+    name: pr_inventory
+    description: "Any PR blocked on RED CI with no owner"
+    blocks_dispatch_on_red: false
+    blocks_dispatch_on_yellow: false
+
+  - id: 2
+    name: golden_chain
+    description: "Any golden chain failure in omnimarket skills"
+    blocks_dispatch_on_red: true
+    blocks_dispatch_on_yellow: true
+
+  - id: 3
+    name: linear_sync
+    description: "Ticket status vs actual PR state mismatch count > 0"
+    blocks_dispatch_on_red: false
+    blocks_dispatch_on_yellow: false
+
+  - id: 4
+    name: runtime_health
+    description: "Container down or port unreachable on .201"
+    blocks_dispatch_on_red: true
+    blocks_dispatch_on_yellow: true
+
+  - id: 5
+    name: plugin_currency
+    description: "Plugin version behind or skill count mismatch"
+    blocks_dispatch_on_red: false
+    blocks_dispatch_on_yellow: false
+
+  - id: 6
+    name: deploy_agent
+    description: "systemd deploy-agent.service inactive or not subscribed"
+    blocks_dispatch_on_red: true
+    blocks_dispatch_on_yellow: true
+
+  - id: 7
+    name: observability
+    description: "No events from any consumer in >10 min"
+    blocks_dispatch_on_red: false
+    blocks_dispatch_on_yellow: false
+
+  - id: 8
+    name: repo_sync
+    description: "Any canonical repo behind origin/main"
+    blocks_dispatch_on_red: false
+    blocks_dispatch_on_yellow: false
