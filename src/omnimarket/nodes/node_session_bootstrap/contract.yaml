@@ -92,18 +92,20 @@ required_crons:
       condition: "if backlog_unworked_count > 0"
       failure_class: VACUOUS_PULSE
 
-  # Phase 2 additions (not implemented in v2.0 -- status: planned)
+  # Phase 2 additions — promoted to active in v2.1
   merge_sweep:
     cron_name: merge-sweep
     prompt_template_key: MERGE_SWEEP_PROMPT
     timeout_budget_ms: 600000
     description: >
-      Trigger pr_lifecycle_orchestrator via Kafka command topic. Monitor
-      completion event. Merge green PRs.
-    interval_min: 30
+      Run /onex:merge_sweep — org-wide PR sweep, enable auto-merge on review-green
+      PRs. Skill-first routing: invoke /onex:merge_sweep before any raw Agent call.
+      Route all LLM calls through .201 local models. Report only actionable events;
+      silent on clean state.
+    schedule: "23 * * * *"
     active_modes: [build, close-out]
     phase: 2
-    status: planned
+    status: active
     health_thresholds:
       must_not_timeout: true
       failure_class: MERGE_SWEEP_TIMEOUT
@@ -113,15 +115,33 @@ required_crons:
     prompt_template_key: OVERSEER_VERIFY_PROMPT
     timeout_budget_ms: 120000
     description: >
-      Run 5-check overseer gate on recently-completed tickets. Escalate on
-      any invariant violation.
-    interval_min: 60
+      Run /onex:overseer_verify — 5-check overseer gate on recently-completed
+      tickets. Escalate on any invariant violation. Use TaskList-based stall
+      detection as fallback when overseer node is unavailable. Route LLM calls
+      through .201. Report only on violations; silent otherwise.
+    schedule: "11,31,51 * * * *"
     active_modes: [build, close-out, reporting]
     phase: 2
-    status: planned
+    status: active
     health_thresholds:
       overseer_escalate_count_max: 0
       failure_class: OVERSEER_VIOLATION
+
+  contract_verify:
+    cron_name: contract-verify
+    prompt_template_key: CONTRACT_VERIFY_PROMPT
+    timeout_budget_ms: 120000
+    description: >
+      Run /onex:contract_sweep — drift-mode contract health check across all repos.
+      Route LLM calls through .201. Report only on drift violations; silent on
+      clean state.
+    schedule: "7,22,37,52 * * * *"
+    active_modes: [build, close-out, reporting]
+    phase: 2
+    status: active
+    health_thresholds:
+      must_not_timeout: true
+      failure_class: CONTRACT_VERIFY_TIMEOUT
 
 dogfood_gate:
   description: >

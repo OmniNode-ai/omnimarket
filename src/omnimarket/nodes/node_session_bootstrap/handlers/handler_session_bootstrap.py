@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerSessionBootstrap — Session bootstrapper (Rev 7).
+"""HandlerSessionBootstrap — Session bootstrapper (Rev 7, Phase 2).
 
 Rev 7 changes (from hostile review C3-C6):
   C5: Idempotent CronCreate — handler checks CronList before calling CronCreate.
@@ -10,9 +10,17 @@ Rev 7 changes (from hostile review C3-C6):
   C3: Dispatch-event files include task_id — verifier uses IDs not scalar count.
   C6: check_command: str replaced by EnumDodCheckType — no command injection.
 
+Phase 2 additions: merge_sweep, overseer_verify, and contract_verify crons are
+now created automatically on session start alongside build_dispatch_pulse.
+
 Reads ModelBootstrapCommand, validates the session contract, writes a snapshot
-to .onex_state/, creates required CronCreate jobs (phase 1: build_dispatch_pulse
-only), writes cron IDs to disk, and returns a structured result.
+to .onex_state/, creates required CronCreate jobs (idempotent), writes cron IDs
+to disk, and returns a structured result.
+
+DI injection point: cron_list_fn and cron_create_fn are injected via constructor.
+In production Claude Code sessions, the session runner must inject real CronList
+and CronCreate tool wrappers before invoking handle(). The default stubs are
+no-ops safe for tests and non-Claude-Code contexts.
 
 The CronOutputVerificationRoutine described in contract.yaml is prompt-embedded
 (runs inside the cron prompt).  The data structures it writes to disk are defined
@@ -45,11 +53,11 @@ _COST_CEILING_WARNING_THRESHOLD: float = 20.0
 # Cron interval for build_dispatch_pulse (minutes)
 _BUILD_DISPATCH_PULSE_INTERVAL_MIN: int = 30
 
-# Phase-1 cron names (only build_dispatch_pulse is created in v2.0)
-_PHASE1_CRON_NAMES: frozenset[str] = frozenset({"build-dispatch-pulse"})
+# Phase-1 cron name — build_dispatch_pulse is always the critical cron
+_PHASE1_CRON_NAME: str = "build-dispatch-pulse"
 
-# Session modes that activate build_dispatch_pulse
-_BUILD_DISPATCH_ACTIVE_MODES: frozenset[str] = frozenset({"build"})
+# Session modes that trigger cron registration
+_CRON_ELIGIBLE_MODES: frozenset[str] = frozenset({"build", "close-out", "reporting"})
 
 
 def _interval_to_cron(interval_min: int) -> str:
@@ -120,26 +128,63 @@ class ModelCronSpec(BaseModel):
 
     cron_name: str
     prompt_template_key: str
-    interval_min: int
+    cron_expression: str
     active_modes: list[str]
     timeout_budget_ms: int
     description: str
+    is_phase1: bool = False
 
 
-# Phase-1 cron specs (contract.yaml required_crons, phase 1 only).
-# Phase-2 entries (merge_sweep, overseer_verify) are declared for contract
-# completeness but filtered out by _PHASE1_CRON_NAMES.
+# All required crons — Phase 1 (build_dispatch_pulse) and Phase 2 additions.
+# The handler processes all entries; is_phase1 controls FAILED status escalation.
 _REQUIRED_CRONS: list[ModelCronSpec] = [
     ModelCronSpec(
         cron_name="build-dispatch-pulse",
         prompt_template_key="BUILD_DISPATCH_PULSE_PROMPT",
-        interval_min=_BUILD_DISPATCH_PULSE_INTERVAL_MIN,
+        cron_expression="*/30 * * * *",
         active_modes=["build"],
         timeout_budget_ms=300000,
+        is_phase1=True,
         description=(
             "Pull Linear sprint, classify unworked tickets, dispatch workers via "
             "node_dispatch_worker (dogfood path) or Agent (fallback). Verify output "
             "via CronOutputVerificationRoutine after each tick."
+        ),
+    ),
+    ModelCronSpec(
+        cron_name="merge-sweep",
+        prompt_template_key="MERGE_SWEEP_PROMPT",
+        cron_expression="23 * * * *",
+        active_modes=["build", "close-out"],
+        timeout_budget_ms=600000,
+        description=(
+            "Run /onex:merge_sweep — org-wide PR sweep, enable auto-merge on "
+            "review-green PRs. Skill-first routing. Route LLM through .201. "
+            "Report only actionable events; silent on clean state."
+        ),
+    ),
+    ModelCronSpec(
+        cron_name="overseer-verify",
+        prompt_template_key="OVERSEER_VERIFY_PROMPT",
+        cron_expression="11,31,51 * * * *",
+        active_modes=["build", "close-out", "reporting"],
+        timeout_budget_ms=120000,
+        description=(
+            "Run /onex:overseer_verify — 5-check overseer gate on recently-completed "
+            "tickets. Use TaskList stall detection as fallback. Route LLM through .201. "
+            "Report only on violations; silent otherwise."
+        ),
+    ),
+    ModelCronSpec(
+        cron_name="contract-verify",
+        prompt_template_key="CONTRACT_VERIFY_PROMPT",
+        cron_expression="7,22,37,52 * * * *",
+        active_modes=["build", "close-out", "reporting"],
+        timeout_budget_ms=120000,
+        description=(
+            "Run /onex:contract_sweep drift-mode — contract health check across all "
+            "repos. Route LLM through .201. Report only on drift violations; silent "
+            "on clean state."
         ),
     ),
 ]
@@ -152,10 +197,10 @@ def build_pulse_prompt(
     state_dir: str,
     model_routing_preference: str = "local-first",
 ) -> str:
-    """Generate the prompt template for a pulse cron job.
+    """Generate the prompt for a cron job.
 
-    The prompt embeds CronOutputVerificationRoutine instructions so the cron
-    enforces dispatch every tick (prompt-governed behavior, not handler behavior).
+    The build-dispatch-pulse prompt embeds CronOutputVerificationRoutine
+    instructions so the cron enforces dispatch every tick.
 
     All paths in the prompt are derived from state_dir — never hardcoded
     absolute paths.
@@ -221,7 +266,44 @@ def build_pulse_prompt(
             f"     dispatch_path_used, verdict }}\n"
         )
 
-    # Generic fallback for phase-2 crons when they are activated
+    if cron_name == "merge-sweep":
+        return (
+            f"## merge_sweep -- Session {session_id}\n\n"
+            f"Invoke /onex:merge_sweep — org-wide PR sweep.\n\n"
+            f"### Standing orders\n"
+            f"- Skill-first: invoke /onex:merge_sweep before any raw Agent call.\n"
+            f"- Route all LLM calls through .201 local models (local-first).\n"
+            f"- Report only actionable events (PRs merged, PRs blocked, errors).\n"
+            f"- Silent on clean state (no open PRs, all PRs already in merge queue).\n"
+            f"- Tick budget: {tick_timeout_sec}s. State dir: {state_dir}.\n"
+        )
+
+    if cron_name == "overseer-verify":
+        return (
+            f"## overseer_verify -- Session {session_id}\n\n"
+            f"Invoke /onex:overseer_verify — 5-check overseer gate.\n\n"
+            f"### Standing orders\n"
+            f"- Run overseer gate on recently-completed tickets.\n"
+            f"- If overseer node unavailable: use TaskList to detect stalled agents "
+            f"(no update in >10min = stall, >20min = dead).\n"
+            f"- Route all LLM calls through .201 local models (local-first).\n"
+            f"- Escalate immediately on any invariant violation.\n"
+            f"- Report only on violations; silent otherwise.\n"
+            f"- Tick budget: {tick_timeout_sec}s. State dir: {state_dir}.\n"
+        )
+
+    if cron_name == "contract-verify":
+        return (
+            f"## contract_verify -- Session {session_id}\n\n"
+            f"Invoke /onex:contract_sweep drift mode — contract health check.\n\n"
+            f"### Standing orders\n"
+            f"- Run contract drift detection across all repos.\n"
+            f"- Route all LLM calls through .201 local models (local-first).\n"
+            f"- Report only on drift violations; silent on clean state.\n"
+            f"- Tick budget: {tick_timeout_sec}s. State dir: {state_dir}.\n"
+        )
+
+    # Generic fallback for unrecognized cron names
     return (
         f"## {cron_name} -- Session {session_id}\n\n"
         f"Run {cron_name} per contract spec. "
@@ -231,14 +313,20 @@ def build_pulse_prompt(
 
 
 class HandlerSessionBootstrap:
-    """Session bootstrap orchestrator (Rev 7).
+    """Session bootstrap orchestrator (Rev 7, Phase 2).
 
-    Validates session contract, writes contract snapshot, creates required
+    Validates session contract, writes contract snapshot, creates all required
     CronCreate jobs (C5: idempotent via CronList pre-check), writes cron IDs
     to disk, and returns ModelBootstrapResult.
 
+    Phase 2 crons (merge_sweep, overseer_verify, contract_verify) are now
+    created automatically alongside the Phase 1 build_dispatch_pulse cron.
+
     CronCreate calls are skipped when dry_run=True.  CronList and CronCreate
     callables are injected at construction time for testability.
+
+    DI injection point: pass real CronList/CronCreate tool wrappers via
+    cron_list_fn and cron_create_fn when running in a live Claude Code session.
     """
 
     def __init__(
@@ -257,7 +345,7 @@ class HandlerSessionBootstrap:
         self._cron_create_fn = cron_create_fn or _default_cron_create
 
     def handle(self, command: ModelBootstrapCommand) -> ModelBootstrapResult:
-        """Execute session bootstrap (Rev 7).
+        """Execute session bootstrap (Rev 7, Phase 2).
 
         Args:
             command: Bootstrap command including session_id, contract, session_mode,
@@ -315,11 +403,11 @@ class HandlerSessionBootstrap:
                     f"Failed to write contract snapshot: {exc}",
                 )
 
-        # CronCreate for required crons (C5: idempotent via CronList pre-check)
+        # CronCreate for all required crons (C5: idempotent via CronList pre-check)
         crons_registered: list[str] = []
-        failed_cron_count = 0
+        failed_phase1_count = 0
 
-        if command.session_mode in _BUILD_DISPATCH_ACTIVE_MODES:
+        if command.session_mode in _CRON_ELIGIBLE_MODES:
             existing_crons = self._list_existing_crons()
             if existing_crons is None:
                 # CronList failed — skip registration entirely to avoid creating duplicates.
@@ -331,11 +419,6 @@ class HandlerSessionBootstrap:
                 existing_names: set[str] = {c.get("name", "") for c in existing_crons}
 
                 for spec in _REQUIRED_CRONS:
-                    # Phase filter: only create phase-1 crons
-                    if spec.cron_name not in _PHASE1_CRON_NAMES:
-                        logger.debug("Skipping phase-2 cron: %s", spec.cron_name)
-                        continue
-
                     if command.session_mode not in spec.active_modes:
                         logger.debug(
                             "Cron %s not active in mode %s -- skipping",
@@ -375,8 +458,9 @@ class HandlerSessionBootstrap:
                         state_dir=command.state_dir,
                         model_routing_preference=command.model_routing_preference,
                     )
-                    cron_expr = _interval_to_cron(spec.interval_min)
-                    job_id = self._create_cron(cron_expr, prompt, recurring=True)
+                    job_id = self._create_cron(
+                        spec.cron_expression, prompt, recurring=True
+                    )
 
                     if job_id:
                         logger.info(
@@ -384,7 +468,8 @@ class HandlerSessionBootstrap:
                         )
                         crons_registered.append(job_id)
                     else:
-                        failed_cron_count += 1
+                        if spec.is_phase1:
+                            failed_phase1_count += 1
                         _bump_status(
                             EnumBootstrapStatus.DEGRADED,
                             f"CronCreate failed for {spec.cron_name}",
@@ -394,10 +479,9 @@ class HandlerSessionBootstrap:
                 phase1_required = sum(
                     1
                     for s in _REQUIRED_CRONS
-                    if s.cron_name in _PHASE1_CRON_NAMES
-                    and command.session_mode in s.active_modes
+                    if s.is_phase1 and command.session_mode in s.active_modes
                 )
-                if phase1_required > 0 and failed_cron_count >= phase1_required:
+                if phase1_required > 0 and failed_phase1_count >= phase1_required:
                     current_status = EnumBootstrapStatus.FAILED
 
         # Write cron IDs to disk
