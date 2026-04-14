@@ -71,7 +71,9 @@ LINEAR_API_URL = "https://api.linear.app/graphql"
 LINEAR_TEAM_ID = "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6"
 
 OMNI_HOME = Path(os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home")))
-WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", str(Path.home() / "Code" / "omni_worktrees")))
+WORKTREE_ROOT = Path(
+    os.environ.get("OMNI_WORKTREES_ROOT", str(Path.home() / "Code" / "omni_worktrees"))
+)
 
 # LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
 LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
@@ -472,7 +474,11 @@ class LiveTicketClassifyHandler:
                 "[CLASSIFY] LLM_CODER_FAST_URL not set — falling back to keyword heuristic for %s",
                 ticket.ticket_id,
             )
-            return self._keyword_fallback(ticket), "keyword_fallback", "LLM_CODER_FAST_URL not set"
+            return (
+                self._keyword_fallback(ticket),
+                "keyword_fallback",
+                "LLM_CODER_FAST_URL not set",
+            )
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
