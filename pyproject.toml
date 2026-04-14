@@ -148,6 +148,7 @@ node_session_orchestrator = "omnimarket.nodes.node_session_orchestrator"
 node_quality_scoring_compute = "omnimarket.nodes.node_quality_scoring_compute"
 node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
 node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
+node_pipeline_fill = "omnimarket.nodes.node_pipeline_fill"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

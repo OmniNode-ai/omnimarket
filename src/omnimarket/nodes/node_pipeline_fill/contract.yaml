@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Pipeline Fill Orchestrator
+#
+# Orchestration node: queries Linear for unstarted tickets, scores via
+# node_rsd_fill_compute, dispatches top-N via ticket-pipeline events,
+# and writes durable dispatched.yaml state.
+#
+# Related Tickets:
+#   - OMN-8688: node_pipeline_fill — headless ticket pipeline orchestrator
+#   - OMN-5113: Autonomous Build Loop epic
+name: "node_pipeline_fill"
+node_type: "ORCHESTRATOR"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >
+  Pipeline fill orchestrator. Queries Linear for unstarted active-sprint tickets,
+  scores them via node_rsd_fill_compute, dispatches top-N to ticket-pipeline,
+  and writes durable state to .onex_state/pipeline-fill/dispatched.yaml.
+  Designed for headless/cron invocation.
+input_model:
+  name: "ModelPipelineFillCommand"
+  module: "omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command"
+  description: "Command to trigger a pipeline fill cycle."
+output_model:
+  name: "ModelPipelineFillResult"
+  module: "omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_result"
+  description: "Result of one pipeline fill cycle."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "pipeline_fill"
+      handler:
+        name: "HandlerPipelineFill"
+        module: "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill"
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pipeline-fill-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pipeline-fill-completed.v1
+    - onex.cmd.omnimarket.ticket-pipeline-start.v1
+terminal_event: onex.evt.omnimarket.pipeline-fill-completed.v1
+metadata:
+  description: "RSD-driven pipeline fill orchestrator for autonomous build loop"
+  author: "OmniNode Team"
+  created: "2026-04-13"
+  tags:
+    - "orchestrator"
+    - "build-loop"
+    - "rsd"
+    - "pipeline-fill"
+    - "OMN-5113"
+    - "OMN-8688"
+  related_tickets:
+    - "OMN-8688"
+    - "OMN-5113"
+  depends_on:
+    - "node_rsd_fill_compute"
+    - "node_ticket_pipeline"
