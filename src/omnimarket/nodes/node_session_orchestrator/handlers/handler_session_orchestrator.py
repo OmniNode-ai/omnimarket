@@ -383,7 +383,9 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
                     f"Check projection consumer logs on .201."
                 ]
             else:
-                actionable = ["Golden chain sweep unavailable — check omnimarket node logs"]
+                actionable = [
+                    "Golden chain sweep unavailable — check omnimarket node logs"
+                ]
         return ModelHealthDimensionResult(
             dimension="golden_chain",
             status=status,
