@@ -6,10 +6,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Unified session orchestrator. Three-phase control loop: health gate (Phase 1),
-  RSD priority scoring (Phase 2, STUB), dispatch (Phase 3, STUB). Backed by
+  RSD priority scoring (Phase 2), dispatch (Phase 3). Backed by
   node_session_orchestrator in omnimarket. Replaces /onex:overnight, /onex:autopilot,
   /onex:begin_day, /onex:handoff, /onex:crash_recovery.
-  OMN-8367 PoC: Phase 1 (health gate) is implemented. Phases 2 and 3 are stubs.
+  OMN-8687: Phase 2 (RSD scoring) and Phase 3 (dispatch) are now implemented.
 
 handler:
   module: omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator
@@ -104,16 +104,23 @@ dod_evidence:
     gate_decision_values: [PROCEED, FIX_ONLY]
     blocking_dimensions: [golden_chain, runtime_health, deploy_agent]
   phase_2:
-    description: "Phase 2 RSD scoring -- STUB"
-    # TODO(OMN-8367): Add DoD evidence when Phase 2 is implemented (sub-ticket required).
-    status: stub
+    description: "Phase 2 RSD scoring"
+    artifacts:
+      - path: "{state_dir}/rsd-scored-{timestamp}.yaml"
+        description: "RSD-scored ticket queue written after each Phase 2 run"
+      - path: "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py"
+        description: "Unit tests covering RSD scoring, standing orders, empty Linear response"
+    status: implemented
   phase_3:
-    description: "Phase 3 dispatch -- STUB"
-    # TODO(OMN-8367): Add DoD evidence when Phase 3 is implemented (sub-ticket required).
-    # NOTE: omniclaude skill subscribes to onex.cmd.omniclaude.session.v1 but this node
-    # subscribes to onex.cmd.omnimarket.session-orchestrator-start.v1 -- inter-layer bridge
-    # is NOT yet wired. Sub-ticket required before Phase 3 can be implemented.
-    status: stub
+    description: "Phase 3 dispatch"
+    artifacts:
+      - path: "{state_dir}/in_flight.yaml"
+        description: "In-flight dispatch state written before dispatching"
+      - path: "{state_dir}/ledger.jsonl"
+        description: "One JSON line appended per completed session"
+      - path: "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py"
+        description: "Unit tests covering dispatch with dry_run, empty queue, receipt format"
+    status: implemented
 
 env_requirements:
   required:

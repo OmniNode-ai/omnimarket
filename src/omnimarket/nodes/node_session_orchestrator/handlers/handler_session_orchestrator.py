@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerSessionOrchestrator — Unified session orchestrator (OMN-8367 PoC).
+"""HandlerSessionOrchestrator — Unified session orchestrator (OMN-8367 / OMN-8687).
 
 Phase 1 (health gate): implemented — probes 8 health dimensions, collects
 ModelSessionHealthReport, applies blocking rules.
 
-Phase 2 (RSD scoring): STUB — returns placeholder queue.
-  TODO(OMN-8367): Wire RSD scoring. See design doc §RSD Scoring Model.
+Phase 2 (RSD scoring): implemented — queries Linear for Active Sprint tickets,
+computes RSD priority score, writes rsd-scored-{timestamp}.yaml to state_dir.
 
-Phase 3 (dispatch): STUB — logs intent only, does not dispatch.
-  TODO(OMN-8367): Wire TeamCreate dispatch with correlation chain propagation.
-  See design doc §Dispatch Targets.
+Phase 3 (dispatch): implemented — writes in_flight.yaml, dispatches top-N tickets
+via `claude -p /onex:ticket_pipeline` subprocesses with correlation chain propagation,
+writes dispatch receipts and ledger entry.
 
 Probe callables are injected at construction time for testability. Production
 probes call existing skills via subprocess or SSH. All config comes from env vars
@@ -22,14 +22,17 @@ Required env vars for SSH probes:
 
 Optional env vars:
   OMNI_HOME     — path to the omni_home canonical registry (for golden chain + repo sync)
+  LINEAR_API_KEY — Linear API key (Phase 2 ticket scoring)
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import subprocess
+import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -82,11 +85,9 @@ class EnumDimensionStatus(StrEnum):
 class EnumGateDecision(StrEnum):
     PROCEED = "PROCEED"
     FIX_ONLY = "FIX_ONLY"
-    # HALT is reserved for future use (e.g. catastrophic dimensions that
-    # prevent even fix-dispatch). Currently _compute_gate only emits
-    # PROCEED or FIX_ONLY.
-    # TODO(OMN-8367): Implement HALT per design doc §Gate Decisions when
-    # dimension-level catastrophic thresholds are defined.
+    # HALT is reserved for catastrophic dimensions that prevent even fix-dispatch.
+    # _compute_gate currently only emits PROCEED or FIX_ONLY.
+    # Full HALT dispatch requires dimension-level catastrophic thresholds (OMN-8367).
     HALT = "HALT"
 
 
@@ -143,6 +144,29 @@ class ModelSessionOrchestratorCommand(BaseModel):
     standing_orders_path: str = ".onex_state/session/standing_orders.json"
     state_dir: str = ".onex_state/session"
     phase: int = Field(default=0, ge=0, le=3)
+
+
+class ModelRSDQueueItem(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_id: str
+    title: str
+    rsd_score: float
+    priority: int
+    staleness_days: float
+    dependency_count: int
+    standing_order_boost: float
+
+
+class ModelDispatchReceipt(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_id: str
+    dispatch_id: str
+    correlation_chain: str
+    dispatched_at: datetime
+    dry_run: bool
+    status: str
 
 
 class ModelSessionOrchestratorResult(BaseModel):
@@ -680,7 +704,11 @@ _DIMENSION_NAMES: list[str] = [
 
 
 class HandlerSessionOrchestrator:
-    """Unified session orchestrator — Phase 1 implemented, 2 + 3 stubbed.
+    """Unified session orchestrator — all three phases implemented.
+
+    Phase 1: health gate (8 dimensions, SSH/subprocess probes).
+    Phase 2: RSD scoring via Linear GraphQL + standing orders.
+    Phase 3: dispatch via claude -p /onex:ticket_pipeline subprocesses.
 
     Probe callables are injected at construction time for testability.
     Default probes invoke real external systems (SSH, gh CLI, subprocess).
@@ -745,13 +773,10 @@ class HandlerSessionOrchestrator:
                 dry_run=command.dry_run,
             )
 
-        # Phase 2: RSD scoring — STUB
-        # TODO(OMN-8367): Implement RSD scoring. Score tickets + PRs with formula from design doc.
-        # Inputs: Linear tickets, PR inventory, standing_orders.json, acceleration/risk/staleness signals.
-        # Output: ordered ModelRSDQueue with ticket_score and merge_score per item.
-        dispatch_queue = self._run_phase2_stub(session_id, command)
+        # Phase 2: RSD scoring
+        dispatch_queue = self._run_phase2(session_id, command)
         logger.info(
-            "Phase 2 STUB: returning placeholder queue for session %s", session_id
+            "Phase 2: scored %d items for session %s", len(dispatch_queue), session_id
         )
 
         if command.phase == 2:
@@ -764,18 +789,13 @@ class HandlerSessionOrchestrator:
                 dry_run=command.dry_run,
             )
 
-        # Phase 3: Dispatch — STUB
-        # TODO(OMN-8367): Implement TeamCreate dispatch. For each item in dispatch_queue:
-        # - Build correlation chain: {correlation_id}.disp-{seq}.{ticket_id}.{pr_id}
-        # - Dispatch via TeamCreate or the session-orchestrator-start topic (see contract.yaml)
-        # - Collect dispatch receipts
-        # - Write in-flight state to {state_dir}/in_flight.yaml
-        # NOTE(OMN-8367 inter-layer bridge): The omniclaude skill wrapper subscribes to
-        # the omniclaude session topic (see contract.yaml), while this backing node
-        # subscribes to the session-orchestrator-start topic (see contract.yaml).
-        # The bridge between these two topics is NOT yet wired. A dedicated sub-ticket is needed.
-        dispatch_receipts = self._run_phase3_stub(session_id, dispatch_queue, command)
-        logger.info("Phase 3 STUB: dispatch logged only for session %s", session_id)
+        # Phase 3: Dispatch
+        dispatch_receipts = self._run_phase3(session_id, dispatch_queue, command)
+        logger.info(
+            "Phase 3: dispatched %d items for session %s",
+            len(dispatch_receipts),
+            session_id,
+        )
 
         return ModelSessionOrchestratorResult(
             session_id=session_id,
@@ -897,51 +917,369 @@ class HandlerSessionOrchestrator:
             logger.warning("Failed to write health snapshot: %s", exc)
 
     # ------------------------------------------------------------------
-    # Phase 2: RSD scoring (STUB)
+    # Phase 2: RSD scoring
     # ------------------------------------------------------------------
 
-    def _run_phase2_stub(
+    def _run_phase2(
         self,
         session_id: str,
         command: ModelSessionOrchestratorCommand,
     ) -> list[str]:
-        # TODO(OMN-8367): Replace with real RSD scoring.
-        # ticket_score = (acceleration_value / max(risk_score, 0.1))
-        #              * (1 / (1 + dependency_count))
-        #              * log(1 + staleness_days)
-        #              + standing_order_boost * BOOST_WEIGHT
+        """Query Linear for active tickets, score with RSD formula, return ordered IDs."""
+        logger.info("Phase 2: running RSD scoring for session %s", session_id)
+        linear_key = os.environ.get("LINEAR_API_KEY", "")
+        if not linear_key:
+            logger.warning("Phase 2: LINEAR_API_KEY not set — returning empty queue")
+            return []
+
+        tickets = self._fetch_linear_active_tickets(linear_key)
+        if not tickets:
+            logger.info("Phase 2: no active tickets found")
+            return []
+
+        standing_orders = self._load_standing_orders(command.standing_orders_path)
+        scored = self._score_tickets(tickets, standing_orders)
+        scored.sort(key=lambda x: -x.rsd_score)
+
+        if not command.dry_run:
+            self._write_rsd_snapshot(session_id, scored, command.state_dir)
+
+        ids = [item.ticket_id for item in scored]
         logger.info(
-            "Phase 2 STUB: RSD scoring not yet implemented [OMN-8367]. "
-            "Returning empty dispatch queue for session %s.",
-            session_id,
+            "Phase 2: scored %d tickets, top 5: %s",
+            len(ids),
+            ids[:5],
         )
-        return []
+        return ids
+
+    def _fetch_linear_active_tickets(self, linear_key: str) -> list[dict[str, Any]]:
+        """Fetch unstarted/in-progress tickets from Linear via GraphQL."""
+        query = """
+        {
+          issues(filter: {
+            state: { type: { in: ["started", "unstarted"] } }
+          }, first: 50, orderBy: priority) {
+            nodes {
+              id
+              identifier
+              title
+              priority
+              labels { nodes { name } }
+              updatedAt
+              children { nodes { id state { type } } }
+            }
+          }
+        }
+        """
+        try:
+            payload = json.dumps({"query": query}).encode()
+            req = urllib.request.Request(
+                "https://api.linear.app/graphql",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": linear_key,
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data: dict[str, Any] = json.loads(resp.read().decode())
+            nodes: list[dict[str, Any]] = (
+                data.get("data", {}).get("issues", {}).get("nodes", [])
+            )
+            return nodes
+        except Exception as exc:
+            logger.warning("Phase 2: Linear fetch failed: %s", exc)
+            return []
+
+    def _load_standing_orders(self, path: str) -> dict[str, float]:
+        """Load standing orders priority boosts. Returns {ticket_id: boost}."""
+        try:
+            abs_path = os.path.abspath(path)
+            if not os.path.exists(abs_path):
+                return {}
+            with open(abs_path, encoding="utf-8") as fh:
+                orders = json.load(fh)
+            now = _now()
+            boosts: dict[str, float] = {}
+            for order in orders if isinstance(orders, list) else []:
+                expires = order.get("expires_at")
+                if expires:
+                    try:
+                        exp_dt = datetime.fromisoformat(expires)
+                        if exp_dt.tzinfo is None:
+                            exp_dt = exp_dt.replace(tzinfo=UTC)
+                        if exp_dt < now:
+                            continue
+                    except ValueError:
+                        pass
+                ticket_id = order.get("ticket_id", "")
+                boost = float(order.get("priority_override", 0.0))
+                if ticket_id:
+                    boosts[ticket_id] = boost
+            return boosts
+        except Exception as exc:
+            logger.warning("Phase 2: standing orders load failed: %s", exc)
+            return {}
+
+    def _score_tickets(
+        self,
+        tickets: list[dict[str, Any]],
+        standing_orders: dict[str, float],
+    ) -> list[ModelRSDQueueItem]:
+        """Apply RSD formula to each ticket."""
+        boost_weight = 0.3
+        now = _now()
+        scored: list[ModelRSDQueueItem] = []
+
+        for t in tickets:
+            ticket_id = t.get("identifier", t.get("id", ""))
+            title = t.get("title", "")
+            # priority: Linear uses 0=No priority, 1=Urgent, 2=High, 3=Medium, 4=Low
+            lp = t.get("priority", 3) or 3
+            # Map to acceleration value: Urgent=4, High=3, Medium=2, Low=1, None=0.5
+            accel_map = {1: 4.0, 2: 3.0, 3: 2.0, 4: 1.0, 0: 0.5}
+            acceleration_value = accel_map.get(lp, 2.0)
+
+            labels = [lb["name"] for lb in (t.get("labels") or {}).get("nodes", [])]
+            risk_label_map = {"breaking-change": 3.0, "infra": 2.0}
+            risk_score = max(
+                (risk_label_map.get(lb, 1.0) for lb in labels), default=1.0
+            )
+
+            # dependency_count: open blocking sub-tickets
+            children = (t.get("children") or {}).get("nodes", [])
+            dep_count = sum(
+                1
+                for c in children
+                if (c.get("state") or {}).get("type") not in ("completed", "cancelled")
+            )
+
+            updated_raw = t.get("updatedAt", "")
+            try:
+                updated_dt = datetime.fromisoformat(updated_raw.replace("Z", "+00:00"))
+                staleness_days = max((now - updated_dt).total_seconds() / 86400, 0.0)
+            except (ValueError, AttributeError):
+                staleness_days = 0.0
+
+            standing_boost = standing_orders.get(ticket_id, 0.0)
+
+            score = (acceleration_value / max(risk_score, 0.1)) * (
+                1.0 / (1.0 + dep_count)
+            ) * math.log(1.0 + staleness_days) + standing_boost * boost_weight
+
+            scored.append(
+                ModelRSDQueueItem(
+                    ticket_id=ticket_id,
+                    title=title,
+                    rsd_score=round(score, 4),
+                    priority=lp,
+                    staleness_days=round(staleness_days, 2),
+                    dependency_count=dep_count,
+                    standing_order_boost=standing_boost,
+                )
+            )
+        return scored
+
+    def _write_rsd_snapshot(
+        self,
+        session_id: str,
+        scored: list[ModelRSDQueueItem],
+        state_dir: str,
+    ) -> None:
+        try:
+            abs_state_dir = os.path.abspath(state_dir)
+            os.makedirs(abs_state_dir, exist_ok=True)
+            ts = _now().strftime("%Y%m%dT%H%M%S")
+            path = os.path.join(abs_state_dir, f"rsd-scored-{ts}.yaml")
+            payload = {
+                "session_id": session_id,
+                "produced_at": _now().isoformat(),
+                "items": [
+                    {
+                        "ticket_id": item.ticket_id,
+                        "title": item.title,
+                        "rsd_score": item.rsd_score,
+                        "priority": item.priority,
+                        "staleness_days": item.staleness_days,
+                        "dependency_count": item.dependency_count,
+                        "standing_order_boost": item.standing_order_boost,
+                    }
+                    for item in scored
+                ],
+            }
+            with open(path, "w", encoding="utf-8") as fh:
+                yaml.dump(payload, fh, default_flow_style=False)
+            logger.info("RSD snapshot written: %s", path)
+        except Exception as exc:
+            logger.warning("Failed to write RSD snapshot: %s", exc)
 
     # ------------------------------------------------------------------
-    # Phase 3: Dispatch (STUB)
+    # Phase 3: Dispatch
     # ------------------------------------------------------------------
 
-    def _run_phase3_stub(
+    def _run_phase3(
         self,
         session_id: str,
         dispatch_queue: list[str],
         command: ModelSessionOrchestratorCommand,
     ) -> list[str]:
-        # TODO(OMN-8367): Replace with real dispatch.
-        # For each item in dispatch_queue:
-        #   - Build correlation chain: {correlation_id}.disp-{seq}.{ticket_id}.{pr_id}
-        #   - Dispatch via TeamCreate or Kafka topic from contract.yaml
-        #   - Write in-flight state to {state_dir}/in_flight.yaml
+        """Dispatch top-N tickets from Phase 2 queue with correlation chain."""
         if not dispatch_queue:
-            logger.info("Phase 3 STUB: empty queue — nothing to dispatch [OMN-8367].")
+            logger.info("Phase 3: empty queue — nothing to dispatch.")
             return []
+
+        max_dispatch = 5
+        targets = dispatch_queue[:max_dispatch]
         logger.info(
-            "Phase 3 STUB: would dispatch %d items — not executed [OMN-8367]. "
-            "Items: %s",
+            "Phase 3: dispatching %d/%d items for session %s",
+            len(targets),
             len(dispatch_queue),
-            dispatch_queue,
+            session_id,
         )
-        return [f"STUB:not-dispatched:{item}" for item in dispatch_queue]
+
+        receipts: list[ModelDispatchReceipt] = []
+
+        if not command.dry_run:
+            self._write_inflight(session_id, targets, command.state_dir)
+
+        for seq, ticket_id in enumerate(targets, start=1):
+            dispatch_id = f"disp-{seq:03d}"
+            correlation_chain = (
+                f"{command.correlation_id or session_id}.{dispatch_id}.{ticket_id}"
+            )
+
+            receipt = self._dispatch_ticket(
+                ticket_id=ticket_id,
+                dispatch_id=dispatch_id,
+                correlation_chain=correlation_chain,
+                session_id=session_id,
+                dry_run=command.dry_run,
+            )
+            receipts.append(receipt)
+            logger.info(
+                "Phase 3: dispatched %s → %s (status=%s)",
+                ticket_id,
+                dispatch_id,
+                receipt.status,
+            )
+
+        if not command.dry_run:
+            self._write_session_ledger(session_id, len(receipts), command)
+
+        return [
+            json.dumps(
+                {
+                    "ticket_id": r.ticket_id,
+                    "dispatch_id": r.dispatch_id,
+                    "correlation_chain": r.correlation_chain,
+                    "status": r.status,
+                }
+            )
+            for r in receipts
+        ]
+
+    def _dispatch_ticket(
+        self,
+        ticket_id: str,
+        dispatch_id: str,
+        correlation_chain: str,
+        session_id: str,
+        dry_run: bool,
+    ) -> ModelDispatchReceipt:
+        """Invoke /onex:ticket_pipeline for a single ticket via claude -p."""
+        if dry_run:
+            return ModelDispatchReceipt(
+                ticket_id=ticket_id,
+                dispatch_id=dispatch_id,
+                correlation_chain=correlation_chain,
+                dispatched_at=_now(),
+                dry_run=True,
+                status="dry_run",
+            )
+
+        env = {**os.environ}
+        env["ONEX_SESSION_ID"] = session_id
+        env["ONEX_DISPATCH_ID"] = dispatch_id
+        env["ONEX_CORRELATION_PREFIX"] = correlation_chain
+        env["ONEX_RUN_ID"] = f"{dispatch_id}-{ticket_id}"
+        env["ONEX_UNSAFE_ALLOW_EDITS"] = "1"
+
+        try:
+            proc = subprocess.Popen(
+                [
+                    "claude",
+                    "-p",
+                    f"/onex:ticket_pipeline {ticket_id}",
+                    "--allowedTools",
+                    "Bash,Read,Write,Edit,Glob,Grep,"
+                    "mcp__linear-server__*,mcp__github__*",
+                ],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            status = f"dispatched:pid={proc.pid}"
+        except Exception as exc:
+            logger.warning("Phase 3: dispatch failed for %s: %s", ticket_id, exc)
+            status = f"failed:{exc!s}"
+
+        return ModelDispatchReceipt(
+            ticket_id=ticket_id,
+            dispatch_id=dispatch_id,
+            correlation_chain=correlation_chain,
+            dispatched_at=_now(),
+            dry_run=False,
+            status=status,
+        )
+
+    def _write_inflight(
+        self,
+        session_id: str,
+        targets: list[str],
+        state_dir: str,
+    ) -> None:
+        try:
+            abs_state_dir = os.path.abspath(state_dir)
+            os.makedirs(abs_state_dir, exist_ok=True)
+            path = os.path.join(abs_state_dir, "in_flight.yaml")
+            payload = {
+                "session_id": session_id,
+                "current_phase": "DISPATCH",
+                "dispatch_queue": targets,
+                "in_progress": targets,
+                "completed": [],
+                "last_checkpoint": _now().isoformat(),
+                "resumable": True,
+            }
+            with open(path, "w", encoding="utf-8") as fh:
+                yaml.dump(payload, fh, default_flow_style=False)
+            logger.info("In-flight state written: %s", path)
+        except Exception as exc:
+            logger.warning("Failed to write in_flight.yaml: %s", exc)
+
+    def _write_session_ledger(
+        self,
+        session_id: str,
+        dispatch_count: int,
+        command: ModelSessionOrchestratorCommand,
+    ) -> None:
+        try:
+            abs_state_dir = os.path.abspath(command.state_dir)
+            os.makedirs(abs_state_dir, exist_ok=True)
+            path = os.path.join(abs_state_dir, "ledger.jsonl")
+            entry = {
+                "session_id": session_id,
+                "end_time": _now().isoformat(),
+                "dispatch_count": dispatch_count,
+                "mode": command.mode,
+                "dry_run": command.dry_run,
+            }
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry) + "\n")
+        except Exception as exc:
+            logger.warning("Failed to write session ledger: %s", exc)
 
     # ------------------------------------------------------------------
     # Utilities
@@ -958,7 +1296,9 @@ __all__: list[str] = [
     "EnumGateDecision",
     "EnumSessionStatus",
     "HandlerSessionOrchestrator",
+    "ModelDispatchReceipt",
     "ModelHealthDimensionResult",
+    "ModelRSDQueueItem",
     "ModelSessionHealthReport",
     "ModelSessionOrchestratorCommand",
     "ModelSessionOrchestratorResult",
