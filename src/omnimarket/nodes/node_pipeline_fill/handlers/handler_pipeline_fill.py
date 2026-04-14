@@ -223,11 +223,22 @@ class HandlerPipelineFill:
                 in_flight_count,
                 command.wave_cap,
             )
+            skip_reason = f"Wave cap reached ({in_flight_count}/{command.wave_cap})"
+            _write_last_run(
+                state_dir / "last-run.yaml",
+                correlation_id=command.correlation_id,
+                candidates_found=0,
+                candidates_after_filter=0,
+                dispatched=[],
+                wave_status=f"{in_flight_count}/{command.wave_cap} in-flight",
+                dry_run=command.dry_run,
+                skip_reason=skip_reason,
+            )
             return ModelPipelineFillResult(
                 correlation_id=command.correlation_id,
                 candidates_found=0,
                 candidates_after_filter=0,
-                skip_reason=f"Wave cap reached ({in_flight_count}/{command.wave_cap})",
+                skip_reason=skip_reason,
                 dry_run=command.dry_run,
             )
 
@@ -245,11 +256,22 @@ class HandlerPipelineFill:
 
         if not filtered:
             logger.info("pipeline_fill: no dispatchable candidates after filtering")
+            skip_reason = "No dispatchable candidates after filtering"
+            _write_last_run(
+                state_dir / "last-run.yaml",
+                correlation_id=command.correlation_id,
+                candidates_found=candidates_found,
+                candidates_after_filter=0,
+                dispatched=[],
+                wave_status=f"{in_flight_count}/{command.wave_cap} in-flight",
+                dry_run=command.dry_run,
+                skip_reason=skip_reason,
+            )
             return ModelPipelineFillResult(
                 correlation_id=command.correlation_id,
                 candidates_found=candidates_found,
                 candidates_after_filter=0,
-                skip_reason="No dispatchable candidates after filtering",
+                skip_reason=skip_reason,
                 dry_run=command.dry_run,
             )
 
@@ -261,6 +283,13 @@ class HandlerPipelineFill:
             max_tickets=command.top_n,
         )
 
+        # Write scores.yaml — observable artifact for audit / debugging
+        _write_scores(
+            state_dir / "scores.yaml",
+            correlation_id=command.correlation_id,
+            scored_tickets=fill_result.selected_tickets,
+        )
+
         # Apply min-score filter
         eligible = tuple(
             t for t in fill_result.selected_tickets if t.rsd_score >= command.min_score
@@ -270,12 +299,23 @@ class HandlerPipelineFill:
             logger.info(
                 "pipeline_fill: no tickets above min_score=%.2f", command.min_score
             )
+            skip_reason = f"No tickets above min_score={command.min_score}"
+            _write_last_run(
+                state_dir / "last-run.yaml",
+                correlation_id=command.correlation_id,
+                candidates_found=candidates_found,
+                candidates_after_filter=candidates_after_filter,
+                dispatched=[],
+                wave_status=f"{in_flight_count}/{command.wave_cap} in-flight",
+                dry_run=command.dry_run,
+                skip_reason=skip_reason,
+            )
             return ModelPipelineFillResult(
                 correlation_id=command.correlation_id,
                 candidates_found=candidates_found,
                 candidates_after_filter=candidates_after_filter,
                 skipped=tuple(t.ticket_id for t in fill_result.selected_tickets),
-                skip_reason=f"No tickets above min_score={command.min_score}",
+                skip_reason=skip_reason,
                 dry_run=command.dry_run,
             )
 
@@ -400,8 +440,9 @@ def _write_last_run(
     dispatched: list[str],
     wave_status: str,
     dry_run: bool,
+    skip_reason: str = "",
 ) -> None:
-    data = {
+    data: dict[str, Any] = {
         "timestamp": datetime.now(UTC).isoformat(),
         "correlation_id": str(correlation_id),
         "candidates_found": candidates_found,
@@ -409,6 +450,31 @@ def _write_last_run(
         "dispatched": dispatched,
         "wave_status": wave_status,
         "dry_run": dry_run,
+    }
+    if skip_reason:
+        data["skip_reason"] = skip_reason
+    with open(path, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def _write_scores(
+    path: Path,
+    *,
+    correlation_id: UUID,
+    scored_tickets: tuple[ModelScoredTicket, ...],
+) -> None:
+    data = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "correlation_id": str(correlation_id),
+        "scores": [
+            {
+                "ticket_id": t.ticket_id,
+                "title": t.title,
+                "rsd_score": round(t.rsd_score, 4),
+                "priority": t.priority,
+            }
+            for t in scored_tickets
+        ],
     }
     with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)

@@ -319,6 +319,7 @@ async def test_no_bus_path_writes_dispatched_yaml(tmp_path: Path) -> None:
     # No event_bus injected — simulates headless/no-bus execution
     handler = HandlerPipelineFill(linear_client=linear_client, event_bus=None)
     cmd = _make_command(top_n=1, dry_run=False, tmp_path=tmp_path)
+
     with patch(
         "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._resolve_omni_home",
         return_value=tmp_path,
@@ -334,3 +335,100 @@ async def test_no_bus_path_writes_dispatched_yaml(tmp_path: Path) -> None:
     state = _yaml.safe_load(dispatched_path.read_text())
     in_flight_ids = [e["ticket_id"] for e in state.get("in_flight", [])]
     assert "OMN-77" in in_flight_ids, "no-bus dispatch must appear in in_flight state"
+
+
+# ---------------------------------------------------------------------------
+# Integration test — dispatched.yaml + publish + all 3 artifact files
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_integration_dispatch_writes_artifacts_and_publishes(
+    tmp_path: Path,
+) -> None:
+    """Integration test: mocked Linear + Kafka, verify dispatched.yaml updated
+    AND publish called AND all three observable artifact files exist."""
+    import yaml as _yaml
+
+    tickets = [
+        _make_ticket("OMN-101", priority=1),
+        _make_ticket("OMN-102", priority=2),
+        _make_ticket("OMN-103", priority=3),
+    ]
+
+    linear_client = AsyncMock()
+    linear_client.list_active_sprint_unstarted.return_value = tickets
+
+    event_bus = AsyncMock()
+
+    handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
+    cmd = _make_command(top_n=2, wave_cap=5, min_score=0.0, tmp_path=tmp_path)
+
+    with patch(
+        "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._resolve_omni_home",
+        return_value=tmp_path,
+    ):
+        result = await handler.handle(cmd)
+
+    # Kafka producer was called for each dispatched ticket
+    assert event_bus.publish.call_count == 2
+
+    # dispatched.yaml exists and contains the dispatched ticket IDs
+    dispatched_path = tmp_path / "dispatched.yaml"
+    assert dispatched_path.exists(), "dispatched.yaml must be written after dispatch"
+    state = _yaml.safe_load(dispatched_path.read_text())
+    in_flight_ids = {e["ticket_id"] for e in state.get("in_flight", [])}
+    assert in_flight_ids == set(result.dispatched)
+
+    # scores.yaml exists and contains scored entries
+    scores_path = tmp_path / "scores.yaml"
+    assert scores_path.exists(), "scores.yaml must be written after scoring"
+    scores_data = _yaml.safe_load(scores_path.read_text())
+    assert len(scores_data["scores"]) >= 2
+
+    # last-run.yaml exists with correct candidate counts
+    last_run_path = tmp_path / "last-run.yaml"
+    assert last_run_path.exists(), "last-run.yaml must be written on every cycle"
+    last_run = _yaml.safe_load(last_run_path.read_text())
+    assert last_run["candidates_found"] == 3
+    assert last_run["candidates_after_filter"] == 3
+    assert set(last_run["dispatched"]) == set(result.dispatched)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_noop_cycle_still_writes_last_run(tmp_path: Path) -> None:
+    """No-op cycle (wave cap reached) must still write last-run.yaml."""
+    import yaml as _yaml
+
+    dispatched_path = tmp_path / "dispatched.yaml"
+    dispatched_path.write_text(
+        _yaml.dump(
+            {
+                "in_flight": [
+                    {"ticket_id": f"OMN-{200 + i}", "status": "running"}
+                    for i in range(5)
+                ]
+            }
+        )
+    )
+
+    linear_client = AsyncMock()
+    event_bus = AsyncMock()
+
+    handler = HandlerPipelineFill(linear_client=linear_client, event_bus=event_bus)
+    cmd = _make_command(wave_cap=5, tmp_path=tmp_path)
+
+    with patch(
+        "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._resolve_omni_home",
+        return_value=tmp_path,
+    ):
+        result = await handler.handle(cmd)
+
+    assert "Wave cap" in result.skip_reason
+
+    last_run_path = tmp_path / "last-run.yaml"
+    assert last_run_path.exists(), "last-run.yaml must be written even on no-op cycles"
+    last_run = _yaml.safe_load(last_run_path.read_text())
+    assert "Wave cap" in last_run["skip_reason"]
