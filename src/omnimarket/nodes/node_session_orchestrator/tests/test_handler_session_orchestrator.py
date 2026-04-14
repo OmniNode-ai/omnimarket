@@ -11,6 +11,7 @@ returns a valid ModelHealthDimensionResult without leaking.
 from __future__ import annotations
 
 import json
+import pathlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
@@ -307,15 +308,13 @@ class TestPhase2RSD:
         assert risky_score < base_score
 
     def test_load_standing_orders_returns_empty_on_missing_file(
-        self, tmp_path: pytest.TempPathFactory
+        self, tmp_path: pathlib.Path
     ) -> None:
         handler = HandlerSessionOrchestrator(probes=[])
         result = handler._load_standing_orders(str(tmp_path / "nonexistent.json"))  # noqa: SLF001
         assert result == {}
 
-    def test_load_standing_orders_skips_expired(
-        self, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_load_standing_orders_skips_expired(self, tmp_path: pathlib.Path) -> None:
         import json as _json
 
         orders_path = tmp_path / "standing_orders.json"
@@ -383,9 +382,7 @@ class TestPhase3Dispatch:
         parsed = json.loads(receipts[0])
         assert parsed["correlation_chain"].startswith("sess-test.disp-001.OMN-42")
 
-    def test_phase3_writes_inflight_yaml(
-        self, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_phase3_writes_inflight_yaml(self, tmp_path: pathlib.Path) -> None:
         import yaml as _yaml
 
         handler = HandlerSessionOrchestrator(probes=[])
