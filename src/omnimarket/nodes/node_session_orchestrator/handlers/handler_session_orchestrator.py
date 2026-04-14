@@ -269,20 +269,38 @@ def _fetch_golden_chain_rows() -> dict[str, dict[str, object]]:
     Returns a mapping of chain_name -> {field: value, ...}.
     Empty dict on failure (probe degrades gracefully to TIMEOUT chains).
     """
-    chain_queries: dict[str, tuple[str, str, list[str]]] = {
-        # chain_name: (table, order_col, [fields])
+    # (table, order_col, [fields], database)
+    # registration lives in omnibase_infra; all others in omnidash_analytics.
+    chain_queries: dict[str, tuple[str, str, list[str], str]] = {
         "registration": (
             "agent_routing_decisions",
             "created_at",
             ["correlation_id", "selected_agent"],
+            "omnibase_infra",
         ),
-        "delegation": ("delegation_events", "id", ["correlation_id"]),
-        "routing": ("llm_routing_decisions", "id", ["correlation_id"]),
-        "evaluation": ("session_outcomes", "session_id", ["correlation_id"]),
+        "delegation": (
+            "delegation_events",
+            "id",
+            ["correlation_id"],
+            "omnidash_analytics",
+        ),
+        "routing": (
+            "llm_routing_decisions",
+            "id",
+            ["correlation_id"],
+            "omnidash_analytics",
+        ),
+        "evaluation": (
+            "session_outcomes",
+            "session_id",
+            ["correlation_id"],
+            "omnidash_analytics",
+        ),
         "pattern_learning": (
             "pattern_learning_artifacts",
             "created_at",
             ["correlation_id"],
+            "omnidash_analytics",
         ),
     }
     try:
@@ -294,7 +312,7 @@ def _fetch_golden_chain_rows() -> dict[str, dict[str, object]]:
     projected: dict[str, dict[str, object]] = {}
     pg_pass = os.environ.get("POSTGRES_PASSWORD", "")
 
-    for chain_name, (table, order_col, fields) in chain_queries.items():
+    for chain_name, (table, order_col, fields, database) in chain_queries.items():
         col_list = ", ".join(fields)
         sql = f"SELECT {col_list} FROM {table} ORDER BY {order_col} DESC LIMIT 1"
         cmd = [
@@ -305,7 +323,7 @@ def _fetch_golden_chain_rows() -> dict[str, dict[str, object]]:
             f"StrictHostKeyChecking={_ssh_host_key_checking()}",
             f"{user}@{host}",
             f"PGPASSWORD={pg_pass} docker exec omnibase-infra-postgres "
-            f"psql -U postgres -d omnibase_infra -t -A -F '|' -c \"{sql}\"",
+            f"psql -U postgres -d {database} -t -A -F '|' -c \"{sql}\"",
         ]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
