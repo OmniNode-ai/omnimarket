@@ -226,9 +226,10 @@ class HandlerPrLifecycleMerge:
                 )
             except Exception as comment_exc:
                 logger.warning(
-                    "PR lifecycle merge: failed to post correlation comment pr=%s repo=%s: %s",
+                    "PR lifecycle merge: failed to post correlation comment pr=%s repo=%s correlation_id=%s: %s",
                     command.pr_number,
                     command.repo,
+                    command.correlation_id,
                     comment_exc,
                 )
         except Exception as exc:
