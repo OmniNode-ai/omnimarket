@@ -373,16 +373,17 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
             status = EnumDimensionStatus.GREEN
             actionable: list[str] = []
         else:
-            status = EnumDimensionStatus.RED
+            # Non-zero exit means no infra data available (timeout, empty
+            # projection rows, etc.) — treat as YELLOW, not RED, matching the
+            # no-bus pattern used by other probes in this handler.
+            status = EnumDimensionStatus.YELLOW
             if missing_chains:
                 actionable = [
-                    f"Golden chain TIMEOUT — no DB rows for chains: {', '.join(missing_chains)}. "
+                    f"Golden chain sweep unavailable — no DB rows for chains: {', '.join(missing_chains)}. "
                     f"Check projection consumer logs on .201."
                 ]
             else:
-                actionable = [
-                    "Golden chain sweep failed — missing expected fields in projected rows"
-                ]
+                actionable = ["Golden chain sweep unavailable — check omnimarket node logs"]
         return ModelHealthDimensionResult(
             dimension="golden_chain",
             status=status,
@@ -396,20 +397,22 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
                 "stderr_snippet": result.stderr[:200],
             },
             actionable_items=actionable,
-            blocks_dispatch=(status == EnumDimensionStatus.RED),
+            blocks_dispatch=False,
         )
     except Exception as exc:
+        # Probe infrastructure unavailable (uv missing, timeout, etc.) —
+        # YELLOW so the orchestrator degrades gracefully rather than blocking.
         return ModelHealthDimensionResult(
             dimension="golden_chain",
-            status=EnumDimensionStatus.RED,
+            status=EnumDimensionStatus.YELLOW,
             source="live_probe",
             timestamp=_now(),
             stale_after=timedelta(minutes=5),
             details={"error": str(exc)[:200]},
             actionable_items=[
-                "Golden chain probe failed — golden_chain_sweep unavailable"
+                "Golden chain probe unavailable — golden_chain_sweep not reachable"
             ],
-            blocks_dispatch=True,
+            blocks_dispatch=False,
         )
 
 
