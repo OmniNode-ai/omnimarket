@@ -36,10 +36,11 @@ from omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_result i
 
 
 class _RecordingGitHubMergeAdapter:
-    """Records merge calls for assertion."""
+    """Records merge and comment calls for assertion."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.comments: list[dict[str, object]] = []
 
     async def merge_pr(
         self,
@@ -53,6 +54,14 @@ class _RecordingGitHubMergeAdapter:
         strategy = "queue" if use_merge_queue else "squash"
         return f"auto-merge enabled ({strategy}) for {repo}#{pr_number}"
 
+    async def post_pr_comment(
+        self,
+        repo: str,
+        pr_number: int,
+        body: str,
+    ) -> None:
+        self.comments.append({"repo": repo, "pr_number": pr_number, "body": body})
+
 
 class _FailingGitHubMergeAdapter:
     """Always raises on merge_pr."""
@@ -65,6 +74,14 @@ class _FailingGitHubMergeAdapter:
     ) -> str:
         msg = "GitHub API error: PR not mergeable"
         raise RuntimeError(msg)
+
+    async def post_pr_comment(
+        self,
+        repo: str,
+        pr_number: int,
+        body: str,
+    ) -> None:
+        pass
 
 
 def _make_command(
@@ -224,6 +241,50 @@ class TestPrLifecycleMergeEffectGoldenChain:
         """ProtocolGitHubMergeAdapter is runtime_checkable."""
         assert isinstance(_RecordingGitHubMergeAdapter(), ProtocolGitHubMergeAdapter)
         assert isinstance(_FailingGitHubMergeAdapter(), ProtocolGitHubMergeAdapter)
+
+    async def test_correlation_id_posted_as_pr_comment(self) -> None:
+        """After a successful merge, correlation_id is posted as a PR comment."""
+        adapter = _RecordingGitHubMergeAdapter()
+        handler = HandlerPrLifecycleMerge(github_adapter=adapter)
+        cid = uuid4()
+        command = _make_command(
+            pr_number=303,
+            repo="OmniNode-ai/omnimarket",
+            triage_verdict="green",
+            use_merge_queue=False,
+            correlation_id=cid,
+        )
+
+        result = await handler.handle(command)
+
+        assert result.merged is True
+        assert len(adapter.comments) == 1
+        comment = adapter.comments[0]
+        assert comment["pr_number"] == 303
+        assert comment["repo"] == "OmniNode-ai/omnimarket"
+        assert str(cid) in str(comment["body"])
+
+    async def test_comment_failure_does_not_fail_merge(self) -> None:
+        """A failing post_pr_comment does not cause merged=False."""
+
+        class _CommentFailingAdapter:
+            async def merge_pr(
+                self, repo: str, pr_number: int, use_merge_queue: bool
+            ) -> str:
+                return f"auto-merge enabled for {repo}#{pr_number}"
+
+            async def post_pr_comment(
+                self, repo: str, pr_number: int, body: str
+            ) -> None:
+                raise RuntimeError("GitHub comment API unavailable")
+
+        handler = HandlerPrLifecycleMerge(github_adapter=_CommentFailingAdapter())
+        command = _make_command(triage_verdict="green")
+
+        result = await handler.handle(command)
+
+        assert result.merged is True
+        assert result.error is None
 
     async def test_ticket_id_optional(self) -> None:
         """ticket_id=None is allowed and does not affect merge execution."""
