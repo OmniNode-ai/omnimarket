@@ -36,8 +36,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from omnibase_compat.overseer import ModelSessionContract
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_session_bootstrap.models.model_session_contract import (
+    ModelSessionContract,
+)
 
 _TOPIC_SESSION_CRON_HEALTH_VIOLATION = (
     "onex.evt.omnimarket.session-cron-health-violation.v1"

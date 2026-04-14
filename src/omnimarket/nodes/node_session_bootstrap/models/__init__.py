@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Models for node_session_bootstrap."""
 
-from omnibase_compat.overseer import ModelSessionContract
-
+from omnimarket.nodes.node_session_bootstrap.models.model_session_contract import (
+    ModelSessionContract,
+)
 from omnimarket.nodes.node_session_bootstrap.models.model_task_contract import (
     EnumDodCheckType,
     ModelDodEvidenceCheck,
