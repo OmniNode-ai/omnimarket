@@ -99,7 +99,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
       - name: Pytest
-        run: uv run pytest tests/ -v --tb=short
+        run: uv run pytest tests/ -v --tb=short -m "not kafka"
 
   topic-naming-lint:
     runs-on: ubuntu-latest
