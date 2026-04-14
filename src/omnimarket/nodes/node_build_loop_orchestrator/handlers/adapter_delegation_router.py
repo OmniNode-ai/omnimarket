@@ -133,40 +133,41 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         )
         logger.info("GLM reviewer configured: %s (model=glm-4.7-flash)", glm_review_url)
 
-    # Local fast: Qwen3-14B on .201:8001
-    local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "http://192.168.86.201:8001")
-    configs[EnumModelTier.LOCAL_FAST] = ModelEndpointConfig(
-        tier=EnumModelTier.LOCAL_FAST,
-        base_url=local_fast_url,
-        model_id="default",
-        max_tokens=2048,
-        context_window=40000,
-        timeout_seconds=60.0,
-    )
+    # Local fast: Qwen3-14B — URL from model_policy.yaml (LLM_CODER_FAST_URL)
+    local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")
+    if local_fast_url:
+        configs[EnumModelTier.LOCAL_FAST] = ModelEndpointConfig(
+            tier=EnumModelTier.LOCAL_FAST,
+            base_url=local_fast_url,
+            model_id="default",
+            max_tokens=2048,
+            context_window=40000,
+            timeout_seconds=60.0,
+        )
 
-    # Local coder: Qwen3-Coder-30B on .201:8000
-    local_coder_url = os.environ.get("LLM_CODER_URL", "http://192.168.86.201:8000")
-    configs[EnumModelTier.LOCAL_CODER] = ModelEndpointConfig(
-        tier=EnumModelTier.LOCAL_CODER,
-        base_url=local_coder_url,
-        model_id="default",
-        max_tokens=4096,
-        context_window=64000,
-        timeout_seconds=120.0,
-    )
+    # Local coder: Qwen3-Coder-30B — URL from model_policy.yaml (LLM_CODER_URL)
+    local_coder_url = os.environ.get("LLM_CODER_URL", "")
+    if local_coder_url:
+        configs[EnumModelTier.LOCAL_CODER] = ModelEndpointConfig(
+            tier=EnumModelTier.LOCAL_CODER,
+            base_url=local_coder_url,
+            model_id="default",
+            max_tokens=4096,
+            context_window=64000,
+            timeout_seconds=120.0,
+        )
 
-    # Local reasoning: DeepSeek-R1 on .200:8101
-    local_reasoning_url = os.environ.get(
-        "LLM_DEEPSEEK_R1_URL", "http://192.168.86.200:8101"
-    )
-    configs[EnumModelTier.LOCAL_REASONING] = ModelEndpointConfig(
-        tier=EnumModelTier.LOCAL_REASONING,
-        base_url=local_reasoning_url,
-        model_id="default",
-        max_tokens=4096,
-        context_window=32000,
-        timeout_seconds=120.0,
-    )
+    # Local reasoning: DeepSeek-R1 — URL from model_policy.yaml (LLM_DEEPSEEK_R1_URL)
+    local_reasoning_url = os.environ.get("LLM_DEEPSEEK_R1_URL", "")
+    if local_reasoning_url:
+        configs[EnumModelTier.LOCAL_REASONING] = ModelEndpointConfig(
+            tier=EnumModelTier.LOCAL_REASONING,
+            base_url=local_reasoning_url,
+            model_id="default",
+            max_tokens=4096,
+            context_window=32000,
+            timeout_seconds=120.0,
+        )
 
     # Frontier Google (Gemini)
     google_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get(

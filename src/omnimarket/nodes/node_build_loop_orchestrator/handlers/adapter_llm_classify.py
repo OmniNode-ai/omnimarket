@@ -72,8 +72,9 @@ class AdapterLlmClassify:
         else:
             base_url = llm_url or os.environ.get("LLM_CODER_FAST_URL", "")
             if not base_url:
-                raise ValueError(
-                    "LLM URL required: pass llm_url, provider, or set LLM_CODER_FAST_URL"
+                raise RuntimeError(
+                    "Model endpoint for policy 'coder_fast' not configured. "
+                    "Set LLM_CODER_FAST_URL env var to an OpenAI-compatible base URL."
                 )
             self._provider = AdapterLlmProviderOpenai(
                 base_url=base_url,

@@ -4,7 +4,7 @@ Wires real sub-handler implementations into the HandlerBuildLoopOrchestrator
 and runs the autonomous build loop against the Linear Active Sprint.
 
 Usage:
-    cd /Volumes/PRO-G40/Code/omni_home/omnimarket
+    cd $OMNI_HOME/omnimarket
     source ~/.omnibase/.env
     uv run python -m omnimarket.nodes.node_build_loop_orchestrator.assemble_live --max-cycles 3
 
@@ -70,12 +70,12 @@ logger = logging.getLogger(__name__)
 LINEAR_API_URL = "https://api.linear.app/graphql"
 LINEAR_TEAM_ID = "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6"
 
-OMNI_HOME = Path("/Volumes/PRO-G40/Code/omni_home")
-WORKTREE_ROOT = Path("/Volumes/PRO-G40/Code/omni_worktrees")
+OMNI_HOME = Path(os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home")))
+WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", str(Path.home() / "Code" / "omni_worktrees")))
 
-# LLM endpoints (OpenAI-compatible)
-LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "http://192.168.86.201:8001")
-LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "http://192.168.86.201:8000")
+# LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
+LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
+LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "")
 
 # Frontier: GLM-4.5 (primary code generation backend)
 LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
@@ -466,6 +466,13 @@ class LiveTicketClassifyHandler:
 
             Respond with ONLY the classification word, nothing else.
         """)
+
+        if not LLM_FAST_URL:
+            logger.warning(
+                "[CLASSIFY] LLM_CODER_FAST_URL not set — falling back to keyword heuristic for %s",
+                ticket.ticket_id,
+            )
+            return self._keyword_fallback(ticket), "keyword_fallback", "LLM_CODER_FAST_URL not set"
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -866,16 +873,16 @@ class LiveBuildDispatchHandler:
                 return impl, LLM_GLM_MODEL_NAME
 
         # Tier 2: Local coder (Qwen3-Coder-30B, longer context)
-        coder_model = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
-        impl = await self._call_llm(
-            url=f"{LLM_CODER_URL}/v1/chat/completions",
-            model=coder_model,
-            prompt=prompt,
-            max_tokens=4096,
-        )
-
-        if impl and "_skip" not in impl:
-            return impl, "qwen3-coder-30b"
+        if LLM_CODER_URL:
+            coder_model = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+            impl = await self._call_llm(
+                url=f"{LLM_CODER_URL}/v1/chat/completions",
+                model=coder_model,
+                prompt=prompt,
+                max_tokens=4096,
+            )
+            if impl and "_skip" not in impl:
+                return impl, "qwen3-coder-30b"
 
         # Tier 3: Frontier fallback (OpenAI)
         if OPENAI_API_KEY:
