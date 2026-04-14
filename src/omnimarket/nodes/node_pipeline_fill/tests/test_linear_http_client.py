@@ -197,9 +197,11 @@ async def test_graphql_query_uses_project_id_filter() -> None:
     variables = captured_body.get("variables", {})
 
     assert "projectId" in variables, "Must pass projectId variable, not projectName"
-    assert "name" not in query or "project: { name" not in query, (
+    assert "project: { name" not in query, (
         "Query must not use name filter — Linear rejects it with 400"
     )
-    assert "id: { eq" in query or "$projectId" in query, (
-        "Query must filter by project ID"
+    # Verify $projectId is used inside the project filter context, not just declared
+    assert "project: {" in query, "Query must contain a project filter block"
+    assert "id: { eq" in query, (
+        "Query must filter by project ID inside the project filter (project: { id: { eq ... })"
     )
