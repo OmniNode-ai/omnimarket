@@ -121,6 +121,95 @@ async def kafka_integration_bus(
         await bus.close()
 
 
+_ALLOWED_TABLES: frozenset[str] = frozenset(
+    {
+        # omnibase_infra migration tables
+        "agent_actions",
+        "agent_detection_failures",
+        "agent_execution_logs",
+        "agent_identities",
+        "agent_learnings",
+        "agent_routing_decisions",
+        "agent_session_snapshots",
+        "agent_status_events",
+        "agent_transformation_events",
+        "baselines",
+        "baselines_breakdown",
+        "baselines_comparisons",
+        "baselines_trend",
+        "build_loop_cycles",
+        "capability_scores",
+        "change_frames",
+        "ci_failure_events",
+        "consumer_health_events",
+        "consumer_health_triage",
+        "consumer_restart_state",
+        "context_audit_events",
+        "context_enrichment_events",
+        "contracts",
+        "db_error_tickets",
+        "db_metadata",
+        "debug_fix_records",
+        "debug_trigger_records",
+        "decision_conflicts",
+        "decision_store",
+        "delta_bundles",
+        "delta_metrics_by_model",
+        "domain_taxonomy",
+        "event_ledger",
+        "failure_signatures",
+        "failure_streaks",
+        "finding_fix_pairs",
+        "fix_transitions",
+        "frame_pr_association",
+        "fsm_state",
+        "fsm_state_history",
+        "gmail_intent_evaluations",
+        "injection_effectiveness",
+        "injection_recorded_events",
+        "latency_breakdowns",
+        "learned_patterns",
+        "llm_call_metrics",
+        "llm_cost_aggregates",
+        "llm_routing_decisions",
+        "manifest_injection_lifecycle",
+        "merge_gate_decisions",
+        "objective_evaluations",
+        "pattern_candidates",
+        "pattern_disable_events",
+        "pattern_hit_rates",
+        "pattern_injections",
+        "pattern_learning_artifacts",
+        "pattern_lifecycle",
+        "pattern_lifecycle_transitions",
+        "pattern_measured_attributions",
+        "plan_reviewer_model_accuracy",
+        "plan_reviewer_strategy_runs",
+        "pr_envelopes",
+        "registration_projections",
+        "review_findings",
+        "review_fixes",
+        "router_performance_metrics",
+        "routing_feedback_scores",
+        "routing_outcomes",
+        "runtime_error_triage",
+        "schema_migrations",
+        "session_outcomes",
+        "sessions",
+        "skill_executions",
+        "topics",
+        "user_persona_snapshots",
+        "validation_event_ledger",
+        "workflow_executions",
+        "workflow_steps",
+        # omnimarket node migration tables
+        "nightly_loop_decisions",
+        "nightly_loop_iterations",
+        "review_bot_bypass_log",
+    }
+)
+
+
 async def wait_for_db_row(
     conn: asyncpg.Connection,
     table: str,
@@ -142,8 +231,13 @@ async def wait_for_db_row(
         First matching row as a dict
 
     Raises:
+        ValueError: If table is not in the known allowlist
         TimeoutError: If no matching row appears within timeout seconds
     """
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(
+            f"Unknown table: {table!r} — add it to _ALLOWED_TABLES in conftest.py"
+        )
     deadline = time.monotonic() + timeout
     while True:
         rows = await conn.fetch(f"SELECT * FROM {table}")
