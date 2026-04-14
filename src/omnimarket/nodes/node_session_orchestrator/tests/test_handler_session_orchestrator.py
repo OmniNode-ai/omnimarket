@@ -10,6 +10,7 @@ returns a valid ModelHealthDimensionResult without leaking.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
@@ -225,8 +226,11 @@ class TestPhase1ProbeException:
         assert "SSH timeout" in dim.details.get("error", "")
 
 
-class TestPhase2Stub:
-    def test_phase2_returns_empty_queue(self) -> None:
+class TestPhase2RSD:
+    def test_phase2_empty_queue_when_no_linear_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LINEAR_API_KEY", raising=False)
         probes = [_green_probe(f"d{i}") for i in range(8)]
         handler = HandlerSessionOrchestrator(probes=probes)
         cmd = ModelSessionOrchestratorCommand(dry_run=True, phase=2)
@@ -235,28 +239,175 @@ class TestPhase2Stub:
         assert result.status == EnumSessionStatus.COMPLETE
         assert result.dispatch_queue == []
 
+    def test_score_tickets_urgent_beats_low_priority_same_age(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[])
+        tickets = [
+            {
+                "identifier": "OMN-100",
+                "title": "Low priority",
+                "priority": 4,
+                "labels": {"nodes": []},
+                "updatedAt": "2026-04-12T00:00:00Z",
+                "children": {"nodes": []},
+            },
+            {
+                "identifier": "OMN-101",
+                "title": "Urgent",
+                "priority": 1,
+                "labels": {"nodes": []},
+                "updatedAt": "2026-04-12T00:00:00Z",
+                "children": {"nodes": []},
+            },
+        ]
+        scored = handler._score_tickets(tickets, {})  # noqa: SLF001
+        scored.sort(key=lambda x: -x.rsd_score)
+        # Same staleness — higher acceleration_value wins
+        assert scored[0].ticket_id == "OMN-101"
 
-class TestPhase3Stub:
-    def test_phase3_returns_stub_receipts_for_nonempty_queue(self) -> None:
+    def test_score_tickets_standing_order_boost(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[])
+        tickets = [
+            {
+                "identifier": "OMN-200",
+                "title": "Normal ticket",
+                "priority": 3,
+                "labels": {"nodes": []},
+                "updatedAt": "2026-04-01T00:00:00Z",
+                "children": {"nodes": []},
+            },
+        ]
+        without_boost = handler._score_tickets(tickets, {})  # noqa: SLF001
+        with_boost = handler._score_tickets(tickets, {"OMN-200": 5.0})  # noqa: SLF001
+        assert with_boost[0].rsd_score > without_boost[0].rsd_score
+
+    def test_score_tickets_breaking_change_label_raises_risk(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[])
+        base = [
+            {
+                "identifier": "OMN-300",
+                "title": "Normal",
+                "priority": 2,
+                "labels": {"nodes": []},
+                "updatedAt": "2026-04-01T00:00:00Z",
+                "children": {"nodes": []},
+            }
+        ]
+        risky = [
+            {
+                "identifier": "OMN-301",
+                "title": "Breaking",
+                "priority": 2,
+                "labels": {"nodes": [{"name": "breaking-change"}]},
+                "updatedAt": "2026-04-01T00:00:00Z",
+                "children": {"nodes": []},
+            }
+        ]
+        base_score = handler._score_tickets(base, {})[0].rsd_score  # noqa: SLF001
+        risky_score = handler._score_tickets(risky, {})[0].rsd_score  # noqa: SLF001
+        assert risky_score < base_score
+
+    def test_load_standing_orders_returns_empty_on_missing_file(
+        self, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        handler = HandlerSessionOrchestrator(probes=[])
+        result = handler._load_standing_orders(str(tmp_path / "nonexistent.json"))  # noqa: SLF001
+        assert result == {}
+
+    def test_load_standing_orders_skips_expired(
+        self, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        import json as _json
+
+        orders_path = tmp_path / "standing_orders.json"
+        orders_path.write_text(
+            _json.dumps(
+                [
+                    {
+                        "ticket_id": "OMN-999",
+                        "priority_override": 3.0,
+                        "expires_at": "2020-01-01T00:00:00Z",
+                    },
+                    {
+                        "ticket_id": "OMN-998",
+                        "priority_override": 2.0,
+                        "expires_at": "2099-01-01T00:00:00Z",
+                    },
+                ]
+            )
+        )
+        handler = HandlerSessionOrchestrator(probes=[])
+        result = handler._load_standing_orders(str(orders_path))  # noqa: SLF001
+        assert "OMN-999" not in result
+        assert result.get("OMN-998") == 2.0
+
+
+class TestPhase3Dispatch:
+    def test_phase3_dry_run_returns_receipts_without_subprocess(self) -> None:
         probes = [_green_probe(f"d{i}") for i in range(8)]
         handler = HandlerSessionOrchestrator(probes=probes)
-        cmd = ModelSessionOrchestratorCommand(dry_run=True, phase=0)
-        result = handler.handle(cmd)
-
-        assert result.status == EnumSessionStatus.COMPLETE
-        assert result.dispatch_receipts == []
-
-    def test_phase3_stub_with_manual_queue(self) -> None:
-        """Verify stub dispatch path produces STUB receipts for nonempty queue."""
-        probes = [_green_probe(f"d{i}") for i in range(8)]
-        handler = HandlerSessionOrchestrator(probes=probes)
-        receipts = handler._run_phase3_stub(  # noqa: SLF001
+        receipts = handler._run_phase3(  # noqa: SLF001
             "sess-test",
-            ["OMN-1234", "PR-42"],
+            ["OMN-1234", "OMN-5678"],
             ModelSessionOrchestratorCommand(dry_run=True),
         )
         assert len(receipts) == 2
-        assert all(r.startswith("STUB:not-dispatched:") for r in receipts)
+        parsed = [json.loads(r) for r in receipts]
+        assert all(p["status"] == "dry_run" for p in parsed)
+        assert parsed[0]["ticket_id"] == "OMN-1234"
+        assert parsed[1]["ticket_id"] == "OMN-5678"
+
+    def test_phase3_empty_queue_returns_empty(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[])
+        receipts = handler._run_phase3(  # noqa: SLF001
+            "sess-test", [], ModelSessionOrchestratorCommand(dry_run=True)
+        )
+        assert receipts == []
+
+    def test_phase3_caps_at_5_items(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[])
+        queue = [f"OMN-{i}" for i in range(10)]
+        receipts = handler._run_phase3(  # noqa: SLF001
+            "sess-test", queue, ModelSessionOrchestratorCommand(dry_run=True)
+        )
+        assert len(receipts) == 5
+
+    def test_phase3_correlation_chain_format(self) -> None:
+        handler = HandlerSessionOrchestrator(probes=[])
+        receipts = handler._run_phase3(  # noqa: SLF001
+            "sess-test",
+            ["OMN-42"],
+            ModelSessionOrchestratorCommand(
+                session_id="sess-test", correlation_id="sess-test", dry_run=True
+            ),
+        )
+        parsed = json.loads(receipts[0])
+        assert parsed["correlation_chain"].startswith("sess-test.disp-001.OMN-42")
+
+    def test_phase3_writes_inflight_yaml(
+        self, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        import yaml as _yaml
+
+        handler = HandlerSessionOrchestrator(probes=[])
+        state_dir = str(tmp_path / "session")
+        handler._run_phase3(  # noqa: SLF001
+            "sess-test",
+            ["OMN-1"],
+            ModelSessionOrchestratorCommand(dry_run=False, state_dir=state_dir),
+        )
+        inflight_path = tmp_path / "session" / "in_flight.yaml"
+        assert inflight_path.exists()
+        data = _yaml.safe_load(inflight_path.read_text())
+        assert data["session_id"] == "sess-test"
+        assert data["resumable"] is True
+        assert "OMN-1" in data["dispatch_queue"]
+
+    def test_full_session_phase0_dry_run_completes(self) -> None:
+        probes = [_green_probe(f"d{i}") for i in range(8)]
+        handler = HandlerSessionOrchestrator(probes=probes)
+        cmd = ModelSessionOrchestratorCommand(dry_run=True, phase=0, skip_health=True)
+        result = handler.handle(cmd)
+        assert result.status == EnumSessionStatus.COMPLETE
 
 
 class TestGateDecisionLogic:
