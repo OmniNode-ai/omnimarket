@@ -296,3 +296,41 @@ async def test_state_file_written_after_dispatch(tmp_path: Path) -> None:
     state = _yaml.safe_load(dispatched_path.read_text())
     in_flight_ids = [e["ticket_id"] for e in state.get("in_flight", [])]
     assert "OMN-99" in in_flight_ids
+
+
+# ---------------------------------------------------------------------------
+# OMN-8712: no-bus path must persist dispatched.yaml for wave-cap accounting
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_bus_path_writes_dispatched_yaml(tmp_path: Path) -> None:
+    """When event_bus is None (no-bus mode), dispatched.yaml must still be written.
+
+    Wave-cap accounting on repeated headless invocations depends on this file.
+    """
+    import yaml as _yaml
+
+    tickets = [_make_ticket("OMN-77")]
+    linear_client = AsyncMock()
+    linear_client.list_active_sprint_unstarted.return_value = tickets
+
+    # No event_bus injected — simulates headless/no-bus execution
+    handler = HandlerPipelineFill(linear_client=linear_client, event_bus=None)
+    cmd = _make_command(top_n=1, dry_run=False, tmp_path=tmp_path)
+    with patch(
+        "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._resolve_omni_home",
+        return_value=tmp_path,
+    ):
+        result = await handler.handle(cmd)
+
+    assert "OMN-77" in result.dispatched, "no-bus path must record dispatch in result"
+
+    dispatched_path = tmp_path / "dispatched.yaml"
+    assert dispatched_path.exists(), (
+        "dispatched.yaml must be written even in no-bus mode"
+    )
+    state = _yaml.safe_load(dispatched_path.read_text())
+    in_flight_ids = [e["ticket_id"] for e in state.get("in_flight", [])]
+    assert "OMN-77" in in_flight_ids, "no-bus dispatch must appear in in_flight state"

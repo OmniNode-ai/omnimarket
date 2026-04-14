@@ -46,9 +46,12 @@ logger = logging.getLogger(__name__)
 HandlerType = Literal["NODE_HANDLER"]
 HandlerCategory = Literal["ORCHESTRATOR"]
 
-# Linear project name that contains the active sprint backlog.
-# No Linear cycles exist for this team; tickets live in this project.
-_ACTIVE_SPRINT_PROJECT = "Active Sprint"
+# Linear project ID for the active sprint backlog.
+# Linear rejects name-based project filters (400); must use project ID.
+# Override via LINEAR_ACTIVE_SPRINT_PROJECT_ID env var.
+_ACTIVE_SPRINT_PROJECT_ID = os.environ.get(
+    "LINEAR_ACTIVE_SPRINT_PROJECT_ID", "1af15047-d06a-4ffc-855d-da70ff124dba"
+)
 _UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
 
 HANDLER_TYPE: HandlerType = "NODE_HANDLER"
@@ -62,14 +65,14 @@ _TOPIC_PIPELINE_FILL_COMPLETED = "onex.evt.omnimarket.pipeline-fill-completed.v1
 _LINEAR_API_URL = "https://api.linear.app/graphql"
 
 _QUERY_ACTIVE_SPRINT_UNSTARTED = """
-query ActiveSprintUnstarted($projectName: String!, $first: Int!) {
+query ActiveSprintUnstarted($projectId: ID!, $first: Int!) {
   issues(
     filter: {
-      project: { name: { eq: $projectName } }
+      project: { id: { eq: $projectId } }
       state: { type: { in: ["backlog", "unstarted"] } }
     }
     first: $first
-    orderBy: priority
+    orderBy: updatedAt
   ) {
     nodes {
       id
@@ -98,7 +101,7 @@ class LinearHttpClient:
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key or os.environ.get("LINEAR_API_KEY", "")
 
-    async def _list_issues(self, project: str, limit: int = 250) -> dict[str, Any]:
+    async def _list_issues(self, project_id: str, limit: int = 250) -> dict[str, Any]:
         """Execute the GraphQL query against the Linear API."""
         import urllib.request
 
@@ -110,7 +113,7 @@ class LinearHttpClient:
 
         payload = {
             "query": _QUERY_ACTIVE_SPRINT_UNSTARTED,
-            "variables": {"projectName": project, "first": limit},
+            "variables": {"projectId": project_id, "first": limit},
         }
         body = __import__("json").dumps(payload).encode()
         req = urllib.request.Request(
@@ -137,7 +140,7 @@ class LinearHttpClient:
 
     async def list_active_sprint_unstarted(self) -> list[dict[str, Any]]:
         """Return all unstarted (Backlog/unstarted state) tickets from the active sprint project."""
-        page = await self._list_issues(project=_ACTIVE_SPRINT_PROJECT)
+        page = await self._list_issues(project_id=_ACTIVE_SPRINT_PROJECT_ID)
         all_issues: list[dict[str, Any]] = []
         for issue in page.get("issues", []):
             state_name = (

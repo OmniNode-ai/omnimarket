@@ -4,14 +4,16 @@
 
 Regression for OMN-8710: pipeline_fill returned 0 candidates because no
 LinearClient was injected and the fallback was an empty list.
+Regression for OMN-8712: LinearHttpClient used name filter (400); must use project ID.
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -157,4 +159,47 @@ async def test_handler_uses_linear_http_client_when_no_client_injected(
 
     assert result.candidates_found > 0, (
         "HandlerPipelineFill() with no injected client must find candidates via LinearHttpClient"
+    )
+
+
+# ---------------------------------------------------------------------------
+# OMN-8712: GraphQL query must use project ID filter, not name filter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_graphql_query_uses_project_id_filter() -> None:
+    """_list_issues must send projectId variable and id-based filter, not name filter.
+
+    Linear rejects `project: { name: { eq: ... } }` with 400. The query must
+    use `project: { id: { eq: $projectId } }` instead.
+    """
+
+    captured_body: dict[str, Any] = {}
+
+    def _mock_urlopen(req: Any, timeout: int = 15) -> Any:
+        body = json.loads(req.data.decode())
+        captured_body.update(body)
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.read.return_value = json.dumps(
+            {"data": {"issues": {"nodes": []}}}
+        ).encode()
+        return mock_resp
+
+    client = LinearHttpClient(api_key="test-key")
+    with patch("urllib.request.urlopen", side_effect=_mock_urlopen):
+        await client.list_active_sprint_unstarted()
+
+    query = captured_body.get("query", "")
+    variables = captured_body.get("variables", {})
+
+    assert "projectId" in variables, "Must pass projectId variable, not projectName"
+    assert "name" not in query or "project: { name" not in query, (
+        "Query must not use name filter — Linear rejects it with 400"
+    )
+    assert "id: { eq" in query or "$projectId" in query, (
+        "Query must filter by project ID"
     )
