@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Locate the model_policy.yaml file relative to the package root
 # ---------------------------------------------------------------------------
