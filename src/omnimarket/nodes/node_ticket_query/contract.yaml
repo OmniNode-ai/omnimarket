@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ticket Query
+#
+# Effect node: queries tickets from the project tracker via ProtocolProjectTracker.
+# Replaces direct mcp__linear-server__list_issues / mcp__linear-server__get_issue
+# calls in skill prompts.
+#
+# Related Tickets:
+#   - OMN-8772: Create missing ProtocolProjectTracker handler nodes
+#   - OMN-8771: Replace hardcoded mcp__linear-server__ in skill prompts
+name: "node_ticket_query"
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Effect node: queries tickets from ProtocolProjectTracker. Replaces mcp__linear-server__list_issues / get_issue calls in skill prompts."
+publish_topics:
+  - topic: "onex.evt.omnimarket.ticket-query-completed.v1"
+    description: "Emitted when ticket query completes successfully."
+subscribe_topics:
+  - topic: "onex.cmd.omnimarket.ticket-query.v1"
+    description: "Command to query tickets from the project tracker."
+input_model:
+  name: "ModelTicketQueryInput"
+  module: "omnimarket.nodes.node_ticket_query.models.model_ticket_query_input"
+  description: "Query parameters: optional text query, filters, and limit."
+output_model:
+  name: "ModelTicketQueryOutput"
+  module: "omnimarket.nodes.node_ticket_query.models.model_ticket_query_output"
+  description: "Query results: list of matching issues."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "query_tickets"
+      handler:
+        name: "HandlerTicketQuery"
+        module: "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_query"
+golden_path:
+  - step: "Publish onex.cmd.omnimarket.ticket-query.v1 with query='OMN-8771' and limit=10"
+  - step: "HandlerTicketQuery resolves ProtocolProjectTracker from DI container"
+  - step: "Handler calls tracker.search_issues(query, limit) or tracker.list_issues(filters, limit)"
+  - step: "Returns ModelTicketQueryOutput with matching issues list"
+  - step: "Emits onex.evt.omnimarket.ticket-query-completed.v1"
+dod_evidence:
+  - "test_golden_chain_ticket_query.py passes with EventBusInmemory + mock ProtocolProjectTracker"
+  - "HandlerTicketQuery contains zero mcp__linear-server__ references"
+  - "uv run onex run node_ticket_query resolves without import errors"
+  - "Entry point registered in pyproject.toml under [project.entry-points.'onex.nodes']"
+metadata:
+  description: "Ticket query node — ProtocolProjectTracker dispatch layer"
+  author: "OmniNode Team"
+  created: "2026-04-14"
+  tags:
+    - "effect"
+    - "ticket-query"
+    - "protocol-project-tracker"
+    - "OMN-8771"
+    - "OMN-8772"
+  related_tickets:
+    - "OMN-8771"
+    - "OMN-8772"

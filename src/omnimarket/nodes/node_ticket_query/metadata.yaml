@@ -1,0 +1,24 @@
+name: node_ticket_query
+version: "1.0.0"
+description: "Effect node: queries tickets from ProtocolProjectTracker. Replaces direct mcp__linear-server__ calls in skill prompts."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ticket_query: "omnimarket.nodes.node_ticket_query"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_spi>=0.3.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "ticket-query", "protocol-project-tracker", "linear"]
+pack: "ticketing"
+display_name: "Ticket Query"
+node_role: "query"
