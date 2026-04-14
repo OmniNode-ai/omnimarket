@@ -376,7 +376,7 @@ class NodePlatformReadiness:
                     "ssh",
                     _INFRA_SSH_TARGET,
                     "docker exec omnibase-infra-postgres psql -U postgres -d omnibase_infra -t -c "
-                    "\"SELECT COUNT(*) FROM baselines WHERE created_at > NOW() - INTERVAL '7 days';\"",
+                    "\"SELECT COUNT(*) FROM baselines_comparisons WHERE created_at > NOW() - INTERVAL '7 days';\"",
                 ],
                 capture_output=True,
                 text=True,
