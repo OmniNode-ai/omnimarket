@@ -270,11 +270,18 @@ def pytest_collect_file(parent: pytest.Collector, file_path: Any) -> None:
         return
 
     for node in ast.walk(tree):
-        if (
+        is_forbidden_from_import = (
             isinstance(node, ast.ImportFrom)
             and node.names
-            and any(alias.name == "EventBusInmemory" for alias in node.names)
-        ):
+            and (
+                any(alias.name == "EventBusInmemory" for alias in node.names)
+                or (node.module and "event_bus_inmemory" in node.module)
+            )
+        )
+        is_forbidden_module_import = isinstance(node, ast.Import) and any(
+            "event_bus_inmemory" in alias.name for alias in node.names
+        )
+        if is_forbidden_from_import or is_forbidden_module_import:
             pytest.fail(
                 f"[OMN-8726] {path_str} imports EventBusInmemory — "
                 "integration tests must use kafka_integration_bus fixture, "
