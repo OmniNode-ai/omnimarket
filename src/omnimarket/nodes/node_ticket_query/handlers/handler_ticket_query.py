@@ -25,7 +25,7 @@ from omnimarket.nodes.node_ticket_query.models.model_ticket_query_output import 
 )
 
 if TYPE_CHECKING:
-    from omnibase_spi.protocols.services.protocol_project_tracker import (
+    from omnibase_spi.protocols.services.protocol_project_tracker import (  # type: ignore[import-not-found]
         ProtocolProjectTracker,
     )
 

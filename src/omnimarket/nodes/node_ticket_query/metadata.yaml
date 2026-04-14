@@ -21,4 +21,4 @@ license: "MIT"
 tags: ["effect", "ticket-query", "protocol-project-tracker", "linear"]
 pack: "ticketing"
 display_name: "Ticket Query"
-node_role: "query"
+node_role: "effect"
