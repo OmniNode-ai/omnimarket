@@ -34,6 +34,7 @@ class EnumFlowStatus(StrEnum):
     EMPTY_TABLE = "EMPTY_TABLE"
     MISSING_TABLE = "MISSING_TABLE"
     PRODUCER_DOWN = "PRODUCER_DOWN"
+    TOPIC_STALE = "TOPIC_STALE"
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +56,8 @@ class ModelFlowInput(BaseModel):
     table_row_count: int = 0
     table_has_recent_data: bool = False
     field_mapping_valid: bool = True
+    newest_message_age_seconds: float | None = None
+    stale_threshold_seconds: float = 1800.0  # 30 min default (OMN-8691)
 
 
 class ModelFlowResult(BaseModel):
@@ -190,6 +193,30 @@ class NodeDataFlowSweep:
                 table_row_count=flow.table_row_count,
                 field_mapping_valid=flow.field_mapping_valid,
                 message=f"Consumer lag: {flow.consumer_lag}",
+            )
+
+        # OMN-8691: Check topic-level message staleness before table staleness.
+        # This catches cases where the topic producer stopped (e.g. heartbeat loop
+        # never started) even when the DB table has existing rows.
+        if (
+            flow.newest_message_age_seconds is not None
+            and flow.newest_message_age_seconds > flow.stale_threshold_seconds
+        ):
+            age_min = int(flow.newest_message_age_seconds / 60)
+            threshold_min = int(flow.stale_threshold_seconds / 60)
+            return ModelFlowResult(
+                topic=flow.topic,
+                handler_name=flow.handler_name,
+                table_name=flow.table_name,
+                producer_status=flow.producer_status,
+                flow_status=EnumFlowStatus.TOPIC_STALE,
+                consumer_lag=flow.consumer_lag,
+                table_row_count=flow.table_row_count,
+                field_mapping_valid=flow.field_mapping_valid,
+                message=(
+                    f"Newest message in {flow.topic} is {age_min}min old "
+                    f"(threshold: {threshold_min}min)"
+                ),
             )
 
         if not flow.table_has_recent_data:
