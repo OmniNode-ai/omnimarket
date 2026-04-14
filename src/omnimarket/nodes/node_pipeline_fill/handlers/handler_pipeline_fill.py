@@ -46,6 +46,11 @@ logger = logging.getLogger(__name__)
 HandlerType = Literal["NODE_HANDLER"]
 HandlerCategory = Literal["ORCHESTRATOR"]
 
+# Linear project name that contains the active sprint backlog.
+# No Linear cycles exist for this team; tickets live in this project.
+_ACTIVE_SPRINT_PROJECT = "Active Sprint"
+_UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
+
 HANDLER_TYPE: HandlerType = "NODE_HANDLER"
 HANDLER_CATEGORY: HandlerCategory = "ORCHESTRATOR"
 
@@ -53,8 +58,96 @@ HANDLER_CATEGORY: HandlerCategory = "ORCHESTRATOR"
 _TOPIC_TICKET_PIPELINE_START = "onex.cmd.omnimarket.ticket-pipeline-start.v1"
 _TOPIC_PIPELINE_FILL_COMPLETED = "onex.evt.omnimarket.pipeline-fill-completed.v1"
 
-# Linear state names considered "unstarted"
-_UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
+
+_LINEAR_API_URL = "https://api.linear.app/graphql"
+
+_QUERY_ACTIVE_SPRINT_UNSTARTED = """
+query ActiveSprintUnstarted($projectName: String!, $first: Int!) {
+  issues(
+    filter: {
+      project: { name: { eq: $projectName } }
+      state: { type: { in: ["backlog", "unstarted"] } }
+    }
+    first: $first
+    orderBy: priority
+  ) {
+    nodes {
+      id
+      identifier
+      title
+      priority
+      description
+      createdAt
+      state { name }
+      labels { nodes { name } }
+      relations { nodes { type relatedIssue { state { name } } } }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+
+class LinearHttpClient:
+    """Default Linear client: queries the active sprint project via the GraphQL API.
+
+    Reads LINEAR_API_KEY from the environment. In tests, patch `_list_issues`
+    to inject fixture data without hitting Linear.
+    """
+
+    def __init__(self, api_key: str | None = None) -> None:
+        self._api_key = api_key or os.environ.get("LINEAR_API_KEY", "")
+
+    async def _list_issues(self, project: str, limit: int = 250) -> dict[str, Any]:
+        """Execute the GraphQL query against the Linear API."""
+        import urllib.request
+
+        if not self._api_key:
+            logger.warning(
+                "pipeline_fill: LINEAR_API_KEY not set — returning empty result"
+            )
+            return {"issues": []}
+
+        payload = {
+            "query": _QUERY_ACTIVE_SPRINT_UNSTARTED,
+            "variables": {"projectName": project, "first": limit},
+        }
+        body = __import__("json").dumps(payload).encode()
+        req = urllib.request.Request(
+            _LINEAR_API_URL,
+            data=body,
+            headers={
+                "Authorization": self._api_key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        loop = __import__("asyncio").get_event_loop()
+        import functools
+
+        def _sync_request() -> dict[str, Any]:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return __import__("json").loads(resp.read())  # type: ignore[no-any-return]
+
+        data: dict[str, Any] = await loop.run_in_executor(
+            None, functools.partial(_sync_request)
+        )
+        nodes = data.get("data", {}).get("issues", {}).get("nodes", [])
+        return {"issues": nodes}
+
+    async def list_active_sprint_unstarted(self) -> list[dict[str, Any]]:
+        """Return all unstarted (Backlog/unstarted state) tickets from the active sprint project."""
+        page = await self._list_issues(project=_ACTIVE_SPRINT_PROJECT)
+        all_issues: list[dict[str, Any]] = []
+        for issue in page.get("issues", []):
+            state_name = (
+                issue.get("state", {}).get("name", "")
+                if isinstance(issue.get("state"), dict)
+                else ""
+            )
+            if state_name in _UNSTARTED_STATES:
+                all_issues.append(issue)
+        return all_issues
 
 
 def _load_contract() -> dict[str, Any]:
@@ -82,7 +175,9 @@ class HandlerPipelineFill:
         event_bus: Any | None = None,
     ) -> None:
         self._rsd = rsd_handler or HandlerRsdFill()
-        self._linear = linear_client  # injected in production; None => uses MCP/HTTP
+        self._linear: Any = (
+            linear_client if linear_client is not None else LinearHttpClient()
+        )
         self._event_bus = (
             event_bus  # injected in production; None => fire-and-forget log
         )
@@ -249,18 +344,8 @@ class HandlerPipelineFill:
         linear_client is injected. Returns a list of raw ticket dicts with at
         least: id, title, priority, labels, description, state.
         """
-        if self._linear is not None:
-            result: list[
-                dict[str, Any]
-            ] = await self._linear.list_active_sprint_unstarted()
-            return result
-
-        # Fallback: try Linear MCP via subprocess (headless use)
-        logger.warning(
-            "pipeline_fill: no linear_client injected — returning empty candidate list. "
-            "Inject a LinearClient or run via the full runtime with MCP wired."
-        )
-        return []
+        result: list[dict[str, Any]] = await self._linear.list_active_sprint_unstarted()
+        return result
 
     async def _dispatch_ticket(
         self, ticket: ModelScoredTicket, correlation_id: UUID
