@@ -263,14 +263,70 @@ def _probe_pr_inventory() -> ModelHealthDimensionResult:
         )
 
 
-def _probe_golden_chain() -> ModelHealthDimensionResult:
-    """Dimension 2: Golden Chain — invoke onex:golden_chain_sweep via subprocess.
+def _fetch_golden_chain_rows() -> dict[str, dict[str, object]]:
+    """Fetch most-recent row from each golden chain tail table via SSH + psql.
 
-    Runs in the caller's cwd (inherit from process). Set OMNI_HOME to point
-    at the omnimarket worktree if needed.
+    Returns a mapping of chain_name -> {field: value, ...}.
+    Empty dict on failure (probe degrades gracefully to TIMEOUT chains).
     """
+    chain_queries: dict[str, tuple[str, str, list[str]]] = {
+        # chain_name: (table, order_col, [fields])
+        "registration": (
+            "agent_routing_decisions",
+            "created_at",
+            ["correlation_id", "selected_agent"],
+        ),
+        "delegation": ("delegation_events", "id", ["correlation_id"]),
+        "routing": ("llm_routing_decisions", "id", ["correlation_id"]),
+        "evaluation": ("session_outcomes", "session_id", ["correlation_id"]),
+        "pattern_learning": (
+            "pattern_learning_artifacts",
+            "created_at",
+            ["correlation_id"],
+        ),
+    }
+    try:
+        host = _infra_host()
+        user = _infra_user()
+    except RuntimeError:
+        return {}
+
+    projected: dict[str, dict[str, object]] = {}
+    pg_pass = os.environ.get("POSTGRES_PASSWORD", "")
+
+    for chain_name, (table, order_col, fields) in chain_queries.items():
+        col_list = ", ".join(fields)
+        sql = f"SELECT {col_list} FROM {table} ORDER BY {order_col} DESC LIMIT 1"
+        cmd = [
+            "ssh",
+            "-o",
+            "ConnectTimeout=5",
+            "-o",
+            f"StrictHostKeyChecking={_ssh_host_key_checking()}",
+            f"{user}@{host}",
+            f"PGPASSWORD={pg_pass} docker exec omnibase-infra-postgres "
+            f"psql -U postgres -d omnibase_infra -t -A -F '|' -c \"{sql}\"",
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            line = res.stdout.strip()
+            if res.returncode == 0 and line:
+                values = line.split("|")
+                if len(values) == len(fields):
+                    projected[chain_name] = dict(zip(fields, values, strict=True))
+        except Exception:
+            pass
+
+    return projected
+
+
+def _probe_golden_chain() -> ModelHealthDimensionResult:
+    """Dimension 2: Golden Chain — fetch DB rows then invoke node_golden_chain_sweep."""
     omni_home = os.environ.get("OMNI_HOME")
     run_cwd = omni_home if omni_home else None
+
+    projected_rows = _fetch_golden_chain_rows()
+
     try:
         result = subprocess.run(
             [
@@ -279,20 +335,36 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
                 "python",
                 "-m",
                 "omnimarket.nodes.node_golden_chain_sweep",
-                "--dry-run",
-                "--output-json",
+                "--projected-rows",
+                json.dumps(projected_rows),
             ],
             capture_output=True,
             text=True,
             timeout=60,
             cwd=run_cwd,
         )
+        all_chains = {
+            "registration",
+            "delegation",
+            "routing",
+            "evaluation",
+            "pattern_learning",
+        }
+        missing_chains = sorted(all_chains - set(projected_rows.keys()))
         if result.returncode == 0:
             status = EnumDimensionStatus.GREEN
             actionable: list[str] = []
         else:
             status = EnumDimensionStatus.RED
-            actionable = ["Golden chain sweep failed — see omnimarket node logs"]
+            if missing_chains:
+                actionable = [
+                    f"Golden chain TIMEOUT — no DB rows for chains: {', '.join(missing_chains)}. "
+                    f"Check projection consumer logs on .201."
+                ]
+            else:
+                actionable = [
+                    "Golden chain sweep failed — missing expected fields in projected rows"
+                ]
         return ModelHealthDimensionResult(
             dimension="golden_chain",
             status=status,
@@ -301,6 +373,8 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
             stale_after=timedelta(minutes=15),
             details={
                 "returncode": result.returncode,
+                "chains_fetched": list(projected_rows.keys()),
+                "chains_missing": missing_chains,
                 "stderr_snippet": result.stderr[:200],
             },
             actionable_items=actionable,
@@ -498,7 +572,7 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
                 "-o",
                 f"StrictHostKeyChecking={_ssh_host_key_checking()}",
                 f"{user}@{host}",
-                "systemctl is-active deploy-agent.service",
+                "systemctl --user is-active deploy-agent.service",
             ],
             capture_output=True,
             text=True,
@@ -529,7 +603,7 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
                 if active
                 else [
                     f"deploy-agent.service inactive — run: "
-                    f"ssh {user}@{host} sudo systemctl start deploy-agent"
+                    f"ssh {user}@{host} systemctl --user start deploy-agent"
                 ]
             ),
             blocks_dispatch=(status == EnumDimensionStatus.RED),
