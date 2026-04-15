@@ -245,9 +245,12 @@ def run_review(
     diff_fetcher_handler = HandlerDiffFetcher(diff_fetcher_config)
     diff_fetcher = _DiffFetcherAdapter(diff_fetcher_handler)
 
-    # Concrete reviewer — reads model selection from caller (contract inputs)
+    # Concrete reviewer — reads model selection from caller (contract inputs).
+    # context_window per reviewer model comes from contract.yaml model_routing.reviewer.context_window (112K).
+    _reviewer_context_windows = dict.fromkeys(request.reviewer_models, 112000)
     _reviewer_config = LlmReviewerConfig(
         reviewer_models=request.reviewer_models,
+        model_context_windows=_reviewer_context_windows,
     )
     reviewer: ProtocolReviewer = HandlerLlmReviewer(config=_reviewer_config)
     # Stub implementations for handlers from parallel PRs (OMN-7969 to OMN-7972)
