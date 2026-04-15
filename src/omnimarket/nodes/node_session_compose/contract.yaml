@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_session_compose
+# Thin orchestrator composing session phases (platform_readiness, pipeline_fill,
+# ticket_pipeline, etc.). Dry-run scaffold ships correct wiring; live dispatch
+# currently returns a 'dispatched' placeholder — real skill invocation is
+# follow-up work tracked under OMN-8812 epic.
+
+name: node_session_compose
+contract_name: node_session_compose
+node_name: node_session_compose
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+
+node_type: ORCHESTRATOR_GENERIC
+
+description: >
+  Session compose orchestrator — composes session phases into a single
+  execution. Supports dry_run mode (returns a dry_run plan) and live
+  dispatch mode (currently returns a 'dispatched' placeholder for each
+  phase; real dispatch wiring is follow-up work).
+
+input_model:
+  name: ModelSessionComposeCommand
+  module: omnimarket.nodes.node_session_compose.models
+
+output_model:
+  name: ModelSessionComposeResult
+  module: omnimarket.nodes.node_session_compose.models
+
+execution:
+  backend: claude_code
+  model_purpose: null
+
+event_bus:
+  subscribe:
+    topic: "onex.cmd.omnimarket.session-compose.v1"
+    consumer_group: "omnimarket.session.compose"
+  publish:
+    success_topic: "onex.evt.omnimarket.session-compose-completed.v1"
+    failure_topic: "onex.evt.omnimarket.session-compose-failed.v1"
+
+capabilities:
+  - name: session.compose
+    description: Compose session phases (dry-run or live-dispatch placeholder)
+    version: 0.1.0
+
+io_operations:
+  - operation: compose
+    description: Compose a session from a list of phases
+    handler_method: handle
+    input_fields:
+      - phases: list[str]
+      - dry_run: bool
+      - fail_fast: bool
+    output_fields:
+      - success: bool
+      - dry_run: bool
+      - phase_results: list[ModelPhaseResult]
+    idempotent: true
+
+dependencies:
+  - name: handler_session_compose
+    type: handler
+    function: HandlerSessionCompose
+    module: omnimarket.nodes.node_session_compose.handlers
+    pluggable: false
+
+error_handling:
+  retry_policy:
+    max_retries: 0
+    initial_delay_ms: 0
+    max_delay_ms: 0
+    exponential_base: 1
+    retry_on: []
+  circuit_breaker:
+    enabled: false
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  maturity: scaffold
+  tags:
+    - orchestrator
+    - session
+    - compose
