@@ -68,30 +68,44 @@ class PostgresDataSource:
             row = cur.fetchone()
             return int(row[0]) if row else 0
 
+    # Timestamp columns checked in preference order; first match wins.
+    _TIMESTAMP_CANDIDATES: tuple[str, ...] = (
+        "created_at",
+        "emitted_at",
+        "ingested_at",
+        "updated_at",
+        "inserted_at",
+        "timestamp",
+    )
+
+    def _pick_sort_column(self, table_name: str) -> str | None:
+        """Return the first available timestamp column, or None for unordered."""
+        cols = set(self.get_columns(table_name))
+        for candidate in self._TIMESTAMP_CANDIDATES:
+            if candidate in cols:
+                return candidate
+        return None
+
     def get_sample_rows(
         self, table_name: str, sample_size: int
     ) -> list[dict[str, str]]:
-        """Return up to sample_size rows, newest first.
+        """Return up to sample_size rows, newest first where a timestamp column exists.
 
         All values are stringified to match the DataSource protocol
         (handler checks operate on string representations).
         """
         conn = self._get_conn()
         quoted = self._quote_table(table_name)
+        sort_col = self._pick_sort_column(table_name)
 
-        # Try ORDER BY created_at DESC for time-ordered tables,
-        # fall back to unordered if column doesn't exist
-        query = f"SELECT * FROM {quoted} ORDER BY created_at DESC LIMIT %s"
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, (sample_size,))
-                rows = cur.fetchall()
-        except psycopg2.errors.UndefinedColumn:
-            conn.rollback()
-            query_fallback = f"SELECT * FROM {quoted} LIMIT %s"
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query_fallback, (sample_size,))
-                rows = cur.fetchall()
+        if sort_col is not None:
+            query = f'SELECT * FROM {quoted} ORDER BY "{sort_col}" DESC LIMIT %s'
+        else:
+            query = f"SELECT * FROM {quoted} LIMIT %s"
+
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, (sample_size,))
+            rows = cur.fetchall()
 
         # Stringify all values for the handler's string-based checks
         return [

@@ -79,14 +79,32 @@ class TestPostgresDataSourceUnit:
 
     def test_get_sample_rows(self) -> None:
         mock_conn = MagicMock()
-        mock_dict_cursor = MagicMock()
-        mock_dict_cursor.fetchall.return_value = [
+
+        # get_columns cursor (plain, no cursor_factory)
+        info_cursor = MagicMock()
+        info_cursor.fetchall.return_value = [
+            ("session_id",),
+            ("outcome",),
+            ("emitted_at",),
+        ]
+        info_cursor.__enter__ = MagicMock(return_value=info_cursor)
+        info_cursor.__exit__ = MagicMock(return_value=False)
+
+        # get_sample_rows cursor (RealDictCursor)
+        dict_cursor = MagicMock()
+        dict_cursor.fetchall.return_value = [
             {"session_id": "sess-1", "outcome": "success", "emitted_at": "2026-04-06"},
             {"session_id": "sess-2", "outcome": "failure", "emitted_at": "2026-04-05"},
         ]
-        mock_dict_cursor.__enter__ = MagicMock(return_value=mock_dict_cursor)
-        mock_dict_cursor.__exit__ = MagicMock(return_value=False)
-        mock_conn.cursor.return_value = mock_dict_cursor
+        dict_cursor.__enter__ = MagicMock(return_value=dict_cursor)
+        dict_cursor.__exit__ = MagicMock(return_value=False)
+
+        def cursor_factory(**kwargs):
+            if "cursor_factory" in kwargs:
+                return dict_cursor
+            return info_cursor
+
+        mock_conn.cursor = MagicMock(side_effect=cursor_factory)
         mock_conn.closed = False
 
         with patch("psycopg2.connect", return_value=mock_conn):
@@ -98,15 +116,150 @@ class TestPostgresDataSourceUnit:
         assert rows[0]["session_id"] == "sess-1"
         assert rows[1]["outcome"] == "failure"
 
+    def test_get_sample_rows_uses_emitted_at_when_no_created_at(self) -> None:
+        """session_outcomes has emitted_at not created_at — must not raise UndefinedColumn."""
+        mock_conn = MagicMock()
+
+        # information_schema cursor returns columns without created_at
+        info_cursor = MagicMock()
+        info_cursor.fetchall.return_value = [
+            ("session_id",),
+            ("outcome",),
+            ("emitted_at",),
+            ("ingested_at",),
+            ("correlation_id",),
+        ]
+        info_cursor.__enter__ = MagicMock(return_value=info_cursor)
+        info_cursor.__exit__ = MagicMock(return_value=False)
+
+        # dict cursor for the actual SELECT
+        dict_cursor = MagicMock()
+        dict_cursor.fetchall.return_value = [
+            {
+                "session_id": "s1",
+                "outcome": "success",
+                "emitted_at": "2026-04-10",
+                "ingested_at": "2026-04-10",
+                "correlation_id": "",
+            },
+        ]
+        dict_cursor.__enter__ = MagicMock(return_value=dict_cursor)
+        dict_cursor.__exit__ = MagicMock(return_value=False)
+
+        # Route cursor calls: first (no kwargs) → info_cursor, second (RealDictCursor) → dict_cursor
+        call_count = [0]
+
+        def cursor_factory(**kwargs):
+            call_count[0] += 1
+            if "cursor_factory" in kwargs:
+                return dict_cursor
+            return info_cursor
+
+        mock_conn.cursor = MagicMock(side_effect=cursor_factory)
+        mock_conn.closed = False
+
+        with patch("psycopg2.connect", return_value=mock_conn):
+            ds = PostgresDataSource(dsn="postgresql://test:test@localhost/test")
+            ds._conn = mock_conn
+            rows = ds.get_sample_rows("session_outcomes", 3)
+
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "s1"
+        # Verify UndefinedColumn was NOT raised (mock was never asked to raise it)
+        mock_conn.rollback.assert_not_called()
+
+        # Confirm the executed query used emitted_at, not created_at
+        executed_sql = dict_cursor.execute.call_args[0][0]
+        assert "emitted_at" in executed_sql
+        assert "created_at" not in executed_sql
+
+    def test_get_sample_rows_uses_created_at_when_available(self) -> None:
+        """Tables that have created_at should continue to sort by it."""
+        mock_conn = MagicMock()
+
+        info_cursor = MagicMock()
+        info_cursor.fetchall.return_value = [
+            ("id",),
+            ("name",),
+            ("created_at",),
+        ]
+        info_cursor.__enter__ = MagicMock(return_value=info_cursor)
+        info_cursor.__exit__ = MagicMock(return_value=False)
+
+        dict_cursor = MagicMock()
+        dict_cursor.fetchall.return_value = [
+            {"id": "1", "name": "foo", "created_at": "2026-01-01"}
+        ]
+        dict_cursor.__enter__ = MagicMock(return_value=dict_cursor)
+        dict_cursor.__exit__ = MagicMock(return_value=False)
+
+        def cursor_factory(**kwargs):
+            if "cursor_factory" in kwargs:
+                return dict_cursor
+            return info_cursor
+
+        mock_conn.cursor = MagicMock(side_effect=cursor_factory)
+        mock_conn.closed = False
+
+        with patch("psycopg2.connect", return_value=mock_conn):
+            ds = PostgresDataSource(dsn="postgresql://test:test@localhost/test")
+            ds._conn = mock_conn
+            rows = ds.get_sample_rows("some_table", 1)
+
+        executed_sql = dict_cursor.execute.call_args[0][0]
+        assert "created_at" in executed_sql
+        assert len(rows) == 1
+
+    def test_get_sample_rows_unordered_when_no_timestamp_column(self) -> None:
+        """Tables with no known timestamp column fall back to unordered SELECT."""
+        mock_conn = MagicMock()
+
+        info_cursor = MagicMock()
+        info_cursor.fetchall.return_value = [("id",), ("value",)]
+        info_cursor.__enter__ = MagicMock(return_value=info_cursor)
+        info_cursor.__exit__ = MagicMock(return_value=False)
+
+        dict_cursor = MagicMock()
+        dict_cursor.fetchall.return_value = [{"id": "1", "value": "x"}]
+        dict_cursor.__enter__ = MagicMock(return_value=dict_cursor)
+        dict_cursor.__exit__ = MagicMock(return_value=False)
+
+        def cursor_factory(**kwargs):
+            if "cursor_factory" in kwargs:
+                return dict_cursor
+            return info_cursor
+
+        mock_conn.cursor = MagicMock(side_effect=cursor_factory)
+        mock_conn.closed = False
+
+        with patch("psycopg2.connect", return_value=mock_conn):
+            ds = PostgresDataSource(dsn="postgresql://test:test@localhost/test")
+            ds._conn = mock_conn
+            rows = ds.get_sample_rows("config_table", 1)
+
+        executed_sql = dict_cursor.execute.call_args[0][0]
+        assert "ORDER BY" not in executed_sql
+        assert len(rows) == 1
+
     def test_none_values_become_empty_string(self) -> None:
         mock_conn = MagicMock()
-        mock_dict_cursor = MagicMock()
-        mock_dict_cursor.fetchall.return_value = [
-            {"id": "abc", "name": None},
-        ]
-        mock_dict_cursor.__enter__ = MagicMock(return_value=mock_dict_cursor)
-        mock_dict_cursor.__exit__ = MagicMock(return_value=False)
-        mock_conn.cursor.return_value = mock_dict_cursor
+
+        info_cursor = MagicMock()
+        info_cursor.fetchall.return_value = [("id",), ("name",)]
+        info_cursor.__enter__ = MagicMock(return_value=info_cursor)
+        info_cursor.__exit__ = MagicMock(return_value=False)
+
+        dict_cursor = MagicMock()
+        dict_cursor.fetchall.return_value = [{"id": "abc", "name": None}]
+        dict_cursor.__enter__ = MagicMock(return_value=dict_cursor)
+        dict_cursor.__exit__ = MagicMock(return_value=False)
+
+        def cursor_factory(**kwargs):
+            if "cursor_factory" in kwargs:
+                return dict_cursor
+            return info_cursor
+
+        mock_conn.cursor = MagicMock(side_effect=cursor_factory)
         mock_conn.closed = False
 
         with patch("psycopg2.connect", return_value=mock_conn):
