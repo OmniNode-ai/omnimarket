@@ -153,6 +153,7 @@ node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
 node_pipeline_fill = "omnimarket.nodes.node_pipeline_fill"
 node_session_compose = "omnimarket.nodes.node_session_compose"
 node_ticket_query = "omnimarket.nodes.node_ticket_query"
+node_monitor_alert_responder = "omnimarket.nodes.node_monitor_alert_responder"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

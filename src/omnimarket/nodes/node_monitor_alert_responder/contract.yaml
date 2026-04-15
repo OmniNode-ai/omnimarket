@@ -1,0 +1,61 @@
+---
+name: monitor_alert_responder
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Subscribes to onex.evt.monitor.alert-detected.v1, classifies alerts into
+  RECOVERABLE / UNKNOWN / ESCALATE tiers, and routes accordingly:
+  RECOVERABLE → dispatches fix agent via playbook; UNKNOWN → emits
+  alert-unhandled event for Slack escalation; ESCALATE → P0 Slack + Linear
+  ticket. Closes the loop on monitor_logs.py dual-emit (OMN-8885).
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: classify_alert
+      handler:
+        name: HandlerAlertClassify
+        module: omnimarket.nodes.node_monitor_alert_responder.handlers.handler_alert_classify
+
+input_model:
+  name: ModelAlertEvent
+  module: omnimarket.nodes.node_monitor_alert_responder.models.model_alert_event
+  description: "Inbound monitor alert event from onex.evt.monitor.alert-detected.v1"
+
+output_model:
+  name: ModelAlertResponse
+  module: omnimarket.nodes.node_monitor_alert_responder.models.model_alert_response
+  description: "Classification outcome and dispatch record."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 30000
+
+terminal_event: onex.evt.omnimarket.alert-response-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.monitor-alert-detected.v1
+  publish_topics:
+    - onex.evt.omnimarket.monitor-alert-unhandled.v1
+    - onex.cmd.omnimarket.alert-fix-requested.v1
+    - onex.evt.omnimarket.alert-response-completed.v1
+
+metadata:
+  description: "Monitor alert classifier and auto-remediation dispatcher"
+  author: "OmniNode Team"
+  created: "2026-04-15"
+  tags:
+    - effect
+    - monitor
+    - alert
+    - auto-remediation
+    - OMN-8886
+  related_tickets:
+    - OMN-8884
+    - OMN-8885
+    - OMN-8887
