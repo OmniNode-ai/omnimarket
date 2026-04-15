@@ -18,7 +18,7 @@ class ModelIssueResult(BaseModel):
     state: str
     priority: str | None = None
     assignee: str | None = None
-    labels: list[str] = []
+    labels: tuple[str, ...] = Field(default=())
     team: str | None = None
     url: str | None = None
 

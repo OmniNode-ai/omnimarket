@@ -41,8 +41,8 @@ handler_routing:
 golden_path:
   - step: "Publish onex.cmd.omnimarket.ticket-query.v1 with query='OMN-8771' and limit=10"
   - step: "HandlerTicketQuery resolves ProtocolProjectTracker from DI container"
-  - step: "Handler calls tracker.search_issues(query, limit) or tracker.list_issues(filters, limit)"
-  - step: "Returns ModelTicketQueryOutput with matching issues list"
+  - step: "Handler calls tracker.get_issue(issue_id), tracker.search_issues(query, limit), or tracker.list_issues(filters, limit)"
+  - step: "Returns ModelTicketQueryOutput with normalized issue results"
   - step: "Emits onex.evt.omnimarket.ticket-query-completed.v1"
 dod_evidence:
   - "test_golden_chain_ticket_query.py passes with EventBusInmemory + mock ProtocolProjectTracker"

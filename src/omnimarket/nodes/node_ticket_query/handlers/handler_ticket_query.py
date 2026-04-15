@@ -65,11 +65,16 @@ class HandlerTicketQuery:
             ModelTicketQueryOutput with matching issues.
         """
         logger.info(
-            "TicketQuery: correlation_id=%s query=%r issue_id=%r limit=%d",
+            "TicketQuery: correlation_id=%s query_set=%s has_issue_id=%s limit=%d",
             correlation_id,
+            input_data.query is not None,
+            input_data.issue_id is not None,
+            input_data.limit,
+        )
+        logger.debug(
+            "TicketQuery: query=%r issue_id=%r",
             input_data.query,
             input_data.issue_id,
-            input_data.limit,
         )
 
         if input_data.issue_id is not None:

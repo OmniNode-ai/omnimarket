@@ -52,6 +52,8 @@ class TestTicketQueryGoldenChain:
         )
 
         tracker.search_issues.assert_awaited_once_with("OMN-8771", limit=10)
+        tracker.list_issues.assert_not_awaited()
+        tracker.get_issue.assert_not_awaited()
         assert result.total == 2
         assert result.query == "OMN-8771"
         assert result.issues[0].identifier == "OMN-8771"
@@ -72,6 +74,8 @@ class TestTicketQueryGoldenChain:
         tracker.list_issues.assert_awaited_once_with(
             filters={"state": "Todo", "team": "Omninode"}, limit=50
         )
+        tracker.search_issues.assert_not_awaited()
+        tracker.get_issue.assert_not_awaited()
         assert result.total == 1
 
     async def test_single_issue_fetch_dispatches_through_protocol(self) -> None:
@@ -86,6 +90,8 @@ class TestTicketQueryGoldenChain:
         )
 
         tracker.get_issue.assert_awaited_once_with("OMN-8771")
+        tracker.search_issues.assert_not_awaited()
+        tracker.list_issues.assert_not_awaited()
         assert result.total == 1
         assert result.issue_id == "OMN-8771"
 
@@ -100,5 +106,8 @@ class TestTicketQueryGoldenChain:
             input_data=ModelTicketQueryInput(query="nonexistent-xyz"),
         )
 
+        tracker.search_issues.assert_awaited_once()
+        tracker.list_issues.assert_not_awaited()
+        tracker.get_issue.assert_not_awaited()
         assert result.total == 0
         assert result.issues == ()
