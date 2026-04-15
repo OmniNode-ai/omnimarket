@@ -11,6 +11,10 @@
 # pr-arch-review.yml (architectural lint + stub FSM). This is the LIVE review
 # bot pipeline with real model fan-out.
 #
+# Triggers: pull_request (opened/synchronize/reopened) + workflow_dispatch for manual fires.
+# The push trigger is intentionally absent — verification loop on push is handled separately
+# by the verify_push operation in node_pr_review_bot (Kafka-triggered, not GHA).
+#
 # Rollout plan:
 #   Phase 1 (this PR): trigger wired, informational only — does not block merge.
 #   Phase 2 (follow-up): add as required status check once a few runs confirm
@@ -39,8 +43,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
-  push:
-    branches-ignore: [main]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -142,20 +144,9 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            # On push events, find the open PR for this branch via gh CLI
-            PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-            if [ -z "$PR" ]; then
-              echo "No open PR found for branch ${{ github.ref_name }} — skipping review."
-              echo "pr_number=" >> "$GITHUB_OUTPUT"
-            else
-              echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
-            fi
           else
             echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          GH_TOKEN: ${{ needs.resolve-bot-token.outputs.token }}
 
       - name: Run PR review bot pipeline
         id: review
