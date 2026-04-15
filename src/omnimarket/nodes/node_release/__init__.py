@@ -10,4 +10,9 @@ __all__ = [
     "HandlerRelease",
     "ModelReleaseCompletedEvent",
     "ModelReleaseStartCommand",
+    "NodeRelease",
 ]
+
+
+class NodeRelease(HandlerRelease):
+    """ONEX entry-point wrapper for HandlerRelease."""

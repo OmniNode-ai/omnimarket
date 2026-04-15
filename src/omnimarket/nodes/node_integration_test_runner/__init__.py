@@ -20,4 +20,9 @@ __all__ = [
     "ModelIntegrationTestRunnerRequest",
     "ModelIntegrationTestRunnerResult",
     "ModelNodeTestResult",
+    "NodeIntegrationTestRunner",
 ]
+
+
+class NodeIntegrationTestRunner(HandlerIntegrationTestRunner):
+    """ONEX entry-point wrapper for HandlerIntegrationTestRunner."""

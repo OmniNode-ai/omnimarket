@@ -1,0 +1,25 @@
+name: node_session_orchestrator
+version: "1.0.0"
+description: "Unified session orchestrator — health gate → RSD scoring → dispatch (OMN-8367 PoC)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_session_orchestrator: "omnimarket.nodes.node_session_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: mutating
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_compat"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "session", "health-gate", "rsd", "dispatch", "unified"]
+pack: "session_pipeline"
+display_name: "Session Orchestrator"
+node_role: "orchestrator"

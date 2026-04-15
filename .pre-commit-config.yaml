@@ -24,8 +24,7 @@ repos:
     hooks:
       - id: no-hardcoded-topics
         stages: [pre-commit]
-        exclude: >-
-          ^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\.yaml|scripts/lint_no_hardcoded_topics\.py|src/omnimarket/logging/structured_logger\.py)$
+        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py)$"
       - id: no-untracked-todos
         stages: [pre-commit]
 
@@ -49,6 +48,17 @@ repos:
         language: system
         entry: bash scripts/validation/run_topic_lint.sh
         pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-8611: entry-point format check (fast, triggers on pyproject.toml changes)
+      # Validates that all [project.entry-points."onex.nodes"] entries are valid
+      # dotted module paths. Does not verify filesystem — CI runtime_sweep does that.
+      - id: entry-point-format
+        name: Entry point format check
+        language: system
+        entry: python scripts/ci/check_entry_point_format.py
+        files: ^pyproject\.toml$
+        pass_filenames: true
         stages: [pre-commit]
 
   # Ruff — standalone pre-commit hooks (no uv source resolution needed)

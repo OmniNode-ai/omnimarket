@@ -8,3 +8,4 @@ build/
 .mypy_cache/
 .ruff_cache/
 tmp/
+uv.toml

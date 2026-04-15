@@ -36,9 +36,17 @@ __all__ = [
     "ModelOrchestratorStartCommand",
     "ModelOrchestratorState",
     "ModelPhaseCommandIntent",
+    "NodeBuildLoopOrchestrator",
     "ProtocolBuildDispatchHandler",
     "ProtocolCloseoutHandler",
     "ProtocolRsdFillHandler",
     "ProtocolTicketClassifyHandler",
     "ProtocolVerifyHandler",
 ]
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
+    HandlerBuildLoopOrchestrator,
+)
+
+
+class NodeBuildLoopOrchestrator(HandlerBuildLoopOrchestrator):
+    """ONEX entry-point wrapper for HandlerBuildLoopOrchestrator."""

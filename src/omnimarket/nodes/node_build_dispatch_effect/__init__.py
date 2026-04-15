@@ -28,4 +28,9 @@ __all__ = [
     "ModelBuildDispatchResult",
     "ModelBuildTarget",
     "ModelDelegationPayload",
+    "NodeBuildDispatchEffect",
 ]
+
+
+class NodeBuildDispatchEffect(HandlerBuildDispatch):
+    """ONEX entry-point wrapper for HandlerBuildDispatch."""

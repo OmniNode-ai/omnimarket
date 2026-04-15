@@ -22,10 +22,8 @@ from enum import StrEnum
 from typing import Any, Protocol
 from uuid import uuid4
 
-from omnimarket.nodes.node_pr_review_bot.topics import (
-    TOPIC_BYPASS_ROLLED_BACK,
-    TOPIC_BYPASS_USED,
-)
+TOPIC_BYPASS_ROLLED_BACK = "onex.evt.omnimarket.review-bot-bypass-rolled-back.v1"
+TOPIC_BYPASS_USED = "onex.evt.omnimarket.review-bot-bypass-used.v1"
 
 logger = logging.getLogger(__name__)
 

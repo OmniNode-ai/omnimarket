@@ -74,12 +74,12 @@ def main() -> None:
         "--autonomous",
         action="store_true",
         default=False,
-        help="Skip Slack HIGH_RISK gate (intended for nightly autopilot runs)",
+        help="(Deprecated — gate removed; kept for CLI compatibility)",
     )
     parser.add_argument(
         "--gate-attestation",
         default="",
-        help="Pre-issued gate token to bypass Slack HIGH_RISK gate",
+        help="Pre-issued gate token for audit trail",
     )
 
     args = parser.parse_args()

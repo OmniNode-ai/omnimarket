@@ -1,0 +1,81 @@
+---
+# golden_chain_sweep_workflow.yaml — Workflow contract for end-to-end golden chain validation.
+#
+# Invoked via:
+#   uv run onex run golden_chain_sweep_workflow.yaml
+#   uv run python -m omnimarket.nodes.node_golden_chain_sweep --chains overnight,pr_lifecycle,delegation,aislop_sweep,autopilot,overseer_verifier
+#
+# RuntimeLocal single-handler execution path:
+#   1. Loads this contract
+#   2. Instantiates NodeGoldenChainSweep (zero-arg, pure compute handler)
+#   3. Calls handle(GoldenChainSweepRequest(chains=[...], projected_rows={}))
+#   4. Emits terminal event on completion
+#
+# Registered chains (overnight session validation set):
+#   overnight         — full overnight session health chain
+#   pr_lifecycle      — PR lifecycle orchestrator chain
+#   delegation        — delegation event projection chain
+#   aislop_sweep      — AI slop detection chain
+#   autopilot         — autopilot orchestrator chain
+#   overseer_verifier — overseer verification gate chain
+
+name: golden_chain_sweep_workflow
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+
+description: >
+  End-to-end golden chain validation workflow. Validates Kafka-to-DB-projection
+  data flow for overnight, pr_lifecycle, delegation, aislop_sweep, autopilot,
+  and overseer_verifier chains. Pure compute — no Kafka or Docker required for
+  standalone execution.
+
+handler:
+  module: omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep
+  class: NodeGoldenChainSweep
+  input_model:
+    module: omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep
+    class: GoldenChainSweepRequest
+
+terminal_event: onex.evt.omnimarket.golden-chain-sweep-completed.v1
+
+defaults:
+  chains:
+    - name: overnight
+      head_topic: onex.evt.omniclaude.routing-decision.v1
+      tail_table: agent_routing_decisions
+      expected_fields: [correlation_id, selected_agent]
+    - name: pr_lifecycle
+      head_topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+      tail_table: pr_lifecycle_outcomes
+      expected_fields: [correlation_id, status]
+    - name: delegation
+      head_topic: onex.evt.omniclaude.task-delegated.v1
+      tail_table: delegation_events
+      expected_fields: [correlation_id]
+    - name: aislop_sweep
+      head_topic: onex.evt.omnimarket.aislop-sweep-completed.v1
+      tail_table: aislop_sweep_results
+      expected_fields: [correlation_id, status]
+    - name: autopilot
+      head_topic: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+      tail_table: session_outcomes
+      expected_fields: [correlation_id]
+    - name: overseer_verifier
+      head_topic: onex.evt.omnimarket.overseer-verify-completed.v1
+      tail_table: overseer_verify_results
+      expected_fields: [correlation_id, passed]
+  timeout_ms: 15000
+
+metadata:
+  description: "Golden chain sweep workflow — end-to-end Kafka-to-DB projection validation"
+  author: "OmniNode Platform Team"
+  created: "2026-04-12"
+  tags:
+    - "golden-chain"
+    - "workflow"
+    - "validation"
+    - "compute"
+    - "OMN-8522"
+  related_tickets:
+    - "OMN-8522"
+    - "OMN-8442"

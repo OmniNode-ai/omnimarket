@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for _dispatch_ci_watch — truthful failure when no PR context."""
+"""Unit tests for _dispatch_ci_watch — truthful skip, not vacuous green (OMN-8486)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,8 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     ModelOvernightCommand,
     _dispatch_ci_watch,
 )
-from omnimarket.nodes.node_overnight.topics import TOPIC_OVERNIGHT_PHASE_END
+
+TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight-phase-completed.v1"
 
 
 class _RecordingBus:
@@ -32,18 +33,18 @@ class _RecordingBus:
 def test_ci_watch_dispatcher_returns_failure_without_prs() -> None:
     """_dispatch_ci_watch must NOT return (True, None) when no PR context provided.
 
-    When no PR refs are available, the phase outcome must be a failure/skip
-    tuple — (False, <non-None message>) — never a silent success.
+    When no PR refs are available the phase outcome must be (False, <reason>)
+    — never a silent success.
     """
     command = ModelOvernightCommand(correlation_id="test-no-pr")
     success, error = _dispatch_ci_watch(command, None)
 
     assert success is False, (
         "_dispatch_ci_watch returned (True, ...) with no PR context — "
-        "this is a silent lie. Expected (False, <skip reason>)."
+        "vacuous-green: expected (False, <skip reason>)."
     )
     assert error is not None, (
-        "_dispatch_ci_watch returned (False, None) with no PR context — "
+        "_dispatch_ci_watch returned (False, None) — "
         "error message must describe the skip reason."
     )
     assert (
@@ -53,17 +54,17 @@ def test_ci_watch_dispatcher_returns_failure_without_prs() -> None:
 
 @pytest.mark.unit
 def test_ci_watch_dispatcher_returns_failure_in_dry_run_without_prs() -> None:
-    """_dispatch_ci_watch must NOT return (True, None) even in dry_run mode."""
+    """dry_run must not mask missing PR context as success."""
     command = ModelOvernightCommand(correlation_id="test-dry-run-no-pr", dry_run=True)
     success, error = _dispatch_ci_watch(command, None)
 
     assert success is False, (
-        "_dispatch_ci_watch returned (True, ...) in dry_run with no PR context. "
-        "dry_run must not mask missing PR context as success."
+        "_dispatch_ci_watch returned (True, ...) in dry_run with no PR context — "
+        "dry_run flag must not produce a vacuous-green success."
     )
     assert error is not None, (
         "_dispatch_ci_watch returned (False, None) in dry_run — "
-        "error message must describe the skip reason."
+        "must include skip reason."
     )
 
 

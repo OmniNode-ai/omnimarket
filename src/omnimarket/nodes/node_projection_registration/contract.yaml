@@ -8,6 +8,8 @@ description: >
   the node_service_registry table. Source topics:
   onex.evt.platform.node-introspection.v1 and
   onex.evt.platform.node-heartbeat.v1.
+  PeriodicHeartbeatEmitter emits heartbeat events every 60s per active node.
+  Nodes not seen for >5 min are transitioned to health_status='stale'.
 
 handler:
   module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
@@ -20,9 +22,23 @@ golden_path:
   - "Consume node-introspection event from onex.evt.platform.node-introspection.v1"
   - "Consume node-heartbeat event from onex.evt.platform.node-heartbeat.v1"
   - "Projection handler upserts row into node_service_registry table"
+  - "Heartbeat projection sets last_heartbeat_at and uptime_seconds"
+  - "PeriodicHeartbeatEmitter emits heartbeats every 60s for all active nodes"
+  - "mark_stale() transitions nodes with last_heartbeat_at >5 min to health_status=stale"
   - "Emit projection-applied event to onex.evt.omnimarket.projection-registration-applied.v1"
-  - "Verify row exists with service_name, health_status fields"
+  - "Verify row exists with service_name, health_status, last_heartbeat_at, uptime_seconds"
   - "Golden chain test: omnimarket/tests/test_golden_chain_projection_registration.py"
+  - "Heartbeat tests: omnimarket/tests/test_omn8693_node_heartbeat_mechanism.py"
+
+dod_evidence:
+  - test: tests/test_omn8693_node_heartbeat_mechanism.py::TestHeartbeatUpdatesLastHeartbeatAt
+    description: Heartbeat event updates last_heartbeat_at column
+  - test: tests/test_omn8693_node_heartbeat_mechanism.py::TestNodeBecomesStaleAfter5MinNoHeartbeat
+    description: Node transitions to STALE if no heartbeat >5 min
+  - test: tests/test_omn8693_node_heartbeat_mechanism.py::TestUptimeSecondsIncrements
+    description: uptime_seconds is stored and updated on heartbeat
+  - test: tests/test_omn8693_node_heartbeat_mechanism.py::TestPeriodicHeartbeatEmitter
+    description: PeriodicHeartbeatEmitter emits one event per active node
 
 db_io:
   db_tables:

@@ -69,11 +69,6 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ProtocolVerifyHandler,
     ScoredTicket,
 )
-from omnimarket.nodes.node_build_loop_orchestrator.topics import (
-    TOPIC_DOD_CHECKED,
-    TOPIC_OVERSEER_VERIFICATION_COMPLETED,
-    TOPIC_OVERSEER_VERIFY_REQUESTED,
-)
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
     HandlerOverseerVerifier,
 )
@@ -89,6 +84,12 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"
+TOPIC_OVERSEER_VERIFICATION_COMPLETED = (
+    "onex.evt.omnimarket.overseer-verifier-completed.v1"
+)
+TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"
 
 _VERIFIER_TIMEOUT_SECONDS = 120
 

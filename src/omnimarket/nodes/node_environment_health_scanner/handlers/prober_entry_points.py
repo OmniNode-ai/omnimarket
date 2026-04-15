@@ -2,7 +2,15 @@
 
 For every onex.nodes entry-point in installed packages:
 1. Import the declared module
-2. Verify the declared class is accessible
+2. If a class name is present, verify it is accessible in the module
+
+Entry-point values may use either form:
+- Package form (omnimarket convention): ``module.path`` — no colon, imports the package
+- Class form: ``module.path:ClassName`` — imports module and resolves the class
+
+Both forms are valid. omnimarket uses package form exclusively, enforced by
+``tests/test_all_node_entry_points_are_package_form.py``. Other packages may use
+class form. Neither form is flagged as malformed by this prober.
 
 Uses importlib.metadata.entry_points() to discover all onex.nodes entry-points.
 """
@@ -80,7 +88,9 @@ def _discover_entry_points() -> list[dict[str, str]]:
     specs = []
     eps = entry_points(group="onex.nodes")
     for ep in eps:
-        # entry-point value format: "module.path:ClassName"
+        # Both entry-point forms are valid:
+        #   class form:   "module.path:ClassName"  (colon-separated)
+        #   package form: "module.path"            (no colon — omnimarket convention)
         value = ep.value
         if ":" in value:
             module, cls = value.rsplit(":", 1)

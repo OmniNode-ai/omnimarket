@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_persona_lifecycle_orchestrator"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Orchestrator node that coordinates persona snapshot builds. Handles tick-driven fan-out (up to 100 users
+  per tick) and on-demand single-user builds. Phase 3 Adaptive Personalization (OMN-7305).
+node_type: "ORCHESTRATOR"
+input_model: "ModelPersonaLifecycleRequest"
+output_model: "ModelPersonaLifecycleResponse"
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimemory.runtime-tick.v1"
+    - "onex.cmd.omnimemory.build-persona.v1"
+  publish_topics:
+    - "onex.evt.omnimemory.persona-snapshot-created.v1"
+
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    - routing_key: "on_tick"
+      handler_key: "HandlerPersonaRebuild.on_tick"
+      priority: 0
+      output_events:
+        - "onex.evt.omnimemory.persona-snapshot-created.v1"
+    - routing_key: "on_demand"
+      handler_key: "HandlerPersonaRebuild.on_demand"
+      priority: 0
+      output_events:
+        - "onex.evt.omnimemory.persona-snapshot-created.v1"
+  default_handler: null
+
+tags:
+  - persona
+  - orchestrator
+  - lifecycle
+  - phase-3

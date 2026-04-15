@@ -1,0 +1,29 @@
+name: node_swarm_supervisor_orchestrator
+version: "1.0.0"
+description: "Swarm supervisor — heartbeat polling, zombie detection, context exhaustion detection, auto-respawn with narrower scope for overnight agent sessions"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: supervisor
+node_role: orchestrator
+display_name: "Swarm Supervisor Orchestrator"
+entry_points:
+  onex.nodes:
+    node_swarm_supervisor_orchestrator: "omnimarket.nodes.node_swarm_supervisor_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+entry_flags:
+  poll_interval_seconds: "Heartbeat poll interval in seconds (default: 300)"
+  zombie_threshold_seconds: "Seconds of silence before zombie classification (default: 600)"
+  context_exhaustion_pct: "Context usage fraction triggering respawn (default: 0.80)"
+  max_respawn_attempts: "Maximum respawn attempts per worker (default: 3)"
+  dry_run: "Log respawn decisions without spawning"
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["swarm", "supervisor", "orchestrator", "overnight", "self-healing", "insights-task5"]

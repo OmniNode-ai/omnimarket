@@ -1,0 +1,25 @@
+name: node_code_enrichment_effect
+version: "0.1.0"
+description: "Code entity enrichment effect — LLM classification and description for semantic search context"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_code_enrichment_effect: "omnimarket.nodes.node_code_enrichment_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["intelligence", "enrichment", "effect", "code", "llm", "classification"]
+pack: "intelligence"
+display_name: "Code Enrichment Effect"
+node_role: "effect"
+tickets: ["OMN-5657", "OMN-5664"]

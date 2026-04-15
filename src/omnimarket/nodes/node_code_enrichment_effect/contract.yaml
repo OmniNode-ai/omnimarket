@@ -1,0 +1,198 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_code_enrichment_effect
+# EFFECT node — LLM-based classification and description enrichment for code entities.
+# Re-implements omniintelligence dispatch_handler_code_enrichment (deleted in PR #568).
+# [OMN-5657, OMN-5664]
+
+name: "node_code_enrichment_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "b2c3d4e5-f6a7-8901-bcde-f23456789012"
+node_type: "EFFECT"
+input_model: "ModelCodeEnrichmentRequest"
+output_model: "ModelCodeEnrichmentResult"
+description: |
+  Enriches code entities with LLM-generated classification, description, and
+  architectural pattern. Uses contract-driven model routing: local .201 Qwen3-Coder
+  first (LLM_CODER_URL), Claude fallback if unreachable (LLM_FALLBACK_URL).
+  Updates Postgres code_entities table via injected repository.
+  Emits code-enriched.v1 upon batch completion.
+
+  Invariants (from OMN-5664 + Invariant S5):
+    - Low confidence (<0.7) → stored as "other", never forced to an archetype label.
+    - LLM failure is non-fatal: entity stays unenriched, retried on next run.
+    - enrichment_version tracks which pass touched the entity.
+    - No hardcoded model IDs, no hardcoded IP addresses.
+    - correlation_id required on both input and output.
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-5664"
+  parent_epic: "OMN-5657"
+  recovery_source: "omniintelligence@2f0ddf3b — dispatch_handler_code_enrichment.py (deleted in PR #568)"
+  contract_driven_routing: true
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  correlation_id_required: true
+  unit_tests: true
+  integration_test_stubs: true
+  local_model_first: true
+  claude_fallback_opt_in: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "db_write"
+    atomic: false
+    timeout_seconds: 10
+    validation_enabled: true
+  - operation_type: "llm_call"
+    atomic: false
+    timeout_seconds: 60
+    validation_enabled: false
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "code_enrichment_effect"
+  main_tool_class: "NodeCodeEnrichmentEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === NODE CONFIGURATION — model routing ===
+config:
+  llm_coder_url:
+    env_var: "LLM_CODER_URL"
+    description: "Base URL for local Qwen3-Coder endpoint (primary). Fail-fast if unset."
+    required: true
+  llm_fallback_url:
+    env_var: "LLM_FALLBACK_URL"
+    description: "Fallback LLM base URL (Claude-compatible). Used when primary is unreachable."
+    required: false
+  low_confidence_threshold:
+    env_var: "CODE_ENRICHMENT_CONFIDENCE_THRESHOLD"
+    default: "0.7"
+    description: "Confidence below this value → classification stored as 'other' (Invariant S5)."
+  enrichment_batch_size:
+    env_var: "CODE_ENRICHMENT_BATCH_SIZE"
+    default: "25"
+    description: "Maximum entities to enrich per invocation."
+  enrichment_version:
+    env_var: "CODE_ENRICHMENT_VERSION"
+    default: "1.0.0"
+    description: "Version tag stored alongside enrichment results for lineage tracking."
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["correlation_id"]
+  optional: ["batch_size", "llm_endpoint_override"]
+
+output_state:
+  object_type: "object"
+  required: ["correlation_id", "enriched_count", "failed_count"]
+  optional: ["batch_size_used"]
+
+# === ACTIONS ===
+actions:
+  - name: "enrich_batch"
+    description: "Enrich a batch of unenriched code entities with LLM classification"
+    inputs: ["correlation_id", "batch_size", "llm_endpoint_override"]
+    outputs: ["correlation_id", "enriched_count", "failed_count"]
+
+  - name: "health_check"
+    description: "Verify LLM endpoint reachability (primary then fallback)"
+    inputs: []
+    outputs: ["status", "active_endpoint"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "ProtocolCodeEntityRepository"
+    dependency_type: "protocol"
+    description: "Repository providing get_entities_needing_enrichment() and update_enrichment()"
+    required: true
+
+  - name: "llm_coder"
+    dependency_type: "service"
+    description: "Local Qwen3-Coder OpenAI-compatible endpoint (LLM_CODER_URL, primary)"
+    required: true
+
+  - name: "llm_fallback"
+    dependency_type: "service"
+    description: "Claude-compatible fallback endpoint (LLM_FALLBACK_URL, opt-in)"
+    required: false
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 120000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["code_enriched"]
+  event_categories: ["intelligence", "enrichment", "effect", "code"]
+  publish_events: true
+  subscribe_events: true
+  invocation_mode: "subscription"
+  event_routing: "intelligence"
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.evt.omnimarket.code-entities-extracted.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.code-enriched.v1"
+
+  subscribe_topic_metadata:
+    "onex.evt.omnimarket.code-entities-extracted.v1":
+      schema_ref: "omniintelligence.nodes.node_ast_extraction_compute.models.model_code_entities_extracted_event.ModelCodeEntitiesExtractedEvent"
+      description: "Batch of code entities extracted from a source file. Parallel consumer with code-embedding node."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.code-enriched.v1":
+      schema_ref: "omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_result.ModelCodeEnrichmentResult"
+      description: "Enrichment batch completion — reports enriched_count and failed_count."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "enrich_batch"
+      handler_class: "HandlerCodeEnrichmentEffect"
+      handler_module: "omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  constraint_definitions:
+    correlation_id: "string (1-128) — required on input and output"
+    enriched_count: "int >= 0"
+    failed_count: "int >= 0"
+    batch_size: "int (1-100)"
+    low_confidence_threshold: "float (0.0-1.0)"
+
+# === TAGS ===
+tags:
+  - intelligence
+  - enrichment
+  - effect
+  - code
+  - llm
+  - classification
+  - omn-5657
+  - omn-5664

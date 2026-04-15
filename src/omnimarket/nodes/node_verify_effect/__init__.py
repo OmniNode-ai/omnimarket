@@ -6,4 +6,11 @@ from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
     HandlerVerify,
 )
 
-__all__ = ["HandlerVerify"]
+__all__ = [
+    "HandlerVerify",
+    "NodeVerifyEffect",
+]
+
+
+class NodeVerifyEffect(HandlerVerify):
+    """ONEX entry-point wrapper for HandlerVerify."""

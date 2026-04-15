@@ -1,0 +1,132 @@
+---
+name: swarm_supervisor_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Self-healing swarm supervisor for overnight autonomous agent sessions.
+  Polls worker heartbeats, detects context exhaustion (>80% usage), zombies
+  (>10min silence), and false-completion (task marked done but PR not merged).
+  Auto-respawns failed workers with narrower scope via TaskCreate events.
+  Logs all respawn decisions to .onex_state/swarm_supervisor/.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSwarmSupervisorOrchestrator
+        module: omnimarket.nodes.node_swarm_supervisor_orchestrator.handlers.handler_swarm_supervisor_orchestrator
+      event_model:
+        name: ModelSwarmSupervisorStartCommand
+        module: omnimarket.nodes.node_swarm_supervisor_orchestrator.models.model_swarm_supervisor_start_command
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 43200000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Unique supervisor session ID"
+    required: true
+  poll_interval_seconds:
+    type: int
+    description: "Heartbeat poll interval in seconds"
+    required: false
+    default: 300
+  zombie_threshold_seconds:
+    type: int
+    description: "Seconds of silence before a worker is considered a zombie"
+    required: false
+    default: 600
+  context_exhaustion_pct:
+    type: float
+    description: "Context usage fraction that triggers respawn (0.0–1.0)"
+    required: false
+    default: 0.80
+  max_respawn_attempts:
+    type: int
+    description: "Maximum respawn attempts per worker before abandoning"
+    required: false
+    default: 3
+  dry_run:
+    type: bool
+    description: "Log respawn decisions without actually spawning"
+    required: false
+    default: false
+  worker_ids:
+    type: list
+    description: "List of worker task IDs to supervise (empty = all active)"
+    required: false
+    default: []
+
+outputs:
+  overall_status:
+    type: str
+    description: "complete | halted | failed"
+  workers_supervised:
+    type: int
+    description: "Total number of distinct workers observed"
+  respawns_issued:
+    type: int
+    description: "Number of respawn commands published"
+  zombies_detected:
+    type: int
+    description: "Workers classified as zombie at any point"
+  false_completions_detected:
+    type: int
+    description: "Workers marked done but PR not yet merged"
+
+terminal_event: onex.evt.omnimarket.swarm-supervisor-orchestrator-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-supervisor-orchestrator-start.v1
+    - onex.evt.omnimarket.worker-heartbeat.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-supervisor-orchestrator-completed.v1
+    - onex.evt.omnimarket.swarm-supervisor-respawn-issued.v1
+    - onex.cmd.omnimarket.build-dispatch-effect-start.v1
+
+fsm:
+  states:
+    - IDLE
+    - SUPERVISING
+    - COMPLETE
+    - HALTED
+    - FAILED
+  initial_state: IDLE
+  terminal_states:
+    - COMPLETE
+    - HALTED
+    - FAILED
+  transitions:
+    - from: IDLE
+      to: SUPERVISING
+      trigger: "start command received"
+    - from: SUPERVISING
+      to: COMPLETE
+      trigger: "all workers terminal or session ended"
+    - from: SUPERVISING
+      to: HALTED
+      trigger: "unrecoverable error or max respawns exceeded globally"
+    - from: SUPERVISING
+      to: FAILED
+      trigger: "unhandled exception"
+
+metadata:
+  description: "Swarm supervisor — heartbeat polling, zombie detection, auto-respawn"
+  author: "OmniNode Platform Team"
+  created: "2026-04-13"
+  tags:
+    - "swarm"
+    - "supervisor"
+    - "orchestrator"
+    - "overnight"
+    - "self-healing"
+    - "insights-task5"
+  related_tickets:
+    - "insights-task5"

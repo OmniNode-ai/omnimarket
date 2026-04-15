@@ -1,0 +1,58 @@
+---
+name: handoff_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Handoff effect node. Captures current session state (branch, dirty files,
+  recent commits) and writes a handoff artifact for next-session pickup.
+
+handler:
+  module: omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect
+  class: HandlerHandoffEffect
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 15000
+
+inputs:
+  session_id:
+    type: string
+    description: "Session identifier for artifact scoping"
+    required: true
+  correlation_id:
+    type: uuid
+    description: "Correlation ID flowing through the pipeline"
+    required: true
+  summary:
+    type: string
+    description: "Optional free-text summary for next session"
+    required: false
+    default: null
+  cwd:
+    type: string
+    description: "Working directory to capture git state from (defaults to process cwd)"
+    required: false
+    default: null
+
+outputs:
+  artifact_path:
+    type: string
+    description: "Absolute path to the written handoff artifact"
+  captured_branches:
+    type: list
+    description: "Git branches captured (current branch name)"
+  captured_dirty_files:
+    type: list
+    description: "Dirty files from git status --porcelain"
+
+terminal_event: onex.evt.omnimarket.handoff-effect-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.handoff-effect-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.handoff-effect-completed.v1

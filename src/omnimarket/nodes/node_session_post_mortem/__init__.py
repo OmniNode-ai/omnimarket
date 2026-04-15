@@ -12,4 +12,9 @@ __all__ = [
     "HandlerSessionPostMortem",
     "ModelPostMortemCommand",
     "ModelPostMortemHandlerResult",
+    "NodeSessionPostMortem",
 ]
+
+
+class NodeSessionPostMortem(HandlerSessionPostMortem):
+    """ONEX entry-point wrapper for HandlerSessionPostMortem."""

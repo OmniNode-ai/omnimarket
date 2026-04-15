@@ -20,4 +20,11 @@ __all__ = [
     "ModelMemoryRetrievalRequest",
     "ModelMemoryRetrievalResponse",
     "ModelSearchResult",
+    "NodeMemoryRetrievalEffect",
 ]
+
+
+class NodeMemoryRetrievalEffect:
+    """ONEX entry-point marker for node_memory_retrieval_effect."""
+
+    __onex_node_type__ = "node_memory_retrieval_effect"

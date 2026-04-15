@@ -22,4 +22,9 @@ __all__ = [
     "ModelPipelinePhaseEvent",
     "ModelPipelineStartCommand",
     "ModelPipelineState",
+    "NodeTicketPipeline",
 ]
+
+
+class NodeTicketPipeline(HandlerTicketPipeline):
+    """ONEX entry-point wrapper for HandlerTicketPipeline."""

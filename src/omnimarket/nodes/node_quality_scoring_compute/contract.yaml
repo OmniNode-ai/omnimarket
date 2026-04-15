@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Node Contract - Quality Scoring Compute Node
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+name: "node_quality_scoring_compute"
+node_type: "COMPUTE_GENERIC"
+description: >-
+  Compute node for scoring code quality across multiple dimensions. Calculates maintainability, complexity,
+  documentation, and ONEX compliance scores.
+input_model:
+  name: "ModelQualityScoringInput"
+  module: "omnimarket.nodes.node_quality_scoring_compute.models"
+  description: "Input containing code to score and quality parameters."
+output_model:
+  name: "ModelQualityScoringOutput"
+  module: "omnimarket.nodes.node_quality_scoring_compute.models"
+  description: "Output containing quality scores and recommendations."
+# Metadata Model (for typed metadata in output)
+# =============================================
+# The output model uses ModelQualityScoringMetadata for type-safe metadata
+# instead of dict[str, Any]. This provides structured status, message, and
+# tracking information for the scoring operation.
+metadata_model:
+  name: "ModelQualityScoringMetadata"
+  module: "omnimarket.nodes.node_quality_scoring_compute.models"
+  description: "Typed metadata for quality scoring output (status, message, tracking_url, etc.)"
+operations:
+  - name: "score_quality"
+    description: "Score code quality"
+    input_fields:
+      - source_path
+      - content
+      - language
+      - project_name
+      - onex_preset
+      - dimension_weights
+      - onex_compliance_threshold
+      - min_quality_threshold
+    output_fields:
+      - success
+      - quality_score
+      - dimensions
+      - onex_compliant
+      - recommendations
+      - metadata
+# =============================================================================
+# TODO(#13): Protocol Integration - QualityAnalyzerProtocol
+# =============================================================================
+# Status: Backlog - Phase 3 (v0.4.0)
+# Issue: https://github.com/OmniNode-ai/omniintelligence/issues/13
+#
+# Priority: Low (current stub implementation functional for interface validation)
+# Description: Create omniintelligence.protocols module with QualityAnalyzerProtocol
+#
+# When implemented:
+#   - Create omniintelligence.protocols.QualityAnalyzerProtocol
+#   - Define analyze(), get_metrics(), get_recommendations() interface
+#   - Uncomment dependency below
+# =============================================================================
+# Handler Routing (Declarative Pattern)
+# =====================================
+# Compute nodes use a single handler for all operations.
+handler_routing:
+  routing_strategy: "single_handler"
+  handlers:
+    - operation: "score_quality"
+      handler:
+        function: "handle_quality_scoring_compute"
+        module: "omnimarket.nodes.node_quality_scoring_compute.handlers"
+        type: "sync"
+dependencies: []
+# Future dependency (when #13 is implemented):
+# - name: "quality_analyzer"
+#   type: "protocol"
+#   module: "omniintelligence.protocols"
+#   description: "Quality analysis engine"
+# Error Handling Configuration
+# ============================
+error_handling:
+  error_types:
+    - name: "QualityScoringValidationError"
+      error_code: "QUALITY_001"
+      description: "Input validation failed (e.g., unsupported language)"
+      recoverable: false
+      retry_strategy: "none"
+    - name: "QualityScoringComputeError"
+      error_code: "QUALITY_002"
+      description: "Error during quality scoring computation"
+      recoverable: true
+      retry_strategy: "immediate_retry"
+# Note: health_check omitted - pure compute nodes are stateless with no external
+# dependencies, so health checks are not applicable.
+metadata:
+  author: "OmniNode Team"
+  created: "2025-11-14"
+  updated: "2026-01-18"
+  tags:
+    - "ONEX"
+    - "compute"
+    - "quality"
+    - "scoring"

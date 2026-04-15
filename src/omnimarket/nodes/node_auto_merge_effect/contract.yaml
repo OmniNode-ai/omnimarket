@@ -1,0 +1,82 @@
+---
+name: node_auto_merge_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Auto-merge effect node. Merges a GitHub PR after all CI gates pass and
+  CodeRabbit Major threads are resolved. Emits a merge-completed event on success.
+
+handler:
+  module: omnimarket.nodes.node_auto_merge_effect.handlers.handler_auto_merge_effect
+  class: HandlerAutoMergeEffect
+  input_model: omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input.ModelAutoMergeInput
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 86400000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Correlation ID flowing through the pipeline"
+    required: true
+  pr_number:
+    type: int
+    description: "GitHub PR number to merge"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo slug (org/repo)"
+    required: true
+  strategy:
+    type: str
+    description: "Merge strategy: squash | merge | rebase"
+    required: false
+    default: "squash"
+  delete_branch:
+    type: bool
+    description: "Delete source branch after merge"
+    required: false
+    default: true
+  ticket_id:
+    type: str
+    description: "Linear ticket ID to close after merge (e.g. OMN-1234)"
+    required: false
+  gate_timeout_hours:
+    type: float
+    description: "Wall-clock budget in hours for CI readiness polling"
+    required: false
+    default: 24.0
+
+outputs:
+  merged:
+    type: bool
+    description: "Whether the PR was successfully merged"
+  merge_commit_sha:
+    type: str
+    description: "Merge commit SHA, or null if not merged"
+    nullable: true
+  blocked_reason:
+    type: str
+    description: "Human-readable reason the merge was blocked, or null on success"
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.pr-merged.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.auto-merge-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-merged.v1
+
+dod_evidence:
+  phase: 1
+  artifacts:
+    - tests/test_handler_auto_merge_effect.py
+  validation_notes: >
+    Phase 1: deterministic happy path + basic error handling.
+    Phase 2 (follow-up): Slack gate integration, risk tiers, CDQA gate check.

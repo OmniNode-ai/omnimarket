@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overseer_observer
+version: "1.0.0"
+description: "Overseer Observer — Phase-0 stubs for SideEffectObserver and EvidenceEvaluator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_overseer_observer: "omnimarket.nodes.node_overseer_observer"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+compatibility:
+  python: ">=3.12"
+  omnibase_core: ">=0.39.0,<1.0.0"
+  platform: ["local", "runtime"]
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["overseer", "observer", "stub", "phase-0", "OMN-8506", "OMN-8025"]
+pack: "overseer"
+display_name: "Overseer Observer"
+node_role: "probe"

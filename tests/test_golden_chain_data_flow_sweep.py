@@ -226,3 +226,78 @@ class TestDataFlowSweepGoldenChain:
         result = handler.handle(request)
 
         assert result.flow_results[0].flow_status == EnumFlowStatus.PRODUCER_DOWN
+
+    async def test_topic_stale_when_message_age_exceeds_threshold(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A topic with newest_message_age_seconds > stale_threshold_seconds should be TOPIC_STALE.
+
+        OMN-8691: introspection topic was 8d old because the heartbeat loop never
+        started. The data_flow_sweep must catch this via message-age check.
+        """
+        handler = NodeDataFlowSweep()
+        request = DataFlowSweepRequest(
+            flows=[
+                ModelFlowInput(
+                    topic="onex.evt.platform.node-introspection.v1",
+                    handler_name="introspectionCheck",
+                    table_name="node_introspection",
+                    producer_status=EnumProducerStatus.ACTIVE,
+                    consumer_lag=0,
+                    table_row_count=100,
+                    table_has_recent_data=True,
+                    newest_message_age_seconds=691200,  # 8 days
+                    stale_threshold_seconds=1800,  # 30 min
+                )
+            ]
+        )
+        result = handler.handle(request)
+
+        assert result.flow_results[0].flow_status == EnumFlowStatus.TOPIC_STALE
+        assert result.status == "issues_found"
+
+    async def test_topic_not_stale_when_message_age_within_threshold(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A topic with recent messages should not be TOPIC_STALE."""
+        handler = NodeDataFlowSweep()
+        request = DataFlowSweepRequest(
+            flows=[
+                ModelFlowInput(
+                    topic="onex.evt.platform.node-introspection.v1",
+                    handler_name="introspectionCheck",
+                    table_name="node_introspection",
+                    producer_status=EnumProducerStatus.ACTIVE,
+                    consumer_lag=0,
+                    table_row_count=100,
+                    table_has_recent_data=True,
+                    newest_message_age_seconds=300,  # 5 min
+                    stale_threshold_seconds=1800,  # 30 min
+                )
+            ]
+        )
+        result = handler.handle(request)
+
+        assert result.flow_results[0].flow_status == EnumFlowStatus.FLOWING
+
+    async def test_topic_stale_check_skipped_when_age_not_provided(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """When newest_message_age_seconds is not set, staleness check is skipped."""
+        handler = NodeDataFlowSweep()
+        request = DataFlowSweepRequest(
+            flows=[
+                ModelFlowInput(
+                    topic="onex.evt.platform.node-introspection.v1",
+                    handler_name="introspectionCheck",
+                    table_name="node_introspection",
+                    producer_status=EnumProducerStatus.ACTIVE,
+                    consumer_lag=0,
+                    table_row_count=100,
+                    table_has_recent_data=True,
+                )
+            ]
+        )
+        result = handler.handle(request)
+
+        assert result.flow_results[0].flow_status == EnumFlowStatus.FLOWING

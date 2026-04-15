@@ -69,6 +69,21 @@ class ProtocolGitHubMergeAdapter(Protocol):
         """
         ...
 
+    async def post_pr_comment(
+        self,
+        repo: str,
+        pr_number: int,
+        body: str,
+    ) -> None:
+        """Post a comment on a PR.
+
+        Args:
+            repo: GitHub repo slug (owner/repo).
+            pr_number: PR number to comment on.
+            body: Comment body text.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Default no-op adapter (used in standalone / dry-run mode)
@@ -86,6 +101,14 @@ class _NoopGitHubMergeAdapter:
     ) -> str:
         strategy = "queue" if use_merge_queue else "squash"
         return f"[noop] would auto-merge {repo}#{pr_number} via {strategy}"
+
+    async def post_pr_comment(
+        self,
+        repo: str,
+        pr_number: int,
+        body: str,
+    ) -> None:
+        logger.debug("[noop] would post comment on %s#%s: %s", repo, pr_number, body)
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +214,24 @@ class HandlerPrLifecycleMerge:
                 use_merge_queue=command.use_merge_queue,
             )
             merged = True
+            comment_body = (
+                f"<!-- onex-correlation-id: {command.correlation_id} -->\n"
+                f"Auto-merged by merge-sweep | correlation_id: `{command.correlation_id}`"
+            )
+            try:
+                await self._github.post_pr_comment(
+                    repo=command.repo,
+                    pr_number=command.pr_number,
+                    body=comment_body,
+                )
+            except Exception as comment_exc:
+                logger.warning(
+                    "PR lifecycle merge: failed to post correlation comment pr=%s repo=%s correlation_id=%s: %s",
+                    command.pr_number,
+                    command.repo,
+                    command.correlation_id,
+                    comment_exc,
+                )
         except Exception as exc:
             merge_action = f"failed: {exc}"
             error = str(exc)

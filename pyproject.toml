@@ -35,6 +35,7 @@ dependencies = [
     "onex-change-control>=0.5.0",
     "pydantic>=2.12.5,<3.0.0",
     "pyyaml>=6.0.2,<7.0.0",
+    "packaging>=24.0",
     "aiokafka>=0.11.0",
     "asyncpg>=0.30.0",
     "python-dateutil>=2.9.0",
@@ -73,6 +74,7 @@ node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outc
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
 node_projection_savings = "omnimarket.nodes.node_projection_savings"
 node_projection_delegation = "omnimarket.nodes.node_projection_delegation"
+node_projection_overnight = "omnimarket.nodes.node_projection_overnight"
 node_projection_baselines = "omnimarket.nodes.node_projection_baselines"
 node_projection_registration = "omnimarket.nodes.node_projection_registration"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
@@ -83,10 +85,12 @@ node_loop_state_reducer = "omnimarket.nodes.node_loop_state_reducer"
 node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute"
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect"
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect"
+node_auto_merge_effect = "omnimarket.nodes.node_auto_merge_effect"
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute"
 node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect"
 node_pr_health_monitor = "omnimarket.nodes.node_pr_health_monitor"
 node_pr_review_bot = "omnimarket.nodes.node_pr_review_bot"
+node_review_thread_reconciler = "omnimarket.nodes.node_review_thread_reconciler"
 node_design_to_plan = "omnimarket.nodes.node_design_to_plan"
 node_ticket_work = "omnimarket.nodes.node_ticket_work"
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
@@ -130,6 +134,22 @@ node_seam_parallel_executor = "omnimarket.nodes.node_seam_parallel_executor"
 node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_verify_orchestrator"
 node_model_router = "omnimarket.nodes.node_model_router"
 node_dispatch_worker = "omnimarket.nodes.node_dispatch_worker"
+node_filesystem_crawler_effect = "omnimarket.nodes.node_filesystem_crawler_effect"
+node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
+node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
+node_intent_query_effect = "omnimarket.nodes.node_intent_query_effect"
+node_intent_event_consumer_effect = "omnimarket.nodes.node_intent_event_consumer_effect"
+node_memory_lifecycle_orchestrator = "omnimarket.nodes.node_memory_lifecycle_orchestrator"
+node_navigation_history_reducer = "omnimarket.nodes.node_navigation_history_reducer"
+node_persona_lifecycle_orchestrator = "omnimarket.nodes.node_persona_lifecycle_orchestrator"
+node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_orchestrator"
+node_swarm_supervisor_orchestrator = "omnimarket.nodes.node_swarm_supervisor_orchestrator"
+node_handoff_effect = "omnimarket.nodes.node_handoff_effect"
+node_session_orchestrator = "omnimarket.nodes.node_session_orchestrator"
+node_quality_scoring_compute = "omnimarket.nodes.node_quality_scoring_compute"
+node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
+node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
+node_pipeline_fill = "omnimarket.nodes.node_pipeline_fill"
 node_session_compose = "omnimarket.nodes.node_session_compose"
 
 [project.scripts]
@@ -209,7 +229,19 @@ module = "omnimemory.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "omnimarket.nodes.node_navigation_history_reducer.node_navigation_history_reducer"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
 module = "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["radon", "radon.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -237,4 +269,5 @@ markers = [
     "unit: Unit tests that test individual components in isolation",
     "integration: Integration tests that test multiple components together",
     "slow: Tests that take a long time to run (>1s)",
+    "kafka: marks tests requiring a running Kafka broker",
 ]

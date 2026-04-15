@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Overseer Observer
+#
+# Phase-0 stubs: SideEffectObserver and EvidenceEvaluator interfaces.
+# No Kafka wiring yet — wiring happens in Wave 3+.
+#
+# Related Tickets:
+#   - OMN-8506: stub side-effect observer + evidence evaluator interfaces
+#   - OMN-8025: Overseer seam integration epic
+---
+name: overseer_observer
+contract_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+node_version: {major: 0, minor: 1, patch: 0}
+
+description: >
+  Phase-0 stub node declaring SideEffectObserver and EvidenceEvaluator
+  extension points for the overseer pipeline. Records Kafka side effects
+  emitted by nodes (SideEffectObserver) and checks dod_evidence fields
+  against observed outputs (EvidenceEvaluator). No Kafka wiring until Wave 3+.
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+stub_interfaces:
+  - name: SideEffectObserver
+    module: omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer
+    class: SideEffectObserver
+    null_impl: NullSideEffectObserver
+    phase: "Wave 3+"
+    description: >
+      Records Kafka side effects emitted by a node for downstream inspection.
+
+  - name: EvidenceEvaluator
+    module: omnimarket.nodes.node_overseer_observer.handlers.handler_evidence_evaluator
+    class: EvidenceEvaluator
+    null_impl: NullEvidenceEvaluator
+    phase: "Wave 3+"
+    description: >
+      Checks dod_evidence fields against observed side-effect outputs.
+
+dependencies:
+  packages:
+    - "pydantic>=2.0.0"
+
+dod_evidence:
+  - type: pytest
+    description: >
+      SideEffectObserver and EvidenceEvaluator are importable and instances
+      pass isinstance checks against their Protocol types.
+    check: uv run pytest tests/test_golden_chain_overseer_observer.py -v
+  - type: bash_script
+    description: >
+      Python import check confirms both stub classes are importable and pass isinstance checks.
+    check: >-
+      uv run python -c "
+      from omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer import SideEffectObserver, NullSideEffectObserver;
+      from omnimarket.nodes.node_overseer_observer.handlers.handler_evidence_evaluator import EvidenceEvaluator, NullEvidenceEvaluator;
+      assert isinstance(NullSideEffectObserver(), SideEffectObserver);
+      assert isinstance(NullEvidenceEvaluator(), EvidenceEvaluator);
+      print('OK')"

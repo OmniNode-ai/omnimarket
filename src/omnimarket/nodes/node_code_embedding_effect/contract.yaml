@@ -1,0 +1,199 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_code_embedding_effect
+# EFFECT node — generates vector embeddings for code entities and stores them in Qdrant.
+# Re-implements omniintelligence dispatch_handler_code_embedding (deleted in PR #568).
+# [OMN-5657, OMN-5665]
+
+name: "node_code_embedding_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+node_type: "EFFECT"
+input_model: "ModelCodeEmbeddingRequest"
+output_model: "ModelCodeEmbeddingResult"
+description: |
+  Consumes code-entities-extracted.v1 events, generates vector embeddings
+  via a contract-configured embedding model endpoint, and upserts vectors
+  into the Qdrant code_patterns collection. Emits code-embedded.v1 upon
+  successful batch completion.
+
+  Embedding uses tiered fields:
+    Primary (stable, source-derived): entity_name, signature, docstring
+    Secondary (optional, LLM-enriched): llm_description
+
+  Point ID = entity UUID (upsert is idempotent).
+  Qdrant unavailability is a graceful skip — logged as warning, not error.
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-5665"
+  parent_epic: "OMN-5657"
+  recovery_source: "omniintelligence@2f0ddf3b — dispatch_handler_code_embedding.py (deleted in PR #568)"
+  contract_driven_routing: true
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  correlation_id_required: true
+  unit_tests: true
+  integration_test_stubs: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "vector_upsert"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+  - operation_type: "db_write"
+    atomic: false
+    timeout_seconds: 10
+    validation_enabled: true
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "code_embedding_effect"
+  main_tool_class: "NodeCodeEmbeddingEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === NODE CONFIGURATION ===
+config:
+  embedding_model_url:
+    env_var: "EMBEDDING_MODEL_URL"
+    description: "Base URL for the embedding model OpenAI-compatible endpoint. Fail-fast if unset."
+    required: true
+  qdrant_collection:
+    env_var: "QDRANT_CODE_COLLECTION"
+    default: "code_patterns"
+    description: "Qdrant collection name for code entity vectors."
+  qdrant_host:
+    env_var: "QDRANT_HOST"
+    description: "Qdrant host. Required when qdrant_client is not injected."
+    required: false
+  qdrant_port:
+    env_var: "QDRANT_PORT"
+    default: "6333"
+    description: "Qdrant port."
+  embedding_batch_size:
+    env_var: "CODE_EMBEDDING_BATCH_SIZE"
+    default: "50"
+    description: "Maximum entities to embed per invocation."
+  embedding_vector_size:
+    env_var: "CODE_EMBEDDING_VECTOR_SIZE"
+    default: "4096"
+    description: "Embedding vector dimension (must match model output)."
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["correlation_id"]
+  optional: ["batch_size", "embedding_endpoint_override", "qdrant_collection_override"]
+
+output_state:
+  object_type: "object"
+  required: ["correlation_id", "embedded_count", "failed_count"]
+  optional: ["batch_size_used", "vector_ids", "qdrant_collection"]
+
+# === ACTIONS ===
+actions:
+  - name: "embed_batch"
+    description: "Embed a batch of code entities and store vectors in Qdrant"
+    inputs: ["correlation_id", "batch_size", "embedding_endpoint_override", "qdrant_collection_override"]
+    outputs: ["correlation_id", "embedded_count", "failed_count", "vector_ids", "qdrant_collection"]
+
+  - name: "health_check"
+    description: "Verify embedding endpoint and Qdrant reachability"
+    inputs: []
+    outputs: ["status"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "qdrant"
+    dependency_type: "service"
+    description: "Qdrant vector store for code entity similarity search"
+    required: false
+    notes: "Graceful skip when unavailable — embedding is non-fatal"
+
+  - name: "ProtocolCodeEntityRepository"
+    dependency_type: "protocol"
+    description: "Repository providing get_entities_needing_embedding() and update_embedded_at()"
+    required: true
+
+  - name: "embedding_model"
+    dependency_type: "service"
+    description: "OpenAI-compatible embedding endpoint (EMBEDDING_MODEL_URL)"
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 60000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["code_embedded"]
+  event_categories: ["intelligence", "embedding", "effect", "code"]
+  publish_events: true
+  subscribe_events: true
+  invocation_mode: "subscription"
+  event_routing: "intelligence"
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.evt.omnimarket.code-entities-extracted.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.code-embedded.v1"
+
+  subscribe_topic_metadata:
+    "onex.evt.omnimarket.code-entities-extracted.v1":
+      schema_ref: "omniintelligence.nodes.node_ast_extraction_compute.models.model_code_entities_extracted_event.ModelCodeEntitiesExtractedEvent"
+      description: "Batch of code entities extracted from a source file by node_ast_extraction_compute."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.code-embedded.v1":
+      schema_ref: "omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_result.ModelCodeEmbeddingResult"
+      description: "Embedding batch completion — reports embedded_count and failed_count."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "embed_batch"
+      handler_class: "HandlerCodeEmbeddingEffect"
+      handler_module: "omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  constraint_definitions:
+    correlation_id: "string (1-128) — required on input and output"
+    embedded_count: "int >= 0"
+    failed_count: "int >= 0"
+    batch_size: "int (1-200)"
+
+# === TAGS ===
+tags:
+  - intelligence
+  - embedding
+  - effect
+  - code
+  - qdrant
+  - vector
+  - omn-5657
+  - omn-5665

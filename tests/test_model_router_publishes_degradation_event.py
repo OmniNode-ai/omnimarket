@@ -21,9 +21,8 @@ from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
-from omnimarket.nodes.node_model_router.topics import TOPIC_MODEL_ROUTING_DEGRADED
 
-DEGRADED_TOPIC = TOPIC_MODEL_ROUTING_DEGRADED
+DEGRADED_TOPIC = "onex.evt.omnimarket.model-routing-degraded.v1"
 
 
 @pytest.mark.asyncio

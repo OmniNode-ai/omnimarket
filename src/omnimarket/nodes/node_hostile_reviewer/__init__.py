@@ -87,9 +87,17 @@ __all__ = [
     "ModelReviewFinding",
     "ModelWorkflowInput",
     "ModelWorkflowOutput",
+    "NodeHostileReviewer",
     "build_prompt",
     "compute_convergence",
     "parse_model_response",
     "run_hostile_review_workflow",
     "run_review_orchestration",
 ]
+from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import (
+    HandlerPromptBuilder,
+)
+
+
+class NodeHostileReviewer(HandlerPromptBuilder):
+    """ONEX entry-point wrapper for HandlerPromptBuilder."""

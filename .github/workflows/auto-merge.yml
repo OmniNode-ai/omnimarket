@@ -74,6 +74,8 @@ jobs:
           echo "actor=$ACTOR" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@v4
+
       - name: Enable auto-merge
         if: steps.resolve.outputs.skip != 'true' && steps.resolve.outputs.actor == 'jonahgabriel'
         env:
@@ -82,18 +84,11 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # "already enqueued" / "clean" race is benign — treat as success.
-          # All other failures surface loudly (no silent continue-on-error).
-          #
-          # No --squash: omnimarket's branch protection uses a merge queue that
-          # controls the merge method; passing a strategy flag causes gh to
-          # reject the call ("merge strategy is set by the merge queue").
-          # --repo is required because this job runs without actions/checkout.
-          if output=$(gh pr merge "$PR" --repo "$REPO" --auto 2>&1); then
+          if output=$(gh pr merge "$PR" --repo "$REPO" --auto --merge 2>&1); then
             echo "auto-merge enabled: $output"
             exit 0
           fi
-          if echo "$output" | grep -qiE "already|enqueued|clean|cannot be merged"; then
+          if echo "$output" | grep -qiE "already enqueued|already queued|auto-merge already enabled"; then
             echo "auto-merge not newly enabled (expected): $output"
             exit 0
           fi

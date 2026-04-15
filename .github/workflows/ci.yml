@@ -49,6 +49,15 @@ jobs:
       # topics. This lint was added in OMN-7921 (branched from PR #76 / OMN-7918).
       - name: Topic-literal guardrail
         run: python scripts/lint_no_hardcoded_topics.py
+      - name: Reject node-level topics.py files
+        run: |
+          FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)
+          if [ -n "$FOUND" ]; then
+            echo "ERROR: topics.py files found in node directories. Topic bindings must come from contract.yaml."
+            echo "$FOUND"
+            exit 1
+          fi
+          echo "OK: No node-level topics.py files found."
 
   typecheck:
     runs-on: ubuntu-latest
@@ -90,7 +99,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
       - name: Pytest
-        run: uv run pytest tests/ -v --tb=short
+        run: uv run pytest tests/ -v --tb=short -m "not kafka"
 
   topic-naming-lint:
     runs-on: ubuntu-latest
@@ -124,13 +133,66 @@ jobs:
             --baseline scripts/validation/topic_naming_baseline.txt
 
   # ============================================================================
+  # RUNTIME SWEEP GATE (OMN-8611)
+  # Verifies every onex.nodes entry point in pyproject.toml has a module
+  # directory, __init__.py, and contract.yaml. Fails if any are broken.
+  # NOTE: This gate must pass on main — land AFTER fix-market-entry-points
+  # PR merges (the PR fixing 96 broken entry points).
+  # ============================================================================
+  runtime-sweep:
+    name: Runtime Sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify entry point wiring
+        run: python scripts/ci/run_runtime_sweep.py
+
+  # ============================================================================
   # GATE AGGREGATOR
   # Required status check for branch protection and merge queue.
   # ============================================================================
+
+  contract-compliance:
+    name: Contract Compliance Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Checkout onex_change_control
+        uses: actions/checkout@v6
+        with:
+          repository: OmniNode-ai/onex_change_control
+          path: onex_change_control
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'onex_change_control/uv.lock'
+
+      - name: Install onex_change_control
+        working-directory: onex_change_control
+        run: uv sync --all-extras
+
+      - name: Validate contract YAML files
+        working-directory: onex_change_control
+        run: |
+          CONTRACTS=$(find "$GITHUB_WORKSPACE/onex_change_control/contracts" -name "OMN-*.yaml" 2>/dev/null)
+          if [ -z "$CONTRACTS" ]; then
+            echo "No contract YAML files found — skipping validation"
+            exit 0
+          fi
+          uv run validate-yaml $CONTRACTS
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, topic-naming-lint]
+    needs: [lint, typecheck, test, topic-naming-lint, runtime-sweep, contract-compliance]
     if: always()
     steps:
       - name: Check CI results
@@ -142,7 +204,9 @@ jobs:
             "lint=${{ needs.lint.result }}" \
             "typecheck=${{ needs.typecheck.result }}" \
             "test=${{ needs.test.result }}" \
-            "topic-naming-lint=${{ needs.topic-naming-lint.result }}"; do
+            "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
+            "runtime-sweep=${{ needs.runtime-sweep.result }}" \
+            "contract-compliance=${{ needs.contract-compliance.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then

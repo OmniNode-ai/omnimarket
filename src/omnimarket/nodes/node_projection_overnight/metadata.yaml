@@ -1,0 +1,19 @@
+name: projection_overnight
+version: "1.0.0"
+description: >
+  Projects overnight session events into overnight_sessions and
+  overnight_session_phases tables.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - overnight
+  - reducer
+pack: "data"
+display_name: "Projection: Overnight Sessions"
+node_role: "effect"

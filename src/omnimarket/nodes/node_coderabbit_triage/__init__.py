@@ -14,4 +14,9 @@ __all__ = [
     "ModelCoderabbitTriageCommand",
     "ModelCoderabbitTriageResult",
     "ModelThreadClassification",
+    "NodeCoderabbitTriage",
 ]
+
+
+class NodeCoderabbitTriage(HandlerCoderabbitTriage):
+    """ONEX entry-point wrapper for HandlerCoderabbitTriage."""

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -59,11 +60,11 @@ from omnimarket.nodes.node_overnight.protocols.protocol_phase_handlers import (
     ProtocolNightlyLoopHandler,
     ProtocolPlatformReadinessHandler,
 )
-from omnimarket.nodes.node_overnight.topics import (
-    TOPIC_OVERNIGHT_COMPLETE,
-    TOPIC_OVERNIGHT_PHASE_END,
-    TOPIC_OVERNIGHT_PHASE_START,
-)
+
+TOPIC_OVERNIGHT_COMPLETE = "onex.evt.omnimarket.overnight-session-completed.v1"
+TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight-phase-completed.v1"
+TOPIC_OVERNIGHT_PHASE_START = "onex.evt.omnimarket.overnight-phase-start.v1"
+TOPIC_OVERNIGHT_START = "onex.cmd.omnimarket.overnight-start.v1"
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,14 @@ class ModelOvernightCommand(BaseModel):
     skip_merge_sweep: bool = False
     dry_run: bool = False
     overnight_contract: ModelOvernightContract | None = None
+    # OMN-8407: self-perpetuating loop trigger. When True, the handler re-emits
+    # onex.cmd.omnimarket.overnight-start.v1 after session completion so the
+    # overseer loop runs autonomously on .201 without Claude Code crons.
+    # Set to False for one-shot runs (tests, manual invocations).
+    enable_self_loop: bool = True
+    # Seconds the runtime should wait before delivering the requeued start command.
+    # Default 300 = 5 minutes between overseer loop iterations.
+    loop_delay_seconds: int = 300
 
 
 class ModelPhaseResult(BaseModel):
@@ -167,6 +176,10 @@ class ModelOvernightResult(BaseModel):
     halt_reason: str | None = None
     started_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
     completed_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
+    # OMN-8371: full contract enforcement fields
+    standing_orders: tuple[str, ...] = Field(default_factory=tuple)
+    missing_required_outcomes: list[str] = Field(default_factory=list)
+    evidence: dict[str, dict[str, bool]] = Field(default_factory=dict)
 
 
 class HandlerBuildLoopExecutor:
@@ -378,6 +391,7 @@ class HandlerBuildLoopExecutor:
             optional halt_reason if a contract halt condition was triggered.
         """
         started_at = datetime.now(tz=UTC)
+        started_mono = monotonic()
         results: list[ModelPhaseResult] = []
         overrides = phase_results or {}
         costs = phase_costs or {}
@@ -385,6 +399,16 @@ class HandlerBuildLoopExecutor:
         accumulated_cost: float = 0.0
         halt_reason: str | None = None
         consecutive_failures = 0
+        # OMN-8371: per-phase evidence: phase_name -> {outcome_name -> satisfied}
+        evidence: dict[str, dict[str, bool]] = {}
+
+        # OMN-8371: log standing_orders at session start so agents can observe them
+        if contract is not None and contract.standing_orders:
+            logger.info(
+                "[OVERNIGHT] standing_orders for session %s:", contract.session_id
+            )
+            for order in contract.standing_orders:
+                logger.info("[OVERNIGHT]   • %s", order)
 
         # OMN-8375: stamp .onex_state/overseer-active.flag on contract load so
         # the sibling PreToolUse hook (OMN-8376) can block foreground drift.
@@ -430,6 +454,17 @@ class HandlerBuildLoopExecutor:
                 phase_started_at_wall = datetime.now(tz=UTC)
                 phase_started_mono = monotonic()
 
+                # OMN-8371: check max_duration_seconds before dispatching each phase
+                if contract is not None:
+                    elapsed = monotonic() - started_mono
+                    if elapsed >= contract.max_duration_seconds:
+                        halt_reason = (
+                            f"max_duration_seconds exceeded: "
+                            f"{elapsed:.0f}s >= {contract.max_duration_seconds}s"
+                        )
+                        logger.error("[OVERNIGHT] %s", halt_reason)
+                        break
+
                 if dispatch_phases and phase not in overrides:
                     success, error_msg = self._dispatch_phase(phase, command, contract)
                 elif command.dry_run:
@@ -441,6 +476,25 @@ class HandlerBuildLoopExecutor:
 
                 accumulated_cost += costs.get(phase, 0.0)
                 duration_ms = int((monotonic() - phase_started_mono) * 1000)
+
+                # OMN-8371: enforce phase timeout_seconds — treat exceeded timeout as failure
+                if contract is not None and success:
+                    _phase_spec_timeout = next(
+                        (p for p in contract.phases if p.phase_name == phase.value),
+                        None,
+                    )
+                    if (
+                        _phase_spec_timeout is not None
+                        and duration_ms / 1000.0 >= _phase_spec_timeout.timeout_seconds
+                    ):
+                        timeout_msg = (
+                            f"phase timeout exceeded: "
+                            f"{duration_ms}ms >= "
+                            f"{_phase_spec_timeout.timeout_seconds * 1000}ms"
+                        )
+                        logger.warning("[OVERNIGHT] %s: %s", phase.value, timeout_msg)
+                        success = False
+                        error_msg = timeout_msg
 
                 # OMN-8375: probe required_outcomes for the current phase.
                 # Phase only advances when outcomes satisfied — downgrades
@@ -469,14 +523,49 @@ class HandlerBuildLoopExecutor:
                             logger.warning("[OVERSEER] %s: %s", phase.value, msg)
                             success = False
                             error_msg = msg
+                    # OMN-8371: evaluate success_criteria via outcome probe
+                    if (
+                        phase_spec is not None
+                        and phase_spec.success_criteria
+                        and success
+                    ):
+                        criteria_results = probe_required_outcomes(
+                            tuple(phase_spec.success_criteria),
+                            self._outcome_probe,
+                        )
+                        if not all(criteria_results.values()):
+                            unmet = [k for k, v in criteria_results.items() if not v]
+                            criteria_msg = (
+                                f"success_criteria not met: {', '.join(unmet)}"
+                            )
+                            logger.warning(
+                                "[OVERSEER] %s: %s", phase.value, criteria_msg
+                            )
+                            success = False
+                            error_msg = criteria_msg
+                    # OMN-8371: collect evidence for this phase
+                    combined: dict[str, bool] = dict(phase_outcomes)
+                    if phase_spec is not None and phase_spec.success_criteria:
+                        for c in phase_spec.success_criteria:
+                            if c not in combined:
+                                combined[c] = False
+                    if combined:
+                        evidence[phase.value] = combined
 
-                consecutive_failures = 0 if success else consecutive_failures + 1
+                is_skipped = (
+                    not success
+                    and error_msg is not None
+                    and error_msg.startswith("SKIPPED:")
+                )
+                consecutive_failures = (
+                    0 if (success or is_skipped) else consecutive_failures + 1
+                )
 
                 results.append(
                     ModelPhaseResult(
                         phase=phase,
-                        success=success,
-                        skipped=False,
+                        success=success or is_skipped,
+                        skipped=is_skipped,
                         error_message=error_msg,
                         duration_seconds=duration_ms / 1000.0,
                     )
@@ -485,9 +574,7 @@ class HandlerBuildLoopExecutor:
                 # OMN-8405: phase-end envelope after the phase settles (before
                 # halt-condition evaluation so we always emit a terminal signal
                 # even when a halt breaks the loop on the next line).
-                # OMN-8437: propagate SKIPPED signal — dispatchers that return
-                # (False, "SKIPPED: ...") must not appear as "failed" in events.
-                if not success and error_msg and error_msg.startswith("SKIPPED:"):
+                if is_skipped:
                     _phase_status = "skipped"
                 elif success:
                     _phase_status = "success"
@@ -565,13 +652,14 @@ class HandlerBuildLoopExecutor:
                         phase=phase,
                         phase_success=success,
                         accumulated_cost=accumulated_cost,
+                        error_msg=error_msg,
                     )
                     if halt is not None:
                         halt_reason = halt
                         logger.error("Overnight halt triggered: %s", halt_reason)
                         break
 
-                if not success:
+                if not success and not is_skipped:
                     # On failure, stop the pipeline unless it's a non-critical phase.
                     # nightly_loop or build_loop failure stops everything; other phases continue.
                     if phase in (EnumPhase.NIGHTLY_LOOP, EnumPhase.BUILD_LOOP):
@@ -591,6 +679,30 @@ class HandlerBuildLoopExecutor:
             r.phase.value for r in results if not r.success and not r.skipped
         ]
         phases_skipped = [r.phase.value for r in results if r.skipped]
+
+        # OMN-8371: validate session-level required_outcomes at the end of the run.
+        # Only enforced when an outcome_probe is wired — without a probe, outcomes
+        # cannot be checked and the session proceeds (backwards-compatible).
+        missing_required_outcomes: list[str] = []
+        if (
+            contract is not None
+            and contract.required_outcomes
+            and halt_reason is None
+            and self._outcome_probe is not None
+        ):
+            for outcome_name in contract.required_outcomes:
+                satisfied = probe_required_outcomes(
+                    (outcome_name,), self._outcome_probe
+                ).get(outcome_name, False)
+                if not satisfied:
+                    missing_required_outcomes.append(outcome_name)
+            if missing_required_outcomes:
+                outcomes_fail_reason = (
+                    f"required_outcomes not satisfied at session end: "
+                    f"{', '.join(missing_required_outcomes)}"
+                )
+                logger.error("[OVERNIGHT] %s", outcomes_fail_reason)
+                halt_reason = outcomes_fail_reason
 
         if halt_reason is not None:
             status = EnumOvernightStatus.FAILED
@@ -622,6 +734,34 @@ class HandlerBuildLoopExecutor:
             },
         )
 
+        # OMN-8407: self-perpetuating loop trigger. After every completed run
+        # (including partial/failed — the loop must keep turning), re-emit the
+        # start command with a delay so the omninode-runtime delivers it after
+        # loop_delay_seconds. This creates a self-driving overseer loop on .201
+        # without Claude Code crons. Only fires when enable_self_loop=True AND
+        # an event_bus is wired — dry_run or no-bus callers are unaffected.
+        if command.enable_self_loop and self._event_bus is not None:
+            import uuid
+
+            self._publish(
+                TOPIC_OVERNIGHT_START,
+                {
+                    "correlation_id": str(uuid.uuid4()),
+                    "max_cycles": command.max_cycles,
+                    "skip_nightly_loop": command.skip_nightly_loop,
+                    "skip_build_loop": command.skip_build_loop,
+                    "skip_merge_sweep": command.skip_merge_sweep,
+                    "dry_run": command.dry_run,
+                    "enable_self_loop": True,
+                    "loop_delay_seconds": command.loop_delay_seconds,
+                    "delay_seconds": command.loop_delay_seconds,
+                },
+            )
+            logger.info(
+                "[OVERNIGHT] self-loop requeued — next start in %ds (correlation_id fresh)",
+                command.loop_delay_seconds,
+            )
+
         return ModelOvernightResult(
             correlation_id=command.correlation_id,
             session_status=status,
@@ -633,6 +773,9 @@ class HandlerBuildLoopExecutor:
             halt_reason=halt_reason,
             started_at=started_at,
             completed_at=completed_at,
+            standing_orders=contract.standing_orders if contract is not None else (),
+            missing_required_outcomes=missing_required_outcomes,
+            evidence=evidence,
         )
 
     def _process_halt_triggers(
@@ -686,6 +829,7 @@ class HandlerBuildLoopExecutor:
         phase: EnumPhase,
         phase_success: bool,
         accumulated_cost: float,
+        error_msg: str | None = None,
     ) -> str | None:
         """Check all contract halt conditions after a phase completes.
 
@@ -701,8 +845,11 @@ class HandlerBuildLoopExecutor:
                     f"{halt_cond.threshold:.2f} USD"
                 )
 
-        # Check halt_on_failure for the completed phase against contract phase specs
-        if not phase_success:
+        # Check halt_on_failure for the completed phase against contract phase specs.
+        # OMN-8486: SKIPPED outcomes (error_msg starts with "SKIPPED:") are not
+        # failures — they must not trigger halt_on_failure.
+        is_skipped = error_msg is not None and error_msg.startswith("SKIPPED:")
+        if not phase_success and not is_skipped:
             for phase_spec in contract.phases:
                 if phase_spec.phase_name == phase.value and phase_spec.halt_on_failure:
                     return f"halt_on_failure: phase {phase.value} failed"
@@ -720,6 +867,11 @@ class HandlerBuildLoopExecutor:
         Returns (success, error_message). Unknown phases and dispatcher
         exceptions are logged and reported as failures so halt_on_failure
         semantics still apply.
+
+        When a contract is present and the matching phase spec declares
+        ``dispatch_items``, those items are executed after the per-phase
+        dispatcher succeeds (OMN-8406). A failure in any dispatch_item
+        propagates as a phase failure so halt_on_failure semantics apply.
         """
         dispatcher = self._dispatchers.get(phase)
         if dispatcher is None:
@@ -729,11 +881,34 @@ class HandlerBuildLoopExecutor:
 
         logger.info("[OVERNIGHT] Dispatching phase %s", phase.value)
         try:
-            return dispatcher(command, contract)
+            success, error_msg = dispatcher(command, contract)
         except Exception as exc:
             msg = f"Phase {phase.value} dispatcher raised: {exc}"
             logger.exception("[OVERNIGHT] %s", msg)
             return False, msg
+
+        if not success:
+            return success, error_msg
+
+        # OMN-8406: execute dispatch_items declared in the contract phase spec.
+        # This is the "real executor" path — skills/commands named in dispatch_items
+        # are invoked here so overnight runs do real work, not just FSM sequencing.
+        if contract is not None:
+            phase_spec = next(
+                (p for p in contract.phases if p.phase_name == phase.value),
+                None,
+            )
+            if phase_spec is not None and phase_spec.dispatch_items:
+                item_success, item_error = _execute_dispatch_items(
+                    phase_spec.dispatch_items,
+                    command,
+                    timeout_seconds=phase_spec.timeout_seconds,
+                    halt_on_failure=phase_spec.halt_on_failure,
+                )
+                if not item_success:
+                    return False, item_error
+
+        return success, error_msg
 
     def _should_skip(self, phase: EnumPhase, command: ModelOvernightCommand) -> bool:
         """Return True if this phase should be skipped per command flags."""
@@ -744,6 +919,123 @@ class HandlerBuildLoopExecutor:
         if phase == EnumPhase.MERGE_SWEEP and command.skip_merge_sweep:
             return True
         return False
+
+
+def _execute_dispatch_items(
+    dispatch_items: tuple[object, ...],
+    command: ModelOvernightCommand,
+    *,
+    timeout_seconds: int = 300,
+    halt_on_failure: bool = False,
+) -> tuple[bool, str | None]:
+    """Execute each dispatch_item declared in a phase spec (OMN-8406).
+
+    Items with ``dispatch_mode == "skill"`` are invoked via ``claude -p
+    /<skill_or_command>`` subprocess. Any non-zero exit code or missing
+    skill_or_command causes a failure so halt_on_failure semantics apply.
+
+    Items with other dispatch modes (``agent_team``, ``foreground_required``,
+    ``blocked_on_human``, ``cron``) are logged and skipped at this layer —
+    they require a session context that the overnight executor does not own.
+
+    Args:
+        dispatch_items: Items declared in the phase spec.
+        command: The overnight command (used for dry_run flag).
+        timeout_seconds: Per-subprocess timeout, taken from the phase spec's
+            ``timeout_seconds`` field. Defaults to 300 when not set.
+        halt_on_failure: When True, any subprocess error (including
+            FileNotFoundError) immediately returns a failure. When False,
+            the error is logged and the loop continues to the next item.
+            Mirrors the halt_on_failure semantics of ModelOvernightPhaseSpec.
+
+    Returns (success, error_message).
+    """
+    from onex_change_control.overseer.model_dispatch_item import ModelDispatchItem
+
+    last_error: str | None = None
+
+    for item in dispatch_items:
+        if not isinstance(item, ModelDispatchItem):
+            continue
+
+        if item.dispatch_mode != "skill":
+            logger.info(
+                "[OVERNIGHT] dispatch_item %s: mode=%s — skipped (not skill)",
+                item.theme_id,
+                item.dispatch_mode,
+            )
+            continue
+
+        skill = item.skill_or_command
+        if not skill:
+            msg = f"dispatch_item {item.theme_id}: skill_or_command is empty"
+            logger.error("[OVERNIGHT] %s", msg)
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
+
+        logger.info(
+            "[OVERNIGHT] dispatch_item %s: invoking skill %r (dry_run=%s)",
+            item.theme_id,
+            skill,
+            command.dry_run,
+        )
+
+        if command.dry_run:
+            logger.info("[OVERNIGHT] dry_run — skipping skill invocation for %s", skill)
+            continue
+
+        try:
+            proc = subprocess.run(
+                ["claude", "-p", f"/{skill}"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except FileNotFoundError:
+            msg = f"dispatch_item {item.theme_id}: 'claude' not found in PATH"
+            logger.error("[OVERNIGHT] %s", msg)
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
+        except subprocess.TimeoutExpired:
+            msg = f"dispatch_item {item.theme_id}: skill {skill!r} timed out"
+            logger.error("[OVERNIGHT] %s", msg)
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
+        except Exception as exc:
+            msg = f"dispatch_item {item.theme_id}: subprocess error: {exc}"
+            logger.exception("[OVERNIGHT] %s", msg)
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
+
+        if proc.returncode != 0:
+            stderr_snippet = (proc.stderr or "").strip()[:500]
+            msg = (
+                f"dispatch_item {item.theme_id}: skill {skill!r} exited "
+                f"{proc.returncode}: {stderr_snippet}"
+            )
+            logger.error("[OVERNIGHT] %s", msg)
+            if halt_on_failure:
+                return False, msg
+            last_error = msg
+            continue
+
+        logger.info(
+            "[OVERNIGHT] dispatch_item %s: skill %r completed successfully",
+            item.theme_id,
+            skill,
+        )
+
+    if last_error is not None:
+        return False, last_error
+    return True, None
 
 
 def _dispatch_nightly_loop(
@@ -827,8 +1119,8 @@ def _dispatch_ci_watch(
     """Dispatch CI watch.
 
     ``HandlerCiWatch`` requires a concrete PR + repo to poll; those are not
-    available at the overnight session level. Returns a typed skip failure so
-    callers see an explicit SKIPPED outcome rather than a silent success.
+    available at the overnight session level. Returns a typed skip so callers
+    see an explicit SKIPPED outcome rather than a silent success.
 
     A follow-up must wire PR refs from the build_loop_orchestrator phase into
     this dispatcher before it can perform real work.
@@ -923,4 +1215,5 @@ __all__: list[str] = [
     "ModelPhaseResult",
     "PhaseDispatcher",
     "_dispatch_ci_watch",
+    "_execute_dispatch_items",
 ]

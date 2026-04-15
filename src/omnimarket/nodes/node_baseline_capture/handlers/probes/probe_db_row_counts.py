@@ -34,7 +34,7 @@ class ProbeDbRowCounts:
         Reads OMNIBASE_INFRA_DB_URL from environment. Returns empty list on failure.
         """
         try:
-            import asyncpg  # type: ignore[import-untyped]
+            import asyncpg
         except ImportError:
             logger.warning("asyncpg not available — skipping db_row_counts probe")
             return []

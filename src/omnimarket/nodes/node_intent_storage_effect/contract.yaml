@@ -1,0 +1,213 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Intent Storage EFFECT - ONEX Contract
+# EFFECT node for storing intent classifications in Memgraph.
+
+# === REQUIRED ROOT FIELDS ===
+name: "node_intent_storage_effect"
+contract_version: {major: 0, minor: 2, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: "Intent storage effect node for persisting classified intents to Memgraph. Links intents
+  to sessions for analytics and pattern learning."
+node_type: "EFFECT"
+input_model: "ModelIntentStorageRequest"
+output_model: "ModelIntentStorageResponse"
+
+# === IO OPERATIONS (Required for EFFECT nodes) ===
+io_operations:
+  - operation_type: "database_write"
+    atomic: true
+    timeout_seconds: 10
+    validation_enabled: true
+  - operation_type: "database_read"
+    atomic: false
+    timeout_seconds: 5
+    validation_enabled: true
+
+# === NODE CONFIGURATION ===
+tool_specification:
+  tool_name: "intent_storage_effect"
+  main_tool_class: "NodeIntentStorageEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === INPUT/OUTPUT STATE ===
+# Aligned with ModelIntentStorageRequest and ModelIntentStorageResponse Pydantic models
+input_state:
+  object_type: "object"
+  required: ["operation"]
+  optional:
+    - "session_id"  # Required for 'store' and 'get_session' operations
+    - "intent_data"  # Required for 'store' operation (ModelIntentClassificationOutput)
+    - "correlation_id"  # Optional UUID for request tracing
+    - "min_confidence"  # float 0.0-1.0, default 0.0
+    - "limit"  # int 1-1000, default 100
+    - "time_range_hours"  # int 1-720, default 24
+    - "user_context"  # string, max 10000 chars, PII-validated
+
+output_state:
+  object_type: "object"
+  required: ["status"]
+  optional:
+    - "intent_id"  # UUID for store operations
+    - "session_id"  # Session identifier echo
+    - "created"  # bool, True if new intent created
+    - "intents"  # list[ModelIntentRecordResponse] for get_session
+    - "total_count"  # int for get_session results
+    - "distribution"  # dict[str, int] for get_distribution
+    - "total_intents"  # int for get_distribution
+    - "time_range_hours"  # int for get_distribution echo
+    - "execution_time_ms"  # float, operation timing
+    - "error_message"  # string, error details
+
+# === ACTIONS ===
+actions:
+  - name: "store_intent"
+    description: "Store a classified intent linked to a session"
+    inputs: ["session_id", "intent_data"]
+    outputs: ["intent_id", "status"]
+
+  - name: "get_session_intents"
+    description: "Retrieve intents for a specific session"
+    inputs: ["session_id", "min_confidence", "limit"]
+    outputs: ["intents", "status"]
+
+  - name: "get_intent_distribution"
+    description: "Get aggregate intent category distribution"
+    inputs: ["time_range_hours"]
+    outputs: ["distribution", "status"]
+
+  - name: "health_check"
+    description: "Check node health status"
+    inputs: []
+    outputs: ["status"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: memgraph
+    dependency_type: service
+    description: Memgraph graph database for intent storage
+    required: true
+
+  - name: AdapterIntentGraph
+    dependency_type: adapter
+    description: Intent graph adapter for Cypher operations
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 100
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["intent.stored", "intent.store_failed"]
+  event_categories: ["intent", "effect", "memory"]
+  publish_events: true
+  subscribe_events: false
+  event_routing: "intent"
+  invocation_mode: "orchestrator"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  performance_validation_enabled: true
+  pii_validation_enabled: true  # user_context is PII-validated
+  constraint_definitions:
+    operation: "Literal['store', 'get_session', 'get_distribution']"
+    status: "Literal['success', 'error', 'not_found', 'no_results']"
+    session_id: "str | None, min_length=1, required for store and get_session"
+    intent_data: "ModelIntentClassificationOutput | None, required for store"
+    correlation_id: "UUID | None, optional request tracing identifier"
+    min_confidence: "float, ge=0.0, le=1.0, default=0.0"
+    limit: "int, ge=1, le=1000, default=100"
+    time_range_hours: "int, ge=1, le=720, default=24"
+    user_context: "str, max_length=10000, PII-validated before processing"
+
+# === HANDLER ROUTING (Declarative Dispatch) ===
+# Maps operations to handler classes for ONEX-compliant routing.
+# routing_key values MUST match validation_rules.constraint_definitions.operation Literal values.
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    # Store operation: persist a classified intent linked to a session
+    - routing_key: "store"
+      handler_key: "HandlerIntentStorageAdapter"
+      priority: 0
+      output_events: []
+    # Get session operation: retrieve intents for a specific session
+    - routing_key: "get_session"
+      handler_key: "HandlerIntentStorageAdapter"
+      priority: 0
+      output_events: []
+    # Get distribution operation: aggregate intent category distribution
+    - routing_key: "get_distribution"
+      handler_key: "HandlerIntentStorageAdapter"
+      priority: 0
+      output_events: []
+  default_handler: null
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+# PURPOSE: Machine-readable configuration of WHERE events are routed.
+#
+# This subcontract provides structured topic routing for:
+#   - RuntimeHostProcess auto-discovery and wiring
+#   - Kafka topic subscription/publication
+#   - Schema validation via topic metadata
+#
+# Contains: topic suffixes (simple strings) + optional schema references.
+#
+# NOTE: This node is orchestrator-invoked (not subscription-driven).
+# It publishes storage confirmation events but does not subscribe to topics.
+#
+# Topic naming: onex.{kind}.omnimemory.{event-name}.v{n}
+#   - kind=cmd for commands/inputs
+#   - kind=evt for events/outputs
+#   - Internal runtime events use onex.internal.* namespace
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  # This node does not subscribe to topics (orchestrator-invoked)
+  subscribe_topics: []
+
+  # Topics this node publishes to (sends events to)
+  publish_topics:
+    - "onex.evt.omnimemory.intent-stored.v1"
+    - "onex.evt.omnimemory.intent-store-failed.v1"
+
+  # Metadata for published topics
+  publish_topic_metadata:
+    "onex.evt.omnimemory.intent-stored.v1":
+      schema_ref: "omnimarket.nodes.node_intent_storage_effect.models.model_intent_storage_response.ModelIntentStorageResponse"
+      description: "Intent storage confirmation event. Emitted when an intent is successfully stored in
+        Memgraph with session linkage."
+    "onex.evt.omnimemory.intent-store-failed.v1":
+      schema_ref: "omnimarket.nodes.node_intent_storage_effect.models.model_intent_storage_response.ModelIntentStorageResponse"
+      description: "Intent storage failure event. Emitted when an intent storage operation fails with
+        error details."
+
+# === TAGS ===
+tags:
+  - intent
+  - storage
+  - effect
+  - memgraph
+  - graph
+  - analytics

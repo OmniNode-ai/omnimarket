@@ -1,0 +1,92 @@
+---
+name: review_thread_reconciler
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Reconciler webhook handler. Consumes pull_request_review_thread.resolved events
+  forwarded via Kafka and re-opens any thread resolved by an actor not in the
+  allowed_actors list. Posts a policy reminder comment and emits a
+  thread_reopened Kafka event. Only the pr_review_bot may resolve threads.
+
+ticket_id: "OMN-8493"
+is_seam_ticket: false
+interface_change: false
+
+handler:
+  module: omnimarket.nodes.node_review_thread_reconciler.handlers.handler_review_thread_reconciler
+  class: HandlerReviewThreadReconciler
+  input_model: omnimarket.nodes.node_review_thread_reconciler.handlers.handler_review_thread_reconciler.ModelReviewThreadReconcileCommand
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+
+inputs:
+  thread_id:
+    type: str
+    description: "GitHub GraphQL node ID of the pull_request_review_thread"
+    required: true
+  pr_node_id:
+    type: str
+    description: "GitHub GraphQL node ID of the pull request (for posting comments)"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo in owner/name format"
+    required: true
+  pr_number:
+    type: int
+    description: "PR number (for logging/context)"
+    required: true
+  resolved_by:
+    type: str
+    description: "GitHub login of the actor who resolved the thread"
+    required: true
+  correlation_id:
+    type: uuid
+    description: "Unique run ID"
+    required: true
+  allowed_actors:
+    type: list
+    description: >
+      Case-insensitive list of GitHub logins allowed to resolve threads without
+      triggering a re-open. Configurable at runtime — no code change required
+      to add emergency-bypass identities. Minimum: [pr-review-bot[bot]].
+    required: true
+
+outputs:
+  reopened:
+    type: bool
+    description: "True if the thread was re-opened, False if actor was allowed"
+  thread_id:
+    type: str
+    description: "Thread ID that was processed"
+  resolved_by:
+    type: str
+    description: "Actor who originally resolved the thread"
+
+terminal_event: onex.evt.omnimarket.review-thread-reopened.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.review-thread-reconcile.v1
+  publish_topics:
+    - onex.evt.omnimarket.review-thread-reopened.v1
+
+dod_evidence:
+  - kind: tests
+    description: "HandlerReviewThreadReconciler unit tests"
+    command: "uv run pytest tests/ -k 'reconciler' -v"
+  - kind: kafka
+    description: "thread_reopened event emitted on non-bot resolve"
+    command: "rpk topic consume onex.evt.omnimarket.review-thread-reopened.v1 --num 1"
+  - kind: runtime_health
+    description: "End-to-end thread re-open within 30s"
+    command: "uv run pytest tests/e2e/test_reconciler_e2e.py -v"
+  - kind: ci
+    description: "Webhook subscriptions confirmed on all repos"
+    command: "bash scripts/verify_webhook_subscriptions.sh"

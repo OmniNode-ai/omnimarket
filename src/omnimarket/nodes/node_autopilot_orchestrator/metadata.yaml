@@ -19,7 +19,6 @@ capabilities:
 entry_flags:
   dry_run: "Run without side effects"
   mode: "Execution mode: close-out | build (default: close-out)"
-  require_gate: "Opt into a Slack HIGH_RISK gate before release step"
   autonomous: "Run without human gates (default: true)"
 dependencies:
   - "omnibase_core>=0.39.0"

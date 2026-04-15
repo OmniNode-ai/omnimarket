@@ -67,6 +67,37 @@ handler_routing:
         module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_emergency_bypass_parser"
       description: "Parses EMERGENCY-BYPASS comments, records audit signal in Kafka + DB. Side-effect (I/O)."
 
+    - operation: "verify_push"
+      handler:
+        name: "HandlerVerificationLoop"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_verification_loop"
+      description: "Commit-citation parser + hostile_reviewer gate + conditional resolveReviewThread. Triggered on push to open PR. Side-effect (I/O)."
+      payload:
+        commit_body:
+          type: str
+          description: "Full commit message body to parse for citations"
+          required: true
+        commit_sha:
+          type: str
+          description: "SHA of the triggering commit"
+          required: true
+        pr_number:
+          type: int
+          description: "PR number the push targets"
+          required: true
+        repo:
+          type: str
+          description: "GitHub repo (owner/repo)"
+          required: true
+        open_findings:
+          type: list
+          description: "List of ReviewFinding objects currently open on the PR"
+          required: true
+        diff_hunks:
+          type: list
+          description: "List of DiffHunk objects from the push diff"
+          required: true
+
   adapters:
     - name: "AdapterGitHubBridge"
       module: "omnimarket.nodes.node_pr_review_bot.adapter_github_bridge"
@@ -158,6 +189,7 @@ terminal_event: onex.evt.omnimarket.pr-review-bot-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pr-review-bot-start.v1
+    - onex.cmd.omnimarket.pr-review-bot-verify-push.v1
   publish_topics:
     - onex.evt.omnimarket.pr-review-bot-phase-transition.v1
     - onex.evt.omnimarket.pr-review-bot-thread-posted.v1
@@ -165,6 +197,9 @@ event_bus:
     - onex.evt.omnimarket.pr-review-bot-completed.v1
     - onex.evt.omnimarket.review-bot-bypass-used.v1
     - onex.evt.omnimarket.review-bot-bypass-rolled-back.v1
+    - onex.evt.omnimarket.thread_verified.v1
+    - onex.evt.omnimarket.thread_resolve_failed.v1
+    - onex.evt.omnimarket.thread_resolved.v1
 
 runtime_config:
   review_bot.emergency_bypass_actor:
@@ -190,7 +225,7 @@ metadata:
   description: "PR Review Bot — automated multi-model review with judge verification gate"
   author: "OmniNode Team"
   created: "2026-04-09"
-  updated: "2026-04-09"
+  updated: "2026-04-11"
   tags:
     - "review"
     - "pr-bot"
@@ -206,3 +241,20 @@ metadata:
     - "OMN-7966"
     - "OMN-7967"
     - "OMN-7968"
+    - "OMN-8494"
+
+dod_evidence:
+  ticket_id: "OMN-8494"
+  evidence_requirements:
+    - kind: "tests"
+      description: "Citation parser and hostile_reviewer integration unit tests"
+      command: "uv run pytest tests/test_verification_loop.py -v"
+    - kind: "kafka"
+      description: "thread_verified and thread_resolved events emitted"
+      command: "rpk topic consume onex.evt.omnimarket.thread_verified.v1 --num 1"
+    - kind: "runtime_health"
+      description: "Integration: citing commit triggers bot resolution"
+      command: "uv run pytest tests/e2e/test_verification_loop_e2e.py -v"
+    - kind: "ci"
+      description: "Verification loop triggers on push to PR branch"
+      command: "gh run list --workflow=pr-review-bot.yml --limit 5"

@@ -488,3 +488,170 @@ def test_run_all_dimensions_uses_asyncio_gather(ctx: CheckContext) -> None:
     assert elapsed < 0.25, (
         f"run_all_dimensions took {elapsed:.3f}s — likely not parallel"
     )
+
+
+# ---------------------------------------------------------------------------
+# Evidence drill-down tests (OMN-8696)
+# ---------------------------------------------------------------------------
+
+
+def test_contract_completeness_pass_has_evidence(
+    ctx: CheckContext, tmp_omni_home: Path
+) -> None:
+    """PASS result includes evidence block with query and row_count=0 (no missing fields)."""
+    sweep_dir = tmp_omni_home / ".onex_state" / "contract-sweep" / "20260409-120000"
+    sweep_dir.mkdir(parents=True)
+    (sweep_dir / "summary.json").write_text(
+        json.dumps({"total_contracts": 10, "missing_required_fields": []})
+    )
+
+    result = asyncio.get_event_loop().run_until_complete(
+        check_contract_completeness(ctx)
+    )
+    assert result.evidence is not None
+    assert result.evidence.row_count == 0
+    assert result.evidence.query != ""
+    assert result.evidence.last_verified_at != ""
+
+
+def test_contract_completeness_fail_evidence_has_sample_rows(
+    ctx: CheckContext, tmp_omni_home: Path
+) -> None:
+    """FAIL result includes evidence with up to 3 sample missing-field rows."""
+    sweep_dir = tmp_omni_home / ".onex_state" / "contract-sweep" / "20260409-120000"
+    sweep_dir.mkdir(parents=True)
+    missing = [f"node_{i}" for i in range(6)]
+    (sweep_dir / "summary.json").write_text(
+        json.dumps({"total_contracts": 20, "missing_required_fields": missing})
+    )
+
+    result = asyncio.get_event_loop().run_until_complete(
+        check_contract_completeness(ctx)
+    )
+    assert result.status == EnumReadinessStatus.FAIL
+    assert result.evidence is not None
+    assert result.evidence.row_count == 6
+    assert len(result.evidence.sample_rows) == 3  # capped at 3
+
+
+def test_golden_chain_pass_has_evidence(ctx: CheckContext, tmp_omni_home: Path) -> None:
+    """PASS golden_chain includes evidence listing checked nodes."""
+    sweep_dir = tmp_omni_home / ".onex_state" / "golden-chain-sweep" / "20260409-120000"
+    sweep_dir.mkdir(parents=True)
+    (sweep_dir / "result_node_foo.json").write_text(json.dumps({"passed": True}))
+    (sweep_dir / "result_node_bar.json").write_text(json.dumps({"passed": True}))
+
+    result = asyncio.get_event_loop().run_until_complete(check_golden_chain(ctx))
+    assert result.evidence is not None
+    assert result.evidence.row_count == 2
+    assert result.evidence.last_verified_at != ""
+
+
+def test_data_flow_no_major_gaps_has_evidence(
+    ctx: CheckContext, tmp_omni_home: Path
+) -> None:
+    """PASS data_flow includes evidence with row_count=0 (no gaps)."""
+    flow_dir = tmp_omni_home / ".onex_state" / "data-flow"
+    flow_dir.mkdir(parents=True)
+    (flow_dir / "result.json").write_text(
+        json.dumps({"total_topics": 15, "major_gaps": []})
+    )
+
+    result = asyncio.get_event_loop().run_until_complete(check_data_flow(ctx))
+    assert result.evidence is not None
+    assert result.evidence.row_count == 0
+
+
+def test_data_flow_major_gaps_evidence_has_sample_rows(
+    ctx: CheckContext, tmp_omni_home: Path
+) -> None:
+    """FAIL data_flow includes evidence with gap rows."""
+    flow_dir = tmp_omni_home / ".onex_state" / "data-flow"
+    flow_dir.mkdir(parents=True)
+    (flow_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "total_topics": 10,
+                "major_gaps": [
+                    "onex.evt.foo",
+                    "onex.evt.bar",
+                    "onex.evt.baz",
+                    "onex.evt.qux",
+                ],
+            }
+        )
+    )
+
+    result = asyncio.get_event_loop().run_until_complete(check_data_flow(ctx))
+    assert result.evidence is not None
+    assert result.evidence.row_count == 4
+    assert len(result.evidence.sample_rows) == 3  # capped at 3
+    assert result.evidence.sample_rows[0]["severity"] == "MAJOR"
+
+
+def test_runtime_wiring_pass_has_evidence(ctx: CheckContext) -> None:
+    """PASS runtime_wiring includes evidence with node sample rows."""
+    nodes = [{"id": f"node_{i}"} for i in range(45)]
+    session_cm = _make_mock_session(_make_mock_response(200, nodes))
+
+    with patch(
+        "omnimarket.nodes.node_platform_readiness.handlers.dimension_checks.aiohttp.ClientSession",
+        return_value=session_cm,
+    ):
+        result = asyncio.get_event_loop().run_until_complete(check_runtime_wiring(ctx))
+
+    assert result.evidence is not None
+    assert result.evidence.row_count == 3  # sample capped at 3
+    assert result.evidence.query.startswith("GET ")
+    assert result.evidence.last_verified_at != ""
+
+
+def test_dashboard_data_pass_has_evidence(ctx: CheckContext) -> None:
+    """PASS dashboard_data evidence includes total_savings and recent count."""
+    session_cm = _make_mock_session(
+        _make_mock_response(200, {"total_savings_usd": 500.0, "records_last_24h": 20})
+    )
+    with patch(
+        "omnimarket.nodes.node_platform_readiness.handlers.dimension_checks.aiohttp.ClientSession",
+        return_value=session_cm,
+    ):
+        result = asyncio.get_event_loop().run_until_complete(check_dashboard_data(ctx))
+
+    assert result.evidence is not None
+    assert result.evidence.row_count == 1
+    row = result.evidence.sample_rows[0]
+    assert row["total_savings_usd"] == 500.0
+    assert row["records_last_24h"] == 20
+
+
+def test_cost_measurement_pass_has_evidence(ctx: CheckContext) -> None:
+    """PASS cost_measurement evidence includes cost totals."""
+    session_cm = _make_mock_session(
+        _make_mock_response(200, {"total_cost_usd": 3.50, "records_last_24h": 8})
+    )
+    with patch(
+        "omnimarket.nodes.node_platform_readiness.handlers.dimension_checks.aiohttp.ClientSession",
+        return_value=session_cm,
+    ):
+        result = asyncio.get_event_loop().run_until_complete(
+            check_cost_measurement(ctx)
+        )
+
+    assert result.evidence is not None
+    assert result.evidence.row_count == 1
+    assert result.evidence.sample_rows[0]["records_last_24h"] == 8
+
+
+def test_ci_health_pass_has_evidence(ctx: CheckContext) -> None:
+    """PASS ci_health evidence includes per-repo run summary."""
+    runs: list[dict[str, object]] = [{"name": "test", "conclusion": "success"}]
+    session_cm = _make_mock_session(_make_ci_response(runs))
+    with patch(
+        "omnimarket.nodes.node_platform_readiness.handlers.dimension_checks.aiohttp.ClientSession",
+        return_value=session_cm,
+    ):
+        result = asyncio.get_event_loop().run_until_complete(check_ci_health(ctx))
+
+    assert result.evidence is not None
+    assert result.evidence.row_count == 1  # one repo checked
+    assert result.evidence.query != ""
