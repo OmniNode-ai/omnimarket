@@ -31,9 +31,10 @@ class ModelPhaseResult(BaseModel):
     @field_validator("phase")
     @classmethod
     def _validate_phase(cls, value: str) -> str:
-        if not value.strip():
+        stripped = value.strip()
+        if not stripped:
             raise ValueError("phase must not be blank or whitespace-only")
-        return value
+        return stripped
 
     @field_validator("status")
     @classmethod
