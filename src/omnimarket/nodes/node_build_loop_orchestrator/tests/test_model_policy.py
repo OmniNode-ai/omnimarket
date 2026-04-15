@@ -41,16 +41,23 @@ class TestModelPolicyFileExists:
         assert path.exists(), f"model_policy.yaml not found at {path}"
 
     def test_model_policy_has_required_sections(self) -> None:
-        """model_policy.yaml must declare coder, judge, and delegation policies."""
+        """model_policy.yaml must declare all 6 required LLM tier policies."""
         import yaml
 
         path = _find_model_policy()
         data = yaml.safe_load(path.read_text())
         assert "policies" in data, "model_policy.yaml must have a 'policies' key"
         policies = data["policies"]
-        assert "coder" in policies, "policies.coder is required"
-        assert "judge" in policies, "policies.judge is required"
-        assert "delegation" in policies, "policies.delegation is required"
+        required = {
+            "coder",
+            "coder_fast",
+            "judge",
+            "delegation",
+            "delegation_review",
+            "embedding",
+        }
+        missing = required - set(policies)
+        assert not missing, f"model_policy.yaml is missing required policies: {missing}"
 
     def test_coder_policy_has_tier_and_fallback(self) -> None:
         import yaml
