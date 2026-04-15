@@ -1,0 +1,103 @@
+---
+name: projection_query
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: query
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Read-only query node exposing 10 dashboard query shapes via HTTP.
+  Omnidash calls this node instead of querying omnidash_analytics directly,
+  enforcing projection-only architecture (OMN-8899).
+
+handler:
+  module: omnimarket.nodes.node_projection_query.handlers.handler_projection_query
+  class: HandlerProjectionQuery
+
+terminal_event: onex.evt.omnimarket.projection-query-completed.v1
+
+db_io:
+  db_tables:
+    - name: omnidash_analytics
+      migration: "0001_omnidash_analytics_read_model.sql"
+      access: read
+      database: omnidash_analytics
+      role: query
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.projection-query-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-query-completed.v1
+
+golden_path:
+  - shape: staleness
+    description: >
+      Per-feature staleness info by querying max timestamps from key tables.
+    tables: [pattern_learning_artifacts, injection_effectiveness, intent_signals, delegation_events, session_outcomes, compliance_evaluations]
+    response_keys: [features, checked_at]
+
+  - shape: projection-health
+    description: >
+      Row counts, last-updated timestamps, and watermark offsets for all tables.
+    tables: [agent_routing_decisions, agent_actions, projection_watermarks]
+    response_keys: [tables, watermarks, summary]
+
+  - shape: system-activity
+    description: >
+      Build loop phases, pipeline runs, session outcomes, delegation activity.
+    tables: [phase_metrics_events, skill_invocations, session_outcomes, delegation_events]
+    response_keys: [build_loop, pipelines, sessions, delegations]
+
+  - shape: hot-nodes
+    description: >
+      Nodes ranked by event volume (routing decision count) over a time window.
+    tables: [agent_routing_decisions]
+    response_keys: [nodes]
+
+  - shape: intent-drift
+    description: >
+      Recent intent drift events with severity summary.
+    tables: [intent_drift_events]
+    response_keys: [recent, summary]
+
+  - shape: contract-drift
+    description: >
+      Recent contract drift events with severity and type breakdowns.
+    tables: [contract_drift_events]
+    response_keys: [recent, by_severity, by_type]
+
+  - shape: model-efficiency
+    description: >
+      Model Efficiency Index (MEI) summary over final rollup rows only.
+    tables: [model_efficiency_rollups]
+    response_keys: [summary]
+
+  - shape: dlq
+    description: >
+      Dead-letter queue messages with error type breakdown.
+    tables: [dlq_messages]
+    response_keys: [messages, error_breakdown, total]
+
+  - shape: eval-results
+    description: >
+      Eval reports from the eval harness.
+    tables: [eval_reports]
+    response_keys: [reports]
+
+  - shape: intent-breakdown
+    description: >
+      Intent type classification counts grouped by intent_type.
+    tables: [intent_signals]
+    response_keys: [breakdown]
+
+dod_evidence:
+  - type: contract
+    path: src/omnimarket/nodes/node_projection_query/contract.yaml
+    assertion: golden_path declares all 10 query shapes
+  - type: entry_point
+    path: pyproject.toml
+    assertion: node_projection_query registered in onex.nodes
+  - type: integration_test
+    path: tests/test_golden_chain_projection_query.py
+    assertion: HTTP call per shape returns correct DB rows
+  - type: negative
+    assertion: No Postgres credentials in omnidash env for these shapes
