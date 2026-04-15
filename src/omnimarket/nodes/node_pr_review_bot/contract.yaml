@@ -117,6 +117,19 @@ output_model:
   module: "omnimarket.nodes.node_pr_review_bot.models.models"
   description: "Completed event with verdict, thread counts, and phase history."
 
+model_routing:
+  reviewer:
+    primary: "qwen3-coder-30b"
+    fallback: "qwen3-14b"
+    endpoint_env: "LLM_QWEN3_CODER_URL"
+    context_window: 112000
+    transport: "http"
+  judge:
+    primary: "deepseek-r1"
+    endpoint_env: "LLM_DEEPSEEK_R1_URL"
+    context_window: 32000
+    transport: "http"
+
 descriptor:
   node_archetype: workflow
   purity: side_effect

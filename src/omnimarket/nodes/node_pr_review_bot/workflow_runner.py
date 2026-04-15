@@ -36,6 +36,10 @@ from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolThreadPoster,
     ProtocolThreadWatcher,
 )
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_llm_reviewer import (
+    HandlerLlmReviewer,
+    LlmReviewerConfig,
+)
 from omnimarket.nodes.node_pr_review_bot.models.models import (
     DiffHunk,
     EnumFindingSeverity,
@@ -73,28 +77,6 @@ class _DiffFetcherAdapter(ProtocolDiffFetcher):
 # ---------------------------------------------------------------------------
 # Stub implementations for handlers not yet available (parallel PRs)
 # ---------------------------------------------------------------------------
-
-
-class _StubReviewer(ProtocolReviewer):
-    """Stub reviewer — returns no findings until OMN-7969/OMN-7971 land.
-
-    The build loop will swap in the real HandlerHostileReviewerAdapter when
-    those branches merge into this one.
-    """
-
-    def review(
-        self,
-        correlation_id: UUID,
-        diff_hunks: tuple[DiffHunk, ...],
-        reviewer_models: list[str],
-    ) -> list[ReviewFinding]:
-        logger.info(
-            "StubReviewer: skipping review for correlation_id=%s (%d hunks, models=%s)",
-            correlation_id,
-            len(diff_hunks),
-            reviewer_models,
-        )
-        return []
 
 
 class _StubThreadPoster(ProtocolThreadPoster):
@@ -263,8 +245,12 @@ def run_review(
     diff_fetcher_handler = HandlerDiffFetcher(diff_fetcher_config)
     diff_fetcher = _DiffFetcherAdapter(diff_fetcher_handler)
 
-    # Stub implementations for handlers from parallel PRs
-    reviewer: ProtocolReviewer = _StubReviewer()
+    # Concrete reviewer — reads model selection from caller (contract inputs)
+    _reviewer_config = LlmReviewerConfig(
+        reviewer_models=request.reviewer_models,
+    )
+    reviewer: ProtocolReviewer = HandlerLlmReviewer(config=_reviewer_config)
+    # Stub implementations for handlers from parallel PRs (OMN-7969 to OMN-7972)
     thread_poster: ProtocolThreadPoster = _StubThreadPoster()
     thread_watcher: ProtocolThreadWatcher = _StubThreadWatcher()
     judge_verifier: ProtocolJudgeVerifier = _StubJudgeVerifier()
