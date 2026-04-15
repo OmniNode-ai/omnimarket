@@ -231,14 +231,16 @@ def route_ticket_to_tier(
             return EnumModelTier.FRONTIER_GOOGLE
         if EnumModelTier.FRONTIER_OPENAI in available:
             return EnumModelTier.FRONTIER_OPENAI
-        return EnumModelTier.LOCAL_CODER
+        if EnumModelTier.LOCAL_CODER in available:
+            return EnumModelTier.LOCAL_CODER
 
     # Simple keywords -> local fast
     has_simple = any(kw in text for kw in _SIMPLE_KEYWORDS)
     if has_simple:
         if EnumModelTier.LOCAL_FAST in available:
             return EnumModelTier.LOCAL_FAST
-        return EnumModelTier.LOCAL_CODER
+        if EnumModelTier.LOCAL_CODER in available:
+            return EnumModelTier.LOCAL_CODER
 
     # Default: local coder (medium complexity)
     if EnumModelTier.LOCAL_CODER in available:
