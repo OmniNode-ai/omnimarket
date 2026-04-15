@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# runtime-rebuild-trigger.yml
+#
+# Triggers a deploy-agent rebuild when a PR that touches runtime code merges
+# to main. Closes the 6-day deploy gap (OMN-7963 / pr_review_bot failure class).
+#
+# Trigger conditions (evaluated by scripts/trigger_rebuild_on_merge.py):
+#   - PR had the "runtime_change" label, OR
+#   - Any changed file matches src/omnimarket/** or src/omnibase_infra/nodes/**
+#
+# Ticket: OMN-8917
+#
+# Required GitHub Secrets:
+#   KAFKA_BOOTSTRAP_SERVERS    -- e.g. pkc-xxx.us-east-1.aws.confluent.cloud:9092
+#   KAFKA_SASL_USERNAME        -- Confluent Cloud API key (or SASL username)
+#   KAFKA_SASL_PASSWORD        -- Confluent Cloud API secret (or SASL password)
+#   DEPLOY_AGENT_HMAC_SECRET   -- HMAC secret for signing rebuild commands
+
+name: Runtime Rebuild Trigger
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  trigger-rebuild:
+    name: Trigger Deploy Agent Rebuild
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+        with:
+          separator: ","
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet confluent-kafka click
+
+      - name: Trigger rebuild if runtime change detected
+        # All potentially attacker-controlled inputs (labels, head_ref) are
+        # passed through environment variables to prevent shell injection.
+        env:
+          KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
+          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+          DEPLOY_AGENT_HMAC_SECRET: ${{ secrets.DEPLOY_AGENT_HMAC_SECRET }}
+          PR_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python scripts/trigger_rebuild_on_merge.py \
+            --changed-files "$PR_CHANGED_FILES" \
+            --labels "$PR_LABELS" \
+            --git-ref "origin/main" \
+            --requested-by "gha/omnimarket/pr-$PR_NUMBER"
