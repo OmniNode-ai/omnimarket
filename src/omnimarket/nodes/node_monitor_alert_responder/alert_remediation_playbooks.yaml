@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Alert remediation playbooks for node_monitor_alert_responder (OMN-8887).
+# Each playbook maps a pattern keyword to a remediation prompt template.
+# PlaybookRegistry loads this file at import time.
+#
+# Pattern matching: case-insensitive substring match on ModelAlertEvent.pattern_matched.
+# The first matching playbook wins.
+#
+playbooks:
+  - id: omn-oom-restart
+    pattern_keywords:
+      - oom
+      - out_of_memory
+    title: "OOM: container memory limit exceeded"
+    severity_scope:
+      - ERROR
+      - CRITICAL
+    dispatch_prompt: |
+      Container {container} on {host} hit an OOM event at {detected_at}.
+      Pattern: {pattern_matched}. Restart count: {restart_count}.
+      Action: check memory limits in compose overlay, increase limit or add swap,
+      then trigger a deploy-agent rebuild via onex.cmd.deploy.rebuild-requested.v1.
+    dod_evidence:
+      - "Container restarted cleanly with new memory limit applied"
+      - "No further OOM events in next 15 minutes"
+
+  - id: omn-memory-pressure
+    pattern_keywords:
+      - memory
+      - memory_pressure
+      - high_memory
+    title: "Memory pressure: container approaching limit"
+    severity_scope:
+      - WARNING
+      - ERROR
+    dispatch_prompt: |
+      Container {container} on {host} shows memory pressure at {detected_at}.
+      Pattern: {pattern_matched}.
+      Action: review recent allocations, check for memory leaks in service logs,
+      consider increasing container memory ceiling by 20%.
+    dod_evidence:
+      - "Memory usage returned below 80% of limit"
+
+  - id: omn-restart-loop
+    pattern_keywords:
+      - restart
+      - crash_loop
+    title: "Container restart / crash loop"
+    severity_scope:
+      - ERROR
+      - CRITICAL
+    dispatch_prompt: |
+      Container {container} on {host} is in a restart loop at {detected_at}.
+      Restart count: {restart_count}. Pattern: {pattern_matched}.
+      Action: inspect container logs for root cause, check ONEX_INPUT_TOPIC config,
+      verify Kafka connectivity, then trigger rebuild if needed.
+    dod_evidence:
+      - "Container stable for 10+ minutes with restart_count not increasing"
+
+  - id: omn-connection-refused
+    pattern_keywords:
+      - connection_refused
+      - connection refused
+      - econnrefused
+    title: "Connection refused: downstream service unreachable"
+    severity_scope:
+      - ERROR
+    dispatch_prompt: |
+      Container {container} on {host} cannot reach a downstream service at {detected_at}.
+      Pattern: {pattern_matched}.
+      Action: check that all required containers are running (docker ps),
+      verify network aliases in compose, restart the unreachable service.
+    dod_evidence:
+      - "Connection established and health-check passes"
+
+  - id: omn-timeout
+    pattern_keywords:
+      - timeout
+      - timed_out
+      - request_timeout
+      - connect_timeout
+    title: "Timeout: service or Kafka operation timed out"
+    severity_scope:
+      - WARNING
+      - ERROR
+    dispatch_prompt: |
+      Timeout detected in container {container} on {host} at {detected_at}.
+      Pattern: {pattern_matched}.
+      Action: check Redpanda/Kafka health (rpk cluster health), verify network latency,
+      consider increasing KAFKA_REQUEST_TIMEOUT_MS if this is a Kafka producer timeout.
+    dod_evidence:
+      - "No timeout events in next 5 minutes"
+
+  - id: omn-disk-full
+    pattern_keywords:
+      - disk_full
+      - disk_pressure
+      - no space left
+      - no_space
+    title: "Disk full: filesystem capacity exhausted"
+    severity_scope:
+      - ERROR
+      - CRITICAL
+    dispatch_prompt: |
+      Disk full detected on {host} at {detected_at} (container: {container}).
+      Pattern: {pattern_matched}.
+      Action: prune Docker images/volumes (docker system prune -f),
+      check /var/lib/docker usage, alert oncall if >95% used after pruning.
+    dod_evidence:
+      - "Disk usage below 85% after remediation"
