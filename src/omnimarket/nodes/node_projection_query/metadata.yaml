@@ -17,4 +17,4 @@ tags:
   - read-only
 pack: "data"
 display_name: "Projection: Query"
-node_role: "query"
+node_role: "compute"

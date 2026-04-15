@@ -53,7 +53,8 @@ class HandlerProjectionQuery:
         if not isinstance(db_raw, DatabaseAdapter):
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
         shape = str(input_data.get("shape", ""))
-        params = dict(input_data.get("params", {}) or {})  # type: ignore[arg-type]
+        raw_params = input_data.get("params") or {}
+        params = {str(k): v for k, v in dict(raw_params).items()}  # type: ignore[arg-type]
         return self.query(shape, params, db_raw)
 
     def query(
@@ -99,7 +100,7 @@ class HandlerProjectionQuery:
             rows = db.query(table)
             last_updated = None
             if rows:
-                timestamps = [r.get(ts_col) for r in rows if r.get(ts_col)]
+                timestamps: list[str] = [str(r[ts_col]) for r in rows if r.get(ts_col)]
                 if timestamps:
                     last_updated = max(timestamps)
             features[name] = {
@@ -230,7 +231,7 @@ class HandlerProjectionQuery:
 
         summary = []
         for model_id, rows in model_groups.items():
-            vts_values = [float(r.get("vts", 0)) for r in rows]
+            vts_values = [float(r.get("vts") or 0) for r in rows]
             summary.append(
                 {
                     "model_id": model_id,
@@ -238,7 +239,7 @@ class HandlerProjectionQuery:
                     "pr_count": len(rows),
                     "avg_vts": sum(vts_values) / len(vts_values) if vts_values else 0,
                     "total_blocking_failures": sum(
-                        int(r.get("blocking_failures", 0)) for r in rows
+                        int(r.get("blocking_failures") or 0) for r in rows
                     ),
                 }
             )
