@@ -1,0 +1,298 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# pr-review-bot.yml
+#
+# Dedicated PR review bot workflow running on the .201 self-hosted runner.
+# This gives the bot LAN access to Qwen3-Coder-30B (:8000) and DeepSeek-R1 (:8001)
+# which are unreachable from GitHub-hosted runners.
+#
+# Distinct from cr-thread-gate.yml (CodeRabbit thread resolution gate) and
+# pr-arch-review.yml (architectural lint + stub FSM). This is the LIVE review
+# bot pipeline with real model fan-out.
+#
+# Rollout plan:
+#   Phase 1 (this PR): trigger wired, informational only — does not block merge.
+#   Phase 2 (follow-up): add as required status check once a few runs confirm
+#     the bot completes successfully on real PRs.
+#
+# How to test locally before merging:
+#   uv run python - <<'PYEOF'
+#   from omnimarket.nodes.node_pr_review_bot.models.models import EnumFindingSeverity
+#   from omnimarket.nodes.node_pr_review_bot.workflow_runner import run_review
+#   result = run_review(
+#       pr_number=<PR_NUMBER>,
+#       repo="OmniNode-ai/omnimarket",
+#       reviewer_models=["qwen3-coder-30b"],
+#       judge_model="deepseek-r1",
+#       severity_threshold=EnumFindingSeverity.MAJOR,
+#       dry_run=True,
+#   )
+#   print(result)
+#   PYEOF
+#
+# Related tickets: OMN-7963 (epic), OMN-7975 (original — marked Done prematurely), OMN-8890 (revival)
+
+name: PR Review Bot
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review (required for workflow_dispatch)"
+        required: true
+        type: string
+      dry_run:
+        description: "Run without posting to GitHub"
+        required: false
+        default: "false"
+        type: string
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  # ============================================================================
+  # Token resolution — swap to onexbot GitHub App token when the app exists,
+  # fall back to GITHUB_TOKEN otherwise. Mirrors pr-arch-review.yml pattern.
+  # ============================================================================
+  resolve-bot-token:
+    name: Resolve Bot Token
+    runs-on: ubuntu-latest
+    outputs:
+      token: ${{ steps.pick.outputs.token }}
+      bot_login: ${{ steps.pick.outputs.bot_login }}
+
+    steps:
+      - name: Generate onexbot installation token (if app secrets present)
+        id: app-token
+        if: ${{ secrets.ONEXBOT_APP_ID != '' && secrets.ONEXBOT_APP_PRIVATE_KEY != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+
+      - name: Pick token and bot login
+        id: pick
+        shell: bash
+        run: |
+          if [ -n "${{ steps.app-token.outputs.token }}" ]; then
+            echo "token=${{ steps.app-token.outputs.token }}" >> "$GITHUB_OUTPUT"
+            echo "bot_login=onexbot[bot]" >> "$GITHUB_OUTPUT"
+            echo "Using onexbot GitHub App token"
+          else
+            echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
+            echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"
+            echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN"
+          fi
+
+  # ============================================================================
+  # PR Review Bot — runs on .201 self-hosted runner for LAN LLM access.
+  # Qwen3-Coder-30B at :8000 (RTX 5090) — primary reviewer.
+  # DeepSeek-R1-14B at :8001 (RTX 4090) — judge model.
+  # KAFKA_BOOTSTRAP_SERVERS is pre-mounted in the runner's Infisical environment.
+  # ============================================================================
+  pr-review-bot:
+    name: PR Review Bot (self-hosted, .201)
+    runs-on: [self-hosted, omnibase-ci]
+    timeout-minutes: 20
+    needs: [resolve-bot-token]
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Clean stale dependency clones
+        run: rm -rf ../omnibase_core ../omnibase_compat
+
+      - name: Clone omnibase_core
+        run: |
+          OMNIBASE_CORE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_core.git HEAD | cut -f1)
+          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
+
+      - name: Clone omnibase_compat
+        run: |
+          OMNIBASE_COMPAT_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_compat.git HEAD | cut -f1)
+          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Resolve PR number
+        id: pr-num
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # On push events, find the open PR for this branch via gh CLI
+            PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+            if [ -z "$PR" ]; then
+              echo "No open PR found for branch ${{ github.ref_name }} — skipping review."
+              echo "pr_number=" >> "$GITHUB_OUTPUT"
+            else
+              echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ needs.resolve-bot-token.outputs.token }}
+
+      - name: Run PR review bot pipeline
+        id: review
+        if: steps.pr-num.outputs.pr_number != ''
+        env:
+          GITHUB_TOKEN: ${{ needs.resolve-bot-token.outputs.token }}
+          PR_NUMBER: ${{ steps.pr-num.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          # LLM_QWEN3_URL and LLM_DEEPSEEK_URL are read from the runner's
+          # Infisical-injected environment — no GitHub secret needed.
+        run: |
+          uv run python - <<'PYEOF'
+          import sys
+          import os
+          import json
+
+          pr_number = int(os.environ["PR_NUMBER"])
+          repo = os.environ["REPO"]
+          dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
+
+          from omnimarket.nodes.node_pr_review_bot.models.models import EnumFindingSeverity
+          from omnimarket.nodes.node_pr_review_bot.workflow_runner import run_review
+
+          result = run_review(
+              pr_number=pr_number,
+              repo=repo,
+              reviewer_models=["qwen3-coder-30b", "qwen3-14b"],
+              judge_model="deepseek-r1",
+              severity_threshold=EnumFindingSeverity.MAJOR,
+              dry_run=dry_run,
+              max_findings_per_pr=20,
+          )
+
+          verdict = result.verdict
+          out = {
+              "correlation_id": str(result.correlation_id),
+              "verdict": verdict.verdict,
+              "total_findings": verdict.total_findings,
+              "threads_posted": verdict.threads_posted,
+              "threads_verified_pass": verdict.threads_verified_pass,
+              "threads_verified_fail": verdict.threads_verified_fail,
+              "phases_completed": len(result.events),
+              "final_phase": str(result.final_state.current_phase),
+              "duration_ms": verdict.duration_ms,
+          }
+          print(json.dumps(out, indent=2))
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"verdict={verdict.verdict}\n")
+              f.write(f"total_findings={verdict.total_findings}\n")
+              f.write(f"correlation_id={out['correlation_id']}\n")
+          PYEOF
+
+      - name: Post review bot summary as PR comment
+        if: always() && steps.pr-num.outputs.pr_number != ''
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          REVIEW_VERDICT: ${{ steps.review.outputs.verdict }}
+          REVIEW_FINDINGS: ${{ steps.review.outputs.total_findings }}
+          REVIEW_CORRELATION_ID: ${{ steps.review.outputs.correlation_id }}
+          BOT_LOGIN: ${{ needs.resolve-bot-token.outputs.bot_login }}
+          PR_NUMBER: ${{ steps.pr-num.outputs.pr_number }}
+        with:
+          github-token: ${{ needs.resolve-bot-token.outputs.token }}
+          script: |
+            const verdict = process.env.REVIEW_VERDICT || 'unknown';
+            const findings = process.env.REVIEW_FINDINGS || '0';
+            const correlationId = process.env.REVIEW_CORRELATION_ID || '';
+            const botLogin = process.env.BOT_LOGIN || '';
+            const prNumber = parseInt(process.env.PR_NUMBER || '0');
+            const stepOutcome = '${{ steps.review.outcome }}';
+
+            const verdictEmoji = {
+              'clean': '✅',
+              'risks_noted': '⚠️',
+              'blocking_issue': '🚫',
+            }[verdict] || '❓';
+
+            const verdictLabel = {
+              'clean': 'CLEAN',
+              'risks_noted': 'RISKS NOTED',
+              'blocking_issue': 'BLOCKED',
+            }[verdict] || verdict.toUpperCase();
+
+            let statusNote = '';
+            if (stepOutcome === 'failure' || stepOutcome === 'skipped') {
+              statusNote = '\n\n> **Note**: The review pipeline encountered an error or was skipped. ' +
+                'Check the [Actions log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.';
+            }
+
+            const body = [
+              `## ${verdictEmoji} PR Review Bot (self-hosted) — ${verdictLabel}`,
+              '',
+              `**Findings**: ${findings}  `,
+              `**Run ID**: \`${correlationId}\``,
+              statusNote,
+              '',
+              '> **Phase 1 (informational)**: Does not block merge. Required-check gate follows once ' +
+                'a few runs confirm the bot completes successfully. See OMN-8890.',
+              '',
+              '---',
+              '',
+              '**Verdict semantics**',
+              '',
+              '| Verdict | Meaning |',
+              '|---------|---------|',
+              '| `clean` | No blocking findings |',
+              '| `risks_noted` | Findings noted; threads passed judge verification |',
+              '| `blocking_issue` | MAJOR/CRITICAL findings not resolved — do not merge |',
+              '',
+              '_Powered by [node_pr_review_bot](src/omnimarket/nodes/node_pr_review_bot/) on .201 self-hosted runner — Qwen3-Coder-30B reviewer + DeepSeek-R1 judge (OMN-7963)_',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber || context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              (c.user.login === botLogin || c.user.type === 'Bot') &&
+              c.body.includes('PR Review Bot (self-hosted)')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber || context.issue.number,
+                body,
+              });
+            }
