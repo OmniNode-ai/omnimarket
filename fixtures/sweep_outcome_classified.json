@@ -1,0 +1,12 @@
+{
+  "event_id": "00000000-0000-4000-a000-000000000020",
+  "pr_number": 100,
+  "repo": "OmniNode-ai/omni_home",
+  "correlation_id": "00000000-0000-4000-a000-000000000011",
+  "run_id": "00000000-0000-4000-a000-000000000010",
+  "total_prs": 1,
+  "outcome": "armed",
+  "source_event_type": "armed",
+  "error": null,
+  "conflict_files": []
+}
