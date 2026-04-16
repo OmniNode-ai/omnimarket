@@ -391,10 +391,10 @@ class HandlerTriageOrchestrator:
             for check in checks:
                 if check.get("conclusion") == "FAILURE":
                     # detailsUrl contains the run URL; extract run ID
-                    details_url = check.get("detailsUrl", "")
+                    details_url: str = str(check.get("detailsUrl") or "")
                     parts = details_url.rstrip("/").split("/")
                     if parts:
-                        return parts[-1]
+                        return str(parts[-1])
             return None
         except (json.JSONDecodeError, AttributeError) as exc:
             _log.error(

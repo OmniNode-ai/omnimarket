@@ -224,10 +224,10 @@ class HandlerRebaseEffect:
                 return _fail(f"git push --force-with-lease failed: {stderr}")
 
             # Step 6: Capture actual SHA after rebase
-            rc, actual_sha, _ = await _run(
+            rc, _sha_raw, _ = await _run(
                 ["git", "-C", str(wt_root), "rev-parse", "HEAD"]
             )
-            actual_sha = actual_sha.strip() if rc == 0 else None
+            actual_sha: str | None = _sha_raw.strip() if rc == 0 else None
 
             return ModelRebaseCompletedEvent(
                 pr_number=pr_number,
@@ -270,8 +270,10 @@ async def _run(cmd: list[str]) -> tuple[int, str, str]:
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await proc.communicate()
+    # returncode is always set after communicate() completes
+    rc: int = proc.returncode if proc.returncode is not None else 1
     return (
-        proc.returncode,
+        rc,
         stdout.decode(errors="replace"),
         stderr.decode(errors="replace"),
     )
