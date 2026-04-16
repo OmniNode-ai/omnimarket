@@ -17,14 +17,14 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_review_thread_reconciler.protocols.protocol_github_client import (
+    ProtocolGitHubReviewClient,
+)
+
 TOPIC_EVT_THREAD_REOPENED = "onex.evt.omnimarket.review-thread-reopened.v1"
 
 if TYPE_CHECKING:
     from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
-    from omnimarket.nodes.node_review_thread_reconciler.protocols.protocol_github_client import (
-        ProtocolGitHubReviewClient,
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class HandlerReviewThreadReconciler:
 
     def __init__(
         self,
-        github_client: ProtocolGitHubReviewClient,
+        github_client: ProtocolGitHubReviewClient | None = None,
         event_bus: EventBusInmemory | None = None,
     ) -> None:
         self._client = github_client
@@ -81,6 +81,12 @@ class HandlerReviewThreadReconciler:
         self, command: ModelReviewThreadReconcileCommand
     ) -> ModelReviewThreadReconcileResult:
         """Primary handler entry point."""
+        if self._client is None:
+            raise RuntimeError(
+                "HandlerReviewThreadReconciler: github_client is not configured. "
+                "Pass a ProtocolGitHubReviewClient instance or configure via DI container."
+            )
+
         allowed_lower = {actor.lower() for actor in command.allowed_actors}
         resolver_lower = command.resolved_by.lower()
 

@@ -95,7 +95,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
 
     def __init__(
         self,
-        bridge: AdapterGitHubBridge,
+        bridge: AdapterGitHubBridge | None = None,
         *,
         max_findings_per_pr: int = 20,
         bot_login: str = _BOT_LOGIN,
@@ -135,6 +135,12 @@ class HandlerThreadPoster(ProtocolThreadPoster):
         findings: tuple[ReviewFinding, ...],
         dry_run: bool,
     ) -> list[ThreadState]:
+        if self._bridge is None:
+            raise RuntimeError(
+                "HandlerThreadPoster: bridge is not configured. "
+                "Pass an AdapterGitHubBridge instance or configure via DI container."
+            )
+
         thread_findings = [f for f in findings if f.severity in _THREAD_SEVERITIES]
         minor_findings = [f for f in findings if f.severity not in _THREAD_SEVERITIES]
 
@@ -237,6 +243,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
 
         Uses cached_threads for R10 dedup to avoid re-paginating GitHub per finding.
         """
+        assert self._bridge is not None  # guarded by _post_async caller
         finding_id_str = str(finding.id)
         marker = _FINDING_MARKER_TEMPLATE.format(finding_id=finding_id_str)
 
