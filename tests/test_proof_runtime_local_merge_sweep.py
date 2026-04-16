@@ -71,3 +71,30 @@ def test_runtime_local_runs_merge_sweep_with_real_payload(tmp_path: Path) -> Non
     assert state["result"] == "completed"
     assert state["exit_code"] == 0
     assert state["workflow"].endswith("node_merge_sweep/contract.yaml")
+
+
+def test_runtime_local_publishes_terminal_event_to_bus(tmp_path: Path) -> None:
+    """OMN-8940 L1B proof: the terminal topic transits EventBusInmemory during
+    an L1 run on a synchronous-return handler (NodeMergeSweep).
+
+    Depends on the runtime behavior decision in Task 5: RuntimeLocal publishes a
+    runtime-synthesized terminal event after successful sync-return classification.
+    Before that decision, NodeMergeSweep's sync return bypassed the bus entirely.
+    """
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "merge_sweep_input_sample.json"
+    )
+    runtime = RuntimeLocal(
+        workflow_path=CONTRACT_PATH,
+        state_root=tmp_path / "state",
+        input_path=fixture_path,
+        timeout=30,
+    )
+    runtime.run()
+
+    terminal_count = runtime._events_received.get("(terminal)", 0)
+    assert terminal_count >= 1, (
+        f"No terminal events recorded on the bus; _events_received={runtime._events_received}"
+    )
