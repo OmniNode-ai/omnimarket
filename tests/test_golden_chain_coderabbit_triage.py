@@ -411,6 +411,96 @@ class TestCoderabbitTriageGoldenChain:
 
         await event_bus.close()
 
+    async def test_coderabbit_helper_login_rejected(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """'coderabbitai-helper' is NOT a supported CR login and must be filtered out."""
+        handler = HandlerCoderabbitTriage()
+
+        graphql_threads = [
+            _make_graphql_thread(
+                author_login="coderabbitai-helper", body="critical bug", database_id=20
+            ),
+            _make_graphql_thread(
+                author_login="coderabbitai[bot]",
+                body="nitpick: rename",
+                database_id=21,
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=99,
+            correlation_id="helper-reject-test",
+        )
+        result = handler.handle(command)
+
+        # coderabbitai-helper must be rejected; only the [bot] thread counts
+        assert result.total_threads == 1
+        assert result.suggestion_count == 1
+        assert result.blocking_count == 0
+
+    async def test_pagination_nonzero_returncode_raises(
+        self, event_bus: EventBusInmemory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-zero gh returncode must raise RuntimeError (fail closed)."""
+        import subprocess as _subprocess
+
+        handler = HandlerCoderabbitTriage()
+
+        class _FakeResult:
+            returncode = 1
+            stderr = "authentication required"
+            stdout = ""
+
+        monkeypatch.setattr(_subprocess, "run", lambda *_a, **_kw: _FakeResult())
+
+        with pytest.raises(RuntimeError, match="gh api graphql failed"):
+            handler._fetch_review_threads("OmniNode-ai", "omnimarket", 313)
+
+    async def test_pagination_json_decode_error_raises(
+        self, event_bus: EventBusInmemory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Malformed JSON response must raise RuntimeError (fail closed)."""
+        import subprocess as _subprocess
+
+        handler = HandlerCoderabbitTriage()
+
+        class _FakeResult:
+            returncode = 0
+            stderr = ""
+            stdout = "not valid json{"
+
+        monkeypatch.setattr(_subprocess, "run", lambda *_a, **_kw: _FakeResult())
+
+        with pytest.raises(RuntimeError, match="failed to parse gh graphql response"):
+            handler._fetch_review_threads("OmniNode-ai", "omnimarket", 313)
+
+    async def test_pagination_graphql_errors_raises(
+        self, event_bus: EventBusInmemory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GraphQL-level errors in the response must raise RuntimeError (fail closed)."""
+        import subprocess as _subprocess
+
+        handler = HandlerCoderabbitTriage()
+
+        class _FakeResult:
+            returncode = 0
+            stderr = ""
+            stdout = json.dumps({"errors": [{"message": "rate limit exceeded"}]})
+
+        monkeypatch.setattr(_subprocess, "run", lambda *_a, **_kw: _FakeResult())
+
+        with pytest.raises(RuntimeError, match="GraphQL errors"):
+            handler._fetch_review_threads("OmniNode-ai", "omnimarket", 313)
+
     async def test_result_serializes_to_json(self, event_bus: EventBusInmemory) -> None:
         """Result should serialize cleanly to JSON."""
         handler = HandlerCoderabbitTriage()

@@ -81,8 +81,10 @@ _SUGGESTION_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-# CodeRabbit bot login name on GitHub (login starts with this prefix)
-_CODERABBIT_BOT_PREFIX = "coderabbitai"
+# Supported CodeRabbit bot login names on GitHub (exact match only)
+_CODERABBIT_BOT_LOGINS: frozenset[str] = frozenset(
+    {"coderabbitai", "coderabbitai[bot]"}
+)
 
 # GraphQL query to fetch review threads for a PR
 _REVIEW_THREADS_QUERY = """
@@ -240,7 +242,7 @@ class HandlerCoderabbitTriage:
             # First comment in thread is the root — filter by author
             first_comment = comments[0]
             author_login = (first_comment.get("author") or {}).get("login", "")
-            if not author_login.lower().startswith(_CODERABBIT_BOT_PREFIX):
+            if author_login.lower() not in _CODERABBIT_BOT_LOGINS:
                 continue
 
             body = first_comment.get("body") or ""
@@ -293,27 +295,24 @@ class HandlerCoderabbitTriage:
             )
 
             if result.returncode != 0:
-                logger.warning(
-                    "gh api graphql failed for %s/%s#%d: %s",
-                    owner,
-                    repo,
-                    pr_number,
-                    result.stderr.strip(),
+                msg = (
+                    f"gh api graphql failed for {owner}/{repo}#{pr_number}: "
+                    f"{result.stderr.strip()}"
                 )
-                break
+                raise RuntimeError(msg)
 
             try:
                 data = json.loads(result.stdout)
             except json.JSONDecodeError as exc:
-                logger.warning("failed to parse gh graphql response: %s", exc)
-                break
+                raise RuntimeError(
+                    f"failed to parse gh graphql response for {owner}/{repo}#{pr_number}"
+                ) from exc
 
             errors = data.get("errors")
             if errors:
-                logger.warning(
-                    "GraphQL errors for %s/%s#%d: %s", owner, repo, pr_number, errors
+                raise RuntimeError(
+                    f"GraphQL errors for {owner}/{repo}#{pr_number}: {errors}"
                 )
-                break
 
             review_threads = (
                 (data.get("data") or {})
@@ -322,7 +321,10 @@ class HandlerCoderabbitTriage:
                 .get("reviewThreads", {})
             )
             if not review_threads:
-                break
+                raise RuntimeError(
+                    f"missing reviewThreads in GraphQL response for "
+                    f"{owner}/{repo}#{pr_number}"
+                )
 
             nodes = review_threads.get("nodes") or []
             all_threads.extend(nodes)
