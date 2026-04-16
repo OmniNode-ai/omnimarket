@@ -131,22 +131,22 @@ class HandlerRebaseEffect:
         if head_ref == base_ref:
             return _fail(f"head_ref == base_ref ({head_ref!r}): cannot self-rebase")
 
-        # Resolve source clone for this repo
-        repo_short = repo.split("/")[-1] if "/" in repo else repo
+        # repo_key uses "__" separator to preserve org namespace (avoids org-a/api vs org-b/api collision)
+        repo_key = repo.replace("/", "__") if "/" in repo else repo
         try:
             source_root = _source_clone_root()
         except RuntimeError as exc:
             return _fail(str(exc))
 
-        source_clone = source_root / repo_short
+        source_clone = source_root / repo_key
         if not (source_clone / ".git").exists():
             return _fail(
                 f"Source clone not found at {source_clone}. "
-                "Set ONEX_REBASE_SOURCE_CLONE_ROOT to directory containing full repo clones."
+                "Set ONEX_REBASE_SOURCE_CLONE_ROOT to directory containing full repo clones "
+                "(clone directories must be named as org__repo, e.g. OmniNode-ai__omnimarket)."
             )
 
         # Per-PR ephemeral worktree path — keyed by full repo slug + PR number to avoid collisions
-        repo_key = repo.replace("/", "__")
         wt_root = _worktree_root() / str(correlation_id) / repo_key / str(pr_number)
         wt_root.parent.mkdir(parents=True, exist_ok=True)
 
