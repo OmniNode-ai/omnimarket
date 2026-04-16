@@ -158,6 +158,12 @@ node_pipeline_fill = "omnimarket.nodes.node_pipeline_fill"
 node_session_compose = "omnimarket.nodes.node_session_compose"
 node_ticket_query = "omnimarket.nodes.node_ticket_query"
 node_monitor_alert_responder = "omnimarket.nodes.node_monitor_alert_responder"
+node_merge_sweep_triage_orchestrator = "omnimarket.nodes.node_merge_sweep_triage_orchestrator"
+node_merge_sweep_auto_merge_arm_effect = "omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect"
+node_rebase_effect = "omnimarket.nodes.node_rebase_effect"
+node_ci_rerun_effect = "omnimarket.nodes.node_ci_rerun_effect"
+node_sweep_outcome_classify = "omnimarket.nodes.node_sweep_outcome_classify"
+node_merge_sweep_state_reducer = "omnimarket.nodes.node_merge_sweep_state_reducer"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

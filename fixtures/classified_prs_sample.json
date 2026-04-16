@@ -1,0 +1,68 @@
+{
+  "classification": {
+    "classified": [
+      {
+        "pr": {
+          "number": 100,
+          "title": "feat: auto-merge candidate",
+          "repo": "OmniNode-ai/omni_home",
+          "mergeable": "MERGEABLE",
+          "merge_state_status": "CLEAN",
+          "is_draft": false,
+          "review_decision": "APPROVED",
+          "required_checks_pass": true,
+          "labels": [],
+          "review_bot_gate_passed": true
+        },
+        "track": "A-update",
+        "reason": "CLEAN and APPROVED — arm auto-merge",
+        "failure_categories": []
+      },
+      {
+        "pr": {
+          "number": 200,
+          "title": "feat: rebase candidate",
+          "repo": "OmniNode-ai/omni_home",
+          "mergeable": "MERGEABLE",
+          "merge_state_status": "BEHIND",
+          "is_draft": false,
+          "review_decision": "APPROVED",
+          "required_checks_pass": true,
+          "labels": [],
+          "review_bot_gate_passed": true
+        },
+        "track": "A-update",
+        "reason": "BEHIND main — rebase",
+        "failure_categories": ["branch_stale"]
+      },
+      {
+        "pr": {
+          "number": 300,
+          "title": "feat: ci-rerun candidate",
+          "repo": "OmniNode-ai/omni_home",
+          "mergeable": "MERGEABLE",
+          "merge_state_status": "BLOCKED",
+          "is_draft": false,
+          "review_decision": null,
+          "required_checks_pass": false,
+          "labels": [],
+          "review_bot_gate_passed": null
+        },
+        "track": "B",
+        "reason": "BLOCKED with failing checks — stale CI hypothesis",
+        "failure_categories": ["ci_test"]
+      }
+    ],
+    "status": "queued",
+    "failure_history_summary": {
+      "total_tracked": 0,
+      "stuck_prs": 0,
+      "chronic_prs": 0,
+      "recidivist_prs": 0,
+      "cleaned_merged": 0
+    }
+  },
+  "run_id": "00000000-0000-4000-a000-000000000010",
+  "correlation_id": "00000000-0000-4000-a000-000000000011",
+  "total_prs": 3
+}
