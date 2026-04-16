@@ -1,0 +1,38 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Rebase Effect (OMN-8961)
+name: node_rebase_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Rebases a PR branch onto its base branch via a per-PR ephemeral worktree.
+  Worktree isolation is first-class: each invocation gets a dedicated worktree
+  under $ONEX_REBASE_WORKTREE_ROOT/<correlation_id>/<repo_short>/. Force-with-lease
+  push prevents overwriting concurrent human pushes. Protected branches (main/master/develop)
+  are refused without touching any git state.
+
+handler:
+  module: omnimarket.nodes.node_rebase_effect.handlers.handler_rebase
+  class: HandlerRebaseEffect
+  input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelRebaseCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_rebase_effect.handlers.handler_rebase:HandlerRebaseEffect
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+
+event_bus:
+  consumer_group: omnimarket.rebase_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-rebase.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-rebase-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-rebase.v1

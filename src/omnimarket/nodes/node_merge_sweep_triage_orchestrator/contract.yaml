@@ -1,0 +1,45 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Merge Sweep Triage Orchestrator (OMN-8959)
+#
+# Fan-out orchestrator: consumes classified PR list, emits per-PR command events
+# across 3 effect topics (auto-merge-arm, rebase, ci-rerun) per 14-row decision table.
+name: node_merge_sweep_triage_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Merge sweep triage orchestrator. Consumes a classified PR list (ModelMergeSweepResult)
+  and fans out N typed command events across 3 mechanical effect topics per the
+  exhaustive 14-row classification-to-action decision table. Phase 1 wires
+  AUTO_MERGE_ARM / REBASE / CI_RERUN; Phase 2 (LLM-routed) will extend with
+  THREAD_REPLY / CONFLICT_HUNK / CI_FIX without schema changes.
+
+handler:
+  module: omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage
+  class: HandlerTriageOrchestrator
+  input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelTriageRequest
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage:HandlerTriageOrchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+
+terminal_event: onex.evt.omnimarket.merge-sweep-state-reduced.v1
+
+event_bus:
+  consumer_group: omnimarket.merge_sweep_triage_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.merge-sweep-triage.v1
+  publish_topics:
+    - onex.cmd.omnimarket.pr-auto-merge-arm.v1
+    - onex.cmd.omnimarket.pr-rebase.v1
+    - onex.cmd.omnimarket.pr-ci-rerun.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.merge-sweep-triage.v1

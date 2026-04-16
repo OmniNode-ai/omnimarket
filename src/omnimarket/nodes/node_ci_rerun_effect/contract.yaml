@@ -1,0 +1,36 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - CI Rerun Effect (OMN-8962)
+name: node_ci_rerun_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Triggers gh run rerun --failed for the PR's most recent failed workflow run.
+  Only reruns FAILED checks; does not retrigger successful ones.
+  Serial-in-handler execution per Phase 1 audit. Idempotent per gh behavior.
+
+handler:
+  module: omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun
+  class: HandlerCiRerunEffect
+  input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelCiRerunCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun:HandlerCiRerunEffect
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 15000
+
+event_bus:
+  consumer_group: omnimarket.ci_rerun_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-ci-rerun.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-ci-rerun-triggered.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-ci-rerun.v1
