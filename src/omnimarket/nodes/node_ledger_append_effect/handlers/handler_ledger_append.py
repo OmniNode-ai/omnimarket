@@ -12,6 +12,7 @@ documented at runtime_local.py (set per-run by RuntimeLocal).
 
 from __future__ import annotations
 
+import fcntl
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -41,12 +42,17 @@ class HandlerLedgerAppend:
         journal.parent.mkdir(parents=True, exist_ok=True)
 
         line_content = f"{request.tick_id}"
-        with journal.open("a", encoding="utf-8") as fh:
-            fh.write(line_content + "\n")
-
-        # Recompute line count after the write (authoritative, avoids race).
-        with journal.open("r", encoding="utf-8") as fh:
-            line_number = sum(1 for _ in fh)
+        # flock serializes append+count so concurrent handle() calls can't
+        # interleave write and recount, producing duplicate line_number values.
+        with journal.open("a+", encoding="utf-8") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                fh.write(line_content + "\n")
+                fh.flush()
+                fh.seek(0)
+                line_number = sum(1 for _ in fh)
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
 
         appended = ModelLedgerAppendedEvent(
             tick_id=request.tick_id,

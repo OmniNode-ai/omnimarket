@@ -8,8 +8,9 @@ node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Ledger demo COMPUTE. Reads journal file, returns sha256 + line count as
-  ModelLedgerHashComputed. No side effects, no bus publishes. Part of OMN-8943.
+  Ledger demo COMPUTE. Reads journal file, derives sha256 + line count as
+  ModelLedgerHashComputed, and publishes onex.evt.omnimarket.ledger-hash-computed.v1
+  for the reducer. Part of OMN-8943.
 
 handler:
   module: omnimarket.nodes.node_ledger_hash_compute.handlers.handler_ledger_hash
