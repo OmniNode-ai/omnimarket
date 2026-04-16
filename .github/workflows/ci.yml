@@ -152,6 +152,50 @@ jobs:
         run: python scripts/ci/run_runtime_sweep.py
 
   # ============================================================================
+  # E2E WORKFLOW RUNNER (inmemory bus)
+  # Proves the deterministic node platform works end-to-end on every PR:
+  #   - onex run CLI loads a real workflow contract
+  #   - RuntimeLocal starts EventBusInmemory, subscribes to terminal topic
+  #   - Handler executes and runtime writes workflow_result.json
+  #   - Exit code 0 = COMPLETED, evidence on disk
+  # No Kafka, no Postgres, no .201 required.
+  # ============================================================================
+
+  e2e-workflow-runner:
+    name: E2E Workflow Runner (inmemory bus)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Run golden_chain_sweep workflow E2E
+        run: |
+          STATE_ROOT=$(mktemp -d)
+          uv run onex run golden_chain_sweep_workflow.yaml             --backend event_bus=inmemory             --state-root "$STATE_ROOT"             --timeout 60             --verbose
+          EXIT=$?
+          echo "--- workflow_result.json ---"
+          cat "$STATE_ROOT/workflow_result.json"
+          python3 -c "import json,sys; d=json.load(open('$STATE_ROOT/workflow_result.json')); sys.exit(0 if d.get('result')=='completed' else 1)"
+          EVIDENCE=$?
+          if [ $EXIT -ne 0 ] || [ $EVIDENCE -ne 0 ]; then
+            echo "::error::E2E workflow run failed: exit=$EXIT evidence_check=$EVIDENCE"
+            exit 1
+          fi
+          echo "E2E PASSED: terminal event received, evidence written, exit=0"
+
+  # ============================================================================
   # GATE AGGREGATOR
   # Required status check for branch protection and merge queue.
   # ============================================================================
@@ -192,7 +236,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, topic-naming-lint, runtime-sweep, contract-compliance]
+    needs: [lint, typecheck, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner]
     if: always()
     steps:
       - name: Check CI results
@@ -206,7 +250,8 @@ jobs:
             "test=${{ needs.test.result }}" \
             "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
             "runtime-sweep=${{ needs.runtime-sweep.result }}" \
-            "contract-compliance=${{ needs.contract-compliance.result }}"; do
+            "contract-compliance=${{ needs.contract-compliance.result }}" \
+            "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
