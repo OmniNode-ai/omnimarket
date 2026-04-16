@@ -1,0 +1,36 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Sweep Outcome Classify Compute (OMN-8963)
+name: node_sweep_outcome_classify
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE node. Classifies per-PR completion events from all 3 effect topics
+  into 6 outcome buckets: MERGED | ARMED | REBASED | CI_RERUN_TRIGGERED | FAILED | STUCK.
+  No side effects, no env reads, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_sweep_outcome_classify.handlers.handler_outcome_classify
+  class: HandlerSweepOutcomeClassify
+  input_model: omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome.ModelSweepOutcomeInput
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_sweep_outcome_classify.handlers.handler_outcome_classify:HandlerSweepOutcomeClassify
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+event_bus:
+  consumer_group: omnimarket.sweep_outcome_classify.consume.v1
+  subscribe_topics:
+    - onex.evt.omnimarket.pr-auto-merge-armed.v1
+    - onex.evt.omnimarket.pr-rebase-completed.v1
+    - onex.evt.omnimarket.pr-ci-rerun-triggered.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-polish-outcome.v1

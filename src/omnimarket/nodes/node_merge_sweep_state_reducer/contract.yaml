@@ -1,0 +1,36 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Merge Sweep State Reducer (OMN-8964)
+name: node_merge_sweep_state_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  REDUCER node. Consumes ModelSweepOutcomeClassified events, delta-applies to
+  aggregate sweep state. Dedup is first-class: pr_outcomes_by_key is first-writer-wins.
+  Emits exactly-once terminal merge-sweep-completed.v1 event when all PRs accounted for.
+  RuntimeLocal (OMN-8946) persists state via ProtocolStateStore.
+
+handler:
+  module: omnimarket.nodes.node_merge_sweep_state_reducer.handlers.handler_sweep_state
+  class: HandlerMergeSweepStateReducer
+  input_model: omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome.ModelSweepOutcomeClassified
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_merge_sweep_state_reducer.handlers.handler_sweep_state:HandlerMergeSweepStateReducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  consumer_group: omnimarket.merge_sweep_state_reducer.consume.v1
+  subscribe_topics:
+    - onex.evt.omnimarket.pr-polish-outcome.v1
+  publish_topics:
+    - onex.evt.omnimarket.merge-sweep-state-reduced.v1
+    - onex.evt.omnimarket.merge-sweep-completed.v1
