@@ -71,7 +71,7 @@ class HandlerReviewThreadReconciler:
 
     def __init__(
         self,
-        github_client: ProtocolGitHubReviewClient,
+        github_client: ProtocolGitHubReviewClient | None = None,
         event_bus: EventBusInmemory | None = None,
     ) -> None:
         self._client = github_client
@@ -81,6 +81,7 @@ class HandlerReviewThreadReconciler:
         self, command: ModelReviewThreadReconcileCommand
     ) -> ModelReviewThreadReconcileResult:
         """Primary handler entry point."""
+        assert self._client is not None, "HandlerReviewThreadReconciler: github_client not injected"
         allowed_lower = {actor.lower() for actor in command.allowed_actors}
         resolver_lower = command.resolved_by.lower()
 

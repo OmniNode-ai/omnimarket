@@ -95,7 +95,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
 
     def __init__(
         self,
-        bridge: AdapterGitHubBridge,
+        bridge: AdapterGitHubBridge | None = None,
         *,
         max_findings_per_pr: int = 20,
         bot_login: str = _BOT_LOGIN,
@@ -120,6 +120,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
         Returns a list of ThreadState — one per finding that warranted a thread.
         Findings below threshold are not represented individually in ThreadState.
         """
+        assert self._bridge is not None, "HandlerThreadPoster: bridge not injected"
         return asyncio.get_event_loop().run_until_complete(
             self._post_async(pr_number, repo, findings, dry_run)
         )
