@@ -1,0 +1,33 @@
+{
+  "prs": [
+    {
+      "number": 1325,
+      "title": "fix: OMN-8735 handler auto-wiring completions",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "mergeable": "MERGEABLE",
+      "merge_state_status": "CLEAN",
+      "is_draft": false,
+      "review_decision": "APPROVED",
+      "required_checks_pass": true,
+      "labels": []
+    },
+    {
+      "number": 313,
+      "title": "fix(coderabbit_triage): use GraphQL reviewThreads API",
+      "repo": "OmniNode-ai/omnimarket",
+      "mergeable": "MERGEABLE",
+      "merge_state_status": "BLOCKED",
+      "is_draft": false,
+      "review_decision": null,
+      "required_checks_pass": false,
+      "labels": ["ci-stale"]
+    }
+  ],
+  "require_approval": true,
+  "merge_method": "squash",
+  "max_total_merges": 0,
+  "skip_polish": true,
+  "failure_history": {},
+  "run_id": "OMN-8939-L1-proof",
+  "use_lifecycle_ordering": false
+}

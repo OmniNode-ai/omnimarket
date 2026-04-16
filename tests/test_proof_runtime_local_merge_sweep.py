@@ -37,3 +37,37 @@ def test_runtime_local_runs_merge_sweep_with_defaults(tmp_path: Path) -> None:
     assert data["result"] == "completed"
     assert data["exit_code"] == 0
     assert data["workflow"].endswith("node_merge_sweep/contract.yaml")
+
+
+def test_runtime_local_runs_merge_sweep_with_real_payload(tmp_path: Path) -> None:
+    """OMN-8939 L1A proof: RuntimeLocal + EventBusInmemory + ServiceStateDisk
+    execute node_merge_sweep against a non-empty ModelMergeSweepRequest
+    (2 fixture PRs covering mergeable + blocked cases) with no OmniNode infra.
+    """
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "merge_sweep_input_sample.json"
+    )
+    assert fixture_path.exists(), f"fixture missing at {fixture_path}"
+
+    state_root = tmp_path / "state"
+    runtime = RuntimeLocal(
+        workflow_path=CONTRACT_PATH,
+        state_root=state_root,
+        input_path=fixture_path,
+        timeout=30,
+    )
+    result = runtime.run()
+
+    assert result == EnumWorkflowResult.COMPLETED, f"Runtime did not complete: {result}"
+    assert runtime.exit_code == 0
+
+    state_file = state_root / "workflow_result.json"
+    assert state_file.exists()
+    state = json.loads(state_file.read_text())
+    # Required-field assertions only — robust to future runtime metadata additions.
+    # EnumWorkflowResult.COMPLETED.value is the lowercase string "completed".
+    assert state["result"] == "completed"
+    assert state["exit_code"] == 0
+    assert state["workflow"].endswith("node_merge_sweep/contract.yaml")
