@@ -20,7 +20,7 @@ from omnimarket.nodes.node_ledger_orchestrator.models.model_ledger_tick_command 
 class HandlerLedgerOrchestrator:
     """Orchestrator shell. Receives a tick command, emits an append command event."""
 
-    def handle(self, request: ModelLedgerTickCommand) -> ModelHandlerOutput:
+    def handle(self, request: ModelLedgerTickCommand) -> ModelHandlerOutput[None]:
         """Convert tick → append command.
 
         Emits a single `ModelLedgerAppendCommand` event; the append-effect node

@@ -36,7 +36,7 @@ def _journal_path() -> Path:
 class HandlerLedgerAppend:
     """Writes a tick line to the journal and emits the appended event."""
 
-    def handle(self, request: ModelLedgerAppendCommand) -> ModelHandlerOutput:
+    def handle(self, request: ModelLedgerAppendCommand) -> ModelHandlerOutput[None]:
         journal = _journal_path()
         journal.parent.mkdir(parents=True, exist_ok=True)
 
