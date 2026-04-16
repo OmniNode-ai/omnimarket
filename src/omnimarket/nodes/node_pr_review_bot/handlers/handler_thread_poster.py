@@ -136,6 +136,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
         findings: tuple[ReviewFinding, ...],
         dry_run: bool,
     ) -> list[ThreadState]:
+        assert self._bridge is not None, "HandlerThreadPoster: bridge not injected"
         thread_findings = [f for f in findings if f.severity in _THREAD_SEVERITIES]
         minor_findings = [f for f in findings if f.severity not in _THREAD_SEVERITIES]
 
@@ -238,6 +239,7 @@ class HandlerThreadPoster(ProtocolThreadPoster):
 
         Uses cached_threads for R10 dedup to avoid re-paginating GitHub per finding.
         """
+        assert self._bridge is not None, "HandlerThreadPoster: bridge not injected"
         finding_id_str = str(finding.id)
         marker = _FINDING_MARKER_TEMPLATE.format(finding_id=finding_id_str)
 
