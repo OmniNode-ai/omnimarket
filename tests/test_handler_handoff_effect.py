@@ -40,6 +40,10 @@ def git_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _mock_ssh_ok(remote_cmd: str, check_name: str) -> str:
+    return "ok"
+
+
 @pytest.mark.integration
 class TestHandlerHandoffEffect:
     def test_artifact_written_with_expected_fields(
@@ -52,12 +56,16 @@ class TestHandlerHandoffEffect:
         session_id = "test-sess-abc123"
         correlation_id = uuid.uuid4()
 
-        result = handler.handle(
-            session_id=session_id,
-            correlation_id=correlation_id,
-            summary="continue auth work",
-            cwd=str(git_repo),
-        )
+        with patch(
+            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+            side_effect=_mock_ssh_ok,
+        ):
+            result = handler.handle(
+                session_id=session_id,
+                correlation_id=correlation_id,
+                summary="continue auth work",
+                cwd=str(git_repo),
+            )
 
         artifact_path = Path(result["artifact_path"])
         assert artifact_path.exists(), f"Artifact not written: {artifact_path}"
@@ -82,11 +90,15 @@ class TestHandlerHandoffEffect:
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
 
         handler = HandlerHandoffEffect()
-        result = handler.handle(
-            session_id="sess-xyz",
-            correlation_id=uuid.uuid4(),
-            cwd=str(git_repo),
-        )
+        with patch(
+            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+            side_effect=_mock_ssh_ok,
+        ):
+            result = handler.handle(
+                session_id="sess-xyz",
+                correlation_id=uuid.uuid4(),
+                cwd=str(git_repo),
+            )
 
         assert isinstance(result["captured_branches"], list)
         assert len(result["captured_branches"]) >= 1
@@ -101,11 +113,15 @@ class TestHandlerHandoffEffect:
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
 
         handler = HandlerHandoffEffect()
-        result = handler.handle(
-            session_id="sess-nogit",
-            correlation_id=uuid.uuid4(),
-            cwd=str(non_git),
-        )
+        with patch(
+            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+            side_effect=_mock_ssh_ok,
+        ):
+            result = handler.handle(
+                session_id="sess-nogit",
+                correlation_id=uuid.uuid4(),
+                cwd=str(non_git),
+            )
 
         assert Path(result["artifact_path"]).exists()
         assert result["captured_branches"] == []
