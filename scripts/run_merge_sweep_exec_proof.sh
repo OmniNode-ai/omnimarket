@@ -45,7 +45,7 @@ if [[ "$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')" != "0" ]]; then
     echo "WARN: docker has running containers (proof is still valid — nothing we run uses them)"
 fi
 
-# Run the proof via Python
+# Run the proof via Python (direct handler invocation — no CLI overhead)
 uv run python3 - "${STATE_DIR}" "${RUN_ID}" <<'PYEOF'
 import sys
 import json
