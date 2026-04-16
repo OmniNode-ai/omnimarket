@@ -1,0 +1,32 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Hash Compute (OMN-8949)
+name: ledger_hash_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Ledger demo COMPUTE. Reads journal file, returns sha256 + line count as
+  ModelLedgerHashComputed. No side effects, no bus publishes. Part of OMN-8943.
+
+handler:
+  module: omnimarket.nodes.node_ledger_hash_compute.handlers.handler_ledger_hash
+  class: HandlerLedgerHashCompute
+  input_model: omnimarket.nodes.node_ledger_append_effect.models.model_ledger_appended_event.ModelLedgerAppendedEvent
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_ledger_hash_compute.handlers.handler_ledger_hash:HandlerLedgerHashCompute
+
+descriptor:
+  node_archetype: compute
+  purity: pure  # read-only deterministic over external file artifact
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.ledger-appended.v1
+  publish_topics:
+    - onex.evt.omnimarket.ledger-hash-computed.v1

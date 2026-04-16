@@ -1,0 +1,34 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger State Reducer (OMN-8950)
+name: ledger_state_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Ledger demo REDUCER. Pure delta(state, event) -> (new_state, intents).
+  Handler returns dict {"state": ..., "intents": ...} per the
+  node_loop_state_reducer convention; RuntimeLocal (OMN-8946) constructs
+  the ModelStateEnvelope in its sink path and persists via ProtocolStateStore.
+
+handler:
+  module: omnimarket.nodes.node_ledger_state_reducer.handlers.handler_ledger_state
+  class: HandlerLedgerStateReducer
+  input_model: omnimarket.nodes.node_ledger_hash_compute.models.model_ledger_hash_computed.ModelLedgerHashComputed
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_ledger_state_reducer.handlers.handler_ledger_state:HandlerLedgerStateReducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.ledger-hash-computed.v1
+  publish_topics:
+    - onex.evt.omnimarket.ledger-state-reduced.v1

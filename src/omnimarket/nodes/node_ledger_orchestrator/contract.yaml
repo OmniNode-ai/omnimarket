@@ -1,0 +1,37 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Orchestrator (OMN-8947)
+#
+# Four-node didactic proof case (OMN-8943): ORCHESTRATOR kicks off a ledger tick
+# by emitting an append command for the effect to consume.
+name: ledger_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Ledger demo orchestrator. Receives a tick command, emits an append command
+  event for node_ledger_append_effect. Part of the OMN-8943 four-node proof.
+
+handler:
+  module: omnimarket.nodes.node_ledger_orchestrator.handlers.handler_ledger_orchestrator
+  class: HandlerLedgerOrchestrator
+  input_model: omnimarket.nodes.node_ledger_orchestrator.models.model_ledger_tick_command.ModelLedgerTickCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_ledger_orchestrator.handlers.handler_ledger_orchestrator:HandlerLedgerOrchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 5000
+
+terminal_event: onex.evt.omnimarket.ledger-state-reduced.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ledger-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.ledger-append.v1

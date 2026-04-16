@@ -1,0 +1,32 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Append Effect (OMN-8948)
+name: ledger_append_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Ledger demo EFFECT. Writes a tick line to <state_root>/ledger-journal.txt,
+  emits appended event with the resulting line_number. Part of OMN-8943.
+
+handler:
+  module: omnimarket.nodes.node_ledger_append_effect.handlers.handler_ledger_append
+  class: HandlerLedgerAppend
+  input_model: omnimarket.nodes.node_ledger_orchestrator.models.model_ledger_tick_command.ModelLedgerAppendCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_ledger_append_effect.handlers.handler_ledger_append:HandlerLedgerAppend
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false  # appending N times creates N lines
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ledger-append.v1
+  publish_topics:
+    - onex.evt.omnimarket.ledger-appended.v1
