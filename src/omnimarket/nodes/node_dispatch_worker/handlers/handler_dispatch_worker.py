@@ -87,6 +87,14 @@ Include: terminal state, artifacts produced (PR URL, file paths), blockers if an
 - On success: TaskUpdate status=completed, SendMessage {reports_to}, STOP.
 - On blocker: TaskUpdate status=in_progress with note, SendMessage {reports_to}, STOP.
 - Do NOT mark completed if tests are failing, implementation is partial, or PRs are not open.
+
+## Deliverable acknowledgment
+After EACH deliverable (design doc, test run, PR opened, finding logged), SendMessage {reports_to}
+with a one-line ack before continuing to the next step. Do NOT batch acks.
+
+## Post-primary-task rule
+When your primary task is complete, SendMessage {reports_to}: "Primary task done — awaiting
+further instruction or shutdown." Then STOP and wait. Do NOT go ambient-idle.
 """
 
 # ---------------------------------------------------------------------------
