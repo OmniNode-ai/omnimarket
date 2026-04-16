@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
+from typing import cast
 
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
@@ -54,7 +55,7 @@ class HandlerProjectionQuery:
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
         shape = str(input_data.get("shape", ""))
         raw_params = input_data.get("params") or {}
-        params = {str(k): v for k, v in dict(raw_params).items()}  # type: ignore[arg-type]
+        params = {str(k): v for k, v in cast(dict[str, object], raw_params).items()}
         return self.query(shape, params, db_raw)
 
     def query(
@@ -231,7 +232,7 @@ class HandlerProjectionQuery:
 
         summary = []
         for model_id, rows in model_groups.items():
-            vts_values = [float(r.get("vts") or 0) for r in rows]
+            vts_values = [float(cast(int | float, r.get("vts") or 0)) for r in rows]
             summary.append(
                 {
                     "model_id": model_id,
@@ -239,7 +240,8 @@ class HandlerProjectionQuery:
                     "pr_count": len(rows),
                     "avg_vts": sum(vts_values) / len(vts_values) if vts_values else 0,
                     "total_blocking_failures": sum(
-                        int(r.get("blocking_failures") or 0) for r in rows
+                        int(cast(int | float, r.get("blocking_failures") or 0))
+                        for r in rows
                     ),
                 }
             )
