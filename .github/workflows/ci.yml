@@ -154,7 +154,7 @@ jobs:
   # ============================================================================
   # E2E WORKFLOW RUNNER (inmemory bus)
   # Proves the deterministic node platform works end-to-end on every PR:
-  #   - onex run CLI loads a real workflow contract
+  #   - onex node CLI loads a real workflow contract
   #   - RuntimeLocal starts EventBusInmemory, subscribes to terminal topic
   #   - Handler executes and runtime writes workflow_result.json
   #   - Exit code 0 = COMPLETED, evidence on disk
@@ -192,7 +192,8 @@ jobs:
       - name: Run golden_chain_sweep workflow E2E
         run: |
           STATE_ROOT=$(mktemp -d)
-          if uv run onex run golden_chain_sweep_workflow.yaml \
+          if uv run onex node node_golden_chain_sweep \
+            --contract golden_chain_sweep_workflow.yaml \
             --backend event_bus=inmemory \
             --state-root "$STATE_ROOT" \
             --timeout 60 \
