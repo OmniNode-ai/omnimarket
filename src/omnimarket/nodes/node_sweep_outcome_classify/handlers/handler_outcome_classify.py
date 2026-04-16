@@ -77,6 +77,9 @@ class HandlerSweepOutcomeClassify:
                 return EnumSweepOutcome.CI_RERUN_TRIGGERED, None, []
             return EnumSweepOutcome.FAILED, req.error, []
 
+        if req.event_type == "merged":
+            return EnumSweepOutcome.MERGED, None, []
+
         # Unknown event type — safe fallback
         _log.warning(
             "Unknown event_type=%r for PR %s/%s; classifying as STUCK",

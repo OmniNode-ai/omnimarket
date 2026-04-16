@@ -11,6 +11,7 @@ Idempotent: repeated rerun calls on the same run ID are handled by gh.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from uuid import uuid4
@@ -85,7 +86,14 @@ class HandlerCiRerunEffect:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        _stdout, stderr = await proc.communicate()
+        try:
+            _stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            return False, "gh run rerun timed out after 30s"
+        except Exception as exc:
+            return False, f"subprocess error: {exc}"
         if proc.returncode == 0:
             return True, None
         return False, stderr.decode(errors="replace")

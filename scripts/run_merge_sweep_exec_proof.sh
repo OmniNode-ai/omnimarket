@@ -32,6 +32,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "${REPO_ROOT}"
 STATE_DIR="$(mktemp -d -t onex-merge-sweep-exec-proof-XXXX)"
 RUN_ID="00000000-0000-4000-a000-000000000010"
 
@@ -110,7 +111,7 @@ print(f"Gate 7: EnumPolishTaskClass has 6 values (3 active + 3 reserved) — PAS
 # Gate 4: terminal emission
 assert new_state.terminal_emitted is True, f"terminal_emitted should be True: {new_state}"
 assert len(intents) == 1, f"Expected exactly 1 terminal intent: {intents}"
-assert "merge-sweep-completed" in intents[0]["topic"], f"Wrong terminal topic: {intents[0]}"
+assert intents[0]["topic"] == "onex.evt.omnimarket.merge-sweep-completed.v1", f"Wrong terminal topic: {intents[0]}"
 print(f"Gate 4: terminal emitted exactly once (intents={len(intents)}) — PASS")
 PYEOF
 

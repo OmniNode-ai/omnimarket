@@ -21,6 +21,7 @@ Branch guards:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
@@ -144,8 +145,9 @@ class HandlerRebaseEffect:
                 "Set ONEX_REBASE_SOURCE_CLONE_ROOT to directory containing full repo clones."
             )
 
-        # Per-PR ephemeral worktree path
-        wt_root = _worktree_root() / str(correlation_id) / repo_short
+        # Per-PR ephemeral worktree path — keyed by full repo slug + PR number to avoid collisions
+        repo_key = repo.replace("/", "__")
+        wt_root = _worktree_root() / str(correlation_id) / repo_key / str(pr_number)
         wt_root.parent.mkdir(parents=True, exist_ok=True)
 
         worktree_added = False
@@ -214,8 +216,7 @@ class HandlerRebaseEffect:
                     "-C",
                     str(wt_root),
                     "push",
-                    "--force-with-lease",
-                    f"{head_ref}:{expected_sha}",
+                    f"--force-with-lease={head_ref}:{expected_sha}",
                     "origin",
                     head_ref,
                 ]
@@ -262,14 +263,21 @@ class HandlerRebaseEffect:
                     _log.warning("Failed to remove worktree %s: %s", wt_root, err)
 
 
-async def _run(cmd: list[str]) -> tuple[int, str, str]:
+async def _run(cmd: list[str], timeout: float = 120.0) -> tuple[int, str, str]:
     """Run a subprocess, return (returncode, stdout, stderr)."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=env,
     )
-    stdout, stderr = await proc.communicate()
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except TimeoutError:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        return 1, "", f"command timed out after {timeout}s: {cmd[0]}"
     # returncode is always set after communicate() completes
     rc: int = proc.returncode if proc.returncode is not None else 1
     return (

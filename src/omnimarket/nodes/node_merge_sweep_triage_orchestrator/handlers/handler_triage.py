@@ -26,6 +26,7 @@ Decision table (evaluated in order; first match wins):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from typing import Any
@@ -65,18 +66,24 @@ class HandlerTriageOrchestrator:
 
     async def handle(self, request: ModelTriageRequest) -> ModelHandlerOutput:  # type: ignore[type-arg]
         """Classify each PR and emit the appropriate command event."""
-        events: list[Any] = []
-        total_prs = len(request.classification.classified)
+        raw_cmds: list[Any] = []
 
+        # First pass: collect actionable commands with placeholder total_prs=0
         for classified_pr in request.classification.classified:
             cmd = await self._classify_to_command(
                 classified_pr,
                 request.run_id,
                 request.correlation_id,
-                total_prs,
+                0,  # placeholder; replaced below
             )
             if cmd is not None:
-                events.append(cmd)
+                raw_cmds.append(cmd)
+
+        # total_prs = actionable count only; skipped PRs never emit outcomes
+        total_prs = len(raw_cmds)
+        events: list[Any] = [
+            cmd.model_copy(update={"total_prs": total_prs}) for cmd in raw_cmds
+        ]
 
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),
@@ -297,7 +304,13 @@ class HandlerTriageOrchestrator:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            _log.error("gh pr view timed out for %s#%s", repo, pr_number)
+            return None, None
         if proc.returncode != 0:
             _log.error(
                 "gh pr view failed for %s#%s (rc=%s): %s",
@@ -335,7 +348,13 @@ class HandlerTriageOrchestrator:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            _log.error("gh pr view refs timed out for %s#%s", repo, pr_number)
+            return None
         if proc.returncode != 0:
             _log.error(
                 "gh pr view refs failed for %s#%s: %s",
@@ -376,7 +395,15 @@ class HandlerTriageOrchestrator:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            _log.error(
+                "gh pr view statusCheckRollup timed out for %s#%s", repo, pr_number
+            )
+            return None
         if proc.returncode != 0:
             _log.error(
                 "gh pr view statusCheckRollup failed for %s#%s: %s",
@@ -390,11 +417,12 @@ class HandlerTriageOrchestrator:
             checks = data.get("statusCheckRollup") or []
             for check in checks:
                 if check.get("conclusion") == "FAILURE":
-                    # detailsUrl contains the run URL; extract run ID
                     details_url: str = str(check.get("detailsUrl") or "")
-                    parts = details_url.rstrip("/").split("/")
-                    if parts:
-                        return str(parts[-1])
+                    run_id = (
+                        details_url.rstrip("/").split("/")[-1] if details_url else None
+                    )
+                    if run_id:
+                        return run_id
             return None
         except (json.JSONDecodeError, AttributeError) as exc:
             _log.error(

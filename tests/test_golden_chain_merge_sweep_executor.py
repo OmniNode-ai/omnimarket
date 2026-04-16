@@ -182,10 +182,7 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
         nonlocal git_call_count
         git_call_count += 1
         cmd = list(args)
-        # rev-parse needs stdout = SHA
-        if "rev-parse" in cmd:
-            return _mock_subprocess({"sha": "abc"})  # not used as json but returncode=0
-        # All other git calls succeed
+        # All git calls succeed; rev-parse returns a raw SHA line
         proc = MagicMock()
         proc.returncode = 0
         if "rev-parse" in cmd:
