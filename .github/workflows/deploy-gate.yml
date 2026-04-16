@@ -50,8 +50,8 @@ jobs:
 
       - name: Clone editable dependencies
         if: github.event_name != 'merge_group'
+        working-directory: ${{ github.workspace }}/..
         run: |
-          cd /home/runner/work/omnimarket
           git clone --depth=1 --branch=main https://github.com/OmniNode-ai/omnibase_core.git
           git clone --depth=1 --branch=main https://github.com/OmniNode-ai/omnibase_compat.git
           git clone --depth=1 --branch=main https://github.com/OmniNode-ai/omnimemory.git

@@ -165,15 +165,24 @@ jobs:
     name: E2E Workflow Runner (inmemory bus)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: |
+          OMNIBASE_CORE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_core.git HEAD | cut -f1)
+          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
       - name: Clone omnibase_compat
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: |
+          OMNIBASE_COMPAT_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_compat.git HEAD | cut -f1)
+          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
       - name: Clone omnimemory
-        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: |
+          OMNIMEMORY_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnimemory.git HEAD | cut -f1)
+          git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+          echo "omnimemory pinned to: $OMNIMEMORY_SHA"
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
         with:
           version: "latest"
       - name: Set up Python 3.12
@@ -183,18 +192,31 @@ jobs:
       - name: Run golden_chain_sweep workflow E2E
         run: |
           STATE_ROOT=$(mktemp -d)
-          uv run onex run golden_chain_sweep_workflow.yaml             --backend event_bus=inmemory             --state-root "$STATE_ROOT"             --timeout 60             --verbose
-          EXIT=$?
+          if uv run onex run golden_chain_sweep_workflow.yaml \
+            --backend event_bus=inmemory \
+            --state-root "$STATE_ROOT" \
+            --timeout 60 \
+            --verbose; then
+            EXIT=0
+          else
+            EXIT=$?
+          fi
           echo "--- workflow_result.json ---"
-          cat "$STATE_ROOT/workflow_result.json"
-          python3 -c "import json,sys; d=json.load(open('$STATE_ROOT/workflow_result.json')); sys.exit(0 if d.get('result')=='completed' else 1)"
-          EVIDENCE=$?
+          if [ -f "$STATE_ROOT/workflow_result.json" ]; then
+            cat "$STATE_ROOT/workflow_result.json"
+            if python3 -c "import json,sys; d=json.load(open('$STATE_ROOT/workflow_result.json')); sys.exit(0 if d.get('result')=='completed' else 1)"; then
+              EVIDENCE=0
+            else
+              EVIDENCE=$?
+            fi
+          else
+            EVIDENCE=1
+          fi
           if [ $EXIT -ne 0 ] || [ $EVIDENCE -ne 0 ]; then
             echo "::error::E2E workflow run failed: exit=$EXIT evidence_check=$EVIDENCE"
             exit 1
           fi
           echo "E2E PASSED: terminal event received, evidence written, exit=0"
-
   # ============================================================================
   # GOLDEN CHAIN SUITE
   # Runs all 1,000+ golden chain tests (EventBusInmemory, zero infra) on every PR.
