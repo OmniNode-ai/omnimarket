@@ -42,9 +42,16 @@ jobs:
         run: |
           TARGET="${{ inputs.repo }}"
           [ -z "$TARGET" ] && TARGET="${{ github.repository }}"
-          # Split into owner + repo to respect caller-supplied owner/repo
-          echo "owner=${TARGET%%/*}" >> "$GITHUB_OUTPUT"
-          echo "repo=${TARGET##*/}" >> "$GITHUB_OUTPUT"
+          # Support both "owner/repo" and bare "repo"
+          if [[ "$TARGET" == */* ]]; then
+            OWNER="${TARGET%%/*}"
+            REPO="${TARGET##*/}"
+          else
+            OWNER="${{ github.repository_owner }}"
+            REPO="$TARGET"
+          fi
+          echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
 
       - name: Resolve PR number
         id: resolve-pr
