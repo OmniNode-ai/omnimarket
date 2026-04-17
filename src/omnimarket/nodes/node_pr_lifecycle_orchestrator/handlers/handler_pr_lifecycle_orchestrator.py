@@ -113,8 +113,11 @@ class ModelPrLifecycleStartCommand(BaseModel):
         description="Auto-resolve trivial CodeRabbit/bot review threads before merge.",
     )
     enable_admin_merge_fallback: bool = Field(
-        default=False,
-        description="Admin-merge PRs stuck in queue past threshold (opt-in only).",
+        default=True,
+        description=(
+            "Admin-merge PRs stuck in queue past threshold. "
+            "Default ON; pass --no-admin-merge-fallback (or set False) to disable."
+        ),
     )
     admin_fallback_threshold_minutes: int = Field(
         default=30,

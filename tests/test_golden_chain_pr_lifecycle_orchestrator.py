@@ -704,3 +704,44 @@ class TestPrLifecycleOrchestratorResultFile:
         assert payload["status"] == "error"
         assert payload["final_state"] == "FAILED"
         assert payload["error_message"] == "boom"
+
+
+# ---------------------------------------------------------------------------
+# OMN-9114: admin-merge-fallback default is ON
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAdminMergeFallbackDefaultOn:
+    """ModelPrLifecycleStartCommand.enable_admin_merge_fallback defaults to True.
+
+    OMN-9114 — OMN-9065 closed Done but the default flip never landed on main.
+    This test locks in the default=True invariant so silent regressions fail CI.
+    """
+
+    def test_default_enable_admin_merge_fallback_is_true(self) -> None:
+        cmd = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="20260417-205500-dflt01",
+        )
+        assert cmd.enable_admin_merge_fallback is True
+
+    def test_explicit_false_still_honored(self) -> None:
+        cmd = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="20260417-205500-dflt02",
+            enable_admin_merge_fallback=False,
+        )
+        assert cmd.enable_admin_merge_fallback is False
+
+    def test_handler_admin_merge_handle_default_opt_in_true(self) -> None:
+        """HandlerAdminMerge.handle(enable_admin_merge_fallback=...) defaults to True."""
+        import inspect
+
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
+            HandlerAdminMerge,
+        )
+
+        sig = inspect.signature(HandlerAdminMerge.handle)
+        param = sig.parameters["enable_admin_merge_fallback"]
+        assert param.default is True
