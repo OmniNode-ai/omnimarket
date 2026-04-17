@@ -18,6 +18,7 @@ Test coverage:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -229,9 +230,10 @@ class TestStatePersistEffectGoldenChain:
         store = MockStateStore()
         handler = HandlerStatePersistEffect(state_store=store)
         published_events: list[dict[str, object]] = []
+        event_seen = asyncio.Event()
 
         async def on_intent(message: object) -> None:
-            payload = json.loads(message.value)  # type: ignore[union-attr]
+            payload = json.loads(message.value)  # type: ignore[attr-defined]
             envelope = ModelStateEnvelope(**payload["envelope"])
             result = await handler.handle(
                 correlation_id=payload["correlation_id"],
@@ -246,6 +248,7 @@ class TestStatePersistEffectGoldenChain:
                 key=None,
                 value=json.dumps(result_payload).encode(),
             )
+            event_seen.set()
 
         await event_bus.start()
         await event_bus.subscribe(
@@ -263,15 +266,18 @@ class TestStatePersistEffectGoldenChain:
                 "emitted_at": inp.emitted_at.isoformat(),
             }
         ).encode()
-        await event_bus.publish(SUBSCRIBE_TOPIC, key=None, value=intent_payload)
 
-        assert len(published_events) == 1
-        assert published_events[0]["success"] is True
+        try:
+            await event_bus.publish(SUBSCRIBE_TOPIC, key=None, value=intent_payload)
+            await asyncio.wait_for(event_seen.wait(), timeout=5.0)
 
-        history = await event_bus.get_event_history(topic=PUBLISH_TOPIC)
-        assert len(history) == 1
+            assert len(published_events) == 1
+            assert published_events[0]["success"] is True
 
-        await event_bus.close()
+            history = await event_bus.get_event_history(topic=PUBLISH_TOPIC)
+            assert len(history) == 1
+        finally:
+            await event_bus.close()
 
     async def test_reducer_intent_to_effect_round_trip(
         self, event_bus: EventBusInmemory

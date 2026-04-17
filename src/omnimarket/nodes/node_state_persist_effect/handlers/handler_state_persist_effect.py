@@ -38,9 +38,9 @@ class HandlerStatePersistEffect:
     2. Return ModelStatePersistedEvent(intent_id, success=True, persisted_at=now)
     3. On any exception: log the error, return success=False with the error message
 
-    Handler I/O contract (mirrors contract.yaml):
-        Topic consumed: onex.int.state-persist.v1
-        Topic published: onex.evt.state.persisted.v1
+    Handler I/O contract is defined in this node's ``contract.yaml``
+    (``event_bus.subscribe_topics``, ``event_bus.publish_topics``, ``terminal_topics``).
+    Do not duplicate topic strings here — they drift from the contract.
     """
 
     handler_type: Literal["node_handler"] = "node_handler"
