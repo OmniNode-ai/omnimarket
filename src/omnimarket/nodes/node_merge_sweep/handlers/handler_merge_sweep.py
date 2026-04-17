@@ -83,6 +83,16 @@ class ModelPRInfo(BaseModel):
             "True = all findings resolved by bot. False = findings still open."
         ),
     )
+    required_approving_review_count: int | None = Field(
+        default=None,
+        description=(
+            "Branch-protection required approving review count for the base branch. "
+            "0 or None means protection does not require approval and reviewDecision "
+            "may be blank on solo-dev repos; >0 means an APPROVED review is required "
+            "before merge-sweep may enqueue. Populated per-repo per-sweep from "
+            "`gh api repos/.../branches/main/protection`. [OMN-9106]"
+        ),
+    )
 
 
 class ModelClassifiedPR(BaseModel):
@@ -320,7 +330,19 @@ class NodeMergeSweep:
 
         correlation_id = uuid4()
 
-        # Build PrRecord inventory from Track A PRs (all are green by definition)
+        # Build PrRecord inventory from Track A PRs (all are green by definition).
+        # OMN-9106: treat "approval gate cleared" (APPROVED, or protection
+        # doesn't require approval) as "approved" for the reducer so solo-dev
+        # repos don't fall into the pending branch.
+        def _review_status(pr: ModelPRInfo) -> str:
+            if pr.review_decision == "CHANGES_REQUESTED":
+                return "changes_requested"
+            if pr.review_decision == "APPROVED":
+                return "approved"
+            if pr.required_approving_review_count in (0, None):
+                return "approved"
+            return "pending"
+
         pr_records = tuple(
             PrRecord(
                 pr_number=c.pr.number,
@@ -328,9 +350,7 @@ class NodeMergeSweep:
                 title=c.pr.title,
                 branch="",
                 checks_status="success",
-                review_status="approved"
-                if c.pr.review_decision == "APPROVED"
-                else "pending",
+                review_status=_review_status(c.pr),
                 has_conflicts=False,
                 coderabbit_unresolved=0,
             )
@@ -510,7 +530,14 @@ class NodeMergeSweep:
         if not pr.required_checks_pass:
             return False
         if require_approval:
-            return pr.review_decision in ("APPROVED", None)
+            # OMN-9106: clear if APPROVED, or if branch protection does not require
+            # approval (solo-dev repos) regardless of reviewDecision being ""/None.
+            # CHANGES_REQUESTED always blocks.
+            if pr.review_decision == "CHANGES_REQUESTED":
+                return False
+            if pr.review_decision == "APPROVED":
+                return True
+            return pr.required_approving_review_count in (0, None)
         return True
 
     def _needs_thread_resolution(self, pr: ModelPRInfo) -> bool:
