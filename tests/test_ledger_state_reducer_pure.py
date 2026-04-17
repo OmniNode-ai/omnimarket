@@ -12,6 +12,7 @@ concern of ``node_state_persist_effect`` downstream.
 from __future__ import annotations
 
 import inspect
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -28,6 +29,8 @@ from omnimarket.nodes.node_ledger_state_reducer.handlers.handler_ledger_state im
 from omnimarket.nodes.node_ledger_state_reducer.models.model_ledger_state import (
     ModelLedgerState,
 )
+
+_FIXED_TS = datetime(2026, 4, 17, 12, 0, 0, tzinfo=UTC)
 
 
 def _hash_event(
@@ -46,7 +49,12 @@ class TestDeltaEmitsPersistStateIntent:
 
     def test_delta_returns_exactly_one_persist_state_intent(self) -> None:
         handler = HandlerLedgerStateReducer()
-        _, intents = handler.delta(ModelLedgerState(), _hash_event())
+        _, intents = handler.delta(
+            ModelLedgerState(),
+            _hash_event(),
+            emitted_at=_FIXED_TS,
+            intent_id=uuid4(),
+        )
         assert len(intents) == 1
         intent = intents[0]
         assert isinstance(intent, ModelPersistStateIntent)
@@ -55,7 +63,12 @@ class TestDeltaEmitsPersistStateIntent:
     def test_intent_envelope_wraps_new_state_data(self) -> None:
         handler = HandlerLedgerStateReducer()
         evt = _hash_event(tick="tX", lines=7, sha="abc123")
-        new_state, intents = handler.delta(ModelLedgerState(), evt)
+        new_state, intents = handler.delta(
+            ModelLedgerState(),
+            evt,
+            emitted_at=_FIXED_TS,
+            intent_id=uuid4(),
+        )
         assert new_state.tick_count == 1
         envelope: ModelStateEnvelope = intents[0].envelope
         assert isinstance(envelope, ModelStateEnvelope)
@@ -68,14 +81,37 @@ class TestDeltaEmitsPersistStateIntent:
     def test_intent_correlation_id_matches_event(self) -> None:
         handler = HandlerLedgerStateReducer()
         evt = _hash_event()
-        _, intents = handler.delta(ModelLedgerState(), evt)
+        _, intents = handler.delta(
+            ModelLedgerState(), evt, emitted_at=_FIXED_TS, intent_id=uuid4()
+        )
         assert intents[0].correlation_id == evt.correlation_id
 
-    def test_intent_emitted_at_is_timezone_aware(self) -> None:
+    def test_intent_emitted_at_is_the_injected_timestamp(self) -> None:
         handler = HandlerLedgerStateReducer()
-        _, intents = handler.delta(ModelLedgerState(), _hash_event())
-        emitted_at = intents[0].emitted_at
-        assert emitted_at.tzinfo is not None
+        _, intents = handler.delta(
+            ModelLedgerState(),
+            _hash_event(),
+            emitted_at=_FIXED_TS,
+            intent_id=uuid4(),
+        )
+        assert intents[0].emitted_at == _FIXED_TS
+        assert intents[0].envelope.written_at == _FIXED_TS
+
+    def test_delta_is_deterministic_for_identical_inputs(self) -> None:
+        """Pure reducer contract: identical (state, event, emitted_at, intent_id)
+        must produce byte-identical outputs. Guards replay/idempotence."""
+        handler = HandlerLedgerStateReducer()
+        evt = _hash_event(tick="tZ", lines=3, sha="cafe")
+        fixed_id = uuid4()
+
+        s1, i1 = handler.delta(
+            ModelLedgerState(), evt, emitted_at=_FIXED_TS, intent_id=fixed_id
+        )
+        s2, i2 = handler.delta(
+            ModelLedgerState(), evt, emitted_at=_FIXED_TS, intent_id=fixed_id
+        )
+        assert s1 == s2
+        assert i1[0].model_dump(mode="json") == i2[0].model_dump(mode="json")
 
 
 class TestHandleDictShape:
@@ -107,20 +143,51 @@ class TestReducerIsPure:
         ],
     )
     def test_reducer_source_has_no_io_references(self, forbidden: str) -> None:
-        source = inspect.getsource(handler_ledger_state)
-        # Strip every docstring (module + class + function) so that historical
-        # documentation mentions do not count against the code-level contract.
-        import ast
-
-        tree = ast.parse(source)
-        code_only = source
-        for node in ast.walk(tree):
-            if isinstance(
-                node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-            ):
-                ds = ast.get_docstring(node, clean=False)
-                if ds:
-                    code_only = code_only.replace(ds, "")
+        code_only = _reducer_code_without_docstrings_or_comments()
         assert forbidden not in code_only, (
             f"Reducer source must not reference {forbidden!r}; persistence belongs in the effect node."
         )
+
+    def test_delta_does_not_call_nondeterministic_builtins(self) -> None:
+        """``delta()`` must not call ``datetime.now`` or ``uuid4`` — both are
+        non-deterministic and break replay/idempotence. They belong in the
+        effect boundary (``handle()`` or the runtime caller)."""
+        import ast
+
+        source = inspect.getsource(handler_ledger_state)
+        tree = ast.parse(source)
+        delta_fn = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "delta"
+        )
+        forbidden_calls: list[str] = []
+        for node in ast.walk(delta_fn):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "now":
+                    forbidden_calls.append("datetime.now")
+                if isinstance(node.func, ast.Name) and node.func.id == "uuid4":
+                    forbidden_calls.append("uuid4")
+        assert not forbidden_calls, (
+            f"delta() contains non-deterministic calls: {forbidden_calls}. "
+            "Inject emitted_at / intent_id via keyword args instead."
+        )
+
+
+def _reducer_code_without_docstrings_or_comments() -> str:
+    """Return the reducer source with all module/class/function docstrings
+    stripped via AST so that historical documentation mentions cannot
+    satisfy or defeat code-level contract checks."""
+    import ast
+
+    source = inspect.getsource(handler_ledger_state)
+    tree = ast.parse(source)
+    code_only = source
+    for node in ast.walk(tree):
+        if isinstance(
+            node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
+            ds = ast.get_docstring(node, clean=False)
+            if ds:
+                code_only = code_only.replace(ds, "")
+    return code_only
