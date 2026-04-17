@@ -130,9 +130,8 @@ def _seed_hot_nodes(db: InmemoryDatabaseAdapter) -> None:
     for i in range(5):
         db.upsert(
             "agent_routing_decisions",
-            f"id-hot-{i}",
+            "id",
             {
-                f"id-hot-{i}": True,
                 "id": f"ard-hot-{i}",
                 "selected_agent": "node_ticket_pipeline"
                 if i < 3
