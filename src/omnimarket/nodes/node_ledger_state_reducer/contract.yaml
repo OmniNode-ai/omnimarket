@@ -9,9 +9,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Ledger demo REDUCER. Pure delta(state, event) -> (new_state, intents).
-  Handler returns dict {"state": ..., "intents": ...} per the
-  node_loop_state_reducer convention; RuntimeLocal (OMN-8946) constructs
-  the ModelStateEnvelope in its sink path and persists via ProtocolStateStore.
+  Handler returns dict {"state": ..., "intents": [ModelPersistStateIntent]}
+  per the pure-reducer-as-effect pattern (epic OMN-9006 / OMN-9009). The
+  downstream node_state_persist_effect consumes the intent and performs the
+  ProtocolStateStore.put() side effect — the reducer itself does no I/O.
 
 handler:
   module: omnimarket.nodes.node_ledger_state_reducer.handlers.handler_ledger_state

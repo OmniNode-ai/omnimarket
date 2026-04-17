@@ -148,8 +148,12 @@ def test_compute_is_pure_hash_of_journal(isolated_state_root: Path) -> None:
 def test_reducer_delta_is_pure_and_increments_count() -> None:
     """Reducer.delta() is pure — no env, no file writes, no bus calls.
 
-    Two sequential invocations produce tick_count=2 via delta().
+    Two sequential invocations produce tick_count=2 via delta(). Each
+    invocation emits exactly one ``ModelPersistStateIntent`` (OMN-9009 /
+    epic OMN-9006: persistence is an effect, reducer declares the intent).
     """
+    from omnibase_core.models.intents import ModelPersistStateIntent
+
     handler = HandlerLedgerStateReducer()
     correlation_id = uuid4()
 
@@ -165,8 +169,10 @@ def test_reducer_delta_is_pure_and_increments_count() -> None:
     assert state2.tick_count == 2
     assert state2.last_hash == "hash2"
     assert state2.last_line_count == 2
-    assert intents1 == []
-    assert intents2 == []
+    assert len(intents1) == 1
+    assert isinstance(intents1[0], ModelPersistStateIntent)
+    assert len(intents2) == 1
+    assert isinstance(intents2[0], ModelPersistStateIntent)
 
 
 def test_reducer_handle_returns_dict_convention() -> None:
