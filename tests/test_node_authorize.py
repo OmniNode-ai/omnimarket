@@ -210,3 +210,52 @@ def test_missing_onex_state_dir_raises(
         handler.handle(
             AuthorizeRequest(scope=["src/**"], tools=["Edit"], ttl_seconds=60)
         )
+
+
+# ---------------------------------------------------------------------------
+# CodeRabbit regression (PR #324 review)
+# ---------------------------------------------------------------------------
+
+
+def test_naive_datetime_in_grant_rejected_by_validator(state_dir: Path) -> None:
+    """Naive datetimes on disk must fail model validation, not TypeError later.
+
+    Without the tz-aware validator, is_expired() would raise TypeError
+    comparing naive vs aware datetimes, and that TypeError would escape the
+    load_grant_if_valid() catch-all (which only handles OSError, JSONDecodeError,
+    ValueError). Reader contract says missing/malformed → None; enforce it
+    at validation time so a real bug surfaces via Pydantic ValidationError.
+    """
+    path = _auth_file(state_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "scope": ["src/**"],
+        "granted_at": "2026-04-17T10:00:00",  # no tz suffix
+        "expires_at": "2026-04-17T14:00:00",
+        "tools": ["Edit"],
+    }
+    path.write_text(json.dumps(payload))
+
+    assert load_grant_if_valid(path) is None, (
+        "malformed-timestamps grant must collapse to None via reader contract"
+    )
+
+
+def test_short_write_is_detected_and_does_not_publish_truncated_grant(
+    state_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """os.write returning 0 must abort before os.replace publishes a partial."""
+    handler = HandlerAuthorize()
+
+    def zero_write(fd: int, data: bytes) -> int:
+        return 0
+
+    monkeypatch.setattr(os, "write", zero_write)
+
+    with pytest.raises(OSError, match="returned 0"):
+        handler.handle(
+            AuthorizeRequest(scope=["src/**"], tools=["Edit"], ttl_seconds=60)
+        )
+    assert not _auth_file(state_dir).exists(), (
+        "truncated-write must never promote to authorization.json"
+    )

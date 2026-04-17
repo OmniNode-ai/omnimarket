@@ -16,7 +16,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 AUTHORIZATION_FILE_RELATIVE_PATH = "session/authorization.json"
 
@@ -37,6 +37,16 @@ class ModelAgentAuthorizationGrant(BaseModel):
     granted_at: datetime
     expires_at: datetime | None
     tools: tuple[str, ...] = Field(..., min_length=1)
+
+    @field_validator("granted_at", "expires_at")
+    @classmethod
+    def _require_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError(
+                "timestamps must be timezone-aware; a naive datetime would "
+                "break is_expired comparison against datetime.now(UTC)"
+            )
+        return value
 
     def is_expired(self, now: datetime | None = None) -> bool:
         if self.expires_at is None:

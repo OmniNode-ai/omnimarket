@@ -53,6 +53,25 @@ class AuthorizeResult(BaseModel):
     expires_at: datetime | None
 
 
+def _write_all(fd: int, data: bytes) -> None:
+    """Write every byte of ``data`` to ``fd`` — os.write may short-write.
+
+    Publishing a truncated JSON grant via os.replace would break the reader
+    contract (load_grant_if_valid would see malformed JSON and return None,
+    which silently degrades to "no grant" instead of loud failure).
+    """
+    view = memoryview(data)
+    total = 0
+    while total < len(view):
+        written = os.write(fd, view[total:])
+        if written == 0:
+            raise OSError(
+                f"os.write returned 0 after writing {total}/{len(data)} bytes "
+                "to authorization tempfile; refusing to publish truncated grant"
+            )
+        total += written
+
+
 def _resolve_authorization_path() -> Path:
     state_dir = os.environ.get("ONEX_STATE_DIR")
     if not state_dir:
@@ -95,7 +114,8 @@ class HandlerAuthorize:
         )
         try:
             try:
-                os.write(fd, payload_bytes)
+                _write_all(fd, payload_bytes)
+                os.fsync(fd)
             finally:
                 os.close(fd)
             os.replace(tmp_path, path)

@@ -44,6 +44,7 @@ inputs:
     required: true
   ttl_seconds:
     type: int
+    nullable: true
     description: "Grant lifetime in seconds. Omit/null for a non-expiring grant."
     required: false
     default: null
