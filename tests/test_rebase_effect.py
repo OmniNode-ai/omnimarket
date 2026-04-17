@@ -123,8 +123,9 @@ async def test_missing_env_fails_loud() -> None:
 @pytest.mark.asyncio
 async def test_successful_rebase(tmp_path: Path) -> None:
     """Happy path: all git operations succeed → success=True, conflict_files=[]."""
-    # Create a fake source clone with a .git dir
-    repo_dir = tmp_path / "omni_home"
+    # Create a fake source clone with a .git dir.
+    # Handler converts repo="OmniNode-ai/omni_home" → key "OmniNode-ai__omni_home".
+    repo_dir = tmp_path / "OmniNode-ai__omni_home"
     (repo_dir / ".git").mkdir(parents=True)
 
     # git ops in order:
@@ -167,7 +168,8 @@ async def test_successful_rebase(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_rebase_conflict_aborts_and_records_files(tmp_path: Path) -> None:
     """Conflict during rebase → abort, conflict_files recorded, success=False."""
-    repo_dir = tmp_path / "omni_home"
+    # Handler converts repo="OmniNode-ai/omni_home" → key "OmniNode-ai__omni_home".
+    repo_dir = tmp_path / "OmniNode-ai__omni_home"
     (repo_dir / ".git").mkdir(parents=True)
 
     # git ops in order:
