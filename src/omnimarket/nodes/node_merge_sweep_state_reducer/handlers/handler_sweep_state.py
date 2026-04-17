@@ -4,21 +4,34 @@
 
 REDUCER node. Pure delta(state, event) -> (new_state, intents[]).
 Returns dict {"state": ..., "intents": ...} per OMN-8950 convention.
-RuntimeLocal (OMN-8946) constructs ModelStateEnvelope and persists via ProtocolStateStore.
+
+Intents are a heterogeneous list:
+    - ``ModelPersistStateIntent`` — appended on every first-write mutation
+      (OMN-9010 / pure-reducer epic OMN-9006). Consumed by
+      ``node_state_persist_effect`` which writes to ``ProtocolStateStore``.
+    - ``dict[str, Any]`` with ``{topic, payload}`` — existing bus-publish
+      intent for the terminal ``merge-sweep-completed.v1`` event.
 
 Delta rules (authoritative):
 1. Compute dedup key: f"{event.repo}#{event.pr_number}"
-2. First-write-wins: if key in state.pr_outcomes_by_key → no state change, no intent.
-3. First-write: add record, increment counter.
-4. Terminal guard: if tracked == total and not terminal_emitted → flip flag, emit terminal.
-5. Already terminal: no duplicate terminal even if more events arrive (step 2 short-circuits).
+2. First-write-wins: if key in state.pr_outcomes_by_key -> no state change, no intent.
+3. First-write: add record, increment counter, append persist intent.
+4. Terminal guard: if tracked == total and not terminal_emitted -> flip flag,
+   append bus-publish terminal intent; persist intent is appended last so it
+   carries the updated (terminal-emitted) state.
+5. Already terminal: no duplicate terminal even if more events arrive (step 2
+   short-circuits).
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
+
+from omnibase_core.models.intents import ModelPersistStateIntent
+from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
 
 from omnimarket.nodes.node_merge_sweep_state_reducer.models.model_merge_sweep_state import (
     ModelMergeSweepState,
@@ -36,6 +49,26 @@ _log = logging.getLogger(__name__)
 TOPIC_STATE_REDUCED = "onex.evt.omnimarket.merge-sweep-state-reduced.v1"
 TOPIC_SWEEP_COMPLETED = "onex.evt.omnimarket.merge-sweep-completed.v1"
 
+NODE_ID = "node_merge_sweep_state_reducer"
+
+
+def _build_persist_intent(
+    state: ModelMergeSweepState, correlation_id: Any
+) -> ModelPersistStateIntent:
+    now = datetime.now(UTC)
+    envelope = ModelStateEnvelope(
+        node_id=NODE_ID,
+        scope_id=str(state.run_id),
+        data=state.model_dump(mode="json"),
+        written_at=now,
+    )
+    return ModelPersistStateIntent(
+        intent_id=uuid4(),
+        envelope=envelope,
+        emitted_at=now,
+        correlation_id=correlation_id,
+    )
+
 
 class HandlerMergeSweepStateReducer:
     """REDUCER: aggregate sweep state with first-writer-wins dedup + exactly-once terminal."""
@@ -44,11 +77,12 @@ class HandlerMergeSweepStateReducer:
         self,
         state: ModelMergeSweepState,
         event: ModelSweepOutcomeClassified,
-    ) -> tuple[ModelMergeSweepState, list[dict[str, Any]]]:
+    ) -> tuple[ModelMergeSweepState, list[ModelPersistStateIntent | dict[str, Any]]]:
         """Pure FSM delta. No I/O, no env reads, no bus publishes.
 
-        Returns (new_state, intents). Intents are dicts with topic + payload
-        for the adapter to publish.
+        Returns (new_state, intents). Intents are either typed
+        ``ModelPersistStateIntent`` (for state persistence via the effect
+        pipeline) or dicts with topic+payload (for bus-publish side effects).
         """
         dedup_key = f"{event.repo}#{event.pr_number}"
 
@@ -67,7 +101,7 @@ class HandlerMergeSweepStateReducer:
             repo=event.repo,
             outcome=event.outcome,
             terminal=is_terminal_outcome(event.outcome),
-            first_seen_at=datetime.utcnow(),
+            first_seen_at=datetime.now(UTC),
             classified_event_id=event.event_id,
         )
 
@@ -95,12 +129,12 @@ class HandlerMergeSweepStateReducer:
             }
         )
 
-        intents: list[dict[str, Any]] = []
+        intents: list[ModelPersistStateIntent | dict[str, Any]] = []
 
         # Step 4: Terminal guard — emit exactly once when all PRs accounted for
         tracked_count = len(new_outcomes)
         if tracked_count == new_state.total_prs and not new_state.terminal_emitted:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             new_state = new_state.model_copy(
                 update={
                     "terminal_emitted": True,
@@ -136,6 +170,10 @@ class HandlerMergeSweepStateReducer:
                 new_state.stuck_count,
             )
 
+        # Append persist intent last so the existing bus-publish indexing at
+        # ``intents[0]`` on terminal remains stable for downstream consumers.
+        intents.append(_build_persist_intent(new_state, event.correlation_id))
+
         return new_state, intents
 
     def handle(self, request: ModelSweepOutcomeClassified) -> dict[str, Any]:
@@ -152,5 +190,12 @@ class HandlerMergeSweepStateReducer:
         new_state, intents = self.delta(initial, request)
         return {
             "state": new_state.model_dump(mode="json"),
-            "intents": intents,
+            "intents": [
+                (
+                    i.model_dump(mode="json")
+                    if isinstance(i, ModelPersistStateIntent)
+                    else i
+                )
+                for i in intents
+            ],
         }

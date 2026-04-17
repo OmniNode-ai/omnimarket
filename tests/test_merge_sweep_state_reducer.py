@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from omnibase_core.models.intents import ModelPersistStateIntent
+
 from omnimarket.nodes.node_merge_sweep_state_reducer.handlers.handler_sweep_state import (
     HandlerMergeSweepStateReducer,
 )
@@ -19,6 +21,12 @@ from omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome imp
     EnumSweepOutcome,
     ModelSweepOutcomeClassified,
 )
+
+
+def _bus_dicts(intents: list[object]) -> list[dict]:
+    """Filter intents to the bus-publish dict subset (OMN-9010)."""
+    return [i for i in intents if isinstance(i, dict)]
+
 
 _RUN_ID = UUID("00000000-0000-4000-a000-000000000001")
 _CORR_ID = UUID("00000000-0000-4000-a000-000000000002")
@@ -58,7 +66,9 @@ def test_first_write_inserts_record_and_increments_counter() -> None:
     assert new_state.armed_count == 1
     assert new_state.rebased_count == 0
     assert new_state.failed_count == 0
-    assert len(intents) == 0  # not terminal yet (1/3)
+    # First-write: no bus-publish yet (not terminal); persist intent is always appended.
+    assert _bus_dicts(intents) == []
+    assert sum(isinstance(i, ModelPersistStateIntent) for i in intents) == 1
 
 
 def test_duplicate_event_no_state_change() -> None:
@@ -82,14 +92,15 @@ def test_terminal_fires_exactly_once_when_all_prs_tracked() -> None:
     state = _initial_state(total_prs=3)
 
     state, intents1 = handler.delta(state, _event(100, EnumSweepOutcome.ARMED))
-    assert intents1 == []
+    assert _bus_dicts(intents1) == []
 
     state, intents2 = handler.delta(state, _event(200, EnumSweepOutcome.REBASED))
-    assert intents2 == []
+    assert _bus_dicts(intents2) == []
 
     state, intents3 = handler.delta(state, _event(300, EnumSweepOutcome.FAILED))
-    assert len(intents3) == 1  # terminal fired
-    assert "merge-sweep-completed" in intents3[0]["topic"]
+    bus3 = _bus_dicts(intents3)
+    assert len(bus3) == 1  # terminal bus-publish fired
+    assert "merge-sweep-completed" in bus3[0]["topic"]
     assert state.terminal_emitted is True
     assert state.completed_at is not None
 
@@ -103,12 +114,14 @@ def test_terminal_emitted_guard_prevents_double_emission() -> None:
     state, intents_first_terminal = handler.delta(
         state, _event(200, EnumSweepOutcome.REBASED)
     )
-    assert len(intents_first_terminal) == 1
+    assert len(_bus_dicts(intents_first_terminal)) == 1
     assert state.terminal_emitted is True
 
     # Now manually send another event for the same PR (simulate late duplicate)
     state, intents_after = handler.delta(state, _event(200, EnumSweepOutcome.REBASED))
-    assert intents_after == []  # dedup short-circuits before terminal check
+    # dedup short-circuits before the mutation path — no persist intent,
+    # no bus-publish intent.
+    assert intents_after == []
 
 
 def test_10_events_5_duplicates_exactly_1_terminal() -> None:
@@ -133,7 +146,7 @@ def test_10_events_5_duplicates_exactly_1_terminal() -> None:
     terminal_count = 0
     for event in events:
         state, intents = handler.delta(state, event)
-        terminal_count += len(intents)
+        terminal_count += len(_bus_dicts(intents))
 
     assert terminal_count == 1
     assert state.terminal_emitted is True
@@ -172,8 +185,9 @@ def test_all_counter_types_tracked() -> None:
 def test_delta_is_pure_no_io() -> None:
     """delta() is pure: same inputs produce structurally equivalent output.
 
-    Note: first_seen_at and started_at use utcnow() so timestamps differ between
-    invocations; we verify outcome-relevant fields are identical instead.
+    Note: first_seen_at, written_at, emitted_at and intent_id differ between
+    invocations by design (wall clock + uuid4); we verify outcome-relevant
+    fields and intent shape are identical instead.
     """
     handler = HandlerMergeSweepStateReducer()
     state = _initial_state()
@@ -189,4 +203,5 @@ def test_delta_is_pure_no_io() -> None:
         s1.pr_outcomes_by_key["OmniNode-ai/omni_home#100"].outcome
         == s2.pr_outcomes_by_key["OmniNode-ai/omni_home#100"].outcome
     )
-    assert i1 == i2
+    # Same shape: identical count of persist + bus intents across calls.
+    assert [type(i).__name__ for i in i1] == [type(i).__name__ for i in i2]
