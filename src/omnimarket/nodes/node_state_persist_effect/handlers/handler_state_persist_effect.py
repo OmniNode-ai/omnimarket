@@ -39,7 +39,7 @@ class HandlerStatePersistEffect:
     3. On any exception: log the error, return success=False with the error message
 
     Handler I/O contract is defined in this node's ``contract.yaml``
-    (``event_bus.subscribe_topics``, ``event_bus.publish_topics``, ``terminal_topics``).
+    (``event_bus.subscribe_topics``, ``event_bus.publish_topics``, ``terminal_event``).
     Do not duplicate topic strings here — they drift from the contract.
     """
 
