@@ -40,10 +40,11 @@ jobs:
       - name: Resolve repo name
         id: resolve-repo
         run: |
-          REPO="${{ inputs.repo }}"
-          [ -z "$REPO" ] && REPO="${{ github.repository }}"
-          # Strip owner prefix if present (owner/repo -> repo)
-          echo "repo=${REPO##*/}" >> "$GITHUB_OUTPUT"
+          TARGET="${{ inputs.repo }}"
+          [ -z "$TARGET" ] && TARGET="${{ github.repository }}"
+          # Split into owner + repo to respect caller-supplied owner/repo
+          echo "owner=${TARGET%%/*}" >> "$GITHUB_OUTPUT"
+          echo "repo=${TARGET##*/}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve PR number
         id: resolve-pr
@@ -68,7 +69,7 @@ jobs:
           fi
           chmod +x scripts/check-unresolved-threads.sh
           COUNT=$(bash scripts/check-unresolved-threads.sh \
-            "${{ github.repository_owner }}" \
+            "${{ steps.resolve-repo.outputs.owner }}" \
             "${{ steps.resolve-repo.outputs.repo }}" \
             "$PR")
           echo "Unresolved CodeRabbit threads: $COUNT"
