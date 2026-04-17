@@ -1,0 +1,63 @@
+---
+name: node_state_persist_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  State persist effect node. Subscribes to the internal state-persist intent
+  topic, writes the ModelStateEnvelope to ProtocolStateStore, and emits a
+  ModelStatePersistedEvent confirming success or failure.
+
+handler:
+  module: omnimarket.nodes.node_state_persist_effect.handlers.handler_state_persist_effect
+  class: HandlerStatePersistEffect
+  input_model: omnimarket.nodes.node_state_persist_effect.models.model_state_persist_input.ModelStatePersistInput
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Correlation ID flowing through the pipeline"
+    required: true
+  intent_id:
+    type: uuid
+    description: "Intent ID from ModelPersistStateIntent"
+    required: true
+  envelope:
+    type: object
+    description: "Serialized ModelStateEnvelope to persist"
+    required: true
+  emitted_at:
+    type: datetime
+    description: "Timezone-aware timestamp when the intent was emitted"
+    required: true
+
+outputs:
+  intent_id:
+    type: uuid
+    description: "Echo of the incoming intent_id for correlation"
+  success:
+    type: bool
+    description: "True if the state was persisted successfully"
+  persisted_at:
+    type: datetime
+    description: "Timestamp at which persistence was confirmed, or null on failure"
+    nullable: true
+  error:
+    type: str
+    description: "Error message if success=False, else null"
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.state-persisted.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.omnimarket.state-persist.v1
+  publish_topics:
+    - onex.evt.omnimarket.state-persisted.v1
