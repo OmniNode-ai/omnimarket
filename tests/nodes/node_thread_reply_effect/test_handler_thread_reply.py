@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Tests for HandlerThreadReply (OMN-8989 TDD spec).
+"""Tests for HandlerThreadReply (OMN-8989 TDD spec + OMN-8990 Wave 2).
 
 TDD cases:
   1. Mock router → emits event with reply_posted=True, is_draft=True (default)
@@ -9,6 +9,13 @@ TDD cases:
   3. ONEX_CI_MODE=true → forces is_draft=True regardless of DIRECT_POST
   4. LLM raises RuntimeError → handler re-raises (no swallow)
   5. gh api subprocess fails → handler re-raises
+
+Wave 2 additional cases:
+  6. routing_policy resolution — invalid dict raises ValueError
+  7. branch guard — protected branch raises ValueError before any API call
+  8. _real_llm_call path — mocked router + provider; reply_posted=True
+  9. DIRECT_POST + real routing → is_draft=False, reply propagated
+ 10. _sanitize redacts credential-like patterns from thread body
 """
 
 from __future__ import annotations
@@ -275,3 +282,220 @@ def test_model_forbids_extra_fields() -> None:
             used_fallback=False,
             unexpected_field="oops",
         )
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 — branch guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_protected_branch_raises_before_api_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """head_ref_name matching protected pattern raises ValueError; gh never called."""
+    monkeypatch.delenv("ONEX_CI_MODE", raising=False)
+    monkeypatch.delenv("ONEX_THREAD_REPLY_DIRECT_POST", raising=False)
+
+    gh_called: list[bool] = []
+
+    def _spy_gh(cmd: list[str]) -> tuple[int, str, str]:
+        gh_called.append(True)
+        return 0, json.dumps({"id": 1}), ""
+
+    h = HandlerThreadReply(
+        gh_run_fn=_spy_gh,
+        llm_call_fn=_make_llm_call(),
+    )
+
+    with pytest.raises(ValueError, match="protected branch"):
+        await h.handle(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+            head_ref_name="main",
+        )
+
+    assert not gh_called, "gh api must not be called for protected branch"
+
+
+@pytest.mark.asyncio
+async def test_unprotected_branch_does_not_raise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """head_ref_name on a feature branch proceeds normally."""
+    monkeypatch.delenv("ONEX_CI_MODE", raising=False)
+    monkeypatch.delenv("ONEX_THREAD_REPLY_DIRECT_POST", raising=False)
+
+    h = _handler()
+    result = await h.handle(
+        correlation_id=uuid4(),
+        pr_number=PR_NUM,
+        repo=REPO,
+        thread_body=THREAD_BODY,
+        routing_policy=ROUTING_POLICY,
+        head_ref_name="jonahgabriel/omn-8990-thread-reply-impl",
+    )
+    assert result.reply_posted is True
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 — routing_policy validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_routing_policy_missing_primary_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """routing_policy dict missing required 'primary' → ValidationError propagates."""
+    from pydantic import ValidationError
+
+    monkeypatch.delenv("ONEX_CI_MODE", raising=False)
+    monkeypatch.delenv("ONEX_THREAD_REPLY_DIRECT_POST", raising=False)
+
+    # No llm_call_fn injected → goes through _real_llm_call which calls model_validate
+    h = HandlerThreadReply(gh_run_fn=_make_gh_run())
+
+    with pytest.raises((ValidationError, RuntimeError)):
+        await h.handle(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy={},  # missing required 'primary'
+        )
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 — _real_llm_call path via mocked router + provider
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_real_llm_path_produces_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_real_llm_call mocked at router level: reply_posted=True, used_fallback from result."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    monkeypatch.delenv("ONEX_CI_MODE", raising=False)
+    monkeypatch.delenv("ONEX_THREAD_REPLY_DIRECT_POST", raising=False)
+
+    mock_response = MagicMock()
+    mock_response.generated_text = "Addressed: added type annotation to `foo`."
+
+    mock_provider = MagicMock()
+    mock_provider.generate_async = AsyncMock(return_value=mock_response)
+
+    mock_routing_result = MagicMock()
+    mock_routing_result.endpoint_url = "http://localhost:8000"
+    mock_routing_result.model_key = "qwen3-coder-30b"
+    mock_routing_result.used_fallback = False
+
+    mock_router = MagicMock()
+    mock_router.route_async = AsyncMock(return_value=mock_routing_result)
+
+    import omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply as mod
+
+    monkeypatch.setattr(mod, "HandlerModelRouter", lambda **_kwargs: mock_router)
+    monkeypatch.setattr(
+        mod, "AdapterLlmProviderOpenai", lambda **_kwargs: mock_provider
+    )
+
+    h = HandlerThreadReply(gh_run_fn=_make_gh_run())
+
+    result = await h.handle(
+        correlation_id=uuid4(),
+        pr_number=PR_NUM,
+        repo=REPO,
+        thread_body=THREAD_BODY,
+        routing_policy=ROUTING_POLICY,
+    )
+
+    assert result.reply_posted is True
+    assert result.is_draft is True
+    assert result.used_fallback is False
+
+
+@pytest.mark.asyncio
+async def test_real_llm_path_fallback_flag_propagated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """used_fallback=True from routing result propagates to ModelThreadRepliedEvent."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    monkeypatch.delenv("ONEX_CI_MODE", raising=False)
+    monkeypatch.delenv("ONEX_THREAD_REPLY_DIRECT_POST", raising=False)
+
+    mock_response = MagicMock()
+    mock_response.generated_text = "Addressed via fallback model."
+
+    mock_provider = MagicMock()
+    mock_provider.generate_async = AsyncMock(return_value=mock_response)
+
+    mock_routing_result = MagicMock()
+    mock_routing_result.endpoint_url = "https://api.z.ai"
+    mock_routing_result.model_key = "glm-4.5"
+    mock_routing_result.used_fallback = True
+
+    mock_router = MagicMock()
+    mock_router.route_async = AsyncMock(return_value=mock_routing_result)
+
+    import omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply as mod
+
+    monkeypatch.setattr(mod, "HandlerModelRouter", lambda **_kwargs: mock_router)
+    monkeypatch.setattr(
+        mod, "AdapterLlmProviderOpenai", lambda **_kwargs: mock_provider
+    )
+
+    h = HandlerThreadReply(gh_run_fn=_make_gh_run())
+
+    result = await h.handle(
+        correlation_id=uuid4(),
+        pr_number=PR_NUM,
+        repo=REPO,
+        thread_body=THREAD_BODY,
+        routing_policy=ROUTING_POLICY,
+    )
+
+    assert result.used_fallback is True
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 — _sanitize: credential redaction
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_redacts_github_token() -> None:
+    """_sanitize replaces ghp_ token patterns with [REDACTED]."""
+    from omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply import (
+        _sanitize,
+    )
+
+    raw = "Token: ghp_abcdefghij1234567890 was used here"
+    sanitized = _sanitize(raw)
+    assert "ghp_" not in sanitized
+    assert "[REDACTED]" in sanitized
+
+
+def test_sanitize_redacts_password_key_value() -> None:
+    """_sanitize replaces password=<value> patterns with [REDACTED]."""
+    from omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply import (
+        _sanitize,
+    )
+
+    raw = "password=supersecret123 is in the config"
+    sanitized = _sanitize(raw)
+    assert "supersecret123" not in sanitized
+    assert "[REDACTED]" in sanitized
+
+
+def test_sanitize_leaves_clean_text_unchanged() -> None:
+    """_sanitize does not alter normal review thread text."""
+    from omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply import (
+        _sanitize,
+    )
+
+    raw = "Please add a type annotation to `foo` and update the docstring."
+    assert _sanitize(raw) == raw
