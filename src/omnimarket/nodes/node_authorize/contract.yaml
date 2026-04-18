@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — authorize
+#
+# Backs the /onex:authorize Claude Code skill. Writes a session-scoped
+# ModelAgentAuthorizationGrant to $ONEX_STATE_DIR/session/authorization.json,
+# consumed by the PermissionRequest authorization gate hook (OMN-9087).
+#
+# Related tickets:
+#   - OMN-9104: Implement authorization.json writer for /onex:authorize skill
+#   - OMN-9087: PermissionRequest auto-approve from work-authorization scope
+#   - OMN-9083: unused-hooks epic
+---
+name: authorize
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Grant work authorization for Edit/Write operations in the current session by
+  writing a ModelAgentAuthorizationGrant to $ONEX_STATE_DIR/session/authorization.json.
+  The grant is read by the PermissionRequest authorization gate hook; missing
+  file or expired grant both collapse to "no grant".
+
+handler:
+  module: omnimarket.nodes.node_authorize.handlers.handler_authorize
+  class: HandlerAuthorize
+  input_model: omnimarket.nodes.node_authorize.handlers.handler_authorize.AuthorizeRequest
+
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: false
+  timeout_ms: 5000
+
+inputs:
+  scope:
+    type: list[str]
+    description: "Glob-style paths the grant covers (e.g. 'src/**', 'tests/**')."
+    required: true
+  tools:
+    type: list[str]
+    description: "Tool names the grant applies to (e.g. 'Edit', 'Write')."
+    required: true
+  ttl_seconds:
+    type: int
+    nullable: true
+    description: "Grant lifetime in seconds. Omit/null for a non-expiring grant."
+    required: false
+    default: null
+
+outputs:
+  path:
+    type: str
+    description: "Absolute path to the written authorization.json"
+  granted_at:
+    type: str
+    description: "ISO 8601 UTC datetime when the grant was written"
+  expires_at:
+    type: str
+    nullable: true
+    description: "ISO 8601 UTC datetime when the grant expires, or null for non-expiring"
+
+terminal_event: onex.evt.omnimarket.authorize-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.authorize-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.authorize-completed.v1
+    - onex.evt.omnimarket.authorize-failed.v1

@@ -111,6 +111,10 @@ class HandlerLlmReviewer(ProtocolReviewer):
                     user_prompt=prompt.user_prompt,
                     timeout_seconds=self._config.timeout_seconds,
                 )
+            except ValueError:
+                # Unknown model_key is a caller configuration error — re-raise
+                # so the pipeline fails loud instead of silently returning clean.
+                raise
             except Exception as exc:
                 logger.warning(
                     "LLM call failed for model=%s correlation_id=%s: %s",

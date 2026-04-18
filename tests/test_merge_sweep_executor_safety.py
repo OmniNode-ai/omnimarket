@@ -42,6 +42,12 @@ from omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome imp
     ModelSweepOutcomeClassified,
 )
 
+
+def _bus_dicts(intents: list[object]) -> list[dict]:
+    """Filter intents to the bus-publish dict subset (OMN-9010)."""
+    return [i for i in intents if isinstance(i, dict)]
+
+
 _REPO = "OmniNode-ai/omni_home"
 _CORR_ID = UUID("00000000-0000-4000-a000-000000000099")
 _RUN_ID = UUID("00000000-0000-4000-a000-000000000098")
@@ -99,7 +105,7 @@ def test_duplicate_events_no_double_count_terminal_fires_once() -> None:
     terminal_count = 0
     for ev in events:
         state, intents = reducer.delta(state, ev)
-        terminal_count += len(intents)
+        terminal_count += len(_bus_dicts(intents))
 
     assert terminal_count == 1
     assert state.terminal_emitted is True
@@ -121,12 +127,13 @@ def test_partial_failure_reducer_fires_terminal_for_all_prs() -> None:
     state, _ = reducer.delta(state, _event(200, EnumSweepOutcome.REBASED))
     state, intents = reducer.delta(state, _event(300, EnumSweepOutcome.FAILED))
 
-    assert len(intents) == 1
+    bus = _bus_dicts(intents)
+    assert len(bus) == 1
     assert state.terminal_emitted is True
     assert state.failed_count == 1
     assert state.armed_count == 1
     assert state.rebased_count == 1
-    terminal_payload = intents[0]["payload"]
+    terminal_payload = bus[0]["payload"]
     assert terminal_payload["failed_count"] == 1
     assert terminal_payload["total_prs"] == 3
 
@@ -216,7 +223,7 @@ def test_concurrent_runs_different_scope_no_collision() -> None:
         ),
     )
     assert state_a.terminal_emitted is True
-    assert len(intents_a) == 1
+    assert len(_bus_dicts(intents_a)) == 1
 
     # Run B: Same PR 100 → REBASED (different run)
     state_b = _initial_state(run_id=run_id_b, total_prs=1)
@@ -233,7 +240,7 @@ def test_concurrent_runs_different_scope_no_collision() -> None:
         ),
     )
     assert state_b.terminal_emitted is True
-    assert len(intents_b) == 1
+    assert len(_bus_dicts(intents_b)) == 1
 
     # States are completely independent
     assert state_a.run_id != state_b.run_id
@@ -323,12 +330,12 @@ def test_terminal_emitted_guard_belt_and_suspenders() -> None:
     state, intents1 = reducer.delta(
         state, _event(100, EnumSweepOutcome.ARMED, total_prs=2)
     )
-    assert intents1 == []  # guard: no second terminal
+    assert _bus_dicts(intents1) == []  # guard: no second terminal bus-publish
 
     # Add second PR — this would normally trigger terminal
     state, intents2 = reducer.delta(
         state, _event(200, EnumSweepOutcome.REBASED, total_prs=2)
     )
-    assert intents2 == []  # guard: no second terminal
+    assert _bus_dicts(intents2) == []  # guard: no second terminal bus-publish
     # But state is updated with both records
     assert len(state.pr_outcomes_by_key) == 2

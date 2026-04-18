@@ -148,16 +148,26 @@ def test_compute_is_pure_hash_of_journal(isolated_state_root: Path) -> None:
 def test_reducer_delta_is_pure_and_increments_count() -> None:
     """Reducer.delta() is pure — no env, no file writes, no bus calls.
 
-    Two sequential invocations produce tick_count=2 via delta().
+    Two sequential invocations produce tick_count=2 via delta(). Each
+    invocation emits exactly one ``ModelPersistStateIntent`` (OMN-9009 /
+    epic OMN-9006: persistence is an effect, reducer declares the intent).
+    ``emitted_at`` and ``intent_id`` are injected to preserve determinism.
     """
+    from datetime import UTC, datetime
+
+    from omnibase_core.models.intents import ModelPersistStateIntent
+
     handler = HandlerLedgerStateReducer()
     correlation_id = uuid4()
 
     evt1 = _make_hash_event("t1", correlation_id, 1, "hash1")
     evt2 = _make_hash_event("t2", correlation_id, 2, "hash2")
 
-    state1, intents1 = handler.delta(ModelLedgerState(), evt1)
-    state2, intents2 = handler.delta(state1, evt2)
+    ts = datetime(2026, 4, 17, 12, 0, 0, tzinfo=UTC)
+    state1, intents1 = handler.delta(
+        ModelLedgerState(), evt1, emitted_at=ts, intent_id=uuid4()
+    )
+    state2, intents2 = handler.delta(state1, evt2, emitted_at=ts, intent_id=uuid4())
 
     assert state1.tick_count == 1
     assert state1.last_hash == "hash1"
@@ -165,8 +175,10 @@ def test_reducer_delta_is_pure_and_increments_count() -> None:
     assert state2.tick_count == 2
     assert state2.last_hash == "hash2"
     assert state2.last_line_count == 2
-    assert intents1 == []
-    assert intents2 == []
+    assert len(intents1) == 1
+    assert isinstance(intents1[0], ModelPersistStateIntent)
+    assert len(intents2) == 1
+    assert isinstance(intents2[0], ModelPersistStateIntent)
 
 
 def test_reducer_handle_returns_dict_convention() -> None:

@@ -3,8 +3,8 @@
 """HandlerAdminMerge — admin merge fallback for stuck merge queue PRs.
 
 Consumes ModelStuckQueueEntry list from InventoryResult.stuck_queue_prs.
-Only fires when enable_admin_merge_fallback=True (default: False — opt-in per
-adversarial R5).
+Fires when enable_admin_merge_fallback=True (default ON; pass
+`--no-admin-merge-fallback` to disable).
 
 Emits explicit log line "ADMIN MERGE TRIGGERED pr={pr_number} repo={repo}"
 before acting.
@@ -97,7 +97,8 @@ class _LiveAdminMergeAdapter:
 class HandlerAdminMerge:
     """Admin merge fallback for PRs stuck in merge queue >30min.
 
-    Only fires when enable_admin_merge_fallback=True. Logs an explicit
+    Fires when enable_admin_merge_fallback=True (default ON; pass
+    `--no-admin-merge-fallback` to disable). Logs an explicit
     "ADMIN MERGE TRIGGERED" line before each merge action for audit trails.
     """
 
@@ -120,14 +121,14 @@ class HandlerAdminMerge:
         self,
         *,
         stuck_prs: list[ModelStuckQueueEntry],
-        enable_admin_merge_fallback: bool = False,
+        enable_admin_merge_fallback: bool = True,
         dry_run: bool = False,
     ) -> ModelAdminMergeResult:
-        """Admin-merge all stuck PRs if opt-in flag is set.
+        """Admin-merge all stuck PRs unless explicitly disabled.
 
         Args:
             stuck_prs: PRs identified as stuck by inventory compute.
-            enable_admin_merge_fallback: Must be True to actually merge.
+            enable_admin_merge_fallback: Default ON; set False to disable.
             dry_run: When True, log intent without merging.
 
         Returns:

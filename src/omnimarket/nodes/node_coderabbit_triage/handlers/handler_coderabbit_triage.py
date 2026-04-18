@@ -3,13 +3,17 @@
 """HandlerCoderabbitTriage — CodeRabbit thread classification.
 
 Pure deterministic handler. No LLM. Fetches CodeRabbit review threads via
-the GitHub API, then classifies each thread as BLOCKING or SUGGESTION using
-a hardcoded keyword list.
+the GitHub GraphQL API (reviewThreads endpoint), then classifies each thread
+as BLOCKING or SUGGESTION using a hardcoded keyword list.
 
 BLOCKING markers: action words that require a code change before merge.
 SUGGESTION markers: advisory words that are safe to auto-acknowledge.
 
 When dry_run=True, classification still runs but no replies are posted.
+
+NOTE: Uses GraphQL reviewThreads (not REST /pulls/{pr}/comments). The REST
+endpoint only returns inline diff comments, missing review threads that
+CodeRabbit posts as formal review thread objects — the common case.
 """
 
 from __future__ import annotations
@@ -77,8 +81,41 @@ _SUGGESTION_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-# CodeRabbit bot login name on GitHub
-_CODERABBIT_BOT = "coderabbitai"
+# Supported CodeRabbit bot login names on GitHub (exact match only)
+_CODERABBIT_BOT_LOGINS: frozenset[str] = frozenset(
+    {"coderabbitai", "coderabbitai[bot]"}
+)
+
+# GraphQL query to fetch review threads for a PR
+_REVIEW_THREADS_QUERY = """
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          id
+          isResolved
+          comments(first: 5) {
+            nodes {
+              databaseId
+              author {
+                login
+              }
+              body
+              path
+              url
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
 
 
 class EnumThreadSeverity(StrEnum):
@@ -137,8 +174,12 @@ class ModelCoderabbitTriageResult(BaseModel):
 class HandlerCoderabbitTriage:
     """CodeRabbit thread classification handler.
 
-    Fetches PR review comments from the GitHub API, filters to CodeRabbit
-    comments, and classifies each using keyword matching. No LLM.
+    Fetches PR review threads from the GitHub GraphQL API, filters to
+    CodeRabbit threads, and classifies each using keyword matching. No LLM.
+
+    Uses GraphQL reviewThreads instead of REST /pulls/{pr}/comments because
+    CodeRabbit posts findings as review thread objects, not inline diff
+    comments. The REST endpoint returns total_threads=0 for those PRs.
     """
 
     def handle(
@@ -189,60 +230,113 @@ class HandlerCoderabbitTriage:
     def _fetch_and_classify(
         self, repo: str, pr_number: int
     ) -> list[ModelThreadClassification]:
-        """Fetch CodeRabbit comments from GitHub API and classify them."""
+        """Fetch CodeRabbit review threads via GraphQL and classify them."""
         owner, name = self._split_repo(repo)
-        comments = self._fetch_pr_comments(owner, name, pr_number)
-        coderabbit_comments = [
-            c
-            for c in comments
-            if (c.get("user") or {}).get("login", "").lower() == _CODERABBIT_BOT
-        ]
+        raw_threads = self._fetch_review_threads(owner, name, pr_number)
 
         classifications: list[ModelThreadClassification] = []
-        for comment in coderabbit_comments:
-            body = comment.get("body") or ""
+        for thread in raw_threads:
+            comments = (thread.get("comments") or {}).get("nodes") or []
+            if not comments:
+                continue
+            # First comment in thread is the root — filter by author
+            first_comment = comments[0]
+            author_login = (first_comment.get("author") or {}).get("login", "")
+            if author_login.lower() not in _CODERABBIT_BOT_LOGINS:
+                continue
+
+            body = first_comment.get("body") or ""
             severity, keyword = self.classify_body(body)
             classifications.append(
                 ModelThreadClassification(
-                    comment_id=comment.get("id", 0),
+                    comment_id=first_comment.get("databaseId") or 0,
                     body_excerpt=body[:200],
                     severity=severity,
                     matched_keyword=keyword,
-                    url=comment.get("html_url", ""),
+                    url=first_comment.get("url", ""),
                 )
             )
 
         return classifications
 
-    def _fetch_pr_comments(self, owner: str, repo: str, pr_number: int) -> list[dict]:  # type: ignore[type-arg]
-        """Fetch PR review comments via gh api."""
-        result = subprocess.run(
-            [
-                "gh",
-                "api",
-                f"/repos/{owner}/{repo}/pulls/{pr_number}/comments",
-                "--paginate",
-            ],
-            capture_output=True,
-            text=True,
-        )
+    def _fetch_review_threads(
+        self, owner: str, repo: str, pr_number: int
+    ) -> list[dict]:  # type: ignore[type-arg]
+        """Fetch PR review threads via GitHub GraphQL API with pagination."""
+        all_threads: list[dict] = []  # type: ignore[type-arg]
+        cursor: str | None = None
 
-        if result.returncode != 0:
-            logger.warning(
-                "gh api failed for %s/%s#%d: %s",
-                owner,
-                repo,
-                pr_number,
-                result.stderr.strip(),
+        while True:
+            variables: dict[str, object] = {
+                "owner": owner,
+                "repo": repo,
+                "pr": pr_number,
+            }
+            if cursor is not None:
+                variables["cursor"] = cursor
+
+            result = subprocess.run(
+                [
+                    "gh",
+                    "api",
+                    "graphql",
+                    "-f",
+                    f"query={_REVIEW_THREADS_QUERY}",
+                    "-F",
+                    f"owner={owner}",
+                    "-F",
+                    f"repo={repo}",
+                    "-F",
+                    f"pr={pr_number}",
+                ]
+                + (["-F", f"cursor={cursor}"] if cursor is not None else []),
+                capture_output=True,
+                text=True,
             )
-            return []
 
-        try:
-            data = json.loads(result.stdout)
-            return data if isinstance(data, list) else []
-        except json.JSONDecodeError as exc:
-            logger.warning("failed to parse gh api response: %s", exc)
-            return []
+            if result.returncode != 0:
+                msg = (
+                    f"gh api graphql failed for {owner}/{repo}#{pr_number}: "
+                    f"{result.stderr.strip()}"
+                )
+                raise RuntimeError(msg)
+
+            try:
+                data = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"failed to parse gh graphql response for {owner}/{repo}#{pr_number}"
+                ) from exc
+
+            errors = data.get("errors")
+            if errors:
+                raise RuntimeError(
+                    f"GraphQL errors for {owner}/{repo}#{pr_number}: {errors}"
+                )
+
+            review_threads = (
+                (data.get("data") or {})
+                .get("repository", {})
+                .get("pullRequest", {})
+                .get("reviewThreads", {})
+            )
+            if not review_threads:
+                raise RuntimeError(
+                    f"missing reviewThreads in GraphQL response for "
+                    f"{owner}/{repo}#{pr_number}"
+                )
+
+            nodes = review_threads.get("nodes") or []
+            all_threads.extend(nodes)
+
+            page_info = review_threads.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
+            if not cursor:
+                break
+
+        return all_threads
 
     @staticmethod
     def _split_repo(repo: str) -> tuple[str, str]:

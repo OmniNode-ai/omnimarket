@@ -111,7 +111,13 @@ def test_four_node_chain_end_to_end(isolated_state_root: Path) -> None:
     assert isinstance(reduce_output, dict)
     assert "state" in reduce_output
     assert "intents" in reduce_output
-    assert reduce_output["intents"] == []
+    # OMN-9009: reducer emits a single ModelPersistStateIntent carrying the
+    # new state as envelope.data for the downstream persist effect to write.
+    assert len(reduce_output["intents"]) == 1
+    emitted = reduce_output["intents"][0]
+    assert emitted["kind"] == "state.persist"
+    assert emitted["envelope"]["node_id"] == "ledger_state_reducer"
+    assert emitted["envelope"]["data"]["last_hash"] == expected_hash
 
     state_dict = reduce_output["state"]
     assert state_dict["tick_count"] == 1
@@ -120,8 +126,8 @@ def test_four_node_chain_end_to_end(isolated_state_root: Path) -> None:
 
     # ---- Cross-cutting: correlation_id carried through every hop ----
     # Orchestrator → effect → compute all carry the correlation_id.
-    # Reducer's output dict does not carry correlation (pure state delta;
-    # correlation lives on the envelope the runtime constructs — OMN-8946).
+    # The reducer's persist intent also propagates correlation_id (OMN-9006).
+    assert emitted["correlation_id"] == str(correlation_id)
 
 
 def test_chain_is_deterministic_over_same_inputs(isolated_state_root: Path) -> None:

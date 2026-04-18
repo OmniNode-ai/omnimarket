@@ -55,6 +55,29 @@ TOPIC_CI_RERUN = "onex.cmd.omnimarket.pr-ci-rerun.v1"
 _PROTECTED_BASES = {"main", "master", "develop"}
 
 
+def _approval_gate_cleared(
+    review_decision: str | None,
+    required_approving_review_count: int | None,
+) -> bool:
+    """Pure predicate: may merge-sweep treat the approval gate as cleared? [OMN-9106].
+
+    True iff CHANGES_REQUESTED is absent AND one of:
+      - reviewDecision == APPROVED, or
+      - branch protection does not require approval
+        (required_approving_review_count in (0, None)).
+
+    Solo-dev OmniNode repos do not require approving reviews, so GitHub reports
+    reviewDecision="" for unreviewed PRs (inventory normalizes "" → None). Without
+    this predicate, strict-equality on "APPROVED" silently leaves CLEAN PRs
+    un-enqueued (repro: omniclaude#1344, omnibase_core#831/832).
+    """
+    if review_decision == "CHANGES_REQUESTED":
+        return False
+    if review_decision == "APPROVED":
+        return True
+    return required_approving_review_count in (0, None)
+
+
 class HandlerTriageOrchestrator:
     """ORCHESTRATOR — fans out N typed command events per 14-row decision table.
 
@@ -143,11 +166,16 @@ class HandlerTriageOrchestrator:
 
         # Track A_UPDATE rules
         if track == EnumPRTrack.A_UPDATE:
-            # Rule 2: CLEAN + APPROVED + checks passing → arm auto-merge
+            approval_cleared = _approval_gate_cleared(
+                pr.review_decision, pr.required_approving_review_count
+            )
+            # Rule 2: CLEAN + approval-cleared + checks passing → arm auto-merge.
+            # approval-cleared = APPROVED OR branch-protection doesn't require approval
+            # (OMN-9106: solo-dev repos have required_approving_review_count in {0, None}).
             if (
                 pr.mergeable == "MERGEABLE"
                 and pr.merge_state_status == "CLEAN"
-                and pr.review_decision == "APPROVED"
+                and approval_cleared
                 and pr.required_checks_pass
             ):
                 pr_node_id, head_ref_name = await self._resolve_pr_graphql_id(
@@ -170,11 +198,12 @@ class HandlerTriageOrchestrator:
                     total_prs=total_prs,
                 )
 
-            # Rule 3: BEHIND + APPROVED + checks passing → rebase
+            # Rule 3: BEHIND + approval-cleared + checks passing → rebase.
+            # Same approval-cleared semantic as Rule 2 (OMN-9106).
             if (
                 pr.mergeable == "MERGEABLE"
                 and pr.merge_state_status == "BEHIND"
-                and pr.review_decision == "APPROVED"
+                and approval_cleared
                 and pr.required_checks_pass
             ):
                 refs = await self._resolve_pr_refs(pr.repo, pr.number)

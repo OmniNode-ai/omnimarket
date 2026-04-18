@@ -30,6 +30,7 @@ import subprocess
 import sys
 from typing import Any
 
+from omnimarket.nodes.node_merge_sweep.branch_protection import BranchProtectionCache
 from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
     TOPIC_MERGE_SWEEP_COMPLETED,
     TOPIC_MERGE_SWEEP_START,
@@ -99,7 +100,12 @@ def _is_green(pr: dict[str, Any]) -> bool:
     return all(c.get("conclusion") == "SUCCESS" for c in required)
 
 
-def _to_pr_info(pr: dict[str, Any], repo: str) -> ModelPRInfo:
+def _to_pr_info(
+    pr: dict[str, Any], repo: str, required_approving: int | None
+) -> ModelPRInfo:
+    # Normalize reviewDecision "" → None (GitHub returns "" on solo-dev repos).
+    review_decision_raw = pr.get("reviewDecision")
+    review_decision = review_decision_raw if review_decision_raw else None
     return ModelPRInfo(
         number=pr["number"],
         title=pr.get("title", ""),
@@ -107,9 +113,10 @@ def _to_pr_info(pr: dict[str, Any], repo: str) -> ModelPRInfo:
         mergeable=pr.get("mergeable", "UNKNOWN"),
         merge_state_status=pr.get("mergeStateStatus", "UNKNOWN"),
         is_draft=pr.get("isDraft", False),
-        review_decision=pr.get("reviewDecision"),
+        review_decision=review_decision,
         required_checks_pass=_is_green(pr),
         labels=[lbl["name"] for lbl in (pr.get("labels") or [])],
+        required_approving_review_count=required_approving,
     )
 
 
@@ -138,9 +145,11 @@ def _build_request(cmd: dict[str, Any], state_dir: str) -> ModelMergeSweepReques
         repos = [r.strip() for r in repos_raw.split(",") if r.strip()] or _DEFAULT_REPOS
 
     all_prs: list[ModelPRInfo] = []
+    protection = BranchProtectionCache()
     for repo in repos:
+        required_approving = protection.required_approving_review_count(repo)
         for pr in _fetch_prs(repo):
-            all_prs.append(_to_pr_info(pr, repo))
+            all_prs.append(_to_pr_info(pr, repo, required_approving))
 
     failure_history = _load_failure_history(state_dir)
 

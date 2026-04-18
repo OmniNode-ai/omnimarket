@@ -3,11 +3,16 @@
 Verifies the keyword-based classification logic and event bus wiring.
 All tests that test classification use the classify_body method directly
 (no subprocess calls). Event bus tests use dry_run mode.
+
+GraphQL shape tests verify that the handler correctly parses the
+reviewThreads GraphQL response and produces non-zero total_threads for
+PRs where CodeRabbit posts findings as review thread objects.
 """
 
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -21,6 +26,37 @@ from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage 
 
 CMD_TOPIC = "onex.cmd.omnimarket.coderabbit-triage-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.coderabbit-triage-completed.v1"
+
+
+# ---------------------------------------------------------------------------
+# Helpers — GraphQL response shape factories
+# ---------------------------------------------------------------------------
+
+
+def _make_graphql_thread(
+    *,
+    author_login: str = "coderabbitai[bot]",
+    body: str = "nitpick: prefer f-strings",
+    database_id: int = 101,
+    url: str = "https://github.com/example/pr/files#r101",
+    is_resolved: bool = False,
+) -> dict[str, Any]:
+    """Build a single reviewThreads node in the GraphQL response shape."""
+    return {
+        "id": f"PRT_{database_id}",
+        "isResolved": is_resolved,
+        "comments": {
+            "nodes": [
+                {
+                    "databaseId": database_id,
+                    "author": {"login": author_login},
+                    "body": body,
+                    "path": "src/foo.py",
+                    "url": url,
+                }
+            ]
+        },
+    }
 
 
 @pytest.mark.unit
@@ -113,6 +149,122 @@ class TestCoderabbitTriageGoldenChain:
         assert severity_upper == EnumThreadSeverity.BLOCKING
         assert severity_lower == EnumThreadSeverity.BLOCKING
 
+    # --- GraphQL shape tests (regression for REST /comments false-clean bug) ---
+
+    async def test_graphql_thread_shape_produces_nonzero_total(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """PR with CodeRabbit review threads (GraphQL shape) must produce non-zero total_threads.
+
+        Regression test: the old REST /pulls/{pr}/comments endpoint returned 0
+        threads when CodeRabbit posts findings as review thread objects. This test
+        uses the GraphQL reviewThreads response shape to verify total_threads > 0.
+        """
+        handler = HandlerCoderabbitTriage()
+
+        graphql_threads = [
+            _make_graphql_thread(
+                body="_\U0001f534 Critical_ — this leaks user credentials",
+                database_id=1001,
+            ),
+            _make_graphql_thread(
+                body="_\U0001f7e1 Minor_ — consider adding a docstring",
+                database_id=1002,
+            ),
+            _make_graphql_thread(
+                body="_\U0001f9f9 Nitpick_ — trailing whitespace",
+                database_id=1003,
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=1323,
+            correlation_id="graphql-shape-test",
+            dry_run=True,
+        )
+        result = handler.handle(command)
+
+        assert result.total_threads == 3, (
+            f"Expected 3 threads from GraphQL shape, got {result.total_threads}. "
+            "Regression: REST endpoint returned 0 for this PR shape."
+        )
+        assert result.blocking_count >= 1
+        assert result.suggestion_count >= 1
+
+    async def test_graphql_non_coderabbit_threads_filtered(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Non-CodeRabbit authors in review threads must be filtered out."""
+        handler = HandlerCoderabbitTriage()
+
+        graphql_threads = [
+            _make_graphql_thread(author_login="some-human-reviewer", body="bug here"),
+            _make_graphql_thread(
+                author_login="coderabbitai[bot]",
+                body="nitpick: rename this var",
+                database_id=999,
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omniclaude",
+            pr_number=42,
+            correlation_id="filter-test",
+        )
+        result = handler.handle(command)
+
+        assert result.total_threads == 1
+        assert result.suggestion_count == 1
+        assert result.blocking_count == 0
+
+    async def test_graphql_coderabbit_bot_prefix_match(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Both 'coderabbitai' and 'coderabbitai[bot]' author logins are accepted."""
+        handler = HandlerCoderabbitTriage()
+
+        graphql_threads = [
+            _make_graphql_thread(
+                author_login="coderabbitai", body="bug: null pointer", database_id=10
+            ),
+            _make_graphql_thread(
+                author_login="coderabbitai[bot]",
+                body="nitpick: rename",
+                database_id=11,
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omniclaude",
+            pr_number=5,
+            correlation_id="prefix-match-test",
+        )
+        result = handler.handle(command)
+
+        assert result.total_threads == 2
+
     # --- Integration tests with dry_run ---
 
     async def test_dry_run_no_subprocess_calls(
@@ -121,13 +273,12 @@ class TestCoderabbitTriageGoldenChain:
         """dry_run mode with no threads returns zero counts."""
         handler = HandlerCoderabbitTriage()
 
-        # Inject a pre-classified thread list by subclassing the private method
-        original = handler._fetch_and_classify
-
-        def mock_fetch(repo: str, pr_number: int) -> list[ModelThreadClassification]:
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
             return []
 
-        handler._fetch_and_classify = mock_fetch  # type: ignore[method-assign]
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
 
         command = ModelCoderabbitTriageCommand(
             repo="OmniNode-ai/omniclaude",
@@ -136,7 +287,6 @@ class TestCoderabbitTriageGoldenChain:
             dry_run=True,
         )
         result = handler.handle(command)
-        handler._fetch_and_classify = original  # type: ignore[method-assign]
 
         assert result.total_threads == 0
         assert result.blocking_count == 0
@@ -217,12 +367,14 @@ class TestCoderabbitTriageGoldenChain:
     async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
         """Handler can be wired to event bus and process command events."""
         handler = HandlerCoderabbitTriage()
-        results_captured: list[dict] = []  # type: ignore[type-arg]
+        results_captured: list[dict[str, Any]] = []
 
-        def mock_fetch(repo: str, pr_number: int) -> list[ModelThreadClassification]:
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
             return []
 
-        handler._fetch_and_classify = mock_fetch  # type: ignore[method-assign]
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
 
         async def on_command(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
@@ -259,14 +411,106 @@ class TestCoderabbitTriageGoldenChain:
 
         await event_bus.close()
 
+    async def test_coderabbit_helper_login_rejected(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """'coderabbitai-helper' is NOT a supported CR login and must be filtered out."""
+        handler = HandlerCoderabbitTriage()
+
+        graphql_threads = [
+            _make_graphql_thread(
+                author_login="coderabbitai-helper", body="critical bug", database_id=20
+            ),
+            _make_graphql_thread(
+                author_login="coderabbitai[bot]",
+                body="nitpick: rename",
+                database_id=21,
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=99,
+            correlation_id="helper-reject-test",
+        )
+        result = handler.handle(command)
+
+        # coderabbitai-helper must be rejected; only the [bot] thread counts
+        assert result.total_threads == 1
+        assert result.suggestion_count == 1
+        assert result.blocking_count == 0
+
+    async def test_pagination_nonzero_returncode_raises(
+        self, event_bus: EventBusInmemory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-zero gh returncode must raise RuntimeError (fail closed)."""
+        import subprocess as _subprocess
+
+        handler = HandlerCoderabbitTriage()
+
+        class _FakeResult:
+            returncode = 1
+            stderr = "authentication required"
+            stdout = ""
+
+        monkeypatch.setattr(_subprocess, "run", lambda *_a, **_kw: _FakeResult())
+
+        with pytest.raises(RuntimeError, match="gh api graphql failed"):
+            handler._fetch_review_threads("OmniNode-ai", "omnimarket", 313)
+
+    async def test_pagination_json_decode_error_raises(
+        self, event_bus: EventBusInmemory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Malformed JSON response must raise RuntimeError (fail closed)."""
+        import subprocess as _subprocess
+
+        handler = HandlerCoderabbitTriage()
+
+        class _FakeResult:
+            returncode = 0
+            stderr = ""
+            stdout = "not valid json{"
+
+        monkeypatch.setattr(_subprocess, "run", lambda *_a, **_kw: _FakeResult())
+
+        with pytest.raises(RuntimeError, match="failed to parse gh graphql response"):
+            handler._fetch_review_threads("OmniNode-ai", "omnimarket", 313)
+
+    async def test_pagination_graphql_errors_raises(
+        self, event_bus: EventBusInmemory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GraphQL-level errors in the response must raise RuntimeError (fail closed)."""
+        import subprocess as _subprocess
+
+        handler = HandlerCoderabbitTriage()
+
+        class _FakeResult:
+            returncode = 0
+            stderr = ""
+            stdout = json.dumps({"errors": [{"message": "rate limit exceeded"}]})
+
+        monkeypatch.setattr(_subprocess, "run", lambda *_a, **_kw: _FakeResult())
+
+        with pytest.raises(RuntimeError, match="GraphQL errors"):
+            handler._fetch_review_threads("OmniNode-ai", "omnimarket", 313)
+
     async def test_result_serializes_to_json(self, event_bus: EventBusInmemory) -> None:
         """Result should serialize cleanly to JSON."""
         handler = HandlerCoderabbitTriage()
 
-        def mock_fetch(repo: str, pr_number: int) -> list[ModelThreadClassification]:
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
             return []
 
-        handler._fetch_and_classify = mock_fetch  # type: ignore[method-assign]
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
 
         command = ModelCoderabbitTriageCommand(
             repo="OmniNode-ai/omniclaude",

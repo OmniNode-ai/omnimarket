@@ -41,6 +41,7 @@ def _pr(
     review_decision: str | None = "APPROVED",
     required_checks_pass: bool = True,
     is_draft: bool = False,
+    required_approving_review_count: int | None = None,
 ) -> ModelPRInfo:
     return ModelPRInfo(
         number=number,
@@ -51,6 +52,7 @@ def _pr(
         review_decision=review_decision,
         required_checks_pass=required_checks_pass,
         is_draft=is_draft,
+        required_approving_review_count=required_approving_review_count,
     )
 
 
@@ -125,9 +127,18 @@ async def test_rule_3_behind_approved_emits_rebase() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rule_4_behind_not_approved_skip() -> None:
-    """Rule 4: A_UPDATE + BEHIND + not APPROVED → SKIP."""
-    pr = _pr(300, merge_state_status="BEHIND", review_decision=None)
+async def test_rule_4_behind_not_approved_protection_requires_approval_skip() -> None:
+    """Rule 4: A_UPDATE + BEHIND + not APPROVED + protection requires approval → SKIP.
+
+    Post-OMN-9106: Rule 4 requires the approval gate to NOT be cleared, i.e. protection
+    requires approval. Solo-dev repos (required=0/None) flow to Rule 3 (rebase).
+    """
+    pr = _pr(
+        300,
+        merge_state_status="BEHIND",
+        review_decision=None,
+        required_approving_review_count=1,
+    )
     classified = [_classified(pr, EnumPRTrack.A_UPDATE)]
     request = _make_request(classified)
 
@@ -254,6 +265,120 @@ async def test_three_pr_fixture_emits_three_typed_events() -> None:
     assert "ModelCiRerunCommand" in types
     # Orchestrator never returns a result payload
     assert output.result is None
+
+
+# --- OMN-9106: approval-gate semantics ----------------------------------------
+# merge-sweep must enqueue a CLEAN PR when branch protection does not require
+# approval (required_approving_review_count in {0, None}), even if
+# reviewDecision is "" / None. Reference: OMN-9106.
+
+
+@pytest.mark.asyncio
+async def test_omn9106_empty_review_protection_zero_enqueues() -> None:
+    """reviewDecision="" + protection required=0 + CLEAN → AutoMergeArm.
+
+    Solo-dev-configured repo (no approving review required): must enqueue.
+    """
+    pr = _pr(
+        1344,
+        merge_state_status="CLEAN",
+        review_decision=None,  # inventory normalizes "" → None
+        required_approving_review_count=0,
+    )
+    classified = [_classified(pr, EnumPRTrack.A_UPDATE)]
+    request = _make_request(classified)
+
+    mock_proc = _mock_proc({"id": "PR_kw1344", "headRefName": "feat/1344"})
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert len(output.events) == 1
+    cmd = output.events[0]
+    assert isinstance(cmd, ModelAutoMergeArmCommand)
+    assert cmd.pr_number == 1344
+
+
+@pytest.mark.asyncio
+async def test_omn9106_empty_review_protection_none_enqueues() -> None:
+    """reviewDecision=None + protection unset (None) + CLEAN → AutoMergeArm.
+
+    Branch protection not configured at all: same semantic as required=0.
+    """
+    pr = _pr(
+        831,
+        merge_state_status="CLEAN",
+        review_decision=None,
+        required_approving_review_count=None,
+    )
+    classified = [_classified(pr, EnumPRTrack.A_UPDATE)]
+    request = _make_request(classified)
+
+    mock_proc = _mock_proc({"id": "PR_kw831", "headRefName": "feat/831"})
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert len(output.events) == 1
+    assert isinstance(output.events[0], ModelAutoMergeArmCommand)
+
+
+@pytest.mark.asyncio
+async def test_omn9106_empty_review_protection_requires_approval_blocks() -> None:
+    """reviewDecision=None + protection required=1 + CLEAN → SKIP.
+
+    Protection does require approval: must NOT enqueue without an APPROVED review.
+    """
+    pr = _pr(
+        900,
+        merge_state_status="CLEAN",
+        review_decision=None,
+        required_approving_review_count=1,
+    )
+    classified = [_classified(pr, EnumPRTrack.A_UPDATE)]
+    request = _make_request(classified)
+
+    handler = HandlerTriageOrchestrator()
+    output = await handler.handle(request)
+    assert len(output.events) == 0
+
+
+@pytest.mark.asyncio
+async def test_omn9106_changes_requested_blocks_regardless_of_protection() -> None:
+    """CHANGES_REQUESTED must never enqueue, even if protection does not require approval."""
+    pr = _pr(
+        901,
+        merge_state_status="CLEAN",
+        review_decision="CHANGES_REQUESTED",
+        required_approving_review_count=0,
+    )
+    classified = [_classified(pr, EnumPRTrack.A_UPDATE)]
+    request = _make_request(classified)
+
+    handler = HandlerTriageOrchestrator()
+    output = await handler.handle(request)
+    assert len(output.events) == 0
+
+
+@pytest.mark.asyncio
+async def test_omn9106_approved_enqueues_regardless_of_protection() -> None:
+    """reviewDecision=APPROVED + protection required=1 + CLEAN → AutoMergeArm."""
+    pr = _pr(
+        902,
+        merge_state_status="CLEAN",
+        review_decision="APPROVED",
+        required_approving_review_count=1,
+    )
+    classified = [_classified(pr, EnumPRTrack.A_UPDATE)]
+    request = _make_request(classified)
+
+    mock_proc = _mock_proc({"id": "PR_kw902", "headRefName": "feat/902"})
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert len(output.events) == 1
+    assert isinstance(output.events[0], ModelAutoMergeArmCommand)
 
 
 @pytest.mark.asyncio

@@ -161,6 +161,8 @@ class MockFix:
         correlation_id: UUID,
         prs_to_fix: tuple[TriageRecord, ...],
         dry_run: bool = False,
+        enable_admin_merge_fallback: bool = True,
+        admin_fallback_threshold_minutes: int = 30,
     ) -> FixResult:
         import asyncio
 
@@ -171,6 +173,10 @@ class MockFix:
             await asyncio.sleep(0)  # yield to allow concurrent tasks to enter
             self.call_count += 1
             self.last_dry_run = dry_run
+            self.last_enable_admin_merge_fallback = enable_admin_merge_fallback
+            self.last_admin_fallback_threshold_minutes = (
+                admin_fallback_threshold_minutes
+            )
             self.dispatched_pr_numbers.extend(pr.pr_number for pr in prs_to_fix)
             if self._fail:
                 msg = "fix failed"
@@ -704,3 +710,102 @@ class TestPrLifecycleOrchestratorResultFile:
         assert payload["status"] == "error"
         assert payload["final_state"] == "FAILED"
         assert payload["error_message"] == "boom"
+
+
+# ---------------------------------------------------------------------------
+# OMN-9114: admin-merge-fallback default is ON
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAdminMergeFallbackDefaultOn:
+    """ModelPrLifecycleStartCommand.enable_admin_merge_fallback defaults to True.
+
+    OMN-9114 — OMN-9065 closed Done but the default flip never landed on main.
+    This test locks in the default=True invariant so silent regressions fail CI.
+    """
+
+    def test_default_enable_admin_merge_fallback_is_true(self) -> None:
+        cmd = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="20260417-205500-dflt01",
+        )
+        assert cmd.enable_admin_merge_fallback is True
+
+    def test_explicit_false_still_honored(self) -> None:
+        cmd = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="20260417-205500-dflt02",
+            enable_admin_merge_fallback=False,
+        )
+        assert cmd.enable_admin_merge_fallback is False
+
+    def test_handler_admin_merge_handle_default_opt_in_true(self) -> None:
+        """HandlerAdminMerge.handle(enable_admin_merge_fallback=...) defaults to True."""
+        import inspect
+
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
+            HandlerAdminMerge,
+        )
+
+        sig = inspect.signature(HandlerAdminMerge.handle)
+        param = sig.parameters["enable_admin_merge_fallback"]
+        assert param.default is True
+
+
+@pytest.mark.asyncio
+class TestOrchestratorForwardsAdminMergeFallbackFlag:
+    """The orchestrator must forward command.enable_admin_merge_fallback
+    through _dispatch_fix_parallel into the fix handler.
+
+    Before OMN-9114 wiring landed, the flag was orphaned at the boundary —
+    the orchestrator defined the field on the command but only forwarded
+    ``correlation_id``, ``prs_to_fix``, ``dry_run`` to the fix handler, so
+    ``enable_admin_merge_fallback=False`` was silently ignored.
+    """
+
+    async def _run_with_flag(self, *, enable_admin_merge_fallback: bool) -> MockFix:
+        fix_intents = (
+            ReducerIntent(
+                pr_number=_PR_RED.pr_number,
+                repo=_PR_RED.repo,
+                intent=EnumReducerIntent.FIX,
+            ),
+        )
+        fix = MockFix()
+        node = HandlerPrLifecycleOrchestrator(
+            inventory=MockInventory(prs=(_PR_RED,)),
+            triage=MockTriage(
+                classified=(
+                    TriageRecord(
+                        pr_number=_PR_RED.pr_number,
+                        repo=_PR_RED.repo,
+                        category=EnumPrCategory.RED,
+                    ),
+                )
+            ),
+            reducer=MockReducer(intents=fix_intents),
+            merge=MockMerge(),
+            fix=fix,
+        )
+        await node.handle(
+            ModelPrLifecycleStartCommand(
+                correlation_id=uuid4(),
+                run_id="20260418-000000-flagfwd",
+                enable_admin_merge_fallback=enable_admin_merge_fallback,
+                admin_fallback_threshold_minutes=15,
+            )
+        )
+        return fix
+
+    async def test_flag_true_reaches_fix_handler(self) -> None:
+        fix = await self._run_with_flag(enable_admin_merge_fallback=True)
+        assert fix.call_count >= 1
+        assert fix.last_enable_admin_merge_fallback is True
+        assert fix.last_admin_fallback_threshold_minutes == 15
+
+    async def test_flag_false_reaches_fix_handler(self) -> None:
+        fix = await self._run_with_flag(enable_admin_merge_fallback=False)
+        assert fix.call_count >= 1
+        assert fix.last_enable_admin_merge_fallback is False
+        assert fix.last_admin_fallback_threshold_minutes == 15

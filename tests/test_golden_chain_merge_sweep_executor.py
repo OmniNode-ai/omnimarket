@@ -283,15 +283,21 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     reducer = HandlerMergeSweepStateReducer()
     state = ModelMergeSweepState(run_id=_RUN_ID, total_prs=3)
 
+    # OMN-9010: intents now include a ModelPersistStateIntent on every mutation.
+    # Bus-publish terminal intents are the dicts; filter to count terminals.
+    def _bus(xs: list[object]) -> list[dict]:
+        return [x for x in xs if isinstance(x, dict)]
+
     state, intents1 = reducer.delta(state, arm_classified)
-    assert intents1 == []  # not terminal yet (1/3)
+    assert _bus(intents1) == []  # not terminal yet (1/3)
 
     state, intents2 = reducer.delta(state, rebase_classified)
-    assert intents2 == []  # not terminal yet (2/3)
+    assert _bus(intents2) == []  # not terminal yet (2/3)
 
     state, intents3 = reducer.delta(state, ci_classified)
-    assert len(intents3) == 1  # terminal fires now (3/3)
-    assert "merge-sweep-completed" in intents3[0]["topic"]
+    bus3 = _bus(intents3)
+    assert len(bus3) == 1  # terminal fires now (3/3)
+    assert "merge-sweep-completed" in bus3[0]["topic"]
 
     # --- Final projection assertions ---
     assert state.total_prs == 3
