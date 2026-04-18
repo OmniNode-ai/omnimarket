@@ -43,11 +43,11 @@ handler_routing:
         module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster"
       description: "Converts ReviewFinding -> GitHub review comment via adapter_github_bridge. Side-effect (I/O)."
 
-    - operation: "watch_threads"
-      handler:
-        name: "HandlerThreadWatcher"
-        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_watcher"
-      description: "Polls GitHub API for thread resolution events. Side-effect (I/O)."
+    # OMN-9194: HandlerThreadWatcher entry removed as a tactical unblock.
+    # Under OMN-8735 strict auto-wiring, this handler crashed the runtime because
+    # node_pr_review_bot has no registry module constructing AdapterGitHubBridge
+    # and registering the handler into the ONEX container. The handler entry will
+    # be re-added once registry_infra_node_pr_review_bot.py lands per OMN-9194.
 
     - operation: "judge_verify"
       handler:
