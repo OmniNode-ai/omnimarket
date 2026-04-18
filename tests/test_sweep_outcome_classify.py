@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Task 8: Tests for node_sweep_outcome_classify [OMN-8963].
+"""Tests for node_sweep_outcome_classify [OMN-8963, OMN-8996].
 
-Tests verify 6-branch classification table. Handler is pure — no mocks needed.
+Tests verify Phase 1 (6-branch) + Phase 2 (thread_replied, conflict_resolved,
+ci_fix_attempted) classification tables. Handler is pure — no mocks needed.
 """
 
 from __future__ import annotations
@@ -143,3 +144,102 @@ def test_handler_is_pure_no_io() -> None:
     assert r1.outcome == r2.outcome
     assert r1.error == r2.error
     assert r1.pr_number == r2.pr_number
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: thread_replied
+# ---------------------------------------------------------------------------
+
+
+def test_thread_replied_posted_classified_as_success() -> None:
+    """thread_replied + reply_posted=True → SUCCESS."""
+    result = _classify(event_type="thread_replied", reply_posted=True)
+    assert result.outcome == EnumSweepOutcome.SUCCESS
+    assert result.error is None
+
+
+def test_thread_replied_not_posted_classified_as_degraded() -> None:
+    """thread_replied + reply_posted=False → DEGRADED."""
+    result = _classify(
+        event_type="thread_replied", reply_posted=False, error="llm refused"
+    )
+    assert result.outcome == EnumSweepOutcome.DEGRADED
+    assert result.error == "llm refused"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: conflict_resolved
+# ---------------------------------------------------------------------------
+
+
+def test_conflict_resolved_committed_classified_as_success() -> None:
+    """conflict_resolved + resolution_committed=True → SUCCESS."""
+    result = _classify(event_type="conflict_resolved", resolution_committed=True)
+    assert result.outcome == EnumSweepOutcome.SUCCESS
+    assert result.error is None
+
+
+def test_conflict_resolved_noop_classified_as_noop() -> None:
+    """conflict_resolved + is_noop=True → NOOP."""
+    result = _classify(
+        event_type="conflict_resolved", resolution_committed=False, is_noop=True
+    )
+    assert result.outcome == EnumSweepOutcome.NOOP
+    assert result.error is None
+
+
+def test_conflict_resolved_not_committed_not_noop_classified_as_degraded() -> None:
+    """conflict_resolved + resolution_committed=False + is_noop=False → DEGRADED."""
+    result = _classify(
+        event_type="conflict_resolved",
+        resolution_committed=False,
+        is_noop=False,
+        error="patch rejected",
+    )
+    assert result.outcome == EnumSweepOutcome.DEGRADED
+    assert result.error == "patch rejected"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: ci_fix_attempted
+# ---------------------------------------------------------------------------
+
+
+def test_ci_fix_attempted_patch_applied_tests_passed_classified_as_success() -> None:
+    """ci_fix_attempted + patch_applied=True + local_tests_passed=True → SUCCESS."""
+    result = _classify(
+        event_type="ci_fix_attempted", patch_applied=True, local_tests_passed=True
+    )
+    assert result.outcome == EnumSweepOutcome.SUCCESS
+    assert result.error is None
+
+
+def test_ci_fix_attempted_noop_classified_as_noop() -> None:
+    """ci_fix_attempted + is_noop=True → NOOP (checked before patch_applied)."""
+    result = _classify(event_type="ci_fix_attempted", is_noop=True)
+    assert result.outcome == EnumSweepOutcome.NOOP
+    assert result.error is None
+
+
+def test_ci_fix_attempted_patch_not_applied_classified_as_failed() -> None:
+    """ci_fix_attempted + patch_applied=False → FAILED."""
+    result = _classify(
+        event_type="ci_fix_attempted",
+        patch_applied=False,
+        local_tests_passed=False,
+        error="diff parse error",
+    )
+    assert result.outcome == EnumSweepOutcome.FAILED
+    assert result.error == "diff parse error"
+
+
+def test_ci_fix_attempted_patch_applied_tests_failed_classified_as_degraded() -> None:
+    """ci_fix_attempted + patch_applied=True + local_tests_passed=False → DEGRADED."""
+    result = _classify(
+        event_type="ci_fix_attempted",
+        patch_applied=True,
+        local_tests_passed=False,
+        error="test_foo failed",
+    )
+    assert result.outcome == EnumSweepOutcome.DEGRADED
+    assert result.error == "test_foo failed"
