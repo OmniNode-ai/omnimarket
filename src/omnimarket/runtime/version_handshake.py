@@ -39,7 +39,7 @@ class ModelNodeTopicDeclaration(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
-    schema_version: str
+    schema_version: str  # string-version-ok: topic schema version from plugin-compat.yaml external format
     role: str
 
 

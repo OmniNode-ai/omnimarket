@@ -36,7 +36,7 @@ class ModelFrictionEvent(BaseModel, frozen=True, extra="forbid"):
     friction_type: str
     description: str
     recorded_at: datetime
-    schema_version: str = "1.0"
+    schema_version: str = "1.0"  # string-version-ok: wire envelope field mirrors omnibase_compat telemetry wire type
 
 
 class ModelPostMortemReport(BaseModel, frozen=True, extra="forbid"):
@@ -63,7 +63,7 @@ class ModelPostMortemReport(BaseModel, frozen=True, extra="forbid"):
     report_path: str
     started_at: datetime
     completed_at: datetime
-    schema_version: str = "1.0"
+    schema_version: str = "1.0"  # string-version-ok: wire envelope field mirrors omnibase_compat telemetry wire type
 
 
 __all__: list[str] = [
