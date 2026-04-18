@@ -1,0 +1,88 @@
+---
+name: node_thread_reply_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Thread reply effect node. Routes an LLM-generated reply to an open PR review
+  thread via gh api. Posts as a draft comment tagged <!-- omni-draft --> by default
+  (draft-first policy). Direct posting enabled by ONEX_THREAD_REPLY_DIRECT_POST=true
+  (Phase 3 opt-in). CI always forces draft-first regardless of env var.
+
+handler:
+  module: omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply
+  class: HandlerThreadReply
+  input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelThreadReplyCommand
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 60000
+
+model_routing:
+  primary: qwen3-coder-30b
+  fallback: glm-4.5
+  fallback_allowed_roles:
+    - thread_replier
+  max_tokens: 2048
+  ci_override:
+    primary: qwen3-coder-30b
+
+inputs:
+  correlation_id:
+    type: uuid
+    description: "Correlation ID flowing through the pipeline"
+    required: true
+  pr_number:
+    type: int
+    description: "GitHub PR number containing the thread"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo slug (org/repo)"
+    required: true
+  thread_body:
+    type: str
+    description: "Full body of the review thread to reply to"
+    required: true
+  routing_policy:
+    type: dict
+    description: "ModelRoutingPolicy dict from the command envelope"
+    required: true
+
+outputs:
+  pr_number:
+    type: int
+    description: "PR number acted upon"
+  repo:
+    type: str
+    description: "GitHub repo slug"
+  comment_id:
+    type: str
+    description: "GitHub comment ID of the posted reply, or None if not posted"
+    nullable: true
+  reply_posted:
+    type: bool
+    description: "Whether a reply was successfully posted"
+  is_draft:
+    type: bool
+    description: "Whether the reply was posted as a draft (<!-- omni-draft --> tagged)"
+  used_fallback:
+    type: bool
+    description: "True if the fallback LLM model was used"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-thread-reply.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-thread-replied.v1
+
+dod_evidence:
+  phase: 2
+  wave: 1
+  artifacts:
+    - tests/nodes/node_thread_reply_effect/test_handler_thread_reply.py
+  validation_notes: >
+    Phase 2 Wave 1: scaffold + TDD tests. Real LLM calls land in OMN-8990 Wave 2.
