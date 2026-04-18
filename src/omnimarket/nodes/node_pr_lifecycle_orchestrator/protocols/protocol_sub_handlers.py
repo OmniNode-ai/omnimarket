@@ -219,4 +219,6 @@ class ProtocolFixHandler(Protocol):
         correlation_id: UUID,
         prs_to_fix: tuple[TriageRecord, ...],
         dry_run: bool = False,
+        enable_admin_merge_fallback: bool = True,
+        admin_fallback_threshold_minutes: int = 30,
     ) -> FixResult: ...

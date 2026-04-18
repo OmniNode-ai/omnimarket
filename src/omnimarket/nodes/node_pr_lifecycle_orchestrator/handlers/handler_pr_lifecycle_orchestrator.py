@@ -236,8 +236,15 @@ class _StubFixHandler:
         correlation_id: UUID,
         prs_to_fix: Any,
         dry_run: bool = False,
+        enable_admin_merge_fallback: bool = True,
+        admin_fallback_threshold_minutes: int = 30,
     ) -> FixResult:
-        logger.warning("[PR-LIFECYCLE-ORCH] fix stub called (sub-node not wired)")
+        logger.warning(
+            "[PR-LIFECYCLE-ORCH] fix stub called "
+            "(sub-node not wired; admin_merge_fallback=%s threshold_min=%d)",
+            enable_admin_merge_fallback,
+            admin_fallback_threshold_minutes,
+        )
         return FixResult(prs_dispatched=0, prs_skipped=0)
 
 
@@ -525,6 +532,8 @@ class HandlerPrLifecycleOrchestrator:
                     correlation_id=command.correlation_id,
                     dry_run=command.dry_run,
                     max_parallel=command.max_parallel_polish,
+                    enable_admin_merge_fallback=command.enable_admin_merge_fallback,
+                    admin_fallback_threshold_minutes=command.admin_fallback_threshold_minutes,
                 )
                 state.prs_fixed = sum(r.prs_dispatched for r in fix_results)
                 state.prs_skipped += sum(r.prs_skipped for r in fix_results)
@@ -570,11 +579,16 @@ class HandlerPrLifecycleOrchestrator:
         correlation_id: UUID,
         dry_run: bool,
         max_parallel: int,
+        enable_admin_merge_fallback: bool,
+        admin_fallback_threshold_minutes: int,
     ) -> list[FixResult]:
         """Fan out fix dispatch across all PRs in parallel, bounded by max_parallel.
 
         Each PR gets its own call to the fix handler so they run concurrently.
         A semaphore caps simultaneous in-flight dispatches to max_parallel.
+        ``enable_admin_merge_fallback`` flows through to the fix handler so the
+        orchestrator boundary actually controls admin-merge behavior — before
+        OMN-9114 this flag was orphaned at the command boundary.
         """
         assert self._fix is not None
         semaphore = asyncio.Semaphore(max_parallel)
@@ -585,6 +599,8 @@ class HandlerPrLifecycleOrchestrator:
                     correlation_id=correlation_id,
                     prs_to_fix=(pr,),
                     dry_run=dry_run,
+                    enable_admin_merge_fallback=enable_admin_merge_fallback,
+                    admin_fallback_threshold_minutes=admin_fallback_threshold_minutes,
                 )
                 # The real fix handler returns ModelPrLifecycleFixResult (per-PR).
                 # Map it to the aggregated FixResult the orchestrator expects.
