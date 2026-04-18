@@ -10,17 +10,21 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.ticket.model_ticket_workflow_state import (
+    ModelTicketWorkflowState,
+)
+from omnibase_core.models.ticket.model_workflow_context import ModelWorkflowContext
+from omnibase_core.models.ticket.model_workflow_question import ModelWorkflowQuestion
+from omnibase_core.models.ticket.model_workflow_requirement import (
+    ModelWorkflowRequirement,
+)
+from omnibase_core.utils.util_ticket_workflow_persistence import (
+    extract_workflow_state,
+    update_description_with_workflow_state,
+)
 
 from omnimarket.nodes.node_ticket_work.handlers.handler_ticket_work import (
     HandlerTicketWork,
-)
-from omnimarket.nodes.node_ticket_work.models.model_ticket_contract import (
-    ModelContractContext,
-    ModelContractQuestion,
-    ModelContractRequirement,
-    ModelTicketContract,
-    extract_contract,
-    update_description_with_contract,
 )
 from omnimarket.nodes.node_ticket_work.models.model_ticket_work_command import (
     ModelTicketWorkCommand,
@@ -165,8 +169,8 @@ def _make_command(
     )
 
 
-def _base_contract(phase: str = "intake") -> ModelTicketContract:
-    return ModelTicketContract(
+def _base_contract(phase: str = "intake") -> ModelTicketWorkflowState:
+    return ModelTicketWorkflowState(
         ticket_id="OMN-1234",
         title="Test ticket",
         repo="omnimarket",
@@ -182,34 +186,34 @@ def _base_contract(phase: str = "intake") -> ModelTicketContract:
 
 
 @pytest.mark.unit
-class TestModelTicketContract:
-    """Tests for ModelTicketContract helpers."""
+class TestModelTicketWorkflowState:
+    """Tests for ModelTicketWorkflowState helpers."""
 
-    def test_extract_contract_from_description(self) -> None:
-        """extract_contract parses YAML block from ticket description."""
+    def test_extract_workflow_state_from_description(self) -> None:
+        """extract_workflow_state parses YAML block from ticket description."""
         contract = _base_contract()
         description = "Some description.\n"
-        updated_desc = update_description_with_contract(description, contract)
+        updated_desc = update_description_with_workflow_state(description, contract)
 
-        parsed = extract_contract(updated_desc)
+        parsed = extract_workflow_state(updated_desc)
         assert parsed is not None
         assert parsed.ticket_id == "OMN-1234"
         assert parsed.title == "Test ticket"
 
-    def test_extract_contract_returns_none_when_missing(self) -> None:
-        assert extract_contract("No contract here.") is None
+    def test_extract_workflow_state_returns_none_when_missing(self) -> None:
+        assert extract_workflow_state("No contract here.") is None
 
     def test_update_description_appends_when_no_contract(self) -> None:
         desc = "Original content."
-        updated = update_description_with_contract(desc, _base_contract())
+        updated = update_description_with_workflow_state(desc, _base_contract())
         assert "## Contract" in updated
         assert "Original content." in updated
 
     def test_update_description_replaces_existing_contract(self) -> None:
         contract = _base_contract()
-        desc = update_description_with_contract("Initial.", contract)
+        desc = update_description_with_workflow_state("Initial.", contract)
         updated_contract = contract.model_copy(update={"title": "Updated title"})
-        new_desc = update_description_with_contract(desc, updated_contract)
+        new_desc = update_description_with_workflow_state(desc, updated_contract)
         # Should not duplicate the ## Contract section
         assert new_desc.count("## Contract") == 1
         assert "Updated title" in new_desc
@@ -218,7 +222,7 @@ class TestModelTicketContract:
         contract = _base_contract().model_copy(
             update={
                 "questions": [
-                    ModelContractQuestion(
+                    ModelWorkflowQuestion(
                         id="q1", text="Q?", required=True, answer="A"
                     ),
                 ]
@@ -230,7 +234,7 @@ class TestModelTicketContract:
         contract = _base_contract().model_copy(
             update={
                 "questions": [
-                    ModelContractQuestion(
+                    ModelWorkflowQuestion(
                         id="q1", text="Q?", required=True, answer=None
                     ),
                 ]
@@ -245,7 +249,7 @@ class TestModelTicketContract:
         contract = _base_contract().model_copy(
             update={
                 "requirements": [
-                    ModelContractRequirement(
+                    ModelWorkflowRequirement(
                         id="r1", statement="Do thing", acceptance=["it works"]
                     )
                 ]
@@ -287,7 +291,7 @@ class TestRunIntake:
 
     def test_real_resumes_existing_contract(self) -> None:
         existing = _base_contract(phase="spec")
-        desc_with_contract = update_description_with_contract("Desc.", existing)
+        desc_with_contract = update_description_with_workflow_state("Desc.", existing)
         stub = StubLinearClient(description=desc_with_contract)
         handler = HandlerTicketWork(linear_client=stub)
 
@@ -332,7 +336,7 @@ class TestRunResearch:
         handler = HandlerTicketWork(linear_client=stub)
         base = _base_contract().model_copy(
             update={
-                "context": ModelContractContext(
+                "context": ModelWorkflowContext(
                     relevant_files=["src/foo.py"],
                     notes="Found pattern X",
                 )
@@ -358,7 +362,7 @@ class TestRunQuestions:
         base = _base_contract().model_copy(
             update={
                 "questions": [
-                    ModelContractQuestion(
+                    ModelWorkflowQuestion(
                         id="q1", text="What?", required=True, answer=None
                     ),
                 ]
@@ -374,7 +378,7 @@ class TestRunQuestions:
         base = _base_contract().model_copy(
             update={
                 "questions": [
-                    ModelContractQuestion(
+                    ModelWorkflowQuestion(
                         id="q1", text="What?", required=True, answer=None
                     ),
                 ]
@@ -389,7 +393,7 @@ class TestRunQuestions:
         base = _base_contract().model_copy(
             update={
                 "questions": [
-                    ModelContractQuestion(
+                    ModelWorkflowQuestion(
                         id="q1", text="What?", required=True, answer="Use OAuth2"
                     ),
                 ]
@@ -416,7 +420,7 @@ class TestRunSpec:
         base = _base_contract().model_copy(
             update={
                 "requirements": [
-                    ModelContractRequirement(
+                    ModelWorkflowRequirement(
                         id="r-custom", statement="Custom req", acceptance=["done"]
                     )
                 ]

@@ -23,15 +23,25 @@ import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from omnimarket.nodes.node_ticket_work.models.model_ticket_contract import (
-    ModelContractGate,
-    ModelContractRequirement,
-    ModelContractVerification,
-    ModelTicketContract,
-    extract_contract,
-    persist_contract_locally,
-    update_description_with_contract,
+from omnibase_core.enums.ticket.enum_ticket_workflow_phase import (
+    EnumTicketWorkflowPhase,
 )
+from omnibase_core.models.ticket.model_ticket_workflow_state import (
+    ModelTicketWorkflowState,
+)
+from omnibase_core.models.ticket.model_workflow_gate import ModelWorkflowGate
+from omnibase_core.models.ticket.model_workflow_requirement import (
+    ModelWorkflowRequirement,
+)
+from omnibase_core.models.ticket.model_workflow_verification import (
+    ModelWorkflowVerification,
+)
+from omnibase_core.utils.util_ticket_workflow_persistence import (
+    extract_workflow_state,
+    persist_workflow_state_locally,
+    update_description_with_workflow_state,
+)
+
 from omnimarket.nodes.node_ticket_work.models.model_ticket_work_command import (
     ModelTicketWorkCommand,
 )
@@ -57,8 +67,8 @@ _log = logging.getLogger(__name__)
 
 _CANONICAL_WORKTREES = "/Volumes/PRO-G40/Code/omni_worktrees"  # local-path-ok
 
-_DEFAULT_VERIFICATION_STEPS: list[ModelContractVerification] = [
-    ModelContractVerification(
+_DEFAULT_VERIFICATION_STEPS: list[ModelWorkflowVerification] = [
+    ModelWorkflowVerification(
         id="v1",
         title="Unit tests pass",
         kind="unit_tests",
@@ -67,7 +77,7 @@ _DEFAULT_VERIFICATION_STEPS: list[ModelContractVerification] = [
         blocking=True,
         status="pending",
     ),
-    ModelContractVerification(
+    ModelWorkflowVerification(
         id="v2",
         title="Lint passes",
         kind="lint",
@@ -76,7 +86,7 @@ _DEFAULT_VERIFICATION_STEPS: list[ModelContractVerification] = [
         blocking=True,
         status="pending",
     ),
-    ModelContractVerification(
+    ModelWorkflowVerification(
         id="v3",
         title="Type check passes",
         kind="mypy",
@@ -87,8 +97,8 @@ _DEFAULT_VERIFICATION_STEPS: list[ModelContractVerification] = [
     ),
 ]
 
-_DEFAULT_GATES: list[ModelContractGate] = [
-    ModelContractGate(
+_DEFAULT_GATES: list[ModelWorkflowGate] = [
+    ModelWorkflowGate(
         id="g1",
         title="Human approval",
         kind="human_approval",
@@ -222,7 +232,7 @@ class HandlerTicketWork:
         self,
         ticket_id: str,
         dry_run: bool = False,
-    ) -> tuple[ModelTicketContract, bool, str | None]:
+    ) -> tuple[ModelTicketWorkflowState, bool, str | None]:
         """INTAKE: Fetch ticket from Linear, create or resume contract.
 
         Returns (contract, success, error_message).
@@ -230,11 +240,11 @@ class HandlerTicketWork:
         """
         if self._linear is None or dry_run:
             _log.info("[intake] dry-run: creating stub contract for %s", ticket_id)
-            contract = ModelTicketContract(
+            contract = ModelTicketWorkflowState(
                 ticket_id=ticket_id,
                 title=f"[dry-run] {ticket_id}",
                 repo="unknown",
-                phase="research",
+                phase=EnumTicketWorkflowPhase.RESEARCH,
                 created_at=_now_iso(),
                 updated_at=_now_iso(),
             )
@@ -243,9 +253,9 @@ class HandlerTicketWork:
         try:
             issue = self._linear.get_issue(ticket_id)
         except Exception as exc:
-            return ModelTicketContract(), False, f"Linear fetch failed: {exc}"
+            return ModelTicketWorkflowState(), False, f"Linear fetch failed: {exc}"
 
-        existing = extract_contract(issue.description)
+        existing = extract_workflow_state(issue.description)
         if existing is not None:
             _log.info(
                 "[intake] resuming contract for %s (phase=%s)",
@@ -255,17 +265,19 @@ class HandlerTicketWork:
             contract = existing
         else:
             _log.info("[intake] creating new contract for %s", ticket_id)
-            contract = ModelTicketContract(
+            contract = ModelTicketWorkflowState(
                 ticket_id=ticket_id,
                 title=issue.title,
                 repo=issue.title,
-                phase="research",
+                phase=EnumTicketWorkflowPhase.RESEARCH,
                 created_at=_now_iso(),
                 updated_at=_now_iso(),
             )
 
         try:
-            updated_desc = update_description_with_contract(issue.description, contract)
+            updated_desc = update_description_with_workflow_state(
+                issue.description, contract
+            )
             self._linear.update_issue_description(ticket_id, updated_desc)
             _persist_locally_safe(ticket_id, contract)
         except Exception as exc:
@@ -275,9 +287,9 @@ class HandlerTicketWork:
 
     def run_research(
         self,
-        contract: ModelTicketContract,
+        contract: ModelTicketWorkflowState,
         dry_run: bool = False,
-    ) -> tuple[ModelTicketContract, bool, str | None]:
+    ) -> tuple[ModelTicketWorkflowState, bool, str | None]:
         """RESEARCH: Advance phase to questions.
 
         Actual file exploration is performed by the orchestrating skill/agent layer.
@@ -287,7 +299,7 @@ class HandlerTicketWork:
         if dry_run or self._linear is None:
             updated = contract.model_copy(
                 update={
-                    "phase": "questions",
+                    "phase": EnumTicketWorkflowPhase.QUESTIONS,
                     "updated_at": _now_iso(),
                     "context": contract.context.model_copy(
                         update={
@@ -305,17 +317,20 @@ class HandlerTicketWork:
             )
 
         updated = contract.model_copy(
-            update={"phase": "questions", "updated_at": _now_iso()}
+            update={
+                "phase": EnumTicketWorkflowPhase.QUESTIONS,
+                "updated_at": _now_iso(),
+            }
         )
         _save_contract_safe(self._linear, contract.ticket_id, updated)
         return updated, True, None
 
     def run_questions(
         self,
-        contract: ModelTicketContract,
+        contract: ModelTicketWorkflowState,
         autonomous: bool = False,
         dry_run: bool = False,
-    ) -> tuple[ModelTicketContract, bool, str | None]:
+    ) -> tuple[ModelTicketWorkflowState, bool, str | None]:
         """QUESTIONS: Block for unanswered questions, or auto-advance.
 
         Returns success=False (stay in phase) if required questions are unanswered
@@ -345,7 +360,7 @@ class HandlerTicketWork:
             )
 
         updated = contract.model_copy(
-            update={"phase": "spec", "updated_at": _now_iso()}
+            update={"phase": EnumTicketWorkflowPhase.SPEC, "updated_at": _now_iso()}
         )
         if self._linear and not dry_run:
             _save_contract_safe(self._linear, contract.ticket_id, updated)
@@ -353,21 +368,24 @@ class HandlerTicketWork:
 
     def run_spec(
         self,
-        contract: ModelTicketContract,
+        contract: ModelTicketWorkflowState,
         autonomous: bool = False,
         dry_run: bool = False,
-    ) -> tuple[ModelTicketContract, bool, str | None]:
+    ) -> tuple[ModelTicketWorkflowState, bool, str | None]:
         """SPEC: Inject default requirements/verification/gates if not already set.
 
         If the orchestrating layer has already populated these fields, they are
         preserved. Otherwise, sensible defaults are injected so the FSM can proceed.
         """
-        updates: dict[str, object] = {"phase": "implement", "updated_at": _now_iso()}
+        updates: dict[str, object] = {
+            "phase": EnumTicketWorkflowPhase.IMPLEMENT,
+            "updated_at": _now_iso(),
+        }
 
         if not contract.requirements:
             _log.info("[spec] injecting stub requirement for %s", contract.ticket_id)
             updates["requirements"] = [
-                ModelContractRequirement(
+                ModelWorkflowRequirement(
                     id="r1",
                     statement=f"Implement {contract.ticket_id}: {contract.title}",
                     rationale="Auto-generated from ticket title",
@@ -396,11 +414,11 @@ class HandlerTicketWork:
 
     def run_implement(
         self,
-        contract: ModelTicketContract,
+        contract: ModelTicketWorkflowState,
         ticket_id: str,
         branch_name: str,
         dry_run: bool = False,
-    ) -> tuple[ModelTicketContract, bool, str | None]:
+    ) -> tuple[ModelTicketWorkflowState, bool, str | None]:
         """IMPLEMENT: Create worktree, install pre-commit, run baseline tests.
 
         The actual code writing is performed by the orchestrating agent layer.
@@ -412,7 +430,7 @@ class HandlerTicketWork:
                 update={
                     "branch": branch_name or f"jonah/{ticket_id.lower()}-stub",
                     "commits": ["dry-run-sha"],
-                    "phase": "review",
+                    "phase": EnumTicketWorkflowPhase.REVIEW,
                     "updated_at": _now_iso(),
                 }
             )
@@ -448,7 +466,11 @@ class HandlerTicketWork:
             )
 
         updated = contract.model_copy(
-            update={"branch": wt.branch, "phase": "review", "updated_at": _now_iso()}
+            update={
+                "branch": wt.branch,
+                "phase": EnumTicketWorkflowPhase.REVIEW,
+                "updated_at": _now_iso(),
+            }
         )
         if self._linear:
             _save_contract_safe(self._linear, ticket_id, updated)
@@ -456,9 +478,9 @@ class HandlerTicketWork:
 
     def run_review(
         self,
-        contract: ModelTicketContract,
+        contract: ModelTicketWorkflowState,
         dry_run: bool = False,
-    ) -> tuple[ModelTicketContract, bool, str | None]:
+    ) -> tuple[ModelTicketWorkflowState, bool, str | None]:
         """REVIEW: Run pre-commit, push branch, create PR, update Linear status.
 
         Records verification results in the contract.
@@ -473,7 +495,7 @@ class HandlerTicketWork:
             updated = updated.model_copy(
                 update={
                     "pr_url": "https://github.com/example/repo/pull/0",
-                    "phase": "done",
+                    "phase": EnumTicketWorkflowPhase.DONE,
                     "updated_at": _now_iso(),
                 }
             )
@@ -524,7 +546,7 @@ class HandlerTicketWork:
             update={
                 "verification": verification,
                 "pr_url": pr_url,
-                "phase": "done",
+                "phase": EnumTicketWorkflowPhase.DONE,
                 "updated_at": _now_iso(),
             }
         )
@@ -534,13 +556,13 @@ class HandlerTicketWork:
 
     def run_done(
         self,
-        contract: ModelTicketContract,
+        contract: ModelTicketWorkflowState,
         dry_run: bool = False,
-    ) -> tuple[ModelTicketContract, bool, str | None]:
+    ) -> tuple[ModelTicketWorkflowState, bool, str | None]:
         """DONE: Mark contract phase as done and persist."""
         _log.info("[done] %s complete — PR: %s", contract.ticket_id, contract.pr_url)
         updated = contract.model_copy(
-            update={"phase": "done", "updated_at": _now_iso()}
+            update={"phase": EnumTicketWorkflowPhase.DONE, "updated_at": _now_iso()}
         )
         if self._linear and not dry_run:
             _save_contract_safe(self._linear, contract.ticket_id, updated)
@@ -568,7 +590,7 @@ class HandlerTicketWork:
         state = self.start(command)
         events: list[ModelTicketWorkPhaseEvent] = []
 
-        contract: ModelTicketContract | None = None
+        contract: ModelTicketWorkflowState | None = None
         branch_name = ""
 
         while state.current_phase not in TERMINAL_PHASES:
@@ -695,31 +717,35 @@ def _now_iso() -> str:
 def _save_contract_safe(
     linear: ProtocolLinearClient,
     ticket_id: str,
-    contract: ModelTicketContract,
+    contract: ModelTicketWorkflowState,
 ) -> None:
     """Save contract to Linear and persist locally (best-effort, never raises)."""
     try:
         issue = linear.get_issue(ticket_id)
-        updated_desc = update_description_with_contract(issue.description, contract)
+        updated_desc = update_description_with_workflow_state(
+            issue.description, contract
+        )
         linear.update_issue_description(ticket_id, updated_desc)
     except Exception as exc:
         _log.warning("[save_contract] Linear update failed for %s: %s", ticket_id, exc)
     try:
-        persist_contract_locally(ticket_id, contract)
+        persist_workflow_state_locally(ticket_id, contract)
     except (PermissionError, OSError) as exc:
         _log.warning(
             "[save_contract] local persistence failed for %s: %s", ticket_id, exc
         )
 
 
-def _persist_locally_safe(ticket_id: str, contract: ModelTicketContract) -> None:
+def _persist_locally_safe(ticket_id: str, contract: ModelTicketWorkflowState) -> None:
     try:
-        persist_contract_locally(ticket_id, contract)
+        persist_workflow_state_locally(ticket_id, contract)
     except (PermissionError, OSError) as exc:
         _log.warning("[persist_locally] failed for %s: %s", ticket_id, exc)
 
 
-def _mark_all_verification_passed(contract: ModelTicketContract) -> ModelTicketContract:
+def _mark_all_verification_passed(
+    contract: ModelTicketWorkflowState,
+) -> ModelTicketWorkflowState:
     """Mark all verification steps as passed (dry-run helper)."""
     updated_v = [
         v.model_copy(update={"status": "passed", "executed_at": _now_iso()})
@@ -729,10 +755,10 @@ def _mark_all_verification_passed(contract: ModelTicketContract) -> ModelTicketC
 
 
 def _record_verification_result(
-    verification: list[ModelContractVerification],
+    verification: list[ModelWorkflowVerification],
     step_id: str,
     result: ModelRunResult,
-) -> list[ModelContractVerification]:
+) -> list[ModelWorkflowVerification]:
     """Record the result of a verification step by ID."""
     updated = []
     for v in verification:
@@ -751,7 +777,7 @@ def _record_verification_result(
     return updated
 
 
-def _build_pr_body(contract: ModelTicketContract) -> str:
+def _build_pr_body(contract: ModelTicketWorkflowState) -> str:
     """Build a PR description body from the contract."""
     lines = [
         f"## {contract.ticket_id}: {contract.title}",
