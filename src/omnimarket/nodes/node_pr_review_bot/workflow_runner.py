@@ -208,8 +208,11 @@ def run_review(
         pr_number: GitHub PR number.
         repo: Repository in ``owner/repo`` format.
         github_token: GitHub token. Defaults to ``GITHUB_TOKEN`` env var.
-        reviewer_models: Reviewer model identifiers. Defaults to
-            ``["qwen3-coder-30b", "qwen3-14b"]``.
+        reviewer_models: Reviewer model identifiers. Required — must be
+            provided by the caller using model keys registered in
+            ``ModelInferenceBridgeConfig.model_configs``. Raises ``ValueError``
+            if empty/None (no defaults: unknown keys previously produced a
+            silent-clean verdict).
         judge_model: Judge model identifier. Must not be a build-loop model.
         severity_threshold: Minimum severity to post a review thread.
         dry_run: If True, no GitHub comments are posted.
@@ -223,11 +226,18 @@ def run_review(
     token = github_token or os.environ.get("GITHUB_TOKEN", "")
     run_id = correlation_id or uuid4()
 
+    resolved_reviewer_models = reviewer_models or []
+    if not resolved_reviewer_models:
+        raise ValueError(  # error-ok: CLI argument validation at caller boundary
+            "reviewer_models must be provided — no default model keys are registered. "
+            "Pass explicit model keys from ModelInferenceBridgeConfig.model_configs."
+        )
+
     request = ReviewRequest(
         correlation_id=run_id,
         pr_number=pr_number,
         repo=repo,
-        reviewer_models=reviewer_models or ["qwen3-coder-30b", "qwen3-14b"],
+        reviewer_models=resolved_reviewer_models,
         judge_model=judge_model,
         severity_threshold=severity_threshold,
         dry_run=dry_run,
