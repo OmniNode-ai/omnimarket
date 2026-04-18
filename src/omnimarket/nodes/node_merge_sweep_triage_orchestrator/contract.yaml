@@ -12,10 +12,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Merge sweep triage orchestrator. Consumes a classified PR list (ModelMergeSweepResult)
-  and fans out N typed command events across 3 mechanical effect topics per the
+  and fans out N typed command events across 6 effect topics per the
   exhaustive 14-row classification-to-action decision table. Phase 1 wires
-  AUTO_MERGE_ARM / REBASE / CI_RERUN; Phase 2 (LLM-routed) will extend with
-  THREAD_REPLY / CONFLICT_HUNK / CI_FIX without schema changes.
+  AUTO_MERGE_ARM / REBASE / CI_RERUN; Phase 2 wires
+  THREAD_REPLY / CONFLICT_HUNK / CI_FIX (LLM-routed) [OMN-8988].
 
 handler:
   module: omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage
@@ -41,5 +41,8 @@ event_bus:
     - onex.cmd.omnimarket.pr-auto-merge-arm.v1
     - onex.cmd.omnimarket.pr-rebase.v1
     - onex.cmd.omnimarket.pr-ci-rerun.v1
+    - onex.cmd.omnimarket.pr-thread-reply.v1
+    - onex.cmd.omnimarket.pr-conflict-hunk.v1
+    - onex.cmd.omnimarket.pr-ci-fix.v1
   dlq_topics:
     - onex.dlq.omnimarket.merge-sweep-triage.v1

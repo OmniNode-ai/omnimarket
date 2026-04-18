@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models for node_merge_sweep_triage_orchestrator [OMN-8959, OMN-8987].
+"""Models for node_merge_sweep_triage_orchestrator [OMN-8959, OMN-8987, OMN-8988].
 
 Contains:
 - ModelTriageRequest: input to the orchestrator
