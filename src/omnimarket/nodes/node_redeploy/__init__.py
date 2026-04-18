@@ -1,8 +1,14 @@
-"""node_redeploy — Kafka publish-monitor handler for deploy agent rebuilds."""
+"""node_redeploy — WorkflowPackage for full post-release runtime redeploy."""
 
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy import HandlerRedeploy
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
     HandlerRedeployKafka,
+)
+from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
+    HandlerRedeployWorkflowRunner,
+    ModelRedeployWorkflowInput,
+    ModelRedeployWorkflowResult,
+    run_redeploy_workflow,
 )
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
     ModelDeployRebuildCommand,
@@ -17,14 +23,18 @@ from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
 __all__ = [
     "HandlerRedeploy",
     "HandlerRedeployKafka",
+    "HandlerRedeployWorkflowRunner",
     "ModelDeployRebuildCommand",
     "ModelDeployRebuildCompleted",
     "ModelRedeployCompletedEvent",
     "ModelRedeployResult",
     "ModelRedeployStartCommand",
+    "ModelRedeployWorkflowInput",
+    "ModelRedeployWorkflowResult",
     "NodeRedeploy",
+    "run_redeploy_workflow",
 ]
 
 
-class NodeRedeploy(HandlerRedeployKafka):
-    """ONEX entry-point wrapper for HandlerRedeployKafka."""
+class NodeRedeploy(HandlerRedeployWorkflowRunner):
+    """ONEX entry-point wrapper for HandlerRedeployWorkflowRunner."""

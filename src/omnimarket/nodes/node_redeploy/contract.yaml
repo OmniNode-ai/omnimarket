@@ -1,22 +1,62 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Redeploy WorkflowPackage
+#
+# Full post-release runtime redeploy: FSM-driven pipeline that rebuilds the
+# Docker runtime via deploy agent (Kafka publish-monitor), seeds Infisical,
+# and verifies health. Phases: IDLE -> SYNC_CLONES -> UPDATE_PINS -> REBUILD
+# -> SEED_INFISICAL -> VERIFY_HEALTH -> DONE.
+#
+# Related Tickets:
+#   - OMN-7564: Port redeploy skill to WorkflowPackage
+#   - OMN-7539: WorkflowPackage port epic
 ---
 name: node_redeploy
-contract_version: {major: 1, minor: 1, patch: 0}
-node_type: effect
-node_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 2, minor: 0, patch: 0}
+node_type: workflow
+node_version: {major: 2, minor: 0, patch: 0}
 
 description: >
-  Triggers a deploy agent rebuild by publishing to the deploy agent command topic
-  and polling for the matching completion event. Pure Kafka publish-monitor pattern.
-  The deploy agent on .201 owns the actual rebuild steps.
+  Full post-release runtime redeploy WorkflowPackage. FSM-driven pipeline:
+  IDLE -> SYNC_CLONES -> UPDATE_PINS -> REBUILD -> SEED_INFISICAL ->
+  VERIFY_HEALTH -> DONE. The REBUILD phase publishes to the deploy agent via
+  Kafka and polls for the completion event. Circuit breaker trips after 3
+  consecutive failures.
 
-handler:
-  module: omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka
-  class: HandlerRedeployKafka
-  input_model: omnimarket.nodes.node_redeploy.models.model_deploy_agent_events.ModelDeployRebuildCommand
+handler_routing:
+  routing_strategy: "phase_dispatch"
+  handlers:
+    - operation: "run_workflow"
+      handler:
+        name: "HandlerRedeployWorkflowRunner"
+        module: "omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner"
+      description: "Top-level runner — drives FSM through all phases, invoking Kafka rebuild at REBUILD phase."
+
+    - operation: "fsm_transition"
+      handler:
+        name: "HandlerRedeploy"
+        module: "omnimarket.nodes.node_redeploy.handlers.handler_redeploy"
+      description: "FSM state machine — phase transitions, circuit breaker, terminal detection."
+
+    - operation: "kafka_rebuild"
+      handler:
+        name: "HandlerRedeployKafka"
+        module: "omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka"
+      description: "EFFECT — Kafka publish-monitor for deploy agent. Publishes rebuild command, polls for completion."
+
+input_model:
+  name: "ModelRedeployCommand"
+  module: "omnimarket.nodes.node_redeploy.models.model_redeploy_command"
+  description: "Start command for redeploy workflow."
+
+output_model:
+  name: "ModelRedeployWorkflowResult"
+  module: "omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner"
+  description: "Completed result with final phase, Kafka rebuild result, and phase history."
 
 descriptor:
-  node_archetype: effect
-  purity: impure
+  node_archetype: workflow
+  purity: side_effect
   idempotent: false
   timeout_ms: 660000
 
@@ -35,6 +75,25 @@ inputs:
     type: list
     description: "Optional service filter. Empty = scope default."
     required: false
+  versions:
+    type: object
+    description: "Plugin version pins (pkg -> version). Auto-detected if omitted."
+    required: false
+  skip_sync:
+    type: bool
+    description: "Skip SYNC_CLONES phase"
+    required: false
+    default: false
+  verify_only:
+    type: bool
+    description: "Skip to VERIFY_HEALTH phase only"
+    required: false
+    default: false
+  dry_run:
+    type: bool
+    description: "Print step commands without execution"
+    required: false
+    default: false
   requested_by:
     type: str
     description: "Identity label emitted in the command"
@@ -42,36 +101,52 @@ inputs:
     default: "node_redeploy"
 
 outputs:
+  final_phase:
+    type: str
+    description: "Terminal phase reached (done | failed)"
+  phases_completed:
+    type: int
+    description: "Number of FSM phases completed"
   success:
     type: bool
-    description: "True if deploy agent reported success"
-  status:
-    type: str
-    description: "success | failed"
-  duration_seconds:
-    type: float
-    description: "Total build duration from deploy agent"
-  git_sha:
-    type: str
-    description: "Git SHA that was deployed"
-  services_restarted:
-    type: list
-    description: "Services restarted by deploy agent"
-  phase_results:
+    description: "True if workflow reached DONE"
+  rebuild_result:
     type: object
-    description: "Per-phase result map (git, core, runtime, verification, publish)"
-  errors:
-    type: list
-    description: "Per-phase error messages"
-  timed_out:
-    type: bool
-    description: "True if polling timed out before completion event arrived"
+    description: "ModelRedeployResult from deploy agent (null if REBUILD phase not reached)"
+  error_message:
+    type: str
+    description: "Error from first failing phase"
 
-terminal_event: onex.evt.deploy.rebuild-completed.v1
+terminal_event: onex.evt.omnimarket.redeploy-completed.v1
 
 event_bus:
-  # Topics this node talks to (deploy agent's topics, not omnimarket topics)
-  publish_topics:
-    - onex.cmd.deploy.rebuild-requested.v1
   subscribe_topics:
+    - onex.cmd.omnimarket.redeploy-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.redeploy-phase-transition.v1
+    - onex.evt.omnimarket.redeploy-completed.v1
+  # External topics routed to the deploy agent (not omnimarket-namespaced)
+  external_topics:
+    - onex.cmd.deploy.rebuild-requested.v1
     - onex.evt.deploy.rebuild-completed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  description: "Full post-release runtime redeploy WorkflowPackage"
+  author: "OmniNode Platform Team"
+  created: "2026-04-05"
+  updated: "2026-04-17"
+  tags:
+    - "deploy"
+    - "runtime"
+    - "docker"
+    - "kafka"
+    - "fsm"
+    - "workflow"
+    - "OMN-7564"
+  related_tickets:
+    - "OMN-7564"
+    - "OMN-7539"

@@ -63,7 +63,7 @@ class ModelVerifierRequest(BaseModel):
         default_factory=list,
         description="Invariant assertions from the model output.",
     )
-    schema_version: str = Field(
+    schema_version: str = Field(  # string-version-ok: request envelope version string, not a domain version object
         default="1.0",
         description="Schema version of the request envelope.",
     )

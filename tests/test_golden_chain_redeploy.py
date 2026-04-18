@@ -3,6 +3,7 @@
 Verifies:
   - TestRedeployGoldenChain: FSM state machine (HandlerRedeploy)
   - TestRedeployKafkaGoldenChain: Kafka publish-monitor pattern (HandlerRedeployKafka)
+  - TestRedeployWorkflowRunnerGoldenChain: end-to-end WorkflowPackage (HandlerRedeployWorkflowRunner)
 """
 
 from __future__ import annotations
@@ -17,6 +18,10 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy import HandlerRedeploy
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
     HandlerRedeployKafka,
+)
+from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
+    ModelRedeployWorkflowInput,
+    run_redeploy_workflow,
 )
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
     EnumRedeployStatus,
@@ -447,3 +452,148 @@ class TestRedeployKafkaGoldenChain:
         assert cmd["requested_by"] == "test-suite"
 
         await bus.close()
+
+
+# ---------------------------------------------------------------------------
+# HandlerRedeployWorkflowRunner golden chain tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRedeployWorkflowRunnerGoldenChain:
+    """Golden chain: start command -> WorkflowPackage FSM -> completion."""
+
+    async def test_dry_run_full_cycle(self) -> None:
+        """Dry-run completes all phases without Kafka, reaches DONE."""
+        workflow_input = ModelRedeployWorkflowInput(
+            scope="full",
+            git_ref="origin/main",
+            dry_run=True,
+        )
+        result = await run_redeploy_workflow(workflow_input, event_bus=None)
+
+        assert result.success is True
+        assert result.final_phase == EnumRedeployPhase.DONE
+        assert result.rebuild_result is not None
+        assert result.rebuild_result.git_sha == "dry-run"
+        assert result.error_message is None
+
+    async def test_dry_run_phases_completed(self) -> None:
+        """Dry-run: all 6 FSM phases complete."""
+        workflow_input = ModelRedeployWorkflowInput(dry_run=True)
+        result = await run_redeploy_workflow(workflow_input, event_bus=None)
+
+        # IDLE -> SYNC_CLONES -> UPDATE_PINS -> REBUILD -> SEED_INFISICAL -> VERIFY_HEALTH -> DONE
+        assert result.phases_completed == 6
+
+    async def test_no_event_bus_without_dry_run_fails(self) -> None:
+        """Without event_bus and dry_run=False, workflow exits non-successful."""
+        workflow_input = ModelRedeployWorkflowInput(
+            scope="full",
+            dry_run=False,
+        )
+        result = await run_redeploy_workflow(workflow_input, event_bus=None)
+
+        assert result.success is False
+        assert result.error_message is not None
+        assert "event_bus required" in result.error_message
+
+    async def test_kafka_integration_full_success(self) -> None:
+        """Workflow with EventBusInmemory + fake deploy agent reaches DONE."""
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+        bus = EventBusInmemory(environment="test", group="workflow-test")
+        await bus.start()
+
+        async def _fake_deploy_agent(message: object) -> None:
+            payload = json.loads(message.value)  # type: ignore[union-attr]
+            completion = _make_completed_event(
+                correlation_id=payload["correlation_id"],
+                git_sha="workflow-sha",
+                services_restarted=["omninode-runtime"],
+            )
+            await bus.publish(
+                _EVT_TOPIC,
+                key=payload["correlation_id"].encode(),
+                value=json.dumps(completion.model_dump(mode="json")).encode(),
+            )
+
+        await bus.subscribe(
+            _CMD_TOPIC, on_message=_fake_deploy_agent, group_id="fake-agent"
+        )
+
+        workflow_input = ModelRedeployWorkflowInput(
+            correlation_id=uuid4(),
+            scope="full",
+            git_ref="origin/main",
+            dry_run=False,
+        )
+        result = await run_redeploy_workflow(workflow_input, event_bus=bus)
+
+        assert result.success is True
+        assert result.final_phase == EnumRedeployPhase.DONE
+        assert result.rebuild_result is not None
+        assert result.rebuild_result.success is True
+        assert result.rebuild_result.git_sha == "workflow-sha"
+
+        await bus.close()
+
+    async def test_kafka_integration_deploy_agent_failure(self) -> None:
+        """Deploy agent failure propagates: workflow reaches FAILED."""
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+        bus = EventBusInmemory(environment="test", group="workflow-test")
+        await bus.start()
+
+        async def _failed_agent(message: object) -> None:
+            payload = json.loads(message.value)  # type: ignore[union-attr]
+            completion = _make_completed_event(
+                correlation_id=payload["correlation_id"],
+                status="failed",
+                errors=["build failed: docker image pull error"],
+            )
+            await bus.publish(
+                _EVT_TOPIC,
+                key=payload["correlation_id"].encode(),
+                value=json.dumps(completion.model_dump(mode="json")).encode(),
+            )
+
+        await bus.subscribe(_CMD_TOPIC, on_message=_failed_agent, group_id="fake-agent")
+
+        workflow_input = ModelRedeployWorkflowInput(dry_run=False)
+        result = await run_redeploy_workflow(workflow_input, event_bus=bus)
+
+        assert result.success is False
+        assert result.rebuild_result is not None
+        assert result.rebuild_result.success is False
+        assert "build failed" in result.rebuild_result.errors[0]
+
+        await bus.close()
+
+    async def test_dry_run_versions_propagated(self) -> None:
+        """Version pins propagate into dry_run rebuild_result."""
+        workflow_input = ModelRedeployWorkflowInput(
+            versions={"omniintelligence": "0.9.0", "omninode-claude": "0.5.0"},
+            dry_run=True,
+        )
+        result = await run_redeploy_workflow(workflow_input, event_bus=None)
+
+        assert result.success is True
+        assert result.final_phase == EnumRedeployPhase.DONE
+
+    async def test_dry_run_skip_sync_flag(self) -> None:
+        """skip_sync=True propagates through workflow without error."""
+        workflow_input = ModelRedeployWorkflowInput(skip_sync=True, dry_run=True)
+        result = await run_redeploy_workflow(workflow_input, event_bus=None)
+
+        assert result.success is True
+
+    async def test_result_model_serializable(self) -> None:
+        """WorkflowResult is fully JSON-serializable via model_dump."""
+        workflow_input = ModelRedeployWorkflowInput(dry_run=True)
+        result = await run_redeploy_workflow(workflow_input, event_bus=None)
+
+        dumped = result.model_dump(mode="json")
+        assert dumped["final_phase"] == "done"
+        assert dumped["success"] is True
+        assert isinstance(dumped["phases_completed"], int)

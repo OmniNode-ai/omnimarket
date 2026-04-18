@@ -1,23 +1,36 @@
 name: node_redeploy
-version: "1.0.0"
-description: "Full post-release runtime redeploy — syncs bare clone, rebuilds services, restarts containers"
+version: "2.0.0"
+description: "Full post-release runtime redeploy WorkflowPackage — FSM-driven pipeline via deploy agent"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_redeploy: "omnimarket.nodes.node_redeploy"
 capabilities:
-  standalone: true
+  standalone: false
   full_runtime: true
   requires_network: true
   requires_repo: true
   requires_secrets: false
   requires_docker: true
   side_effect_class: external_io
+workflow:
+  type: "phase_dispatch"
+  phases:
+    - SYNC_CLONES
+    - UPDATE_PINS
+    - REBUILD
+    - SEED_INFISICAL
+    - VERIFY_HEALTH
+    - DONE
+  terminal_phases:
+    - DONE
+    - FAILED
+  circuit_breaker_threshold: 3
 dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["release", "deploy", "docker", "runtime"]
+tags: ["release", "deploy", "docker", "runtime", "workflow", "fsm", "kafka"]
 pack: "release"
 display_name: "Redeploy"
-node_role: "effect"
+node_role: "orchestrator"
