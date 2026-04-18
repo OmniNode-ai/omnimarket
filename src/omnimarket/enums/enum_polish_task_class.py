@@ -13,3 +13,6 @@ class EnumPolishTaskClass(StrEnum):
     THREAD_REPLY = "thread_reply"
     CONFLICT_HUNK = "conflict_hunk"
     CI_FIX = "ci_fix"
+
+    # Sentinel: classifier cannot determine a safe action — escalate to human
+    STUCK = "stuck"
