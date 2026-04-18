@@ -1,0 +1,49 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - CI Fix Effect (OMN-8993)
+name: node_ci_fix_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  LLM-routed CI fix effect. Receives a ModelCiFixCommand, uses the routing
+  policy's primary model (deepseek-r1-14b) to diagnose the failing CI job and
+  generate a patch. Applies the patch locally and re-runs tests as a gate.
+  Scaffold only — real LLM + patch logic lands in OMN-8994 (Wave 2).
+
+handler:
+  module: omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix
+  class: HandlerCiFixEffect
+  input_model: omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_command.ModelCiFixCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix:HandlerCiFixEffect
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+
+model_routing:
+  ci_fixer:
+    primary: "deepseek-r1-14b"
+    fallback: "qwen3-coder-30b"
+    fallback_allowed_roles:
+      - "ci_fixer"
+    endpoint_env: "LLM_CODER_FAST_URL"
+    max_tokens: 8192
+    transport: "http"
+    ci_override:
+      primary: "deepseek-r1-14b"
+
+event_bus:
+  consumer_group: omnimarket.ci_fix_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-ci-fix.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-ci-fix-attempted.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-ci-fix.v1
