@@ -1,16 +1,20 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models for node_merge_sweep_triage_orchestrator [OMN-8959].
+"""Models for node_merge_sweep_triage_orchestrator [OMN-8959, OMN-8987].
 
 Contains:
 - ModelTriageRequest: input to the orchestrator
 - ModelAutoMergeArmCommand: emitted for Track A-update PRs that are CLEAN + APPROVED
 - ModelRebaseCommand: emitted for PRs that are BEHIND + need rebase
 - ModelCiRerunCommand: emitted for PRs that are BLOCKED + checks failing
+- ModelThreadReplyCommand: Phase 2 — LLM-routed thread reply (OMN-8987)
+- ModelConflictHunkCommand: Phase 2 — LLM-routed conflict resolution (OMN-8987)
+- ModelCiFixCommand: Phase 2 — LLM-routed CI fix (OMN-8987)
 """
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -83,3 +87,51 @@ class ModelCiRerunCommand(BaseModel):
     correlation_id: UUID
     run_id: UUID
     total_prs: int
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 command models [OMN-8987] — LLM-routed polish tasks
+# routing_policy is always non-None for Phase 2 commands
+# ---------------------------------------------------------------------------
+
+
+class ModelThreadReplyCommand(BaseModel):
+    """Command to generate and post an LLM-drafted reply to a PR review thread."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int
+    repo: str
+    thread_comment_ids: list[str]
+    correlation_id: UUID
+    run_id: str
+    routing_policy: dict[str, Any]
+
+
+class ModelConflictHunkCommand(BaseModel):
+    """Command to resolve a merge conflict hunk via LLM patch generation."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int
+    repo: str
+    head_ref_name: str
+    base_ref_name: str
+    conflict_files: list[str]
+    correlation_id: UUID
+    run_id: str
+    routing_policy: dict[str, Any]
+
+
+class ModelCiFixCommand(BaseModel):
+    """Command to diagnose and patch a failing CI job via LLM."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int
+    repo: str
+    run_id_github: str
+    failing_job_name: str
+    correlation_id: UUID
+    run_id: str
+    routing_policy: dict[str, Any]
