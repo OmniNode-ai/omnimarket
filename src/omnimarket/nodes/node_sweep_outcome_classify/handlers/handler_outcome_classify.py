@@ -1,17 +1,30 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Handler for node_sweep_outcome_classify [OMN-8963].
+"""Handler for node_sweep_outcome_classify [OMN-8963, OMN-8996].
 
 COMPUTE node. Pure function: completion event → outcome classification.
 No side effects, no env reads, no bus publishes, no I/O.
 
-6-branch classification table:
+Phase 1 classification table:
 - event_type="armed":           armed=True  → ARMED  | armed=False → FAILED
 - event_type="rebase_completed": success=True → REBASED
                                   success=False + conflict_files → STUCK
                                   success=False + no conflicts → FAILED
 - event_type="ci_rerun_triggered": rerun_triggered=True → CI_RERUN_TRIGGERED
                                     rerun_triggered=False → FAILED
+- event_type="merged":          → MERGED
+
+Phase 2 classification table:
+- event_type="thread_replied":    reply_posted=True → SUCCESS
+                                  reply_posted=False → DEGRADED
+- event_type="conflict_resolved": resolution_committed=True → SUCCESS
+                                  is_noop=True → NOOP
+                                  else → DEGRADED
+- event_type="ci_fix_attempted":  patch_applied=True AND local_tests_passed=True → SUCCESS
+                                  is_noop=True → NOOP
+                                  patch_applied=False → FAILED
+                                  local_tests_passed=False → DEGRADED
+
 - unknown event_type → STUCK (safe fallback)
 """
 
@@ -79,6 +92,29 @@ class HandlerSweepOutcomeClassify:
 
         if req.event_type == "merged":
             return EnumSweepOutcome.MERGED, None, []
+
+        # Phase 2 event types
+        if req.event_type == "thread_replied":
+            if req.reply_posted is True:
+                return EnumSweepOutcome.SUCCESS, None, []
+            return EnumSweepOutcome.DEGRADED, req.error, []
+
+        if req.event_type == "conflict_resolved":
+            if req.resolution_committed is True:
+                return EnumSweepOutcome.SUCCESS, None, []
+            if req.is_noop is True:
+                return EnumSweepOutcome.NOOP, None, []
+            return EnumSweepOutcome.DEGRADED, req.error, []
+
+        if req.event_type == "ci_fix_attempted":
+            if req.is_noop is True:
+                return EnumSweepOutcome.NOOP, None, []
+            if req.patch_applied is True and req.local_tests_passed is True:
+                return EnumSweepOutcome.SUCCESS, None, []
+            if req.patch_applied is False:
+                return EnumSweepOutcome.FAILED, req.error, []
+            # patch applied but tests failed
+            return EnumSweepOutcome.DEGRADED, req.error, []
 
         # Unknown event type — safe fallback
         _log.warning(
