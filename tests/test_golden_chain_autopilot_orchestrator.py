@@ -87,15 +87,15 @@ class TestAutopilotOrchestratorGoldenChain:
     async def test_dry_run_propagates_to_payloads(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """dry_run flag propagates to all dispatch payloads."""
+        """dry_run flag propagates to all dispatch payloads (inside the envelope)."""
         await event_bus.start()
-        captured_payloads: list[dict[str, object]] = []
+        captured_envelopes: list[dict[str, object]] = []
 
         original_publish = event_bus.publish
 
         async def recording_publish(topic: str, key: object, value: bytes) -> None:
             with contextlib.suppress(Exception):
-                captured_payloads.append(json.loads(value))
+                captured_envelopes.append(json.loads(value))
             await original_publish(topic=topic, key=key, value=value)
 
         event_bus.publish = recording_publish  # type: ignore[method-assign]
@@ -105,23 +105,29 @@ class TestAutopilotOrchestratorGoldenChain:
 
         await handler.handle(command)
 
-        dispatch_payloads = [p for p in captured_payloads if "dry_run" in p]
-        assert all(p["dry_run"] is True for p in dispatch_payloads)
+        # OMN-9215: payloads are now wrapped — inspect envelope.payload.
+        inner_payloads = [
+            env["payload"]
+            for env in captured_envelopes
+            if isinstance(env.get("payload"), dict) and "dry_run" in env["payload"]  # type: ignore[operator]
+        ]
+        assert inner_payloads, "expected at least one envelope carrying dry_run"
+        assert all(p["dry_run"] is True for p in inner_payloads)
 
         await event_bus.close()
 
     async def test_correlation_id_in_all_payloads(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """correlation_id propagates into every dispatch payload."""
+        """correlation_id propagates into every dispatch envelope and payload."""
         await event_bus.start()
-        captured_payloads: list[dict[str, object]] = []
+        captured_envelopes: list[dict[str, object]] = []
 
         original_publish = event_bus.publish
 
         async def recording_publish(topic: str, key: object, value: bytes) -> None:
             with contextlib.suppress(Exception):
-                captured_payloads.append(json.loads(value))
+                captured_envelopes.append(json.loads(value))
             await original_publish(topic=topic, key=key, value=value)
 
         event_bus.publish = recording_publish  # type: ignore[method-assign]
@@ -132,9 +138,61 @@ class TestAutopilotOrchestratorGoldenChain:
         await handler.handle(command)
 
         cid = str(command.correlation_id)
-        for payload in captured_payloads:
-            if "correlation_id" in payload:
-                assert payload["correlation_id"] == cid
+        # OMN-9215: correlation_id lives both on the envelope and in the
+        # inner payload dict.
+        for env in captured_envelopes:
+            if env.get("correlation_id") is not None:
+                assert env["correlation_id"] == cid
+            inner = env.get("payload")
+            if isinstance(inner, dict) and "correlation_id" in inner:
+                assert inner["correlation_id"] == cid
+
+        await event_bus.close()
+
+    async def test_publishes_are_model_event_envelopes(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OMN-9215: every publish must produce a valid ModelEventEnvelope.
+
+        The consumer-side auto-wiring callback validates every inbound message
+        via ``ModelEventEnvelope[object].model_validate(...)`` before dispatch
+        (omnibase_infra.runtime.auto_wiring.handler_wiring._make_event_bus_callback).
+        Bare-payload publishes fail validation with ``payload: Field required``
+        and the target handler never runs — the regression that caused every
+        merge_sweep tick to time out at 15m.
+        """
+        from omnibase_core.models.events.model_event_envelope import (
+            ModelEventEnvelope,
+        )
+
+        await event_bus.start()
+        captured: list[bytes] = []
+
+        original_publish = event_bus.publish
+
+        async def recording_publish(topic: str, key: object, value: bytes) -> None:
+            captured.append(value)
+            await original_publish(topic=topic, key=key, value=value)
+
+        event_bus.publish = recording_publish  # type: ignore[method-assign]
+
+        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
+        command = _make_command()
+
+        await handler.handle(command)
+
+        assert captured, "handler should have published at least one message"
+        for raw in captured:
+            data = json.loads(raw)
+            # Round-trip through ModelEventEnvelope — exactly what the
+            # consumer-side auto-wiring callback does.
+            envelope = ModelEventEnvelope[object].model_validate(data)
+            assert envelope.payload is not None, (
+                "envelope.payload must be present — bare-payload publish "
+                "would fail ModelEventEnvelope validation (OMN-9215)"
+            )
+            assert envelope.correlation_id == command.correlation_id
+            assert envelope.event_type is not None
 
         await event_bus.close()
 

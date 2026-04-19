@@ -30,7 +30,6 @@ Related: OMN-6872, OMN-6867, OMN-8087
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -39,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import yaml
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_phase_result import (
     EnumAutopilotCycleStatus,
@@ -297,13 +297,15 @@ class HandlerAutopilotOrchestrator:
             )
 
         try:
-            payload = json.dumps(
-                {
+            payload = self._envelope_bytes(
+                event_type="omnimarket.autopilot-worktree-sweep",
+                correlation_id=command.correlation_id,
+                payload={
                     "correlation_id": str(command.correlation_id),
                     "dry_run": command.dry_run,
                     "operation": "worktree_health_sweep",
-                }
-            ).encode()
+                },
+            )
             # Publish worktree triage command. The contract declares no
             # dedicated worktree topic yet — reuse the phase-transition topic
             # as an advisory signal until node_worktree_triage is wired.
@@ -357,13 +359,15 @@ class HandlerAutopilotOrchestrator:
             )
 
         try:
-            payload = json.dumps(
-                {
+            payload = self._envelope_bytes(
+                event_type="omnimarket.pr-lifecycle-orchestrator-start",
+                correlation_id=command.correlation_id,
+                payload={
                     "correlation_id": str(command.correlation_id),
                     "dry_run": command.dry_run,
                     "merge_only": True,
-                }
-            ).encode()
+                },
+            )
             await self._event_bus.publish(
                 topic=self._topic_pr_lifecycle,
                 key=str(command.correlation_id).encode(),
@@ -420,13 +424,15 @@ class HandlerAutopilotOrchestrator:
             )
 
         try:
-            payload = json.dumps(
-                {
+            payload = self._envelope_bytes(
+                event_type="omnimarket.platform-diagnostics-start",
+                correlation_id=command.correlation_id,
+                payload={
                     "correlation_id": str(command.correlation_id),
                     "dry_run": command.dry_run,
                     "mode": "infra_health",
-                }
-            ).encode()
+                },
+            )
             await self._event_bus.publish(
                 topic=self._topic_platform_diagnostics,
                 key=str(command.correlation_id).encode(),
@@ -477,12 +483,14 @@ class HandlerAutopilotOrchestrator:
                 await self._event_bus.publish(
                     topic=self._topic_aislop,
                     key=str(command.correlation_id).encode(),
-                    value=json.dumps(
-                        {
+                    value=self._envelope_bytes(
+                        event_type="omnimarket.aislop-sweep-start",
+                        correlation_id=command.correlation_id,
+                        payload={
                             "correlation_id": str(command.correlation_id),
                             "dry_run": command.dry_run,
-                        }
-                    ).encode(),
+                        },
+                    ),
                 )
                 logger.info("[AUTOPILOT-D] aislop sweep dispatched")
             except Exception as exc:
@@ -498,14 +506,16 @@ class HandlerAutopilotOrchestrator:
                 await self._event_bus.publish(
                     topic=self._topic_dod,
                     key=str(command.correlation_id).encode(),
-                    value=json.dumps(
-                        {
+                    value=self._envelope_bytes(
+                        event_type="omnimarket.dod-verify-start",
+                        correlation_id=command.correlation_id,
+                        payload={
                             "correlation_id": str(command.correlation_id),
                             "dry_run": command.dry_run,
                             "since_last_cycle": True,
                             "per_ticket_verify": True,
-                        }
-                    ).encode(),
+                        },
+                    ),
                 )
                 logger.info("[AUTOPILOT-D] dod_verify sweep dispatched")
             except Exception as exc:
@@ -596,13 +606,15 @@ class HandlerAutopilotOrchestrator:
     ) -> None:
         if self._event_bus is None or not self._topic_phase_transition:
             return
-        payload = json.dumps(
-            {
+        payload = self._envelope_bytes(
+            event_type="omnimarket.autopilot-phase-transition",
+            correlation_id=correlation_id,
+            payload={
                 "from_phase": from_state.lower(),
                 "to_phase": to_state.lower(),
                 "correlation_id": str(correlation_id),
-            }
-        ).encode()
+            },
+        )
         try:
             await self._event_bus.publish(
                 topic=self._topic_phase_transition,
@@ -611,6 +623,29 @@ class HandlerAutopilotOrchestrator:
             )
         except Exception as exc:
             logger.warning("[AUTOPILOT] phase event publish failed: %s", exc)
+
+    @staticmethod
+    def _envelope_bytes(
+        *,
+        event_type: str,
+        correlation_id: UUID,
+        payload: dict[str, Any],
+    ) -> bytes:
+        """Wrap payload in ModelEventEnvelope and return JSON bytes.
+
+        Consumers on these topics validate inbound messages via
+        ``ModelEventEnvelope[object]`` in the runtime auto-wiring callback
+        (omnibase_infra.runtime.auto_wiring.handler_wiring._make_event_bus_callback).
+        A bare-payload publish fails validation with ``payload: Field required``
+        and the handler never runs (OMN-9215).
+        """
+        envelope = ModelEventEnvelope[dict[str, Any]](
+            payload=payload,
+            correlation_id=correlation_id,
+            event_type=event_type,
+            source_tool="node_autopilot_orchestrator",
+        )
+        return envelope.model_dump_json().encode()
 
 
 __all__: list[str] = [
