@@ -24,9 +24,7 @@ from uuid import UUID, uuid4
 from omnibase_core.models.intents import ModelPersistStateIntent
 from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
 
-from omnimarket.nodes.node_ledger_hash_compute.models.model_ledger_hash_computed import (
-    ModelLedgerHashComputed,
-)
+from omnimarket.events.ledger import ModelLedgerHashComputed
 from omnimarket.nodes.node_ledger_state_reducer.models.model_ledger_state import (
     ModelLedgerState,
 )

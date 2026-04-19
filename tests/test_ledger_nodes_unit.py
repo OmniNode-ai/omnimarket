@@ -17,11 +17,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.events.ledger import ModelLedgerAppendedEvent
 from omnimarket.nodes.node_ledger_append_effect.handlers.handler_ledger_append import (
     HandlerLedgerAppend,
-)
-from omnimarket.nodes.node_ledger_append_effect.models.model_ledger_appended_event import (
-    ModelLedgerAppendedEvent,
 )
 from omnimarket.nodes.node_ledger_hash_compute.handlers.handler_ledger_hash import (
     HandlerLedgerHashCompute,
@@ -202,9 +200,7 @@ def test_reducer_handle_returns_dict_convention() -> None:
 
 def _make_hash_event(tick_id: str, correlation_id, line_count: int, sha: str):
     """Helper to build a ModelLedgerHashComputed."""
-    from omnimarket.nodes.node_ledger_hash_compute.models.model_ledger_hash_computed import (
-        ModelLedgerHashComputed,
-    )
+    from omnimarket.events.ledger import ModelLedgerHashComputed
 
     return ModelLedgerHashComputed(
         tick_id=tick_id,

@@ -18,12 +18,7 @@ import hashlib
 import os
 from pathlib import Path
 
-from omnimarket.nodes.node_ledger_append_effect.models.model_ledger_appended_event import (
-    ModelLedgerAppendedEvent,
-)
-from omnimarket.nodes.node_ledger_hash_compute.models.model_ledger_hash_computed import (
-    ModelLedgerHashComputed,
-)
+from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
 
 JOURNAL_FILENAME = "ledger-journal.txt"
 

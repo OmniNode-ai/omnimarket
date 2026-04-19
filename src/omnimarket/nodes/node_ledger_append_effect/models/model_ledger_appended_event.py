@@ -1,20 +1,9 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Event emitted by `node_ledger_append_effect` after journal append (OMN-8948)."""
+"""Re-export shim — canonical definition moved to omnimarket.events.ledger (OMN-9263)."""
 
-from __future__ import annotations
+from omnimarket.events.ledger import (
+    ModelLedgerAppendedEvent as ModelLedgerAppendedEvent,
+)
 
-from uuid import UUID
-
-from pydantic import BaseModel, ConfigDict
-
-
-class ModelLedgerAppendedEvent(BaseModel):
-    """Emitted after the effect writes a tick line to the journal."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
-
-    tick_id: str
-    correlation_id: UUID
-    line_number: int
-    line_content: str
+__all__ = ["ModelLedgerAppendedEvent"]
