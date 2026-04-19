@@ -265,10 +265,16 @@ class HandlerTicketWork:
             contract = existing
         else:
             _log.info("[intake] creating new contract for %s", ticket_id)
+            # NOTE: `repo` is a repo-slug identifier (e.g. "omnimarket"), not a
+            # display string. ModelLinearIssue does not expose a repo identifier
+            # today, so we leave it empty; it gets populated by the
+            # orchestrating skill/agent when the worktree is materialised.
+            # handler_ticket_work.run_implement() already falls through to
+            # OMNI_HOME alone when contract.repo is empty (see L439-L444).
             contract = ModelTicketWorkflowState(
                 ticket_id=ticket_id,
                 title=issue.title,
-                repo=issue.title,
+                repo="",
                 phase=EnumTicketWorkflowPhase.RESEARCH,
                 created_at=_now_iso(),
                 updated_at=_now_iso(),
