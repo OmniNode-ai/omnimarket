@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""State models for node_merge_sweep_state_reducer [OMN-8964].
+"""State models for node_merge_sweep_state_reducer [OMN-8964, OMN-8997].
 
 ModelMergeSweepState: aggregate state with first-writer-wins dedup.
 ModelPrOutcomeRecord: per-PR record with terminal/transitional classification.
+ModelPrPhase2Record: per-PR Phase 2 failure history (consecutive_failures, categories).
 """
 
 from __future__ import annotations
@@ -32,6 +33,17 @@ class ModelPrOutcomeRecord(BaseModel):
     is_noop: bool = False  # True if idempotent no-op success
     first_seen_at: datetime = Field(default_factory=datetime.utcnow)
     classified_event_id: UUID = Field(default_factory=uuid4)
+
+
+class ModelPrPhase2Record(BaseModel):
+    """Mutable-via-copy Phase 2 failure history for a single PR."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int
+    repo: str
+    consecutive_failures: int = 0
+    last_failure_categories: list[str] = Field(default_factory=list)
 
 
 # Outcomes that are "terminal" (no further action expected on the PR in this run)
@@ -75,3 +87,13 @@ class ModelMergeSweepState(BaseModel):
     terminal_emitted: bool = False
     started_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: datetime | None = None
+    # Phase 2 [OMN-8997]: per-PR failure history. Key: f"{repo}#{pr_number}".
+    # Updated (copy-on-write) on every Phase 2 event — NOT first-writer-wins.
+    pr_phase2_by_key: dict[str, ModelPrPhase2Record] = Field(default_factory=dict)
+    # Phase 2 aggregate counters
+    thread_replies_posted: int = 0
+    thread_reply_failures: int = 0
+    conflicts_resolved: int = 0
+    conflict_hunk_failures: int = 0
+    ci_fixes_attempted: int = 0
+    ci_fix_failures: int = 0

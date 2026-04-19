@@ -1,23 +1,23 @@
 name: node_conflict_hunk_effect
 version: "1.0.0"
-description: "LLM-routed effect node that resolves merge conflict hunks via patch generation"
+description: "LLM-routed conflict resolution effect — resolve merge conflict hunks via LLM patch, pytest gate, commit"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_conflict_hunk_effect: "omnimarket.nodes.node_conflict_hunk_effect"
 capabilities:
-  standalone: true
+  standalone: false
   full_runtime: true
   requires_network: true
   requires_repo: true
   requires_secrets: false
   requires_docker: false
-  side_effect_class: write
+  side_effect_class: effectful
 dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "merge-sweep", "phase2", "conflict-resolution", "llm"]
+tags: ["conflict", "resolution", "llm", "effect", "merge-sweep", "phase2", "git-worktree"]
 pack: "merge-sweep"
 display_name: "Conflict Hunk Effect"
 node_role: "effect"
