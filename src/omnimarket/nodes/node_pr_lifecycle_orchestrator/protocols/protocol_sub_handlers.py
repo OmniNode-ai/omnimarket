@@ -4,6 +4,10 @@ Defines the contracts that each sub-handler node must satisfy when injected
 into the orchestrator. Protocol-based DI allows the orchestrator to be tested
 in isolation and composed with real or mock implementations.
 
+Protocol signatures match the real sub-handler handle() signatures — the
+handlers are the source of truth. The orchestrator constructs the proper
+input models before calling each sub-handler.
+
 Related:
     - OMN-8087: Create pr_lifecycle_orchestrator Node
     - OMN-8082: inventory_compute
@@ -11,18 +15,19 @@ Related:
     - OMN-8084: merge_effect
     - OMN-8085: fix_effect
     - OMN-8086: state_reducer
+    - OMN-9234: Fix protocol-signature drift
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 # ---------------------------------------------------------------------------
-# Shared data models
+# Shared data models (orchestrator-internal, used between phases)
 # ---------------------------------------------------------------------------
 
 
@@ -98,12 +103,12 @@ class ReducerIntent(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Handler result models
+# Handler result models (orchestrator-internal aggregates)
 # ---------------------------------------------------------------------------
 
 
 class InventoryResult(BaseModel):
-    """Result from the inventory handler."""
+    """Result from the inventory handler (orchestrator aggregate)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -112,7 +117,7 @@ class InventoryResult(BaseModel):
 
 
 class PrTriageResult(BaseModel):
-    """Result from the triage handler."""
+    """Result from the triage handler (orchestrator aggregate)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -133,7 +138,7 @@ class ReducerResult(BaseModel):
 
 
 class MergeResult(BaseModel):
-    """Result from the merge effect handler."""
+    """Result from the merge effect handler (orchestrator aggregate)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -142,7 +147,7 @@ class MergeResult(BaseModel):
 
 
 class FixResult(BaseModel):
-    """Result from the fix effect handler."""
+    """Result from the fix effect handler (orchestrator aggregate)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -151,74 +156,79 @@ class FixResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Protocols
+# Protocols — signatures match real sub-handler handle() methods exactly.
+#
+# HandlerPrLifecycleInventory.handle(input_model: ModelPrInventoryInput)
+#   → ModelPrInventoryOutput
+#
+# HandlerPrLifecycleTriage.handle(correlation_id, prs: tuple[ModelPrInventoryItem])
+#   → ModelPrTriageOutput
+#
+# HandlerPrLifecycleStateReducer.handle(*args, correlation_id, classified, ...)
+#   → Any (ReducerResult-compatible)
+#
+# HandlerPrLifecycleMerge.handle(command: ModelPrMergeCommand)
+#   → ModelPrMergeResult
+#
+# HandlerPrLifecycleFix.handle(command: ModelPrLifecycleFixCommand)
+#   → ModelPrLifecycleFixResult
 # ---------------------------------------------------------------------------
 
 
 @runtime_checkable
 class ProtocolInventoryHandler(Protocol):
-    """Collect raw PR state from GitHub."""
+    """Collect raw PR state from GitHub.
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        repos: tuple[str, ...] = (),
-        dry_run: bool = False,
-    ) -> InventoryResult: ...
+    Signature matches HandlerPrLifecycleInventory.handle().
+    """
+
+    def handle(self, input_model: Any) -> Any: ...
 
 
 @runtime_checkable
 class ProtocolTriageHandler(Protocol):
-    """Classify collected PRs into categories."""
+    """Classify collected PRs into categories.
+
+    Signature matches HandlerPrLifecycleTriage.handle().
+    """
 
     async def handle(
         self,
-        *,
         correlation_id: UUID,
-        prs: tuple[PrRecord, ...],
-    ) -> PrTriageResult: ...
+        prs: tuple[Any, ...],
+    ) -> Any: ...
 
 
 @runtime_checkable
 class ProtocolStateReducerHandler(Protocol):
-    """Pure FSM reducer: (state, triage_result, flags) -> intents[]."""
+    """Pure FSM reducer: (state, triage_result, flags) -> intents[].
+
+    Signature matches HandlerPrLifecycleStateReducer.handle() which accepts
+    *args and **kwargs for dual-path dispatch (orchestrator + RuntimeLocal shim).
+    """
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        classified: tuple[TriageRecord, ...],
-        dry_run: bool = False,
-        inventory_only: bool = False,
-        fix_only: bool = False,
-        merge_only: bool = False,
-    ) -> ReducerResult: ...
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any: ...
 
 
 @runtime_checkable
 class ProtocolMergeHandler(Protocol):
-    """Execute merges for PRs with MERGE intent."""
+    """Execute merges for PRs with MERGE intent.
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        prs_to_merge: tuple[TriageRecord, ...],
-        dry_run: bool = False,
-    ) -> MergeResult: ...
+    Signature matches HandlerPrLifecycleMerge.handle().
+    """
+
+    async def handle(self, command: Any) -> Any: ...
 
 
 @runtime_checkable
 class ProtocolFixHandler(Protocol):
-    """Dispatch remediation for PRs with FIX intent."""
+    """Dispatch remediation for PRs with FIX intent.
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        prs_to_fix: tuple[TriageRecord, ...],
-        dry_run: bool = False,
-        enable_admin_merge_fallback: bool = True,
-        admin_fallback_threshold_minutes: int = 30,
-    ) -> FixResult: ...
+    Signature matches HandlerPrLifecycleFix.handle().
+    """
+
+    async def handle(self, command: Any) -> Any: ...

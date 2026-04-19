@@ -370,19 +370,28 @@ class NodeMergeSweep:
 
         # Inject pre-built inventory and triage into the orchestrator via stub adapters
         # so it skips the network calls and goes straight to reducer → intent generation.
+        # Prebuilt adapters — signatures match real sub-handler protocols (OMN-9234).
         class _PrebuiltInventory:
-            async def handle(
-                self,
-                *,
-                correlation_id: object,
-                repos: object = (),
-                dry_run: bool = False,
-            ) -> InventoryResult:
+            """Returns pre-collected inventory without network calls.
+
+            Signature matches ProtocolInventoryHandler: handle(input_model).
+            Returns InventoryResult directly so the orchestrator short-circuits
+            the pr_states mapping path.
+            """
+
+            def handle(self, input_model: object) -> InventoryResult:
                 return InventoryResult(prs=pr_records, total_collected=len(pr_records))
 
         class _PrebuiltTriage:
+            """Returns pre-classified triage without network calls.
+
+            Signature matches ProtocolTriageHandler: handle(correlation_id, prs).
+            Returns PrTriageResult directly so the orchestrator short-circuits
+            the ModelPrTriageOutput mapping path.
+            """
+
             async def handle(
-                self, *, correlation_id: object, prs: object
+                self, correlation_id: object, prs: object
             ) -> PrTriageResult:
                 green_count = len(triage_records)
                 return PrTriageResult(
@@ -399,13 +408,14 @@ class NodeMergeSweep:
         )
 
         class _NoopMerge:
-            async def handle(
-                self,
-                *,
-                correlation_id: object,
-                prs_to_merge: object,
-                dry_run: bool = False,
-            ) -> MergeResult:
+            """No-op merge handler that absorbs MERGE intents without calling GitHub.
+
+            Signature matches ProtocolMergeHandler: handle(command).
+            Returns a MagicMock-compatible object with merged=False so
+            _call_merge_fanout increments prs_failed but doesn't raise.
+            """
+
+            async def handle(self, command: object) -> MergeResult:
                 return MergeResult(prs_merged=0, prs_failed=0)
 
         try:
