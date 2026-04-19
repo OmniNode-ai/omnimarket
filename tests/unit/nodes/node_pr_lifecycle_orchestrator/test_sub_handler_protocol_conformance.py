@@ -305,7 +305,10 @@ def test_registration_rejects_drifting_inventory() -> None:
         HandlerPrLifecycleOrchestrator,
     )
 
-    with pytest.raises(TypeError, match=r"drifted|KEYWORD_ONLY|input_model"):
+    # _DriftingInventory is async (matching old drifted shape) while the
+    # protocol is sync; the async/sync check fires first and is itself a
+    # valid drift rejection.
+    with pytest.raises(TypeError, match=r"drifted|KEYWORD_ONLY|input_model|async|sync"):
         HandlerPrLifecycleOrchestrator._check_protocol_conformance(
             _DriftingInventory(), ProtocolInventoryHandler, "inventory"
         )
@@ -364,6 +367,88 @@ def test_registration_rejects_handler_without_handle_method() -> None:
         HandlerPrLifecycleOrchestrator._check_protocol_conformance(
             _NoHandle(), ProtocolInventoryHandler, "inventory"
         )
+
+
+@pytest.mark.unit
+def test_registration_rejects_sync_handler_for_async_protocol() -> None:
+    """_check_protocol_conformance rejects sync handle() for async protocol (merge)."""
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    class _SyncMerge:
+        # ProtocolMergeHandler declares async handle(command) — sync here drifts.
+        def handle(self, command: Any) -> Any:
+            return None
+
+    with pytest.raises(TypeError, match=r"async|sync"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _SyncMerge(), ProtocolMergeHandler, "merge"
+        )
+
+
+@pytest.mark.unit
+def test_registration_rejects_async_handler_for_sync_protocol() -> None:
+    """_check_protocol_conformance rejects async handle() for sync protocol (inventory)."""
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    class _AsyncInventory:
+        # ProtocolInventoryHandler declares sync handle(input_model) — async drifts.
+        async def handle(self, input_model: Any) -> Any:
+            return None
+
+    with pytest.raises(TypeError, match=r"async|sync"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _AsyncInventory(), ProtocolInventoryHandler, "inventory"
+        )
+
+
+@pytest.mark.unit
+def test_registration_rejects_extra_required_parameters() -> None:
+    """_check_protocol_conformance rejects extra required handler parameters.
+
+    A handler declaring additional positional/keyword parameters without
+    defaults cannot be called via the protocol contract and must fail at
+    registration, not dispatch.
+    """
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    class _ExtraRequired:
+        # ProtocolMergeHandler declares handle(command); this adds a required
+        # 'token' parameter that the orchestrator never supplies.
+        async def handle(self, command: Any, token: str) -> Any:
+            return None
+
+    with pytest.raises(TypeError, match=r"required parameter|extra|token"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _ExtraRequired(), ProtocolMergeHandler, "merge"
+        )
+
+
+@pytest.mark.unit
+def test_registration_accepts_extra_parameters_with_defaults() -> None:
+    """_check_protocol_conformance accepts extra handler parameters if they have defaults.
+
+    Handlers may define optional parameters beyond the protocol contract as
+    long as they don't break the orchestrator's call pattern (single
+    positional arg).
+    """
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    class _ExtraOptional:
+        async def handle(self, command: Any, retries: int = 3) -> Any:
+            return None
+
+    # Should not raise.
+    HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+        _ExtraOptional(), ProtocolMergeHandler, "merge"
+    )
 
 
 # ---------------------------------------------------------------------------

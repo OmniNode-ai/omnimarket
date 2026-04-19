@@ -367,6 +367,19 @@ class HandlerPrLifecycleOrchestrator:
         except (ValueError, TypeError):
             return  # Protocol signature not inspectable — fall back to isinstance only
 
+        # Async/sync parity: registering a sync handler for an async protocol
+        # (or vice-versa) fails only at dispatch today. Catch it here.
+        proto_is_async = inspect.iscoroutinefunction(proto_fn)
+        handler_is_async = inspect.iscoroutinefunction(handle_fn)
+        if proto_is_async != handler_is_async:
+            raise TypeError(
+                f"{handler_name} ({type(handler).__name__}).handle is "
+                f"{'async' if handler_is_async else 'sync'} but "
+                f"{protocol_cls.__name__}.handle is "
+                f"{'async' if proto_is_async else 'sync'}. "
+                "Protocol async/sync signature drift — update the handler to match."
+            )
+
         proto_params = [
             p
             for p in proto_sig.parameters.values()
@@ -381,11 +394,14 @@ class HandlerPrLifecycleOrchestrator:
             # skip name-level comparison.
             return
 
-        handler_param_names = [
-            p.name
+        handler_params = [
+            p
             for p in handler_sig.parameters.values()
             if p.name != "self" and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
         ]
+        handler_param_names = [p.name for p in handler_params]
+        proto_param_names = {p.name for p in proto_params}
+
         for expected_param in proto_params:
             if expected_param.name not in handler_param_names:
                 raise TypeError(
@@ -412,6 +428,25 @@ class HandlerPrLifecycleOrchestrator:
                     f"{protocol_cls.__name__} declares it POSITIONAL_OR_KEYWORD. "
                     "Protocol signature drift — update the handler to match."
                 )
+
+        # Reject extra required parameters on the handler (params not declared
+        # by the protocol and with no default). Such parameters make the
+        # handler uncallable via the protocol contract and surface only at
+        # dispatch today.
+        extra_required = [
+            p.name
+            for p in handler_params
+            if p.name not in proto_param_names and p.default is inspect.Parameter.empty
+        ]
+        if extra_required:
+            raise TypeError(
+                f"{handler_name} ({type(handler).__name__}).handle declares "
+                f"required parameter(s) {extra_required} not present in "
+                f"{protocol_cls.__name__}.handle signature "
+                f"{[p.name for p in proto_params]}. Make them optional (add "
+                "defaults) or remove them so the handler is callable via the "
+                "protocol contract."
+            )
 
     def _ensure_sub_handlers(self) -> None:
         """Lazy-initialize sub-handlers via import fallback if not injected.
