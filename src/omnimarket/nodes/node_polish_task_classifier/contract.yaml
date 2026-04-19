@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Polish Task Classifier
+#
+# Pure compute: classifies an incoming polish signal into exactly one task class.
+# No LLM calls — deterministic decision table (§3.2 of design doc).
+#
+# Related Tickets:
+#   - OMN-8986: node_polish_task_classifier scaffold
+#   - OMN-8985: Merge Sweep Phase 2 epic
+name: "node_polish_task_classifier"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure compute: single-action decision table that maps one polish signal to exactly one EnumPolishTaskClass."
+input_model:
+  name: "ModelPolishClassifyRequest"
+  module: "omnimarket.nodes.node_polish_task_classifier.models.model_polish_classify_request"
+  description: "Incoming polish signal with exactly one populated signal field."
+output_model:
+  name: "ModelPolishClassifyResult"
+  module: "omnimarket.nodes.node_polish_task_classifier.models.model_polish_classify_result"
+  description: "Classification result: task_class, confidence, reason."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "classify"
+      handler:
+        name: "HandlerPolishTaskClassifier"
+        module: "omnimarket.nodes.node_polish_task_classifier.handlers.handler_classifier"
+metadata:
+  description: "Polish task classifier for Merge Sweep Phase 2"
+  author: "OmniNode Platform Team"
+  created: "2026-04-17"
+  tags:
+    - "compute"
+    - "merge-sweep"
+    - "phase2"
+    - "classification"
+    - "OMN-8985"
+  related_tickets:
+    - "OMN-8986"
+    - "OMN-8985"

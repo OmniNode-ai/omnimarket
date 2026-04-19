@@ -18,9 +18,10 @@ def test_enum_has_phase_1_and_phase_2_values() -> None:
         EnumPolishTaskClass.THREAD_REPLY,
         EnumPolishTaskClass.CONFLICT_HUNK,
         EnumPolishTaskClass.CI_FIX,
+        EnumPolishTaskClass.STUCK,
     }
     assert phase_1 | phase_2 == set(EnumPolishTaskClass)
-    assert len(EnumPolishTaskClass) == 6
+    assert len(EnumPolishTaskClass) == 7
 
 
 def test_envelope_declares_routing_policy_slot() -> None:
