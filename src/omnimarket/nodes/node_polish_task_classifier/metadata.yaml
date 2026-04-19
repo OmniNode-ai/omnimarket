@@ -20,4 +20,4 @@ license: "MIT"
 tags: ["compute", "merge-sweep", "phase2", "classification"]
 pack: "merge-sweep"
 display_name: "Polish Task Classifier"
-node_role: "classifier"
+node_role: "triage"

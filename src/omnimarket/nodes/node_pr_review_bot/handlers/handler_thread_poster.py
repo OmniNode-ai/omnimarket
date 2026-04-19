@@ -120,9 +120,14 @@ class HandlerThreadPoster(ProtocolThreadPoster):
         Returns a list of ThreadState — one per finding that warranted a thread.
         Findings below threshold are not represented individually in ThreadState.
         """
-        return asyncio.get_event_loop().run_until_complete(
-            self._post_async(pr_number, repo, findings, dry_run)
-        )
+        # Null-guard first so callers see the RuntimeError from _post_async
+        # without tripping on deprecated asyncio.get_event_loop() in 3.12+.
+        if self._bridge is None:
+            raise RuntimeError(
+                "HandlerThreadPoster bridge is not configured — inject a "
+                "ProtocolThreadBridge implementation before calling post()."
+            )
+        return asyncio.run(self._post_async(pr_number, repo, findings, dry_run))
 
     # ------------------------------------------------------------------
     # Async implementation

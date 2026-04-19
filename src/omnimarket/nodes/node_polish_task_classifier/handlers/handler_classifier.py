@@ -29,7 +29,7 @@ _DEP_CHANGE_PATTERNS: frozenset[str] = frozenset(
     {"pyproject.toml", "uv.lock", "requirements", "package.json"}
 )
 
-_CONFLICT_MARKER = "<<<<<<"
+_CONFLICT_MARKER = "<<<<<<<"
 
 
 def _classify(req: ModelPolishClassifyRequest) -> ModelPolishClassifyResult:
