@@ -152,12 +152,11 @@ def test_ledger_reach_ins_fully_removed() -> None:
             "node_ledger" in importer
             and "node_ledger" in imported
             and importer != imported
-            # Only flag model reach-ins where compute imports from append_effect
-            # (the specific pattern OMN-9263 fixed). The append_effect→orchestrator
-            # reach-in (command model) is in the known allowlist.
-            and "model_ledger_appended_event" in code
+            and (
+                "model_ledger_appended_event" in code
+                or "model_ledger_hash_computed" in code
+            )
         )
-        or "model_ledger_hash_computed" in code
     ]
     if ledger_violations:
         lines = ["Ledger cross-node reach-ins reintroduced (OMN-9263 regression):"]
