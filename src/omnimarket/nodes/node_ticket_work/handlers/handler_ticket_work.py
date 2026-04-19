@@ -735,10 +735,13 @@ def _save_contract_safe(
     """Save contract to Linear and persist locally (best-effort, never raises)."""
     try:
         issue = linear.get_issue(ticket_id)
-        updated_desc = update_description_with_workflow_state(
-            issue.description, contract
-        )
-        linear.update_issue_description(ticket_id, updated_desc)
+        if issue is None:
+            _log.warning("[save_contract] ticket %s not found in Linear", ticket_id)
+        else:
+            updated_desc = update_description_with_workflow_state(
+                issue.description, contract
+            )
+            linear.update_issue_description(ticket_id, updated_desc)
     except Exception as exc:
         _log.warning("[save_contract] Linear update failed for %s: %s", ticket_id, exc)
     try:
