@@ -464,8 +464,16 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert result.error_message is not None
         assert "GitHub API down" in result.error_message
 
-    async def test_exception_in_merge_leads_to_failed_state(self) -> None:
-        """Exception in merge handler -> final_state=FAILED."""
+    async def test_exception_in_merge_counted_as_failed_pr_not_full_abort(
+        self,
+    ) -> None:
+        """Exception in merge handler -> per-PR isolation (prs_failed counted, sweep continues).
+
+        Prior contract was "one exception = entire sweep FAILED"; post-OMN-9234
+        CodeRabbit feedback, merge exceptions are caught per PR so one transient
+        GitHub/network error does not abort the whole batch. The orchestrator
+        completes successfully with the failed PR recorded in ``prs_failed``.
+        """
         inventory = MockInventory(prs=(_PR_GREEN,))
         triage = MockTriage(classified=(_TRIAGE_GREEN,))
         reducer = MockReducer(intents=(_INTENT_MERGE,))
@@ -479,8 +487,10 @@ class TestPrLifecycleOrchestratorGoldenChain:
         )
         result = await orch.handle(_make_command())
 
-        assert result.final_state == "FAILED"
-        assert result.error_message is not None
+        # Sweep completes despite one PR raising — per-PR isolation is the contract.
+        assert result.final_state == "COMPLETE"
+        # The failing PR must NOT be counted as merged.
+        assert result.prs_merged == 0
 
     async def test_event_bus_receives_phase_transitions(
         self, event_bus: EventBusInmemory

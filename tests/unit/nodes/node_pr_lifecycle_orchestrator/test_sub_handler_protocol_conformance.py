@@ -293,6 +293,80 @@ def test_real_fix_handler_conforms_to_protocol() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tests: negative registration — drifting stubs must be rejected by
+# HandlerPrLifecycleOrchestrator._check_protocol_conformance()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_registration_rejects_drifting_inventory() -> None:
+    """_check_protocol_conformance rejects a keyword-only inventory.handle."""
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    with pytest.raises(TypeError, match=r"drifted|KEYWORD_ONLY|input_model"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _DriftingInventory(), ProtocolInventoryHandler, "inventory"
+        )
+
+
+@pytest.mark.unit
+def test_registration_rejects_drifting_triage() -> None:
+    """_check_protocol_conformance rejects a keyword-only triage.handle."""
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    with pytest.raises(TypeError, match=r"drifted|KEYWORD_ONLY|correlation_id|prs"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _DriftingTriage(), ProtocolTriageHandler, "triage"
+        )
+
+
+@pytest.mark.unit
+def test_registration_rejects_drifting_merge() -> None:
+    """_check_protocol_conformance rejects a keyword-only merge.handle."""
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    with pytest.raises(TypeError, match=r"drifted|KEYWORD_ONLY|command"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _DriftingMerge(), ProtocolMergeHandler, "merge"
+        )
+
+
+@pytest.mark.unit
+def test_registration_rejects_drifting_fix() -> None:
+    """_check_protocol_conformance rejects a keyword-only fix.handle."""
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    with pytest.raises(TypeError, match=r"drifted|KEYWORD_ONLY|command"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _DriftingFix(), ProtocolFixHandler, "fix"
+        )
+
+
+@pytest.mark.unit
+def test_registration_rejects_handler_without_handle_method() -> None:
+    """_check_protocol_conformance rejects a handler missing 'handle' entirely."""
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+        HandlerPrLifecycleOrchestrator,
+    )
+
+    class _NoHandle:
+        pass
+
+    with pytest.raises(TypeError, match=r"does not conform|missing required 'handle'"):
+        HandlerPrLifecycleOrchestrator._check_protocol_conformance(
+            _NoHandle(), ProtocolInventoryHandler, "inventory"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Tests: signature comparison between protocol and real handlers
 # ---------------------------------------------------------------------------
 

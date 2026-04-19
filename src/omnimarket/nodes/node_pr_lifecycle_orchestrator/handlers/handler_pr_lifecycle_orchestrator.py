@@ -327,8 +327,16 @@ class HandlerPrLifecycleOrchestrator:
     ) -> None:
         """Verify handler conforms to the expected protocol at registration time.
 
-        Uses isinstance() for @runtime_checkable protocols plus inspect.signature()
-        to catch signature drift early — before dispatch (not at call time as TypeError).
+        ``@runtime_checkable`` ``isinstance()`` only checks for attribute
+        presence, not signature, so a drifted ``handle()`` (e.g. keyword-only
+        args where the protocol declares positional) would silently pass
+        ``isinstance`` and fail at dispatch with ``TypeError``. This method
+        adds a parameter-name comparison against the protocol's declared
+        ``handle()`` signature to catch that drift early.
+
+        Protocols that use ``*args, **kwargs`` (e.g. ProtocolStateReducerHandler)
+        are treated as accepting any signature and are not parameter-name
+        checked — only the presence of a callable ``handle`` is required.
 
         Raises:
             TypeError: if the handler does not conform to the protocol.
@@ -338,8 +346,6 @@ class HandlerPrLifecycleOrchestrator:
                 f"{handler_name} ({type(handler).__name__}) does not conform to "
                 f"{protocol_cls.__name__}: missing required 'handle' method"
             )
-        # Extra: verify the 'handle' callable is present with inspect (catches
-        # cases where isinstance passes due to duck-typing but signature differs).
         handle_fn = getattr(handler, "handle", None)
         if handle_fn is None or not callable(handle_fn):
             raise TypeError(
@@ -347,11 +353,65 @@ class HandlerPrLifecycleOrchestrator:
                 f"attribute — protocol {protocol_cls.__name__} requires it"
             )
         try:
-            inspect.signature(handle_fn)
+            handler_sig = inspect.signature(handle_fn)
         except (ValueError, TypeError) as exc:
             raise TypeError(
                 f"{handler_name} ({type(handler).__name__}).handle is not inspectable: {exc}"
             ) from exc
+
+        proto_fn = getattr(protocol_cls, "handle", None)
+        if proto_fn is None:
+            return  # Protocol defines no handle — nothing to compare
+        try:
+            proto_sig = inspect.signature(proto_fn)
+        except (ValueError, TypeError):
+            return  # Protocol signature not inspectable — fall back to isinstance only
+
+        proto_params = [
+            p
+            for p in proto_sig.parameters.values()
+            if p.name != "self" and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+        ]
+        proto_has_var = any(
+            p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+            for p in proto_sig.parameters.values()
+        )
+        if proto_has_var and not proto_params:
+            # Protocol accepts any signature (e.g. reducer *args/**kwargs) —
+            # skip name-level comparison.
+            return
+
+        handler_param_names = [
+            p.name
+            for p in handler_sig.parameters.values()
+            if p.name != "self" and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+        ]
+        for expected_param in proto_params:
+            if expected_param.name not in handler_param_names:
+                raise TypeError(
+                    f"{handler_name} ({type(handler).__name__}).handle signature "
+                    f"drifted from {protocol_cls.__name__}: expected parameter "
+                    f"{expected_param.name!r} not found in handler signature "
+                    f"{handler_param_names}. Protocol requires "
+                    f"{[p.name for p in proto_params]}."
+                )
+            handler_param = handler_sig.parameters[expected_param.name]
+            # Reject drift where protocol declares POSITIONAL_OR_KEYWORD but
+            # handler has KEYWORD_ONLY (the canonical OMN-9234 drift shape).
+            if (
+                expected_param.kind
+                in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.POSITIONAL_ONLY,
+                )
+                and handler_param.kind == inspect.Parameter.KEYWORD_ONLY
+            ):
+                raise TypeError(
+                    f"{handler_name} ({type(handler).__name__}).handle parameter "
+                    f"{expected_param.name!r} is KEYWORD_ONLY but "
+                    f"{protocol_cls.__name__} declares it POSITIONAL_OR_KEYWORD. "
+                    "Protocol signature drift — update the handler to match."
+                )
 
     def _ensure_sub_handlers(self) -> None:
         """Lazy-initialize sub-handlers via import fallback if not injected.
@@ -656,7 +716,9 @@ class HandlerPrLifecycleOrchestrator:
         """Enumerate open PR numbers for a single repo via the gh CLI.
 
         Override in tests (or subclasses) to avoid real network calls.
-        Returns an empty tuple on any error.
+        Returns an empty tuple on any error. Non-zero ``gh`` exit codes are
+        logged with stderr so auth or rate-limit failures are visible rather
+        than silently producing zero PRs.
         """
         import subprocess
 
@@ -681,6 +743,15 @@ class HandlerPrLifecycleOrchestrator:
                 text=True,
                 timeout=30,
             )
+            if proc.returncode != 0:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] gh pr list failed for repo=%s "
+                    "(returncode=%d): %s",
+                    repo,
+                    proc.returncode,
+                    proc.stderr.strip() or "<no stderr>",
+                )
+                return ()
             return tuple(
                 int(n.strip()) for n in proc.stdout.splitlines() if n.strip().isdigit()
             )
@@ -696,7 +767,9 @@ class HandlerPrLifecycleOrchestrator:
         """Enumerate all org repos via the gh CLI.
 
         Override in tests (or subclasses) to avoid real network calls.
-        Returns an empty tuple on any error.
+        Returns an empty tuple on any error. Non-zero ``gh`` exit codes are
+        logged with stderr so auth or rate-limit failures are visible rather
+        than silently producing zero repos.
         """
         import subprocess
 
@@ -718,6 +791,13 @@ class HandlerPrLifecycleOrchestrator:
                 text=True,
                 timeout=30,
             )
+            if proc.returncode != 0:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] gh repo list failed (returncode=%d): %s",
+                    proc.returncode,
+                    proc.stderr.strip() or "<no stderr>",
+                )
+                return ()
             return tuple(r.strip() for r in proc.stdout.splitlines() if r.strip())
         except Exception as exc:
             logger.warning("[PR-LIFECYCLE-ORCH] failed to enumerate org repos: %s", exc)
@@ -888,7 +968,21 @@ class HandlerPrLifecycleOrchestrator:
                 dry_run=dry_run,
                 requested_at=datetime.now(tz=UTC),
             )
-            raw = await self._merge.handle(merge_command)
+            try:
+                raw = await self._merge.handle(merge_command)
+            except Exception as exc:
+                # Per-PR isolation: one transient GitHub/network failure must
+                # not abort the whole sweep. Count this PR as failed and move on.
+                logger.exception(
+                    "[PR-LIFECYCLE-ORCH] merge handler raised for "
+                    "correlation_id=%s repo=%s pr=%d: %s",
+                    correlation_id,
+                    pr.repo,
+                    pr.pr_number,
+                    exc,
+                )
+                prs_failed += 1
+                continue
             if getattr(raw, "merged", False):
                 prs_merged += 1
             else:
