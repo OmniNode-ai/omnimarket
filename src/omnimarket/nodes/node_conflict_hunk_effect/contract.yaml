@@ -1,79 +1,60 @@
+---
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# ONEX Node Contract - Conflict Hunk Effect
-#
-# LLM-routed effect: resolves merge-conflict hunks in a PR via patch generation.
-# Reads conflict files from the repo worktree, calls LLM to produce resolved patches,
-# writes patched files back, and commits if at least one file is resolved.
-#
-# Related Tickets:
-#   - OMN-8991: node_conflict_hunk_effect scaffold
-#   - OMN-8985: Merge Sweep Phase 2 epic
-name: "node_conflict_hunk_effect"
-node_type: "EFFECT_GENERIC"
-contract_version:
-  major: 1
-  minor: 0
-  patch: 0
-node_version: "1.0.0"
-description: "LLM-routed effect node: resolves merge conflict hunks via patch generation, writes resolved files, and commits."
-input_model:
-  name: "ModelConflictHunkCommand"
-  module: "omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request"
-  description: "Command carrying conflict file list + routing policy for LLM selection."
-output_model:
-  name: "ModelConflictHunkResult"
-  module: "omnimarket.nodes.node_conflict_hunk_effect.models.model_conflict_hunk_result"
-  description: "Resolution outcome: files_resolved, resolution_committed, is_noop."
-handler_routing:
-  routing_strategy: "operation_match"
-  handlers:
-    - operation: "resolve"
-      handler:
-        name: "HandlerConflictHunk"
-        module: "omnimarket.nodes.node_conflict_hunk_effect.handlers.handler_conflict_hunk"
-model_routing:
-  primary: "deepseek-r1-14b"
-  fallback: "deepseek-r1-32b"
-  fallback_allowed_roles:
-    - "conflict_resolver"
-  max_tokens: 4096
-  ci_override:
-    primary: "qwen3-coder-30b"
-metadata:
-  description: "Conflict hunk effect for Merge Sweep Phase 2"
-  author: "OmniNode Platform Team"
-  created: "2026-04-17"
-  tags:
-    - "effect"
-    - "merge-sweep"
-    - "phase2"
-    - "conflict-resolution"
-    - "llm"
-    - "OMN-8985"
-  related_tickets:
-    - "OMN-8991"
-    - "OMN-8985"
+# ONEX Node Contract - Conflict Hunk Effect (OMN-8992)
+name: node_conflict_hunk_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
 
-event_bus:
-  consumer_group: "omnimarket.conflict_hunk_effect.consume.v1"
-  subscribe_topics:
-    - "onex.cmd.omnimarket.pr-conflict-hunk.v1"
-  publish_topics:
-    - "onex.evt.omnimarket.pr-conflict-resolved.v1"
-  dlq_topics:
-    - "onex.dlq.omnimarket.pr-conflict-hunk.v1"
+description: >
+  LLM-routed conflict resolution effect. Receives a ModelConflictHunkCommand,
+  creates an ephemeral git worktree, scans for conflict markers, resolves each hunk
+  via LLM (qwen3-coder-30b primary, glm-4.5 fallback), validates the patch, commits,
+  and emits ModelConflictResolvedEvent. Branch guard prevents pushing to main/master/develop.
+  pytest gate runs in worktree before commit. No shell=True anywhere.
+
+handler:
+  module: omnimarket.nodes.node_conflict_hunk_effect.handlers.handler_conflict_hunk
+  class: HandlerConflictHunk
+  input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelConflictHunkCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_conflict_hunk_effect.handlers.handler_conflict_hunk:HandlerConflictHunk
 
 descriptor:
-  node_archetype: "effect"
-  purity: "impure"
+  node_archetype: effect
+  purity: impure
   idempotent: false
-  timeout_ms: 120000
+  timeout_ms: 300000
+
+model_routing:
+  conflict_resolver:
+    primary: "qwen3-coder-30b"
+    fallback: "glm-4.5"
+    fallback_allowed_roles:
+      - "conflict_resolver"
+    endpoint_env: "LLM_CODER_URL"
+    max_tokens: 8192
+    transport: "http"
+    ci_override:
+      primary: "qwen3-coder-30b"
+
+event_bus:
+  consumer_group: omnimarket.conflict_hunk_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-conflict-hunk.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-conflict-resolved.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-conflict-hunk.v1
 
 dod_evidence:
-  phase: 1
+  phase: 2
+  wave: 2
   artifacts:
-    - "tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py"
+    - tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py
   validation_notes: >
-    Phase 1 (OMN-8991): scaffold + TDD tests written; contract valid YAML.
-    Phase 2 (OMN-8992): real LLM calls, git patch write-back, commit logic.
+    Phase 2 Wave 2: full handler impl. LLM calls use injected llm_call_fn for unit tests.
+    All safety checks (branch guard, file allowlist, patch size, scope check) implemented.
+    pytest gate runs in worktree. No shell=True.
