@@ -255,6 +255,13 @@ class HandlerTicketWork:
         except Exception as exc:
             return ModelTicketWorkflowState(), False, f"Linear fetch failed: {exc}"
 
+        if issue is None:
+            return (
+                ModelTicketWorkflowState(),
+                False,
+                f"Linear issue not found: {ticket_id}",
+            )
+
         existing = extract_workflow_state(issue.description)
         if existing is not None:
             _log.info(
