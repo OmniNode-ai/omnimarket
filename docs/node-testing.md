@@ -28,7 +28,7 @@ uv run pytest tests/test_skill_dispatch.py -v -m unit
 
 ## Adding a new node
 
-When porting a new skill to a node, add it to the parametrize list in `test_node_dry_run_exits_and_writes_json` and add a dedicated parity test following the pattern of `test_coverage_sweep_parity`.
+When porting a new skill to a node, add it to the parameterized list in `test_node_dry_run_exits_and_writes_json` and add a dedicated parity test following the pattern of `test_coverage_sweep_parity`.
 
 Requirements for a node to be harness-compatible:
 

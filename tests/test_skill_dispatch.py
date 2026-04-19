@@ -49,17 +49,54 @@ from omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_OMNI_HOME = os.environ.get("OMNI_HOME", str(Path.home() / "omni_home"))
+
+def _resolve_omni_home() -> str:
+    """Resolve OMNI_HOME at call-time (not import-time) so tests stay hermetic.
+
+    Order of preference:
+      1. Explicit OMNI_HOME env var (operator override).
+      2. Walk up from __file__ looking for a sibling directory that contains
+         the expected repo clones (matches the canonical omni_home layout).
+      3. Fall back to ~/omni_home.
+    """
+    env_override = os.environ.get("OMNI_HOME")
+    if env_override and Path(env_override).is_dir():
+        return env_override
+    # Walk up from this file: .../omni_home/omnimarket/tests/test_skill_dispatch.py
+    # or .../omni_worktrees/<ticket>/omnimarket/tests/test_skill_dispatch.py
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "omnibase_core").is_dir() and (parent / "omnimarket").is_dir():
+            return str(parent)
+    return str(Path.home() / "omni_home")
 
 
-def _run_node_subprocess(module: str, extra_args: list[str]) -> dict[str, Any]:
-    """Run a node module as a subprocess and return parsed JSON stdout."""
+def _make_hermetic_omni_home(tmpdir: Path) -> str:
+    """Build a throwaway omni_home with empty stubs so nodes can scan without
+    depending on the operator's real checkout layout.
+    """
+    for repo in ("omnibase_core", "omnimarket", "omnibase_infra", "omniclaude"):
+        (tmpdir / repo / "src").mkdir(parents=True, exist_ok=True)
+    return str(tmpdir)
+
+
+def _run_node_subprocess(
+    module: str,
+    extra_args: list[str],
+    *,
+    omni_home: str | None = None,
+) -> dict[str, Any]:
+    """Run a node module as a subprocess and return parsed JSON stdout.
+
+    OMNI_HOME is resolved at call time (not module import) so tests can
+    override per-case with a hermetic tempdir.
+    """
+    resolved = omni_home or _resolve_omni_home()
     cmd = [sys.executable, "-m", module, "--dry-run", *extra_args]
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
-        env={**os.environ, "OMNI_HOME": _OMNI_HOME},
+        env={**os.environ, "OMNI_HOME": resolved},
     )
     assert result.returncode in (
         0,
@@ -72,6 +109,12 @@ def _run_node_subprocess(module: str, extra_args: list[str]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Parametrized dry-run exit test
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def hermetic_omni_home(tmp_path: Path) -> str:
+    """Scratch omni_home with empty repo stubs for sweep-style node tests."""
+    return _make_hermetic_omni_home(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -93,9 +136,11 @@ def _run_node_subprocess(module: str, extra_args: list[str]) -> dict[str, Any]:
     ids=["coverage_sweep", "runtime_sweep", "aislop_sweep"],
 )
 @pytest.mark.unit
-def test_node_dry_run_exits_and_writes_json(module: str, extra_args: list[str]) -> None:
+def test_node_dry_run_exits_and_writes_json(
+    module: str, extra_args: list[str], hermetic_omni_home: str
+) -> None:
     """Each node must exit 0 or 1 and write valid JSON to stdout on --dry-run."""
-    data = _run_node_subprocess(module, extra_args)
+    data = _run_node_subprocess(module, extra_args, omni_home=hermetic_omni_home)
     assert isinstance(data, dict), f"{module}: stdout is not a JSON object"
     assert "status" in data or "findings" in data, (
         f"{module}: JSON output missing both 'status' and 'findings' keys — "
@@ -109,7 +154,7 @@ def test_node_dry_run_exits_and_writes_json(module: str, extra_args: list[str]) 
 
 
 @pytest.mark.unit
-def test_coverage_sweep_parity() -> None:
+def test_coverage_sweep_parity(hermetic_omni_home: str) -> None:
     """Subprocess invocation and direct handler call produce schema-compatible output."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write a minimal coverage.json so the handler has something to scan
@@ -130,18 +175,22 @@ def test_coverage_sweep_parity() -> None:
         proc_data = _run_node_subprocess(
             "omnimarket.nodes.node_coverage_sweep",
             ["--repos", "omnibase_core"],
+            omni_home=hermetic_omni_home,
         )
         assert "status" in proc_data
         assert "repos_scanned" in proc_data
         assert "gaps" in proc_data
         assert "dry_run" in proc_data
 
-        # Both outputs must be parseable as the same result model
-        CoverageSweepResult.model_validate(proc_data)
+        # Both outputs must be parseable as the same result model AND share
+        # the same field surface + dry_run flag (CR parity assertion).
+        proc_result = CoverageSweepResult.model_validate(proc_data)
+        assert proc_result.dry_run == direct_result.dry_run
+        assert proc_result.model_dump().keys() == direct_result.model_dump().keys()
 
 
 @pytest.mark.unit
-def test_runtime_sweep_parity() -> None:
+def test_runtime_sweep_parity(hermetic_omni_home: str) -> None:
     """Subprocess invocation and direct handler call produce schema-compatible output."""
     handler = NodeRuntimeSweep()
     request = RuntimeSweepRequest(
@@ -166,16 +215,19 @@ def test_runtime_sweep_parity() -> None:
     proc_data = _run_node_subprocess(
         "omnimarket.nodes.node_runtime_sweep",
         ["--scope", "all-repos"],
+        omni_home=hermetic_omni_home,
     )
     assert "findings" in proc_data
     assert "status" in proc_data
     assert "dry_run" in proc_data
 
-    RuntimeSweepResult.model_validate(proc_data)
+    proc_result = RuntimeSweepResult.model_validate(proc_data)
+    assert proc_result.dry_run == direct_result.dry_run
+    assert proc_result.model_dump().keys() == direct_result.model_dump().keys()
 
 
 @pytest.mark.unit
-def test_aislop_sweep_parity() -> None:
+def test_aislop_sweep_parity(hermetic_omni_home: str) -> None:
     """Subprocess invocation and direct handler call produce schema-compatible output."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write a minimal Python file to scan
@@ -194,11 +246,13 @@ def test_aislop_sweep_parity() -> None:
         proc_data = _run_node_subprocess(
             "omnimarket.nodes.node_aislop_sweep",
             ["--repos", "omnibase_core", "--dry-run"],
+            omni_home=hermetic_omni_home,
         )
         assert "findings" in proc_data
         assert "status" in proc_data
 
-        AislopSweepResult.model_validate(proc_data)
+        proc_result = AislopSweepResult.model_validate(proc_data)
+        assert proc_result.model_dump().keys() == direct_result.model_dump().keys()
 
 
 # ---------------------------------------------------------------------------
