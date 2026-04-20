@@ -179,27 +179,20 @@ class HandlerReportPoster(ProtocolReportPoster):
     instance for the actual GitHub API call so the handler remains unit-testable
     without hitting the network.
 
-    The ``findings`` and ``thread_states`` parameters are optional: the FSM
-    ``make_verdict`` method already aggregates counts into ``ReviewVerdict``,
-    but the full sequences are needed here to render the per-severity breakdown
-    table. Callers must pass the current FSM state's sequences through.
+    Stateless: findings and thread_states are passed at call time from FSM
+    state so the poster always sees the final accumulated sequences.
     """
 
-    def __init__(
-        self,
-        github_bridge: ProtocolGitHubBridge,
-        findings: tuple[ReviewFinding, ...],
-        thread_states: tuple[ThreadState, ...],
-    ) -> None:
+    def __init__(self, github_bridge: ProtocolGitHubBridge) -> None:
         self._bridge = github_bridge
-        self._findings = findings
-        self._thread_states = thread_states
 
     def post_summary(
         self,
         pr_number: int,
         repo: str,
         verdict: ReviewVerdict,
+        findings: tuple[ReviewFinding, ...],
+        thread_states: tuple[ThreadState, ...],
         dry_run: bool,
     ) -> None:
         """Build and post the markdown summary comment.
@@ -207,11 +200,11 @@ class HandlerReportPoster(ProtocolReportPoster):
         In dry_run mode the body is logged at INFO level and no GitHub call
         is made. Raises on unrecoverable GitHub API failures (non-dry-run).
         """
-        if verdict.total_findings and not self._findings:
+        if verdict.total_findings and not findings:
             msg = "findings must be provided when verdict.total_findings > 0"
             raise ValueError(msg)
 
-        body = build_summary_comment(verdict, self._findings, self._thread_states)
+        body = build_summary_comment(verdict, findings, thread_states)
 
         if dry_run:
             logger.info(

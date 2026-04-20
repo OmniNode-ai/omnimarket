@@ -240,8 +240,6 @@ def run_review(
     )
     report_poster: ProtocolReportPoster = HandlerReportPoster(
         github_bridge=_ReportPosterBridgeAdapter(github_bridge),
-        findings=(),
-        thread_states=(),
     )
 
     # Run the FSM pipeline

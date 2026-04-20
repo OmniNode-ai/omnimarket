@@ -194,6 +194,8 @@ class ProtocolReportPoster(ABC):
         pr_number: int,
         repo: str,
         verdict: ReviewVerdict,
+        findings: tuple[ReviewFinding, ...],
+        thread_states: tuple[ThreadState, ...],
         dry_run: bool,
     ) -> None:
         """Post the final summary comment. Raises on unrecoverable failure."""
@@ -448,6 +450,8 @@ class HandlerPrReviewBot:
                         state.pr_number,
                         state.repo,
                         verdict_obj,
+                        state.findings,
+                        state.thread_states,
                         state.dry_run,
                     )
                     state, event = self.advance(state, phase_success=True)

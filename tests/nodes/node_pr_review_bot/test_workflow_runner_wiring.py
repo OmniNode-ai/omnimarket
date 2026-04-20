@@ -208,3 +208,148 @@ def test_run_review_wires_concrete_handlers_not_stubs(
     assert isinstance(captured_kwargs["report_poster"], HandlerReportPoster), (
         f"report_poster must be HandlerReportPoster, got {type(captured_kwargs['report_poster'])}"
     )
+
+
+@pytest.mark.unit
+def test_report_phase_receives_findings_from_fsm_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression (OMN-9357): findings accumulated during REVIEW must flow into
+    post_summary at REPORT time.
+
+    Before this fix, HandlerReportPoster stored findings at construction time
+    (workflow_runner passed empty tuples), so the FSM's accumulated findings
+    were invisible to post_summary and it raised ValueError when total_findings > 0.
+
+    This test runs the FSM with 2 stub findings, lets the FSM advance to REPORT,
+    and asserts that post_summary is called with those findings — not empty tuples.
+    """
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
+        EnumFindingSeverity,
+        EnumReviewConfidence,
+    )
+    from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
+        HandlerPrReviewBot,
+        ProtocolDiffFetcher,
+        ProtocolJudgeVerifier,
+        ProtocolReportPoster,
+        ProtocolReviewer,
+        ProtocolThreadPoster,
+        ProtocolThreadWatcher,
+    )
+    from omnimarket.nodes.node_pr_review_bot.models.models import (
+        DiffHunk,
+        EnumFindingCategory,
+        ReviewFinding,
+        ReviewRequest,
+        ReviewVerdict,
+        ThreadState,
+    )
+
+    finding_a = ReviewFinding(
+        id=uuid4(),
+        category=EnumFindingCategory.SECURITY,
+        severity=EnumFindingSeverity.MAJOR,
+        title="Finding A",
+        description="First finding",
+        confidence=EnumReviewConfidence.HIGH,
+        source_model="test-model",
+    )
+    finding_b = ReviewFinding(
+        id=uuid4(),
+        category=EnumFindingCategory.LOGIC_ERROR,
+        severity=EnumFindingSeverity.MINOR,
+        title="Finding B",
+        description="Second finding",
+        confidence=EnumReviewConfidence.MEDIUM,
+        source_model="test-model",
+    )
+
+    class StubDiffFetcher(ProtocolDiffFetcher):
+        def fetch(self, pr_number: int, repo: str) -> list[DiffHunk]:
+            return [
+                DiffHunk(file_path="foo.py", start_line=1, end_line=5, content="+x=1")
+            ]
+
+    class StubReviewer(ProtocolReviewer):
+        def review(
+            self,
+            correlation_id: object,
+            diff_hunks: tuple[DiffHunk, ...],
+            reviewer_models: list[str],
+        ) -> list[ReviewFinding]:
+            return [finding_a, finding_b]
+
+    class StubThreadPoster(ProtocolThreadPoster):
+        def post(
+            self,
+            pr_number: int,
+            repo: str,
+            findings: tuple[ReviewFinding, ...],
+            dry_run: bool,
+        ) -> list[ThreadState]:
+            return []
+
+    class StubThreadWatcher(ProtocolThreadWatcher):
+        def watch(
+            self, pr_number: int, repo: str, thread_states: tuple[ThreadState, ...]
+        ) -> list[ThreadState]:
+            return list(thread_states)
+
+    class StubJudgeVerifier(ProtocolJudgeVerifier):
+        def verify(
+            self,
+            correlation_id: object,
+            findings: tuple[ReviewFinding, ...],
+            thread_states: tuple[ThreadState, ...],
+            judge_model: str,
+        ) -> list[ThreadState]:
+            return list(thread_states)
+
+    post_summary_calls: list[dict[str, object]] = []
+
+    class CapturingReportPoster(ProtocolReportPoster):
+        def post_summary(
+            self,
+            pr_number: int,
+            repo: str,
+            verdict: ReviewVerdict,
+            findings: tuple[ReviewFinding, ...],
+            thread_states: tuple[ThreadState, ...],
+            dry_run: bool,
+        ) -> None:
+            post_summary_calls.append({"findings": findings, "verdict": verdict})
+
+    request = ReviewRequest(
+        correlation_id=uuid4(),
+        pr_number=42,
+        repo="OmniNode-ai/test",
+        reviewer_models=["test-model"],
+        judge_model="test-judge",
+        dry_run=True,
+        requested_at=datetime.now(tz=UTC),
+    )
+
+    fsm = HandlerPrReviewBot()
+    fsm.run_full_pipeline(
+        request=request,
+        diff_fetcher=StubDiffFetcher(),
+        reviewer=StubReviewer(),
+        thread_poster=StubThreadPoster(),
+        thread_watcher=StubThreadWatcher(),
+        judge_verifier=StubJudgeVerifier(),
+        report_poster=CapturingReportPoster(),
+    )
+
+    assert len(post_summary_calls) == 1, "post_summary must be called exactly once"
+    received_findings = post_summary_calls[0]["findings"]
+    assert len(received_findings) == 2, (
+        f"post_summary must receive both findings, got {len(received_findings)}"
+    )
+    titles = {f.title for f in received_findings}
+    assert titles == {"Finding A", "Finding B"}, (
+        f"post_summary received wrong findings: {titles!r}"
+    )
