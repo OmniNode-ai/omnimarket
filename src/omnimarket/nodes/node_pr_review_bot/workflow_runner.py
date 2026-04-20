@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """WorkflowRunner for node_pr_review_bot.
 
-Wires the FSM handler (HandlerPrReviewBot) with all concrete sub-handler
-implementations. Provides stub/placeholder implementations for ThreadPoster,
-ThreadWatcher, JudgeVerifier, and ReportPoster — the concrete handlers for
-those are implemented in parallel PRs (OMN-7969, OMN-7970, OMN-7971, OMN-7972).
+Wires the FSM handler (HandlerPrReviewBot) with concrete sub-handler
+implementations: HandlerThreadPoster, HandlerThreadWatcher,
+HandlerJudgeVerifier, HandlerReportPoster (OMN-7969, OMN-7970, OMN-7971,
+OMN-7972 — swapped in at OMN-9351).
 
 Entry point: run_review(pr_number, repo, github_token)
 """
@@ -19,6 +19,9 @@ import os
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from omnimarket.inference.bridge_config_loader import (
+    load_inference_bridge_config_from_env,
+)
 from omnimarket.nodes.node_pr_review_bot.adapter_github_bridge import (
     AdapterGitHubBridge,
 )
@@ -36,17 +39,28 @@ from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolThreadPoster,
     ProtocolThreadWatcher,
 )
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_judge_verifier import (
+    HandlerJudgeVerifier,
+)
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_llm_reviewer import (
     HandlerLlmReviewer,
     LlmReviewerConfig,
 )
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_report_poster import (
+    HandlerReportPoster,
+    ProtocolGitHubBridge,
+)
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster import (
+    HandlerThreadPoster,
+)
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_watcher import (
+    HandlerThreadWatcher,
+)
 from omnimarket.nodes.node_pr_review_bot.models.models import (
     DiffHunk,
     EnumFindingSeverity,
-    ReviewFinding,
     ReviewRequest,
     ReviewVerdict,
-    ThreadState,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,88 +89,31 @@ class _DiffFetcherAdapter(ProtocolDiffFetcher):
 
 
 # ---------------------------------------------------------------------------
-# Stub implementations for handlers not yet available (parallel PRs)
+# ReportPoster bridge adapter — bridges async AdapterGitHubBridge.post_pr_comment
+# to the sync ProtocolGitHubBridge consumed by HandlerReportPoster.
 # ---------------------------------------------------------------------------
 
 
-class _StubThreadPoster(ProtocolThreadPoster):
-    """Stub thread poster — no-ops until OMN-7969 (HandlerThreadPoster) lands."""
+class _ReportPosterBridgeAdapter(ProtocolGitHubBridge):
+    """Adapt async ``AdapterGitHubBridge`` to the sync surface expected by
+    ``HandlerReportPoster``.
 
-    def post(
-        self,
-        pr_number: int,
-        repo: str,
-        findings: tuple[ReviewFinding, ...],
-        dry_run: bool,
-    ) -> list[ThreadState]:
-        logger.info(
-            "StubThreadPoster: would post %d thread(s) for PR #%d in %s (dry_run=%s)",
-            len(findings),
-            pr_number,
-            repo,
-            dry_run,
-        )
-        return []
+    HandlerReportPoster defines its own minimal ``ProtocolGitHubBridge`` with
+    a synchronous ``post_pr_comment``; the real bridge is async. This shim
+    runs the async call in a dedicated executor so the FSM's synchronous
+    report phase doesn't need to know about the event loop.
+    """
 
+    def __init__(self, bridge: AdapterGitHubBridge) -> None:
+        self._bridge = bridge
 
-class _StubThreadWatcher(ProtocolThreadWatcher):
-    """Stub thread watcher — returns threads unchanged until OMN-7970 lands."""
-
-    def watch(
-        self,
-        pr_number: int,
-        repo: str,
-        thread_states: tuple[ThreadState, ...],
-    ) -> list[ThreadState]:
-        logger.info(
-            "StubThreadWatcher: watching %d thread(s) for PR #%d in %s",
-            len(thread_states),
-            pr_number,
-            repo,
-        )
-        return list(thread_states)
-
-
-class _StubJudgeVerifier(ProtocolJudgeVerifier):
-    """Stub judge verifier — returns threads unchanged until OMN-7971 lands."""
-
-    def verify(
-        self,
-        correlation_id: UUID,
-        findings: tuple[ReviewFinding, ...],
-        thread_states: tuple[ThreadState, ...],
-        judge_model: str,
-    ) -> list[ThreadState]:
-        logger.info(
-            "StubJudgeVerifier: verifying %d thread(s) with model=%s (correlation_id=%s)",
-            len(thread_states),
-            judge_model,
-            correlation_id,
-        )
-        return list(thread_states)
-
-
-class _StubReportPoster(ProtocolReportPoster):
-    """Stub report poster — logs verdict until OMN-7972 (HandlerReportPoster) lands."""
-
-    def post_summary(
-        self,
-        pr_number: int,
-        repo: str,
-        verdict: ReviewVerdict,
-        dry_run: bool,
-    ) -> None:
-        logger.info(
-            "StubReportPoster: verdict=%s for PR #%d in %s "
-            "(findings=%d, threads_pass=%d, threads_fail=%d, dry_run=%s)",
-            verdict.verdict,
-            pr_number,
-            repo,
-            verdict.total_findings,
-            verdict.threads_verified_pass,
-            verdict.threads_verified_fail,
-            dry_run,
-        )
+    def post_pr_comment(self, repo: str, pr_number: int, body: str) -> None:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                asyncio.run,
+                self._bridge.post_pr_comment(repo, pr_number, body),
+            )
+            future.result()
 
 
 # ---------------------------------------------------------------------------
@@ -245,29 +202,47 @@ def run_review(
         requested_at=datetime.now(tz=UTC),
     )
 
-    # Wire concrete implementations.
-    # AdapterGitHubBridge is instantiated here so sub-handlers can receive it
-    # when their concrete implementations replace the stubs (OMN-7969 to OMN-7972).
-    _github_bridge = AdapterGitHubBridge(
-        token_env_var="GITHUB_TOKEN" if not token else _inject_token_env(token)
-    )
+    # GitHub bridge is shared across thread poster / watcher / report poster so
+    # rate-limit state and auth are consistent. AdapterGitHubBridge reads
+    # GITHUB_TOKEN from env by design — route the explicit token through env
+    # when provided.
+    if token:
+        _inject_token_env(token)
+    github_bridge = AdapterGitHubBridge(token_env_var="GITHUB_TOKEN")
+
     diff_fetcher_config = DiffFetcherConfig(github_token=token)
     diff_fetcher_handler = HandlerDiffFetcher(diff_fetcher_config)
     diff_fetcher = _DiffFetcherAdapter(diff_fetcher_handler)
 
-    # Concrete reviewer — reads model selection from caller (contract inputs).
-    # context_window per reviewer model comes from contract.yaml model_routing.reviewer.context_window (112K).
-    _reviewer_context_windows = dict.fromkeys(request.reviewer_models, 112000)
+    # Reviewer wiring — populate inference_bridge_config from env so
+    # caller-supplied reviewer_models keys resolve to real endpoints.
+    # context_window per reviewer model comes from contract.yaml
+    # model_routing.reviewer.context_window (112K).
+    inference_bridge_config = load_inference_bridge_config_from_env()
+    _reviewer_context_windows = dict.fromkeys(request.reviewer_models, 112_000)
     _reviewer_config = LlmReviewerConfig(
         reviewer_models=request.reviewer_models,
         model_context_windows=_reviewer_context_windows,
+        inference_bridge_config=inference_bridge_config,
     )
     reviewer: ProtocolReviewer = HandlerLlmReviewer(config=_reviewer_config)
-    # Stub implementations for handlers from parallel PRs (OMN-7969 to OMN-7972)
-    thread_poster: ProtocolThreadPoster = _StubThreadPoster()
-    thread_watcher: ProtocolThreadWatcher = _StubThreadWatcher()
-    judge_verifier: ProtocolJudgeVerifier = _StubJudgeVerifier()
-    report_poster: ProtocolReportPoster = _StubReportPoster()
+
+    # Concrete GitHub-side handlers (OMN-7969..OMN-7972, swapped in at OMN-9351).
+    thread_poster: ProtocolThreadPoster = HandlerThreadPoster(
+        bridge=github_bridge,
+        max_findings_per_pr=request.max_findings_per_pr,
+    )
+    thread_watcher: ProtocolThreadWatcher = HandlerThreadWatcher(
+        github_bridge=github_bridge,
+    )
+    judge_verifier: ProtocolJudgeVerifier = HandlerJudgeVerifier(
+        judge_model_id=request.judge_model,
+    )
+    report_poster: ProtocolReportPoster = HandlerReportPoster(
+        github_bridge=_ReportPosterBridgeAdapter(github_bridge),
+        findings=(),
+        thread_states=(),
+    )
 
     # Run the FSM pipeline
     fsm = HandlerPrReviewBot()
