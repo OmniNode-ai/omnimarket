@@ -28,6 +28,12 @@ handler_routing:
       event_model:
         name: ModelPrLifecycleStartCommand
         module: omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator
+      # OMN-9215: wire-level event_type alias. ModelEventEnvelope[object] erases
+      # the concrete payload type to dict on inbound validation, so dispatcher
+      # lookup cannot match ModelPrLifecycleStartCommand via the class-name
+      # fallback. This alias indexes the handler under the contract-canonical
+      # dot-path that publishers emit on ModelEventEnvelope.event_type.
+      event_type: omnimarket.pr-lifecycle-orchestrator-start
 
 descriptor:
   node_archetype: orchestrator
