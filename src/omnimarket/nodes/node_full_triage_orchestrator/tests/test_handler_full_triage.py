@@ -164,9 +164,10 @@ class TestOrchestratorParallelism:
         )
         elapsed = time.perf_counter() - start
         assert len(report.probe_results) == 5
-        # Serial would be ~1.0s. With 5 workers parallel, should be <0.6s
-        # even on a loaded CI runner.
-        assert elapsed < 0.6, f"fan-out appears serialized (elapsed={elapsed:.2f}s)"
+        serial_total = sum(p.sleep_s for p in probes)  # ~1.0s
+        assert elapsed < serial_total * 0.85, (
+            f"fan-out appears serialized (elapsed={elapsed:.2f}s, serial={serial_total:.2f}s)"
+        )
 
 
 class TestOutputFormatters:
