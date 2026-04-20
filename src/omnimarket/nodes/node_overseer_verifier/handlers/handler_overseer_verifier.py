@@ -478,8 +478,12 @@ def _verify_claimed_pr(claim: ModelClaimedPr) -> str | None:
         )
     raw: list[dict[str, Any]] = parsed
 
+    # Coerce `name` to str — untyped JSON may yield None or non-string values,
+    # which would break `sorted()` / `join()` below with a TypeError.
     red_checks = [
-        item.get("name", "<unnamed>") for item in raw if not _check_row_passes(item)
+        str(item.get("name") or "<unnamed>")
+        for item in raw
+        if not _check_row_passes(item)
     ]
     if red_checks:
         return (

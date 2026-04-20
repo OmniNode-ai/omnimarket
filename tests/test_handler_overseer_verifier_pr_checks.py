@@ -288,6 +288,41 @@ def test_pr_checks_live_fails_on_non_dict_list_items() -> None:
 
 
 @pytest.mark.unit
+def test_pr_checks_live_tolerates_non_string_check_names() -> None:
+    """Rows with `name: null` or non-string `name` values don't crash sort/join."""
+    handler = HandlerOverseerVerifier()
+    claimed = [ModelClaimedPr(pr_number=1, repo="OmniNode-ai/omnimarket")]
+    mixed_rows: list[dict[str, Any]] = [
+        {"bucket": "fail", "state": "COMPLETED", "conclusion": "failure", "name": None},
+        {"bucket": "fail", "state": "COMPLETED", "conclusion": "failure", "name": 42},
+        {
+            "bucket": "fail",
+            "state": "COMPLETED",
+            "conclusion": "failure",
+            "name": "lint",
+        },
+    ]
+    stdout = json.dumps(mixed_rows)
+
+    with patch(
+        "omnimarket.nodes.node_overseer_verifier.handlers."
+        "handler_overseer_verifier.subprocess.run",
+        return_value=_FakeCompleted(stdout=stdout, returncode=0),
+    ):
+        result = handler.verify(_make_request(claimed_prs=claimed))
+
+    # Must not raise TypeError — verdict surfaces the failing checks normally.
+    assert result["verdict"] == "FAIL"
+    checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
+    assert checks["pr_checks_live"]["passed"] is False
+    msg = str(checks["pr_checks_live"]["message"])
+    assert "lint" in msg
+    # None-name is replaced with "<unnamed>", int is coerced via str().
+    assert "<unnamed>" in msg
+    assert "42" in msg
+
+
+@pytest.mark.unit
 def test_pr_checks_live_fails_when_claimed_prs_exceed_cap() -> None:
     """claimed_prs beyond the hard cap fail fast without shelling out."""
     handler = HandlerOverseerVerifier()
