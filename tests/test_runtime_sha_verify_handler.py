@@ -201,3 +201,16 @@ class TestHandlerRuntimeShaVerifyProbeMethod:
             )
             with pytest.raises(RuntimeError, match="git rev-parse"):
                 handler._probe_deployed_sha(request)
+
+    def test_probe_raises_on_non_sha_output(self) -> None:
+        handler = HandlerRuntimeShaVerify()
+        request = _make_request()
+
+        with patch(
+            "omnimarket.nodes.node_dod_verify.handlers.handler_runtime_sha_verify.subprocess.run"
+        ) as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="not-a-sha\n", stderr=""
+            )
+            with pytest.raises(RuntimeError, match="not a valid SHA"):
+                handler._probe_deployed_sha(request)

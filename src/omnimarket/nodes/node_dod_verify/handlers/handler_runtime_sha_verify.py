@@ -11,6 +11,7 @@ actual_output (ModelRuntimeShaMatchOutput JSON) proving deployed_sha == merge_sh
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import UTC, datetime
 
@@ -83,11 +84,17 @@ class HandlerRuntimeShaVerify:
             pr_number=request.pr_number,
         )
 
+    _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
     def _probe_deployed_sha(self, request: ModelRuntimeShaVerifyRequest) -> str:
         """SSH to runtime host and return `git rev-parse HEAD` output.
 
+        Uses subprocess list form (no shell=True) so host/path values are passed
+        as argv elements, not shell-interpolated — no injection risk.
+
         Raises:
-            RuntimeError: If SSH exits non-zero or returns empty output.
+            RuntimeError: If SSH exits non-zero, output is empty, or output is
+                not a valid lowercase hex SHA (7-40 chars).
         """
         cmd = [
             "ssh",
@@ -111,10 +118,15 @@ class HandlerRuntimeShaVerify:
                 f"git rev-parse HEAD failed on {request.runtime_host} "
                 f"(exit {result.returncode}): {result.stderr.strip()}"
             )
-        sha = result.stdout.strip()
+        sha = result.stdout.strip().lower()
         if not sha:
             raise RuntimeError(
                 f"git rev-parse HEAD returned empty output on {request.runtime_host}"
+            )
+        if not self._SHA_RE.match(sha):
+            raise RuntimeError(
+                f"git rev-parse HEAD returned unexpected output "
+                f"(not a valid SHA): {sha!r}"
             )
         return sha
 
