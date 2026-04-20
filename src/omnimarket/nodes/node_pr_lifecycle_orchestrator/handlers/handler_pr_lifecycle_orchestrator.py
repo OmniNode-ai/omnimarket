@@ -508,11 +508,20 @@ class HandlerPrLifecycleOrchestrator:
                 self._merge = _StubMergeHandler()
         if self._fix is None:
             try:
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
+                    GitHubCliAdapter,
+                )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch import (
+                    PrPolishDispatchAdapter,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
                     HandlerPrLifecycleFix,
                 )
 
-                fix_handler = HandlerPrLifecycleFix()
+                fix_handler = HandlerPrLifecycleFix(
+                    github_adapter=GitHubCliAdapter(),
+                    agent_dispatch_adapter=PrPolishDispatchAdapter(),
+                )
                 self._check_protocol_conformance(fix_handler, ProtocolFixHandler, "fix")
                 self._fix = fix_handler
             except ImportError:
