@@ -106,19 +106,34 @@ class PrPolishDispatchAdapter:
         log_path = run_dir / "worker.log"
         argv = [self._claude_bin, "-p", skill_cmd]
 
-        self._write_breadcrumb(run_dir, kind, repo, pr_number, ticket_id, argv, run_id)
-
-        log_fh = log_path.open("ab")
+        # Spawn first; only write the breadcrumb after the child has actually
+        # started. Writing dispatch.json before the spawn would recreate the
+        # exact false-positive OMN-9284 set out to eliminate — a later tick
+        # would see dispatch.json and assume a worker ran when none did.
         try:
-            self._spawner(
-                argv,
-                stdout=log_fh.fileno(),
-                stderr=log_fh.fileno(),
-                start_new_session=True,
-                env=None,
-            )
+            log_fh = log_path.open("ab")
+        except OSError as exc:
+            raise RuntimeError(
+                f"failed to dispatch {kind} agent on {repo}#{pr_number}: "
+                f"could not open log file {log_path}: {exc}"
+            ) from exc
+        try:
+            try:
+                self._spawner(
+                    argv,
+                    stdout=log_fh.fileno(),
+                    stderr=log_fh.fileno(),
+                    start_new_session=True,
+                    env=None,
+                )
+            except OSError as exc:
+                raise RuntimeError(
+                    f"failed to dispatch {kind} agent on {repo}#{pr_number}: {exc}"
+                ) from exc
         finally:
             log_fh.close()
+
+        self._write_breadcrumb(run_dir, kind, repo, pr_number, ticket_id, argv, run_id)
 
         logger.info(
             "pr_polish_dispatch: kind=%s repo=%s pr=%s run_id=%s state_dir=%s",

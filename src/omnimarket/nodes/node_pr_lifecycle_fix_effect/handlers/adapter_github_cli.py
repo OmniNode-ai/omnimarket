@@ -10,6 +10,7 @@ instead of the ``_NoopGitHubAdapter`` default. Related: OMN-9284.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 
@@ -110,13 +111,26 @@ class GitHubCliAdapter:
         *,
         context: str,
         check: bool = True,
+        timeout_s: float = 30.0,
     ) -> tuple[int, str, str]:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_b, stderr_b = await proc.communicate()
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as exc:
+            raise RuntimeError(f"{context} failed to start gh: {exc}") from exc
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout_s
+            )
+        except TimeoutError as exc:
+            proc.kill()
+            # Best-effort drain; we already know the child is dead.
+            with contextlib.suppress(Exception):
+                await proc.communicate()
+            raise RuntimeError(f"{context} timed out after {timeout_s:.0f}s") from exc
         stdout = stdout_b.decode("utf-8", errors="replace")
         stderr = stderr_b.decode("utf-8", errors="replace")
         rc = proc.returncode if proc.returncode is not None else -1
