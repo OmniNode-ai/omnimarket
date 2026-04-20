@@ -3,9 +3,7 @@
 """WorkflowRunner for node_pr_review_bot.
 
 Wires the FSM handler (HandlerPrReviewBot) with all concrete sub-handler
-implementations. Provides stub/placeholder implementations for ThreadPoster,
-ThreadWatcher, JudgeVerifier, and ReportPoster — the concrete handlers for
-those are implemented in parallel PRs (OMN-7969, OMN-7970, OMN-7971, OMN-7972).
+implementations.
 
 Entry point: run_review(pr_number, repo, github_token)
 """
@@ -19,6 +17,9 @@ import os
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
+    ModelInferenceBridgeConfig,
+)
 from omnimarket.nodes.node_pr_review_bot.adapter_github_bridge import (
     AdapterGitHubBridge,
 )
@@ -36,20 +37,65 @@ from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolThreadPoster,
     ProtocolThreadWatcher,
 )
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_judge_verifier import (
+    HandlerJudgeVerifier,
+)
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_llm_reviewer import (
     HandlerLlmReviewer,
     LlmReviewerConfig,
 )
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_report_poster import (
+    HandlerReportPoster,
+    ProtocolGitHubBridge,
+)
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_poster import (
+    HandlerThreadPoster,
+)
+from omnimarket.nodes.node_pr_review_bot.handlers.handler_thread_watcher import (
+    HandlerThreadWatcher,
+)
 from omnimarket.nodes.node_pr_review_bot.models.models import (
     DiffHunk,
     EnumFindingSeverity,
-    ReviewFinding,
     ReviewRequest,
     ReviewVerdict,
-    ThreadState,
 )
 
 logger = logging.getLogger(__name__)
+
+# Mapping from model key (used in reviewer_models / judge_model) to the env var
+# that holds the OpenAI-compatible base URL for that model.
+_MODEL_KEY_TO_ENV_VAR: dict[str, str] = {
+    "qwen3-coder-30b": "LLM_CODER_URL",
+    "qwen3-14b": "LLM_CODER_FAST_URL",
+    "deepseek-r1": "LLM_DEEPSEEK_R1_URL",
+}
+
+# Model IDs sent in the OpenAI `model` field (fallback = key itself).
+_MODEL_KEY_TO_MODEL_ID: dict[str, str] = {
+    "qwen3-coder-30b": "default",
+    "qwen3-14b": "default",
+    "deepseek-r1": "deepseek-r1",
+}
+
+
+def build_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
+    """Build ModelInferenceBridgeConfig by resolving model keys from LLM_*_URL env vars.
+
+    Only includes entries for env vars that are actually set — absent vars produce
+    no entry (callers get ValueError on use, not a silent empty response).
+    """
+    model_configs: dict[str, dict[str, object]] = {}
+    for model_key, env_var in _MODEL_KEY_TO_ENV_VAR.items():
+        url = os.environ.get(env_var, "").rstrip("/")
+        if url:
+            model_configs[model_key] = {
+                "base_url": url,
+                "model_id": _MODEL_KEY_TO_MODEL_ID.get(model_key, model_key),
+                "transport": "http",
+                "timeout_seconds": 120.0,
+            }
+    return ModelInferenceBridgeConfig(model_configs=model_configs)
 
 
 # ---------------------------------------------------------------------------
@@ -75,88 +121,23 @@ class _DiffFetcherAdapter(ProtocolDiffFetcher):
 
 
 # ---------------------------------------------------------------------------
-# Stub implementations for handlers not yet available (parallel PRs)
+# Sync bridge wrapper for HandlerReportPoster (its protocol requires sync post_pr_comment)
 # ---------------------------------------------------------------------------
 
 
-class _StubThreadPoster(ProtocolThreadPoster):
-    """Stub thread poster — no-ops until OMN-7969 (HandlerThreadPoster) lands."""
+class _SyncGitHubBridgeAdapter(ProtocolGitHubBridge):
+    """Wraps AdapterGitHubBridge (async) to satisfy HandlerReportPoster's sync protocol."""
 
-    def post(
-        self,
-        pr_number: int,
-        repo: str,
-        findings: tuple[ReviewFinding, ...],
-        dry_run: bool,
-    ) -> list[ThreadState]:
-        logger.info(
-            "StubThreadPoster: would post %d thread(s) for PR #%d in %s (dry_run=%s)",
-            len(findings),
-            pr_number,
-            repo,
-            dry_run,
-        )
-        return []
+    def __init__(self, bridge: AdapterGitHubBridge) -> None:
+        self._bridge = bridge
 
-
-class _StubThreadWatcher(ProtocolThreadWatcher):
-    """Stub thread watcher — returns threads unchanged until OMN-7970 lands."""
-
-    def watch(
-        self,
-        pr_number: int,
-        repo: str,
-        thread_states: tuple[ThreadState, ...],
-    ) -> list[ThreadState]:
-        logger.info(
-            "StubThreadWatcher: watching %d thread(s) for PR #%d in %s",
-            len(thread_states),
-            pr_number,
-            repo,
-        )
-        return list(thread_states)
-
-
-class _StubJudgeVerifier(ProtocolJudgeVerifier):
-    """Stub judge verifier — returns threads unchanged until OMN-7971 lands."""
-
-    def verify(
-        self,
-        correlation_id: UUID,
-        findings: tuple[ReviewFinding, ...],
-        thread_states: tuple[ThreadState, ...],
-        judge_model: str,
-    ) -> list[ThreadState]:
-        logger.info(
-            "StubJudgeVerifier: verifying %d thread(s) with model=%s (correlation_id=%s)",
-            len(thread_states),
-            judge_model,
-            correlation_id,
-        )
-        return list(thread_states)
-
-
-class _StubReportPoster(ProtocolReportPoster):
-    """Stub report poster — logs verdict until OMN-7972 (HandlerReportPoster) lands."""
-
-    def post_summary(
-        self,
-        pr_number: int,
-        repo: str,
-        verdict: ReviewVerdict,
-        dry_run: bool,
-    ) -> None:
-        logger.info(
-            "StubReportPoster: verdict=%s for PR #%d in %s "
-            "(findings=%d, threads_pass=%d, threads_fail=%d, dry_run=%s)",
-            verdict.verdict,
-            pr_number,
-            repo,
-            verdict.total_findings,
-            verdict.threads_verified_pass,
-            verdict.threads_verified_fail,
-            dry_run,
-        )
+    def post_pr_comment(self, repo: str, pr_number: int, body: str) -> None:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                asyncio.run,
+                self._bridge.post_pr_comment(repo=repo, pr_number=pr_number, body=body),
+            )
+            future.result()
 
 
 # ---------------------------------------------------------------------------
@@ -246,8 +227,6 @@ def run_review(
     )
 
     # Wire concrete implementations.
-    # AdapterGitHubBridge is instantiated here so sub-handlers can receive it
-    # when their concrete implementations replace the stubs (OMN-7969 to OMN-7972).
     _github_bridge = AdapterGitHubBridge(
         token_env_var="GITHUB_TOKEN" if not token else _inject_token_env(token)
     )
@@ -255,19 +234,31 @@ def run_review(
     diff_fetcher_handler = HandlerDiffFetcher(diff_fetcher_config)
     diff_fetcher = _DiffFetcherAdapter(diff_fetcher_handler)
 
-    # Concrete reviewer — reads model selection from caller (contract inputs).
-    # context_window per reviewer model comes from contract.yaml model_routing.reviewer.context_window (112K).
+    # Bug 1 fix: populate inference_bridge_config from LLM_*_URL env vars so
+    # AdapterInferenceBridge can resolve model keys at call time.
+    _inference_bridge_config = build_inference_bridge_config_from_env()
     _reviewer_context_windows = dict.fromkeys(request.reviewer_models, 112000)
     _reviewer_config = LlmReviewerConfig(
         reviewer_models=request.reviewer_models,
         model_context_windows=_reviewer_context_windows,
+        inference_bridge_config=_inference_bridge_config,
     )
     reviewer: ProtocolReviewer = HandlerLlmReviewer(config=_reviewer_config)
-    # Stub implementations for handlers from parallel PRs (OMN-7969 to OMN-7972)
-    thread_poster: ProtocolThreadPoster = _StubThreadPoster()
-    thread_watcher: ProtocolThreadWatcher = _StubThreadWatcher()
-    judge_verifier: ProtocolJudgeVerifier = _StubJudgeVerifier()
-    report_poster: ProtocolReportPoster = _StubReportPoster()
+
+    # Bug 2 fix: wire concrete handlers (stubs removed; parallel PRs OMN-7969-7972 landed).
+    thread_poster: ProtocolThreadPoster = HandlerThreadPoster(
+        bridge=_github_bridge, max_findings_per_pr=request.max_findings_per_pr
+    )
+    thread_watcher: ProtocolThreadWatcher = HandlerThreadWatcher(
+        github_bridge=_github_bridge
+    )
+    judge_verifier: ProtocolJudgeVerifier = HandlerJudgeVerifier()
+    _sync_bridge = _SyncGitHubBridgeAdapter(_github_bridge)
+    report_poster: ProtocolReportPoster = HandlerReportPoster(
+        github_bridge=_sync_bridge,
+        findings=(),
+        thread_states=(),
+    )
 
     # Run the FSM pipeline
     fsm = HandlerPrReviewBot()
@@ -314,5 +305,6 @@ def _inject_token_env(token: str) -> str:
 
 __all__: list[str] = [
     "WorkflowRunnerResult",
+    "build_inference_bridge_config_from_env",
     "run_review",
 ]
