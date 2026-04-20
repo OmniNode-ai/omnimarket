@@ -22,6 +22,7 @@ from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage 
     HandlerCoderabbitTriage,
     ModelCoderabbitTriageCommand,
     ModelThreadClassification,
+    ProtocolGhApi,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.coderabbit-triage-start.v1"
@@ -40,10 +41,11 @@ def _make_graphql_thread(
     database_id: int = 101,
     url: str = "https://github.com/example/pr/files#r101",
     is_resolved: bool = False,
+    thread_id: str | None = None,
 ) -> dict[str, Any]:
     """Build a single reviewThreads node in the GraphQL response shape."""
     return {
-        "id": f"PRT_{database_id}",
+        "id": thread_id or f"PRT_{database_id}",
         "isResolved": is_resolved,
         "comments": {
             "nodes": [
@@ -57,6 +59,34 @@ def _make_graphql_thread(
             ]
         },
     }
+
+
+class FakeGhApi:
+    """In-memory fake of ProtocolGhApi for tests."""
+
+    def __init__(self) -> None:
+        self.replies: list[dict[str, Any]] = []
+        self.resolutions: list[str] = []
+
+    def reply_to_thread(
+        self,
+        *,
+        repo: str,
+        pull_number: int,
+        comment_id: int,
+        body: str,
+    ) -> None:
+        self.replies.append(
+            {
+                "repo": repo,
+                "pull_number": pull_number,
+                "comment_id": comment_id,
+                "body": body,
+            }
+        )
+
+    def resolve_review_thread(self, *, thread_id: str) -> None:
+        self.resolutions.append(thread_id)
 
 
 @pytest.mark.unit
@@ -525,3 +555,163 @@ class TestCoderabbitTriageGoldenChain:
         assert parsed["total_threads"] == 0
         assert parsed["blocking_count"] == 0
         assert parsed["dry_run"] is True
+
+    # --- Wet-mode resolution tests (OMN-9352) ---
+
+    async def test_wet_mode_suggestion_thread_posts_reply_and_resolves(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Wet mode: one SUGGESTION thread -> exactly 1 reply + 1 resolve."""
+        fake = FakeGhApi()
+        handler = HandlerCoderabbitTriage(gh_api=fake)
+
+        graphql_threads = [
+            _make_graphql_thread(
+                body="_\U0001f7e1 Minor_ — consider adding a docstring",
+                database_id=2002,
+                thread_id="PRT_minor_1",
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=1367,
+            correlation_id="wet-minor-test",
+            dry_run=False,
+        )
+        result = handler.handle(command)
+
+        assert result.suggestion_count == 1
+        assert len(fake.replies) == 1
+        assert len(fake.resolutions) == 1
+        reply = fake.replies[0]
+        assert reply["repo"] == "OmniNode-ai/omnimarket"
+        assert reply["pull_number"] == 1367
+        assert reply["comment_id"] == 2002
+        assert reply["body"]  # non-empty acknowledgment
+        assert fake.resolutions[0] == "PRT_minor_1"
+        assert result.resolved_count == 1
+
+    async def test_dry_run_makes_no_api_calls(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """dry_run=True: classification happens but 0 API calls made."""
+        fake = FakeGhApi()
+        handler = HandlerCoderabbitTriage(gh_api=fake)
+
+        graphql_threads = [
+            _make_graphql_thread(
+                body="_\U0001f7e1 Minor_ — add a docstring",
+                database_id=3003,
+                thread_id="PRT_dry_1",
+            ),
+            _make_graphql_thread(
+                body="_\U0001f9f9 Nitpick_ — trailing whitespace",
+                database_id=3004,
+                thread_id="PRT_dry_2",
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=1367,
+            correlation_id="dry-no-calls",
+            dry_run=True,
+        )
+        result = handler.handle(command)
+
+        assert result.suggestion_count == 2
+        assert len(fake.replies) == 0
+        assert len(fake.resolutions) == 0
+        assert result.resolved_count == 0
+
+    async def test_wet_mode_blocking_thread_skipped(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Wet mode: BLOCKING threads are NOT resolved — they require human fix."""
+        fake = FakeGhApi()
+        handler = HandlerCoderabbitTriage(gh_api=fake)
+
+        graphql_threads = [
+            _make_graphql_thread(
+                body="critical security issue — fix before merge",
+                database_id=4004,
+                thread_id="PRT_blocker",
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=1367,
+            correlation_id="wet-blocker-test",
+            dry_run=False,
+        )
+        result = handler.handle(command)
+
+        assert result.blocking_count == 1
+        assert len(fake.replies) == 0
+        assert len(fake.resolutions) == 0
+
+    async def test_wet_mode_skips_already_resolved_threads(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Wet mode: threads already marked isResolved=True are not re-resolved."""
+        fake = FakeGhApi()
+        handler = HandlerCoderabbitTriage(gh_api=fake)
+
+        graphql_threads = [
+            _make_graphql_thread(
+                body="nitpick: prefer f-strings",
+                database_id=5005,
+                thread_id="PRT_already",
+                is_resolved=True,
+            ),
+        ]
+
+        def mock_fetch_threads(
+            owner: str, repo: str, pr_number: int
+        ) -> list[dict[str, Any]]:
+            return graphql_threads
+
+        handler._fetch_review_threads = mock_fetch_threads  # type: ignore[method-assign]
+
+        command = ModelCoderabbitTriageCommand(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=1367,
+            correlation_id="already-resolved",
+            dry_run=False,
+        )
+        handler.handle(command)
+
+        # Thread still classified but not touched
+        assert len(fake.replies) == 0
+        assert len(fake.resolutions) == 0
+
+    async def test_wet_mode_protocol_accepts_duck_typed_api(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """ProtocolGhApi is a runtime-checkable Protocol; FakeGhApi satisfies it."""
+        fake = FakeGhApi()
+        # Structural / duck-typed: isinstance check against Protocol
+        assert isinstance(fake, ProtocolGhApi)

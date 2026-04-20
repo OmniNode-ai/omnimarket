@@ -1,15 +1,22 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerCoderabbitTriage — CodeRabbit thread classification.
+"""HandlerCoderabbitTriage — CodeRabbit thread classification + auto-resolve.
 
-Pure deterministic handler. No LLM. Fetches CodeRabbit review threads via
-the GitHub GraphQL API (reviewThreads endpoint), then classifies each thread
-as BLOCKING or SUGGESTION using a hardcoded keyword list.
+Deterministic handler. No LLM. Fetches CodeRabbit review threads via the
+GitHub GraphQL API (reviewThreads endpoint), classifies each thread as
+BLOCKING or SUGGESTION using a hardcoded keyword list, and for SUGGESTION
+threads posts an acknowledgment reply + resolves the thread via the GitHub
+GraphQL resolveReviewThread mutation.
 
-BLOCKING markers: action words that require a code change before merge.
-SUGGESTION markers: advisory words that are safe to auto-acknowledge.
+BLOCKING markers: action words that require a code change before merge —
+never auto-resolved; require human action.
+SUGGESTION markers: advisory words that are safe to auto-acknowledge and
+close.
 
-When dry_run=True, classification still runs but no replies are posted.
+When dry_run=True, classification still runs but no GitHub API calls are
+made. In wet mode (dry_run=False) each unresolved SUGGESTION thread produces
+exactly one reply POST and one resolveReviewThread mutation; already-resolved
+threads and BLOCKING threads are skipped.
 
 NOTE: Uses GraphQL reviewThreads (not REST /pulls/{pr}/comments). The REST
 endpoint only returns inline diff comments, missing review threads that
@@ -23,13 +30,12 @@ import logging
 import subprocess
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
-# Keywords that indicate a thread requires a code fix (BLOCKING).
-# Checked case-insensitively against the thread body.
 _BLOCKING_KEYWORDS: frozenset[str] = frozenset(
     {
         "critical",
@@ -58,7 +64,6 @@ _BLOCKING_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-# Keywords that indicate a thread is advisory only (SUGGESTION).
 _SUGGESTION_KEYWORDS: frozenset[str] = frozenset(
     {
         "nitpick",
@@ -81,12 +86,15 @@ _SUGGESTION_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-# Supported CodeRabbit bot login names on GitHub (exact match only)
 _CODERABBIT_BOT_LOGINS: frozenset[str] = frozenset(
     {"coderabbitai", "coderabbitai[bot]"}
 )
 
-# GraphQL query to fetch review threads for a PR
+_ACK_BODY_SUGGESTION = (
+    "Acknowledged — triaged as SUGGESTION by node_coderabbit_triage. "
+    "Tracked in tech-debt; resolving thread to unblock merge."
+)
+
 _REVIEW_THREADS_QUERY = """
 query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
@@ -117,6 +125,17 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
 }
 """
 
+_RESOLVE_THREAD_MUTATION = """
+mutation($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}
+"""
+
 
 class EnumThreadSeverity(StrEnum):
     """Classification result for a CodeRabbit thread."""
@@ -124,6 +143,88 @@ class EnumThreadSeverity(StrEnum):
     BLOCKING = "BLOCKING"
     SUGGESTION = "SUGGESTION"
     UNKNOWN = "UNKNOWN"
+
+
+@runtime_checkable
+class ProtocolGhApi(Protocol):
+    """GitHub API seam so handler behavior is testable without the gh CLI."""
+
+    def reply_to_thread(
+        self,
+        *,
+        repo: str,
+        pull_number: int,
+        comment_id: int,
+        body: str,
+    ) -> None: ...
+
+    def resolve_review_thread(self, *, thread_id: str) -> None: ...
+
+
+class GhApiSubprocess:
+    """Concrete ProtocolGhApi impl that shells out to `gh`.
+
+    REST reply: `POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies`
+    GraphQL resolve: `resolveReviewThread(threadId: ID!)` mutation.
+    """
+
+    def reply_to_thread(
+        self,
+        *,
+        repo: str,
+        pull_number: int,
+        comment_id: int,
+        body: str,
+    ) -> None:
+        endpoint = f"/repos/{repo}/pulls/{pull_number}/comments/{comment_id}/replies"
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                "--method",
+                "POST",
+                endpoint,
+                "-f",
+                f"body={body}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"gh api POST {endpoint} failed: {result.stderr.strip()}"
+            )
+
+    def resolve_review_thread(self, *, thread_id: str) -> None:
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-f",
+                f"query={_RESOLVE_THREAD_MUTATION}",
+                "-F",
+                f"threadId={thread_id}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"gh api graphql resolveReviewThread failed for {thread_id}: "
+                f"{result.stderr.strip()}"
+            )
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"failed to parse resolveReviewThread response for {thread_id}"
+            ) from exc
+        errors = data.get("errors")
+        if errors:
+            raise RuntimeError(
+                f"resolveReviewThread GraphQL errors for {thread_id}: {errors}"
+            )
 
 
 class ModelCoderabbitTriageCommand(BaseModel):
@@ -143,10 +244,13 @@ class ModelThreadClassification(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     comment_id: int
-    body_excerpt: str  # First 200 chars of the thread body
+    body_excerpt: str
     severity: EnumThreadSeverity
     matched_keyword: str = ""
     url: str = ""
+    thread_id: str = ""
+    is_resolved: bool = False
+    acted: bool = False
 
 
 class ModelCoderabbitTriageResult(BaseModel):
@@ -161,6 +265,7 @@ class ModelCoderabbitTriageResult(BaseModel):
     blocking_count: int = 0
     suggestion_count: int = 0
     unknown_count: int = 0
+    resolved_count: int = 0
     threads: list[ModelThreadClassification] = Field(default_factory=list)
     dry_run: bool = False
     started_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
@@ -172,15 +277,23 @@ class ModelCoderabbitTriageResult(BaseModel):
 
 
 class HandlerCoderabbitTriage:
-    """CodeRabbit thread classification handler.
+    """CodeRabbit thread classification + auto-resolve handler.
 
     Fetches PR review threads from the GitHub GraphQL API, filters to
-    CodeRabbit threads, and classifies each using keyword matching. No LLM.
+    CodeRabbit threads, classifies each using keyword matching, and for
+    unresolved SUGGESTION threads posts an acknowledgment reply and resolves
+    the thread via the resolveReviewThread GraphQL mutation. BLOCKING threads
+    are never auto-resolved.
 
     Uses GraphQL reviewThreads instead of REST /pulls/{pr}/comments because
     CodeRabbit posts findings as review thread objects, not inline diff
-    comments. The REST endpoint returns total_threads=0 for those PRs.
+    comments.
     """
+
+    def __init__(self, gh_api: ProtocolGhApi | None = None) -> None:
+        self._gh_api: ProtocolGhApi = (
+            gh_api if gh_api is not None else GhApiSubprocess()
+        )
 
     def handle(
         self, command: ModelCoderabbitTriageCommand
@@ -190,19 +303,62 @@ class HandlerCoderabbitTriage:
 
         threads = self._fetch_and_classify(command.repo, command.pr_number)
 
-        blocking = [t for t in threads if t.severity == EnumThreadSeverity.BLOCKING]
-        suggestion = [t for t in threads if t.severity == EnumThreadSeverity.SUGGESTION]
-        unknown = [t for t in threads if t.severity == EnumThreadSeverity.UNKNOWN]
+        updated_threads: list[ModelThreadClassification] = []
+        resolved_count = 0
+        for thread in threads:
+            should_act = (
+                thread.severity == EnumThreadSeverity.SUGGESTION
+                and not thread.is_resolved
+                and thread.thread_id != ""
+            )
+            if should_act and not command.dry_run:
+                try:
+                    self._gh_api.reply_to_thread(
+                        repo=command.repo,
+                        pull_number=command.pr_number,
+                        comment_id=thread.comment_id,
+                        body=_ACK_BODY_SUGGESTION,
+                    )
+                    self._gh_api.resolve_review_thread(thread_id=thread.thread_id)
+                except Exception:
+                    logger.exception(
+                        "coderabbit_triage auto-resolve failed for thread %s",
+                        thread.thread_id,
+                    )
+                    updated_threads.append(thread)
+                    continue
+                updated_threads.append(thread.model_copy(update={"acted": True}))
+                resolved_count += 1
+            else:
+                if should_act and command.dry_run:
+                    logger.info(
+                        "coderabbit_triage dry_run: would reply+resolve thread %s "
+                        "(comment_id=%s)",
+                        thread.thread_id,
+                        thread.comment_id,
+                    )
+                updated_threads.append(thread)
+
+        blocking = [
+            t for t in updated_threads if t.severity == EnumThreadSeverity.BLOCKING
+        ]
+        suggestion = [
+            t for t in updated_threads if t.severity == EnumThreadSeverity.SUGGESTION
+        ]
+        unknown = [
+            t for t in updated_threads if t.severity == EnumThreadSeverity.UNKNOWN
+        ]
 
         return ModelCoderabbitTriageResult(
             correlation_id=command.correlation_id,
             repo=command.repo,
             pr_number=command.pr_number,
-            total_threads=len(threads),
+            total_threads=len(updated_threads),
             blocking_count=len(blocking),
             suggestion_count=len(suggestion),
             unknown_count=len(unknown),
-            threads=threads,
+            resolved_count=resolved_count,
+            threads=updated_threads,
             dry_run=command.dry_run,
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
@@ -239,7 +395,6 @@ class HandlerCoderabbitTriage:
             comments = (thread.get("comments") or {}).get("nodes") or []
             if not comments:
                 continue
-            # First comment in thread is the root — filter by author
             first_comment = comments[0]
             author_login = (first_comment.get("author") or {}).get("login", "")
             if author_login.lower() not in _CODERABBIT_BOT_LOGINS:
@@ -254,6 +409,8 @@ class HandlerCoderabbitTriage:
                     severity=severity,
                     matched_keyword=keyword,
                     url=first_comment.get("url", ""),
+                    thread_id=thread.get("id") or "",
+                    is_resolved=bool(thread.get("isResolved", False)),
                 )
             )
 
@@ -350,8 +507,10 @@ class HandlerCoderabbitTriage:
 
 __all__: list[str] = [
     "EnumThreadSeverity",
+    "GhApiSubprocess",
     "HandlerCoderabbitTriage",
     "ModelCoderabbitTriageCommand",
     "ModelCoderabbitTriageResult",
     "ModelThreadClassification",
+    "ProtocolGhApi",
 ]
