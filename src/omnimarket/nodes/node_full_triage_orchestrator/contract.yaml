@@ -1,0 +1,34 @@
+---
+name: full_triage_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Unified read-only diagnosis orchestrator. Parallel-invokes every read-only
+  sweep plus 3 new probes (Infisical reachability, LLM endpoint map, launchd
+  tick bundle health). Aggregates findings into a single ranked report by
+  severity x blast_radius + freshness. Pure diagnostics — mutates nothing.
+
+handler:
+  module: omnimarket.nodes.node_full_triage_orchestrator.handlers.handler_full_triage
+  class: NodeFullTriageOrchestrator
+  input_model: omnimarket.nodes.node_full_triage_orchestrator.handlers.handler_full_triage.ModelFullTriageRequest
+
+handler_routing:
+  default_handler: handler:NodeFullTriageOrchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+  side_effect_class: read_only
+
+terminal_event: onex.evt.omnimarket.triage-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.full-triage-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.triage-completed.v1
