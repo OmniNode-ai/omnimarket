@@ -85,5 +85,5 @@ def report_to_markdown(report: ModelTriageReport) -> str:
 
 def report_to_json_dict(report: ModelTriageReport) -> dict[str, object]:
     """Raw dict form for programmatic callers (tests, downstream skills)."""
-    data: dict[str, object] = json.loads(report.model_dump_json())
-    return data
+    raw = json.loads(report.model_dump_json())
+    return dict(raw)

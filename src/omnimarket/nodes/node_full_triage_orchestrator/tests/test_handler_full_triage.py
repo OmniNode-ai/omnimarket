@@ -189,7 +189,7 @@ class TestOutputFormatters:
 
     def test_markdown_contains_summary_and_findings(self) -> None:
         report = self._sample_report()
-        md = report_to_markdown(report)  # type: ignore[arg-type]
+        md = report_to_markdown(report)
         assert "# Triage report — fixture" in md
         assert "## Severity summary" in md
         assert "## Probe execution" in md
@@ -210,7 +210,7 @@ class TestOutputFormatters:
 
     def test_json_is_parseable_and_stable(self) -> None:
         report = self._sample_report()
-        js = report_to_json(report)  # type: ignore[arg-type]
+        js = report_to_json(report)
         import json
 
         parsed = json.loads(js)
@@ -220,7 +220,7 @@ class TestOutputFormatters:
 
     def test_json_dict_roundtrip(self) -> None:
         report = self._sample_report()
-        d = report_to_json_dict(report)  # type: ignore[arg-type]
+        d = report_to_json_dict(report)
         assert d["run_id"] == "fixture"
         assert isinstance(d["ranked_findings"], list)
 
