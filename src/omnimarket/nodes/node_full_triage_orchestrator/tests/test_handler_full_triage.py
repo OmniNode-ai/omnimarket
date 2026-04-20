@@ -15,6 +15,7 @@ from omnibase_core.models.triage import (
     EnumTriageSeverity,
     ModelTriageFinding,
     ModelTriageProbeResult,
+    ModelTriageReport,
 )
 
 from omnimarket.nodes.node_full_triage_orchestrator.handlers.handler_full_triage import (
@@ -169,7 +170,7 @@ class TestOrchestratorParallelism:
 
 
 class TestOutputFormatters:
-    def _sample_report(self) -> object:
+    def _sample_report(self) -> ModelTriageReport:
         probes = [
             _FakeProbe(
                 probe_name="p1",
