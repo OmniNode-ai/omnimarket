@@ -51,6 +51,11 @@ _CONFIDENCE_THRESHOLD: float = 0.5
 # Timeout per `gh pr checks` invocation (seconds) — mirrors node_pr_snapshot_effect.
 _GH_CHECKS_TIMEOUT_SECONDS: int = 30
 
+# Hard cap on claimed_prs to keep verification latency bounded. At 30s each
+# worst-case timeout, 20 PRs is a ~10min ceiling — plenty for any realistic
+# agent self-report while preventing a pathological 1000-PR fan-out.
+_MAX_CLAIMED_PRS: int = 20
+
 # JSON fields requested from `gh pr checks` for live verification.
 _GH_PR_CHECKS_FIELDS: str = "bucket,state,conclusion,name,completedAt"
 
@@ -287,6 +292,17 @@ class HandlerOverseerVerifier:
                 message="no claimed PRs; skipping live check.",
             )
 
+        if len(req.claimed_prs) > _MAX_CLAIMED_PRS:
+            return _CheckResult(
+                name="pr_checks_live",
+                passed=False,
+                message=(
+                    f"too many claimed PRs ({len(req.claimed_prs)}); "
+                    f"max allowed is {_MAX_CLAIMED_PRS}"
+                ),
+                failure_reason="DATA_INTEGRITY",
+            )
+
         failures: list[str] = []
         for claim in req.claimed_prs:
             pr_failure = _verify_claimed_pr(claim)
@@ -447,9 +463,20 @@ def _verify_claimed_pr(claim: ModelClaimedPr) -> str | None:
         return f"{claim.repo}#{claim.pr_number}: gh exit {result.returncode}: {stderr}"
 
     try:
-        raw: list[dict[str, Any]] = json.loads(result.stdout or "[]")
+        parsed = json.loads(result.stdout or "[]")
     except json.JSONDecodeError as exc:
         return f"{claim.repo}#{claim.pr_number}: JSON parse error: {exc}"
+
+    if not isinstance(parsed, list):
+        return (
+            f"{claim.repo}#{claim.pr_number}: JSON shape error: expected top-level list"
+        )
+    if any(not isinstance(item, dict) for item in parsed):
+        return (
+            f"{claim.repo}#{claim.pr_number}: JSON shape error: "
+            "expected list of objects"
+        )
+    raw: list[dict[str, Any]] = parsed
 
     red_checks = [
         item.get("name", "<unnamed>") for item in raw if not _check_row_passes(item)

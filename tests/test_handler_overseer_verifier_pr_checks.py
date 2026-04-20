@@ -245,3 +245,69 @@ def test_pr_checks_live_fails_on_malformed_json() -> None:
     checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
     assert checks["pr_checks_live"]["passed"] is False
     assert "JSON parse error" in str(checks["pr_checks_live"]["message"])
+
+
+@pytest.mark.unit
+def test_pr_checks_live_fails_on_non_list_json() -> None:
+    """Top-level JSON object (not a list) is reported as a shape error, not a crash."""
+    handler = HandlerOverseerVerifier()
+    claimed = [ModelClaimedPr(pr_number=1, repo="OmniNode-ai/omnimarket")]
+
+    with patch(
+        "omnimarket.nodes.node_overseer_verifier.handlers."
+        "handler_overseer_verifier.subprocess.run",
+        return_value=_FakeCompleted(stdout='{"unexpected": "object"}', returncode=0),
+    ):
+        result = handler.verify(_make_request(claimed_prs=claimed))
+
+    assert result["verdict"] == "FAIL"
+    checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
+    assert checks["pr_checks_live"]["passed"] is False
+    assert "JSON shape error" in str(checks["pr_checks_live"]["message"])
+    assert "top-level list" in str(checks["pr_checks_live"]["message"])
+
+
+@pytest.mark.unit
+def test_pr_checks_live_fails_on_non_dict_list_items() -> None:
+    """List items that aren't dicts are reported as a shape error, not a crash."""
+    handler = HandlerOverseerVerifier()
+    claimed = [ModelClaimedPr(pr_number=1, repo="OmniNode-ai/omnimarket")]
+
+    with patch(
+        "omnimarket.nodes.node_overseer_verifier.handlers."
+        "handler_overseer_verifier.subprocess.run",
+        return_value=_FakeCompleted(stdout='["string-row", 42]', returncode=0),
+    ):
+        result = handler.verify(_make_request(claimed_prs=claimed))
+
+    assert result["verdict"] == "FAIL"
+    checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
+    assert checks["pr_checks_live"]["passed"] is False
+    assert "JSON shape error" in str(checks["pr_checks_live"]["message"])
+    assert "list of objects" in str(checks["pr_checks_live"]["message"])
+
+
+@pytest.mark.unit
+def test_pr_checks_live_fails_when_claimed_prs_exceed_cap() -> None:
+    """claimed_prs beyond the hard cap fail fast without shelling out."""
+    handler = HandlerOverseerVerifier()
+    # 21 claimed PRs — exceeds the current 20-PR cap
+    claimed = [
+        ModelClaimedPr(pr_number=i, repo="OmniNode-ai/omnimarket") for i in range(1, 22)
+    ]
+
+    with patch(
+        "omnimarket.nodes.node_overseer_verifier.handlers."
+        "handler_overseer_verifier.subprocess.run",
+    ) as mock_run:
+        result = handler.verify(_make_request(claimed_prs=claimed))
+
+    # Fail-fast: subprocess never invoked when the cap is exceeded
+    mock_run.assert_not_called()
+    assert result["verdict"] == "FAIL"
+    checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
+    assert checks["pr_checks_live"]["passed"] is False
+    msg = str(checks["pr_checks_live"]["message"])
+    assert "too many claimed PRs" in msg
+    assert "21" in msg
+    assert "20" in msg
