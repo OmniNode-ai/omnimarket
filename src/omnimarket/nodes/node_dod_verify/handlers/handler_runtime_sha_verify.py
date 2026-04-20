@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 from datetime import UTC, datetime
 
@@ -99,13 +100,13 @@ class HandlerRuntimeShaVerify:
         cmd = [
             "ssh",
             "-o",
-            "StrictHostKeyChecking=no",
+            "StrictHostKeyChecking=accept-new",
             "-o",
             f"ConnectTimeout={request.ssh_timeout_s}",
             "-o",
             "BatchMode=yes",
             request.runtime_host,
-            f"git -C {request.runtime_repo_path} rev-parse HEAD",
+            f"git -C {shlex.quote(request.runtime_repo_path)} rev-parse HEAD",
         ]
         result = subprocess.run(
             cmd,
