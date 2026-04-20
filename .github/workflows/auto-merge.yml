@@ -84,7 +84,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if output=$(gh pr merge "$PR" --repo "$REPO" --auto --squash 2>&1); then
+          if output=$(gh pr merge "$PR" --repo "$REPO" --auto 2>&1); then
             echo "auto-merge enabled: $output"
             exit 0
           fi
