@@ -8,6 +8,7 @@ for deterministic verification.
 Related:
     - OMN-8031: node_overseer_verifier in omnimarket
     - OMN-8025: Overseer seam integration epic
+    - OMN-9273: Wire gh pr checks against agent self-reports
 """
 
 from __future__ import annotations
@@ -15,6 +16,10 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_overseer_verifier.models.model_claimed_pr import (
+    ModelClaimedPr,
+)
 
 
 class ModelVerifierRequest(BaseModel):
@@ -66,6 +71,13 @@ class ModelVerifierRequest(BaseModel):
     schema_version: str = Field(  # string-version-ok: request envelope version string, not a domain version object
         default="1.0",
         description="Schema version of the request envelope.",
+    )
+    claimed_prs: list[ModelClaimedPr] = Field(
+        default_factory=list,
+        description=(
+            "PRs the agent self-reports as green; verified live by "
+            "`gh pr checks` in pr_checks_live check dimension (OMN-9273)."
+        ),
     )
 
 

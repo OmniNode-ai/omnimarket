@@ -69,7 +69,7 @@ def test_consumer_pass_path() -> None:
     assert result["correlation_id"] == "corr-1234"
     assert result["failed_criteria"] == []
     assert "checks" in result
-    assert len(result["checks"]) == 5  # all five check dimensions
+    assert len(result["checks"]) == 6  # all six check dimensions (incl. pr_checks_live)
 
 
 # ---------------------------------------------------------------------------

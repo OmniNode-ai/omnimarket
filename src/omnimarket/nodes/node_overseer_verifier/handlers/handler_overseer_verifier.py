@@ -2,23 +2,31 @@
 # SPDX-License-Identifier: MIT
 """Deterministic verification handler for overseer model outputs.
 
-Applies five check dimensions to a TaskStateEnvelope-like request:
+Applies six check dimensions to a TaskStateEnvelope-like request:
 1. input_completeness   — required fields are present and non-empty
 2. contract_compliance  — schema_version and domain match expectations
 3. allowed_action_scope — claimed actions are within permitted scope
 4. invariant_preservation — invariant assertions hold (e.g., cost >= 0)
 5. outcome_success_validation — confidence threshold met
+6. pr_checks_live       — every PR the agent self-reports is actually green
+                          per live `gh pr checks` (OMN-9273 — "agents lie" gap)
 
-Zero LLM involvement. Pure Python validation.
+The first five checks are pure Python. ``pr_checks_live`` shells out to the
+GitHub CLI and is therefore an effectful check — skipped when ``claimed_prs``
+is empty so deterministic non-PR verifications remain pure.
 
 Related:
     - OMN-8031: node_overseer_verifier in omnimarket
     - OMN-8025: Overseer seam integration epic
+    - OMN-9273: Wire gh pr checks against agent self-reports
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import subprocess
+from typing import Any
 
 from onex_change_control.overseer.enum_failure_class import EnumFailureClass
 from onex_change_control.overseer.enum_verifier_verdict import EnumVerifierVerdict
@@ -28,6 +36,9 @@ from onex_change_control.overseer.model_verifier_output import (
     ModelVerifierOutput,
 )
 
+from omnimarket.nodes.node_overseer_verifier.models.model_claimed_pr import (
+    ModelClaimedPr,
+)
 from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
     ModelVerifierRequest,
 )
@@ -36,6 +47,12 @@ logger = logging.getLogger(__name__)
 
 # Minimum confidence required for outcome_success_validation to pass.
 _CONFIDENCE_THRESHOLD: float = 0.5
+
+# Timeout per `gh pr checks` invocation (seconds) — mirrors node_pr_snapshot_effect.
+_GH_CHECKS_TIMEOUT_SECONDS: int = 30
+
+# JSON fields requested from `gh pr checks` for live verification.
+_GH_PR_CHECKS_FIELDS: str = "bucket,state,conclusion,name,completedAt"
 
 # Actions explicitly allowed for any domain.
 _GLOBAL_ALLOWED_ACTIONS: frozenset[str] = frozenset(
@@ -58,6 +75,7 @@ _FAILURE_CLASSES: dict[str, str] = {
     "outcome_success_validation": "PERMANENT",
     "allowed_action_scope": "CONFIGURATION",
     "contract_compliance": "CONFIGURATION",
+    "pr_checks_live": "DATA_INTEGRITY",
 }
 
 # Verdicts that route to ESCALATE rather than FAIL.
@@ -71,10 +89,13 @@ _ESCALATE_REASONS: frozenset[str] = frozenset(
 )
 
 # Priority order for _classify_failure — lowest index wins.
+# pr_checks_live sits above allowed_action_scope/contract_compliance because a
+# broken PR is stronger evidence of agent lying than a schema quibble.
 _CHECK_PRIORITY: tuple[str, ...] = (
     "input_completeness",
     "invariant_preservation",
     "outcome_success_validation",
+    "pr_checks_live",
     "allowed_action_scope",
     "contract_compliance",
 )
@@ -101,8 +122,10 @@ class _CheckResult:
 class HandlerOverseerVerifier:
     """Deterministic verification layer for overseer model outputs.
 
-    Runs five check dimensions synchronously and returns a verdict dict
-    compatible with ModelVerifierOutput from omnibase_compat.
+    Runs six check dimensions and returns a verdict dict compatible with
+    ``ModelVerifierOutput`` from omnibase_compat. The ``pr_checks_live``
+    dimension is skipped when ``claimed_prs`` is empty, preserving the
+    pure-Python contract for non-PR verifications.
 
     Usage::
 
@@ -112,7 +135,7 @@ class HandlerOverseerVerifier:
     """
 
     def verify(self, request: ModelVerifierRequest) -> dict[str, object]:
-        """Run all five check dimensions and return a verdict dict.
+        """Run all check dimensions and return a verdict dict.
 
         Args:
             request: The verifier request containing task state and model output.
@@ -125,6 +148,7 @@ class HandlerOverseerVerifier:
             self._check_input_completeness(request),
             self._check_invariant_preservation(request),
             self._check_outcome_success_validation(request),
+            self._check_pr_checks_live(request),
             self._check_allowed_action_scope(request),
             self._check_contract_compliance(request),
         ]
@@ -247,6 +271,41 @@ class HandlerOverseerVerifier:
             )
         return _CheckResult(name="contract_compliance", passed=True)
 
+    def _check_pr_checks_live(self, req: ModelVerifierRequest) -> _CheckResult:
+        """Verify each agent-claimed PR is actually green via `gh pr checks`.
+
+        Shells out once per PR; per-PR errors (timeout, gh non-zero exit,
+        malformed JSON) are isolated and reported rather than raised, mirroring
+        the canonical pattern in ``node_pr_snapshot_effect``. Returns a passing
+        result with a skip-note when no PRs are claimed, so callers that don't
+        carry PR state pay zero I/O cost.
+        """
+        if not req.claimed_prs:
+            return _CheckResult(
+                name="pr_checks_live",
+                passed=True,
+                message="no claimed PRs; skipping live check.",
+            )
+
+        failures: list[str] = []
+        for claim in req.claimed_prs:
+            pr_failure = _verify_claimed_pr(claim)
+            if pr_failure is not None:
+                failures.append(pr_failure)
+
+        if failures:
+            return _CheckResult(
+                name="pr_checks_live",
+                passed=False,
+                message=(f"Claimed PRs not verified green: {'; '.join(failures)}"),
+                failure_reason="DATA_INTEGRITY",
+            )
+        return _CheckResult(
+            name="pr_checks_live",
+            passed=True,
+            message=f"All {len(req.claimed_prs)} claimed PR(s) verified green.",
+        )
+
     # ------------------------------------------------------------------
     # Failure classification
     # ------------------------------------------------------------------
@@ -256,7 +315,8 @@ class HandlerOverseerVerifier:
 
         Priority order (index 0 wins):
             input_completeness > invariant_preservation >
-            outcome_success_validation > allowed_action_scope > contract_compliance
+            outcome_success_validation > pr_checks_live >
+            allowed_action_scope > contract_compliance
         """
         failed_names = {c.name: c for c in failed}
         for name in _CHECK_PRIORITY:
@@ -332,6 +392,86 @@ class HandlerOverseerVerifier:
         if dominant.failure_reason in _ESCALATE_REASONS:
             return "ESCALATE"
         return "FAIL"
+
+
+def _verify_claimed_pr(claim: ModelClaimedPr) -> str | None:
+    """Return None when the PR is green, otherwise a short failure description.
+
+    Shells out to `gh pr checks <n> --repo <owner>/<name> --json <fields>`.
+    Any of the following is treated as a failure:
+      - subprocess timeout
+      - gh non-zero exit
+      - malformed JSON
+      - any reported check with ``bucket != "pass"`` or
+        ``conclusion not in ("success", "neutral", "skipped")``
+    """
+    cmd = [
+        "gh",
+        "pr",
+        "checks",
+        str(claim.pr_number),
+        "--repo",
+        claim.repo,
+        "--json",
+        _GH_PR_CHECKS_FIELDS,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_GH_CHECKS_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "gh pr checks timeout for %s#%d after %ds",
+            claim.repo,
+            claim.pr_number,
+            _GH_CHECKS_TIMEOUT_SECONDS,
+        )
+        return (
+            f"{claim.repo}#{claim.pr_number}: timeout after "
+            f"{_GH_CHECKS_TIMEOUT_SECONDS}s"
+        )
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "gh pr checks invocation failed for %s#%d: %s",
+            claim.repo,
+            claim.pr_number,
+            exc,
+        )
+        return f"{claim.repo}#{claim.pr_number}: invocation error: {exc}"
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        return f"{claim.repo}#{claim.pr_number}: gh exit {result.returncode}: {stderr}"
+
+    try:
+        raw: list[dict[str, Any]] = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError as exc:
+        return f"{claim.repo}#{claim.pr_number}: JSON parse error: {exc}"
+
+    red_checks = [
+        item.get("name", "<unnamed>") for item in raw if not _check_row_passes(item)
+    ]
+    if red_checks:
+        return (
+            f"{claim.repo}#{claim.pr_number}: failing checks: "
+            f"{', '.join(sorted(set(red_checks)))}"
+        )
+    return None
+
+
+def _check_row_passes(item: dict[str, Any]) -> bool:
+    """A single `gh pr checks` JSON row is considered passing when both
+    ``bucket == 'pass'`` and ``conclusion`` is success-adjacent."""
+    bucket = str(item.get("bucket", "")).lower()
+    conclusion = str(item.get("conclusion", "")).lower()
+    if bucket != "pass":
+        return False
+    if conclusion and conclusion not in {"success", "neutral", "skipped", ""}:
+        return False
+    return True
 
 
 def _checks_to_dicts(checks: list[_CheckResult]) -> list[dict[str, object]]:
