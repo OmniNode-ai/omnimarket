@@ -1,7 +1,7 @@
 """Golden chain tests for node_linear_triage.
 
-All tests use an injectable stub client (LinearClientProtocol) so no
-network calls are made. Verifies age classification, PR-state detection,
+All tests use injectable stub clients (LinearClientProtocol, GitHubClientProtocol)
+so no network calls are made. Verifies age classification, PR-state detection,
 dry_run mode, epic completion detection, orphan counting, and stale flagging.
 """
 
@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
+    GitHubClientProtocol,
     HandlerLinearTriage,
     LinearClientProtocol,
 )
@@ -75,12 +76,46 @@ def _stub_client(
     return client  # type: ignore[return-value]
 
 
+def _stub_github(
+    merged_prs: dict[str, dict[str, str] | None] | None = None,
+) -> GitHubClientProtocol:
+    """Build a stub GitHubClientProtocol.
+
+    Args:
+        merged_prs: Map of search_term -> fake PR dict, or None for no results.
+            If a key maps to None, that search returns empty.
+    """
+    gh = MagicMock(spec=GitHubClientProtocol)
+    pr_map = merged_prs or {}
+
+    def _search_prs(*, search_term: str, state: str = "all") -> list[dict[str, str]]:
+        pr = pr_map.get(search_term)
+        return [pr] if pr else []
+
+    def _search_prs_in_repo(
+        *, repo: str, search_term: str, state: str = "all"
+    ) -> list[dict[str, str]]:
+        pr = pr_map.get(search_term)
+        return [pr] if pr else []
+
+    def _list_prs_by_head(
+        *, repo: str, branch: str, state: str = "merged"
+    ) -> list[dict[str, str]]:
+        return []
+
+    gh.search_prs.side_effect = _search_prs
+    gh.search_prs_in_repo.side_effect = _search_prs_in_repo
+    gh.list_prs_by_head.side_effect = _list_prs_by_head
+    return gh  # type: ignore[return-value]
+
+
 @pytest.mark.unit
 class TestLinearTriageGoldenChain:
     def test_empty_ticket_list(self) -> None:
         """When there are no non-done tickets, result has all zeros."""
         client = _stub_client([])
-        handler = HandlerLinearTriage(client=client)
+        gh = _stub_github()
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand())
 
         assert result.status == "completed"
@@ -89,17 +124,11 @@ class TestLinearTriageGoldenChain:
         assert result.stale_flagged == 0
         assert result.orphaned == 0
 
-    def test_recent_ticket_no_pr_no_change(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_recent_ticket_no_pr_no_change(self) -> None:
         """Recent ticket with no merged PR → no action."""
-        import omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage as mod
-
-        monkeypatch.setattr(mod, "_find_merged_pr", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(mod, "_gh_search_pr", lambda *_args, **_kwargs: [])
-
         client = _stub_client([_make_issue(days_ago=3)])
-        handler = HandlerLinearTriage(client=client)
+        gh = _stub_github()
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand())
 
         assert result.total_scanned == 1
@@ -107,48 +136,41 @@ class TestLinearTriageGoldenChain:
         assert result.marked_done == 0
         assert result.stale_flagged == 0
 
-    def test_recent_ticket_merged_pr_marked_done(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_recent_ticket_merged_pr_marked_done(self) -> None:
         """Recent ticket with a merged PR gets marked done."""
-        import omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage as mod
-
         fake_pr = {
-            "number": 42,
+            "number": "42",
             "url": "https://github.com/OmniNode-ai/omniclaude/pull/42",
             "mergedAt": "2026-04-08T10:00:00Z",
             "repo": "omniclaude",
         }
-        monkeypatch.setattr(mod, "_find_merged_pr", lambda *_args, **_kwargs: fake_pr)
-        monkeypatch.setattr(mod, "_gh_search_pr", lambda *_args, **_kwargs: [])
 
         issue = _make_issue(
             days_ago=3,
+            identifier="OMN-1234",
             branch_name="jonah/omn-1234-omniclaude-some-feature",
         )
         client = _stub_client([issue])
-        handler = HandlerLinearTriage(client=client)
+        gh = _stub_github(merged_prs={"OMN-1234": fake_pr})
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand())
 
         assert result.marked_done == 1
         client.save_issue.assert_called_once_with(issue_id="abc", state="Done")
         client.save_comment.assert_called_once()
 
-    def test_dry_run_does_not_mutate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_does_not_mutate(self) -> None:
         """dry_run=True: would_mark_done action but no save_issue calls."""
-        import omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage as mod
-
         fake_pr = {
-            "number": 7,
+            "number": "7",
             "url": "https://github.com/OmniNode-ai/omniclaude/pull/7",
             "mergedAt": "2026-04-07T09:00:00Z",
             "repo": "omniclaude",
         }
-        monkeypatch.setattr(mod, "_find_merged_pr", lambda *_args, **_kwargs: fake_pr)
-        monkeypatch.setattr(mod, "_gh_search_pr", lambda *_args, **_kwargs: [])
 
-        client = _stub_client([_make_issue(days_ago=2)])
-        handler = HandlerLinearTriage(client=client)
+        client = _stub_client([_make_issue(days_ago=2, identifier="OMN-1234")])
+        gh = _stub_github(merged_prs={"OMN-1234": fake_pr})
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand(dry_run=True))
 
         assert result.dry_run is True
@@ -157,46 +179,31 @@ class TestLinearTriageGoldenChain:
         client.save_issue.assert_not_called()
         client.save_comment.assert_not_called()
 
-    def test_stale_ticket_flagged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_stale_ticket_flagged(self) -> None:
         """Ticket older than threshold in In Progress state is flagged stale."""
-        import omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage as mod
-
-        monkeypatch.setattr(mod, "_find_merged_pr", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(mod, "_gh_search_pr", lambda *_args, **_kwargs: [])
-
         # 65 days old In Progress ticket
-        issue = _make_issue(state="In Progress", days_ago=65)
+        issue = _make_issue(identifier="OMN-9999", state="In Progress", days_ago=65)
         client = _stub_client([issue])
-        handler = HandlerLinearTriage(client=client)
+        gh = _stub_github()
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand(threshold_days=14))
 
         assert result.stale_count == 1
         assert result.stale_flagged == 1
         assert any(a.action == "flag_stale" for a in result.actions)
 
-    def test_orphan_detection(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_orphan_detection(self) -> None:
         """Ticket without parent_id is counted as orphaned."""
-        import omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage as mod
-
-        monkeypatch.setattr(mod, "_find_merged_pr", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(mod, "_gh_search_pr", lambda *_args, **_kwargs: [])
-
         issue = _make_issue(parent_id="")
         client = _stub_client([issue])
-        handler = HandlerLinearTriage(client=client)
+        gh = _stub_github()
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand())
 
         assert result.orphaned == 1
 
-    def test_epic_completion_closes_parent(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_epic_completion_closes_parent(self) -> None:
         """Parent ticket with all children Done is closed as an epic."""
-        import omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage as mod
-
-        monkeypatch.setattr(mod, "_find_merged_pr", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(mod, "_gh_search_pr", lambda *_args, **_kwargs: [])
-
         parent = _make_issue(
             id="parent-id",
             identifier="OMN-100",
@@ -219,19 +226,15 @@ class TestLinearTriageGoldenChain:
             [parent, child3],
             children={"parent-id": [child1, child2, child3]},
         )
+        gh = _stub_github()
         # child3 is in the issue list (non-done) so parent-id is a known parent
         # BUT child3.state = In Progress -> not all done -> epic NOT closed
-        handler = HandlerLinearTriage(client=client)
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand())
         assert result.epics_closed == 0
 
-    def test_epic_completion_all_done(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_epic_completion_all_done(self) -> None:
         """Parent ticket closed when ALL children are Done."""
-        import omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage as mod
-
-        monkeypatch.setattr(mod, "_find_merged_pr", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(mod, "_gh_search_pr", lambda *_args, **_kwargs: [])
-
         parent = _make_issue(
             id="parent-id",
             identifier="OMN-100",
@@ -259,7 +262,8 @@ class TestLinearTriageGoldenChain:
             [parent, child_stub],
             children={"parent-id": all_done_children},
         )
-        handler = HandlerLinearTriage(client=client)
+        gh = _stub_github()
+        handler = HandlerLinearTriage(client=client, github_client=gh)
         result = handler.handle(ModelLinearTriageStartCommand())
 
         assert result.epics_closed == 1
