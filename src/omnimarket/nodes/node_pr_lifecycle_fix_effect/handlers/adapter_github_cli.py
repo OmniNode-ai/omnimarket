@@ -126,10 +126,15 @@ class GitHubCliAdapter:
                 proc.communicate(), timeout=timeout_s
             )
         except TimeoutError as exc:
-            proc.kill()
-            # Best-effort drain; we already know the child is dead.
+            # ProcessLookupError is possible if the child exited between the
+            # timeout firing and the kill call — suppress it rather than
+            # masking the original timeout.
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            # Best-effort drain with its own bounded timeout; we already know
+            # the child is dead and only need to reap the zombie.
             with contextlib.suppress(Exception):
-                await proc.communicate()
+                await asyncio.wait_for(proc.communicate(), timeout=1.0)
             raise RuntimeError(f"{context} timed out after {timeout_s:.0f}s") from exc
         stdout = stdout_b.decode("utf-8", errors="replace")
         stderr = stderr_b.decode("utf-8", errors="replace")

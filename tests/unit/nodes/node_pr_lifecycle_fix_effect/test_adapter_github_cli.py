@@ -178,6 +178,8 @@ class TestGitHubCliAdapter:
             returncode: int | None = None
 
             async def communicate(self) -> tuple[bytes, bytes]:
+                if self.returncode is not None:
+                    return b"", b""
                 await asyncio.sleep(10)  # Simulate a hang longer than timeout.
                 return b"", b""
 
