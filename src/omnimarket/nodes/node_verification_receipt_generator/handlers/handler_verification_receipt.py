@@ -47,7 +47,9 @@ class GhClientProtocol(Protocol):
 class PytestRunnerProtocol(Protocol):
     """Protocol for pytest execution — injectable for testing."""
 
-    def run_pytest(self, worktree_path: str) -> tuple[int, str, list[ModelFileTestResult]]: ...
+    def run_pytest(
+        self, worktree_path: str
+    ) -> tuple[int, str, list[ModelFileTestResult]]: ...
 
 
 class GhClient:
@@ -101,7 +103,9 @@ class GhClient:
 class PytestRunner:
     """Real pytest runner using subprocess."""
 
-    def run_pytest(self, worktree_path: str) -> tuple[int, str, list[ModelFileTestResult]]:
+    def run_pytest(
+        self, worktree_path: str
+    ) -> tuple[int, str, list[ModelFileTestResult]]:
         """Run pytest and return (exit_code, summary, per_file_results).
 
         Parses ``-v`` output to extract per-file pass/fail counts.

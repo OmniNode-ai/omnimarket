@@ -177,7 +177,9 @@ class TestPerFilePytestResults:
         ]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(),
-            pytest_runner=_stub_pytest(exit_code=1, summary="8 passed, 1 failed", file_results=file_results),
+            pytest_runner=_stub_pytest(
+                exit_code=1, summary="8 passed, 1 failed", file_results=file_results
+            ),
         )
         result = handler.handle(
             _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
@@ -206,7 +208,9 @@ class TestPerFilePytestResults:
         ]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(),
-            pytest_runner=_stub_pytest(exit_code=0, summary="5 passed", file_results=file_results),
+            pytest_runner=_stub_pytest(
+                exit_code=0, summary="5 passed", file_results=file_results
+            ),
         )
         result = handler.handle(
             _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
@@ -227,7 +231,9 @@ class TestPerFilePytestResults:
         ]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(),
-            pytest_runner=_stub_pytest(exit_code=1, summary="10 passed, 2 failed", file_results=file_results),
+            pytest_runner=_stub_pytest(
+                exit_code=1, summary="10 passed, 2 failed", file_results=file_results
+            ),
         )
         result = handler.handle(
             _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
@@ -247,7 +253,9 @@ class TestPerFilePytestResults:
         ]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(),
-            pytest_runner=_stub_pytest(exit_code=0, summary="10 passed", file_results=file_results),
+            pytest_runner=_stub_pytest(
+                exit_code=0, summary="10 passed", file_results=file_results
+            ),
         )
         result = handler.handle(
             _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
@@ -259,7 +267,9 @@ class TestPerFilePytestResults:
     def test_empty_file_results_still_passes(self) -> None:
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(),
-            pytest_runner=_stub_pytest(exit_code=0, summary="no tests collected", file_results=[]),
+            pytest_runner=_stub_pytest(
+                exit_code=0, summary="no tests collected", file_results=[]
+            ),
         )
         result = handler.handle(
             _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
