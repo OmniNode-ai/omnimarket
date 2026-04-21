@@ -135,6 +135,14 @@ class HandlerFixerDispatcher:
         action, target_node, confidence = route
         target_topic = _CONTRACT_COMMAND_TOPICS.get(category, "")
 
+        # Fail closed: if a non-advisory category has no topic in contract, escalate
+        if target_node and not target_topic:
+            return self._escalate(
+                request,
+                f"No command topic declared in contract for category '{category}'; "
+                "add it to contract.yaml routing.command_topics to enable dispatch.",
+            )
+
         # Policy gate: allow external rules to block dispatch
         if self._policy is not None:
             block_reason = self._policy.should_dispatch(request, action)

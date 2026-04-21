@@ -48,6 +48,14 @@ inputs:
     description: "Return dispatch spec without executing"
     required: false
     default: false
+  head_sha:
+    type: str
+    description: "HEAD commit SHA for the PR branch"
+    required: false
+  branch_name:
+    type: str
+    description: "PR branch name (used in payload_hint for rebase)"
+    required: false
 
 outputs:
   action:
