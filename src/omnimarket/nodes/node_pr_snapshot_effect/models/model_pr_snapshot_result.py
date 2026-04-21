@@ -9,6 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
     ModelPRInfo,
 )
+from omnimarket.nodes.node_pr_snapshot_effect.models.model_pr_stall_event import (
+    ModelPrStallEvent,
+)
 from omnimarket.nodes.node_pr_snapshot_effect.models.model_repo_scan_result import (
     ModelRepoScanResult,
 )
@@ -21,6 +24,10 @@ class ModelPrSnapshotResult(BaseModel):
 
     repo_results: tuple[ModelRepoScanResult, ...] = Field(
         default_factory=tuple, description="Per-repo scan results."
+    )
+    stall_events: tuple[ModelPrStallEvent, ...] = Field(
+        default_factory=tuple,
+        description="PRs detected as stalled (shape-identical across consecutive snapshots).",
     )
 
     @property

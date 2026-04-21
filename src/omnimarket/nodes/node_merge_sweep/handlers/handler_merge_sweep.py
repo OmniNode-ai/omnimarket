@@ -93,6 +93,14 @@ class ModelPRInfo(BaseModel):
             "`gh api repos/.../branches/main/protection`. [OMN-9106]"
         ),
     )
+    head_sha: str | None = Field(
+        default=None,
+        description=(
+            "Current HEAD commit SHA from headRefOid. "
+            "Used by stall detector to distinguish a force-push (new sha = not stalled) "
+            "from a genuinely frozen PR (same sha across consecutive snapshots). [OMN-9404]"
+        ),
+    )
 
 
 class ModelClassifiedPR(BaseModel):
