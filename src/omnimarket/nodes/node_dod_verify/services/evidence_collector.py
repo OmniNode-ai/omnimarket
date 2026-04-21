@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -104,7 +105,31 @@ class EvidenceCollector:
                 )
             ]
 
-        dod_items: list[dict[str, Any]] = raw.get("dod_evidence", [])
+        # Validate contract belongs to the requested ticket
+        contract_ticket_id = raw.get("ticket_id")
+        if contract_ticket_id != ticket_id:
+            return [
+                ModelEvidenceCheckResult(
+                    evidence_id="contract",
+                    description=f"Contract ticket mismatch: {path}",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    message=(
+                        f"Expected ticket_id {ticket_id!r}, "
+                        f"found {contract_ticket_id!r}."
+                    ),
+                )
+            ]
+
+        dod_items = raw.get("dod_evidence", [])
+        if not isinstance(dod_items, list):
+            return [
+                ModelEvidenceCheckResult(
+                    evidence_id="contract",
+                    description=f"Invalid dod_evidence structure in contract: {path}",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    message="dod_evidence must be a list of mappings.",
+                )
+            ]
         if not dod_items:
             return [
                 ModelEvidenceCheckResult(
@@ -163,7 +188,15 @@ class EvidenceCollector:
         """Run checks for a single dod_evidence item."""
         evidence_id = item.get("id", "unknown")
         description = item.get("description", evidence_id)
-        checks: list[dict[str, Any]] = item.get("checks", [])
+        checks = item.get("checks", [])
+
+        if not isinstance(checks, list):
+            return ModelEvidenceCheckResult(
+                evidence_id=evidence_id,
+                description=description,
+                status=EnumEvidenceCheckStatus.FAILED,
+                message="checks must be a list of mappings.",
+            )
 
         if not checks:
             return ModelEvidenceCheckResult(
@@ -214,8 +247,8 @@ class EvidenceCollector:
         if not cmd_str:
             return False, "Empty command in check definition."
 
-        # Template substitution for common placeholders
-        cmd_str = cmd_str.replace("{ticket_id}", ticket_id)
+        # Template substitution for common placeholders (escaped to prevent shell injection)
+        cmd_str = cmd_str.replace("{ticket_id}", shlex.quote(ticket_id))
 
         logger.info("Running command check: %s", cmd_str)
 

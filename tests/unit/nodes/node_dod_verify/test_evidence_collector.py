@@ -169,6 +169,86 @@ class TestEvidenceCollector:
         )
         assert results[0].status == EnumEvidenceCheckStatus.SKIPPED
 
+    def test_ticket_id_mismatch(self, tmp_path: Path) -> None:
+        """Collector rejects contract whose ticket_id doesn't match."""
+        _write_contract(
+            tmp_path,
+            ticket_id="OMN-OTHER",
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "True check",
+                    "checks": [{"check_type": "command", "command": "true"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-WRONG",
+            contract_path=str(tmp_path / "OMN-OTHER.yaml"),
+        )
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "mismatch" in (results[0].description or "").lower()
+
+    def test_malformed_dod_evidence_not_list(self, tmp_path: Path) -> None:
+        """dod_evidence that isn't a list -> FAILED."""
+        contract = {"schema_version": "1.0.0", "ticket_id": "OMN-TEST", "dod_evidence": {"bad": True}}
+        p = tmp_path / "OMN-TEST.yaml"
+        p.write_text(yaml.dump(contract), encoding="utf-8")
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(p),
+        )
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "must be a list" in (results[0].message or "").lower()
+
+    def test_malformed_checks_not_list(self, tmp_path: Path) -> None:
+        """checks that isn't a list -> FAILED for that evidence item."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Bad checks",
+                    "checks": "not a list",
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "must be a list" in (results[0].message or "").lower()
+
+    def test_shell_injection_in_ticket_id(self, tmp_path: Path) -> None:
+        """Malicious ticket_id gets shlex.quote'd, not executed."""
+        _write_contract(
+            tmp_path,
+            ticket_id="OMN-TEST",
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Substituted command",
+                    "checks": [{"check_type": "command", "command": "echo {ticket_id}"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        # Injecting a shell metachar — shlex.quote should neutralize it
+        results = collector.collect(
+            "OMN-TEST; rm -rf /",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        # The ticket_id mismatch check should catch this first
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+
     def test_multiple_evidence_items(self, tmp_path: Path) -> None:
         """Multiple dod_evidence items produce multiple results."""
         _write_contract(
