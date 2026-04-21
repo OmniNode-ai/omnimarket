@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """node_session_orchestrator — Unified session orchestrator WorkflowPackage.
 
-OMN-8367 PoC: Phase 1 (health gate) implemented. Phases 2 and 3 are stubs.
+OMN-8367 complete: All phases implemented (health gate, dispatch, verify).
 """
 
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
