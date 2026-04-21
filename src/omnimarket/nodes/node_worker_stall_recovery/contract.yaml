@@ -1,0 +1,87 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Worker Stall Recovery (OMN-9404 Pick #8)
+name: node_worker_stall_recovery
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Wraps /onex:agent_healthcheck skill as a proper node. Polls TaskList and
+  activity timestamps, sends shutdown_request and relaunches v2 agents for
+  stalled tasks. Auto-recovers agent stalls without foreground intervention.
+  Based on OMN-9404 picks: today's pr-857-fixer stall would have
+  auto-recovered without manual intervention.
+
+handler:
+  module: omnimarket.nodes.node_worker_stall_recovery.handlers.handler_stall_recovery
+  class: HandlerStallRecovery
+  input_model: omnimarket.nodes.node_worker_stall_recovery.models.model_stall_recovery_command.ModelStallRecoveryCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_worker_stall_recovery.handlers.handler_stall_recovery:HandlerStallRecovery
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  ticket_id:
+    type: str
+    description: "Linear ticket ID (e.g., OMN-1234)"
+    required: true
+  agent_id:
+    type: str
+    description: "Agent/task ID to monitor/recover"
+    required: true
+  timeout_minutes:
+    type: int
+    description: "Minutes of inactivity before stall detection"
+    required: false
+    default: 2
+  context_threshold_pct:
+    type: int
+    description: "Context usage % that triggers preemptive recovery"
+    required: false
+    default: 80
+  max_redispatches:
+    type: int
+    description: "Max redispatch attempts before escalation"
+    required: false
+    default: 2
+  dry_run:
+    type: bool
+    description: "If true, check health without taking action"
+    required: false
+    default: false
+
+outputs:
+  status:
+    type: str
+    description: "healthy | stalled | recovered | failed | escalated"
+  stall_reason:
+    type: str
+    description: "Reason for stall (empty if healthy)"
+  checkpoint_path:
+    type: str
+    description: "Path to recovery checkpoint"
+  redispatch_count:
+    type: int
+    description: "Number of redispatches performed"
+  error:
+    type: str
+    description: "Error message if failed"
+
+terminal_event: onex.evt.omnimarket.worker-stall-recovery-complete.v1
+
+event_bus:
+  consumer_group: omnimarket.worker_stall_recovery.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.worker-stall-recovery.v1
+  publish_topics:
+    - onex.evt.omnimarket.worker-stall-recovery-result.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.worker-stall-recovery.v1

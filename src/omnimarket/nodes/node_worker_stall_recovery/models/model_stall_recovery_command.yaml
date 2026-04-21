@@ -1,0 +1,27 @@
+---
+name: ModelStallRecoveryCommand
+fields:
+  ticket_id:
+    type: str
+    description: "Linear ticket ID (e.g., OMN-1234)"
+    required: true
+  agent_id:
+    type: str
+    description: "Agent/task ID to monitor/recover"
+    required: true
+  timeout_minutes:
+    type: int
+    description: "Minutes of inactivity before stall detection"
+    default: 2
+  context_threshold_pct:
+    type: int
+    description: "Context usage % that triggers preemptive recovery"
+    default: 80
+  max_redispatches:
+    type: int
+    description: "Max redispatch attempts before escalation"
+    default: 2
+  dry_run:
+    type: bool
+    description: "If true, check health without taking action"
+    default: false

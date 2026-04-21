@@ -1,0 +1,22 @@
+name: node_worker_stall_recovery
+version: "1.0.0"
+description: "Agent stall detection and auto-recovery wrapper"
+authors:
+  - "OmniNode Platform Team"
+license: "MIT"
+tags:
+  - "stall-detection"
+  - "recovery"
+  - "healthcheck"
+  - "agent"
+  - "automation"
+pack: "infrastructure"
+display_name: "Worker Stall Recovery"
+node_role: "effect"
+standalone: true
+full_runtime: true
+requires_network: true
+requires_repo: false
+requires_secrets: true
+requires_docker: false
+side_effect_class: "read_write"
