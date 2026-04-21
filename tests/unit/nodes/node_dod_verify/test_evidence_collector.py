@@ -193,7 +193,11 @@ class TestEvidenceCollector:
 
     def test_malformed_dod_evidence_not_list(self, tmp_path: Path) -> None:
         """dod_evidence that isn't a list -> FAILED."""
-        contract = {"schema_version": "1.0.0", "ticket_id": "OMN-TEST", "dod_evidence": {"bad": True}}
+        contract = {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-TEST",
+            "dod_evidence": {"bad": True},
+        }
         p = tmp_path / "OMN-TEST.yaml"
         p.write_text(yaml.dump(contract), encoding="utf-8")
         collector = EvidenceCollector()
@@ -235,7 +239,9 @@ class TestEvidenceCollector:
                 {
                     "id": "dod-001",
                     "description": "Substituted command",
-                    "checks": [{"check_type": "command", "command": "echo {ticket_id}"}],
+                    "checks": [
+                        {"check_type": "command", "command": "echo {ticket_id}"}
+                    ],
                 }
             ],
         )
