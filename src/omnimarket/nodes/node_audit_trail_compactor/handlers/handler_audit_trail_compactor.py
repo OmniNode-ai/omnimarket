@@ -65,13 +65,15 @@ class FileSystemAuditReader:
 
                 with open(filepath, encoding="utf-8") as fh:
                     data = json.load(fh)
-                entries.append(ModelAuditEntry(
-                    entry_type="friction",
-                    ticket_id=data.get("ticket_id"),
-                    agent_id=data.get("agent_id"),
-                    description=data.get("description", ""),
-                    recorded_at=data.get("recorded_at", ""),
-                ))
+                entries.append(
+                    ModelAuditEntry(
+                        entry_type="friction",
+                        ticket_id=data.get("ticket_id"),
+                        agent_id=data.get("agent_id"),
+                        description=data.get("description", ""),
+                        recorded_at=data.get("recorded_at", ""),
+                    )
+                )
             except Exception as exc:
                 _log.warning("Failed to read friction file %s: %s", filepath, exc)
         return entries
@@ -94,13 +96,17 @@ class FileSystemAuditReader:
                     except json.JSONDecodeError:
                         continue
                     outcome = data.get("outcome", "unknown")
-                    entries.append(ModelAuditEntry(
-                        entry_type=f"dispatch_{outcome}",
-                        ticket_id=data.get("ticket_id"),
-                        agent_id=data.get("skill_id") or data.get("agent_id"),
-                        description=data.get("error", "") if outcome != "success" else "",
-                        recorded_at=data.get("timestamp", ""),
-                    ))
+                    entries.append(
+                        ModelAuditEntry(
+                            entry_type=f"dispatch_{outcome}",
+                            ticket_id=data.get("ticket_id"),
+                            agent_id=data.get("skill_id") or data.get("agent_id"),
+                            description=data.get("error", "")
+                            if outcome != "success"
+                            else "",
+                            recorded_at=data.get("timestamp", ""),
+                        )
+                    )
         except Exception as exc:
             _log.warning("Failed to read dispatch log %s: %s", full_path, exc)
         return entries
@@ -144,13 +150,18 @@ class HandlerAuditTrailCompactor:
 
     def handle(self, command: ModelCompactorCommand) -> ModelCompactorResult:
         """Read audit entries, compute rollup, optionally write report."""
-        cutoff = (datetime.now(tz=UTC) - timedelta(days=command.lookback_days)).isoformat()
+        cutoff = datetime.now(tz=UTC) - timedelta(days=command.lookback_days)
 
         friction_entries = self._reader.read_friction_entries(command.friction_dir)
         dispatch_entries = self._reader.read_dispatch_entries(command.dispatch_log_path)
 
         all_entries = friction_entries + dispatch_entries
-        filtered = [e for e in all_entries if e.recorded_at >= cutoff]
+        filtered = [
+            e
+            for e in all_entries
+            if (parsed := self._parse_recorded_at(e.recorded_at)) is not None
+            and parsed >= cutoff
+        ]
 
         failure_modes = self._compute_failure_modes(filtered)
         recurring_tickets = self._compute_recurring_tickets(filtered)
@@ -159,13 +170,20 @@ class HandlerAuditTrailCompactor:
         rollup_path: str | None = None
         if self._writer is not None:
             content = self._render_rollup(
-                command, filtered, failure_modes, recurring_tickets, stall_heatmap,
+                command,
+                filtered,
+                failure_modes,
+                recurring_tickets,
+                stall_heatmap,
             )
             rollup_path = self._writer.write_rollup(content, dry_run=command.dry_run)
 
         _log.info(
             "Audit compactor: %d entries, %d failure modes, %d recurring tickets, %d stall agents",
-            len(filtered), len(failure_modes), len(recurring_tickets), len(stall_heatmap),
+            len(filtered),
+            len(failure_modes),
+            len(recurring_tickets),
+            len(stall_heatmap),
         )
 
         return ModelCompactorResult(
@@ -178,7 +196,8 @@ class HandlerAuditTrailCompactor:
         )
 
     def _compute_failure_modes(
-        self, entries: list[ModelAuditEntry],
+        self,
+        entries: list[ModelAuditEntry],
     ) -> list[ModelFailureMode]:
         failure_counter: Counter[str] = Counter()
         failure_tickets: dict[str, set[str]] = defaultdict(set)
@@ -203,7 +222,8 @@ class HandlerAuditTrailCompactor:
         ]
 
     def _compute_recurring_tickets(
-        self, entries: list[ModelAuditEntry],
+        self,
+        entries: list[ModelAuditEntry],
     ) -> list[ModelRecurringTicket]:
         ticket_failures: dict[str, list[ModelAuditEntry]] = defaultdict(list)
         for entry in entries:
@@ -216,21 +236,34 @@ class HandlerAuditTrailCompactor:
             ModelRecurringTicket(
                 ticket_id=tid,
                 failure_count=len(failures),
-                last_failure=failures[-1].description or failures[-1].entry_type,
+                last_failure=(latest.description or latest.entry_type),
             )
             for tid, failures in ticket_failures.items()
+            for latest in [
+                max(
+                    failures,
+                    key=lambda entry: (
+                        self._parse_recorded_at(entry.recorded_at)
+                        or datetime.min.replace(tzinfo=UTC)
+                    ),
+                )
+            ]
             if len(failures) >= 2
         ]
         recurring.sort(key=lambda r: r.failure_count, reverse=True)
         return recurring[:20]
 
     def _compute_stall_heatmap(
-        self, entries: list[ModelAuditEntry],
+        self,
+        entries: list[ModelAuditEntry],
     ) -> list[ModelStallHeatmapEntry]:
         agent_stalls: dict[str, Counter[str]] = defaultdict(Counter)
 
         for entry in entries:
-            if "stall" not in entry.entry_type and "stall" not in entry.description.lower():
+            if (
+                "stall" not in entry.entry_type
+                and "stall" not in entry.description.lower()
+            ):
                 continue
             agent = entry.agent_id or "unknown"
             if entry.ticket_id:
@@ -245,9 +278,18 @@ class HandlerAuditTrailCompactor:
                 affected_tickets=sorted(t for t in counts if t != "_no_ticket"),
             )
             for agent, counts in sorted(
-                agent_stalls.items(), key=lambda x: sum(x[1].values()), reverse=True,
+                agent_stalls.items(),
+                key=lambda x: sum(x[1].values()),
+                reverse=True,
             )
         ]
+
+    @staticmethod
+    def _parse_recorded_at(recorded_at: str) -> datetime | None:
+        try:
+            return datetime.fromisoformat(recorded_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     @staticmethod
     def _normalize_failure_key(description: str) -> str:
@@ -276,7 +318,9 @@ class HandlerAuditTrailCompactor:
         if failure_modes:
             for fm in failure_modes:
                 tickets = f" ({len(fm.ticket_ids)} tickets)" if fm.ticket_ids else ""
-                lines.append(f"- **{fm.description}** — {fm.count} occurrences{tickets}")
+                lines.append(
+                    f"- **{fm.description}** — {fm.count} occurrences{tickets}"
+                )
         else:
             lines.append("(no failures found)")
         lines.append("")
@@ -284,14 +328,18 @@ class HandlerAuditTrailCompactor:
         if recurring_tickets:
             lines.extend(["## Recurring Tickets", ""])
             for rt in recurring_tickets:
-                lines.append(f"- **{rt.ticket_id}** — {rt.failure_count} failures (last: {rt.last_failure})")
+                lines.append(
+                    f"- **{rt.ticket_id}** — {rt.failure_count} failures (last: {rt.last_failure})"
+                )
             lines.append("")
 
         if stall_heatmap:
             lines.extend(["## Stall Heatmap", ""])
             for sh in stall_heatmap:
                 tickets = ", ".join(sh.affected_tickets[:5]) or "(none)"
-                lines.append(f"- **{sh.agent_id}** — {sh.stall_count} stalls: {tickets}")
+                lines.append(
+                    f"- **{sh.agent_id}** — {sh.stall_count} stalls: {tickets}"
+                )
             lines.append("")
 
         return "\n".join(lines)

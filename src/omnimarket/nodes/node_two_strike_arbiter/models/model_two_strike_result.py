@@ -28,7 +28,8 @@ class ModelTwoStrikeResult(BaseModel):
     ticket_id: str = Field(..., description="Linear ticket identifier.")
     total_attempts: int = Field(..., description="Number of fix attempts seen.")
     action: EnumArbiterAction = Field(
-        ..., description="Action taken by the arbiter.",
+        ...,
+        description="Action taken by the arbiter.",
     )
     diagnosis_path: str | None = Field(
         default=None,

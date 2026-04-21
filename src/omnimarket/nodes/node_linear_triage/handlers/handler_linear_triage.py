@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """HandlerLinearTriage — scan non-completed tickets, verify PR state, auto-mark done.
 
-Uses GitHub REST API (via GITHUB_TOKEN) for PR lookups instead of ``gh`` CLI
-subprocess calls. Falls back to ``gh auth token`` if GITHUB_TOKEN is not set.
+Uses GitHub REST API (via GH_PAT) for PR lookups instead of ``gh`` CLI
+subprocess calls. GH_PAT must be set in the environment; there is no fallback.
 """
 
 from __future__ import annotations
@@ -262,7 +262,7 @@ class GitHubClientProtocol(Protocol):
 class GitHubHttpClient:
     """GitHub REST API client using urllib (no external deps).
 
-    Resolves GITHUB_TOKEN from env, falling back to ``gh auth token``.
+    Requires GH_PAT environment variable. No CLI fallback.
     Uses GitHub search API for cross-repo PR lookups.
     """
 
@@ -274,7 +274,7 @@ class GitHubHttpClient:
     @classmethod
     def from_env(cls) -> GitHubHttpClient:
         """Create a client from GH_PAT env var. Raises if not set."""
-        token = os.environ["GH_PAT"]
+        token = os.environ.get("GH_PAT", "")
         if not token:
             raise RuntimeError(
                 "GH_PAT environment variable is not set. "
@@ -308,25 +308,35 @@ class GitHubHttpClient:
                         reset_epoch = int(resp.headers.get("x-ratelimit-reset", "0"))
                         sleep_secs = max(reset_epoch - int(_time.time()), 1) + 1
                         _log.warning(
-                            "GitHub rate limit near exhaustion, sleeping %ds", sleep_secs,
+                            "GitHub rate limit near exhaustion, sleeping %ds",
+                            sleep_secs,
                         )
                         _time.sleep(sleep_secs)
                     return json.loads(resp.read())
             except urllib.error.HTTPError as exc:
                 if exc.code == 403 and "retry-after" in (exc.headers or {}):
                     retry_after = int(exc.headers["retry-after"])
-                    _log.warning("GitHub secondary rate limit, retrying after %ds", retry_after)
+                    _log.warning(
+                        "GitHub secondary rate limit, retrying after %ds", retry_after
+                    )
                     _time.sleep(retry_after + 1)
-                    continue
+                    if attempt < 3:
+                        continue
+                    raise
                 if exc.code == 403 and attempt < 3:
                     # Primary rate limit — sleep until reset
-                    reset_epoch = int(exc.headers.get("x-ratelimit-reset", "0")) if exc.headers else 0
+                    reset_epoch = (
+                        int(exc.headers.get("x-ratelimit-reset", "0"))
+                        if exc.headers
+                        else 0
+                    )
                     if reset_epoch:
                         sleep_secs = max(reset_epoch - int(_time.time()), 1) + 1
                         _log.warning("GitHub rate limited, sleeping %ds", sleep_secs)
                         _time.sleep(sleep_secs)
                         continue
                 raise
+        raise RuntimeError(f"GitHub GET {path} failed after all retries")
 
     def _parse_pr_items(self, items: list[dict[str, Any]]) -> list[dict[str, str]]:
         """Normalize GitHub search results to a flat dict."""
@@ -344,14 +354,16 @@ class GitHubHttpClient:
             pr_data = item.get("pull_request", {})
             if isinstance(pr_data, dict):
                 merged_at = pr_data.get("merged_at", "") or ""
-            results.append({
-                "number": str(item.get("number", "")),
-                "title": item.get("title", ""),
-                "state": pr_state,
-                "mergedAt": merged_at,
-                "url": item.get("html_url", ""),
-                "repo": repo,
-            })
+            results.append(
+                {
+                    "number": str(item.get("number", "")),
+                    "title": item.get("title", ""),
+                    "state": pr_state,
+                    "mergedAt": merged_at,
+                    "url": item.get("html_url", ""),
+                    "repo": repo,
+                }
+            )
         return results
 
     def search_prs(
@@ -370,12 +382,12 @@ class GitHubHttpClient:
         elif state == "open":
             q += " is:open"
 
+        data = self._get("/search/issues", {"q": q, "per_page": "10"})
         try:
-            data = self._get("/search/issues", {"q": q, "per_page": "10"})
             return self._parse_pr_items(data.get("items", []))
         except Exception as exc:
-            _log.warning("GitHub search failed for '%s': %s", search_term, exc)
-            return []
+            _log.error("GitHub search parse failed for '%s': %s", search_term, exc)
+            raise
 
     def search_prs_in_repo(
         self, *, repo: str, search_term: str, state: str = "all"
@@ -389,12 +401,14 @@ class GitHubHttpClient:
         elif state == "open":
             q += " is:open"
 
+        data = self._get("/search/issues", {"q": q, "per_page": "10"})
         try:
-            data = self._get("/search/issues", {"q": q, "per_page": "10"})
             return self._parse_pr_items(data.get("items", []))
         except Exception as exc:
-            _log.warning("GitHub search failed for '%s' in %s: %s", search_term, repo, exc)
-            return []
+            _log.error(
+                "GitHub search parse failed for '%s' in %s: %s", search_term, repo, exc
+            )
+            raise
 
     def list_prs_by_head(
         self, *, repo: str, branch: str, state: str = "merged"
@@ -404,12 +418,14 @@ class GitHubHttpClient:
         if state == "merged":
             q += " is:merged"
 
+        data = self._get("/search/issues", {"q": q, "per_page": "5"})
         try:
-            data = self._get("/search/issues", {"q": q, "per_page": "5"})
             return self._parse_pr_items(data.get("items", []))
         except Exception as exc:
-            _log.warning("GitHub head search failed for %s/%s: %s", repo, branch, exc)
-            return []
+            _log.error(
+                "GitHub head search parse failed for %s/%s: %s", repo, branch, exc
+            )
+            raise
 
 
 def _find_merged_pr(
@@ -429,7 +445,9 @@ def _find_merged_pr(
     # Try repo-scoped search first (more precise)
     if repo_slug:
         prs = gh.search_prs_in_repo(
-            repo=repo_slug, search_term=ticket_id, state="merged",
+            repo=repo_slug,
+            search_term=ticket_id,
+            state="merged",
         )
         if prs:
             return prs[0]
@@ -437,7 +455,9 @@ def _find_merged_pr(
         # Try branch name in same repo
         if branch_name:
             branch_prs = gh.list_prs_by_head(
-                repo=repo_slug, branch=branch_name, state="merged",
+                repo=repo_slug,
+                branch=branch_name,
+                state="merged",
             )
             if branch_prs:
                 return branch_prs[0]
@@ -512,7 +532,8 @@ class HandlerLinearTriage:
 
         _log.info(
             "Fetched %d non-done tickets from Linear team '%s'",
-            len(all_tickets), request.team,
+            len(all_tickets),
+            request.team,
         )
 
         # --- Phase 2: Age classification ---
@@ -527,7 +548,10 @@ class HandlerLinearTriage:
 
         _log.info(
             "Age classification: %d recent (<=%dd), %d stale (>%dd)",
-            len(recent), threshold, len(stale), threshold,
+            len(recent),
+            threshold,
+            len(stale),
+            threshold,
         )
 
         actions: list[ModelTriageAction] = []
@@ -539,8 +563,8 @@ class HandlerLinearTriage:
         # --- Phase 3: PR status check (active tickets only) ---
         # Only check In Progress / In Review tickets against GitHub.
         # Backlog tickets are not being worked — no PR to find.
-        _PR_CHECK_STATES = {"In Progress", "In Review"}
-        pr_candidates = [t for t in all_tickets if t.state in _PR_CHECK_STATES]
+        pr_check_states = {"In Progress", "In Review"}
+        pr_candidates = [t for t in all_tickets if t.state in pr_check_states]
         _log.info(
             "PR check candidates: %d tickets in In Progress/In Review",
             len(pr_candidates),
@@ -551,7 +575,10 @@ class HandlerLinearTriage:
                 _log.info("PR check %d/%d", i + 1, len(pr_candidates))
 
             merged_pr = _find_merged_pr(
-                ticket.identifier, _extract_repo(ticket), ticket.branch_name, gh=gh,
+                ticket.identifier,
+                _extract_repo(ticket),
+                ticket.branch_name,
+                gh=gh,
             )
 
             if merged_pr:
@@ -597,12 +624,17 @@ class HandlerLinearTriage:
             repo_slug = _extract_repo(ticket)
             if repo_slug:
                 closed_prs = gh.search_prs_in_repo(
-                    repo=repo_slug, search_term=ticket.identifier, state="closed",
+                    repo=repo_slug,
+                    search_term=ticket.identifier,
+                    state="closed",
                 )
                 unmerged_closed = [p for p in closed_prs if not p.get("mergedAt")]
                 if unmerged_closed:
                     sibling = _find_merged_pr(
-                        ticket.identifier, None, "", gh=gh,
+                        ticket.identifier,
+                        None,
+                        "",
+                        gh=gh,
                     )
                     if sibling:
                         closed_pr_num = unmerged_closed[0].get("number", "?")
@@ -672,7 +704,8 @@ class HandlerLinearTriage:
         # Only check non-backlog tickets that have no parent (potential epics).
         # Checking all 1600+ root tickets would burn Linear API quota for no gain.
         candidate_epics = [
-            t for t in all_tickets
+            t
+            for t in all_tickets
             if not t.parent_id and t.state in ("In Progress", "In Review")
         ]
         _log.info("Epic completion candidates: %d", len(candidate_epics))
@@ -688,17 +721,54 @@ class HandlerLinearTriage:
                     children_data = client.list_children(
                         parent_id=ticket.id, limit=50, after=child_cursor
                     )
-                    batch = children_data.get("data", {}).get("issues", {}).get("nodes", [])
+                    # Check for a non-epic error (Linear returns errors array for non-epics)
+                    errors = children_data.get("errors", [])
+                    if errors:
+                        error_msgs = [str(e) for e in errors]
+                        # Suppress only the known "non-epic" 400-equivalent error
+                        if any(
+                            "parent" in m.lower() or "not an epic" in m.lower()
+                            for m in error_msgs
+                        ):
+                            _log.debug(
+                                "Ticket %s is not an epic, skipping children check",
+                                ticket.identifier,
+                            )
+                            break
+                        # All other API errors are real failures — re-raise
+                        raise RuntimeError(
+                            f"list_children returned errors for {ticket.identifier}: {error_msgs}"
+                        )
+                    batch = (
+                        children_data.get("data", {}).get("issues", {}).get("nodes", [])
+                    )
                     children.extend(batch)
                     child_page = (
-                        children_data.get("data", {}).get("issues", {}).get("pageInfo", {})
+                        children_data.get("data", {})
+                        .get("issues", {})
+                        .get("pageInfo", {})
                     )
                     if not child_page.get("hasNextPage"):
                         break
                     child_cursor = str(child_page["endCursor"])
+            except RuntimeError:
+                raise
             except Exception as exc:
-                _log.warning("Failed to fetch children for %s: %s", ticket.identifier, exc)
-                continue
+                # Suppress only transport/parse errors that indicate "not an epic"
+                exc_str = str(exc).lower()
+                if "400" in exc_str or "parent" in exc_str or "not an epic" in exc_str:
+                    _log.debug(
+                        "Ticket %s is not an epic (suppressed): %s",
+                        ticket.identifier,
+                        exc,
+                    )
+                    continue
+                _log.error(
+                    "Unexpected error fetching children for %s: %s",
+                    ticket.identifier,
+                    exc,
+                )
+                raise
             if not children:
                 continue
 
@@ -757,9 +827,9 @@ class HandlerLinearTriage:
 
 
 __all__: list[str] = [
+    "GitHubClientProtocol",
+    "GitHubHttpClient",
     "HandlerLinearTriage",
     "LinearClientProtocol",
     "LinearHttpClient",
-    "GitHubClientProtocol",
-    "GitHubHttpClient",
 ]

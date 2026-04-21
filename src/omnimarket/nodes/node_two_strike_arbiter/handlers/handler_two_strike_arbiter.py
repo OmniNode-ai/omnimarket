@@ -117,13 +117,15 @@ def _build_diagnosis_content(
             lines.append(f"```\n{attempt.error_detail}\n```")
         lines.append("")
 
-    lines.extend([
-        "## Action",
-        "",
-        "Two consecutive failures reached. Ticket moved to Blocked.",
-        "Manual investigation required before re-dispatching.",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Action",
+            "",
+            "Two consecutive failures reached. Ticket moved to Blocked.",
+            "Manual investigation required before re-dispatching.",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -151,7 +153,11 @@ class HandlerTwoStrikeArbiter:
         total = len(attempts)
 
         if total < _STRIKE_THRESHOLD:
-            action = EnumArbiterAction.FIRST_STRIKE if total == 1 else EnumArbiterAction.NO_ACTION
+            action = (
+                EnumArbiterAction.FIRST_STRIKE
+                if total == 1
+                else EnumArbiterAction.NO_ACTION
+            )
             return ModelTwoStrikeResult(
                 ticket_id=command.ticket_id,
                 total_attempts=total,
@@ -161,19 +167,23 @@ class HandlerTwoStrikeArbiter:
 
         # Two or more strikes — take action
         diagnosis_path: str | None = None
+        ticket_blocked = False
         friction_filed = False
 
         # Write diagnosis file
         if self._diagnosis_writer is not None:
             content = _build_diagnosis_content(command)
             diagnosis_path = self._diagnosis_writer.write_diagnosis(
-                command.ticket_id, content, dry_run=command.dry_run,
+                command.ticket_id,
+                content,
+                dry_run=command.dry_run,
             )
 
         # Move Linear ticket to Blocked
         if self._linear_updater is not None:
-            self._linear_updater.move_to_blocked(
-                command.ticket_id, dry_run=command.dry_run,
+            ticket_blocked = self._linear_updater.move_to_blocked(
+                command.ticket_id,
+                dry_run=command.dry_run,
             )
 
         # File friction event
@@ -186,13 +196,21 @@ class HandlerTwoStrikeArbiter:
                 dry_run=command.dry_run,
             )
 
+        # Report the strongest side effect that actually succeeded
         action = EnumArbiterAction.SECOND_STRIKE
+        if friction_filed:
+            action = EnumArbiterAction.FRICTION_FILED
+        if ticket_blocked:
+            action = EnumArbiterAction.TICKET_BLOCKED
         if diagnosis_path:
             action = EnumArbiterAction.DIAGNOSIS_WRITTEN
 
         _log.info(
             "Two-strike arbiter: ticket=%s attempts=%d action=%s diagnosis=%s",
-            command.ticket_id, total, action.value, diagnosis_path,
+            command.ticket_id,
+            total,
+            action.value,
+            diagnosis_path,
         )
 
         return ModelTwoStrikeResult(

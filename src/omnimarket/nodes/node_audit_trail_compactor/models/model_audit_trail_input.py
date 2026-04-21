@@ -13,7 +13,8 @@ class ModelAuditEntry(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     entry_type: str = Field(
-        ..., description="Type of entry: friction | dispatch_failure | dispatch_success",
+        ...,
+        description="Type of entry: friction | dispatch_failure | dispatch_success",
     )
     ticket_id: str | None = Field(default=None, description="Associated ticket ID.")
     agent_id: str | None = Field(default=None, description="Agent or skill ID.")

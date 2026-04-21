@@ -9,6 +9,7 @@ empty input, dry-run, and rollup content generation.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,14 +30,14 @@ def _make_entry(
     ticket_id: str | None = None,
     agent_id: str | None = None,
     description: str = "",
-    recorded_at: str = "2026-04-21T10:00:00Z",
+    recorded_at: str | None = None,
 ) -> ModelAuditEntry:
     return ModelAuditEntry(
         entry_type=entry_type,
         ticket_id=ticket_id,
         agent_id=agent_id,
         description=description,
-        recorded_at=recorded_at,
+        recorded_at=recorded_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
 
 
@@ -112,25 +113,50 @@ class TestAuditTrailCompactorGoldenChain:
 
     def test_stall_heatmap(self) -> None:
         entries = [
-            _make_entry(agent_id="merge-sweep", ticket_id="OMN-100", description="stall detected"),
-            _make_entry(agent_id="merge-sweep", ticket_id="OMN-200", description="stall detected"),
-            _make_entry(agent_id="dispatch-engine", ticket_id="OMN-300", description="agent_stall"),
-            _make_entry(agent_id="merge-sweep", ticket_id="OMN-400", description="merge-sweep stall timeout"),
+            _make_entry(
+                agent_id="merge-sweep",
+                ticket_id="OMN-100",
+                description="stall detected",
+            ),
+            _make_entry(
+                agent_id="merge-sweep",
+                ticket_id="OMN-200",
+                description="stall detected",
+            ),
+            _make_entry(
+                agent_id="dispatch-engine",
+                ticket_id="OMN-300",
+                description="agent_stall",
+            ),
+            _make_entry(
+                agent_id="merge-sweep",
+                ticket_id="OMN-400",
+                description="merge-sweep stall timeout",
+            ),
         ]
         reader = _stub_reader(entries)
         handler = HandlerAuditTrailCompactor(audit_reader=reader)
         result = handler.handle(ModelCompactorCommand())
 
         assert len(result.stall_heatmap) == 2
-        merge_sweep = next(s for s in result.stall_heatmap if s.agent_id == "merge-sweep")
+        merge_sweep = next(
+            s for s in result.stall_heatmap if s.agent_id == "merge-sweep"
+        )
         assert merge_sweep.stall_count == 3
         assert "OMN-100" in merge_sweep.affected_tickets
         assert "OMN-200" in merge_sweep.affected_tickets
         assert "OMN-400" in merge_sweep.affected_tickets
 
     def test_dispatch_entries_filtered_by_lookback(self) -> None:
-        old_entry = _make_entry(description="old error", recorded_at="2020-01-01T00:00:00Z")
-        new_entry = _make_entry(description="new error", recorded_at="2026-04-21T10:00:00Z")
+        now = datetime.now(UTC)
+        old_entry = _make_entry(
+            description="old error",
+            recorded_at=(now - timedelta(days=30)).isoformat().replace("+00:00", "Z"),
+        )
+        new_entry = _make_entry(
+            description="new error",
+            recorded_at=now.isoformat().replace("+00:00", "Z"),
+        )
         reader = _stub_reader([old_entry, new_entry])
         handler = HandlerAuditTrailCompactor(audit_reader=reader)
         result = handler.handle(ModelCompactorCommand(lookback_days=7))
@@ -143,7 +169,8 @@ class TestAuditTrailCompactorGoldenChain:
         reader = _stub_reader(entries)
         writer = _stub_writer()
         handler = HandlerAuditTrailCompactor(
-            audit_reader=reader, rollup_writer=writer,
+            audit_reader=reader,
+            rollup_writer=writer,
         )
         result = handler.handle(ModelCompactorCommand())
 
@@ -155,7 +182,8 @@ class TestAuditTrailCompactorGoldenChain:
         reader = _stub_reader(entries)
         writer = _stub_writer()
         handler = HandlerAuditTrailCompactor(
-            audit_reader=reader, rollup_writer=writer,
+            audit_reader=reader,
+            rollup_writer=writer,
         )
         result = handler.handle(ModelCompactorCommand(dry_run=True))
 
