@@ -24,6 +24,9 @@ from omnimarket.nodes.node_hostile_reviewer.handlers.handler_hostile_reviewer im
 from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_start_command import (
     ModelHostileReviewerStartCommand,
 )
+from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_state import (
+    EnumHostileReviewerPhase,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -76,6 +79,9 @@ def main() -> None:
     if not args.pr_number and not args.file_path:
         parser.error("Either --pr-number or --file-path is required")
 
+    if args.pr_number is not None and args.repo is None:
+        parser.error("--pr-number requires --repo")
+
     command = ModelHostileReviewerStartCommand(
         correlation_id=uuid4(),
         pr_number=args.pr_number,
@@ -92,7 +98,7 @@ def main() -> None:
 
     sys.stdout.write(completed.model_dump_json(indent=2) + "\n")
 
-    if completed.final_phase.value == "FAILED":
+    if completed.final_phase != EnumHostileReviewerPhase.DONE:
         sys.exit(1)
 
 
