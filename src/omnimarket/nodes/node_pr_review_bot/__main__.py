@@ -18,6 +18,7 @@ import sys
 
 from omnimarket.nodes.node_pr_review_bot.models.models import (
     EnumFindingSeverity,
+    EnumPrVerdict,
 )
 from omnimarket.nodes.node_pr_review_bot.workflow_runner import run_review
 
@@ -93,7 +94,7 @@ def main() -> None:
     }
     sys.stdout.write(json.dumps(output, indent=2) + "\n")
 
-    if result.verdict.verdict.value == "FAILED":
+    if result.verdict.verdict != EnumPrVerdict.CLEAN:
         sys.exit(1)
 
 
