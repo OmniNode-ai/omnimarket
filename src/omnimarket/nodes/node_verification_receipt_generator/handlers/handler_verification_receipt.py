@@ -25,6 +25,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.nodes.node_verification_receipt_generator.models.model_verification_receipt import (
     ModelCheckEvidence,
+    ModelFileTestResult,
     ModelVerificationReceipt,
     ModelVerificationReceiptRequest,
 )
@@ -46,7 +47,7 @@ class GhClientProtocol(Protocol):
 class PytestRunnerProtocol(Protocol):
     """Protocol for pytest execution — injectable for testing."""
 
-    def run_pytest(self, worktree_path: str) -> tuple[int, str]: ...
+    def run_pytest(self, worktree_path: str) -> tuple[int, str, list[ModelFileTestResult]]: ...
 
 
 class GhClient:
@@ -100,15 +101,16 @@ class GhClient:
 class PytestRunner:
     """Real pytest runner using subprocess."""
 
-    def run_pytest(self, worktree_path: str) -> tuple[int, str]:
-        """Run pytest and return (exit_code, last_line_of_output).
+    def run_pytest(self, worktree_path: str) -> tuple[int, str, list[ModelFileTestResult]]:
+        """Run pytest and return (exit_code, summary, per_file_results).
 
-        Returns (1, error_message) on invocation failure.
+        Parses ``-v`` output to extract per-file pass/fail counts.
+        Returns (1, error_message, []) on invocation failure.
         """
         if not worktree_path:
-            return 0, "No worktree path specified — pytest skipped."
+            return 0, "No worktree path specified — pytest skipped.", []
 
-        cmd = ["uv", "run", "pytest", "tests/", "-v", "--tb=short", "-q"]
+        cmd = ["uv", "run", "pytest", "tests/", "-v", "--tb=no", "-q"]
         try:
             result = subprocess.run(
                 cmd,
@@ -118,11 +120,12 @@ class PytestRunner:
                 cwd=worktree_path,
             )
             last_line = (result.stdout or "").strip().split("\n")[-1]
-            return result.returncode, last_line
+            file_results = _parse_pytest_per_file(result.stdout or "")
+            return result.returncode, last_line, file_results
         except subprocess.TimeoutExpired:
-            return 1, f"pytest timed out after {_PYTEST_TIMEOUT}s"
+            return 1, f"pytest timed out after {_PYTEST_TIMEOUT}s", []
         except (OSError, FileNotFoundError) as exc:
-            return 1, f"pytest invocation failed: {exc}"
+            return 1, f"pytest invocation failed: {exc}", []
 
 
 class HandlerVerificationReceiptGenerator:
@@ -196,6 +199,33 @@ class HandlerVerificationReceiptGenerator:
             verified_at=datetime.now(UTC),
         )
 
+    def _verify_pytest(self, worktree_path: str) -> ModelCheckEvidence:
+        """Run pytest and capture exit code + per-file results."""
+        runner = self._get_pytest_runner()
+        exit_code, summary, file_results = runner.run_pytest(worktree_path)
+
+        passed = exit_code == 0
+        details: dict[str, str] = {"exit_code": str(exit_code)}
+
+        # Add per-file summary to details
+        for fr in file_results:
+            details[fr.file] = (
+                f"passed={fr.passed} failed={fr.failed} "
+                f"errors={fr.errors} skipped={fr.skipped} exit_code={fr.exit_code}"
+            )
+
+        failing_files = [fr.file for fr in file_results if fr.exit_code != 0]
+        if failing_files:
+            summary = f"{summary} | failing_files: {', '.join(failing_files)}"
+
+        return ModelCheckEvidence(
+            dimension="pytest",
+            passed=passed,
+            summary=f"pytest exit_code={exit_code}: {summary}",
+            details=details,
+            file_results=file_results,
+        )
+
     def _verify_ci(self, repo: str, pr_number: int) -> ModelCheckEvidence:
         """Verify CI checks via gh."""
         client = self._get_gh_client()
@@ -240,18 +270,52 @@ class HandlerVerificationReceiptGenerator:
             details=details,
         )
 
-    def _verify_pytest(self, worktree_path: str) -> ModelCheckEvidence:
-        """Run pytest and capture exit code."""
-        runner = self._get_pytest_runner()
-        exit_code, summary = runner.run_pytest(worktree_path)
 
-        passed = exit_code == 0
-        return ModelCheckEvidence(
-            dimension="pytest",
-            passed=passed,
-            summary=f"pytest exit_code={exit_code}: {summary}",
-            details={"exit_code": str(exit_code)},
+def _parse_pytest_per_file(stdout: str) -> list[ModelFileTestResult]:
+    """Parse pytest -v output into per-file results.
+
+    Lines look like::
+
+        tests/test_foo.py::test_bar PASSED
+        tests/test_foo.py::test_baz FAILED
+        tests/test_qux.py::test_thing PASSED
+
+    Each file gets a ModelFileTestResult with counts.
+    """
+    from collections import defaultdict
+
+    # {file: {"PASSED": n, "FAILED": n, ...}}
+    file_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+    for line in stdout.splitlines():
+        line = line.strip()
+        if "::" not in line:
+            continue
+        # Only match test result lines
+        for status in ("PASSED", "FAILED", "ERROR", "SKIPPED", "XFAILED", "XPASSED"):
+            if line.endswith(status):
+                file_path = line.split("::")[0].strip()
+                file_counts[file_path][status] += 1
+                break
+
+    results: list[ModelFileTestResult] = []
+    for file_path, counts in sorted(file_counts.items()):
+        n_passed = counts.get("PASSED", 0) + counts.get("XPASSED", 0)
+        n_failed = counts.get("FAILED", 0)
+        n_errors = counts.get("ERROR", 0)
+        n_skipped = counts.get("SKIPPED", 0) + counts.get("XFAILED", 0)
+        file_exit = 0 if (n_failed == 0 and n_errors == 0) else 1
+        results.append(
+            ModelFileTestResult(
+                file=file_path,
+                passed=n_passed,
+                failed=n_failed,
+                errors=n_errors,
+                skipped=n_skipped,
+                exit_code=file_exit,
+            )
         )
+    return results
 
 
 __all__: list[str] = [

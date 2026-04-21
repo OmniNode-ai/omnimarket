@@ -16,6 +16,7 @@ from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verif
     PytestRunnerProtocol,
 )
 from omnimarket.nodes.node_verification_receipt_generator.models.model_verification_receipt import (
+    ModelFileTestResult,
     ModelVerificationReceiptRequest,
 )
 
@@ -41,9 +42,13 @@ def _stub_gh(
     return client  # type: ignore[return-value]
 
 
-def _stub_pytest(exit_code: int = 0, summary: str = "5 passed") -> PytestRunnerProtocol:
+def _stub_pytest(
+    exit_code: int = 0,
+    summary: str = "5 passed",
+    file_results: list[ModelFileTestResult] | None = None,
+) -> PytestRunnerProtocol:
     runner = MagicMock(spec=PytestRunnerProtocol)
-    runner.run_pytest.return_value = (exit_code, summary)
+    runner.run_pytest.return_value = (exit_code, summary, file_results or [])
     return runner  # type: ignore[return-value]
 
 
@@ -157,3 +162,108 @@ class TestVerificationReceiptGoldenChain:
 
         assert result.overall_pass is False
         assert "No CI check data" in result.checks[0].summary
+
+
+@pytest.mark.unit
+class TestPerFilePytestResults:
+    def test_per_file_results_populated(self) -> None:
+        file_results = [
+            ModelFileTestResult(
+                file="tests/test_foo.py", passed=5, failed=0, exit_code=0
+            ),
+            ModelFileTestResult(
+                file="tests/test_bar.py", passed=3, failed=1, exit_code=1
+            ),
+        ]
+        handler = HandlerVerificationReceiptGenerator(
+            gh_client=_stub_gh(),
+            pytest_runner=_stub_pytest(exit_code=1, summary="8 passed, 1 failed", file_results=file_results),
+        )
+        result = handler.handle(
+            _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
+        )
+
+        assert result.overall_pass is False
+        pt = result.checks[0]
+        assert pt.dimension == "pytest"
+        assert len(pt.file_results) == 2
+
+        foo = next(fr for fr in pt.file_results if fr.file == "tests/test_foo.py")
+        assert foo.passed == 5
+        assert foo.failed == 0
+        assert foo.exit_code == 0
+
+        bar = next(fr for fr in pt.file_results if fr.file == "tests/test_bar.py")
+        assert bar.passed == 3
+        assert bar.failed == 1
+        assert bar.exit_code == 1
+
+    def test_per_file_details_in_evidence(self) -> None:
+        file_results = [
+            ModelFileTestResult(
+                file="tests/test_foo.py", passed=5, failed=0, exit_code=0
+            ),
+        ]
+        handler = HandlerVerificationReceiptGenerator(
+            gh_client=_stub_gh(),
+            pytest_runner=_stub_pytest(exit_code=0, summary="5 passed", file_results=file_results),
+        )
+        result = handler.handle(
+            _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
+        )
+
+        pt = result.checks[0]
+        assert "tests/test_foo.py" in pt.details
+        assert "passed=5" in pt.details["tests/test_foo.py"]
+
+    def test_failing_files_called_out_in_summary(self) -> None:
+        file_results = [
+            ModelFileTestResult(
+                file="tests/test_good.py", passed=10, failed=0, exit_code=0
+            ),
+            ModelFileTestResult(
+                file="tests/test_bad.py", passed=0, failed=2, exit_code=1
+            ),
+        ]
+        handler = HandlerVerificationReceiptGenerator(
+            gh_client=_stub_gh(),
+            pytest_runner=_stub_pytest(exit_code=1, summary="10 passed, 2 failed", file_results=file_results),
+        )
+        result = handler.handle(
+            _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
+        )
+
+        pt = result.checks[0]
+        assert "failing_files: tests/test_bad.py" in pt.summary
+
+    def test_all_files_pass(self) -> None:
+        file_results = [
+            ModelFileTestResult(
+                file="tests/test_a.py", passed=3, failed=0, exit_code=0
+            ),
+            ModelFileTestResult(
+                file="tests/test_b.py", passed=7, failed=0, exit_code=0
+            ),
+        ]
+        handler = HandlerVerificationReceiptGenerator(
+            gh_client=_stub_gh(),
+            pytest_runner=_stub_pytest(exit_code=0, summary="10 passed", file_results=file_results),
+        )
+        result = handler.handle(
+            _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
+        )
+
+        assert result.overall_pass is True
+        assert all(fr.exit_code == 0 for fr in result.checks[0].file_results)
+
+    def test_empty_file_results_still_passes(self) -> None:
+        handler = HandlerVerificationReceiptGenerator(
+            gh_client=_stub_gh(),
+            pytest_runner=_stub_pytest(exit_code=0, summary="no tests collected", file_results=[]),
+        )
+        result = handler.handle(
+            _make_request(verify_ci=False, verify_tests=True, worktree_path="/tmp/wt")
+        )
+
+        assert result.overall_pass is True
+        assert result.checks[0].file_results == []

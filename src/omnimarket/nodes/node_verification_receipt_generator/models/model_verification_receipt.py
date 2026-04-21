@@ -44,6 +44,19 @@ class ModelVerificationReceiptRequest(BaseModel):
     )
 
 
+class ModelFileTestResult(BaseModel):
+    """Per-file pytest result."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    file: str = Field(description="Test file path relative to worktree root.")
+    passed: int = Field(description="Number of passing tests in this file.")
+    failed: int = Field(description="Number of failing tests in this file.")
+    errors: int = Field(default=0, description="Number of errors in this file.")
+    skipped: int = Field(default=0, description="Number of skipped tests in this file.")
+    exit_code: int = Field(description="0 if all passed, 1 if any failed/errored.")
+
+
 class ModelCheckEvidence(BaseModel):
     """Evidence from a single verification dimension."""
 
@@ -55,6 +68,10 @@ class ModelCheckEvidence(BaseModel):
     details: dict[str, str] = Field(
         default_factory=dict,
         description="Structured check details (e.g. check name -> conclusion).",
+    )
+    file_results: list[ModelFileTestResult] = Field(
+        default_factory=list,
+        description="Per-file pytest results (empty for non-pytest dimensions).",
     )
 
 
