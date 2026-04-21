@@ -65,8 +65,17 @@ outputs:
   confidence:
     type: float
     description: "Routing confidence (1.0 = mechanical)"
+  payload_hint:
+    type: dict
+    description: "Pre-filled payload for target fixer command execution"
 
 terminal_event: onex.evt.omnimarket.fixer-dispatch-completed.v1
+
+routing:
+  command_topics:
+    red: "onex.cmd.omnimarket.ci-fix-start.v1"
+    conflicted: "onex.cmd.omnimarket.conflict-hunk-start.v1"
+    behind: "onex.cmd.omnimarket.rebase-start.v1"
 
 event_bus:
   subscribe_topics:

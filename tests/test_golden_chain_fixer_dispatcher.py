@@ -81,7 +81,7 @@ class TestFixerDispatcherGoldenChain:
         result = handler.handle(_make_request(stall_category="stale", stall_count=10))
 
         assert result.action == "escalate"
-        assert "stall_count=10" in result.reason or "escalate" in result.action
+        assert "stall_count=10" in result.reason
 
     def test_payload_hint_includes_dry_run(self) -> None:
         handler = HandlerFixerDispatcher()

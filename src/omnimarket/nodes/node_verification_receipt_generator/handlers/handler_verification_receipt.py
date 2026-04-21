@@ -77,11 +77,14 @@ class GhClient:
             "name,state,conclusion",
         ]
         try:
+            env = os.environ.copy()
+            env.setdefault("GH_TOKEN", self._token)
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=_GH_CHECKS_TIMEOUT,
+                env=env,
             )
             if result.returncode != 0:
                 _log.warning(
@@ -186,12 +189,30 @@ class HandlerVerificationReceiptGenerator:
         checks: list[ModelCheckEvidence] = []
 
         # Dimension 1: CI checks
-        if request.verify_ci and request.repo and request.pr_number is not None:
-            checks.append(self._verify_ci(request.repo, request.pr_number))
+        if request.verify_ci:
+            if request.repo and request.pr_number is not None:
+                checks.append(self._verify_ci(request.repo, request.pr_number))
+            else:
+                checks.append(
+                    ModelCheckEvidence(
+                        dimension="ci_checks",
+                        passed=False,
+                        summary="CI verification requested but repo/pr_number missing.",
+                    )
+                )
 
         # Dimension 2: Pytest
-        if request.verify_tests and request.worktree_path:
-            checks.append(self._verify_pytest(request.worktree_path))
+        if request.verify_tests:
+            if request.worktree_path:
+                checks.append(self._verify_pytest(request.worktree_path))
+            else:
+                checks.append(
+                    ModelCheckEvidence(
+                        dimension="pytest",
+                        passed=False,
+                        summary="Pytest verification requested but worktree_path missing.",
+                    )
+                )
 
         overall = all(c.passed for c in checks) if checks else True
 
@@ -286,6 +307,7 @@ def _parse_pytest_per_file(stdout: str) -> list[ModelFileTestResult]:
 
     Each file gets a ModelFileTestResult with counts.
     """
+    import re
     from collections import defaultdict
 
     # {file: {"PASSED": n, "FAILED": n, ...}}
@@ -295,12 +317,15 @@ def _parse_pytest_per_file(stdout: str) -> list[ModelFileTestResult]:
         line = line.strip()
         if "::" not in line:
             continue
-        # Only match test result lines
-        for status in ("PASSED", "FAILED", "ERROR", "SKIPPED", "XFAILED", "XPASSED"):
-            if line.endswith(status):
-                file_path = line.split("::")[0].strip()
-                file_counts[file_path][status] += 1
-                break
+        match = re.search(
+            r"\b(PASSED|FAILED|ERROR|SKIPPED|XFAILED|XPASSED)\b(?:\s+\[[^\]]+\])?$",
+            line,
+        )
+        if not match:
+            continue
+        status = match.group(1)
+        file_path = line.split("::", 1)[0].strip()
+        file_counts[file_path][status] += 1
 
     results: list[ModelFileTestResult] = []
     for file_path, counts in sorted(file_counts.items()):

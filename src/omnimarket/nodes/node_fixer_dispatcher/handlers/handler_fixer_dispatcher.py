@@ -18,7 +18,10 @@ OMN-9403.
 from __future__ import annotations
 
 import logging
-from typing import Protocol, runtime_checkable
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+import yaml
 
 from omnimarket.nodes.node_fixer_dispatcher.models.model_fixer_dispatch import (
     EnumFixerAction,
@@ -29,31 +32,40 @@ from omnimarket.nodes.node_fixer_dispatcher.models.model_fixer_dispatch import (
 
 _log = logging.getLogger(__name__)
 
+# --- Load command topics from contract.yaml ----------------------------------
+
+
+def _load_command_topics() -> dict[str, str]:
+    contract_path = Path(__file__).parent.parent / "contract.yaml"
+    with contract_path.open() as f:
+        data: dict[str, Any] = yaml.safe_load(f)
+    return dict(data.get("routing", {}).get("command_topics", {}))
+
+
+_CONTRACT_COMMAND_TOPICS: dict[str, str] = _load_command_topics()
+
 # --- Routing table -----------------------------------------------------------
 
-# Maps stall category to (action, target_node, target_topic, confidence).
-_ROUTING_TABLE: dict[str, tuple[str, str, str, float]] = {
+# Maps stall category to (action, target_node, confidence).
+# Topics are resolved at init time from contract.yaml via _CONTRACT_COMMAND_TOPICS.
+_ROUTING_TABLE: dict[str, tuple[str, str, float]] = {
     EnumStallCategory.RED: (
         EnumFixerAction.DISPATCH_CI_FIX,
         "node_ci_fix_effect",
-        "onex.cmd.omnimarket.ci-fix-start.v1",
         0.95,
     ),
     EnumStallCategory.CONFLICTED: (
         EnumFixerAction.DISPATCH_CONFLICT_RESOLVE,
         "node_conflict_hunk_effect",
-        "onex.cmd.omnimarket.conflict-hunk-start.v1",
         0.90,
     ),
     EnumStallCategory.BEHIND: (
         EnumFixerAction.DISPATCH_REBASE,
         "node_rebase_effect",
-        "onex.cmd.omnimarket.rebase-start.v1",
         0.90,
     ),
     EnumStallCategory.DEPLOY_GATE: (
         EnumFixerAction.DISPATCH_DEPLOY_GATE_SKIP,
-        "",
         "",
         0.80,
     ),
@@ -115,10 +127,13 @@ class HandlerFixerDispatcher:
         route = _ROUTING_TABLE.get(category)
         if route is None:
             return self._escalate(
-                request, f"No fixer registered for category '{category}'"
+                request,
+                f"No fixer registered for category '{category}' "
+                f"(stall_count={request.stall_count})",
             )
 
-        action, target_node, target_topic, confidence = route
+        action, target_node, confidence = route
+        target_topic = _CONTRACT_COMMAND_TOPICS.get(category, "")
 
         # Policy gate: allow external rules to block dispatch
         if self._policy is not None:
