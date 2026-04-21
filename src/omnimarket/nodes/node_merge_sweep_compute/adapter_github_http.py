@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from omnimarket.nodes.node_merge_sweep.protocols import GitHubPrFetchProtocol
+from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubPrFetchProtocol
 
 _log = logging.getLogger(__name__)
 

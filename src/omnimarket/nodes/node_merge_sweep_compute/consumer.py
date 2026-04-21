@@ -13,7 +13,7 @@ Environment variables (all resolved at startup — no hardcoded strings):
     MERGE_SWEEP_GROUP   Consumer group ID (default: omnimarket.merge_sweep.consume.v1)
 
 Usage (standalone consumer loop):
-    python -m omnimarket.nodes.node_merge_sweep.consumer
+    python -m omnimarket.nodes.node_merge_sweep_compute.consumer
 
 The loop runs until SIGINT/SIGTERM.  It is safe to run alongside the existing
 ``python -m omnimarket.nodes.node_merge_sweep`` CLI — they are independent.
@@ -30,9 +30,13 @@ import signal
 import sys
 from typing import Any
 
-from omnimarket.nodes.node_merge_sweep.adapter_github_http import GitHubHttpClient
-from omnimarket.nodes.node_merge_sweep.branch_protection import BranchProtectionCache
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
+    GitHubHttpClient,
+)
+from omnimarket.nodes.node_merge_sweep_compute.branch_protection import (
+    BranchProtectionCache,
+)
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     TOPIC_MERGE_SWEEP_COMPLETED,
     TOPIC_MERGE_SWEEP_START,
     ModelFailureHistoryEntry,

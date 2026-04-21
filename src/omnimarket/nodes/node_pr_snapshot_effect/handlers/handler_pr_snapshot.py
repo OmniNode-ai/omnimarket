@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     ModelPRInfo,
 )
 from omnimarket.nodes.node_pr_snapshot_effect.models.model_pr_snapshot_input import (

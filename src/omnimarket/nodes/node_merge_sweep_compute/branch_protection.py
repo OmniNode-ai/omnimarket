@@ -18,7 +18,9 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from omnimarket.nodes.node_merge_sweep.protocols import GitHubPrFetchProtocol
+    from omnimarket.nodes.node_merge_sweep_compute.protocols import (
+        GitHubPrFetchProtocol,
+    )
 
 _log = logging.getLogger(__name__)
 

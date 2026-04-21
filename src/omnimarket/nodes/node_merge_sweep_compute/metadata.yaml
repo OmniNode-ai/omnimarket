@@ -1,0 +1,23 @@
+name: node_merge_sweep_compute
+version: "2.0.0"
+description: "Pure compute: classifies open PRs into Track A/B/Skip queues"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_merge_sweep_compute: "omnimarket.nodes.node_merge_sweep_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "classification", "pr-lifecycle", "merge-sweep"]
+pack: "pr-lifecycle"
+display_name: "Merge Sweep Compute"
+node_role: "compute"

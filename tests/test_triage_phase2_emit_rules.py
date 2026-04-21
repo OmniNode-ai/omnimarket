@@ -19,7 +19,7 @@ from uuid import UUID
 
 import pytest
 
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,
     ModelClassifiedPR,
     ModelMergeSweepResult,

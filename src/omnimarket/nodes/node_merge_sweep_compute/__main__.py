@@ -28,9 +28,13 @@ import pathlib
 import sys
 from typing import Any
 
-from omnimarket.nodes.node_merge_sweep.adapter_github_http import GitHubHttpClient
-from omnimarket.nodes.node_merge_sweep.branch_protection import BranchProtectionCache
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
+    GitHubHttpClient,
+)
+from omnimarket.nodes.node_merge_sweep_compute.branch_protection import (
+    BranchProtectionCache,
+)
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     ModelFailureHistoryEntry,
     ModelMergeSweepRequest,
     ModelPRInfo,

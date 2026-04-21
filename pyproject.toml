@@ -51,7 +51,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 [project.entry-points."onex.nodes"]
 node_aislop_sweep = "omnimarket.nodes.node_aislop_sweep"
 node_authorize = "omnimarket.nodes.node_authorize"
-node_merge_sweep = "omnimarket.nodes.node_merge_sweep"
+node_merge_sweep_compute = "omnimarket.nodes.node_merge_sweep_compute"
 node_ledger_orchestrator = "omnimarket.nodes.node_ledger_orchestrator"
 node_ledger_append_effect = "omnimarket.nodes.node_ledger_append_effect"
 node_ledger_hash_compute = "omnimarket.nodes.node_ledger_hash_compute"

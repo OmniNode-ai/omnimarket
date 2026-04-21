@@ -20,7 +20,7 @@ import pytest
 from omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun import (
     HandlerCiRerunEffect,
 )
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,
     ModelClassifiedPR,
     ModelMergeSweepResult,
