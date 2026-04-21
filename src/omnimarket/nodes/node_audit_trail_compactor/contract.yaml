@@ -1,0 +1,66 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_audit_trail_compactor
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Daily rollup of .onex_state/friction/ + dispatch-log ndjson.
+  Produces top failure modes, recurring tickets, and stall heatmap.
+  Optionally writes a markdown rollup to docs/audit-rollups/.
+
+handler:
+  module: omnimarket.nodes.node_audit_trail_compactor.handlers.handler_audit_trail_compactor
+  class: HandlerAuditTrailCompactor
+  input_model: omnimarket.nodes.node_audit_trail_compactor.models.model_audit_trail_input.ModelCompactorCommand
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  friction_dir:
+    type: str
+    description: "Path to friction event directory"
+    required: false
+    default: ".onex_state/friction"
+  dispatch_log_path:
+    type: str
+    description: "Path to dispatch log NDJSON file"
+    required: false
+    default: ".onex_state/dispatch-log.ndjson"
+  lookback_days:
+    type: int
+    description: "Number of days to look back for the rollup"
+    required: false
+    default: 7
+  dry_run:
+    type: bool
+    description: "Skip side effects when true"
+    required: false
+    default: false
+
+outputs:
+  total_entries:
+    type: int
+  failure_modes:
+    type: list
+  recurring_tickets:
+    type: list
+  stall_heatmap:
+    type: list
+  rollup_path:
+    type: str
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.audit-trail-compacted.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.audit-trail-compact.v1
+  publish_topics:
+    - onex.evt.omnimarket.audit-trail-compacted.v1

@@ -1,0 +1,23 @@
+name: node_two_strike_arbiter
+version: "1.0.0"
+description: "Two-strike diagnosis arbiter — escalates after 2 consecutive fix failures"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_two_strike_arbiter: "omnimarket.nodes.node_two_strike_arbiter"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: file_write + linear_update
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "arbiter", "diagnosis", "escalation", "two-strike"]
+pack: "build"
+display_name: "Two-Strike Arbiter"
+node_role: "effect"

@@ -1,0 +1,74 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_two_strike_arbiter
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Two-strike diagnosis arbiter. Monitors fix attempts per ticket/PR.
+  After 2 consecutive failures: writes docs/diagnosis-*.md, moves Linear
+  ticket to Blocked, and files a friction event for session post-mortem.
+
+handler:
+  module: omnimarket.nodes.node_two_strike_arbiter.handlers.handler_two_strike_arbiter
+  class: HandlerTwoStrikeArbiter
+  input_model: omnimarket.nodes.node_two_strike_arbiter.models.model_two_strike_input.ModelTwoStrikeCommand
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+
+inputs:
+  ticket_id:
+    type: str
+    description: "Linear ticket identifier (e.g. OMN-1234)"
+    required: true
+  repo:
+    type: str
+    description: "Repository slug"
+    required: false
+    default: ""
+  pr_number:
+    type: int
+    description: "PR number if applicable"
+    required: false
+  branch:
+    type: str
+    description: "Branch name if applicable"
+    required: false
+  fix_attempts:
+    type: list
+    description: "Ordered list of fix attempt records"
+    required: false
+    default: []
+  dry_run:
+    type: bool
+    description: "Skip side effects when true"
+    required: false
+    default: false
+
+outputs:
+  ticket_id:
+    type: str
+  total_attempts:
+    type: int
+  action:
+    type: str
+    description: "no_action | first_strike | second_strike | diagnosis_written | ticket_blocked | friction_filed"
+  diagnosis_path:
+    type: str
+    nullable: true
+  friction_filed:
+    type: bool
+
+terminal_event: onex.evt.omnimarket.two-strike-arbiter.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.fix-attempt-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.two-strike-arbiter.v1
