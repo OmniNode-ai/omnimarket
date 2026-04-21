@@ -1,0 +1,22 @@
+name: node_kafka_topic_emit_probe
+version: "1.0.0"
+description: "Hourly Kafka topic health probes to detect silent EMIT_FAILED failures"
+authors:
+  - "OmniNode Platform Team"
+license: "MIT"
+tags:
+  - "observability"
+  - "kafka"
+  - "health-check"
+  - "probe"
+  - "emit"
+pack: "diagnostics"
+display_name: "Kafka Topic Emit Probe"
+node_role: "effect"
+standalone: true
+full_runtime: true
+requires_network: true
+requires_repo: false
+requires_secrets: false
+requires_docker: false
+side_effect_class: "read_only"

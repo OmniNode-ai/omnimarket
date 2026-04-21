@@ -1,0 +1,60 @@
+---
+name: kafka_topic_emit_probe
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Emits synthetic events for each declared Kafka topic to verify
+  producers, consumers, and partition health. Runs hourly and validates
+  that consumer groups advance, catching silent failures like EMIT_FAILED.
+
+handler:
+  module: omnimarket.nodes.node_kafka_topic_emit_probe.handlers.handler_kafka_probe
+  class: HandlerKafkaProbe
+  input_model: omnimarket.nodes.node_kafka_topic_emit_probe.handlers.handler_kafka_probe.ModelKafkaProbeRequest
+
+handler_routing:
+  default_handler: handler:HandlerKafkaProbe
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  topics:
+    type: list[str]
+    description: "List of Kafka topic names to probe"
+    required: false
+    default: []
+  probe_interval_seconds:
+    type: int
+    description: "How often to emit probes (default: 3600)"
+    required: false
+    default: 3600
+  verify_consumers:
+    type: bool
+    description: "Whether to verify consumer group advancement"
+    required: false
+    default: true
+
+outputs:
+  probes_emitted:
+    type: int
+    description: "Number of synthetic events published"
+  consumers_advanced:
+    type: int
+    description: "Number of consumer groups observed advancing"
+  failures:
+    type: list[str]
+    description: "Topics/consumer groups that failed verification"
+
+terminal_event: onex.evt.omnimarket.kafka-probe-complete.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.kafka-probe-trigger.v1
+  publish_topics:
+    - onex.evt.omnimarket.kafka-probe-result.v1

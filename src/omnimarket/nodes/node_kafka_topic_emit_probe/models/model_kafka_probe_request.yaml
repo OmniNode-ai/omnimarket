@@ -1,0 +1,15 @@
+---
+name: ModelKafkaProbeRequest
+fields:
+  topics:
+    type: list[str]
+    description: "List of Kafka topics to probe"
+  probe_interval_seconds:
+    type: int
+    description: "Interval between probes in seconds"
+  verify_consumers:
+    type: bool
+    description: "Verify consumer group advancement"
+  handler_name:
+    type: str
+    description: "Handler name for routing"
