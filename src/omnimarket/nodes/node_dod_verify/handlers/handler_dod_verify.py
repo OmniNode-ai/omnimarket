@@ -2,6 +2,11 @@
 
 Simple compute: load contract -> run evidence checks -> emit report.
 Not a multi-phase FSM — single-shot computation.
+
+When callers provide pre-collected ``evidence_results``, the handler is pure
+(no I/O). When ``evidence_results`` is None, the handler uses
+EvidenceCollector to load the ticket contract and run checks — this is the
+primary execution path for RuntimeLocal and onex run-node invocations.
 """
 
 from __future__ import annotations
@@ -9,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
@@ -23,13 +29,20 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelEvidenceCheckResult,
 )
 
+if TYPE_CHECKING:
+    from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+        EvidenceCollector,
+    )
+
 logger = logging.getLogger(__name__)
 
 
 class HandlerDodVerify:
     """Handler for DoD evidence verification.
 
-    Pure logic — no external I/O. Callers provide evidence check results.
+    When ``evidence_results`` are provided, behaves as pure logic (no I/O).
+    When ``evidence_results`` is None, loads the ticket contract and runs
+    evidence checks via EvidenceCollector.
     """
 
     def handle(
@@ -53,6 +66,15 @@ class HandlerDodVerify:
         state = self._handle_typed(command)
         return state.model_dump(mode="json")
 
+    @staticmethod
+    def _make_collector() -> EvidenceCollector:
+        """Create an EvidenceCollector instance. Override in tests to mock."""
+        from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+            EvidenceCollector,
+        )
+
+        return EvidenceCollector()
+
     def _handle_typed(
         self,
         command: ModelDodVerifyStartCommand,
@@ -61,9 +83,17 @@ class HandlerDodVerify:
         """Run DoD evidence verification and return final state.
 
         Canonical typed entry point. Accepts a start command and optional
-        pre-collected evidence results; returns the completed verification state.
+        pre-collected evidence results. When evidence_results is None,
+        loads the contract and collects evidence automatically.
         """
-        checks = evidence_results or []
+        if evidence_results is None:
+            collector = self._make_collector()
+            evidence_results = collector.collect(
+                ticket_id=command.ticket_id,
+                contract_path=command.contract_path,
+            )
+
+        checks = evidence_results
 
         verified = sum(
             1 for r in checks if r.status == EnumEvidenceCheckStatus.VERIFIED
