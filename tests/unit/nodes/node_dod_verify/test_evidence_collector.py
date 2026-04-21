@@ -231,14 +231,22 @@ class TestEvidenceCollector:
         assert "must be a list" in (results[0].message or "").lower()
 
     def test_shell_injection_in_ticket_id(self, tmp_path: Path) -> None:
-        """Malicious ticket_id gets shlex.quote'd, not executed."""
-        _write_contract(
+        """Malicious ticket_id is quoted by shlex.quote and does not alter shell flow.
+
+        The contract ticket_id matches the injected value so the test reaches the
+        command-templating path. shlex.quote wraps the shell metacharacters in single
+        quotes, turning them into a literal string argument for echo rather than
+        executing the injected payload.  The command exits 0 and the result is
+        VERIFIED, confirming that the injection was neutralised rather than executed.
+        """
+        malicious_ticket_id = "OMN-TEST; false"
+        contract_path = _write_contract(
             tmp_path,
-            ticket_id="OMN-TEST",
+            ticket_id=malicious_ticket_id,
             dod_evidence=[
                 {
                     "id": "dod-001",
-                    "description": "Substituted command",
+                    "description": "Quoted substitution",
                     "checks": [
                         {"check_type": "command", "command": "echo {ticket_id}"}
                     ],
@@ -246,14 +254,14 @@ class TestEvidenceCollector:
             ],
         )
         collector = EvidenceCollector()
-        # Injecting a shell metachar — shlex.quote should neutralize it
         results = collector.collect(
-            "OMN-TEST; rm -rf /",
-            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+            malicious_ticket_id,
+            contract_path=str(contract_path),
         )
-        # The ticket_id mismatch check should catch this first
+        # shlex.quote turns "OMN-TEST; false" into a single-quoted shell literal so
+        # the semicolon is NOT interpreted as a command separator.  echo exits 0.
         assert len(results) == 1
-        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
 
     def test_multiple_evidence_items(self, tmp_path: Path) -> None:
         """Multiple dod_evidence items produce multiple results."""
