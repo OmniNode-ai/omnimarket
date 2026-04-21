@@ -1,0 +1,21 @@
+name: node_merge_effect
+version: "1.0.0"
+description: "Simple git merge resolver for DIRTY PRs"
+authors:
+  - "OmniNode Platform Team"
+license: "MIT"
+tags:
+  - "merge"
+  - "git"
+  - "conflict-resolution"
+  - "automation"
+pack: "merge-sweep"
+display_name: "Merge Effect"
+node_role: "effect"
+standalone: true
+full_runtime: true
+requires_network: false
+requires_repo: true
+requires_secrets: false
+requires_docker: false
+side_effect_class: "read_write"

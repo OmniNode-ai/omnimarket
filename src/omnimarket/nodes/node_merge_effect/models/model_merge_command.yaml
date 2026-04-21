@@ -1,0 +1,19 @@
+---
+name: ModelMergeCommand
+fields:
+  repo_path:
+    type: str
+    description: "Path to the repository"
+    required: true
+  branch:
+    type: str
+    description: "Branch name to merge into"
+    required: true
+  base_branch:
+    type: str
+    description: "Base branch to merge from"
+    default: "origin/main"
+  dry_run:
+    type: bool
+    description: "If true, test merge without committing"
+    default: false

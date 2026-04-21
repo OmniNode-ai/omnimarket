@@ -1,0 +1,73 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Merge Effect (OMN-9404 Pick #5)
+name: node_merge_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Simple git merge resolver for DIRTY PRs. Attempts git merge origin/main
+  for conflict-free or trivially-mergeable PRs. Escalates to LLM-based
+  conflict resolution when merge is ambiguous. Mechanical automation of
+  PR conflict resolution based on OMN-9404 picks #1354/#1356 pattern.
+
+handler:
+  module: omnimarket.nodes.node_merge_effect.handlers.handler_merge
+  class: HandlerMergeEffect
+  input_model: omnimarket.nodes.node_merge_effect.models.model_merge_command.ModelMergeCommand
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_merge_effect.handlers.handler_merge:HandlerMergeEffect
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  repo_path:
+    type: str
+    description: "Path to the repository"
+    required: true
+  branch:
+    type: str
+    description: "Branch name to merge into"
+    required: true
+  base_branch:
+    type: str
+    description: "Base branch to merge from"
+    required: false
+    default: "origin/main"
+  dry_run:
+    type: bool
+    description: "If true, test merge without committing"
+    required: false
+    default: false
+
+outputs:
+  merged:
+    type: bool
+    description: "Whether merge succeeded"
+  conflicts_resolved:
+    type: bool
+    description: "Whether conflicts were resolved"
+  requires_llm:
+    type: bool
+    description: "Whether LLM-based resolution is needed"
+  error:
+    type: str
+    description: "Error message if merge failed"
+
+terminal_event: onex.evt.omnimarket.merge-complete.v1
+
+event_bus:
+  consumer_group: omnimarket.merge_effect.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-merge.v1
+  publish_topics:
+    - onex.evt.omnimarket.merge-result.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-merge.v1
