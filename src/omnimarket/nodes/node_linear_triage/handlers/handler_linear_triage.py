@@ -12,8 +12,8 @@ import json
 import logging
 import os
 import re
-import urllib.request
 import urllib.parse
+import urllib.request
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
