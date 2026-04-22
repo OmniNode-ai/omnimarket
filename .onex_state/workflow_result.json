@@ -1,5 +1,5 @@
 {
   "result": "completed",
   "exit_code": 0,
-  "workflow": "src/omnimarket/nodes/node_build_loop/contract.yaml"
+  "workflow": "/Users/jonah/Code/omni_home/omni_worktrees/OMN-9403b/omnimarket/src/omnimarket/nodes/node_verification_receipt_generator/contract.yaml"
 }

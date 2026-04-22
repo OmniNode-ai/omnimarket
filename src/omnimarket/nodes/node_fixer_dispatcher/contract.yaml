@@ -1,0 +1,92 @@
+---
+name: fixer_dispatcher
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Routes PR stall events to the correct fixer node. Pure compute —
+  all routing is table-driven with zero network calls. Dispatches to
+  ci_fix_effect (RED), conflict_hunk_effect (CONFLICTED), rebase_effect
+  (BEHIND), or emits deploy-gate advisory. Unknown categories escalate.
+
+handler:
+  module: omnimarket.nodes.node_fixer_dispatcher.handlers.handler_fixer_dispatcher
+  class: HandlerFixerDispatcher
+  input_model: omnimarket.nodes.node_fixer_dispatcher.models.model_fixer_dispatch.ModelFixerDispatchRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  pr_number:
+    type: int
+    description: "GitHub PR number"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo slug"
+    required: true
+  stall_category:
+    type: str
+    description: "Stall category: red, conflicted, behind, deploy_gate, unknown, stale"
+    required: true
+  blocking_reason:
+    type: str
+    description: "Human-readable blocking reason"
+    required: false
+  stall_count:
+    type: int
+    description: "Consecutive identical snapshots"
+    required: false
+    default: 1
+  dry_run:
+    type: bool
+    description: "Return dispatch spec without executing"
+    required: false
+    default: false
+  head_sha:
+    type: str
+    description: "HEAD commit SHA for the PR branch"
+    required: false
+  branch_name:
+    type: str
+    description: "PR branch name (used in payload_hint for rebase)"
+    required: false
+
+outputs:
+  action:
+    type: str
+    description: "Prescribed fixer action"
+  target_node:
+    type: str
+    description: "Target fixer node entry point name"
+  target_topic:
+    type: str
+    description: "Command topic for the target fixer"
+  reason:
+    type: str
+    description: "Human-readable routing explanation"
+  confidence:
+    type: float
+    description: "Routing confidence (1.0 = mechanical)"
+  payload_hint:
+    type: dict
+    description: "Pre-filled payload for target fixer command execution"
+
+terminal_event: onex.evt.omnimarket.fixer-dispatch-completed.v1
+
+routing:
+  command_topics:
+    red: "onex.cmd.omnimarket.ci-fix-start.v1"
+    conflicted: "onex.cmd.omnimarket.conflict-hunk-start.v1"
+    behind: "onex.cmd.omnimarket.rebase-start.v1"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.fixer-dispatch-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.fixer-dispatch-completed.v1
