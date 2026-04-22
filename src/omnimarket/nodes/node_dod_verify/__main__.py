@@ -57,7 +57,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--correlation-id",
-        type=str,
+        type=uuid.UUID,
         default=None,
         help="Correlation ID (UUID) for this run (default: auto-generated)",
     )
@@ -65,7 +65,7 @@ def main() -> None:
     args = parser.parse_args()
 
     correlation_id = (
-        uuid.UUID(args.correlation_id) if args.correlation_id else uuid.uuid4()
+        args.correlation_id if args.correlation_id is not None else uuid.uuid4()
     )
 
     command = ModelDodVerifyStartCommand(
