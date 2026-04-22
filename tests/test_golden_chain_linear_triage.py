@@ -23,6 +23,7 @@ from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     LinearClientProtocol,
 )
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
+    ModelLinearTriageResult,
     ModelLinearTriageStartCommand,
 )
 
@@ -292,10 +293,6 @@ class TestLinearTriageTimeout:
 
     def test_no_timeout_completes_normally(self) -> None:
         """_run_with_timeout returns result when handler finishes within limit."""
-        from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
-            ModelLinearTriageResult,
-        )
-
         expected = ModelLinearTriageResult(total_scanned=3)
         handler = MagicMock(spec=HandlerLinearTriage)
         handler.handle.return_value = expected
