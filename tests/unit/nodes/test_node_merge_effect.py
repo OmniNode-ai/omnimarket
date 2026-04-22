@@ -5,11 +5,11 @@ Unit tests for node_merge_effect.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from omnimarket.nodes.node_merge_effect.handlers.handler_merge import HandlerMergeEffect
 from omnimarket.nodes.node_merge_effect.models.model_merge_command import (
     ModelMergeCommand,
 )
-
-from omnimarket.nodes.node_merge_effect.handlers.handler_merge import HandlerMergeEffect
 
 
 @pytest.mark.asyncio

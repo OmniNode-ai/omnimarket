@@ -41,7 +41,7 @@ Purpose: Hourly synthetic event emission for Kafka topic health verification.
 - Timeout enforced at 120 seconds
 
 ## Testing
-Unit tests provided in `tests/test_kafka_probe.py` covering:
+Unit tests provided in `tests/unit/nodes/test_node_kafka_topic_emit_probe.py` covering:
 - Handler initialization
 - Empty topic list (default behavior)
 - Specific topic probing

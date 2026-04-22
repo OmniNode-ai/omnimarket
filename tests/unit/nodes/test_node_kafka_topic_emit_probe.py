@@ -3,12 +3,12 @@ Unit tests for node_kafka_topic_emit_probe.
 """
 
 import pytest
-from omnimarket.nodes.node_kafka_topic_emit_probe.models.model_kafka_probe_request import (
-    ModelKafkaProbeRequest,
-)
 
 from omnimarket.nodes.node_kafka_topic_emit_probe.handlers.handler_kafka_probe import (
     HandlerKafkaProbe,
+)
+from omnimarket.nodes.node_kafka_topic_emit_probe.models.model_kafka_probe_request import (
+    ModelKafkaProbeRequest,
 )
 
 

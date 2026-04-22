@@ -111,7 +111,9 @@ class HandlerStallRecovery:
 
     def _get_checkpoint_path(self, ticket_id: str, agent_id: str) -> Path:
         """Get checkpoint file path for recovery."""
-        base = Path(os.environ.get("OMNI_HOME", "/Users/jonah/Code/omni_home"))
+        base = Path(
+            os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home"))
+        )
         checkpoint_dir = base / ".onex_state" / "pipeline_checkpoints" / ticket_id
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")

@@ -11,6 +11,7 @@ Purpose: Simple git merge resolver for DIRTY PRs - mechanical automation of conf
 - **Timeout**: 60 seconds
 
 ## Input Schema
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `repo_path` | `str` | required | Path to the repository |

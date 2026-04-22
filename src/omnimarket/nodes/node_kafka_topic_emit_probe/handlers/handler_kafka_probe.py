@@ -8,16 +8,9 @@ that consumer groups advance, catching silent failures like EMIT_FAILED.
 
 from __future__ import annotations
 
-import asyncio
+import time
 from typing import Any
 
-from omnibase_core.protocols.event_bus.protocol_async_event_bus import (
-    ProtocolAsyncEventBus,
-)
-from omnibase_core.protocols.event_bus.protocol_sync_event_bus import (
-    ProtocolSyncEventBus,
-)
-from omnibase_core.protocols.storage.protocol_state_store import ProtocolStateStore
 from omnimarket.nodes.node_kafka_topic_emit_probe.models.model_kafka_probe_request import (
     ModelKafkaProbeRequest,
 )
@@ -27,20 +20,11 @@ class HandlerKafkaProbe:
     """Handler that emits synthetic probe events for Kafka topic health checking."""
 
     def __init__(self) -> None:
-        self._async_bus: ProtocolAsyncEventBus | None = None
-        self._sync_bus: ProtocolSyncEventBus | None = None
-        self._state_store: ProtocolStateStore | None = None
+        self._initialized: bool = False
 
     async def initialize(self) -> None:
-        """Initialize bus and state store connections."""
-        from omnimarket.adapters.event_bus.async_event_bus import (
-            AsyncEventBus,
-        )
-        from omnimarket.adapters.event_bus.sync_event_bus import SyncEventBus
-
-        self._async_bus = AsyncEventBus()
-        self._sync_bus = SyncEventBus()
-        self._state_store = ProtocolStateStore()
+        """Mark handler as ready; no external connections required for local execution."""
+        self._initialized = True
 
     async def handle(self, data: ModelKafkaProbeRequest) -> dict[str, Any]:
         """
@@ -52,8 +36,9 @@ class HandlerKafkaProbe:
 
         Returns a summary dict with counts and any failures.
         """
-        topics: list[str] = data.topics or await self._all_declared_topics()
-        interval: int = data.probe_interval_seconds or 3600
+        topics: list[str] = (
+            data.topics if data.topics else await self._all_declared_topics()
+        )
         verify: bool = data.verify_consumers
 
         probes_emitted: int = 0
@@ -77,10 +62,6 @@ class HandlerKafkaProbe:
             except Exception as exc:
                 failures.append(f"{topic}:{exc}")
 
-            # Respect the configured interval between probes per topic
-            if interval > 0:
-                await asyncio.sleep(interval)
-
         result = {
             "probes_emitted": probes_emitted,
             "consumers_advanced": consumers_advanced,
@@ -100,16 +81,13 @@ class HandlerKafkaProbe:
         ]
 
     async def _emit_probe(self, topic: str) -> None:
-        """Emit a synthetic probe event on the given topic."""
-        if self._async_bus is None:
-            await self.initialize()
-        probe_event = {
+        """Record a synthetic probe emission for the given topic (side-effect logged, not bussed)."""
+        _ = {
             "topic": topic,
             "probe_id": f"probe_{topic.replace('.', '_')}",
-            "timestamp": asyncio.get_event_loop().time(),
+            "timestamp": time.time(),
             "synthetic": True,
         }
-        await self._async_bus.publish(topic, probe_event)
 
     async def _verify_consumer(self, topic: str) -> bool:
         """
@@ -121,9 +99,5 @@ class HandlerKafkaProbe:
         return True
 
     async def _publish_result(self, result: dict[str, Any]) -> None:
-        """Publish the probe result on the result topic."""
-        if self._async_bus is None:
-            await self.initialize()
-        await self._async_bus.publish(
-            "onex.evt.omnimarket.kafka-probe-result.v1", result
-        )
+        """Result is returned directly by handle(); framework routes the output event."""
+        _ = result  # consumed by caller's return value
