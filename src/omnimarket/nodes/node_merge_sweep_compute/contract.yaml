@@ -1,8 +1,8 @@
 ---
-name: merge_sweep
-contract_version: {major: 1, minor: 1, patch: 0}
-node_type: orchestrator
-node_version: {major: 1, minor: 1, patch: 0}
+name: merge_sweep_compute
+contract_version: {major: 2, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 2, minor: 0, patch: 0}
 
 description: >
   Org-wide PR sweep. Classifies open PRs into merge-ready (Track A),
@@ -12,18 +12,18 @@ description: >
   with escalation thresholds (STUCK, CHRONIC, RECIDIVIST).
 
 handler:
-  module: omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep
+  module: omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep
   class: NodeMergeSweep
-  input_model: omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep.ModelMergeSweepRequest
+  input_model: omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep.ModelMergeSweepRequest
 
 handler_routing:
   default_handler: handler:NodeMergeSweep
 
 descriptor:
-  node_archetype: orchestrator
-  purity: impure
+  node_archetype: compute
+  purity: pure
   idempotent: true
-  timeout_ms: 300000
+  timeout_ms: 5000
 
 terminal_event: onex.evt.omnimarket.merge-sweep-completed.v1
 

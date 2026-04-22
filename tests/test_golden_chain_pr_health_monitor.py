@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import ModelPRInfo
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
+    ModelPRInfo,
+)
 from omnimarket.nodes.node_pr_health_monitor.handlers.handler_pr_health_monitor import (
     HandlerPrHealthMonitor,
     _classify_pr,

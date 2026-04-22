@@ -7,12 +7,13 @@ invokes NodeMergeSweep.  Emits ``onex.evt.omnimarket.merge-sweep-completed.v1``
 on completion.
 
 Environment variables (all resolved at startup — no hardcoded strings):
+    GH_PAT             GitHub PAT (required — fail-fast if missing)
     KAFKA_BROKER        Redpanda/Kafka bootstrap server (default: localhost:9092)
     ONEX_STATE_DIR      Failure-history state dir (default: ~/.onex_state)
     MERGE_SWEEP_GROUP   Consumer group ID (default: omnimarket.merge_sweep.consume.v1)
 
 Usage (standalone consumer loop):
-    python -m omnimarket.nodes.node_merge_sweep.consumer
+    python -m omnimarket.nodes.node_merge_sweep_compute.consumer
 
 The loop runs until SIGINT/SIGTERM.  It is safe to run alongside the existing
 ``python -m omnimarket.nodes.node_merge_sweep`` CLI — they are independent.
@@ -26,12 +27,16 @@ import logging
 import os
 import pathlib
 import signal
-import subprocess
 import sys
 from typing import Any
 
-from omnimarket.nodes.node_merge_sweep.branch_protection import BranchProtectionCache
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
+    GitHubHttpClient,
+)
+from omnimarket.nodes.node_merge_sweep_compute.branch_protection import (
+    BranchProtectionCache,
+)
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     TOPIC_MERGE_SWEEP_COMPLETED,
     TOPIC_MERGE_SWEEP_START,
     ModelFailureHistoryEntry,
@@ -39,6 +44,7 @@ from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
     ModelPRInfo,
     NodeMergeSweep,
 )
+from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 _log = logging.getLogger(__name__)
 
@@ -57,40 +63,6 @@ _DEFAULT_REPOS = [
     "OmniNode-ai/omniweb",
 ]
 
-_PR_FIELDS = (
-    "number,title,mergeable,mergeStateStatus,statusCheckRollup,"
-    "reviewDecision,headRefName,baseRefName,isDraft,labels,author,updatedAt"
-)
-
-
-def _fetch_prs(repo: str) -> list[dict[str, Any]]:
-    result = subprocess.run(
-        [
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--state",
-            "open",
-            "--json",
-            _PR_FIELDS,
-            "--limit",
-            "100",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if result.returncode != 0:
-        _log.warning("gh pr list failed for %s: %s", repo, result.stderr.strip())
-        return []
-    try:
-        return json.loads(result.stdout)  # type: ignore[no-any-return]
-    except json.JSONDecodeError as exc:
-        _log.warning("failed to parse gh output for %s: %s", repo, exc)
-        return []
-
 
 def _is_green(pr: dict[str, Any]) -> bool:
     rollup = pr.get("statusCheckRollup") or []
@@ -103,7 +75,6 @@ def _is_green(pr: dict[str, Any]) -> bool:
 def _to_pr_info(
     pr: dict[str, Any], repo: str, required_approving: int | None
 ) -> ModelPRInfo:
-    # Normalize reviewDecision "" → None (GitHub returns "" on solo-dev repos).
     review_decision_raw = pr.get("reviewDecision")
     review_decision = review_decision_raw if review_decision_raw else None
     return ModelPRInfo(
@@ -136,7 +107,11 @@ def _load_failure_history(state_dir: str) -> dict[str, ModelFailureHistoryEntry]
         return {}
 
 
-def _build_request(cmd: dict[str, Any], state_dir: str) -> ModelMergeSweepRequest:
+def _build_request(
+    github: GitHubHttpClient,
+    cmd: dict[str, Any],
+    state_dir: str,
+) -> ModelMergeSweepRequest:
     """Build a ModelMergeSweepRequest from a Kafka command payload."""
     repos_raw: str | list[str] = cmd.get("repos", "")
     if isinstance(repos_raw, list):
@@ -145,10 +120,18 @@ def _build_request(cmd: dict[str, Any], state_dir: str) -> ModelMergeSweepReques
         repos = [r.strip() for r in repos_raw.split(",") if r.strip()] or _DEFAULT_REPOS
 
     all_prs: list[ModelPRInfo] = []
-    protection = BranchProtectionCache()
+    protection = BranchProtectionCache(github)
     for repo in repos:
-        required_approving = protection.required_approving_review_count(repo)
-        for pr in _fetch_prs(repo):
+        try:
+            required_approving = protection.required_approving_review_count(repo)
+            prs = github.fetch_open_prs(repo)
+        except ValueError as exc:
+            _log.warning("skipping repo %r — invalid format: %s", repo, exc)
+            continue
+        except GitHubTransportError as exc:
+            _log.error("skipping repo %r — GitHub transport error: %s", repo, exc)
+            continue
+        for pr in prs:
             all_prs.append(_to_pr_info(pr, repo, required_approving))
 
     failure_history = _load_failure_history(state_dir)
@@ -177,6 +160,9 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
             "Cannot start Kafka consumer."
         )
         sys.exit(1)
+
+    # Fail-fast: GH_PAT must be present for GitHubHttpClient
+    github = GitHubHttpClient()
 
     consumer = AIOKafkaConsumer(
         TOPIC_MERGE_SWEEP_START,
@@ -222,7 +208,7 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
             )
 
             try:
-                request = _build_request(cmd, state_dir)
+                request = _build_request(github, cmd, state_dir)
                 result = handler.handle(request)
                 payload: dict[str, Any] = {
                     "correlation_id": correlation_id,

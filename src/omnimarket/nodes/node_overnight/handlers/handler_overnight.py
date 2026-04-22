@@ -1100,7 +1100,7 @@ def _dispatch_merge_sweep(
     list to prove the wiring; a follow-up ticket must add a PR-inventory
     adapter before this produces real output.
     """
-    from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+    from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
         ModelMergeSweepRequest,
         NodeMergeSweep,
     )

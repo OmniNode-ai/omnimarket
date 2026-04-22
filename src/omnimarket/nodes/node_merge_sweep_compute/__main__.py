@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 """CLI entry point for node_merge_sweep.
 
-Reads open PRs from GitHub (via gh CLI), classifies them into tracks, and
-outputs a JSON classification report to stdout.
+Reads open PRs from GitHub (via HTTP adapter), classifies them into tracks,
+and outputs a JSON classification report to stdout.
 
 Usage:
     python -m omnimarket.nodes.node_merge_sweep \
@@ -13,6 +13,9 @@ Usage:
         --dry-run
 
 Outputs JSON to stdout: ModelMergeSweepResult model.
+
+Environment:
+    GH_PAT   GitHub PAT (required — fail-fast if missing)
 """
 
 from __future__ import annotations
@@ -22,11 +25,16 @@ import json
 import logging
 import os
 import pathlib
-import subprocess
 import sys
+from typing import Any
 
-from omnimarket.nodes.node_merge_sweep.branch_protection import BranchProtectionCache
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
+    GitHubHttpClient,
+)
+from omnimarket.nodes.node_merge_sweep_compute.branch_protection import (
+    BranchProtectionCache,
+)
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     ModelFailureHistoryEntry,
     ModelMergeSweepRequest,
     ModelPRInfo,
@@ -50,52 +58,20 @@ _DEFAULT_REPOS = [
     "OmniNode-ai/omniweb",
 ]
 
-_PR_FIELDS = (
-    "number,title,mergeable,mergeStateStatus,statusCheckRollup,"
-    "reviewDecision,headRefName,baseRefName,isDraft,labels,author,updatedAt"
-)
 
-
-def _fetch_prs(repo: str) -> list[dict]:  # type: ignore[type-arg]
-    """Fetch open PRs for a repo via gh CLI."""
-    result = subprocess.run(
-        [
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--state",
-            "open",
-            "--json",
-            _PR_FIELDS,
-            "--limit",
-            "100",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        _log.warning("gh pr list failed for %s: %s", repo, result.stderr.strip())
-        return []
-    try:
-        return json.loads(result.stdout)  # type: ignore[no-any-return]
-    except json.JSONDecodeError as exc:
-        _log.warning("failed to parse gh output for %s: %s", repo, exc)
-        return []
-
-
-def _is_green(pr: dict) -> bool:  # type: ignore[type-arg]
-    """All required checks pass."""
+def _is_green(pr: dict[str, Any]) -> bool:
     rollup = pr.get("statusCheckRollup") or []
-    required = [c for c in rollup if c.get("isRequired")]
+    required = [c for c in rollup if isinstance(c, dict) and c.get("isRequired")]
     if not required:
         return True
-    return all(c.get("conclusion") == "SUCCESS" for c in required)
+    return all(
+        isinstance(c, dict) and c.get("conclusion") == "SUCCESS" for c in required
+    )
 
 
-def _to_pr_info(pr: dict, repo: str, required_approving: int | None) -> ModelPRInfo:  # type: ignore[type-arg]
-    # Normalize reviewDecision "" → None (GitHub returns "" on solo-dev repos).
+def _to_pr_info(
+    pr: dict[str, Any], repo: str, required_approving: int | None
+) -> ModelPRInfo:
     review_decision_raw = pr.get("reviewDecision")
     review_decision = review_decision_raw if review_decision_raw else None
     return ModelPRInfo(
@@ -107,7 +83,9 @@ def _to_pr_info(pr: dict, repo: str, required_approving: int | None) -> ModelPRI
         is_draft=pr.get("isDraft", False),
         review_decision=review_decision,
         required_checks_pass=_is_green(pr),
-        labels=[lbl["name"] for lbl in (pr.get("labels") or [])],
+        labels=[
+            lbl["name"] for lbl in (pr.get("labels") or []) if isinstance(lbl, dict)
+        ],
         required_approving_review_count=required_approving,
     )
 
@@ -181,14 +159,16 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-
     repos = [r.strip() for r in args.repos.split(",") if r.strip()] or _DEFAULT_REPOS
 
+    # Fail-fast: GH_PAT must be present
+    github = GitHubHttpClient()
+
     all_prs: list[ModelPRInfo] = []
-    protection = BranchProtectionCache()
+    protection = BranchProtectionCache(github)
     for repo in repos:
         required_approving = protection.required_approving_review_count(repo)
-        for pr in _fetch_prs(repo):
+        for pr in github.fetch_open_prs(repo):
             all_prs.append(_to_pr_info(pr, repo, required_approving))
 
     failure_history = _load_failure_history(onex_state_dir)

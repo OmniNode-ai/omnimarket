@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for node_merge_sweep Kafka consumer wiring.
+"""Unit tests for node_merge_sweep_compute Kafka consumer wiring.
 
 Tests the topics module constants and the _build_request helper that
 translates a Kafka command payload into a ModelMergeSweepRequest.
@@ -9,11 +9,11 @@ translates a Kafka command payload into a ModelMergeSweepRequest.
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import (
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     TOPIC_MERGE_SWEEP_COMPLETED,
     TOPIC_MERGE_SWEEP_START,
 )
@@ -37,14 +37,17 @@ class TestMergeSweepTopics:
 class TestBuildRequest:
     """_build_request translates Kafka command payload → ModelMergeSweepRequest."""
 
-    def test_defaults_used_when_command_is_empty(self, tmp_path: pathlib.Path) -> None:
-        from omnimarket.nodes.node_merge_sweep.consumer import _build_request
+    def _make_stub_client(self, prs: list[dict] | None = None) -> MagicMock:
+        client = MagicMock()
+        client.fetch_open_prs.return_value = prs or []
+        client.fetch_branch_protection.return_value = None
+        return client
 
-        with patch(
-            "omnimarket.nodes.node_merge_sweep.consumer._fetch_prs",
-            return_value=[],
-        ):
-            req = _build_request({}, str(tmp_path))
+    def test_defaults_used_when_command_is_empty(self, tmp_path: pathlib.Path) -> None:
+        from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request
+
+        github = self._make_stub_client()
+        req = _build_request(github, {}, str(tmp_path))
 
         assert req.require_approval is True
         assert req.merge_method == "squash"
@@ -54,7 +57,7 @@ class TestBuildRequest:
         assert req.prs == []
 
     def test_command_overrides_defaults(self, tmp_path: pathlib.Path) -> None:
-        from omnimarket.nodes.node_merge_sweep.consumer import _build_request
+        from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request
 
         cmd = {
             "repos": "OmniNode-ai/omniclaude",
@@ -66,11 +69,8 @@ class TestBuildRequest:
             "correlation_id": "test-123",
         }
 
-        with patch(
-            "omnimarket.nodes.node_merge_sweep.consumer._fetch_prs",
-            return_value=[],
-        ):
-            req = _build_request(cmd, str(tmp_path))
+        github = self._make_stub_client()
+        req = _build_request(github, cmd, str(tmp_path))
 
         assert req.require_approval is False
         assert req.merge_method == "rebase"
@@ -80,19 +80,37 @@ class TestBuildRequest:
         assert req.run_id == "test-123"
 
     def test_repos_list_accepted(self, tmp_path: pathlib.Path) -> None:
-        from omnimarket.nodes.node_merge_sweep.consumer import _build_request
+        from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request
 
         cmd = {"repos": ["OmniNode-ai/omniclaude", "OmniNode-ai/omnidash"]}
-        calls: list[str] = []
+        github = self._make_stub_client()
+        _build_request(github, cmd, str(tmp_path))
 
-        def _fake_fetch(repo: str) -> list[dict]:
-            calls.append(repo)
-            return []
+        assert github.fetch_open_prs.call_count == 2
 
-        with patch(
-            "omnimarket.nodes.node_merge_sweep.consumer._fetch_prs",
-            side_effect=_fake_fetch,
-        ):
-            _build_request(cmd, str(tmp_path))
+    def test_transport_error_skips_repo(self, tmp_path: pathlib.Path) -> None:
+        from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request
+        from omnimarket.nodes.node_merge_sweep_compute.protocols import (
+            GitHubTransportError,
+        )
 
-        assert calls == ["OmniNode-ai/omniclaude", "OmniNode-ai/omnidash"]
+        github = MagicMock()
+        github.fetch_branch_protection.return_value = None
+        github.fetch_open_prs.side_effect = GitHubTransportError("network down")
+
+        cmd = {"repos": "OmniNode-ai/omniclaude"}
+        req = _build_request(github, cmd, str(tmp_path))
+
+        assert req.prs == []
+
+    def test_invalid_repo_format_skips_repo(self, tmp_path: pathlib.Path) -> None:
+        from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request
+
+        github = MagicMock()
+        github.fetch_branch_protection.return_value = None
+        github.fetch_open_prs.side_effect = ValueError("Invalid repo format")
+
+        cmd = {"repos": "not-a-valid-repo-format"}
+        req = _build_request(github, cmd, str(tmp_path))
+
+        assert req.prs == []

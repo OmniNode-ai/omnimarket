@@ -52,7 +52,7 @@ def compat_yaml_content() -> dict:
                 ],
             },
             {
-                "node": "node_merge_sweep",
+                "node": "node_merge_sweep_compute",
                 "topics": [
                     {
                         "name": "onex.cmd.omnimarket.merge-sweep-start.v1",

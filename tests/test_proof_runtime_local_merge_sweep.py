@@ -11,7 +11,7 @@ from omnibase_core.runtime.runtime_local import RuntimeLocal
 
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
-    / "src/omnimarket/nodes/node_merge_sweep/contract.yaml"
+    / "src/omnimarket/nodes/node_merge_sweep_compute/contract.yaml"
 )
 
 
@@ -36,7 +36,7 @@ def test_runtime_local_runs_merge_sweep_with_defaults(tmp_path: Path) -> None:
     data = json.loads(state_file.read_text())
     assert data["result"] == "completed"
     assert data["exit_code"] == 0
-    assert data["workflow"].endswith("node_merge_sweep/contract.yaml")
+    assert data["workflow"].endswith("node_merge_sweep_compute/contract.yaml")
 
 
 def test_runtime_local_runs_merge_sweep_with_real_payload(tmp_path: Path) -> None:
@@ -70,7 +70,7 @@ def test_runtime_local_runs_merge_sweep_with_real_payload(tmp_path: Path) -> Non
     # EnumWorkflowResult.COMPLETED.value is the lowercase string "completed".
     assert state["result"] == "completed"
     assert state["exit_code"] == 0
-    assert state["workflow"].endswith("node_merge_sweep/contract.yaml")
+    assert state["workflow"].endswith("node_merge_sweep_compute/contract.yaml")
 
 
 def test_runtime_local_publishes_terminal_event_to_bus(tmp_path: Path) -> None:

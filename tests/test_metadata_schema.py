@@ -61,7 +61,7 @@ class TestMetadataSchema:
     def test_deprecation_fields_parse_correctly(self) -> None:
         """A node marked deprecated parses all three deprecation fields."""
         data = {
-            "name": "node_merge_sweep",
+            "name": "node_merge_sweep_compute",
             "version": "1.0.0",
             "description": "Old node",
             "deprecated": True,
@@ -73,15 +73,14 @@ class TestMetadataSchema:
         assert schema.deprecated_by == "node_pr_lifecycle_orchestrator"
         assert schema.deprecated_reason == "Superseded by orchestrator."
 
-    def test_node_merge_sweep_is_deprecated(self) -> None:
-        """node_merge_sweep metadata.yaml marks node as deprecated."""
-        meta_path = _NODES_DIR / "node_merge_sweep" / "metadata.yaml"
+    def test_node_merge_sweep_compute_is_not_deprecated(self) -> None:
+        """node_merge_sweep_compute metadata.yaml — active compute node."""
+        meta_path = _NODES_DIR / "node_merge_sweep_compute" / "metadata.yaml"
         with meta_path.open() as f:
             data = yaml.safe_load(f)
         schema = MetadataSchema(**data)
-        assert schema.deprecated is True
-        assert schema.deprecated_by == "node_pr_lifecycle_orchestrator"
-        assert schema.deprecated_reason
+        assert schema.deprecated is False
+        assert schema.node_role.value == "compute"
 
     def test_node_pr_snapshot_effect_is_deprecated(self) -> None:
         """node_pr_snapshot_effect metadata.yaml marks node as deprecated."""

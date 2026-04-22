@@ -24,7 +24,9 @@ import logging
 from datetime import UTC, datetime
 from typing import Literal
 
-from omnimarket.nodes.node_merge_sweep.handlers.handler_merge_sweep import ModelPRInfo
+from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
+    ModelPRInfo,
+)
 from omnimarket.nodes.node_pr_health_monitor.models.model_pr_health_input import (
     ModelPrHealthInput,
 )

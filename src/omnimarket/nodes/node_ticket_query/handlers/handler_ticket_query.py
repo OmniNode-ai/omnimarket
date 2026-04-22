@@ -25,7 +25,7 @@ from omnimarket.nodes.node_ticket_query.models.model_ticket_query_output import 
 )
 
 if TYPE_CHECKING:
-    from omnibase_spi.protocols.services.protocol_project_tracker import (  # type: ignore[import-not-found]
+    from omnibase_spi.protocols.services.protocol_project_tracker import (
         ProtocolProjectTracker,
     )
 
@@ -89,12 +89,7 @@ class HandlerTicketQuery:
                 filters=input_data.filters, limit=input_data.limit
             )
 
-        issues = tuple(
-            ModelIssueResult(**issue.model_dump())
-            if hasattr(issue, "model_dump")
-            else ModelIssueResult(**issue)
-            for issue in raw_issues
-        )
+        issues = tuple(ModelIssueResult(**issue.model_dump()) for issue in raw_issues)
 
         logger.info("TicketQuery: returned %d issues", len(issues))
 
