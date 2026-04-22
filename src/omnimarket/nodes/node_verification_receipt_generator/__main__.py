@@ -82,6 +82,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if args.no_verify_ci and args.no_verify_tests and not args.dry_run:
+        parser.error(
+            "At least one verification must be enabled, or pass --dry-run."
+        )
+
     request = ModelVerificationReceiptRequest(
         task_id=args.task_id,
         claim=args.claim,
