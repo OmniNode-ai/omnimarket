@@ -49,9 +49,7 @@ class HandlerKafkaProbe:
 
         Returns a summary dict with counts and any failures.
         """
-        topics: list[str] = (
-            data.topics if data.topics else _load_default_topics()
-        )
+        topics: list[str] = data.topics if data.topics else _load_default_topics()
         verify: bool = data.verify_consumers
 
         probes_emitted: int = 0
