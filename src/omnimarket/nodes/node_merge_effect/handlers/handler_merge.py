@@ -20,7 +20,7 @@ class HandlerMergeEffect:
     """Handler that performs simple git merge operations."""
 
     def __init__(self) -> None:
-        self._dry_run: bool = False
+        pass
 
     async def initialize(self) -> None:
         """Initialize handler - verify git is available."""
@@ -28,6 +28,7 @@ class HandlerMergeEffect:
             ["git", "--version"],
             capture_output=True,
             text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             raise RuntimeError("Git is not available")
@@ -42,8 +43,6 @@ class HandlerMergeEffect:
             requires_llm: Whether LLM-based resolution is needed
             error: Error message if merge failed
         """
-        self._dry_run = data.dry_run
-
         repo_path = Path(data.repo_path)
         branch = data.branch
         base_branch = data.base_branch or "origin/main"
@@ -57,7 +56,9 @@ class HandlerMergeEffect:
             }
 
         try:
-            result = await self._attempt_merge(repo_path, branch, base_branch)
+            result = await self._attempt_merge(
+                repo_path, branch, base_branch, data.dry_run
+            )
             return result
         except Exception as exc:
             return {
@@ -68,24 +69,33 @@ class HandlerMergeEffect:
             }
 
     async def _attempt_merge(
-        self, repo_path: Path, branch: str, base_branch: str
+        self, repo_path: Path, branch: str, base_branch: str, dry_run: bool
     ) -> dict[str, Any]:
         """Attempt the git merge operation."""
         git_commands = [
             ["git", "fetch", "origin"],
             ["git", "checkout", branch],
             ["git", "merge", "--no-edit", base_branch]
-            if not self._dry_run
+            if not dry_run
             else ["git", "merge", "--no-commit", "--no-ff", base_branch],
         ]
 
         for cmd in git_commands:
-            result = subprocess.run(
-                cmd,
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-            )
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    "merged": False,
+                    "conflicts_resolved": False,
+                    "requires_llm": False,
+                    "error": f"Git command timed out: {' '.join(cmd)}",
+                }
 
             if result.returncode != 0:
                 if "CONFLICT" in result.stdout or "CONFLICT" in result.stderr:
@@ -95,6 +105,22 @@ class HandlerMergeEffect:
                     "conflicts_resolved": False,
                     "requires_llm": False,
                     "error": f"Git command failed: {' '.join(cmd)}\n{result.stderr}",
+                }
+
+        if dry_run:
+            abort_result = subprocess.run(
+                ["git", "merge", "--abort"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if abort_result.returncode != 0:
+                return {
+                    "merged": False,
+                    "conflicts_resolved": False,
+                    "requires_llm": False,
+                    "error": f"Dry-run cleanup failed: {abort_result.stderr}",
                 }
 
         return {
@@ -108,16 +134,40 @@ class HandlerMergeEffect:
         self, repo_path: Path, branch: str, base_branch: str
     ) -> dict[str, Any]:
         """Handle merge conflict - check if simple or needs LLM."""
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "--diff-filter=U"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "--diff-filter=U"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "merged": False,
+                "conflicts_resolved": False,
+                "requires_llm": False,
+                "error": "Git diff timed out during conflict detection",
+            }
 
         conflicting_files = (
             result.stdout.strip().split("\n") if result.stdout.strip() else []
         )
+
+        abort_result = subprocess.run(
+            ["git", "merge", "--abort"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if abort_result.returncode != 0:
+            return {
+                "merged": False,
+                "conflicts_resolved": False,
+                "requires_llm": False,
+                "error": f"Failed to abort merge after conflict: {abort_result.stderr}",
+            }
 
         if not conflicting_files:
             return {
@@ -126,12 +176,6 @@ class HandlerMergeEffect:
                 "requires_llm": False,
                 "error": "Merge conflict detected but no conflicting files found",
             }
-
-        subprocess.run(
-            ["git", "merge", "--abort"],
-            cwd=repo_path,
-            capture_output=True,
-        )
 
         return {
             "merged": False,

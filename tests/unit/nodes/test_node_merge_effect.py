@@ -28,15 +28,19 @@ async def test_handler_initialization():
 @pytest.mark.asyncio
 async def test_handle_nonexistent_repo():
     """Handler should return error for non-existent repository."""
-    handler = HandlerMergeEffect()
-    await handler.initialize()
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="git version 2.0", stderr=""
+        )
+        handler = HandlerMergeEffect()
+        await handler.initialize()
 
-    data = ModelMergeCommand(
-        repo_path="/nonexistent/path",
-        branch="feature-branch",
-        dry_run=True,
-    )
-    result = await handler.handle(data)
+        data = ModelMergeCommand(
+            repo_path="/nonexistent/path",
+            branch="feature-branch",
+            dry_run=True,
+        )
+        result = await handler.handle(data)
 
     assert result["merged"] is False
     assert result["requires_llm"] is False

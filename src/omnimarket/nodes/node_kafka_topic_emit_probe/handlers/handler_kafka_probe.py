@@ -7,12 +7,22 @@ that consumer groups advance, catching silent failures like EMIT_FAILED.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import time
 from typing import Any
+
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from aiokafka.admin import AIOKafkaAdminClient
 
 from omnimarket.nodes.node_kafka_topic_emit_probe.models.model_kafka_probe_request import (
     ModelKafkaProbeRequest,
 )
+
+_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+_CONSUMER_VERIFY_TIMEOUT_S = 5
+_CONSUMER_GROUP_PREFIX = "omnimarket."
 
 
 class HandlerKafkaProbe:
@@ -22,7 +32,7 @@ class HandlerKafkaProbe:
         self._initialized: bool = False
 
     async def initialize(self) -> None:
-        """Mark handler as ready; no external connections required for local execution."""
+        """Mark handler as ready; Kafka connectivity validated on first probe."""
         self._initialized = True
 
     async def handle(self, data: ModelKafkaProbeRequest) -> dict[str, Any]:
@@ -31,20 +41,22 @@ class HandlerKafkaProbe:
 
         For each topic in `topics` (defaults to all declared topics), emit a
         synthetic event and optionally verify that consumer groups advance.
-        Results are published on the result topic.
-
-        Returns a summary dict with counts and any failures.
+        `probe_interval_seconds` controls the inter-topic delay when probing
+        multiple topics in sequence. Results are returned directly.
         """
         topics: list[str] = (
             data.topics if data.topics else await self._all_declared_topics()
         )
         verify: bool = data.verify_consumers
+        probe_interval: float = float(data.probe_interval_seconds) / max(len(topics), 1)
 
         probes_emitted: int = 0
         consumers_advanced: int = 0
         failures: list[str] = []
 
-        for topic in topics:
+        for i, topic in enumerate(topics):
+            if i > 0:
+                await asyncio.sleep(probe_interval)
             try:
                 await self._emit_probe(topic)
                 probes_emitted += 1
@@ -72,7 +84,6 @@ class HandlerKafkaProbe:
 
     async def _all_declared_topics(self) -> list[str]:
         """Discover all topics declared in contract.yaml files."""
-        # Simplified: return default topics from contract defaults
         return [
             "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
             "onex.evt.omnimarket.overseer-verify-completed.v1",
@@ -80,22 +91,92 @@ class HandlerKafkaProbe:
         ]
 
     async def _emit_probe(self, topic: str) -> None:
-        """Record a synthetic probe emission for the given topic (side-effect logged, not bussed)."""
-        _ = {
-            "topic": topic,
-            "probe_id": f"probe_{topic.replace('.', '_')}",
-            "timestamp": time.time(),
-            "synthetic": True,
-        }
+        """Publish a synthetic probe message to the given Kafka topic."""
+        payload = json.dumps(
+            {
+                "topic": topic,
+                "probe_id": f"probe_{topic.replace('.', '_')}",
+                "timestamp": time.time(),
+                "synthetic": True,
+            }
+        ).encode()
+
+        producer = AIOKafkaProducer(bootstrap_servers=_KAFKA_BOOTSTRAP)
+        await producer.start()
+        try:
+            await producer.send_and_wait(topic, payload)
+        finally:
+            await producer.stop()
 
     async def _verify_consumer(self, topic: str) -> bool:
         """
         Verify that at least one consumer group has advanced for the topic.
-        Returns True on success, False otherwise.
+
+        Reads the current end offsets, waits briefly, then checks whether
+        committed offsets have advanced for any consumer group subscribed to
+        the topic. Returns True if advancement is observed.
         """
-        # Placeholder: real implementation would inspect consumer lag / offsets
-        # For now, assume advancement for synthetic probes
-        return True
+        admin = AIOKafkaAdminClient(bootstrap_servers=_KAFKA_BOOTSTRAP)
+        await admin.start()
+        try:
+            consumer_groups = await admin.list_consumer_groups()
+        except Exception:
+            await admin.close()
+            return False
+
+        pre_offsets: dict[str, int] = {}
+        try:
+            for group_id, _ in consumer_groups:
+                if not group_id.startswith(_CONSUMER_GROUP_PREFIX):
+                    continue
+                consumer = AIOKafkaConsumer(
+                    topic,
+                    bootstrap_servers=_KAFKA_BOOTSTRAP,
+                    group_id=group_id,
+                    enable_auto_commit=False,
+                )
+                await consumer.start()
+                try:
+                    partitions = consumer.assignment()
+                    for tp in partitions:
+                        committed = await consumer.committed(tp)
+                        if committed is not None:
+                            pre_offsets[f"{group_id}:{tp.partition}"] = committed
+                finally:
+                    await consumer.stop()
+        except Exception:
+            pass
+
+        await asyncio.sleep(_CONSUMER_VERIFY_TIMEOUT_S)
+
+        try:
+            for group_id, _ in consumer_groups:
+                if not group_id.startswith(_CONSUMER_GROUP_PREFIX):
+                    continue
+                consumer = AIOKafkaConsumer(
+                    topic,
+                    bootstrap_servers=_KAFKA_BOOTSTRAP,
+                    group_id=group_id,
+                    enable_auto_commit=False,
+                )
+                await consumer.start()
+                try:
+                    partitions = consumer.assignment()
+                    for tp in partitions:
+                        committed = await consumer.committed(tp)
+                        key = f"{group_id}:{tp.partition}"
+                        if committed is not None and committed > pre_offsets.get(
+                            key, -1
+                        ):
+                            return True
+                finally:
+                    await consumer.stop()
+        except Exception:
+            return False
+        finally:
+            await admin.close()
+
+        return False
 
     async def _publish_result(self, result: dict[str, Any]) -> None:
         """Result is returned directly by handle(); framework routes the output event."""

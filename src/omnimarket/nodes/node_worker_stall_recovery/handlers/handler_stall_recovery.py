@@ -43,13 +43,10 @@ class HandlerStallRecovery:
 
     async def initialize(self) -> None:
         """Initialize handler - verify required tools are available."""
-        result = subprocess.run(
-            ["git", "--version"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise RuntimeError("Git is not available")
+        import shutil
+
+        if shutil.which("grep") is None:
+            raise RuntimeError("grep is not available")
         self._initialized = True
 
     async def handle(self, data: ModelStallRecoveryCommand) -> dict[str, Any]:
@@ -89,11 +86,11 @@ class HandlerStallRecovery:
 
         if not is_stalled:
             return {
-                "status": "unknown",
+                "status": "healthy",
                 "stall_reason": stall_reason,
                 "checkpoint_path": "",
                 "redispatch_count": 0,
-                "error": stall_reason,
+                "error": "",
             }
 
         if dry_run:
@@ -140,13 +137,12 @@ class HandlerStallRecovery:
         }
 
     def _get_checkpoint_path(self, ticket_id: str, agent_id: str) -> Path:
-        """Get checkpoint file path for recovery."""
+        """Compute checkpoint file path without creating directories."""
         try:
             onex_state = _resolve_onex_state()
         except RuntimeError:
             onex_state = Path(".onex_state")
         checkpoint_dir = onex_state / "pipeline_checkpoints" / ticket_id
-        checkpoint_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
         return checkpoint_dir / f"recovery-{agent_id}-{timestamp}.json"
 
@@ -230,6 +226,7 @@ class HandlerStallRecovery:
             "reason": "stall_recovery_checkpoint",
         }
         try:
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
             checkpoint_path.write_text(json.dumps(checkpoint_data, indent=2))
             return True
         except Exception:
