@@ -1,0 +1,23 @@
+name: node_fixer_dispatcher
+version: "1.0.0"
+description: "Routes PR stall events to the correct fixer node"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_fixer_dispatcher: "omnimarket.nodes.node_fixer_dispatcher"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["dispatcher", "fixer", "routing", "pr-lifecycle"]
+pack: "pr-lifecycle"
+display_name: "Fixer Dispatcher"
+node_role: "compute"

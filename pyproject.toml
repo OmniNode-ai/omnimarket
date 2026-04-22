@@ -170,6 +170,8 @@ node_merge_sweep_state_reducer = "omnimarket.nodes.node_merge_sweep_state_reduce
 node_projection_query = "omnimarket.nodes.node_projection_query"
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_polish_task_classifier = "omnimarket.nodes.node_polish_task_classifier"
+node_fixer_dispatcher = "omnimarket.nodes.node_fixer_dispatcher"
+node_verification_receipt_generator = "omnimarket.nodes.node_verification_receipt_generator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
