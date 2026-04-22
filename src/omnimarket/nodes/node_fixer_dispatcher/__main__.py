@@ -19,6 +19,7 @@ from omnimarket.nodes.node_fixer_dispatcher.handlers.handler_fixer_dispatcher im
     HandlerFixerDispatcher,
 )
 from omnimarket.nodes.node_fixer_dispatcher.models.model_fixer_dispatch import (
+    EnumFixerAction,
     EnumStallCategory,
     ModelFixerDispatchRequest,
 )
@@ -108,6 +109,9 @@ def main() -> None:
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+
+    if result.action == EnumFixerAction.ESCALATE:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
