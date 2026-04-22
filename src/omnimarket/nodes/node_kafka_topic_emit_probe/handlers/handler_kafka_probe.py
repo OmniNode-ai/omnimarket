@@ -1,5 +1,4 @@
-"""
-Handler for Kafka topic emit probe node.
+"""Handler for Kafka topic emit probe node.
 
 Emits synthetic events for each declared Kafka topic to verify
 producers, consumers, and partition health. Runs hourly and validates
