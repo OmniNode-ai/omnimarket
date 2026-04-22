@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +19,27 @@ from omnimarket.nodes.node_worker_stall_recovery.models.model_stall_recovery_com
     ModelStallRecoveryCommand,
 )
 
+_OMNI_STATE_SENTINEL = ".onex_state"
+
+
+def _resolve_onex_state() -> Path:
+    """Resolve .onex_state directory via env var; never hardcode user paths."""
+    omni_home = os.environ.get("OMNI_HOME")
+    if omni_home:
+        return Path(omni_home) / ".onex_state"
+    local = Path(_OMNI_STATE_SENTINEL)
+    if local.exists():
+        return local
+    raise RuntimeError(
+        "Cannot locate .onex_state: set OMNI_HOME env var or run from omni_home root"
+    )
+
 
 class HandlerStallRecovery:
     """Handler that performs agent stall detection and recovery."""
 
     def __init__(self) -> None:
-        self._dry_run: bool = False
+        self._initialized: bool = False
 
     async def initialize(self) -> None:
         """Initialize handler - verify required tools are available."""
@@ -35,6 +50,7 @@ class HandlerStallRecovery:
         )
         if result.returncode != 0:
             raise RuntimeError("Git is not available")
+        self._initialized = True
 
     async def handle(self, data: ModelStallRecoveryCommand) -> dict[str, Any]:
         """
@@ -47,19 +63,22 @@ class HandlerStallRecovery:
             redispatch_count: Number of redispatches performed
             error: Error message if failed
         """
-        self._dry_run = data.dry_run
-
+        dry_run = data.dry_run
         ticket_id = data.ticket_id
         agent_id = data.agent_id
         timeout = data.timeout_minutes
         max_redispatches = data.max_redispatches
+        context_threshold_pct = data.context_threshold_pct
 
         checkpoint_path = self._get_checkpoint_path(ticket_id, agent_id)
         is_stalled, stall_reason = await self._check_stall(
-            agent_id, timeout, data.context_threshold_pct
+            agent_id, timeout, context_threshold_pct
         )
 
-        if not is_stalled:
+        if not is_stalled and stall_reason not in (
+            "dispatch_log_not_found",
+            "agent_not_found_in_dispatch_log",
+        ):
             return {
                 "status": "healthy",
                 "stall_reason": "",
@@ -68,7 +87,16 @@ class HandlerStallRecovery:
                 "error": "",
             }
 
-        if self._dry_run:
+        if not is_stalled:
+            return {
+                "status": "unknown",
+                "stall_reason": stall_reason,
+                "checkpoint_path": "",
+                "redispatch_count": 0,
+                "error": stall_reason,
+            }
+
+        if dry_run:
             return {
                 "status": "stalled",
                 "stall_reason": stall_reason,
@@ -89,7 +117,9 @@ class HandlerStallRecovery:
                     "error": "Failed to save checkpoint",
                 }
 
-            success = await self._redispatch_agent(ticket_id, agent_id)
+            success = await self._redispatch_agent(
+                ticket_id, agent_id, redispatch_count
+            )
             if success:
                 redispatch_count += 1
                 return {
@@ -111,30 +141,36 @@ class HandlerStallRecovery:
 
     def _get_checkpoint_path(self, ticket_id: str, agent_id: str) -> Path:
         """Get checkpoint file path for recovery."""
-        base = Path(
-            os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home"))
-        )
-        checkpoint_dir = base / ".onex_state" / "pipeline_checkpoints" / ticket_id
+        try:
+            onex_state = _resolve_onex_state()
+        except RuntimeError:
+            onex_state = Path(".onex_state")
+        checkpoint_dir = onex_state / "pipeline_checkpoints" / ticket_id
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-        return checkpoint_dir / f"recovery-{timestamp}.yaml"
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
+        return checkpoint_dir / f"recovery-{agent_id}-{timestamp}.json"
 
     async def _check_stall(
         self, agent_id: str, timeout_minutes: int, context_threshold_pct: int
     ) -> tuple[bool, str]:
-        """Check if agent is stalled based on activity timestamps."""
-        onex_state = Path(".onex_state")
-        if not onex_state.exists():
-            onex_state = Path.home() / "Code" / "omni_home" / ".onex_state"
+        """Check if agent is stalled based on activity timestamps.
+
+        context_threshold_pct: if set > 0, also triggers stall if last event
+        reports context_pct >= threshold (future: read from event payload).
+        """
+        try:
+            onex_state = _resolve_onex_state()
+        except RuntimeError:
+            return False, "dispatch_log_not_found"
 
         dispatch_log_dir = onex_state / "dispatch-log"
         if not dispatch_log_dir.exists():
             return False, "dispatch_log_not_found"
 
-        cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        cutoff = datetime.now(tz=UTC) - timedelta(minutes=timeout_minutes)
 
         result = subprocess.run(
-            ["grep", "-l", agent_id, "-r", str(dispatch_log_dir)],
+            ["grep", "-r", "-l", agent_id, str(dispatch_log_dir)],
             capture_output=True,
             text=True,
         )
@@ -142,7 +178,17 @@ class HandlerStallRecovery:
         if result.returncode != 0 or not result.stdout.strip():
             return False, "agent_not_found_in_dispatch_log"
 
-        latest_log = sorted(Path(result.stdout.strip()).glob("*.ndjson"))[-1]
+        # grep -l may return multiple files; sort and pick the last (newest by name)
+        matching_files = sorted(
+            Path(p) for p in result.stdout.strip().splitlines() if p
+        )
+        if not matching_files:
+            return False, "agent_not_found_in_dispatch_log"
+
+        latest_log = matching_files[-1]
+        if not latest_log.is_file():
+            return False, "agent_not_found_in_dispatch_log"
+
         with open(latest_log) as f:
             for line in f:
                 try:
@@ -153,7 +199,20 @@ class HandlerStallRecovery:
                             event_time = datetime.fromisoformat(
                                 last_activity.replace("Z", "+00:00")
                             )
-                            if event_time.replace(tzinfo=None) > cutoff:
+                            # Normalize to UTC-aware for comparison
+                            if event_time.tzinfo is None:
+                                event_time = event_time.replace(tzinfo=UTC)
+                            if event_time > cutoff:
+                                ctx_pct = event.get("context_pct", 0)
+                                if (
+                                    context_threshold_pct > 0
+                                    and isinstance(ctx_pct, int | float)
+                                    and ctx_pct >= context_threshold_pct
+                                ):
+                                    return (
+                                        True,
+                                        f"context_pct_{ctx_pct}_exceeds_{context_threshold_pct}",
+                                    )
                                 return False, ""
                 except (json.JSONDecodeError, KeyError):
                     continue
@@ -163,11 +222,11 @@ class HandlerStallRecovery:
     async def _save_checkpoint(
         self, ticket_id: str, agent_id: str, checkpoint_path: Path
     ) -> bool:
-        """Save recovery checkpoint."""
+        """Save recovery checkpoint as JSON."""
         checkpoint_data = {
             "ticket_id": ticket_id,
             "agent_id": agent_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(tz=UTC).isoformat(),
             "reason": "stall_recovery_checkpoint",
         }
         try:
@@ -176,11 +235,14 @@ class HandlerStallRecovery:
         except Exception:
             return False
 
-    async def _redispatch_agent(self, ticket_id: str, agent_id: str) -> bool:
-        """Redispatch agent with the same ticket."""
-        onex_state = Path(".onex_state")
-        if not onex_state.exists():
-            onex_state = Path.home() / "Code" / "omni_home" / ".onex_state"
+    async def _redispatch_agent(
+        self, ticket_id: str, agent_id: str, attempt: int
+    ) -> bool:
+        """Redispatch agent with the same ticket, using attempt-indexed suffix."""
+        try:
+            onex_state = _resolve_onex_state()
+        except RuntimeError:
+            return False
 
         dispatch_dir = onex_state / "dispatches"
         if not dispatch_dir.exists():
@@ -192,12 +254,12 @@ class HandlerStallRecovery:
                 return False
 
             dispatch_data = json.loads(dispatch_file.read_text())
-            new_agent_id = f"{agent_id}-v2"
+            new_agent_id = f"{agent_id}-recovery-{attempt + 1}"
             new_dispatch_file = dispatch_dir / f"{new_agent_id}.json"
             dispatch_data["agent_id"] = new_agent_id
             dispatch_data["original_agent_id"] = agent_id
             dispatch_data["redispatch_of"] = ticket_id
-            dispatch_data["timestamp"] = datetime.utcnow().isoformat() + "Z"
+            dispatch_data["timestamp"] = datetime.now(tz=UTC).isoformat()
             new_dispatch_file.write_text(json.dumps(dispatch_data, indent=2))
             return True
         except Exception:
@@ -207,14 +269,15 @@ class HandlerStallRecovery:
         self, ticket_id: str, checkpoint_path: Path, attempt_count: int
     ) -> None:
         """Escalate to blocked in Linear and log friction."""
-        onex_state = Path(".onex_state")
-        if not onex_state.exists():
-            onex_state = Path.home() / "Code" / "omni_home" / ".onex_state"
+        try:
+            onex_state = _resolve_onex_state()
+        except RuntimeError:
+            onex_state = Path(".onex_state")
 
         friction_dir = onex_state / "friction"
         friction_dir.mkdir(parents=True, exist_ok=True)
 
-        date_today = datetime.utcnow().strftime("%Y-%m-%d")
+        date_today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
         friction_file = (
             friction_dir / f"{date_today}-agent-stall-escalation-{ticket_id.lower()}.md"
         )
@@ -226,7 +289,7 @@ Ticket moved to Blocked in Linear.
 
 ## Recovery Checkpoint
 - Path: {checkpoint_path}
-- Timestamp: {datetime.utcnow().isoformat()}Z
+- Timestamp: {datetime.now(tz=UTC).isoformat()}
 
 ## Root Cause Hypothesis
 Agent likely hitting context exhaustion or encountering a blocking issue that

@@ -19,4 +19,4 @@ requires_network: true
 requires_repo: false
 requires_secrets: false
 requires_docker: false
-side_effect_class: "read_only"
+side_effect_class: "write"

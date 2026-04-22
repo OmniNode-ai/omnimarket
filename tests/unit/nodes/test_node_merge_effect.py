@@ -61,3 +61,4 @@ async def test_handle_dry_run():
 
         assert mock_run.called
         assert "merged" in result
+        assert isinstance(result["merged"], bool)

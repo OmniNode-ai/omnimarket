@@ -17,8 +17,7 @@ async def test_handler_initialization():
     """Handler should initialize without error."""
     handler = HandlerKafkaProbe()
     await handler.initialize()
-    # Verify initialization by checking state is set (not private member access)
-    assert hasattr(handler, "_async_bus") or True  # Structural check
+    assert handler._initialized is True
 
 
 @pytest.mark.asyncio

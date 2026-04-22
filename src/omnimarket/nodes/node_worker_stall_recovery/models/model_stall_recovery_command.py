@@ -13,13 +13,19 @@ class ModelStallRecoveryCommand(BaseModel):
     ticket_id: str = Field(..., description="Linear ticket ID (e.g., OMN-1234).")
     agent_id: str = Field(..., description="Agent/task ID to monitor/recover.")
     timeout_minutes: int = Field(
-        default=2, description="Minutes of inactivity before stall detection."
+        default=2,
+        ge=1,
+        le=60,
+        description="Minutes of inactivity before stall detection.",
     )
     context_threshold_pct: int = Field(
-        default=80, description="Context usage % that triggers preemptive recovery."
+        default=80,
+        ge=0,
+        le=100,
+        description="Context usage % that triggers preemptive recovery (0 = disabled).",
     )
     max_redispatches: int = Field(
-        default=2, description="Max redispatch attempts before escalation."
+        default=2, ge=1, le=10, description="Max redispatch attempts before escalation."
     )
     dry_run: bool = Field(
         default=False, description="If true, check health without taking action."
