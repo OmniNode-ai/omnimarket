@@ -203,9 +203,11 @@ class HandlerOverseerVerifierConsumer:
     ) -> None:
         """Fire-and-forget publish of verification-receipt-start.v1.
 
-        Uses asyncio.run() only when no event loop is running (sync callers).
-        In async contexts the caller must await; this method is intentionally
-        sync to match the existing sync process() signature.
+        Must be called from within a running event loop (the ONEX runtime
+        always provides one). Schedules the publish as a task so the sync
+        process() method returns immediately. If no event loop is running
+        the publish is silently skipped and a warning is emitted — callers
+        in pure sync contexts should use the async path directly.
         """
         if self._event_bus is None:
             return
@@ -233,11 +235,17 @@ class HandlerOverseerVerifierConsumer:
 
         try:
             loop = asyncio.get_running_loop()
-            _task = loop.create_task(_publish())
-            # Keep a reference to prevent GC before the task completes.
-            _task.add_done_callback(lambda _: None)
         except RuntimeError:
-            asyncio.run(_publish())
+            logger.warning(
+                "[OVERSEER-CONSUMER] No running event loop — skipping "
+                "verification-receipt-start publish for task_id=%s",
+                task_id,
+            )
+            return
+
+        _task = loop.create_task(_publish())
+        # Retain reference to prevent GC before the coroutine completes.
+        _task.add_done_callback(lambda _: None)
 
     def _error_response(self, *, correlation_id: str, summary: str) -> bytes:
         """Return a FAIL completion event for error cases."""
