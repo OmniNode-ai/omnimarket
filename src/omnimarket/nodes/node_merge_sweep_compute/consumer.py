@@ -150,7 +150,7 @@ def _build_request(
 
 async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
     try:
-        from aiokafka import (  # type: ignore[import-untyped]
+        from aiokafka import (
             AIOKafkaConsumer,
             AIOKafkaProducer,
         )

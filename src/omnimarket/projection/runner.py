@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from aiokafka import AIOKafkaConsumer  # type: ignore[import-untyped]
+from aiokafka import AIOKafkaConsumer
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.projection.envelope import unwrap_envelope
