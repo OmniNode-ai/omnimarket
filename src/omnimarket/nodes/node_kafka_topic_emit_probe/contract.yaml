@@ -26,12 +26,20 @@ descriptor:
 inputs:
   topics:
     type: list[str]
-    description: "List of Kafka topic names to probe"
+    description: "List of Kafka topic names to probe. If empty, default_topics is used."
     required: false
     default: []
+  default_topics:
+    type: list[str]
+    description: "Topics probed when no explicit topics list is supplied."
+    required: false
+    default:
+      - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+      - onex.evt.omnimarket.overseer-verify-completed.v1
+      - onex.evt.omnimarket.aislop-sweep-completed.v1
   probe_interval_seconds:
     type: int
-    description: "How often to emit probes (default: 3600)"
+    description: "Scheduling metadata — how often callers should invoke this node (seconds). Not used for execution timing."
     required: false
     default: 3600
   verify_consumers:
