@@ -87,3 +87,30 @@ class TestBuildRequest:
         _build_request(github, cmd, str(tmp_path))
 
         assert github.fetch_open_prs.call_count == 2
+
+    def test_transport_error_skips_repo(self, tmp_path: pathlib.Path) -> None:
+        from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request
+        from omnimarket.nodes.node_merge_sweep_compute.protocols import (
+            GitHubTransportError,
+        )
+
+        github = MagicMock()
+        github.fetch_branch_protection.return_value = None
+        github.fetch_open_prs.side_effect = GitHubTransportError("network down")
+
+        cmd = {"repos": "OmniNode-ai/omniclaude"}
+        req = _build_request(github, cmd, str(tmp_path))
+
+        assert req.prs == []
+
+    def test_invalid_repo_format_skips_repo(self, tmp_path: pathlib.Path) -> None:
+        from omnimarket.nodes.node_merge_sweep_compute.consumer import _build_request
+
+        github = MagicMock()
+        github.fetch_branch_protection.return_value = None
+        github.fetch_open_prs.side_effect = ValueError("Invalid repo format")
+
+        cmd = {"repos": "not-a-valid-repo-format"}
+        req = _build_request(github, cmd, str(tmp_path))
+
+        assert req.prs == []

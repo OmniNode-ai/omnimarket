@@ -9,7 +9,8 @@ sweep run.  Delegates to GitHubPrFetchProtocol instead of shelling out to
 Returned semantics:
   - int >= 0 : live value from GitHub
   - None     : no approving review required (either explicit ``null`` or missing
-               ``required_pull_request_reviews`` block), OR fetch failed
+               ``required_pull_request_reviews`` block, or 404 response)
+  - raises GitHubTransportError : network/auth failure — callers must handle
 """
 
 from __future__ import annotations
@@ -39,8 +40,10 @@ class BranchProtectionCache:
     def required_approving_review_count(self, repo: str) -> int | None:
         """Return required approving review count for ``repo``'s main branch.
 
-        Lazily fetches once per repo per instance. Returns None on fetch failure
-        or when protection does not require approving reviews.
+        Lazily fetches once per repo per instance. Returns None when no branch
+        protection requires approving reviews (404 or missing block).
+        Raises GitHubTransportError on network/auth failures — callers must
+        handle this rather than treating it as "no protection required".
         """
         if repo in self._cache:
             return self._cache[repo]

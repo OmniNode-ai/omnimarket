@@ -44,6 +44,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
     ModelPRInfo,
     NodeMergeSweep,
 )
+from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 _log = logging.getLogger(__name__)
 
@@ -121,8 +122,16 @@ def _build_request(
     all_prs: list[ModelPRInfo] = []
     protection = BranchProtectionCache(github)
     for repo in repos:
-        required_approving = protection.required_approving_review_count(repo)
-        for pr in github.fetch_open_prs(repo):
+        try:
+            required_approving = protection.required_approving_review_count(repo)
+            prs = github.fetch_open_prs(repo)
+        except ValueError as exc:
+            _log.warning("skipping repo %r — invalid format: %s", repo, exc)
+            continue
+        except GitHubTransportError as exc:
+            _log.error("skipping repo %r — GitHub transport error: %s", repo, exc)
+            continue
+        for pr in prs:
             all_prs.append(_to_pr_info(pr, repo, required_approving))
 
     failure_history = _load_failure_history(state_dir)

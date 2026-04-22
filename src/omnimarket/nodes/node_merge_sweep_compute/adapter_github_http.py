@@ -20,7 +20,10 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubPrFetchProtocol
+from omnimarket.nodes.node_merge_sweep_compute.protocols import (
+    GitHubPrFetchProtocol,
+    GitHubTransportError,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -61,13 +64,11 @@ query($owner: String!, $name: String!, $after: String) {
                     context
                     state
                     description
-                    isRequired(pullRequestNumber: $unused) @skip(if: true)
                   }
                   ... on CheckRun {
                     name
                     status
                     conclusion
-                    isRequired(pullRequestNumber: $unused) @skip(if: true)
                   }
                 }
               }
@@ -105,7 +106,11 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
         self._token = token
 
     def _graphql(self, query: str, variables: dict[str, object]) -> dict[str, Any]:
-        """Execute a GraphQL query. Returns the data dict. Never raises."""
+        """Execute a GraphQL query. Returns the data dict.
+
+        Raises GitHubTransportError on network, auth, or decode failures so
+        callers can distinguish transport failure from an empty result.
+        """
         payload = json.dumps({"query": query, "variables": variables}).encode()
         req = urllib.request.Request(
             _GITHUB_GRAPHQL,
@@ -118,17 +123,20 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
         try:
             with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
                 body = json.loads(resp.read())
-            if "errors" in body:
-                _log.warning("GraphQL errors: %s", body["errors"])
-                return {}
-            data = body.get("data")
-            return data if isinstance(data, dict) else {}
         except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
-            _log.warning("GraphQL request failed: %s", exc)
-            return {}
+            raise GitHubTransportError(f"GraphQL request failed: {exc}") from exc
+        if "errors" in body:
+            _log.warning("GraphQL errors: %s", body["errors"])
+            raise GitHubTransportError(f"GraphQL returned errors: {body['errors']}")
+        data = body.get("data")
+        return data if isinstance(data, dict) else {}
 
     def _rest_get(self, path: str) -> dict[str, Any] | None:
-        """Execute a REST API GET. Returns parsed JSON or None. Never raises."""
+        """Execute a REST API GET. Returns parsed JSON or None for 404.
+
+        Raises GitHubTransportError on network, auth, or non-404 HTTP failures.
+        Returns None only for 404 (resource genuinely absent).
+        """
         url = f"{_GITHUB_REST}{path}"
         req = urllib.request.Request(
             url,
@@ -141,14 +149,14 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
             with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
                 return json.loads(resp.read())  # type: ignore[no-any-return]
         except urllib.error.HTTPError as exc:
-            # 404 = no branch protection configured — that's fine
+            # 404 = no branch protection configured — that's a valid business state
             if exc.code == 404:
                 return None
-            _log.warning("REST API error for %s: %s", path, exc)
-            return None
+            raise GitHubTransportError(f"REST API error for {path}: {exc}") from exc
         except (urllib.error.URLError, json.JSONDecodeError, OSError) as exc:
-            _log.warning("REST API request failed for %s: %s", path, exc)
-            return None
+            raise GitHubTransportError(
+                f"REST API request failed for {path}: {exc}"
+            ) from exc
 
     def fetch_open_prs(self, repo: str) -> list[dict[str, Any]]:
         """Fetch open PRs via GitHub GraphQL API."""
@@ -169,9 +177,11 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
             pr_conn = repo_data.get("pullRequests", {})
             nodes = pr_conn.get("nodes", [])
             for node in nodes:
-                # Flatten labels
+                # Flatten labels; skip nodes without a name key (malformed API response)
                 label_nodes = (node.get("labels") or {}).get("nodes", [])
-                node["labels"] = [{"name": ln["name"]} for ln in label_nodes if ln]
+                node["labels"] = [
+                    {"name": ln["name"]} for ln in label_nodes if ln and "name" in ln
+                ]
 
                 # Flatten statusCheckRollup from nested commit structure
                 rollup_nodes = (

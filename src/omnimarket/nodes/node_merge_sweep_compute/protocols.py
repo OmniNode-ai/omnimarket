@@ -12,6 +12,14 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 
+class GitHubTransportError(Exception):
+    """Raised when a GitHub API call fails due to a transport or auth error.
+
+    Distinct from an empty result (repo has no open PRs), so callers can
+    abort rather than silently treating an outage as an empty list.
+    """
+
+
 @runtime_checkable
 class GitHubPrFetchProtocol(Protocol):
     """Fetch open PRs with rich status fields from GitHub."""
@@ -22,13 +30,19 @@ class GitHubPrFetchProtocol(Protocol):
         Each dict must have keys matching gh pr list --json output:
         number, title, mergeable, mergeStateStatus, statusCheckRollup,
         reviewDecision, isDraft, labels, headRefOid.
-        Returns [] on any failure (never raises).
+
+        Raises GitHubTransportError on network/auth failures so callers
+        can distinguish transport failure from an empty PR list.
+        Raises ValueError if ``repo`` is not in 'org/name' format.
         """
         ...
 
     def fetch_branch_protection(self, repo: str) -> int | None:
         """Return required_approving_review_count for repo's main branch.
 
-        Returns None if no protection or fetch failed (never raises).
+        Returns None when no branch protection rule requires approving reviews
+        (404 or missing required_pull_request_reviews block).
+        Raises GitHubTransportError on network/auth failures so callers
+        can distinguish transport failure from 'no protection configured'.
         """
         ...
