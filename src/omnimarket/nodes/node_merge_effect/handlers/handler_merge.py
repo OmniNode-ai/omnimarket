@@ -19,9 +19,6 @@ from omnimarket.nodes.node_merge_effect.models.model_merge_command import (
 class HandlerMergeEffect:
     """Handler that performs simple git merge operations."""
 
-    def __init__(self) -> None:
-        pass
-
     async def initialize(self) -> None:
         """Initialize handler - verify git is available."""
         result = subprocess.run(

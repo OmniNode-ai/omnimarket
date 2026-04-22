@@ -2,6 +2,8 @@
 Unit tests for node_kafka_topic_emit_probe.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from omnimarket.nodes.node_kafka_topic_emit_probe.handlers.handler_kafka_probe import (
@@ -31,7 +33,8 @@ async def test_handle_empty_topics():
         probe_interval_seconds=0,
         verify_consumers=False,
     )
-    result = await handler.handle(data)
+    with patch.object(handler, "_emit_probe", new_callable=AsyncMock):
+        result = await handler.handle(data)
 
     assert "probes_emitted" in result
     assert "consumers_advanced" in result
@@ -51,7 +54,8 @@ async def test_handle_specific_topics():
     data = ModelKafkaProbeRequest(
         topics=topics, probe_interval_seconds=0, verify_consumers=False
     )
-    result = await handler.handle(data)
+    with patch.object(handler, "_emit_probe", new_callable=AsyncMock):
+        result = await handler.handle(data)
 
     assert result["probes_emitted"] == len(topics)
     assert result["consumers_advanced"] == len(topics)
