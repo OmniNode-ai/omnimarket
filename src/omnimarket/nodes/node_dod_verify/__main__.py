@@ -64,7 +64,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    correlation_id = uuid.UUID(args.correlation_id) if args.correlation_id else uuid.uuid4()
+    correlation_id = (
+        uuid.UUID(args.correlation_id) if args.correlation_id else uuid.uuid4()
+    )
 
     command = ModelDodVerifyStartCommand(
         correlation_id=correlation_id,
