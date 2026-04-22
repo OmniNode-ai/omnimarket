@@ -50,7 +50,10 @@ import contextlib
 import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
     HandlerOverseerVerifier,
@@ -66,9 +69,27 @@ if TYPE_CHECKING:
 
 TOPIC_OVERSEER_VERIFIER_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"
 TOPIC_OVERSEER_VERIFY = "onex.cmd.omnimarket.overseer-verify.v1"
-TOPIC_VERIFICATION_RECEIPT_START = "onex.cmd.omnimarket.verification-receipt-start.v1"
 
 logger = logging.getLogger(__name__)
+
+
+def _load_contract(contract_path: Path | None = None) -> dict[str, Any]:
+    """Load the node's contract.yaml."""
+    _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
+    with open(_path) as f:
+        data: dict[str, Any] = yaml.safe_load(f)
+    return data
+
+
+def _topic_verification_receipt_start() -> str:
+    """Load the verification-receipt-start topic from contract.yaml at import time."""
+    publish_topics: list[str] = (
+        _load_contract().get("event_bus", {}).get("publish_topics", [])
+    )
+    return next((t for t in publish_topics if "verification-receipt-start" in t), "")
+
+
+TOPIC_VERIFICATION_RECEIPT_START = _topic_verification_receipt_start()
 
 # Re-export canonical topic names for callers that import from this module.
 TOPIC_SUBSCRIBE = TOPIC_OVERSEER_VERIFY
@@ -124,10 +145,10 @@ class HandlerOverseerVerifierConsumer:
                 "[OVERSEER-CONSUMER] Missing correlation_id — cannot correlate response"
             )
 
-        task_id = str(data.get("task_id", ""))
-        if task_id:
+        task_id_raw = data.get("task_id")
+        if task_id_raw is not None:
             self._publish_verification_receipt_start_sync(
-                task_id=task_id,
+                task_id=str(task_id_raw),
                 correlation_id=correlation_id,
                 claim=str(data.get("status", "")),
                 repo=data.get("repo"),
