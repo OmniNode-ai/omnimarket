@@ -2,17 +2,21 @@
 
 All tests use injectable stub clients (LinearClientProtocol, GitHubClientProtocol)
 so no network calls are made. Verifies age classification, PR-state detection,
-dry_run mode, epic completion detection, orphan counting, and stale flagging.
+dry_run mode, epic completion detection, orphan counting, stale flagging, and
+the --timeout CLI enforcement.
 """
 
 from __future__ import annotations
 
+import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from omnimarket.nodes.node_linear_triage.__main__ import _run_with_timeout
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     GitHubClientProtocol,
     HandlerLinearTriage,
@@ -268,3 +272,36 @@ class TestLinearTriageGoldenChain:
 
         assert result.epics_closed == 1
         client.save_issue.assert_any_call(issue_id="parent-id", state="Done")
+
+
+@pytest.mark.unit
+class TestLinearTriageTimeout:
+    def test_timeout_raises_asyncio_timeout(self) -> None:
+        """_run_with_timeout raises asyncio.TimeoutError when handler exceeds limit."""
+
+        def _slow_handle(cmd: Any) -> Any:
+            time.sleep(5)
+
+        handler = MagicMock(spec=HandlerLinearTriage)
+        handler.handle.side_effect = _slow_handle
+
+        with pytest.raises(TimeoutError):
+            asyncio.run(
+                _run_with_timeout(handler, ModelLinearTriageStartCommand(), timeout=1)
+            )
+
+    def test_no_timeout_completes_normally(self) -> None:
+        """_run_with_timeout returns result when handler finishes within limit."""
+        from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
+            ModelLinearTriageResult,
+        )
+
+        expected = ModelLinearTriageResult(total_scanned=3)
+        handler = MagicMock(spec=HandlerLinearTriage)
+        handler.handle.return_value = expected
+
+        result = asyncio.run(
+            _run_with_timeout(handler, ModelLinearTriageStartCommand(), timeout=30)
+        )
+
+        assert result.total_scanned == 3

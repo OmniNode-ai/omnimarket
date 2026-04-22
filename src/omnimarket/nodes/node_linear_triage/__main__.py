@@ -13,6 +13,7 @@ Usage:
     python -m omnimarket.nodes.node_linear_triage --dry-run
     python -m omnimarket.nodes.node_linear_triage --threshold-days 7
     python -m omnimarket.nodes.node_linear_triage --team "Omninode" --dry-run
+    python -m omnimarket.nodes.node_linear_triage --timeout 120
 
 Outputs JSON to stdout: ModelLinearTriageResult model.
 """
@@ -20,17 +21,33 @@ Outputs JSON to stdout: ModelLinearTriageResult model.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
     HandlerLinearTriage,
 )
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
+    ModelLinearTriageResult,
     ModelLinearTriageStartCommand,
 )
 
 _log = logging.getLogger(__name__)
+
+
+async def _run_with_timeout(
+    handler: HandlerLinearTriage,
+    command: ModelLinearTriageStartCommand,
+    timeout: int,
+) -> ModelLinearTriageResult:
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return await asyncio.wait_for(
+            loop.run_in_executor(pool, handler.handle, command),
+            timeout=float(timeout),
+        )
 
 
 def main() -> None:
@@ -57,6 +74,13 @@ def main() -> None:
         default="Omninode",
         help="Linear team name (default: Omninode).",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        dest="timeout",
+        help="Maximum seconds to run before aborting (default: 300).",
+    )
 
     args = parser.parse_args()
 
@@ -67,7 +91,15 @@ def main() -> None:
     )
 
     handler = HandlerLinearTriage()
-    result = handler.handle(command)
+
+    try:
+        result = asyncio.run(_run_with_timeout(handler, command, args.timeout))
+    except TimeoutError:
+        sys.stderr.write(
+            f"\nERROR: node_linear_triage timed out after {args.timeout}s. "
+            "Increase --timeout or investigate slow API calls.\n"
+        )
+        sys.exit(2)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 
