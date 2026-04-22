@@ -41,6 +41,7 @@ event_bus:
     - onex.cmd.omnimarket.overseer-verify.v1
   publish_topics:
     - onex.evt.omnimarket.overseer-verifier-completed.v1
+    - onex.cmd.omnimarket.verification-receipt-start.v1
 
 inputs:
   task_id:

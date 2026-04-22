@@ -311,6 +311,9 @@ class HandlerPrLifecycleOrchestrator:
         self._topic_completed = next(
             (t for t in publish_topics if "completed" in t), ""
         )
+        self._topic_fixer_dispatch_start = next(
+            (t for t in publish_topics if "fixer-dispatch-start" in t), ""
+        )
 
         self._inventory = inventory
         self._triage = triage
@@ -708,6 +711,9 @@ class HandlerPrLifecycleOrchestrator:
                 state.fsm = EnumOrchestratorState.FIXING
                 await self._publish_phase_event(
                     next_from, "FIXING", command.correlation_id
+                )
+                await self._publish_fixer_dispatch_start(
+                    fix_prs, command.correlation_id
                 )
 
                 assert self._fix is not None
@@ -1194,6 +1200,34 @@ class HandlerPrLifecycleOrchestrator:
             key=None,
             value=payload,
         )
+
+    async def _publish_fixer_dispatch_start(
+        self,
+        fix_prs: tuple[TriageRecord, ...],
+        correlation_id: UUID,
+    ) -> None:
+        """Publish fixer-dispatch-start.v1 for each PR entering FIXING phase.
+
+        Enables node_fixer_dispatcher to route each PR stall to the correct
+        fixer node (ci_fix_effect, conflict_hunk_effect, rebase_effect).
+        """
+        if self._event_bus is None or not self._topic_fixer_dispatch_start:
+            return
+        for pr in fix_prs:
+            payload = json.dumps(
+                {
+                    "pr_number": pr.pr_number,
+                    "repo": pr.repo,
+                    "stall_category": pr.block_reason or "unknown",
+                    "blocking_reason": pr.block_reason or "",
+                    "correlation_id": str(correlation_id),
+                }
+            ).encode()
+            await self._event_bus.publish(
+                topic=self._topic_fixer_dispatch_start,
+                key=None,
+                value=payload,
+            )
 
 
 __all__: list[str] = [

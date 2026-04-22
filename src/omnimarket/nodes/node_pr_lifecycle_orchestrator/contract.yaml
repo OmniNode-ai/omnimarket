@@ -125,6 +125,7 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-triage-classified.v1
     - onex.evt.omnimarket.pr-lifecycle-merge-executed.v1
     - onex.evt.omnimarket.pr-lifecycle-fix-dispatched.v1
+    - onex.cmd.omnimarket.fixer-dispatch-start.v1
 
 fsm:
   states:
