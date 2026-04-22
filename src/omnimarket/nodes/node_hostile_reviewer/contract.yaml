@@ -9,6 +9,7 @@
 # Related Tickets:
 #   - OMN-7802: Update contract for new handler routing
 #   - OMN-7781: Unified LLM Workflow Migration epic
+#   - OMN-9269: Repair handler_routing drift (1 topic / 7 handlers / missing event_model)
 ---
 name: hostile_reviewer
 contract_version: {major: 3, minor: 0, patch: 0}
@@ -23,49 +24,22 @@ description: >
   Circuit breaker trips after 3 consecutive failures.
 
 handler_routing:
-  routing_strategy: "phase_dispatch"
+  # Top-level workflow entry: the single externally-addressable handler is the
+  # workflow runner. Internal helpers (prompt builder, response parser,
+  # convergence reducer, FSM state machine, finding aggregator, review
+  # orchestrator) are invoked synchronously by HandlerWorkflowRunner — they
+  # are NOT independent bus subscribers and therefore do not belong in
+  # handler_routing.handlers. Mirrors the canonical multi-handler orchestrator
+  # pattern used by node_pr_lifecycle_orchestrator,
+  # node_build_loop_orchestrator, and node_autopilot_orchestrator (OMN-9269).
+  routing_strategy: payload_type_match
   handlers:
-    - operation: "orchestrate"
-      handler:
-        name: "HandlerReviewOrchestrator"
-        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_review_orchestrator"
-      description: "Top-level orchestrator — fans out prompts to N models, collects responses, parses, aggregates."
-
-    - operation: "build_prompt"
-      handler:
-        name: "HandlerPromptBuilder"
-        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder"
-      description: "Pure COMPUTE — builds (system_prompt, user_prompt) with head+tail truncation."
-
-    - operation: "parse_response"
-      handler:
-        name: "HandlerResponseParser"
-        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_response_parser"
-      description: "Pure COMPUTE — normalizes raw LLM output into ModelReviewFinding instances."
-
-    - operation: "reduce_convergence"
-      handler:
-        name: "HandlerConvergenceReducer"
-        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_convergence_reducer"
-      description: "Pure COMPUTE — per-model F1 vs frontier tracking."
-
-    - operation: "run_workflow"
-      handler:
-        name: "HandlerWorkflowRunner"
-        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_workflow_runner"
-      description: "Drives the FSM through its phases, wiring orchestrator to FSM transitions."
-
-    - operation: "fsm_transition"
-      handler:
-        name: "HandlerHostileReviewer"
-        module: "omnimarket.nodes.node_hostile_reviewer.handlers.handler_hostile_reviewer"
-      description: "FSM state machine — phase transitions, circuit breaker, terminal detection."
-
-    - operation: "aggregate_findings"
-      handler:
-        name: "HandlerFindingAggregator"
-        module: "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator"
-      description: "Pure COMPUTE — weighted-union dedup of findings from N models, verdict computation."
+    - handler:
+        name: HandlerWorkflowRunner
+        module: omnimarket.nodes.node_hostile_reviewer.handlers.handler_workflow_runner
+      event_model:
+        name: ModelHostileReviewerStartCommand
+        module: omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_start_command
 
   adapters:
     - name: "AdapterInferenceBridge"
@@ -172,3 +146,4 @@ metadata:
     - "OMN-7800"
     - "OMN-7801"
     - "OMN-7802"
+    - "OMN-9269"

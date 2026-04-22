@@ -336,7 +336,15 @@ class TestProofOfLifeE2E:
         assert len(multi) >= 1
 
     async def test_contract_yaml_declares_all_handlers(self) -> None:
-        """Contract YAML loads and declares all 7 handler operations + adapter."""
+        """Contract YAML routes the workflow entry point and exposes the inference adapter.
+
+        Per OMN-9269 the contract uses the canonical multi-handler orchestrator
+        pattern: a single `handler_routing.handlers[]` entry wiring the
+        externally-addressable workflow runner to the start command. Internal
+        helpers (prompt builder, response parser, convergence reducer, FSM,
+        finding aggregator, review orchestrator) are invoked synchronously by
+        the workflow runner and are NOT independent bus subscribers.
+        """
         contract_path = (
             Path(__file__).parent.parent
             / "src"
@@ -351,21 +359,20 @@ class TestProofOfLifeE2E:
         assert data["contract_version"]["major"] >= 3
         assert data["node_type"] == "workflow"
 
-        operations = {h["operation"] for h in data["handler_routing"]["handlers"]}
-        assert "orchestrate" in operations
-        assert "build_prompt" in operations
-        assert "parse_response" in operations
-        assert "reduce_convergence" in operations
-        assert "run_workflow" in operations
-        assert "fsm_transition" in operations
-        assert "aggregate_findings" in operations
+        handlers = data["handler_routing"]["handlers"]
+        assert len(handlers) == 1, (
+            "workflow exposes exactly one externally-addressable handler entry"
+        )
+        entry = handlers[0]
+        assert entry["handler"]["name"] == "HandlerWorkflowRunner"
+        assert entry["event_model"]["name"] == "ModelHostileReviewerStartCommand"
 
         adapters = {a["name"] for a in data["handler_routing"]["adapters"]}
         assert "AdapterInferenceBridge" in adapters
 
         # Event bus topics
         assert len(data["event_bus"]["publish_topics"]) >= 4
-        assert len(data["event_bus"]["subscribe_topics"]) >= 1
+        assert len(data["event_bus"]["subscribe_topics"]) == len(handlers)
 
     async def test_all_package_exports_resolve(self) -> None:
         """All __init__.py exports resolve without import cycles."""

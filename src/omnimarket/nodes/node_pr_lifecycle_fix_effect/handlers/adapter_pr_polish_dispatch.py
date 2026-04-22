@@ -11,6 +11,7 @@ OMN-9284, mirrors the OMN-9276 pattern.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import subprocess
@@ -20,6 +21,36 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+
+def _terminate_spawned(proc_handle: object) -> None:
+    """Best-effort terminate + kill of a spawned subprocess handle.
+
+    Called from the breadcrumb-write-failure path to prevent a live worker
+    from running without a dispatch breadcrumb on disk. Swallows every
+    exception: this runs on the error path and must never mask the original
+    failure. ``proc_handle`` is typed ``object`` because the spawner seam
+    (``ProtocolSubprocessSpawner``) returns ``object``; we duck-type the
+    Popen-like methods.
+    """
+    terminate = getattr(proc_handle, "terminate", None)
+    if callable(terminate):
+        with contextlib.suppress(Exception):
+            terminate()
+    wait = getattr(proc_handle, "wait", None)
+    if callable(wait):
+        with contextlib.suppress(Exception):
+            wait(timeout=1.0)
+    poll = getattr(proc_handle, "poll", None)
+    still_running = True
+    if callable(poll):
+        with contextlib.suppress(Exception):
+            still_running = poll() is None
+    if still_running:
+        kill = getattr(proc_handle, "kill", None)
+        if callable(kill):
+            with contextlib.suppress(Exception):
+                kill()
 
 
 @runtime_checkable
@@ -106,19 +137,48 @@ class PrPolishDispatchAdapter:
         log_path = run_dir / "worker.log"
         argv = [self._claude_bin, "-p", skill_cmd]
 
-        self._write_breadcrumb(run_dir, kind, repo, pr_number, ticket_id, argv, run_id)
-
-        log_fh = log_path.open("ab")
+        # Spawn first; only write the breadcrumb after the child has actually
+        # started. Writing dispatch.json before the spawn would recreate the
+        # exact false-positive OMN-9284 set out to eliminate — a later tick
+        # would see dispatch.json and assume a worker ran when none did.
         try:
-            self._spawner(
-                argv,
-                stdout=log_fh.fileno(),
-                stderr=log_fh.fileno(),
-                start_new_session=True,
-                env=None,
-            )
+            log_fh = log_path.open("ab")
+        except OSError as exc:
+            raise RuntimeError(
+                f"failed to dispatch {kind} agent on {repo}#{pr_number}: "
+                f"could not open log file {log_path}: {exc}"
+            ) from exc
+        proc_handle: object
+        try:
+            try:
+                proc_handle = self._spawner(
+                    argv,
+                    stdout=log_fh.fileno(),
+                    stderr=log_fh.fileno(),
+                    start_new_session=True,
+                    env=None,
+                )
+            except OSError as exc:
+                raise RuntimeError(
+                    f"failed to dispatch {kind} agent on {repo}#{pr_number}: {exc}"
+                ) from exc
         finally:
             log_fh.close()
+
+        # Transactionally persist the breadcrumb — if it fails, kill the
+        # spawned worker so handler_pr_lifecycle_fix sees an all-or-nothing
+        # transition rather than a silent live-worker-without-breadcrumb
+        # leak (which would let a later tick spawn a duplicate).
+        try:
+            self._write_breadcrumb(
+                run_dir, kind, repo, pr_number, ticket_id, argv, run_id
+            )
+        except OSError as exc:
+            _terminate_spawned(proc_handle)
+            raise RuntimeError(
+                f"failed to dispatch {kind} agent on {repo}#{pr_number}: "
+                f"breadcrumb write failed, spawned worker killed: {exc}"
+            ) from exc
 
         logger.info(
             "pr_polish_dispatch: kind=%s repo=%s pr=%s run_id=%s state_dir=%s",
