@@ -1,0 +1,78 @@
+---
+name: verification_receipt_generator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Generates evidence receipts for task-completed claims. Verifies CI checks
+  via gh pr checks and/or runs pytest in the worktree. Returns a structured
+  receipt with per-dimension evidence. Feeds overseer-verify with real
+  evidence — kills rubber-stamping at the source.
+
+handler:
+  module: omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt
+  class: HandlerVerificationReceiptGenerator
+  input_model: omnimarket.nodes.node_verification_receipt_generator.models.model_verification_receipt.ModelVerificationReceiptRequest
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: false
+  timeout_ms: 300000
+
+inputs:
+  task_id:
+    type: str
+    description: "Task identifier (e.g. 'OMN-9403')"
+    required: true
+  claim:
+    type: str
+    description: "What the task claims to have done"
+    required: true
+  repo:
+    type: str
+    description: "GitHub repo slug for PR verification"
+    required: false
+  pr_number:
+    type: int
+    description: "PR number to verify CI checks for"
+    required: false
+  worktree_path:
+    type: str
+    description: "Path to the worktree for pytest verification"
+    required: false
+  verify_ci:
+    type: bool
+    description: "Verify CI checks via gh"
+    required: false
+    default: true
+  verify_tests:
+    type: bool
+    description: "Run pytest and capture exit code"
+    required: false
+    default: true
+  dry_run:
+    type: bool
+    description: "Return receipt without running verification"
+    required: false
+    default: false
+
+outputs:
+  overall_pass:
+    type: bool
+    description: "True only if ALL checks passed"
+  checks:
+    type: list
+    description: "Evidence from each verification dimension"
+  verified_at:
+    type: str
+    description: "ISO timestamp of verification"
+
+terminal_event: onex.evt.omnimarket.verification-receipt-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.verification-receipt-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.verification-receipt-completed.v1

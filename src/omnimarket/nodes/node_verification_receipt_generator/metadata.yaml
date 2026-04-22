@@ -1,0 +1,23 @@
+name: node_verification_receipt_generator
+version: "1.0.0"
+description: "Generates evidence receipts for task-completed claims (CI checks + pytest)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_verification_receipt_generator: "omnimarket.nodes.node_verification_receipt_generator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["verification", "evidence", "receipt", "overseer", "ci"]
+pack: "verification"
+display_name: "Verification Receipt Generator"
+node_role: "compute"
