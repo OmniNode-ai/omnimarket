@@ -163,6 +163,58 @@ class TestGitHubCliAdapter:
         with pytest.raises(RuntimeError, match="manual resolution"):
             await adapter.resolve_conflicts("OmniNode-ai/omnimarket", 42)
 
+    async def test_run_times_out_and_kills_hung_process(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`_run` must kill the child and raise RuntimeError if communicate hangs.
+
+        Regression lock for OMN-9284 follow-up: an unbounded `gh` call can stall
+        the entire FIX phase. Same false-positive class the OMN-9284 fix is meant
+        to eliminate.
+        """
+        kill_calls: list[int] = []
+
+        class _HangingProc:
+            returncode: int | None = None
+
+            async def communicate(self) -> tuple[bytes, bytes]:
+                if self.returncode is not None:
+                    return b"", b""
+                await asyncio.sleep(10)  # Simulate a hang longer than timeout.
+                return b"", b""
+
+            def kill(self) -> None:
+                kill_calls.append(1)
+                self.returncode = -9
+
+        async def fake_exec(*_argv: str, **_kwargs: object) -> _HangingProc:
+            return _HangingProc()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+        adapter = GitHubCliAdapter()
+        with pytest.raises(RuntimeError, match="timed out"):
+            await adapter._run(
+                ["gh", "pr", "view", "1"],
+                context="hang test",
+                timeout_s=0.05,
+            )
+        assert kill_calls == [1], "hung child must be killed on timeout"
+
+    async def test_run_raises_runtime_error_when_gh_binary_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`_run` must raise RuntimeError (not bare OSError) if gh is missing."""
+
+        async def fake_exec(*_argv: str, **_kwargs: object) -> object:
+            raise FileNotFoundError("gh: command not found")
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+        adapter = GitHubCliAdapter()
+        with pytest.raises(RuntimeError, match="failed to start gh"):
+            await adapter._run(["gh", "pr", "view", "1"], context="missing-gh test")
+
     def test_run_id_parser_handles_standard_urls(self) -> None:
         assert (
             _run_id_from_details_url(

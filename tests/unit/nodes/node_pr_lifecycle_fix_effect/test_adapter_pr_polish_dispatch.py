@@ -120,6 +120,95 @@ class TestPrPolishDispatchAdapter:
         breadcrumb = json.loads((run_dirs[0] / "dispatch.json").read_text())
         assert breadcrumb["kind"] == "coderabbit-reply"
 
+    async def test_dispatch_does_not_write_breadcrumb_when_spawn_fails(
+        self, tmp_path: Path
+    ) -> None:
+        """Breadcrumb must NOT exist if `_spawner` raises.
+
+        Regression lock for OMN-9284 follow-up (CodeRabbit Major #3113393007):
+        writing dispatch.json before the subprocess actually starts recreates
+        the exact false-positive the OMN-9284 fix is meant to eliminate — a
+        later tick would see the breadcrumb and assume a worker ran when none
+        did.
+        """
+
+        def _failing_spawner(
+            _argv: list[str],
+            *,
+            stdout: int,
+            stderr: int,
+            start_new_session: bool,
+            env: dict[str, str] | None,
+        ) -> object:
+            raise OSError("simulated spawn failure")
+
+        adapter = PrPolishDispatchAdapter(
+            claude_bin="claude",
+            state_dir=tmp_path,
+            spawner=_failing_spawner,
+        )
+
+        with pytest.raises(RuntimeError, match="failed to dispatch"):
+            await adapter.dispatch_review_fix("OmniNode-ai/omnimarket", 42, None)
+
+        polish_root = tmp_path / "pr-polish"
+        if polish_root.exists():
+            for run_dir in polish_root.iterdir():
+                assert not (run_dir / "dispatch.json").exists(), (
+                    "dispatch.json must not exist when spawn failed — this was "
+                    "the false-positive pattern OMN-9284 set out to fix."
+                )
+
+    async def test_breadcrumb_write_failure_terminates_spawned_worker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If `_write_breadcrumb` raises, the spawned worker must be terminated.
+
+        Regression lock for CodeRabbit Major on adapter_pr_polish_dispatch.py:136.
+        Without termination, a live worker runs without a dispatch.json
+        breadcrumb — the next tick sees no breadcrumb and spawns a duplicate,
+        which is the false-positive class OMN-9284 is explicitly fixing.
+        """
+        terminate_calls: list[int] = []
+
+        class _FakeProc:
+            def terminate(self) -> None:
+                terminate_calls.append(1)
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+            def poll(self) -> int | None:
+                return 0  # process exited after terminate
+
+        def _spawner(
+            _argv: list[str],
+            *,
+            stdout: int,
+            stderr: int,
+            start_new_session: bool,
+            env: dict[str, str] | None,
+        ) -> object:
+            return _FakeProc()
+
+        adapter = PrPolishDispatchAdapter(
+            claude_bin="claude",
+            state_dir=tmp_path,
+            spawner=_spawner,
+        )
+
+        def _failing_breadcrumb(*_args: object, **_kwargs: object) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(adapter, "_write_breadcrumb", _failing_breadcrumb)
+
+        with pytest.raises(RuntimeError, match="breadcrumb write failed"):
+            await adapter.dispatch_review_fix("OmniNode-ai/omnimarket", 42, None)
+
+        assert terminate_calls == [1], (
+            "spawned worker must be terminated when breadcrumb write fails"
+        )
+
     async def test_multiple_dispatches_each_get_unique_run_dir(
         self, tmp_path: Path
     ) -> None:
