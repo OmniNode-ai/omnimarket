@@ -1,0 +1,46 @@
+dimensions:
+- actionable_items:
+  - 'PR #347 blocked on RED CI with no owner'
+  - 'PR #346 blocked on RED CI with no owner'
+  - 'PR #332 blocked on RED CI with no owner'
+  - 'PR #329 blocked on RED CI with no owner'
+  blocks_dispatch: false
+  dimension: pr_inventory
+  status: RED
+- actionable_items:
+  - "Golden chain sweep unavailable \u2014 no DB rows for chains: delegation, evaluation,\
+    \ pattern_learning, registration, routing. Check projection consumer logs on .201."
+  blocks_dispatch: false
+  dimension: golden_chain
+  status: YELLOW
+- actionable_items: []
+  blocks_dispatch: false
+  dimension: linear_sync
+  status: GREEN
+- actionable_items:
+  - Required env var 'ONEX_INFRA_HOST' is not set. Set it before invoking node_session_orchestrator.
+  blocks_dispatch: true
+  dimension: runtime_health
+  status: RED
+- actionable_items: []
+  blocks_dispatch: false
+  dimension: plugin_currency
+  status: GREEN
+- actionable_items:
+  - Required env var 'ONEX_INFRA_HOST' is not set. Set it before invoking node_session_orchestrator.
+  blocks_dispatch: true
+  dimension: deploy_agent
+  status: RED
+- actionable_items:
+  - Required env var 'ONEX_INFRA_HOST' is not set. Set it before invoking node_session_orchestrator.
+  blocks_dispatch: false
+  dimension: observability
+  status: YELLOW
+- actionable_items: []
+  blocks_dispatch: false
+  dimension: repo_sync
+  status: GREEN
+gate_decision: FIX_ONLY
+overall_status: RED
+produced_at: '2026-04-18T17:16:49.389145+00:00'
+session_id: sess-20260418-1716
