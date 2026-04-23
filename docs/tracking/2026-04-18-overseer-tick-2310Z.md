@@ -16,7 +16,7 @@ Linear corroboration (same window): OMN-9207 Done 22:19Z, OMN-9200 Done 22:46Z, 
 
 **Dispatch infra probes:**
 
-- Worker claims last 60min: **0**
+- Worker claims last 60 min: **0**
 - Trace count: **123** (unchanged from 18:35Z and 22:49Z — worker loop dormant ~26h since last growth)
 - Non-OMN-X trace bindings: **0** (all placeholder)
 - GLM flash variant in `/v1/models`: **absent** (`glm-4.7-flash` configured reviewer does not exist)

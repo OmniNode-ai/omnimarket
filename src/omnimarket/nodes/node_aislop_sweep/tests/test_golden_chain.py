@@ -23,19 +23,19 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def node_dir() -> Path:
     """Path to the node_aislop_sweep directory."""
     return Path(__file__).resolve().parent.parent
 
 
-@pytest.fixture()
+@pytest.fixture
 def contract_path(node_dir: Path) -> Path:
     """Path to the node's contract.yaml."""
     return node_dir / "contract.yaml"
 
 
-@pytest.fixture()
+@pytest.fixture
 def metadata_path(node_dir: Path) -> Path:
     """Path to the node's metadata.yaml."""
     return node_dir / "metadata.yaml"
@@ -144,7 +144,7 @@ class TestHandlerExecution:
         handler = NodeAislopSweep()
         # Scan the node's own source — should find some patterns or return empty
         request = AislopSweepRequest(
-            target_dirs=[str(node_dir.parent.parent)],  # omnimarket/src/omnimarket/nodes/
+            target_dirs=[str(node_dir)],  # node_aislop_sweep/ only — keep test scoped
             dry_run=True,
         )
 

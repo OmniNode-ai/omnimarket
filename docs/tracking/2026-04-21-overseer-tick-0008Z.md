@@ -74,7 +74,7 @@ Per `feedback_overseer_bulk_dispatch.md`: **do not auto-spawn >2 agents**. Class
 
 **Recommendation:** user approves or rejects dispatching **1 ticket** (OMN-8680). If approved, suggest a Claude agent (not dogfood — that path is retired). Sample dispatch:
 
-```
+```python
 Skill('onex:ticket_pipeline', args='OMN-8680')
 ```
 
