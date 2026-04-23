@@ -7,10 +7,6 @@ When callers provide pre-collected ``evidence_results``, the handler is pure
 (no I/O). When ``evidence_results`` is None, the handler uses
 EvidenceCollector to load the ticket contract and run checks — this is the
 primary execution path for RuntimeLocal and onex run-node invocations.
-
-``run_and_persist()`` is the extension point for the ``--output-path`` CLI flag:
-it calls the pure ``_handle_typed`` then hands the result to ``ReceiptWriter``.
-``_handle_typed`` itself remains side-effect-free.
 """
 
 from __future__ import annotations
@@ -18,13 +14,8 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from omnimarket.nodes.node_dod_verify.models.model_dod_report_receipt import (
-    ModelDodReportReceipt,
-    ModelDodReportResult,
-)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
@@ -37,7 +28,6 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
 )
-from omnimarket.nodes.node_dod_verify.receipt_writer import ReceiptWriter
 
 if TYPE_CHECKING:
     from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
@@ -45,10 +35,6 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
-
-# Semver of this node — bumped from 1.0.0 to 1.1.0 when ReceiptWriter shipped.
-# The hook's version_too_old check uses this to reject receipts from older builds.
-_GENERATOR_VERSION = "1.1.0"
 
 
 class HandlerDodVerify:
@@ -147,75 +133,17 @@ class HandlerDodVerify:
         """Run a complete verification and return state + completion event.
 
         Convenience wrapper used by tests and event-bus consumers that need
-        the completed event alongside the state.  Does NOT write any files —
-        use ``run_and_persist()`` when disk persistence is needed.
+        the completed event alongside the state.
         """
         started_at = datetime.now(tz=UTC)
         state = self._handle_typed(command, evidence_results)
         completed = self.make_completed_event(state, started_at)
         return state, completed
 
-    def run_and_persist(
-        self,
-        command: ModelDodVerifyStartCommand,
-        writer: ReceiptWriter,
-        output_path: Path | None = None,
-        evidence_results: list[ModelEvidenceCheckResult] | None = None,
-    ) -> tuple[ModelDodVerifyState, ModelDodVerifyCompletedEvent, Path]:
-        """Run verification, write receipt to disk, return state + event + written path.
-
-        This is the side-effecting entry point used by ``__main__.py`` when
-        ``--output-path`` is set.  ``_handle_typed`` remains pure; all I/O is
-        contained here.
-
-        Args:
-            command: The start command (parsed from CLI args or event payload).
-            writer: Pre-configured ReceiptWriter (caller owns env/config loading).
-            output_path: Explicit destination.  If None, ``writer`` resolves the
-                canonical path from ``command.ticket_id``.
-            evidence_results: Optional pre-collected results (tests / mocks).
-
-        Returns:
-            ``(state, completed_event, written_path)`` — the written_path is also
-            set as ``completed_event.receipt_path``.
-        """
-        started_at = datetime.now(tz=UTC)
-        state = self._handle_typed(command, evidence_results)
-        receipt = self.build_receipt(state, command)
-        written_path = writer.write(receipt, output_path)
-        completed = self.make_completed_event(
-            state, started_at, receipt_path=written_path
-        )
-        return state, completed, written_path
-
-    def build_receipt(
-        self,
-        state: ModelDodVerifyState,
-        command: ModelDodVerifyStartCommand,
-    ) -> ModelDodReportReceipt:
-        """Build a ModelDodReportReceipt from a completed state + originating command."""
-        result = ModelDodReportResult(
-            total=state.total_checks,
-            verified=state.verified_count,
-            failed=state.failed_count,
-            skipped=state.skipped_count,
-            status=state.status,
-        )
-        return ModelDodReportReceipt(
-            timestamp=datetime.now(tz=UTC),
-            ticket_id=state.ticket_id,
-            generator_version=_GENERATOR_VERSION,
-            node_correlation_id=state.correlation_id,
-            contract_path=command.contract_path,
-            result=result,
-            checks=list(state.checks),
-        )
-
     def make_completed_event(
         self,
         state: ModelDodVerifyState,
         started_at: datetime,
-        receipt_path: Path | None = None,
     ) -> ModelDodVerifyCompletedEvent:
         """Create a completion event from the final state."""
         return ModelDodVerifyCompletedEvent(
@@ -230,7 +158,6 @@ class HandlerDodVerify:
             failed_count=state.failed_count,
             skipped_count=state.skipped_count,
             error_message=state.error_message,
-            receipt_path=receipt_path,
         )
 
     def serialize_completed(self, event: ModelDodVerifyCompletedEvent) -> bytes:

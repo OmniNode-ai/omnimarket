@@ -1,10 +1,5 @@
 """DoD verify models."""
 
-from omnimarket.nodes.node_dod_verify.models.model_dod_report_receipt import (
-    EnumReceiptGenerator,
-    ModelDodReportReceipt,
-    ModelDodReportResult,
-)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
@@ -21,9 +16,6 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 __all__ = [
     "EnumDodVerifyStatus",
     "EnumEvidenceCheckStatus",
-    "EnumReceiptGenerator",
-    "ModelDodReportReceipt",
-    "ModelDodReportResult",
     "ModelDodVerifyCompletedEvent",
     "ModelDodVerifyStartCommand",
     "ModelDodVerifyState",

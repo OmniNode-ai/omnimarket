@@ -9,4 +9,3 @@ build/
 .ruff_cache/
 tmp/
 uv.toml
-.onex_state/
