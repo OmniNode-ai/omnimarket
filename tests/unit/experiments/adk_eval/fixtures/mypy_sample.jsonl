@@ -1,0 +1,6 @@
+{"file": "src/omnibase_core/models/container/model_onex_container.py", "line": 100, "column": -1, "message": "Unused \"type: ignore\" comment", "hint": null, "code": "unused-ignore", "severity": "error"}
+{"file": "src/omnibase_core/models/container/model_onex_container.py", "line": 610, "column": 12, "message": "Returning Any from function declared to return \"T\"", "hint": null, "code": "no-any-return", "severity": "error"}
+{"file": "src/omnibase_core/foo.py", "line": 42, "column": 4, "message": "Function is missing a type annotation", "hint": null, "code": "no-untyped-def", "severity": "error"}
+{"file": "src/omnibase_core/bar.py", "line": 15, "column": 8, "message": "Function is missing a return type annotation", "hint": null, "code": "no-untyped-def", "severity": "error"}
+{"file": "src/omnibase_core/baz.py", "line": 7, "column": 0, "message": "Argument 1 to \"process\" has incompatible type \"dict[str, Any]\"; expected \"ModelFoo\"", "hint": null, "code": "arg-type", "severity": "error"}
+{"file": "src/omnibase_core/baz.py", "line": 9, "column": 4, "message": "Note: use TypedDict instead", "hint": null, "code": null, "severity": "note"}
