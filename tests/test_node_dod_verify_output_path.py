@@ -209,3 +209,35 @@ class TestRunAndPersist:
         data = json.loads(written_path.read_text())
         r = data["result"]
         assert r["total"] == r["verified"] + r["failed"] + r["skipped"]
+
+    def test_writer_without_evidence_root_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Writer built from explicit path.parent works when ONEX_EVIDENCE_ROOT is unset.
+
+        This validates the fix for the hostile-reviewer finding: --output-path must
+        not require ONEX_EVIDENCE_ROOT when an explicit path is provided.
+        """
+        from omnimarket.nodes.node_dod_verify.receipt_writer import (
+            ModelReceiptWriterConfig,
+            ReceiptWriter,
+        )
+
+        monkeypatch.delenv("ONEX_EVIDENCE_ROOT", raising=False)
+
+        custom_path = tmp_path / "OMN-9524" / "dod_report.json"
+        writer = ReceiptWriter(
+            ModelReceiptWriterConfig(evidence_root=custom_path.parent)
+        )
+        handler = HandlerDodVerify()
+        cmd = _command("OMN-9524")
+
+        _state, event, written_path = handler.run_and_persist(
+            cmd, writer, output_path=custom_path, evidence_results=_checks_verified()
+        )
+
+        assert written_path == custom_path
+        assert written_path.exists()
+        assert event.receipt_path == custom_path
+        data = json.loads(written_path.read_text())
+        assert data["generated_by"] == "node_dod_verify"

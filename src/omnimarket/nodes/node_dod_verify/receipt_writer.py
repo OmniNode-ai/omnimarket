@@ -104,13 +104,17 @@ class ReceiptWriter:
         json_bytes = receipt.model_dump_json(indent=2).encode("utf-8")
 
         if self._config.atomic_write:
-            # Write to a .tmp sibling, then atomically rename
+            # Write to a .tmp sibling, then atomically rename.
+            # mkstemp produces 0600 by default; chmod to 0o644 before rename so
+            # downstream audit tools / hooks running as the same user (or group)
+            # can read the file without elevated permissions.
             fd, tmp_path_str = tempfile.mkstemp(
                 dir=target.parent, prefix=".dod_report_", suffix=".tmp"
             )
             try:
                 with os.fdopen(fd, "wb") as fh:
                     fh.write(json_bytes)
+                os.chmod(tmp_path_str, 0o644)
                 Path(tmp_path_str).replace(target)
             except Exception:
                 # Clean up tmp file on error; re-raise
