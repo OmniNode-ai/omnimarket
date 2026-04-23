@@ -232,3 +232,35 @@ def test_module_is_invocable_as_module() -> None:
         f"stdout: {result.stdout}\n"
         f"stderr: {result.stderr}"
     )
+
+
+@pytest.mark.unit
+def test_dry_run_validates_model_constraints() -> None:
+    """--dry-run must reject inputs that violate ModelDispatchWorkerCommand constraints.
+
+    wall_clock_cap_min=999 exceeds the max of 480; previously dry-run would
+    exit 0 with unvalidated argparse values.  Now the model is constructed
+    first, so invalid values are caught before printing.
+    """
+    result = _run(
+        [
+            "--name",
+            "test-fixer",
+            "--team",
+            "Omninode",
+            "--role",
+            "fixer",
+            "--scope",
+            "Test scope",
+            "--targets",
+            "OMN-9438",
+            "--wall-clock-cap-min",
+            "999",
+            "--dry-run",
+        ]
+    )
+    assert result.returncode != 0, (
+        "Expected non-zero exit for out-of-bounds wall_clock_cap_min in --dry-run, "
+        f"got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "Validation error" in result.stderr

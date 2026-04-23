@@ -206,24 +206,6 @@ def main() -> None:
             f"{', '.join(missing)}"
         )
 
-    # --- dry-run: print compiled spec without running handler ---
-    if args.dry_run:
-        dry_payload: dict[str, object] = {
-            "dry_run": True,
-            "name": args.name,
-            "team": args.team,
-            "role": args.role,
-            "scope": args.scope,
-            "targets": args.targets,
-            "collision_fences": args.collision_fences or [],
-            "reports_to": args.reports_to,
-            "wall_clock_cap_min": args.wall_clock_cap_min,
-            "model": args.model,
-            "replace": args.replace,
-        }
-        sys.stdout.write(json.dumps(dry_payload, indent=2) + "\n")
-        sys.exit(0)
-
     # --- build and validate the command model ---
     try:
         command = ModelDispatchWorkerCommand(
@@ -241,6 +223,24 @@ def main() -> None:
     except Exception as exc:
         sys.stderr.write(f"Validation error: {exc}\n")
         sys.exit(1)
+
+    # --- dry-run: print validated spec without running handler ---
+    if args.dry_run:
+        dry_payload: dict[str, object] = {
+            "dry_run": True,
+            "name": command.name,
+            "team": command.team,
+            "role": command.role.value,
+            "scope": command.scope,
+            "targets": list(command.targets),
+            "collision_fences": list(command.collision_fences),
+            "reports_to": command.reports_to,
+            "wall_clock_cap_min": command.wall_clock_cap_min,
+            "model": command.model,
+            "replace": command.replace,
+        }
+        sys.stdout.write(json.dumps(dry_payload, indent=2) + "\n")
+        sys.exit(0)
 
     # --- run handler ---
     try:
