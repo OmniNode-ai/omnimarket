@@ -26,14 +26,14 @@ No probe flipped meaningfully this tick. All four failure modes identical to 22:
 
 **Unassigned tickets (12):**
 
-DISPATCH CANDIDATES (3, Todo + well-scoped + no upstream deps):
+DISPATCH CANDIDATES (2, Todo + well-scoped + no upstream deps):
 - OMN-9013 [Todo] P2 — T7: Full suite + PRs (omnibase_core + omnimarket)
-- OMN-8985 [Todo] P2 — OMN-MERGE-PHASE2 Epic (needs decomposition first — likely not a single-worker dispatch)
 - OMN-8303 [Todo] P2 — post-migration redeploy runtime on .201
 
 Same queue as 15:15Z / 15:38Z / 18:35Z / 22:49Z ticks. User has not approved dispatch across 4+ prior classifications.
 
-BLOCKED (9, In Progress / In Review — human-active or review gate):
+BLOCKED (10, In Progress / In Review / epic — human-active, review gate, or needs decomposition):
+- OMN-8985 [Todo] P2 — OMN-MERGE-PHASE2 Epic (needs decomposition first — not a single-worker dispatch)
 - OMN-8954, OMN-8942, OMN-8680, OMN-8603, OMN-8602, OMN-8601, OMN-1419 — In Progress (likely human-owned despite null assignee, or stalled)
 - OMN-8878, OMN-7720 — In Review (review gate)
 
