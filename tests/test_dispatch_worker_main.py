@@ -28,8 +28,13 @@ def _run(
     args: list[str],
     *,
     cwd: Path | None = None,
+    timeout: int = 30,
 ) -> subprocess.CompletedProcess[str]:
-    """Run `uv run python -m omnimarket.nodes.node_dispatch_worker <args>`."""
+    """Run `uv run python -m omnimarket.nodes.node_dispatch_worker <args>`.
+
+    A 30-second timeout is applied by default so a hung invocation cannot block
+    the entire test run indefinitely.
+    """
     cmd = [
         "uv",
         "run",
@@ -43,6 +48,7 @@ def _run(
         capture_output=True,
         text=True,
         cwd=str(cwd or _WORKTREE_ROOT),
+        timeout=timeout,
     )
 
 
