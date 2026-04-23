@@ -63,6 +63,11 @@ from omnimarket.nodes.node_pr_review_bot.models.models import (
     ReviewVerdict,
 )
 
+# Re-export with the name tests and callers expect.  The loader lives in
+# omnimarket.inference.bridge_config_loader; this alias keeps workflow_runner
+# the single import surface for external tests (OMN-7537 fix).
+build_inference_bridge_config_from_env = load_inference_bridge_config_from_env
+
 logger = logging.getLogger(__name__)
 
 
@@ -287,5 +292,6 @@ def _inject_token_env(token: str) -> str:
 
 __all__: list[str] = [
     "WorkflowRunnerResult",
+    "build_inference_bridge_config_from_env",
     "run_review",
 ]

@@ -38,7 +38,7 @@ from omnimarket.nodes.node_pr_review_bot.workflow_runner import (
 def test_build_inference_bridge_config_populates_coder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """model_configs must include qwen3-coder-30b entry when LLM_CODER_URL is set."""
+    """model_configs must include qwen3-coder entry when LLM_CODER_URL is set."""
     monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
     monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-host:8001")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://test-host:8101")
@@ -46,8 +46,8 @@ def test_build_inference_bridge_config_populates_coder(
     cfg = build_inference_bridge_config_from_env()
 
     assert isinstance(cfg, ModelInferenceBridgeConfig)
-    assert "qwen3-coder-30b" in cfg.model_configs
-    assert cfg.model_configs["qwen3-coder-30b"]["base_url"] == "http://test-host:8000"
+    assert "qwen3-coder" in cfg.model_configs
+    assert cfg.model_configs["qwen3-coder"]["base_url"] == "http://test-host:8000"
 
 
 @pytest.mark.unit
@@ -78,7 +78,7 @@ def test_build_inference_bridge_config_empty_when_no_env(
 
     assert isinstance(cfg, ModelInferenceBridgeConfig)
     # Absent env var = no entry; no crash
-    assert "qwen3-coder-30b" not in cfg.model_configs
+    assert "qwen3-coder" not in cfg.model_configs
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ def test_run_review_uses_concrete_thread_poster(
             pr_number=1,
             repo="owner/repo",
             github_token="test-token",
-            reviewer_models=["qwen3-coder-30b"],
+            reviewer_models=["qwen3-coder"],
             dry_run=True,
         )
 
@@ -183,7 +183,7 @@ def test_run_review_no_value_error_on_model_key(
             pr_number=42,
             repo="owner/repo",
             github_token="test-token",
-            reviewer_models=["qwen3-coder-30b"],
+            reviewer_models=["qwen3-coder"],
             dry_run=True,
         )
     assert result.correlation_id is not None
