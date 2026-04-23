@@ -1,13 +1,15 @@
 ---
 name: dod_verify
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   DoD evidence verification compute node. Loads a ticket contract, runs
   evidence checks against it, and emits a structured verification report.
   Simple single-shot computation, not a multi-phase FSM.
+  v1.1.0: adds --output-path CLI flag, ModelDodReportReceipt, ReceiptWriter,
+  and bumps ModelDodVerifyCompletedEvent schema to 1.1.0 with receipt_path field.
 
 handler:
   module: omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify
@@ -34,6 +36,10 @@ inputs:
     description: "Run without side effects"
     required: false
     default: false
+  output_path:
+    type: str
+    description: "Absolute path to write the provenanced receipt JSON (dod_report.json)"
+    required: false
 
 outputs:
   status:
@@ -48,6 +54,10 @@ outputs:
   failed_count:
     type: int
     description: "Checks that failed"
+  receipt_path:
+    type: str
+    description: "Absolute path of the written dod_report.json, or null if not written"
+    required: false
 
 terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 
