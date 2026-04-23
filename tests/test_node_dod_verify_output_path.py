@@ -171,17 +171,22 @@ class TestRunAndPersist:
         assert data["result"]["status"] == "skipped"
         assert data["result"]["failed"] == 0
 
-    def test_stdout_path_unaffected_no_file_written(self, tmp_path: Path) -> None:
+    def test_stdout_path_unaffected_no_file_written(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """run_verification() (stdout path) must not write any files."""
         handler = HandlerDodVerify()
         cmd = _command()
+        # Force any env-based write paths into tmp_path so we catch writes anywhere.
+        monkeypatch.setenv("ONEX_EVIDENCE_ROOT", str(tmp_path))
+        monkeypatch.chdir(tmp_path)
 
         _state, event = handler.run_verification(cmd, _checks_verified())
 
         # No receipt_path set on the event
         assert event.receipt_path is None
         # No files written under any evidence path
-        assert list(tmp_path.rglob("*.json")) == []
+        assert not any(tmp_path.rglob("*.json"))
 
     def test_node_correlation_id_present_in_receipt(self, tmp_path: Path) -> None:
         """Receipt must carry node_correlation_id that matches the command correlation_id."""
@@ -240,4 +245,39 @@ class TestRunAndPersist:
         assert written_path.exists()
         assert event.receipt_path == custom_path
         data = json.loads(written_path.read_text())
+        assert data["generated_by"] == "node_dod_verify"
+
+    def test_cli_output_path_without_evidence_root_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Entrypoint main() with --output-path must not require ONEX_EVIDENCE_ROOT.
+
+        This is an integration-level test that exercises the actual writer-selection
+        branch in __main__.py, catching any regression where the CLI calls
+        ReceiptWriter.from_env() unconditionally.
+        """
+        import sys
+
+        from omnimarket.nodes.node_dod_verify.__main__ import main
+
+        monkeypatch.delenv("ONEX_EVIDENCE_ROOT", raising=False)
+
+        custom_path = tmp_path / "OMN-9524" / "dod_report.json"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "node_dod_verify",
+                "--ticket-id",
+                "OMN-9524",
+                "--output-path",
+                str(custom_path),
+            ],
+        )
+
+        # Should complete without KeyError, even with ONEX_EVIDENCE_ROOT unset.
+        main()
+
+        assert custom_path.exists(), "Receipt file must be written by CLI"
+        data = json.loads(custom_path.read_text())
         assert data["generated_by"] == "node_dod_verify"

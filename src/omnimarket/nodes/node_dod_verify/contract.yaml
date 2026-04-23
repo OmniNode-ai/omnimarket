@@ -55,7 +55,7 @@ outputs:
     type: int
     description: "Checks that failed"
   receipt_path:
-    type: str
+    type: ["string", "null"]
     description: "Absolute path of the written dod_report.json, or null if not written"
     required: false
 
