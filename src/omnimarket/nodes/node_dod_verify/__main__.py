@@ -8,15 +8,24 @@ Usage:
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --contract-path /path/to/contract.yaml
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --dry-run
+    python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --output-path "$ONEX_EVIDENCE_ROOT/OMN-1234/dod_report.json"
+
+When ``--output-path`` is provided the receipt JSON is written atomically to that path
+via ReceiptWriter.  ``ONEX_EVIDENCE_ROOT`` is used if set (to populate the writer's
+canonical resolution root), but is NOT required when an explicit ``--output-path`` is
+given — the writer falls back to using the path's parent directory as its root.
+Without ``--output-path`` the node writes the raw state JSON to stdout as before.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -26,6 +35,10 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
+)
+from omnimarket.nodes.node_dod_verify.receipt_writer import (
+    ModelReceiptWriterConfig,
+    ReceiptWriter,
 )
 
 _log = logging.getLogger(__name__)
@@ -61,6 +74,17 @@ def main() -> None:
         default=None,
         help="Correlation ID (UUID) for this run (default: auto-generated)",
     )
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help=(
+            "Write the provenanced receipt JSON to this path instead of stdout. "
+            "Parent directories are created automatically. "
+            "If omitted, the raw state JSON is written to stdout (legacy behaviour). "
+            "ONEX_EVIDENCE_ROOT must be set when this flag is used without an explicit path."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -77,9 +101,30 @@ def main() -> None:
     )
 
     handler = HandlerDodVerify()
-    state, _event = handler.run_verification(command)
 
-    sys.stdout.write(state.model_dump_json(indent=2) + "\n")
+    if args.output_path is not None:
+        # Persist-to-disk path: write provenanced receipt via ReceiptWriter.
+        # When an explicit --output-path is given we build the writer directly
+        # from that path, so ONEX_EVIDENCE_ROOT is NOT required.  We only fall
+        # back to from_env() (which reads the env var) when the caller wants the
+        # canonical per-ticket path resolved automatically.
+        if "ONEX_EVIDENCE_ROOT" in os.environ:
+            writer = ReceiptWriter.from_env()
+        else:
+            # ONEX_EVIDENCE_ROOT unset but an explicit --output-path was provided —
+            # build a minimal writer whose evidence_root is the parent of the
+            # requested file so mkdir_parents still creates the correct directory.
+            writer = ReceiptWriter(
+                ModelReceiptWriterConfig(evidence_root=args.output_path.parent)
+            )
+        state, _event, written_path = handler.run_and_persist(
+            command, writer, output_path=args.output_path
+        )
+        sys.stdout.write(f"Receipt written to: {written_path}\n")
+    else:
+        # Legacy stdout path: raw ModelDodVerifyState JSON (unchanged behaviour).
+        state, _event = handler.run_verification(command)
+        sys.stdout.write(state.model_dump_json(indent=2) + "\n")
 
     if state.status == EnumDodVerifyStatus.FAILED:
         sys.exit(1)
