@@ -175,10 +175,11 @@ def main() -> None:
         if args.targets is None:
             # No explicit --targets: ticket ID is the sole target
             args.targets = [args.ticket]
-        elif args.ticket not in args.targets:
-            # Explicit --targets given: prepend the ticket so the handler
-            # can derive both ticket and repo from the combined target list
-            args.targets = [args.ticket, *args.targets]
+        else:
+            # Explicit --targets given: always deduplicate then prepend the
+            # ticket so index 0 is guaranteed to be the ticket ID, even when
+            # the caller already included it in --targets.
+            args.targets = [args.ticket, *[t for t in args.targets if t != args.ticket]]
         if args.name is None:
             args.name = _name_from_ticket(args.ticket)
         if args.team is None:

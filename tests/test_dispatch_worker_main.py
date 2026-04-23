@@ -264,3 +264,37 @@ def test_dry_run_validates_model_constraints() -> None:
         f"got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
     assert "Validation error" in result.stderr
+
+
+@pytest.mark.unit
+def test_ticket_normalization_when_ticket_in_targets() -> None:
+    """--ticket T with --targets ... T ... must still place T at index 0.
+
+    When the caller passes --ticket OMN-0000 AND also includes OMN-0000 in
+    --targets, the dedup+prepend logic must guarantee targets[0] == "OMN-0000"
+    with no duplicate entry.
+    """
+    result = _run(
+        [
+            "--ticket",
+            "OMN-0000",
+            "--targets",
+            "omnimarket#1",
+            "--targets",
+            "OMN-0000",
+            "--dry-run",
+        ]
+    )
+    assert result.returncode == 0, (
+        f"Expected exit 0, got {result.returncode}\n"
+        f"stdout: {result.stdout}\n"
+        f"stderr: {result.stderr}"
+    )
+    payload = json.loads(result.stdout)
+    assert payload["targets"][0] == "OMN-0000", (
+        f"Expected OMN-0000 at targets[0], got: {payload['targets']}"
+    )
+    # No duplicates
+    assert payload["targets"].count("OMN-0000") == 1, (
+        f"Duplicate ticket entry in targets: {payload['targets']}"
+    )
