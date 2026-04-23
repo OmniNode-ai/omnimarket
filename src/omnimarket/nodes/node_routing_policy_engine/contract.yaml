@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_routing_policy_engine
+# Pure compute: maps failure class + attempt count to retry type.
+# Two-Strike protocol: attempt_count >= 3 always escalates.
+#
+# Related: OMN-8044
+---
+name: routing_policy_engine
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Retry strategy engine — maps EnumFailureClass to EnumRetryType.
+  Two-Strike protocol: attempt_count >= 3 always escalates to
+  TIER_ESCALATION regardless of failure class.
+
+handler:
+  module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_retry_strategy
+  function: determine_retry_type
+  input_model: inline
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+inputs:
+  failure_class:
+    type: str
+    description: "Failure classification — must be one of the recognised classes."
+    required: true
+    enum:
+      - missing_context
+      - malformed_output
+      - insufficient_reasoning
+      - model_weakness
+  attempt_count:
+    type: int
+    description: "Current retry attempt count (0-indexed). >= 3 triggers Two-Strike escalation."
+    required: true
+    minimum: 0
+
+outputs:
+  retry_type:
+    type: str
+    description: "Recommended retry strategy (improved_context_retry, same_model_same_context, tier_escalation, peer_model)"
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  maturity: stable
+  tags:
+    - routing
+    - retry
+    - policy
+    - two-strike
+  related_tickets:
+    - "OMN-8044"
