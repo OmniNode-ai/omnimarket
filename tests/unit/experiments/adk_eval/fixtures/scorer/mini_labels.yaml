@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Synthetic mini-labels for scorer unit tests. Mirrors the P5 shape but
+# with only 4 findings covering each priority tier + a duplicate-key
+# collision to exercise the "most severe" collapse rule.
+
+labels:
+  - finding_ref: "faux_repo:src/a.py:10"
+    priority: critical
+    rationale: Synthetic critical finding for scorer tests.
+    category: any_usage
+    source_repo: faux_repo
+
+  - finding_ref: "faux_repo:src/a.py:20"
+    priority: major
+    rationale: Synthetic major finding for scorer tests.
+    category: any_usage
+    source_repo: faux_repo
+
+  - finding_ref: "faux_repo:src/b.py:30"
+    priority: minor
+    rationale: Synthetic minor finding for scorer tests.
+    category: other
+    source_repo: faux_repo
+
+  - finding_ref: "faux_repo:src/b.py:40"
+    priority: noise
+    rationale: Synthetic noise finding for scorer tests.
+    category: other
+    source_repo: faux_repo
+
+  # Duplicate-key collision: same file:line, two priorities.
+  # Scorer must collapse to MOST SEVERE (major > noise).
+  - finding_ref: "faux_repo:src/c.py:50"
+    priority: noise
+    rationale: Unused type ignore on a line that also has a real defect.
+    category: other
+    source_repo: faux_repo
+
+  - finding_ref: "faux_repo:src/c.py:50"
+    priority: major
+    rationale: Real defect at same position — collapse target.
+    category: any_usage
+    source_repo: faux_repo

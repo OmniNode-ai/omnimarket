@@ -1,0 +1,16 @@
+{
+  "repo": "faux_repo",
+  "generated_at": "2026-04-23T00:00:00+00:00",
+  "findings_total": 5,
+  "findings_prioritized": [
+    {"finding_ref": "src/a.py:10", "priority": "critical", "rationale": "match", "fix_sketch": null},
+    {"finding_ref": "src/a.py:20", "priority": "major",    "rationale": "match", "fix_sketch": null},
+    {"finding_ref": "src/b.py:30", "priority": "minor",    "rationale": "match", "fix_sketch": null},
+    {"finding_ref": "src/b.py:40", "priority": "noise",    "rationale": "match", "fix_sketch": null},
+    {"finding_ref": "src/c.py:50", "priority": "major",    "rationale": "match collapse", "fix_sketch": null}
+  ],
+  "tool": "omnimarket_node",
+  "latency_seconds": 0.0,
+  "llm_calls": 0,
+  "estimated_cost_usd": 0.0
+}
