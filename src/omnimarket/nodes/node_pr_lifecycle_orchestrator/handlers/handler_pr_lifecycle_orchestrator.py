@@ -688,6 +688,10 @@ class HandlerPrLifecycleOrchestrator:
             # Phase: MERGING (skip if fix_only)
             if merge_prs and not command.fix_only:
                 if command.verify:
+                    state.fsm = EnumOrchestratorState.VERIFYING
+                    await self._publish_phase_event(
+                        "TRIAGING", "VERIFYING", command.correlation_id
+                    )
                     raise RuntimeError(
                         "verify=True requested, but VERIFYING phase dispatch "
                         "is not wired yet (OMN-7742 follow-up). Refusing to "
@@ -758,15 +762,16 @@ class HandlerPrLifecycleOrchestrator:
             )
 
         except Exception as exc:
+            from_state = state.fsm.value
             logger.exception(
                 "[PR-LIFECYCLE-ORCH] failed in phase %s: %s",
-                state.fsm.value,
+                from_state,
                 exc,
             )
             state.error_message = str(exc)
             state.fsm = EnumOrchestratorState.FAILED
             await self._publish_phase_event(
-                state.fsm.value, "FAILED", command.correlation_id
+                from_state, "FAILED", command.correlation_id
             )
 
         logger.info(

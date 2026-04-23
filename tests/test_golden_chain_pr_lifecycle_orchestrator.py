@@ -780,8 +780,12 @@ class TestPrLifecycleOrchestratorVerifyWiring:
         assert "prs_verified" in payload
         assert payload["prs_verified"] == 0
 
-    async def test_verify_true_fails_closed_before_merge(self) -> None:
-        """verify=True refuses to transition to MERGING until VERIFYING is wired."""
+    async def test_verify_true_fails_closed_via_verifying_state(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """verify=True transitions TRIAGING->VERIFYING->FAILED; merge never runs."""
+        await event_bus.start()
+
         inventory = MockInventory(prs=(_PR_GREEN,))
         triage = MockTriage(classified=(_TRIAGE_GREEN,))
         reducer = MockReducer(intents=(_INTENT_MERGE,))
@@ -794,6 +798,7 @@ class TestPrLifecycleOrchestratorVerifyWiring:
             reducer=reducer,
             merge=merge,
             fix=fix,
+            event_bus=event_bus,
         )
         result = await orch.handle(_make_command(verify=True))
 
@@ -802,6 +807,17 @@ class TestPrLifecycleOrchestratorVerifyWiring:
         assert "VERIFYING phase dispatch is not wired yet" in result.error_message
         # Merge must NOT have run when verify=True and verify phase is unwired.
         assert merge.call_count == 0
+
+        # FSM contract: TRIAGING -> VERIFYING, then VERIFYING -> FAILED.
+        history = await event_bus.get_event_history(topic=TOPIC_PHASE_TRANSITION)
+        transitions = [
+            (json.loads(evt.value)["from_phase"], json.loads(evt.value)["to_phase"])
+            for evt in history
+        ]
+        assert ("triaging", "verifying") in transitions
+        assert ("verifying", "failed") in transitions
+
+        await event_bus.close()
 
 
 # ---------------------------------------------------------------------------
