@@ -51,8 +51,8 @@ TARGET_RULES: list[tuple[re.Pattern[str], EnumVerificationTarget]] = [
     (re.compile(r"^pages/api/"), EnumVerificationTarget.API_ROUTE_CHECK),
     (re.compile(r"^drizzle/"), EnumVerificationTarget.DB_MIGRATION_CHECK),
     (re.compile(r"^migrations/"), EnumVerificationTarget.DB_MIGRATION_CHECK),
-    (re.compile(r"^topics\.yaml$"), EnumVerificationTarget.KAFKA_TOPIC_CHECK),
-    (re.compile(r"^contract\.yaml$"), EnumVerificationTarget.KAFKA_TOPIC_CHECK),
+    (re.compile(r"(^|.*/)topics\.yaml$"), EnumVerificationTarget.KAFKA_TOPIC_CHECK),
+    (re.compile(r"(^|.*/)contract\.yaml$"), EnumVerificationTarget.KAFKA_TOPIC_CHECK),
 ]
 
 

@@ -77,6 +77,18 @@ class TestMapChangedFilesToTarget:
             == EnumVerificationTarget.KAFKA_TOPIC_CHECK
         )
 
+    def test_nested_topics_yaml(self) -> None:
+        assert (
+            map_changed_files_to_target(["src/omnimarket/nodes/node_foo/topics.yaml"])
+            == EnumVerificationTarget.KAFKA_TOPIC_CHECK
+        )
+
+    def test_nested_contract_yaml(self) -> None:
+        assert (
+            map_changed_files_to_target(["src/omnimarket/nodes/node_foo/contract.yaml"])
+            == EnumVerificationTarget.KAFKA_TOPIC_CHECK
+        )
+
     def test_no_match(self) -> None:
         assert (
             map_changed_files_to_target(["README.md"])

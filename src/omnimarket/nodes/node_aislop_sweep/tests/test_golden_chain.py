@@ -144,9 +144,7 @@ class TestHandlerExecution:
         handler = NodeAislopSweep()
         # Scan the node's own source — should find some patterns or return empty
         request = AislopSweepRequest(
-            target_dirs=[
-                str(node_dir.parent.parent)
-            ],  # omnimarket/src/omnimarket/nodes/
+            target_dirs=[str(node_dir)],  # node_aislop_sweep/
             dry_run=True,
         )
 

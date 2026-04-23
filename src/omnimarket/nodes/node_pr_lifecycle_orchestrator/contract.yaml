@@ -86,6 +86,7 @@ inputs:
     description: "Hard per-PR verification timeout in seconds"
     required: false
     default: 30
+    minimum: 1
 
 outputs:
   prs_inventoried:
