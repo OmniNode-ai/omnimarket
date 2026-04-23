@@ -1,0 +1,206 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# LLM-SELF-LABELED, NOT HUMAN-GOLD.
+# -----------------------------------
+# Per the ADK evaluation spike (Task P5), this file was hand-labeled by an
+# autonomous agent (Claude Opus 4.7), not a human reviewer. It weakens the F1
+# evidence that downstream reports derive from this sample — F1 measured
+# against these labels is a directional triage signal, not a rigorous quality
+# claim. See RESULTS.md "Evaluation Truth Boundary" section.
+#
+# Label distribution target: 10 critical, 10 noise, 10 ambiguous (mixed major/minor).
+# Scope expansion note (P5 stop condition): omnibase_core alone produced only
+# 4 mypy --strict findings. Expanded to include omnibase_core (4) + omniclaude
+# (21) + omnibase_infra tests (5) = 30.
+#
+# Schema per record:
+#   finding_ref: "<repo>:<file>:<line>"  (canonical pointer back to input_findings.jsonl)
+#   priority:    critical | major | minor | noise
+#   rationale:   one-sentence justification
+#   category:    any_usage | missing_return | missing_annotation | dict_any | other
+#   source_repo: omnibase_core | omniclaude | omnibase_infra
+
+labels:
+  # ==== omnibase_core (4 findings, ALL) ====
+  - finding_ref: "omnibase_core:src/omnibase_core/models/container/model_onex_container.py:100"
+    priority: noise
+    rationale: Unused type-ignore comment; safe auto-fix, zero runtime impact.
+    category: other
+    source_repo: omnibase_core
+
+  - finding_ref: "omnibase_core:src/omnibase_core/models/container/model_onex_container.py:610"
+    priority: major
+    rationale: Container returning Any from a generic T — silent type erosion in a core DI primitive.
+    category: any_usage
+    source_repo: omnibase_core
+
+  - finding_ref: "omnibase_core:src/omnibase_core/models/container/model_onex_container.py:655"
+    priority: major
+    rationale: Same pattern repeated — Any leaking out of a typed container lookup.
+    category: any_usage
+    source_repo: omnibase_core
+
+  - finding_ref: "omnibase_core:src/omnibase_core/models/container/model_onex_container.py:1144"
+    priority: critical
+    rationale: Returning Any where ModelONEXContainer is declared — undermines the entire container's type guarantees.
+    category: any_usage
+    source_repo: omnibase_core
+
+  # ==== omniclaude (21 findings) ====
+  - finding_ref: "omniclaude:src/omniclaude/services/session_registry_client.py:156"
+    priority: major
+    rationale: call-overload failure indicates a real runtime bug path where a non-iterable may reach list().
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/routing/routing_recorder.py:53"
+    priority: critical
+    rationale: Path() called with possibly-None argument — will raise TypeError at runtime.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/routing/routing_recorder.py:122"
+    priority: noise
+    rationale: Optional cross-repo import failing in strict mode; routine for split workspaces.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/routing/routing_recorder.py:124"
+    priority: noise
+    rationale: Unused type-ignore; auto-fixable cleanup.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_channel_email_adapter/handlers/handler_inbound.py:85"
+    priority: major
+    rationale: Returning Any from a str|None-typed function erodes caller's None-check contract.
+    category: any_usage
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_channel_discord_adapter/handlers/handler_inbound.py:18"
+    priority: noise
+    rationale: Unused type-ignore next to an optional discord import.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_channel_discord_adapter/handlers/handler_inbound.py:18"
+    priority: minor
+    rationale: Optional third-party (discord) not installed — expected on platforms without discord extras.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_channel_discord_adapter/handlers/handler_outbound.py:16"
+    priority: noise
+    rationale: Second unused type-ignore on same adapter.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_channel_discord_adapter/handlers/handler_outbound.py:16"
+    priority: minor
+    rationale: Same discord missing-import as above.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_agent_chat/handler_chat_publisher.py:46"
+    priority: noise
+    rationale: Unused type-ignore; cleanup only.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_agent_chat/handler_chat_publisher.py:65"
+    priority: major
+    rationale: Returning Any where bool is declared — breaks any truthiness precondition on callers.
+    category: any_usage
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:plugins/onex/hooks/lib/emit_client_wrapper.py:227"
+    priority: minor
+    rationale: Optional cross-repo import in a hook shim; tolerable but should be feature-gated.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_golden_chain_publish_effect/node.py:142"
+    priority: major
+    rationale: Missing var annotation on a field named 'description' will be inferred as a weak type.
+    category: missing_annotation
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/runtime/introspection.py:67"
+    priority: major
+    rationale: Subclassing an Any-typed mixin cascades Any into every introspected node — high blast radius.
+    category: any_usage
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/verification/evidence_writer.py:81"
+    priority: noise
+    rationale: Optional cross-repo import failing; expected.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/verification/evidence_writer.py:83"
+    priority: noise
+    rationale: Unused type-ignore, cleanup only.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/publisher/__init__.py:40"
+    priority: noise
+    rationale: Optional cross-repo import.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/publisher/__init__.py:42"
+    priority: noise
+    rationale: Unused type-ignore.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/hooks/handler_context_injection.py:932"
+    priority: minor
+    rationale: Missing stub for 'pattern_cache' internal module; fixable by adding a .pyi or packaging the module.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_friction_observer_compute/node.py:32"
+    priority: minor
+    rationale: Same pattern — internal module missing stub.
+    category: other
+    source_repo: omniclaude
+
+  - finding_ref: "omniclaude:src/omniclaude/nodes/node_friction_observer_compute/node.py:37"
+    priority: minor
+    rationale: Second internal module missing stub, same file.
+    category: other
+    source_repo: omniclaude
+
+  # ==== omnibase_infra tests/ (5 findings) ====
+  - finding_ref: "omnibase_infra:src/omnibase_infra/nodes/node_delegation_orchestrator/wiring.py:240"
+    priority: critical
+    rationale: Passing object where Callable[[ProtocolEventMessage], Awaitable[None]] is required — will fail at runtime when subscriber fires.
+    category: other
+    source_repo: omnibase_infra
+
+  - finding_ref: "omnibase_infra:scripts/validation/check_topic_completeness.py:184"
+    priority: major
+    rationale: Iterating object without asserting iterability — will AttributeError if the wrong type flows through.
+    category: other
+    source_repo: omnibase_infra
+
+  - finding_ref: "omnibase_infra:scripts/check_topic_drift.py:88"
+    priority: major
+    rationale: Assigning possibly-None where non-None is expected — NoneType error downstream.
+    category: other
+    source_repo: omnibase_infra
+
+  - finding_ref: "omnibase_infra:tests/unit/test_verify_deployed_versions.py:279"
+    priority: noise
+    rationale: Variable-as-type inside a test file; test convention, not production debt.
+    category: other
+    source_repo: omnibase_infra
+
+  - finding_ref: "omnibase_infra:tests/unit/test_verify_deployed_versions.py:280"
+    priority: noise
+    rationale: Returning Any from a test helper; low impact, test-only.
+    category: any_usage
+    source_repo: omnibase_infra
