@@ -186,7 +186,17 @@ onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cl
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
 
+[tool.uv]
+# adk-eval spike (local override): force omnibase-core to the adk-eval
+# worktree across the whole resolution tree, so all transitive deps
+# (omnibase-spi, omnibase-infra, etc.) share the same editable source.
+# Revert before pushing — this is a disposable spike.
+override-dependencies = [
+    "omnibase-core",
+]
+
 [tool.uv.sources]
+omnibase-core = { path = "../omnibase_core", editable = true }
 omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", branch = "main" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", branch = "main" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", branch = "main" }
