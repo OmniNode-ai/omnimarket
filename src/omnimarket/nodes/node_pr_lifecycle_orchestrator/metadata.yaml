@@ -22,6 +22,8 @@ entry_flags:
   fix_only: "Only execute fix phase on non-green PRs; skip merge"
   merge_only: "Only merge green PRs; skip fix phase"
   repos: "Comma-separated list of repo slugs to filter (empty = all repos)"
+  verify: "Run verification_sweep per-PR as a pre-merge gate before merging"
+  verify_timeout_seconds: "Hard per-PR verification timeout in seconds (default: 30)"
 dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]

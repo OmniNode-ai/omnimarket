@@ -127,6 +127,15 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default=30,
         description="Minutes before a merge-queued PR is considered stuck.",
     )
+    verify: bool = Field(
+        default=False,
+        description="Run verification_sweep per-PR as a pre-merge gate (OMN-7742).",
+    )
+    verify_timeout_seconds: int = Field(
+        default=30,
+        ge=1,
+        description="Hard per-PR verification timeout in seconds.",
+    )
 
 
 class ModelPrLifecycleResult(BaseModel):
@@ -139,6 +148,7 @@ class ModelPrLifecycleResult(BaseModel):
     prs_merged: int = Field(default=0, ge=0)
     prs_fixed: int = Field(default=0, ge=0)
     prs_skipped: int = Field(default=0, ge=0)
+    prs_verified: int = Field(default=0, ge=0)
     final_state: str = Field(default="COMPLETE")
     error_message: str | None = Field(default=None)
 
@@ -152,6 +162,7 @@ class EnumOrchestratorState(StrEnum):
     IDLE = "IDLE"
     INVENTORYING = "INVENTORYING"
     TRIAGING = "TRIAGING"
+    VERIFYING = "VERIFYING"
     MERGING = "MERGING"
     FIXING = "FIXING"
     COMPLETE = "COMPLETE"
@@ -170,6 +181,7 @@ class _SweepState:
     prs_merged: int = 0
     prs_fixed: int = 0
     prs_skipped: int = 0
+    prs_verified: int = 0
     error_message: str | None = None
 
     # Inter-phase data
@@ -1119,6 +1131,7 @@ class HandlerPrLifecycleOrchestrator:
             prs_merged=state.prs_merged,
             prs_fixed=state.prs_fixed,
             prs_skipped=state.prs_skipped,
+            prs_verified=state.prs_verified,
             final_state=state.fsm.value,
             error_message=state.error_message,
         )
