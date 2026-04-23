@@ -65,13 +65,13 @@ class HandlerThreadWatcher(ProtocolThreadWatcher):
 
     def __init__(
         self,
-        github_bridge: AdapterGitHubBridge,
+        github_bridge: AdapterGitHubBridge | None = None,
         *,
         poll_interval_seconds: float = 30.0,
         max_wait_seconds: float = 600.0,
         bot_login: str = "onexbot[bot]",
     ) -> None:
-        self._bridge = github_bridge
+        self._bridge = github_bridge or AdapterGitHubBridge()
         self._poll_interval = poll_interval_seconds
         self._max_wait = max_wait_seconds
         self._bot_login = bot_login
