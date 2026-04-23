@@ -22,6 +22,7 @@ Sub-handler dependencies (injected via protocol DI):
 
 Related:
     - OMN-8087: Create pr_lifecycle_orchestrator Node
+    - OMN-8390: Wire --verify command fields through VERIFYING FSM state
 """
 
 from __future__ import annotations
