@@ -69,16 +69,20 @@ def test_build_inference_bridge_config_populates_deepseek(
 def test_build_inference_bridge_config_empty_when_no_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When env vars are absent, model_configs should be empty (no crash)."""
-    monkeypatch.delenv("LLM_CODER_URL", raising=False)
-    monkeypatch.delenv("LLM_CODER_FAST_URL", raising=False)
-    monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
+    """When all LLM env vars are absent, model_configs must be empty (no crash)."""
+    for key in (
+        "LLM_CODER_URL",
+        "LLM_CODER_FAST_URL",
+        "LLM_DEEPSEEK_R1_URL",
+        "LLM_QWEN3_NEXT_URL",
+        "LLM_GLM_URL",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
     cfg = build_inference_bridge_config_from_env()
 
     assert isinstance(cfg, ModelInferenceBridgeConfig)
-    # Absent env var = no entry; no crash
-    assert "qwen3-coder" not in cfg.model_configs
+    assert cfg.model_configs == {}
 
 
 # ---------------------------------------------------------------------------
