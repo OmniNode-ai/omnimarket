@@ -13,11 +13,19 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from omnimarket.nodes.node_close_out.close_out_lease import (
+    CloseOutLeaseHeldError,
+    acquire_close_out_lease,
+    release_close_out_lease,
+)
 from omnimarket.nodes.node_close_out.models.model_close_out_completed_event import (
     ModelCloseOutCompletedEvent,
 )
 from omnimarket.nodes.node_close_out.models.model_close_out_phase_event import (
     ModelCloseOutPhaseEvent,
+)
+from omnimarket.nodes.node_close_out.models.model_close_out_skipped import (
+    ModelCloseOutSkipped,
 )
 from omnimarket.nodes.node_close_out.models.model_close_out_start_command import (
     ModelCloseOutStartCommand,
@@ -146,6 +154,46 @@ class HandlerCloseOut:
         """Execute the close-out pipeline."""
         _state, _events, completed = self.run_full_pipeline(command)
         return completed
+
+    def handle_with_guard(
+        self,
+        command: ModelCloseOutStartCommand,
+        state_dir: str,
+        holder: str = "node_close_out",
+    ) -> ModelCloseOutCompletedEvent | ModelCloseOutSkipped:
+        """Execute the close-out pipeline under the concurrent-run guard.
+
+        If another run is already holding the lease (non-stale), this returns
+        a ``ModelCloseOutSkipped`` terminal event with
+        ``reason='concurrent_run_in_progress'`` instead of running the pipeline.
+        Callers must treat ``ModelCloseOutSkipped`` as a success (exit 0) — it
+        is the expected outcome when cron ticks overlap.
+
+        Stale leases (older than 2x the expected close-out duration) are
+        reclaimed automatically; a crashed prior run never wedges the pipeline.
+        """
+        correlation_id = str(command.correlation_id)
+        try:
+            acquire_close_out_lease(state_dir, correlation_id, holder)
+        except CloseOutLeaseHeldError as held:
+            logger.info(
+                "Close-out skipped: concurrent run in progress (holder=%s, "
+                "acquired_at=%s)",
+                held.holder,
+                held.acquired_at.isoformat(),
+            )
+            return ModelCloseOutSkipped(
+                correlation_id=command.correlation_id,
+                reason="concurrent_run_in_progress",
+                skipped_at=datetime.now(tz=UTC),
+                holder=held.holder,
+                holder_acquired_at=held.acquired_at,
+            )
+
+        try:
+            return self.handle(command)
+        finally:
+            release_close_out_lease(state_dir, correlation_id=correlation_id)
 
     def run_full_pipeline(
         self,

@@ -22,6 +22,7 @@ Sub-handler dependencies (injected via protocol DI):
 
 Related:
     - OMN-8087: Create pr_lifecycle_orchestrator Node
+    - OMN-8390: Wire --verify command fields through VERIFYING FSM state
 """
 
 from __future__ import annotations
@@ -127,6 +128,15 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default=30,
         description="Minutes before a merge-queued PR is considered stuck.",
     )
+    verify: bool = Field(
+        default=False,
+        description="Run verification_sweep per-PR as a pre-merge gate (OMN-7742).",
+    )
+    verify_timeout_seconds: int = Field(
+        default=30,
+        ge=1,
+        description="Hard per-PR verification timeout in seconds.",
+    )
 
 
 class ModelPrLifecycleResult(BaseModel):
@@ -139,6 +149,7 @@ class ModelPrLifecycleResult(BaseModel):
     prs_merged: int = Field(default=0, ge=0)
     prs_fixed: int = Field(default=0, ge=0)
     prs_skipped: int = Field(default=0, ge=0)
+    prs_verified: int = Field(default=0, ge=0)
     final_state: str = Field(default="COMPLETE")
     error_message: str | None = Field(default=None)
 
@@ -152,6 +163,7 @@ class EnumOrchestratorState(StrEnum):
     IDLE = "IDLE"
     INVENTORYING = "INVENTORYING"
     TRIAGING = "TRIAGING"
+    VERIFYING = "VERIFYING"
     MERGING = "MERGING"
     FIXING = "FIXING"
     COMPLETE = "COMPLETE"
@@ -170,6 +182,7 @@ class _SweepState:
     prs_merged: int = 0
     prs_fixed: int = 0
     prs_skipped: int = 0
+    prs_verified: int = 0
     error_message: str | None = None
 
     # Inter-phase data
@@ -675,6 +688,16 @@ class HandlerPrLifecycleOrchestrator:
 
             # Phase: MERGING (skip if fix_only)
             if merge_prs and not command.fix_only:
+                if command.verify:
+                    state.fsm = EnumOrchestratorState.VERIFYING
+                    await self._publish_phase_event(
+                        "TRIAGING", "VERIFYING", command.correlation_id
+                    )
+                    raise RuntimeError(
+                        "verify=True requested, but VERIFYING phase dispatch "
+                        "is not wired yet (OMN-7742 follow-up). Refusing to "
+                        "transition to MERGING without verification."
+                    )
                 state.fsm = EnumOrchestratorState.MERGING
                 await self._publish_phase_event(
                     "TRIAGING", "MERGING", command.correlation_id
@@ -740,15 +763,16 @@ class HandlerPrLifecycleOrchestrator:
             )
 
         except Exception as exc:
+            from_state = state.fsm.value
             logger.exception(
                 "[PR-LIFECYCLE-ORCH] failed in phase %s: %s",
-                state.fsm.value,
+                from_state,
                 exc,
             )
             state.error_message = str(exc)
             state.fsm = EnumOrchestratorState.FAILED
             await self._publish_phase_event(
-                state.fsm.value, "FAILED", command.correlation_id
+                from_state, "FAILED", command.correlation_id
             )
 
         logger.info(
@@ -1119,6 +1143,7 @@ class HandlerPrLifecycleOrchestrator:
             prs_merged=state.prs_merged,
             prs_fixed=state.prs_fixed,
             prs_skipped=state.prs_skipped,
+            prs_verified=state.prs_verified,
             final_state=state.fsm.value,
             error_message=state.error_message,
         )
@@ -1160,6 +1185,7 @@ class HandlerPrLifecycleOrchestrator:
             "prs_merged": result.prs_merged,
             "prs_fixed": result.prs_fixed,
             "prs_skipped": result.prs_skipped,
+            "prs_verified": result.prs_verified,
             "error_message": result.error_message,
         }
 
