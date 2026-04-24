@@ -43,7 +43,7 @@ def _matching_paths(changed_files: Iterable[str]) -> tuple[str, ...]:
     for path in changed_files:
         normalized = path.lstrip("/")
         for prefix in PIPELINE_PATH_PREFIXES:
-            if prefix in normalized:
+            if normalized.startswith(prefix) or f"/{prefix}" in normalized:
                 matches.append(path)
                 break
     return tuple(matches)

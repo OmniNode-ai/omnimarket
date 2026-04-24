@@ -102,6 +102,19 @@ _CASES: tuple[_Case, ...] = (
         expected_reason=EnumPipelineTouchReason.NONE,
     ),
     _Case(
+        name="path_substring_false_positives_rejected",
+        changed_files=(
+            "src/nomigrations/001.sql",
+            "foo/notkafka/bar.py",
+            "pre_handlers/baz.py",
+            "docs/projections_guide.md",
+        ),
+        ticket_labels=(),
+        contract_touches_pipeline=False,
+        expected_is_touching=False,
+        expected_reason=EnumPipelineTouchReason.NONE,
+    ),
+    _Case(
         name="ticket_label_pipeline_matches",
         changed_files=("docs/README.md",),
         ticket_labels=("pipeline",),
