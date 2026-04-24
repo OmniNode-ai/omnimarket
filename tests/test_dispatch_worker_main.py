@@ -166,10 +166,9 @@ def test_collision_fences_are_embedded_in_prompt() -> None:
         f"stderr: {result.stderr}"
     )
     payload = json.loads(result.stdout)
-    fences_blob = json.dumps(payload["collision_fence_embeds"])
-    prompt_blob = payload["validated_prompt_template"]
-    assert "OMN-9999" in fences_blob or "OMN-9999" in prompt_blob
-    assert "omnimarket#200" in fences_blob or "omnimarket#200" in prompt_blob
+    embeds = payload["collision_fence_embeds"]
+    assert "OMN-9999" in embeds
+    assert "omnimarket#200" in embeds
 
 
 @pytest.mark.unit
