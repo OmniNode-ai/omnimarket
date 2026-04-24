@@ -12,6 +12,9 @@ evidence_requirements:
   - kind: "manual"
     description: "Local metadata dependency-scope checker passes"
     command: "uv run python scripts/ci/check_node_metadata_dependencies.py"
+  - kind: "manual"
+    description: "Post-merge runtime smoke verifies quality scoring imports required radon dependency"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_quality_scoring_compute.handlers.handler_quality_scoring import radon_available; assert radon_available() is True\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -41,3 +44,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/ -q --tb=short -m 'not kafka'"
+  - id: "dod-005"
+    description: "Post-merge runtime smoke verifies required quality-scoring dependency is present"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_quality_scoring_compute.handlers.handler_quality_scoring import radon_available; assert radon_available() is True\""
