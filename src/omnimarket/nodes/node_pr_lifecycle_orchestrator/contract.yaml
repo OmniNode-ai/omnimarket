@@ -121,7 +121,7 @@ sub_handler_dependencies:
     optional: true
   - name: reducer
     protocol: omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers.ProtocolStateReducerHandler
-    default_impl: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_reducer.HandlerPrLifecycleReducer
+    default_impl: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer.HandlerPrLifecycleStateReducer
     optional: true
 
 terminal_event: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
