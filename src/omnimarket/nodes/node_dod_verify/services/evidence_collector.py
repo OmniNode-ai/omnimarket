@@ -16,6 +16,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 
 from __future__ import annotations
 
+import glob
 import logging
 import os
 import shlex
@@ -220,6 +221,16 @@ class EvidenceCollector:
                         message=msg,
                     )
                 messages.append(msg)
+            elif check_type == "file_exists":
+                ok, msg = self._run_file_exists_check(check)
+                if not ok:
+                    return ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=msg,
+                    )
+                messages.append(msg)
             else:
                 messages.append(f"Unsupported check_type: {check_type}")
                 return ModelEvidenceCheckResult(
@@ -275,6 +286,46 @@ class EvidenceCollector:
             return False, f"FAILED ({elapsed_ms}ms): {detail}"
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
+
+    def _run_file_exists_check(
+        self,
+        check: dict[str, Any],
+    ) -> tuple[bool, str]:
+        """Verify a path exists.
+
+        Accepts ``path`` or ``check_value`` as the target. Relative paths resolve
+        against the repo root (``OMNI_HOME`` env var if set, else ``Path.cwd()``).
+        Glob metacharacters (``*``, ``?``, ``[``) are expanded — at least one match
+        is required. ``..`` segments are rejected to prevent path traversal.
+        """
+        raw_path = check.get("path") or check.get("check_value", "")
+        if not raw_path:
+            return False, "Empty path in file_exists check definition."
+
+        if ".." in Path(raw_path).parts:
+            return False, f"Path traversal not allowed: {raw_path}"
+
+        if Path(raw_path).is_absolute():
+            base = Path("/")
+            rel = Path(raw_path).relative_to("/")
+        else:
+            omni_home = os.environ.get("OMNI_HOME")
+            base = Path(omni_home) if omni_home else Path.cwd()
+            rel = Path(raw_path)
+
+        resolved = str(base / rel)
+        has_glob = any(ch in raw_path for ch in ("*", "?", "["))
+
+        if has_glob:
+            matches = glob.glob(resolved)
+            if not matches:
+                return False, f"No matches for glob: {raw_path}"
+            return True, f"OK: {len(matches)} match(es) for {raw_path}"
+
+        target = Path(resolved)
+        if not target.exists():
+            return False, f"Path does not exist: {raw_path}"
+        return True, f"OK: exists {raw_path}"
 
 
 __all__ = ["EvidenceCollector"]

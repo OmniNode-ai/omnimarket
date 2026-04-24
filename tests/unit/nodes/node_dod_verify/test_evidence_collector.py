@@ -263,6 +263,143 @@ class TestEvidenceCollector:
         assert len(results) == 1
         assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
 
+    def test_file_exists_pass(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """file_exists check returns VERIFIED when path resolves to an existing file."""
+        target = tmp_path / "artifact.txt"
+        target.write_text("ok", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Artifact present",
+                    "checks": [{"check_type": "file_exists", "path": "artifact.txt"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    def test_file_exists_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """file_exists check returns FAILED when target is missing."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Missing artifact",
+                    "checks": [{"check_type": "file_exists", "path": "missing.txt"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "does not exist" in (results[0].message or "").lower()
+
+    def test_file_exists_glob_pass(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Glob pattern matches at least one file -> VERIFIED."""
+        (tmp_path / "report-1.md").write_text("a", encoding="utf-8")
+        (tmp_path / "report-2.md").write_text("b", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Glob match",
+                    "checks": [{"check_type": "file_exists", "path": "report-*.md"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert "match" in (results[0].message or "").lower()
+
+    def test_file_exists_glob_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Glob pattern with zero matches -> FAILED."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Glob empty",
+                    "checks": [{"check_type": "file_exists", "path": "nope-*.md"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "no matches" in (results[0].message or "").lower()
+
+    def test_file_exists_path_traversal_rejected(self, tmp_path: Path) -> None:
+        """Paths containing .. segments are rejected regardless of existence."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Traversal attempt",
+                    "checks": [
+                        {"check_type": "file_exists", "path": "../../etc/passwd"}
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "traversal" in (results[0].message or "").lower()
+
+    def test_file_exists_empty_path_rejected(self, tmp_path: Path) -> None:
+        """Missing path field -> FAILED."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "No path",
+                    "checks": [{"check_type": "file_exists"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "empty path" in (results[0].message or "").lower()
+
     def test_multiple_evidence_items(self, tmp_path: Path) -> None:
         """Multiple dod_evidence items produce multiple results."""
         _write_contract(
