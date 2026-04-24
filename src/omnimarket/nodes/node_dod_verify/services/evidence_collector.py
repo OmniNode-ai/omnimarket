@@ -291,39 +291,46 @@ class EvidenceCollector:
         self,
         check: dict[str, Any],
     ) -> tuple[bool, str]:
-        """Verify a path exists.
+        """Verify a path exists within the repo-root containment boundary.
 
-        Accepts ``path`` or ``check_value`` as the target. Relative paths resolve
-        against the repo root (``OMNI_HOME`` env var if set, else ``Path.cwd()``).
-        Glob metacharacters (``*``, ``?``, ``[``) are expanded — at least one match
-        is required. ``..`` segments are rejected to prevent path traversal.
+        Accepts ``path`` or ``check_value`` as the target. Resolution rules:
+
+        - Relative paths resolve against ``OMNI_HOME`` (or ``Path.cwd()`` fallback).
+        - Absolute paths are permitted only if they resolve inside the base.
+        - ``..`` segments in the raw input are rejected up-front.
+        - Every candidate (and every glob match) is canonicalised via
+          ``Path.resolve()`` — which follows symlinks — and checked against
+          ``base`` with ``is_relative_to``. Symlink escapes are therefore blocked.
+        - Glob metacharacters (``*``, ``?``, ``[``) are expanded; at least one
+          match must remain after containment filtering.
         """
         raw_path = check.get("path") or check.get("check_value", "")
         if not raw_path:
             return False, "Empty path in file_exists check definition."
 
-        if ".." in Path(raw_path).parts:
+        raw_path_obj = Path(raw_path)
+        if ".." in raw_path_obj.parts:
             return False, f"Path traversal not allowed: {raw_path}"
 
-        if Path(raw_path).is_absolute():
-            base = Path("/")
-            rel = Path(raw_path).relative_to("/")
-        else:
-            omni_home = os.environ.get("OMNI_HOME")
-            base = Path(omni_home) if omni_home else Path.cwd()
-            rel = Path(raw_path)
-
-        resolved = str(base / rel)
+        omni_home = os.environ.get("OMNI_HOME")
+        base = Path(omni_home).resolve() if omni_home else Path.cwd().resolve()
+        candidate = raw_path_obj if raw_path_obj.is_absolute() else base / raw_path_obj
         has_glob = any(ch in raw_path for ch in ("*", "?", "["))
 
         if has_glob:
-            matches = glob.glob(resolved)
-            if not matches:
+            safe_matches: list[Path] = []
+            for match in glob.glob(str(candidate)):
+                resolved_match = Path(match).resolve()
+                if resolved_match.is_relative_to(base):
+                    safe_matches.append(resolved_match)
+            if not safe_matches:
                 return False, f"No matches for glob: {raw_path}"
-            return True, f"OK: {len(matches)} match(es) for {raw_path}"
+            return True, f"OK: {len(safe_matches)} match(es) for {raw_path}"
 
-        target = Path(resolved)
-        if not target.exists():
+        resolved_target = candidate.resolve()
+        if not resolved_target.is_relative_to(base):
+            return False, f"Path traversal not allowed: {raw_path}"
+        if not resolved_target.exists():
             return False, f"Path does not exist: {raw_path}"
         return True, f"OK: exists {raw_path}"
 
