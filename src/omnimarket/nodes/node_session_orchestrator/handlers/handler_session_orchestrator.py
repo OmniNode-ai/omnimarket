@@ -1055,7 +1055,7 @@ class HandlerSessionOrchestrator:
         {
           issues(filter: {
             state: { type: { in: ["started", "unstarted"] } }
-          }, first: 50, orderBy: priority) {
+          }, first: 50, orderBy: updatedAt) {
             nodes {
               id
               identifier
