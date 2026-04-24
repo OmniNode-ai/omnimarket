@@ -16,6 +16,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 
 from __future__ import annotations
 
+import glob
 import logging
 import os
 import shlex
@@ -220,6 +221,16 @@ class EvidenceCollector:
                         message=msg,
                     )
                 messages.append(msg)
+            elif check_type == "file_exists":
+                ok, msg = self._run_file_exists_check(check)
+                if not ok:
+                    return ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=msg,
+                    )
+                messages.append(msg)
             else:
                 messages.append(f"Unsupported check_type: {check_type}")
                 return ModelEvidenceCheckResult(
@@ -275,6 +286,53 @@ class EvidenceCollector:
             return False, f"FAILED ({elapsed_ms}ms): {detail}"
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
+
+    def _run_file_exists_check(
+        self,
+        check: dict[str, Any],
+    ) -> tuple[bool, str]:
+        """Verify a path exists within the repo-root containment boundary.
+
+        Accepts ``path`` or ``check_value`` as the target. Resolution rules:
+
+        - Relative paths resolve against ``OMNI_HOME`` (or ``Path.cwd()`` fallback).
+        - Absolute paths are permitted only if they resolve inside the base.
+        - ``..`` segments in the raw input are rejected up-front.
+        - Every candidate (and every glob match) is canonicalised via
+          ``Path.resolve()`` — which follows symlinks — and checked against
+          ``base`` with ``is_relative_to``. Symlink escapes are therefore blocked.
+        - Glob metacharacters (``*``, ``?``, ``[``) are expanded; at least one
+          match must remain after containment filtering.
+        """
+        raw_path = check.get("path") or check.get("check_value", "")
+        if not raw_path:
+            return False, "Empty path in file_exists check definition."
+
+        raw_path_obj = Path(raw_path)
+        if ".." in raw_path_obj.parts:
+            return False, f"Path traversal not allowed: {raw_path}"
+
+        omni_home = os.environ.get("OMNI_HOME")
+        base = Path(omni_home).resolve() if omni_home else Path.cwd().resolve()
+        candidate = raw_path_obj if raw_path_obj.is_absolute() else base / raw_path_obj
+        has_glob = any(ch in raw_path for ch in ("*", "?", "["))
+
+        if has_glob:
+            safe_matches: list[Path] = []
+            for match in glob.glob(str(candidate)):
+                resolved_match = Path(match).resolve()
+                if resolved_match.is_relative_to(base):
+                    safe_matches.append(resolved_match)
+            if not safe_matches:
+                return False, f"No matches for glob: {raw_path}"
+            return True, f"OK: {len(safe_matches)} match(es) for {raw_path}"
+
+        resolved_target = candidate.resolve()
+        if not resolved_target.is_relative_to(base):
+            return False, f"Path traversal not allowed: {raw_path}"
+        if not resolved_target.exists():
+            return False, f"Path does not exist: {raw_path}"
+        return True, f"OK: exists {raw_path}"
 
 
 __all__ = ["EvidenceCollector"]

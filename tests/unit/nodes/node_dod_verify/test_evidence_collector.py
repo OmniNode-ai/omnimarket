@@ -263,6 +263,248 @@ class TestEvidenceCollector:
         assert len(results) == 1
         assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
 
+    def test_file_exists_pass(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """file_exists check returns VERIFIED when path resolves to an existing file."""
+        target = tmp_path / "artifact.txt"
+        target.write_text("ok", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Artifact present",
+                    "checks": [{"check_type": "file_exists", "path": "artifact.txt"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    def test_file_exists_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """file_exists check returns FAILED when target is missing."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Missing artifact",
+                    "checks": [{"check_type": "file_exists", "path": "missing.txt"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "does not exist" in (results[0].message or "").lower()
+
+    def test_file_exists_glob_pass(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Glob pattern matches at least one file -> VERIFIED."""
+        (tmp_path / "report-1.md").write_text("a", encoding="utf-8")
+        (tmp_path / "report-2.md").write_text("b", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Glob match",
+                    "checks": [{"check_type": "file_exists", "path": "report-*.md"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert "match" in (results[0].message or "").lower()
+
+    def test_file_exists_glob_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Glob pattern with zero matches -> FAILED."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Glob empty",
+                    "checks": [{"check_type": "file_exists", "path": "nope-*.md"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "no matches" in (results[0].message or "").lower()
+
+    def test_file_exists_path_traversal_rejected(self, tmp_path: Path) -> None:
+        """Paths containing .. segments are rejected regardless of existence."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Traversal attempt",
+                    "checks": [
+                        {"check_type": "file_exists", "path": "../../etc/passwd"}
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "traversal" in (results[0].message or "").lower()
+
+    def test_file_exists_absolute_path_outside_base_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Absolute paths outside OMNI_HOME are rejected as containment violations."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        # Create a real file in a sibling dir so we prove containment, not just non-existence.
+        outside = tmp_path.parent / "outside.txt"
+        outside.write_text("nope", encoding="utf-8")
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Absolute outside base",
+                    "checks": [{"check_type": "file_exists", "path": str(outside)}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "traversal" in (results[0].message or "").lower()
+
+    def test_file_exists_symlink_escape_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Symlinks pointing outside OMNI_HOME are rejected after resolve()."""
+        outside = tmp_path.parent / "outside-symlink-target.txt"
+        outside.write_text("outside", encoding="utf-8")
+        inside = tmp_path / "link-to-outside"
+        inside.symlink_to(outside)
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Symlink escape",
+                    "checks": [
+                        {"check_type": "file_exists", "path": "link-to-outside"}
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "traversal" in (results[0].message or "").lower()
+
+    def test_file_exists_glob_symlink_escape_filtered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Glob matches that resolve outside the base are filtered out."""
+        outside = tmp_path.parent / "glob-outside.md"
+        outside.write_text("outside", encoding="utf-8")
+        (tmp_path / "link-outside.md").symlink_to(outside)
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Glob symlink escape",
+                    "checks": [{"check_type": "file_exists", "path": "link-*.md"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "no matches" in (results[0].message or "").lower()
+
+    def test_file_exists_absolute_path_inside_base_allowed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Absolute paths that resolve inside OMNI_HOME are permitted."""
+        target = tmp_path / "inside.txt"
+        target.write_text("ok", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Absolute inside base",
+                    "checks": [{"check_type": "file_exists", "path": str(target)}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    def test_file_exists_empty_path_rejected(self, tmp_path: Path) -> None:
+        """Missing path field -> FAILED."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "No path",
+                    "checks": [{"check_type": "file_exists"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "empty path" in (results[0].message or "").lower()
+
     def test_multiple_evidence_items(self, tmp_path: Path) -> None:
         """Multiple dod_evidence items produce multiple results."""
         _write_contract(
