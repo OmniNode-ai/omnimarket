@@ -758,6 +758,68 @@ class TestPrLifecycleOrchestratorResultFile:
         assert payload["error_message"] == "boom"
 
 
+@pytest.mark.unit
+class TestPrLifecycleOrchestratorVerifyWiring:
+    """OMN-8390: verify flag wiring and persistence guarantees."""
+
+    async def test_result_json_persists_prs_verified(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """prs_verified appears in the persisted result.json payload."""
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        orch = _make_orchestrator(inventory=MockInventory(prs=()))
+        cmd = _make_command(run_id="20260423-000000-verify1")
+
+        await orch.handle(cmd)
+
+        payload = json.loads(
+            (
+                tmp_path / "merge-sweep" / "20260423-000000-verify1" / "result.json"
+            ).read_text()
+        )
+        assert "prs_verified" in payload
+        assert payload["prs_verified"] == 0
+
+    async def test_verify_true_fails_closed_via_verifying_state(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """verify=True transitions TRIAGING->VERIFYING->FAILED; merge never runs."""
+        await event_bus.start()
+
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        merge = MockMerge(prs_merged=1)
+        fix = MockFix()
+
+        orch = _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            merge=merge,
+            fix=fix,
+            event_bus=event_bus,
+        )
+        result = await orch.handle(_make_command(verify=True))
+
+        assert result.final_state == "FAILED"
+        assert result.error_message is not None
+        assert "VERIFYING phase dispatch is not wired yet" in result.error_message
+        # Merge must NOT have run when verify=True and verify phase is unwired.
+        assert merge.call_count == 0
+
+        # FSM contract: TRIAGING -> VERIFYING, then VERIFYING -> FAILED.
+        history = await event_bus.get_event_history(topic=TOPIC_PHASE_TRANSITION)
+        transitions = [
+            (json.loads(evt.value)["from_phase"], json.loads(evt.value)["to_phase"])
+            for evt in history
+        ]
+        assert ("triaging", "verifying") in transitions
+        assert ("verifying", "failed") in transitions
+
+        await event_bus.close()
+
+
 # ---------------------------------------------------------------------------
 # OMN-9114: admin-merge-fallback default is ON
 # ---------------------------------------------------------------------------

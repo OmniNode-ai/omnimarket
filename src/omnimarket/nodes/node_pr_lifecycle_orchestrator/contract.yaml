@@ -76,6 +76,17 @@ inputs:
     description: "Auto-rebase stale (Track A-update) PR branches before merge"
     required: false
     default: true
+  verify:
+    type: bool
+    description: "Run verification_sweep per-PR as pre-merge gate (OMN-7742)"
+    required: false
+    default: false
+  verify_timeout_seconds:
+    type: int
+    description: "Hard per-PR verification timeout in seconds"
+    required: false
+    default: 30
+    minimum: 1
 
 outputs:
   prs_inventoried:
@@ -124,6 +135,7 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-inventory-collected.v1
     - onex.evt.omnimarket.pr-lifecycle-triage-classified.v1
     - onex.evt.omnimarket.pr-lifecycle-merge-executed.v1
+    - onex.evt.omnimarket.pr-lifecycle-verification-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-fix-dispatched.v1
     - onex.cmd.omnimarket.fixer-dispatch-start.v1
 
@@ -132,6 +144,7 @@ fsm:
     - IDLE
     - INVENTORYING
     - TRIAGING
+    - VERIFYING
     - REBASING
     - MERGING
     - FIXING
@@ -163,6 +176,15 @@ fsm:
     - from: TRIAGING
       to: COMPLETE
       trigger: "triage completed, dry_run or no actionable PRs"
+    - from: TRIAGING
+      to: VERIFYING
+      trigger: "verify flag set and green PRs exist"
+    - from: VERIFYING
+      to: MERGING
+      trigger: "verification completed"
+    - from: VERIFYING
+      to: FAILED
+      trigger: "error"
     - from: REBASING
       to: MERGING
       trigger: "rebase attempts complete"
