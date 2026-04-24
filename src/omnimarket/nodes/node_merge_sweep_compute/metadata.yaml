@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "aiokafka>=0.11.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["compute", "classification", "pr-lifecycle", "merge-sweep"]

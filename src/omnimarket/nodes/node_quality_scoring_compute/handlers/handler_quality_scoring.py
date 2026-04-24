@@ -8,7 +8,7 @@ ONEX-focused dimensions. All functions are side-effect-free and suitable
 for use in compute nodes.
 
 The scoring system evaluates Python code across six dimensions:
-    - complexity: McCabe cyclomatic complexity via radon (with AST fallback) (0.20)
+    - complexity: McCabe cyclomatic complexity via radon (0.20)
     - maintainability: Code structure quality (function length, naming) (0.20)
     - documentation: Docstring and comment coverage (0.15)
     - temporal_relevance: Code freshness indicators (TODO/FIXME, deprecated) (0.15)
@@ -18,10 +18,8 @@ The scoring system evaluates Python code across six dimensions:
 Default weights follow the six-dimension standard for balanced quality assessment.
 
 Complexity Scoring (OMN-1452):
-    When the optional ``radon`` library is installed, the complexity dimension
-    uses accurate McCabe cyclomatic complexity via ``radon.complexity.cc_visit``.
-    Without radon, the score falls back to an AST-based control-flow approximation.
-    Install radon with: ``pip install radon``
+    The complexity dimension uses accurate McCabe cyclomatic complexity via
+    ``radon.complexity.cc_visit``. ``radon`` is a declared node dependency.
 
 Example:
     from omnimarket.nodes.node_quality_scoring_compute.handlers import (
@@ -45,22 +43,12 @@ import sys
 from typing import Final, Literal, get_args
 
 from omnibase_core.models.primitives.model_semver import ModelSemVer
+from radon.complexity import average_complexity, cc_visit
 
 from .enum_onex_strictness_level import OnexStrictnessLevel
 from .exceptions import QualityScoringComputeError, QualityScoringValidationError
 from .presets import get_threshold_for_preset, get_weights_for_preset
 from .protocols import DimensionScores, QualityScoringResult
-
-# Optional radon integration (OMN-1452: complexity scoring refinement)
-# radon is not a required dependency; the AST-based approximation is the fallback.
-# Install with: pip install radon
-_RADON_AVAILABLE: bool
-try:
-    from radon.complexity import average_complexity, cc_visit
-
-    _RADON_AVAILABLE = True
-except ImportError:
-    _RADON_AVAILABLE = False
 
 # Type alias for valid dimension keys (matches DimensionScores TypedDict keys)
 DimensionKey = Literal[
@@ -507,7 +495,7 @@ def score_code_quality(
             recommendations=recommendations,
             source_language=normalized_language,
             analysis_version=ANALYSIS_VERSION_STR,
-            radon_complexity_enabled=bool(_RADON_AVAILABLE),
+            radon_complexity_enabled=True,
         )
 
     except SyntaxError as e:
@@ -549,12 +537,7 @@ def _compute_all_dimensions(content: str) -> DimensionScores:
     # Parse AST once for all dimensions that need it
     tree = ast.parse(content)
 
-    # Use radon for accurate McCabe cyclomatic complexity if available (OMN-1452),
-    # otherwise fall back to the AST approximation.
-    if _RADON_AVAILABLE:
-        complexity_score = _compute_radon_complexity_score(content)
-    else:
-        complexity_score = _compute_complexity_score(tree)
+    complexity_score = _compute_radon_complexity_score(content)
 
     return {
         "complexity": complexity_score,
@@ -790,25 +773,18 @@ def _compute_radon_complexity_score(content: str) -> float:
 
     Uses ``radon.complexity.cc_visit`` for per-function cyclomatic complexity,
     then maps the average to a 0.0-1.0 score via grade-band interpolation.
-    If radon is not installed or raises an error, returns the neutral score 0.5.
-
-    This function is only called when ``_RADON_AVAILABLE`` is True.
-
     Args:
         content: Python source code to analyze.
 
     Returns:
         Score from 0.0 (high complexity) to 1.0 (low complexity).
     """
-    try:
-        blocks = cc_visit(content)  # guarded by _RADON_AVAILABLE
-        if not blocks:
-            # No analyzable functions/methods; treat as trivially simple
-            return 1.0
-        avg = average_complexity(blocks)
-        return _mccabe_to_score(avg)
-    except Exception:
-        return NO_FUNCTIONS_NEUTRAL_SCORE
+    blocks = cc_visit(content)
+    if not blocks:
+        # No analyzable functions/methods; treat as trivially simple.
+        return 1.0
+    avg = average_complexity(blocks)
+    return _mccabe_to_score(avg)
 
 
 def radon_available() -> bool:
@@ -818,17 +794,17 @@ def radon_available() -> bool:
     tests or the score_code_quality metadata block) without importing radon.
 
     Returns:
-        True if radon can be used for complexity scoring, False otherwise.
+        Always True when the node package is installed with its declared dependencies.
     """
-    return bool(_RADON_AVAILABLE)
+    return True
 
 
 def _compute_complexity_score(tree: ast.AST) -> float:
     """Compute complexity score (inverted - lower complexity is better).
 
     Approximates cyclomatic complexity by counting control flow statements.
-    This is the fallback implementation used when radon is not installed.
-    When radon is available, ``_compute_radon_complexity_score`` is used instead.
+    Kept for direct comparison tests and migration diagnostics; runtime scoring
+    uses the required radon dependency.
 
     Args:
         tree: Parsed AST of the Python source code.

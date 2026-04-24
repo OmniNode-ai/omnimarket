@@ -1,0 +1,24 @@
+name: node_agent_coordinator_orchestrator
+version: "0.2.0"
+description: "Coordinates cross-agent memory subscriptions and notification routing"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_agent_coordinator_orchestrator: "omnimarket.nodes.node_agent_coordinator_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omninode-memory>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["memory", "subscription", "notification", "orchestrator"]
+pack: "memory"
+display_name: "Agent Coordinator Orchestrator"
+node_role: "orchestrator"

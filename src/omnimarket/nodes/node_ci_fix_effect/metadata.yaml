@@ -15,6 +15,8 @@ capabilities:
   side_effect_class: effectful
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-compat>=0.3.1"
+  - "omnibase-infra>=0.32.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["ci", "fix", "llm", "effect", "merge-sweep", "phase2"]

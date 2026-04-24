@@ -58,6 +58,8 @@ jobs:
             exit 1
           fi
           echo "OK: No node-level topics.py files found."
+      - name: ONCP node metadata dependency scope
+        run: uv run python scripts/ci/check_node_metadata_dependencies.py
 
   typecheck:
     runs-on: ubuntu-latest

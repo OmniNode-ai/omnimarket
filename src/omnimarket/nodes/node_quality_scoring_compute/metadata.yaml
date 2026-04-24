@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "radon"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["intelligence", "quality", "compute"]

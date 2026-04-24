@@ -15,6 +15,9 @@ capabilities:
   side_effect_class: mutating
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "confluent-kafka"
+  - "onex-change-control>=0.5.0"
+  - "typing-extensions"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["overnight", "orchestrator", "autonomous", "pipeline", "session"]
