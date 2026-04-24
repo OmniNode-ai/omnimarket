@@ -40,16 +40,27 @@ Common wrapper-owned behavior:
 
 ## Node Roles
 
-OmniMarket nodes typically fall into these roles:
+OmniMarket nodes declare their role using the `node_role` field in `metadata.yaml`. The
+value must be one of the `EnumNodeRole` members defined in
+`src/omnimarket/enums/enum_node_role.py`:
 
 | Role | Responsibility |
 | --- | --- |
-| Compute | Pure or mostly pure transformation. |
-| Reducer | FSM or state transition logic. |
-| Effect | Side-effect boundary such as Git, ticket provider, code host, database, or event publisher integration. |
-| Orchestrator | Workflow coordination across phases or child nodes. |
-| Projection | Event-to-read-model projection. |
-| Service | Long-running node with lifecycle and health semantics. |
+| `inventory` | Discovers and lists existing resources (read-only scan). |
+| `triage` | Classifies or prioritizes items for downstream processing. |
+| `fix` | Applies corrections or remediations to identified issues. |
+| `probe` | Performs health checks, assertions, or exploratory queries. |
+| `report` | Aggregates findings and generates structured output. |
+| `orchestrator` | Coordinates other nodes; emits intents rather than producing a result. |
+| `reducer` | Pure state transition: `delta(state, event) → (new_state, intents[])`. |
+| `effect` | Executes side effects such as Git, ticket provider, database, or event publisher calls. |
+| `compute` | Pure computation returning a typed result; no side effects. |
+| `internal` | Internal implementation detail not part of the public pipeline surface. |
+
+Event-to-read-model projections and long-running service nodes use the roles above
+(`effect`, `compute`, `reducer`, etc.) as appropriate for their execution mode. Domain
+groupings such as "Projection and data" or "Operations" in the Domain Packages table
+below are organizational labels, not `node_role` values.
 
 One node should represent one execution mode transition. Split deterministic
 classification, effectful mutation, and long-running orchestration into separate
