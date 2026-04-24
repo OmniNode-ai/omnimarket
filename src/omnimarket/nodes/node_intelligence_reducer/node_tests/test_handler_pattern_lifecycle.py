@@ -288,39 +288,54 @@ class TestInvalidState:
         make_reducer_input: MakeReducerInputType,
     ) -> None:
         """Test rejection of unknown from_status value at model creation."""
-        # Invalid status strings raise ValueError during enum conversion
-        with pytest.raises(ValueError, match="unknown_state"):
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError) as exc_info:
             make_reducer_input(
                 from_status="unknown_state",
                 to_status="validated",
                 trigger="promote",
             )
+        assert any(
+            err["type"] == "enum" and err.get("input") == "unknown_state"
+            for err in exc_info.value.errors()
+        )
 
     def test_invalid_from_status_empty_string(
         self,
         make_reducer_input: MakeReducerInputType,
     ) -> None:
         """Test rejection of empty string from_status at model creation."""
-        # Empty strings raise ValueError during enum conversion
-        with pytest.raises(ValueError, match="not a valid"):
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError) as exc_info:
             make_reducer_input(
                 from_status="",
                 to_status="validated",
                 trigger="promote",
             )
+        assert any(
+            err["type"] == "enum" and err.get("input") == ""
+            for err in exc_info.value.errors()
+        )
 
     def test_invalid_from_status_typo(
         self,
         make_reducer_input: MakeReducerInputType,
     ) -> None:
         """Test rejection of typo in from_status (e.g., 'candiate')."""
-        # Typos raise ValueError during enum conversion
-        with pytest.raises(ValueError, match="candiate"):
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError) as exc_info:
             make_reducer_input(
                 from_status="candiate",  # Typo
                 to_status="validated",
                 trigger="promote_direct",
             )
+        assert any(
+            err["type"] == "enum" and err.get("input") == "candiate"
+            for err in exc_info.value.errors()
+        )
 
     def test_valid_enum_values_accepted(
         self,

@@ -117,15 +117,9 @@ def make_reducer_input() -> Callable[..., ModelReducerInputPatternLifecycle]:
             ModelReducerInputPatternLifecycle ready for handler testing.
 
         Note:
-            If strings are passed, they must be lowercase to match enum values.
-            Use EnumPatternLifecycleStatus.CANDIDATE etc. for explicit enums.
+            Strings are passed through to the Pydantic model so its validators
+            own normalization and invalid-value reporting.
         """
-        # Convert strings to enums if needed (must be lowercase)
-        if isinstance(from_status, str):
-            from_status = EnumPatternLifecycleStatus(from_status.lower())
-        if isinstance(to_status, str):
-            to_status = EnumPatternLifecycleStatus(to_status.lower())
-
         return ModelReducerInputPatternLifecycle(
             fsm_type="PATTERN_LIFECYCLE",
             entity_id=pattern_id,
