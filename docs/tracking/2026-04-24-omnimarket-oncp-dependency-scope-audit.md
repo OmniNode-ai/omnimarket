@@ -73,3 +73,40 @@ The current shared/runtime allowlist is intentionally small:
 - `pyyaml`
 
 All other external imports are treated as node-owned unless the root/runtime classification is explicitly changed. This PR still does not remove node-only packages from root `pyproject.toml`; removal remains blocked until ONCP install isolation or lazy entry-point loading makes metadata-scoped installs safe. `radon` is temporarily present in root dependencies because the current root distribution still exposes all `onex.nodes` entry points.
+
+## OMN-9592 Post-Enforcement Audit
+
+After OMN-9584, the dependency metadata baseline is materially better:
+
+- Node directories: 134
+- Node directories with `metadata.yaml`: 134
+- Node directories missing `metadata.yaml`: 0
+- `scripts/ci/check_node_metadata_dependencies.py`: PASS
+- Node directories with package-local `pyproject.toml`: 0
+
+The current root package still carries node-owned dependencies that should become ONCP-scoped once lazy entry-point discovery lands in `omnibase_core`:
+
+| Dependency | Node metadata refs | Migration priority |
+| --- | ---: | --- |
+| `httpx` | 14 | high; broad I/O effect dependency |
+| `omninode-memory` | 16 | high; memory/intelligence node dependency |
+| `omnibase-infra` | 7 | high; should not be root-required for all market nodes |
+| `omnibase-compat` | 8 | medium; routing/compat nodes only |
+| `asyncpg` | 3 | medium; database nodes only |
+| `psycopg2-binary` | 2 | medium; data verification / retention only |
+| `onex-change-control` | 3 | medium; governance/overnight nodes only |
+| `aiokafka` | 1 | low; merge-sweep compute consumer only |
+| `omnibase-spi` | 1 | low; ticket query only |
+| `radon` | 1 | low; quality scoring only |
+
+No market node package currently has its own `pyproject.toml`. The near-term safe pattern is therefore metadata-scoped dependencies plus lazy class loading. True per-node `pyproject.toml` packaging can be added later if ONCP installation needs independently buildable node distributions, but adding 134 package manifests before the installer supports them would create architecture without execution value.
+
+## OMN-9592 Safe Execution Order
+
+1. Land `omnibase_core` lazy entry-point discovery so registry/discovery/install paths can inspect node metadata and contracts without importing every node class.
+2. Prove the behavior with focused install/discovery tests that fail if node-owned dependencies are imported during metadata discovery.
+3. In `omnimarket`, remove one low-blast-radius root dependency first, preferably `radon` or `psycopg2-binary`, because each is owned by one or two nodes and already declared in metadata.
+4. Run the metadata dependency gate, targeted node tests, and a root install/discovery smoke test.
+5. Only after the pilot passes, remove broader root dependencies in batches ordered by consumer count and runtime risk.
+
+The first omnimarket removal should not start until `omnibase_core` PR #891 is merged or the omnimarket branch is explicitly based on that core change for CI. Otherwise CI can still exercise the old eager entry-point loading behavior and fail for the wrong reason.
