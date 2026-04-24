@@ -5,8 +5,8 @@ summary: "Restore merge-sweep runtime handler registration and deploy validation
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
-  - "omnimarket.pr_lifecycle_contracts"
-  - "runtime.auto_wiring"
+  - "topics"
+  - "protocols"
 evidence_requirements:
   - kind: "ci"
     description: "omnimarket PR checks pass, including deploy gate"
