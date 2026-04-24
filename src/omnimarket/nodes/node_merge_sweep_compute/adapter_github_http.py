@@ -59,16 +59,19 @@ query($owner: String!, $name: String!, $after: String) {
           nodes {
             commit {
               statusCheckRollup {
-                contexts {
-                  ... on StatusContext {
-                    context
-                    state
-                    description
-                  }
-                  ... on CheckRun {
-                    name
-                    status
-                    conclusion
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on StatusContext {
+                      context
+                      state
+                      description
+                    }
+                    ... on CheckRun {
+                      name
+                      status
+                      conclusion
+                    }
                   }
                 }
               }
@@ -183,18 +186,27 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
                     {"name": ln["name"]} for ln in label_nodes if ln and "name" in ln
                 ]
 
-                # Flatten statusCheckRollup from nested commit structure
-                rollup_nodes = (
-                    ((node.get("statusCheckRollup") or {}).get("nodes") or [{}])[0]
-                    .get("commit", {})
-                    .get("statusCheckRollup", {})
-                    .get("contexts", [])
-                )
+                # Flatten statusCheckRollup from nested commit structure.
+                # GraphQL shape: commits.nodes[0].commit.statusCheckRollup.contexts.nodes[]
+                # contexts is a StatusCheckRollupContextConnection — inline fragments
+                # on the StatusContext | CheckRun union live inside nodes{}, not directly
+                # under contexts{}. Spreading fragments at contexts{} raises
+                # cannotSpreadFragment (GitHub GraphQL OMN-9551).
+                commit_nodes = (node.get("statusCheckRollup") or {}).get("nodes") or []
+                rollup_nodes: list[dict[str, Any]] = []
+                if commit_nodes:
+                    rollup_nodes = (
+                        (commit_nodes[0].get("commit") or {}).get(
+                            "statusCheckRollup", {}
+                        )
+                        or {}
+                    ).get("contexts", {}).get("nodes", []) or []
+
                 # Normalize to the same shape as gh pr list --json
                 normalized_rollup: list[dict[str, Any]] = []
                 for ctx in rollup_nodes:
-                    if "conclusion" in ctx:
-                        # CheckRun
+                    typename = ctx.get("__typename", "")
+                    if typename == "CheckRun":
                         normalized_rollup.append(
                             {
                                 "name": ctx.get("name", ""),
@@ -202,8 +214,7 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
                                 "status": ctx.get("status", ""),
                             }
                         )
-                    else:
-                        # StatusContext
+                    elif typename == "StatusContext":
                         state = (ctx.get("state") or "").upper()
                         normalized_rollup.append(
                             {
