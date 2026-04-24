@@ -1,10 +1,10 @@
-name: node_build_loop_orchestrator
+name: node_merge_sweep_triage_orchestrator
 version: "1.0.0"
-description: "Build loop orchestrator -- composes 6 sub-handlers via FSM reducer"
+description: "Fans out merge-sweep triage decisions into remediation commands"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
-    node_build_loop_orchestrator: "omnimarket.nodes.node_build_loop_orchestrator"
+    node_merge_sweep_triage_orchestrator: "omnimarket.nodes.node_merge_sweep_triage_orchestrator"
 capabilities:
   standalone: true
   full_runtime: true
@@ -15,11 +15,9 @@ capabilities:
   side_effect_class: effectful
 dependencies:
   - "omnibase_core>=0.39.0"
-  - "httpx>=0.27.0"
-  - "omnibase-infra>=0.32.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["build-loop", "orchestrator", "fsm", "workflow", "autonomous"]
-pack: "build"
-display_name: "Build Loop Orchestrator"
+tags: ["merge-sweep", "triage", "orchestrator"]
+pack: "merge-sweep"
+display_name: "Merge Sweep Triage Orchestrator"
 node_role: "orchestrator"

@@ -41,7 +41,7 @@ Root dependencies that also have non-node usage and need more careful treatment:
 Additional metadata gaps found by import scan:
 
 - `qdrant-client`, `structlog`, `confluent-kafka`, `typing-extensions`, `aiohttp`, and `radon` appear in node imports but are not consistently declared in node metadata.
-- `radon` is optional in `node_quality_scoring_compute`; this should be modeled explicitly rather than silently hidden by fallback behavior.
+- `radon` was treated as optional in `node_quality_scoring_compute`; OMN-9584 makes it an explicit dependency and removes the silent AST fallback from runtime scoring.
 
 ## Recommended Work
 
@@ -49,8 +49,27 @@ Additional metadata gaps found by import scan:
 2. Add a CI check that compares node imports against `metadata.yaml.dependencies`.
 3. Decide which root dependencies are true framework/runtime dependencies versus ONCP package dependencies.
 4. Remove node-only dependencies from root only after entry-point importability is protected by ONCP install isolation or lazy entry-point loading.
-5. Add an explicit optional-dependency representation to metadata if optional imports such as `radon` are allowed.
+5. Add an explicit optional-dependency representation only if optional imports are intentionally supported by a future ONCP package model.
 
 ## Current Workstream Boundary
 
 This audit does not remove broad root dependencies yet. That would be unsafe while root `onex.nodes` entry points can import all node packages from one installed distribution. The immediate fix is to keep the intelligence migration clean by avoiding `omninode-intelligence` imports and documenting the broader cleanup as a separate ticket.
+
+## OMN-9584 Enforcement Update
+
+OMN-9584 adds `scripts/ci/check_node_metadata_dependencies.py` and wires it into CI. The check enforces:
+
+- every direct `src/omnimarket/nodes/node_*` package has `metadata.yaml`
+- node-owned external imports are declared in `metadata.yaml.dependencies`
+- imports from node tests are excluded from runtime dependency scope
+- distribution names are normalized, for example `qdrant_client` -> `qdrant-client` and `omnimemory` -> `omninode-memory`
+
+The current shared/runtime allowlist is intentionally small:
+
+- `omnibase_core`
+- `packaging`
+- `pydantic`
+- `python-dateutil`
+- `pyyaml`
+
+All other external imports are treated as node-owned unless the root/runtime classification is explicitly changed. This PR still does not remove node-only packages from root `pyproject.toml`; removal remains blocked until ONCP install isolation or lazy entry-point loading makes metadata-scoped installs safe. `radon` is temporarily present in root dependencies because the current root distribution still exposes all `onex.nodes` entry points.

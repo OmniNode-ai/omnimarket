@@ -1,0 +1,26 @@
+name: node_memory_lifecycle_orchestrator
+version: "0.2.0"
+description: "Coordinates memory lifecycle transitions for expiration, archival, and cleanup"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_memory_lifecycle_orchestrator: "omnimarket.nodes.node_memory_lifecycle_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "asyncpg>=0.30.0"
+  - "omnibase-infra>=0.32.0"
+  - "omninode-memory>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["memory", "lifecycle", "orchestrator", "ttl"]
+pack: "memory"
+display_name: "Memory Lifecycle Orchestrator"
+node_role: "orchestrator"

@@ -1,10 +1,10 @@
-name: node_platform_readiness
+name: node_merge_sweep_state_reducer
 version: "1.0.0"
-description: "Unified platform readiness gate — tri-state PASS/WARN/FAIL across verification dimensions"
+description: "Reduces merge-sweep outcome events into aggregate sweep state"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
-    node_platform_readiness: "omnimarket.nodes.node_platform_readiness"
+    node_merge_sweep_state_reducer: "omnimarket.nodes.node_merge_sweep_state_reducer"
 capabilities:
   standalone: true
   full_runtime: true
@@ -15,10 +15,9 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
-  - "aiohttp"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["readiness", "gate", "verification", "platform"]
-pack: "diagnostics"
-display_name: "Platform Readiness"
-node_role: "probe"
+tags: ["merge-sweep", "state", "reducer"]
+pack: "merge-sweep"
+display_name: "Merge Sweep State Reducer"
+node_role: "reducer"

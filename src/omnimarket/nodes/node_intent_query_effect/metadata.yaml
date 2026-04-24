@@ -1,0 +1,24 @@
+name: node_intent_query_effect
+version: "0.2.0"
+description: "Queries persisted intent classifications from memory storage"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_intent_query_effect: "omnimarket.nodes.node_intent_query_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omninode-memory>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["intent", "query", "memory", "effect"]
+pack: "memory"
+display_name: "Intent Query Effect"
+node_role: "effect"

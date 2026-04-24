@@ -1,0 +1,23 @@
+name: node_ledger_orchestrator
+version: "1.0.0"
+description: "Orchestrates the ledger proof workflow by emitting append commands"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ledger_orchestrator: "omnimarket.nodes.node_ledger_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["ledger", "orchestrator", "proof"]
+pack: "ledger"
+display_name: "Ledger Orchestrator"
+node_role: "orchestrator"

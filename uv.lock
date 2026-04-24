@@ -1179,6 +1179,18 @@ wheels = [
 ]
 
 [[package]]
+name = "mando"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/35/24/cd70d5ae6d35962be752feccb7dca80b5e0c2d450e995b16abd6275f3296/mando-0.7.1.tar.gz", hash = "sha256:18baa999b4b613faefb00eac4efadcf14f510b59b924b66e08289aa1de8c3500", size = 37868, upload-time = "2022-02-24T08:12:27.316Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/f0/834e479e47e499b6478e807fb57b31cc2db696c4db30557bb6f5aea4a90b/mando-0.7.1-py2.py3-none-any.whl", hash = "sha256:26ef1d70928b6057ee3ca12583d73c63e05c49de8972d620c278a7b206581a8a", size = 28149, upload-time = "2022-02-24T08:12:25.24Z" },
+]
+
+[[package]]
 name = "markdown-it-py"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1638,6 +1650,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dateutil" },
     { name = "pyyaml" },
+    { name = "radon" },
 ]
 
 [package.dev-dependencies]
@@ -1665,6 +1678,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
     { name = "python-dateutil", specifier = ">=2.9.0" },
     { name = "pyyaml", specifier = ">=6.0.2,<7.0.0" },
+    { name = "radon", specifier = ">=6.0.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -2475,6 +2489,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/30/dd/f8a8261b83946af3cd65943c93c4f83e044f01184e8525404989d22a81a5/qdrant_client-1.17.1.tar.gz", hash = "sha256:22f990bbd63485ed97ba551a4c498181fcb723f71dcab5d6e4e43fe1050a2bc0", size = 344979, upload-time = "2026-03-13T17:13:44.678Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/68/69/77d1a971c4b933e8c79403e99bcbb790463da5e48333cc4fd5d412c63c98/qdrant_client-1.17.1-py3-none-any.whl", hash = "sha256:6cda4064adfeaf211c751f3fbc00edbbdb499850918c7aff4855a9a759d56cbd", size = 389947, upload-time = "2026-03-13T17:13:43.156Z" },
+]
+
+[[package]]
+name = "radon"
+version = "6.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama" },
+    { name = "mando" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b1/6d/98e61600febf6bd929cf04154537c39dc577ce414bafbfc24a286c4fa76d/radon-6.0.1.tar.gz", hash = "sha256:d1ac0053943a893878940fedc8b19ace70386fc9c9bf0a09229a44125ebf45b5", size = 1874992, upload-time = "2023-03-26T06:24:38.868Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/93/f7/d00d9b4a0313a6be3a3e0818e6375e15da6d7076f4ae47d1324e7ca986a1/radon-6.0.1-py2.py3-none-any.whl", hash = "sha256:632cc032364a6f8bb1010a2f6a12d0f14bc7e5ede76585ef29dc0cecf4cd8859", size = 52784, upload-time = "2023-03-26T06:24:33.949Z" },
 ]
 
 [[package]]

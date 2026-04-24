@@ -1,0 +1,25 @@
+name: node_kreuzberg_parse_effect
+version: "0.1.0"
+description: "Parses discovered documents through Kreuzberg and emits indexed document events"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_kreuzberg_parse_effect: "omnimarket.nodes.node_kreuzberg_parse_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+  - "omninode-memory>=0.1.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["memory", "document", "parse", "kreuzberg", "effect"]
+pack: "memory"
+display_name: "Kreuzberg Parse Effect"
+node_role: "effect"

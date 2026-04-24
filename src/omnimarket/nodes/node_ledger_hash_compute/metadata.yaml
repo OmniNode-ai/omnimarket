@@ -1,10 +1,10 @@
-name: node_platform_readiness
+name: node_ledger_hash_compute
 version: "1.0.0"
-description: "Unified platform readiness gate — tri-state PASS/WARN/FAIL across verification dimensions"
+description: "Computes deterministic ledger journal hash records"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
-    node_platform_readiness: "omnimarket.nodes.node_platform_readiness"
+    node_ledger_hash_compute: "omnimarket.nodes.node_ledger_hash_compute"
 capabilities:
   standalone: true
   full_runtime: true
@@ -15,10 +15,9 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
-  - "aiohttp"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["readiness", "gate", "verification", "platform"]
-pack: "diagnostics"
-display_name: "Platform Readiness"
-node_role: "probe"
+tags: ["ledger", "hash", "compute", "proof"]
+pack: "ledger"
+display_name: "Ledger Hash Compute"
+node_role: "compute"

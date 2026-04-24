@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: pure
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "onex-change-control>=0.5.0"
   - "pydantic>=2.0.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"

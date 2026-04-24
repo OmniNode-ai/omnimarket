@@ -1,0 +1,23 @@
+name: node_skill_overseer_verify_orchestrator
+version: "1.0.0"
+description: "Dispatches overseer verification skill requests to the configured execution backend"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_skill_overseer_verify_orchestrator: "omnimarket.nodes.node_skill_overseer_verify_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["skill", "overseer", "verify", "orchestrator"]
+pack: "skills"
+display_name: "Skill Overseer Verify Orchestrator"
+node_role: "orchestrator"
