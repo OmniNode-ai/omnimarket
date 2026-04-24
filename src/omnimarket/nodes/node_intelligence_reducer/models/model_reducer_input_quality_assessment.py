@@ -42,10 +42,12 @@ class ModelReducerInputQualityAssessment(BaseModel):
     )
     lease_id: str | None = Field(
         default=None,
+        min_length=1,
         description="Action lease ID for distributed coordination",
     )
     epoch: int | None = Field(
         default=None,
+        ge=0,
         description="Epoch for action lease management",
     )
 

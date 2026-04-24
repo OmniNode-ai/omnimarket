@@ -50,7 +50,10 @@ from omnimarket.nodes.node_intelligence_reducer.models.model_reducer_input_quali
 
 # Type alias for all valid payload types
 ReducerPayload = (
-    ModelIngestionPayload | ModelPatternLearningPayload | ModelQualityAssessmentPayload
+    ModelIngestionPayload
+    | ModelPatternLearningPayload
+    | ModelQualityAssessmentPayload
+    | ModelPatternLifecycleReducerInput
 )
 
 

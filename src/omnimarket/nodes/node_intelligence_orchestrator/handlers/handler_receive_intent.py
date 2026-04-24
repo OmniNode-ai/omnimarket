@@ -68,12 +68,24 @@ def handle_receive_intent(
     Returns:
         ModelIntentReceipt confirming the intent was received and recorded.
     """
-    # Extract payload intent_type safely (getattr avoids suppressing
-    # property-access errors that hasattr would silently swallow).
+    payload_data = getattr(intent.payload, "data", None)
     _intent_type = getattr(intent.payload, "intent_type", None)
     payload_intent_type: str | None = (
         str(_intent_type) if _intent_type is not None else None
     )
+    derived_correlation_id: UUID | None = None
+
+    if isinstance(payload_data, dict):
+        raw_intent_type = payload_data.get("intent_type")
+        if payload_intent_type is None and raw_intent_type is not None:
+            payload_intent_type = str(raw_intent_type)
+
+        raw_correlation_id = payload_data.get("correlation_id")
+        if raw_correlation_id is not None:
+            derived_correlation_id = UUID(str(raw_correlation_id))
+
+    effective_correlation_id = correlation_id or derived_correlation_id
+    effective_intent_type = payload_intent_type or intent.intent_type
 
     logger.info(
         "Intent received from reducer",
@@ -83,7 +95,9 @@ def handle_receive_intent(
             "target": intent.target,
             "payload_intent_type": payload_intent_type,
             "priority": intent.priority,
-            "correlation_id": str(correlation_id) if correlation_id else None,
+            "correlation_id": str(effective_correlation_id)
+            if effective_correlation_id
+            else None,
             "lease_id": str(intent.lease_id) if intent.lease_id else None,
             "epoch": intent.epoch,
         },
@@ -92,10 +106,10 @@ def handle_receive_intent(
     return ModelIntentReceipt(
         received=True,
         intent_id=intent.intent_id,
-        intent_type=intent.intent_type,
+        intent_type=effective_intent_type,
         target=intent.target,
-        correlation_id=correlation_id,
-        message=f"Intent '{intent.intent_type}' targeting '{intent.target}' received and recorded",
+        correlation_id=effective_correlation_id,
+        message=f"Intent '{effective_intent_type}' targeting '{intent.target}' received and recorded",
     )
 
 

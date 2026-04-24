@@ -24,10 +24,12 @@ class ModelReducerIntent(BaseModel):
 
     intent_type: str = Field(
         ...,
+        min_length=1,
         description="Type of intent (e.g., 'workflow.trigger', 'event.publish')",
     )
     target: str = Field(
         ...,
+        min_length=1,
         description="Target URI pattern (e.g., 'orchestrator://intelligence/ingestion')",
     )
     payload: ModelReducerIntentPayload = Field(

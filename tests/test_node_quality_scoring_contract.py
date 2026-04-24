@@ -22,10 +22,10 @@ def test_quality_scoring_contract_declares_runtime_topics() -> None:
     event_bus = data["event_bus"]
 
     assert event_bus["subscribe_topics"] == [
-        "onex.cmd.omniintelligence.quality-assessment.v1"
+        "onex.cmd.omnimarket.quality-assessment.v1"
     ]
     assert event_bus["publish_topics"] == [
-        "onex.evt.omniintelligence.quality-assessment-completed.v1"
+        "onex.evt.omnimarket.quality-assessment-completed.v1"
     ]
 
 
@@ -34,10 +34,10 @@ def test_quality_scoring_contract_uses_omnimarket_models() -> None:
     event_bus = data["event_bus"]
 
     subscribe_meta = event_bus["subscribe_topic_metadata"][
-        "onex.cmd.omniintelligence.quality-assessment.v1"
+        "onex.cmd.omnimarket.quality-assessment.v1"
     ]
     publish_meta = event_bus["publish_topic_metadata"][
-        "onex.evt.omniintelligence.quality-assessment-completed.v1"
+        "onex.evt.omnimarket.quality-assessment-completed.v1"
     ]
 
     assert subscribe_meta["schema_ref"].startswith(

@@ -1,7 +1,7 @@
 # OmniMarket ONCP Dependency Scope Audit
 
 Date: 2026-04-24
-Worktree: `/Users/jonah/Code/omni_worktrees/OMN-7343/omnimarket`
+Worktree: `omni_worktrees/OMN-7343/omnimarket`
 
 ## Summary
 
@@ -18,7 +18,7 @@ For the intelligence migration in this workstream, migrated nodes were made self
 
 Static import audit results:
 
-- Node directories: 135
+- Node directories: 134
 - Node directories with `metadata.yaml`: 112
 - Node directories missing `metadata.yaml`: 22
 - Node imports missing matching metadata dependency declarations: 28

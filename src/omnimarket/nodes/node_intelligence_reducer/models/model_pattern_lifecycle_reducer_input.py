@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.intelligence.domain import ModelGateSnapshot
 from omnimarket.intelligence.enums import EnumPatternLifecycleStatus
@@ -50,6 +50,14 @@ class ModelPatternLifecycleReducerInput(BaseModel):
     )
     reason: str | None = Field(default=None, description="Human-readable reason")
     actor: str = Field(default="reducer", description="Who initiated")
+
+    @field_validator("from_status", "to_status", mode="before")
+    @classmethod
+    def normalize_status(
+        cls,
+        value: EnumPatternLifecycleStatus | str,
+    ) -> EnumPatternLifecycleStatus | str:
+        return value.lower() if isinstance(value, str) else value
 
 
 __all__ = ["ModelPatternLifecycleReducerInput"]

@@ -22,11 +22,11 @@ def test_intelligence_orchestrator_contract_declares_runtime_topics() -> None:
     event_bus = data["event_bus"]
 
     assert event_bus["subscribe_topics"] == [
-        "onex.cmd.omniintelligence.code-analysis.v1",
-        "onex.cmd.omniintelligence.document-ingestion.v1",
-        "onex.cmd.omniintelligence.pattern-learning.v1",
-        "onex.cmd.omniintelligence.intent-received.v1",
-        "onex.evt.omniintelligence.intent-drift-detected.v1",
+        "onex.cmd.omnimarket.code-analysis.v1",
+        "onex.cmd.omnimarket.document-ingestion.v1",
+        "onex.cmd.omnimarket.pattern-learning.v1",
+        "onex.cmd.omnimarket.intent-received.v1",
+        "onex.evt.omnimarket.intent-drift-detected.v1",
     ]
 
 
@@ -41,10 +41,10 @@ def test_intelligence_orchestrator_contract_uses_omnimarket_modules() -> None:
     )
 
     subscribe_meta = data["event_bus"]["subscribe_topic_metadata"][
-        "onex.cmd.omniintelligence.code-analysis.v1"
+        "onex.cmd.omnimarket.code-analysis.v1"
     ]
     publish_meta = data["event_bus"]["publish_topic_metadata"][
-        "onex.evt.omniintelligence.code-analysis-completed.v1"
+        "onex.evt.omnimarket.code-analysis-completed.v1"
     ]
 
     assert subscribe_meta["schema_ref"].startswith(
@@ -55,7 +55,7 @@ def test_intelligence_orchestrator_contract_uses_omnimarket_modules() -> None:
     )
 
     drift_meta = data["event_bus"]["subscribe_topic_metadata"][
-        "onex.evt.omniintelligence.intent-drift-detected.v1"
+        "onex.evt.omnimarket.intent-drift-detected.v1"
     ]
     assert drift_meta["schema_ref"] == (
         "omnimarket.intelligence.events.ModelIntentDriftDetectedEnvelope"

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Worktree: `/Users/jonah/Code/omni_worktrees/OMN-7343/omnimarket`
+Worktree: `omni_worktrees/OMN-7343/omnimarket`
 
 Ticket anchor:
 - `OMN-7343` `Track: omniintelligence handler contract compliance migration`

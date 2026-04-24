@@ -5,10 +5,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.nodes.node_intelligence_reducer.models.model_pattern_lifecycle_reducer_input import (
     ModelPatternLifecycleReducerInput,
@@ -53,9 +53,17 @@ class ModelReducerInputPatternLifecycle(BaseModel):
     )
     lease_id: str | None = Field(
         default=None,
+        min_length=1,
         description="Action lease ID for distributed coordination",
     )
     epoch: int | None = Field(
         default=None,
+        ge=0,
         description="Epoch for action lease management",
     )
+
+    @model_validator(mode="after")
+    def validate_entity_payload_consistency(self) -> Self:
+        if self.entity_id != self.payload.pattern_id:
+            raise ValueError("entity_id must match payload.pattern_id")
+        return self

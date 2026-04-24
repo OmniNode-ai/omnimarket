@@ -252,7 +252,7 @@ class TestSuccessfulTransitionsViaNode:
         reducer_node: NodeIntelligenceReducer,
         make_reducer_input: _ReducerInputFactory,
     ) -> None:
-        """Comprehensive test: all 7 valid transitions via node.process().
+        """Comprehensive test: all valid transitions via node.process().
 
         Iterates through VALID_TRANSITIONS table and verifies each one
         produces a successful output with correct structure.
@@ -590,10 +590,8 @@ class TestIntentVerificationViaNode:
         assert output.result.success is True
         intent = output.intents[0]
         assert isinstance(intent.payload, ModelPayloadExtension)
-        assert (
-            intent.payload.extension_type == "omniintelligence.pattern_lifecycle_update"
-        )
-        assert intent.payload.plugin_name == "omniintelligence"
+        assert intent.payload.extension_type == "omnimarket.pattern_lifecycle_update"
+        assert intent.payload.plugin_name == "omnimarket"
 
     async def test_intent_payload_contains_update_pattern_status_fields(
         self,

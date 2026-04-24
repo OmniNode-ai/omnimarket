@@ -99,8 +99,8 @@ def handle_pattern_lifecycle_process(
     # Note: extension_type must be in format "namespace.name" per omnibase_core
     # Note: data must be JSON-serializable, so use mode="json" for UUIDs/datetimes
     intent_payload = ModelPayloadExtension(
-        extension_type="omniintelligence.pattern_lifecycle_update",
-        plugin_name="omniintelligence",
+        extension_type="omnimarket.pattern_lifecycle_update",
+        plugin_name="omnimarket",
         data=result.intent.model_dump(mode="json") if result.intent else {},
     )
     intent = ModelIntent(
