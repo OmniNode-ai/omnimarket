@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -61,6 +62,11 @@ from omnimarket.nodes.node_intelligence_reducer.models.model_reducer_input impor
 
 # Type alias for the make_reducer_input fixture factory function
 MakeReducerInputType = Callable[..., ModelReducerInputPatternLifecycle]
+
+
+def _mutate_to_status(intent: Any) -> None:
+    intent.to_status = "deprecated"
+
 
 # =============================================================================
 # Test Class: Valid Transitions
@@ -1137,7 +1143,7 @@ class TestIntentVerification:
         assert isinstance(result.intent, ModelPayloadUpdatePatternStatus)
         # Frozen models raise ValidationError on mutation
         with pytest.raises(pydantic.ValidationError):
-            result.intent.to_status = "deprecated"  # type: ignore[assignment]
+            _mutate_to_status(result.intent)
 
 
 # =============================================================================
