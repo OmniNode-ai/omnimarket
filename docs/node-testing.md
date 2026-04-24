@@ -1,6 +1,6 @@
 # Node Testing Pattern
 
-Testing harness for skill-to-node dispatch parity validation [OMN-8008].
+Testing harness for skill-to-node dispatch parity validation.
 
 ## Overview
 
@@ -12,7 +12,7 @@ Every ported node must satisfy three properties:
 
 ## Test file
 
-`tests/test_skill_dispatch.py` — parametrized over Wave 1 ported nodes:
+`tests/test_skill_dispatch.py` is parametrized over the initial ported nodes:
 
 - `node_coverage_sweep`
 - `node_runtime_sweep`
