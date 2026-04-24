@@ -5,9 +5,9 @@ summary: "Migrate intelligence nodes to omnimarket and remove legacy runtime own
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
-  - "omnimarket node contracts"
-  - "omnimarket runtime entry points"
-  - "omniintelligence legacy node ownership"
+  - "events"
+  - "topics"
+  - "envelopes"
 evidence_requirements:
   - kind: "ci"
     description: "omnimarket PR checks pass"
@@ -15,7 +15,7 @@ evidence_requirements:
   - kind: "ci"
     description: "omniintelligence paired removal PR checks pass"
     command: "gh pr checks 603 --repo OmniNode-ai/omniintelligence --watch"
-  - kind: "deploy"
+  - kind: "manual"
     description: "Post-merge runtime deploy and smoke validation on .201"
     command: "deploy affected runtime, then verify migrated intelligence nodes load from omnimarket"
 emergency_bypass:
