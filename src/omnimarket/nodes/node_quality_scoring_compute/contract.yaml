@@ -98,10 +98,33 @@ error_handling:
       retry_strategy: "immediate_retry"
 # Note: health_check omitted - pure compute nodes are stateless with no external
 # dependencies, so health checks are not applicable.
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.quality-assessment.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.quality-assessment-completed.v1"
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.quality-assessment.v1":
+      schema_ref: "omnimarket.nodes.node_quality_scoring_compute.models.ModelQualityScoringInput"
+      description: >-
+        Quality assessment command events. Contains source_path, content,
+        language, and optional scoring configuration.
+      content_type: "application/json"
+  publish_topic_metadata:
+    "onex.evt.omnimarket.quality-assessment-completed.v1":
+      schema_ref: "omnimarket.nodes.node_quality_scoring_compute.models.ModelQualityScoringOutput"
+      description: >-
+        Quality assessment completion events containing computed scores,
+        recommendations, and structured metadata.
+      content_type: "application/json"
 metadata:
   author: "OmniNode Team"
   created: "2025-11-14"
-  updated: "2026-01-18"
+  updated: "2026-04-23"
   tags:
     - "ONEX"
     - "compute"

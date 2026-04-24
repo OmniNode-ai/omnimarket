@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-7343
+summary: "Migrate intelligence nodes to omnimarket and remove legacy runtime ownership"
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+  - "envelopes"
+evidence_requirements:
+  - kind: "ci"
+    description: "omnimarket PR checks pass"
+    command: "gh pr checks 399 --repo OmniNode-ai/omnimarket --watch"
+  - kind: "ci"
+    description: "omniintelligence paired removal PR checks pass"
+    command: "gh pr checks 603 --repo OmniNode-ai/omniintelligence --watch"
+  - kind: "manual"
+    description: "Post-merge runtime deploy and smoke validation on .201"
+    command: "deploy affected runtime, then verify migrated intelligence nodes load from omnimarket"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "omnimarket local migration tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "PYTHONPATH=$PWD/src uv run pytest tests/test_metadata_schema.py tests/test_intelligence_node_dependency_scope.py tests/test_node_intelligence_orchestrator_contract.py tests/test_node_intelligence_reducer_contract.py tests/test_node_quality_scoring_contract.py src/omnimarket/nodes/node_intelligence_reducer/node_tests -q"
+  - id: "dod-002"
+    description: "omnimarket lint and lock checks pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/intelligence src/omnimarket/events/__init__.py src/omnimarket/nodes/node_intelligence_orchestrator src/omnimarket/nodes/node_intelligence_reducer src/omnimarket/nodes/node_quality_scoring_compute tests/test_intelligence_node_dependency_scope.py tests/test_node_intelligence_orchestrator_contract.py tests/test_node_intelligence_reducer_contract.py tests/test_node_quality_scoring_contract.py && uv lock --check"
+  - id: "dod-003"
+    description: "omniintelligence paired removal tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "PYTHONPATH=$PWD/src uv run pytest tests/unit/runtime/test_contract_topics.py tests/integration/runtime/test_intelligence_auto_wiring_e2e.py tests/unit/runtime/test_dispatch_handler_reducer_ci.py tests/unit/runtime/test_message_type_registration.py -q"
+  - id: "dod-004"
+    description: "Post-merge runtime deploy verifies migrated intelligence nodes load from omnimarket"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy runtime on .201 after both paired PRs merge; verify with docker exec against the runtime container that node_intelligence_orchestrator, node_intelligence_reducer, and node_quality_scoring_compute resolve from omnimarket contracts"
