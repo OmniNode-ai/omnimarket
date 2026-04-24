@@ -94,7 +94,7 @@ class FanOutRule:
     """A single fan-out rule specifying a target topic and optional transform.
 
     Attributes:
-        topic: The wire topic name (e.g., "onex.evt.omniclaude.session-started.v1").
+        topic: The wire topic name (e.g., "onex.evt.omniclaude.session-started.v1").  # onex-topic-doc-example
         transform: Function to transform the payload before publishing.
         description: Human-readable description of what this rule does.
     """

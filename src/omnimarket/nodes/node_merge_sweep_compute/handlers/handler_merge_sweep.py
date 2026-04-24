@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 # Topic bindings from contract.yaml event_bus — import from here, never inline elsewhere
-TOPIC_MERGE_SWEEP_START: str = "onex.cmd.omnimarket.merge-sweep-start.v1"
-TOPIC_MERGE_SWEEP_COMPLETED: str = "onex.evt.omnimarket.merge-sweep-completed.v1"
+TOPIC_MERGE_SWEEP_START: str = "onex.cmd.omnimarket.merge-sweep-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_MERGE_SWEEP_COMPLETED: str = "onex.evt.omnimarket.merge-sweep-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 class EnumPRTrack(StrEnum):

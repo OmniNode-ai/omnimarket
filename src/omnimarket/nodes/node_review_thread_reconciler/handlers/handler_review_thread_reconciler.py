@@ -21,7 +21,7 @@ from omnimarket.nodes.node_review_thread_reconciler.protocols.protocol_github_cl
     ProtocolGitHubReviewClient,
 )
 
-TOPIC_EVT_THREAD_REOPENED = "onex.evt.omnimarket.review-thread-reopened.v1"
+TOPIC_EVT_THREAD_REOPENED = "onex.evt.omnimarket.review-thread-reopened.v1"  # onex-topic-allow: pending contract auto-wiring
 
 if TYPE_CHECKING:
     from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory

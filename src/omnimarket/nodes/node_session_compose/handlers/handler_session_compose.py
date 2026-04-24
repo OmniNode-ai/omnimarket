@@ -23,8 +23,8 @@ __all__ = ["HandlerSessionCompose"]
 
 logger = logging.getLogger(__name__)
 
-SUCCESS_TOPIC = "onex.evt.omnimarket.session-compose-completed.v1"
-FAILURE_TOPIC = "onex.evt.omnimarket.session-compose-failed.v1"
+SUCCESS_TOPIC = "onex.evt.omnimarket.session-compose-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+FAILURE_TOPIC = "onex.evt.omnimarket.session-compose-failed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 class HandlerSessionCompose:
