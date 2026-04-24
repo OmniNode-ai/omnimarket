@@ -150,6 +150,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install pyyaml
+        run: pip install "pyyaml>=6.0"
       - name: Verify entry point wiring
         run: python scripts/ci/run_runtime_sweep.py
 
