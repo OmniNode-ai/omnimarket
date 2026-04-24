@@ -13,10 +13,15 @@ description: >
   Absorbs pr_polish conflict-resolution and coderabbit_triage auto-reply
   logic into a proper node with contract-declared behavior.
 
-handler:
-  module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix
-  class: HandlerPrLifecycleFix
-  input_model: omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command.ModelPrLifecycleFixCommand
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerPrLifecycleFix
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix
+      event_model:
+        name: ModelPrLifecycleFixCommand
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command
 
 descriptor:
   node_archetype: effect

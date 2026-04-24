@@ -20,10 +20,15 @@ description: >
   method for queue repos, and --squash --auto for non-queue repos.
   Dry-run mode is fully supported via the no-op adapter path.
 
-handler:
-  module: omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge
-  class: HandlerPrLifecycleMerge
-  input_model: omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command.ModelPrMergeCommand
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerPrLifecycleMerge
+        module: omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge
+      event_model:
+        name: ModelPrMergeCommand
+        module: omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command
 
 descriptor:
   node_archetype: effect

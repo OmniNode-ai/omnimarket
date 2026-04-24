@@ -15,10 +15,11 @@ contract_version:
   patch: 0
 node_version: "1.0.0"
 description: "Pure computation: classifies PRs into triage categories (green/red/conflicted/needs_review) from inventory data with zero network calls."
-subscribe_topics:
-  - "onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1"
-publish_topics:
-  - "onex.evt.omnimarket.pr-lifecycle-triage-completed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.pr-lifecycle-triage-completed.v1"
 input_model:
   name: "ModelPrTriageInput"
   module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_input"
