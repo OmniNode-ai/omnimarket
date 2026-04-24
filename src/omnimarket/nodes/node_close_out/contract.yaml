@@ -41,9 +41,20 @@ outputs:
 
 terminal_event: onex.evt.omnimarket.close-out-completed.v1
 
+concurrent_run_guard:
+  # File-based lease; see close_out_lease.py. Lock filename is relative to the
+  # state_dir passed into HandlerCloseOut.handle_with_guard() (typically
+  # $ONEX_REGISTRY_ROOT/.onex_state/). Lease expiry is 2x the handler timeout
+  # (2 * 300s = 600s) so a crashed run never wedges the pipeline indefinitely.
+  lock_file: close-out-lock.json
+  lease_expiry_seconds: 600
+  skipped_event_model: omnimarket.nodes.node_close_out.models.model_close_out_skipped.ModelCloseOutSkipped
+  skip_reason: concurrent_run_in_progress
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.close-out-start.v1
   publish_topics:
     - onex.evt.omnimarket.close-out-phase-transition.v1
     - onex.evt.omnimarket.close-out-completed.v1
+    - onex.evt.omnimarket.close-out-skipped.v1
