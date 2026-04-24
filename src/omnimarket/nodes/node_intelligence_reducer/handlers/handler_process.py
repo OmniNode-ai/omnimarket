@@ -23,7 +23,9 @@ from uuid import uuid4
 
 from omnibase_core.enums import EnumReductionType
 from omnibase_core.models.reducer.model_intent import ModelIntent
-from omnibase_core.models.reducer.model_reducer_output import ModelReducerOutput
+from omnibase_core.models.reducer.model_reducer_output import (
+    ModelReducerOutput as CoreModelReducerOutput,
+)
 from omnibase_core.models.reducer.payloads.model_extension_payloads import (
     ModelPayloadExtension,
 )
@@ -43,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 def handle_pattern_lifecycle_process(
     input_data: ModelReducerInputPatternLifecycle,
-) -> ModelReducerOutput[ModelIntelligenceState]:
+) -> CoreModelReducerOutput[ModelIntelligenceState]:
     """Handle PATTERN_LIFECYCLE FSM transitions and build reducer output.
 
     This handler:
@@ -75,7 +77,7 @@ def handle_pattern_lifecycle_process(
                 "correlation_id": str(input_data.correlation_id),
             },
         )
-        return ModelReducerOutput(
+        return CoreModelReducerOutput(
             result=ModelIntelligenceState(
                 fsm_type="PATTERN_LIFECYCLE",
                 entity_id=input_data.payload.pattern_id,
@@ -120,7 +122,7 @@ def handle_pattern_lifecycle_process(
         },
     )
 
-    return ModelReducerOutput(
+    return CoreModelReducerOutput(
         result=ModelIntelligenceState(
             fsm_type="PATTERN_LIFECYCLE",
             entity_id=input_data.payload.pattern_id,

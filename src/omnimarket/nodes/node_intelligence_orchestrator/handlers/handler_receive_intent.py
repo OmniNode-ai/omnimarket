@@ -82,7 +82,13 @@ def handle_receive_intent(
 
         raw_correlation_id = payload_data.get("correlation_id")
         if raw_correlation_id is not None:
-            derived_correlation_id = UUID(str(raw_correlation_id))
+            try:
+                derived_correlation_id = UUID(str(raw_correlation_id))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Ignoring invalid correlation_id in reducer intent payload",
+                    extra={"raw_correlation_id": raw_correlation_id},
+                )
 
     effective_correlation_id = correlation_id or derived_correlation_id
     effective_intent_type = payload_intent_type or intent.intent_type

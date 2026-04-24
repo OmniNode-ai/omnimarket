@@ -605,6 +605,11 @@ event_bus:
       content_type: "application/json"
 
   subscribe_topic_metadata:
+    "onex.cmd.omnimarket.pattern-lifecycle-process.v1":
+      schema_ref: "omnimarket.intelligence.commands.PatternLifecycleProcessEnvelope"
+      description: "Command to process a pattern lifecycle FSM transition. Consumed by the reducer to validate
+        and apply state changes for patterns (e.g., draft → validated)."
+      content_type: "application/json"
     "onex.evt.omnimarket.intent-outcome-labeled.v1":
       schema_ref: "omnimarket.intelligence.events.ModelIntentOutcomeLabeledEnvelope"
       description: "Session outcome labeled event. Drives FSM state transition for intent tracking — updates
