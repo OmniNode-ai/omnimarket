@@ -210,7 +210,7 @@ class EvidenceCollector:
         # Run each check; all must pass for the item to be VERIFIED
         messages: list[str] = []
         for check in checks:
-            check_type = check.get("check_type", "unknown")
+            check_type = check.get("check_type") or ""
             if check_type == "command":
                 ok, msg = self._run_command_check(check, ticket_id)
                 if not ok:
@@ -232,12 +232,16 @@ class EvidenceCollector:
                     )
                 messages.append(msg)
             else:
-                messages.append(f"Unsupported check_type: {check_type}")
+                # Unknown or missing check_type must FAIL, not SKIPPED.
+                # Silently skipping unknown types is the OMN-9571 bug class:
+                # a misspelled or unregistered check_type would let DoD evidence
+                # pass trivially without running any real check.
+                label = check_type if check_type else "<missing check_type key>"
                 return ModelEvidenceCheckResult(
                     evidence_id=evidence_id,
                     description=description,
-                    status=EnumEvidenceCheckStatus.SKIPPED,
-                    message=f"Unsupported check_type: {check_type}",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    message=f"Unknown check_type: {label!r}. Supported: command, file_exists.",
                 )
 
         return ModelEvidenceCheckResult(
