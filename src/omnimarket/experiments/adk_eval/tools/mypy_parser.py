@@ -19,8 +19,30 @@ import subprocess
 from enum import StrEnum, unique
 from pathlib import Path
 
-from omnibase_core.enums.enum_lint_severity import EnumLintSeverity
-from omnibase_core.models.quality.model_mypy_finding import ModelMypyFinding
+from pydantic import BaseModel, ConfigDict
+
+
+@unique
+class EnumLintSeverity(StrEnum):
+    """Severity values emitted by ``mypy --output json``."""
+
+    ERROR = "error"
+    WARNING = "warning"
+    NOTE = "note"
+
+
+class ModelMypyFinding(BaseModel):
+    """Minimal local finding model for the ADK evaluation toolchain."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    file: str
+    line: int
+    column: int | None = None
+    severity: EnumLintSeverity
+    error_code: str
+    message: str
+
 
 MYPY_TIMEOUT_SECONDS = 120
 

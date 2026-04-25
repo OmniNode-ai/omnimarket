@@ -1,0 +1,42 @@
+{
+  "name": "type-debt-scout-adk",
+  "description": "Prioritizes mypy findings for type-debt triage.",
+  "url": "http://127.0.0.1:8011/a2a/app",
+  "version": "0.1.0",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": true
+  },
+  "defaultInputModes": [
+    "text/plain",
+    "application/json"
+  ],
+  "defaultOutputModes": [
+    "application/json",
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "prioritize-type-debt",
+      "name": "Prioritize Type Debt",
+      "description": "Analyze mypy findings and return prioritized remediation guidance.",
+      "tags": [
+        "python",
+        "mypy",
+        "type-debt",
+        "triage"
+      ],
+      "examples": [
+        "Prioritize the type-checking findings for this repo."
+      ],
+      "inputModes": [
+        "text/plain",
+        "application/json"
+      ],
+      "outputModes": [
+        "application/json"
+      ]
+    }
+  ]
+}
