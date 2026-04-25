@@ -131,7 +131,7 @@ class TestEvidenceCollector:
         assert results[0].status == EnumEvidenceCheckStatus.FAILED
 
     def test_unsupported_check_type(self, tmp_path: Path) -> None:
-        """Unknown check_type -> SKIPPED."""
+        """Unknown check_type -> FAILED (not SKIPPED — SKIPPED was the OMN-9571 silent-pass bug)."""
         _write_contract(
             tmp_path,
             dod_evidence=[
@@ -147,7 +147,7 @@ class TestEvidenceCollector:
             "OMN-TEST",
             contract_path=str(tmp_path / "OMN-TEST.yaml"),
         )
-        assert results[0].status == EnumEvidenceCheckStatus.SKIPPED
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
         assert "telepathy" in (results[0].message or "")
 
     def test_no_checks_defined(self, tmp_path: Path) -> None:
