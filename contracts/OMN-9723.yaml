@@ -31,7 +31,7 @@ dod_evidence:
         check_value: "uv run mypy src/omnimarket/nodes/node_session_orchestrator/tests/test_session_orchestrator_silent_zero.py --strict"
   - id: "dod-003"
     description: "Post-merge smoke: session_orchestrator handler imports cleanly in deployed runtime"
-    source: "post_merge"
+    source: "manual"
     checks:
       - check_type: "command"
         check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import HandlerSessionOrchestrator; print('deploy smoke ok')\""
