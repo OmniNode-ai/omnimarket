@@ -22,9 +22,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from omnibase_core.enums.enum_type_debt_priority import EnumTypeDebtPriority
-from omnibase_core.models.quality.model_type_debt_report import ModelTypeDebtReport
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.experiments.adk_eval._local_models import (
+    EnumTypeDebtPriority,
+    ModelTypeDebtReport,
+)
 
 _SEVERITY_ORDER: dict[EnumTypeDebtPriority, int] = {
     EnumTypeDebtPriority.CRITICAL: 3,

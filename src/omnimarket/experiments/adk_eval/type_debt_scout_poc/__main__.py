@@ -24,8 +24,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnibase_core.models.quality.model_mypy_finding import ModelMypyFinding
-
+from omnimarket.experiments.adk_eval.tools.mypy_parser import ModelMypyFinding
 from omnimarket.experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
     ModelTrackBConfig,
     _build_router,
@@ -106,7 +105,7 @@ async def _measure_runs(
             await router._providers[provider_name].close()  # noqa: SLF001
 
     successful = [r for r in records if r.get("ok")]
-    latencies = [float(r["elapsed_seconds"]) for r in successful]
+    latencies = [float(r["elapsed_seconds"]) for r in successful]  # type: ignore[arg-type]
     aggregate: dict[str, object] = {
         "runs_total": len(records),
         "runs_ok": len(successful),

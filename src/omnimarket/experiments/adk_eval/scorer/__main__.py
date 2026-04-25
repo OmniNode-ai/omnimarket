@@ -21,8 +21,7 @@ import json
 import sys
 from pathlib import Path
 
-from omnibase_core.models.quality.model_type_debt_report import ModelTypeDebtReport
-
+from omnimarket.experiments.adk_eval._local_models import ModelTypeDebtReport
 from omnimarket.experiments.adk_eval.scorer.scorer import (
     load_labels,
     score_reports,

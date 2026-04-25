@@ -20,9 +20,11 @@ import math
 from pathlib import Path
 
 import pytest
-from omnibase_core.enums.enum_type_debt_priority import EnumTypeDebtPriority
-from omnibase_core.models.quality.model_type_debt_report import ModelTypeDebtReport
 
+from omnimarket.experiments.adk_eval._local_models import (
+    EnumTypeDebtPriority,
+    ModelTypeDebtReport,
+)
 from omnimarket.experiments.adk_eval.scorer import (
     load_labels,
     score_report,

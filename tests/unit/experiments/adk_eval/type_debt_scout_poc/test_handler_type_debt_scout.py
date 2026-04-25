@@ -10,14 +10,18 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from omnibase_core.enums.enum_lint_severity import EnumLintSeverity
-from omnibase_core.enums.enum_type_debt_priority import EnumTypeDebtPriority
-from omnibase_core.models.quality.model_mypy_finding import ModelMypyFinding
-from omnibase_core.models.quality.model_type_debt_report import ModelTypeDebtReport
 from omnibase_infra.adapters.llm.model_llm_adapter_response import (
     ModelLlmAdapterResponse,
 )
 
+from omnimarket.experiments.adk_eval._local_models import (
+    EnumTypeDebtPriority,
+    ModelTypeDebtReport,
+)
+from omnimarket.experiments.adk_eval.tools.mypy_parser import (
+    EnumLintSeverity,
+    ModelMypyFinding,
+)
 from omnimarket.experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
     ModelTrackBConfig,
     _extract_json_object,

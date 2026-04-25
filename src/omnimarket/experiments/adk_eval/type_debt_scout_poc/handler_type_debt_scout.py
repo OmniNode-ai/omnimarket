@@ -27,9 +27,6 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnibase_core.models.quality.model_mypy_finding import ModelMypyFinding
-from omnibase_core.models.quality.model_type_debt_priority import ModelTypeDebtPriority
-from omnibase_core.models.quality.model_type_debt_report import ModelTypeDebtReport
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
     AdapterLlmProviderOpenai,
 )
@@ -42,6 +39,11 @@ from omnibase_infra.adapters.llm.model_llm_adapter_response import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.experiments.adk_eval._local_models import (
+    ModelTypeDebtPriority,
+    ModelTypeDebtReport,
+)
+from omnimarket.experiments.adk_eval.tools.mypy_parser import ModelMypyFinding
 from omnimarket.experiments.adk_eval.type_debt_scout_poc.adapter_llm_provider_curl import (
     AdapterLlmProviderCurl,
 )

@@ -9,11 +9,11 @@ import json
 from pathlib import Path
 
 import pytest
-from omnibase_core.enums.enum_lint_severity import EnumLintSeverity
-from omnibase_core.models.quality.model_mypy_finding import ModelMypyFinding
 
 from omnimarket.experiments.adk_eval.tools.mypy_parser import (
     EnumDebtCategory,
+    EnumLintSeverity,
+    ModelMypyFinding,
     categorize,
     parse_mypy_jsonl,
 )
