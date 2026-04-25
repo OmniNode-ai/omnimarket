@@ -129,16 +129,17 @@ class TestInvalidOrderByRaises:
             "OMN-9561 fix should change this to raise."
         )
 
-    def test_invalid_orderby_must_not_silently_produce_empty_dispatch_queue(
+    def test_graphql_error_produces_indistinguishable_empty_queue(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Assert: a GraphQL error (simulated via invalid orderBy) must NOT cause
-        phase 2 to produce an empty dispatch_queue that looks like 'no work to do'.
+        """Regression anchor: GraphQL error currently produces COMPLETE + empty queue.
 
-        This is the adversarial form of OMN-9561: if Linear rejects the query,
-        the phase 2 result should be distinguishable from 'legitimately no tickets'.
-        Until the fix lands, the session status will be COMPLETE with an empty queue —
-        this test asserts that is the *wrong* outcome and documents the expected fix target.
+        This is the OMN-9561 failure mode. The fix must change this to either raise
+        or return a distinct error status. This test anchors the CURRENT (broken)
+        state so CI detects if behavior changes in either direction unexpectedly.
+
+        When OMN-9561 is fixed: flip the assertion to assert result.status == ERROR
+        (or similar) and remove this comment.
         """
         monkeypatch.setenv("LINEAR_API_KEY", "test-key-123")
 
@@ -157,12 +158,14 @@ class TestInvalidOrderByRaises:
         with patch("urllib.request.urlopen", return_value=mock_resp):
             result = handler.handle(cmd)
 
-        # Document failure mode: empty queue + COMPLETE looks like "no work"
-        # but is actually "query was rejected". The fix must surface this differently.
-        if result.dispatch_queue == [] and result.status == EnumSessionStatus.COMPLETE:
-            # Silent-zero failure mode is present — mark as known regression point
-            # so CI catches if this behavior changes unexpectedly in either direction.
-            pass  # Expected current broken behavior — will flip to pytest.fail after fix
+        # Silent-zero regression anchor: must explicitly confirm which broken state exists.
+        # This assertion documents the bug — it is NOT validating correct behavior.
+        assert result.dispatch_queue == [], (
+            "Silent-zero: GraphQL error collapses to empty queue"
+        )
+        assert result.status == EnumSessionStatus.COMPLETE, (
+            "Silent-zero: GraphQL error looks like 'no work to do' (OMN-9561 regression anchor)"
+        )
 
     def test_network_error_on_linear_fetch_produces_empty_not_raise(
         self, monkeypatch: pytest.MonkeyPatch
@@ -290,13 +293,15 @@ class TestMalformedFilterRaises:
         monkeypatch.setenv("LINEAR_API_KEY", "bad-key")
         handler = HandlerSessionOrchestrator(probes=[])
 
+        import http.client
+
         with patch(
             "urllib.request.urlopen",
             side_effect=urllib.error.HTTPError(
                 url="https://api.linear.app/graphql",
                 code=401,
                 msg="Unauthorized",
-                hdrs=MagicMock(),  # type: ignore[arg-type]
+                hdrs=http.client.HTTPMessage(),
                 fp=None,
             ),
         ):
