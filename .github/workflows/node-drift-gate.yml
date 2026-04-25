@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Market Node Drift Gate (OMN-9725)
+#
+# Validates that every new or modified node directory is correctly wired before
+# merge. Checks:
+#   1. contract.yaml exists
+#   2. contract.yaml has required fields (name, node_type, handler for classic types)
+#   3. Node is registered in pyproject.toml [project.entry-points."onex.nodes"]
+#   4. Declared subscribe topics appear in handler source (best-effort WARN)
+#
+# Pre-existing violations on main (as of 2026-04-25) are catalogued in
+# scripts/validate_node_drift.py::KNOWN_MAIN_VIOLATIONS and produce WARN,
+# not FAIL. Nodes that are *modified* in a PR trigger --strict mode, which
+# promotes WARN→FAIL for the touched nodes.
+
+name: node-drift-gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/omnimarket/nodes/**"
+      - "pyproject.toml"
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: node-drift-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-drift-gate:
+    name: node-drift-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run node drift gate (changed nodes, strict)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "merge_group" ]]; then
+            echo "::notice::merge_group event — running full check (non-strict) to confirm no new regressions."
+            uv run python scripts/validate_node_drift.py --check-all
+          else
+            echo "Validating changed nodes (strict mode) against origin/main..."
+            uv run python scripts/validate_node_drift.py --check-changed origin/main --strict
+          fi
