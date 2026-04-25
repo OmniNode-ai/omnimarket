@@ -17,6 +17,7 @@ Secondary tests (@pytest.mark.slow): optional live probe, skipped if unavailable
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -292,8 +293,6 @@ class TestMalformedFilterRaises:
         monkeypatch.setenv("LINEAR_API_KEY", "bad-key")
         handler = HandlerSessionOrchestrator(probes=[])
 
-        import http.client
-
         with patch(
             "urllib.request.urlopen",
             side_effect=urllib.error.HTTPError(
@@ -371,7 +370,7 @@ class TestLiveLinearProbe:
     """
 
     @pytest.fixture(autouse=True)
-    def require_linear_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def require_linear_key(self) -> None:
         import os
 
         key = os.environ.get("LINEAR_API_KEY", "")
