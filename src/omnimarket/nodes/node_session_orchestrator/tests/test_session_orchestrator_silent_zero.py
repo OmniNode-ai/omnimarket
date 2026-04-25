@@ -20,7 +20,6 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -53,7 +52,7 @@ def _green_dim(name: str) -> ModelHealthDimensionResult:
     )
 
 
-def _all_green_probes(count: int = 8) -> list:
+def _all_green_probes(count: int = 8) -> list[Any]:
     return [lambda n=f"d{i}": _green_dim(n) for i in range(count)]
 
 
@@ -372,15 +371,12 @@ class TestLiveLinearProbe:
     """
 
     @pytest.fixture(autouse=True)
-    def require_linear_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> Generator[None, None, None]:
+    def require_linear_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import os
 
         key = os.environ.get("LINEAR_API_KEY", "")
         if not key:
             pytest.skip("LINEAR_API_KEY not set — skipping live Linear probe")
-        return
 
     def test_live_workspace_query_returns_results(self) -> None:
         """Live Linear query with valid params should return at least one ticket.
