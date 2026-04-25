@@ -184,6 +184,10 @@ node_verification_receipt_generator = "omnimarket.nodes.node_verification_receip
 
 node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
 node_audit_trail_compactor = "omnimarket.nodes.node_audit_trail_compactor"
+node_state_persist_effect = "omnimarket.nodes.node_state_persist_effect"
+node_full_triage_orchestrator = "omnimarket.nodes.node_full_triage_orchestrator"
+node_routing_policy_engine = "omnimarket.nodes.node_routing_policy_engine"
+node_overseer_observer = "omnimarket.nodes.node_overseer_observer"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
