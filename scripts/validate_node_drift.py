@@ -26,6 +26,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -127,14 +128,37 @@ def _load_entry_points(pyproject: Path) -> set[str]:
 
 
 def _get_changed_nodes(git_ref: str) -> list[Path]:
-    """Return node directories that have changed files since git_ref."""
-    result = subprocess.run(
+    """Return node directories that have changed files since git_ref.
+
+    Raises SystemExit if git diff fails (shallow clone, bad ref, etc.) so the
+    gate fails closed rather than silently passing with an empty node list.
+
+    When pyproject.toml is among the changed files, all node directories that
+    currently have source on disk are included. This catches cases where a PR
+    removes a node's pyproject entry without touching the node's source code.
+    """
+    proc = subprocess.run(
         ["git", "diff", "--name-only", git_ref],
         capture_output=True,
         text=True,
         check=False,
     )
-    changed_files = result.stdout.strip().splitlines()
+    if proc.returncode != 0:
+        print(
+            f"node-drift-gate: git diff failed (exit {proc.returncode}): {proc.stderr.strip()}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    changed_files = proc.stdout.strip().splitlines()
+    pyproject_changed = any(Path(f).name == "pyproject.toml" for f in changed_files)
+
+    # If pyproject.toml changed, validate all node dirs (catches entry-removal without source changes).
+    if pyproject_changed:
+        return sorted(
+            p for p in NODES_DIR.iterdir() if p.is_dir() and p.name.startswith("node_")
+        )
+
     seen: set[str] = set()
     nodes: list[Path] = []
     for f in changed_files:
@@ -152,8 +176,6 @@ def _get_changed_nodes(git_ref: str) -> list[Path]:
             if node_name not in seen and node_dir.is_dir():
                 seen.add(node_name)
                 nodes.append(node_dir)
-    # Also include pyproject.toml changes as a signal to re-check all touched nodes,
-    # but we only validate the nodes that also have code changes.
     return nodes
 
 
