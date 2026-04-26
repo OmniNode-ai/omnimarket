@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EnumOrchestratorMode(StrEnum):
@@ -19,7 +19,7 @@ class EnumOrchestratorMode(StrEnum):
     """
 
     BUILD = "build"
-    CLOSE_OUT = "close-out"
+    CLOSE_OUT = "close_out"
     FULL = "full"
     OBSERVE = "observe"
 
@@ -32,11 +32,23 @@ class ModelOrchestratorStartCommand(BaseModel):
     correlation_id: UUID = Field(..., description="Unique orchestration run ID.")
     mode: EnumOrchestratorMode = Field(
         default=EnumOrchestratorMode.FULL,
-        description="Orchestration mode: build, close-out, full, or observe.",
+        description="Orchestration mode: build, close_out, full, or observe.",
     )
     max_cycles: int = Field(default=1, ge=1, description="Max build loop cycles.")
+    skip_closeout: bool = Field(
+        default=False,
+        description="Skip the CLOSING_OUT phase.",
+    )
+    max_tickets: int = Field(default=5, ge=1, description="Max tickets per fill cycle.")
     dry_run: bool = Field(default=False, description="No side effects if true.")
     requested_at: datetime = Field(..., description="When the command was issued.")
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _normalize_mode(cls, value: object) -> object:
+        if value == "close-out":
+            return "close_out"
+        return value
 
 
 __all__: list[str] = ["EnumOrchestratorMode", "ModelOrchestratorStartCommand"]
