@@ -121,15 +121,23 @@ def _load_entry_points(pyproject: Path) -> set[str]:
     return entries
 
 
-def _get_changed_nodes(git_ref: str) -> list[Path]:
-    """Return node directories that have changed files since git_ref.
+def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str]]:
+    """Return (node directories to validate, set of directly-modified node names).
+
+    - First element: every node directory we should validate this run.
+    - Second element: names of nodes whose own source tree was directly modified
+      in this diff. Only these nodes are eligible for ``--strict`` promotion of
+      WARN→FAIL on pre-existing violations (``KNOWN_MAIN_VIOLATIONS``).
 
     Raises SystemExit if git diff fails (shallow clone, bad ref, etc.) so the
     gate fails closed rather than silently passing with an empty node list.
 
-    When pyproject.toml is among the changed files, all node directories that
-    currently have source on disk are included. This catches cases where a PR
-    removes a node's pyproject entry without touching the node's source code.
+    Pyproject behaviour: when ``pyproject.toml`` changes, all node dirs are
+    included so a removed entry-point can be caught even without source edits.
+    Those pyproject-only audit nodes are NOT marked directly-modified, so they
+    do not get strict mode and the ``KNOWN_MAIN_VIOLATIONS`` allowlist still
+    applies. Without this distinction, any PR that touches pyproject.toml
+    instantly fails the gate on every pre-existing main violation.
     """
     proc = subprocess.run(
         ["git", "diff", "--name-only", git_ref],
@@ -145,16 +153,13 @@ def _get_changed_nodes(git_ref: str) -> list[Path]:
         raise SystemExit(1)
 
     changed_files = proc.stdout.strip().splitlines()
-    pyproject_changed = any(Path(f).name == "pyproject.toml" for f in changed_files)
+    # Match ONLY the repo-root pyproject.toml. Comparing by .name would also
+    # match nested files (e.g. tools/pyproject.toml, subproject pyprojects)
+    # and force a full all-nodes audit for unrelated edits.
+    pyproject_changed = any(Path(f) == PYPROJECT for f in changed_files)
 
-    # If pyproject.toml changed, validate all node dirs (catches entry-removal without source changes).
-    if pyproject_changed:
-        return sorted(
-            p for p in NODES_DIR.iterdir() if p.is_dir() and p.name.startswith("node_")
-        )
-
-    seen: set[str] = set()
-    nodes: list[Path] = []
+    # Always: nodes whose own source tree was directly modified -> eligible for strict.
+    directly_modified: set[str] = set()
     for f in changed_files:
         parts = Path(f).parts
         # Match src/omnimarket/nodes/node_*/...
@@ -165,12 +170,22 @@ def _get_changed_nodes(git_ref: str) -> list[Path]:
             and parts[2] == "nodes"
             and parts[3].startswith("node_")
         ):
-            node_name = parts[3]
-            node_dir = NODES_DIR / node_name
-            if node_name not in seen and node_dir.is_dir():
-                seen.add(node_name)
-                nodes.append(node_dir)
-    return nodes
+            directly_modified.add(parts[3])
+
+    if pyproject_changed:
+        # Audit all nodes (so a removed entry-point is caught), but only the
+        # directly-modified subset is strict-eligible.
+        all_node_dirs = sorted(
+            p for p in NODES_DIR.iterdir() if p.is_dir() and p.name.startswith("node_")
+        )
+        return all_node_dirs, directly_modified
+
+    nodes: list[Path] = []
+    for name in sorted(directly_modified):
+        node_dir = NODES_DIR / name
+        if node_dir.is_dir():
+            nodes.append(node_dir)
+    return nodes, directly_modified
 
 
 def _extract_contract_topics(contract: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -271,12 +286,19 @@ def validate_node(
     return result
 
 
-def collect_nodes(*, changed_ref: str | None) -> list[Path]:
+def collect_nodes(*, changed_ref: str | None) -> tuple[list[Path], set[str] | None]:
+    """Return (nodes to validate, set of strict-eligible node names | None).
+
+    If ``changed_ref`` is None we are in --check-all mode; the strict-eligible
+    set is None meaning "use the strict flag uniformly for every node".
+    """
     if changed_ref is not None:
-        return _get_changed_nodes(changed_ref)
-    return sorted(
+        nodes, directly_modified = _get_changed_nodes(changed_ref)
+        return nodes, directly_modified
+    all_nodes = sorted(
         p for p in NODES_DIR.iterdir() if p.is_dir() and p.name.startswith("node_")
     )
+    return all_nodes, None
 
 
 def run(
@@ -286,7 +308,7 @@ def run(
     output_json: bool,
 ) -> int:
     entry_points = _load_entry_points(PYPROJECT)
-    nodes = collect_nodes(changed_ref=changed_ref)
+    nodes, strict_eligible = collect_nodes(changed_ref=changed_ref)
 
     if not nodes:
         msg = {
@@ -302,7 +324,14 @@ def run(
 
     results: list[NodeResult] = []
     for node_dir in nodes:
-        results.append(validate_node(node_dir, entry_points, strict=strict))
+        # Strict applies uniformly when strict_eligible is None (full --check-all).
+        # When we have a directly-modified set, strict only applies to those nodes;
+        # other nodes (audited because pyproject.toml changed) use WARN-mode so the
+        # KNOWN_MAIN_VIOLATIONS allowlist still suppresses pre-existing-on-main noise.
+        node_strict = strict and (
+            strict_eligible is None or node_dir.name in strict_eligible
+        )
+        results.append(validate_node(node_dir, entry_points, strict=node_strict))
 
     fail_results = [r for r in results if not r.passed]
     warn_results = [r for r in results if r.passed and r.has_warn]
