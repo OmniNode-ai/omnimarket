@@ -153,7 +153,10 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str]]:
         raise SystemExit(1)
 
     changed_files = proc.stdout.strip().splitlines()
-    pyproject_changed = any(Path(f).name == "pyproject.toml" for f in changed_files)
+    # Match ONLY the repo-root pyproject.toml. Comparing by .name would also
+    # match nested files (e.g. tools/pyproject.toml, subproject pyprojects)
+    # and force a full all-nodes audit for unrelated edits.
+    pyproject_changed = any(Path(f) == PYPROJECT for f in changed_files)
 
     # Always: nodes whose own source tree was directly modified -> eligible for strict.
     directly_modified: set[str] = set()

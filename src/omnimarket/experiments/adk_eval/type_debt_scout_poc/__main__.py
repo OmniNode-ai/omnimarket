@@ -58,6 +58,7 @@ async def _measure_runs(
     report is kept as the canonical output.
     """
     router = await _build_router(config)
+    close_errors: list[str] = []
     try:
         records: list[dict[str, object]] = []
         canonical_report: dict[str, object] | None = None
@@ -91,8 +92,13 @@ async def _measure_runs(
                 }
             )
     finally:
+        # Per-provider try/except so a single broken close() does not
+        # discard the run records and aggregate metrics we just collected.
         for provider_name in list(router._providers.keys()):  # noqa: SLF001
-            await router._providers[provider_name].close()  # noqa: SLF001
+            try:
+                await router._providers[provider_name].close()  # noqa: SLF001
+            except Exception as exc:
+                close_errors.append(f"{provider_name}: {exc!r}")
 
     successful = [r for r in records if r.get("ok")]
     latencies = [float(r["elapsed_seconds"]) for r in successful]  # type: ignore[arg-type]
@@ -106,6 +112,8 @@ async def _measure_runs(
         "latency_max_seconds": max(latencies) if latencies else None,
         "per_run": records,
     }
+    if close_errors:
+        aggregate["provider_close_errors"] = close_errors
     return (
         [canonical_report] if canonical_report is not None else [],
         aggregate,
@@ -160,7 +168,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 async def _main_async(args: argparse.Namespace) -> int:
-    findings = _load_findings(args.input)
+    try:
+        findings = _load_findings(args.input)
+    except (OSError, ValueError) as exc:
+        # OSError: file missing / unreadable. ValueError: malformed JSONL
+        # surfaced by parse_mypy_jsonl. Convert to a clean CLI error so
+        # operators get an actionable message instead of a raw traceback.
+        print(  # noqa: T201
+            f"Failed to load input findings from {args.input}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+
     if not findings:
         print("No findings loaded from input; aborting.", file=sys.stderr)  # noqa: T201
         return 2
