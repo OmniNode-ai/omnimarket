@@ -1,0 +1,94 @@
+---
+name: dispatch_worker_execution_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Executes compiled dispatch-worker specs by converting them into runtime
+  delegation payloads and writing idempotency receipts. This node never shells
+  out to claude, never calls Agent()/TaskCreate directly, and never publishes
+  to the event bus; orchestrators/runtime adapters publish returned payloads.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: execute_dispatch_worker_specs
+      handler:
+        name: HandlerDispatchWorkerExecution
+        module: omnimarket.nodes.node_dispatch_worker_execution_effect.handlers.handler_dispatch_worker_execution
+
+input_model:
+  name: ModelDispatchWorkerExecutionInput
+  module: omnimarket.nodes.node_dispatch_worker_execution_effect.models.model_execution_input
+  description: "Compiled dispatch-worker specs or persisted spec paths."
+
+output_model:
+  name: ModelDispatchWorkerExecutionResult
+  module: omnimarket.nodes.node_dispatch_worker_execution_effect.models.model_execution_result
+  description: "Per-spec execution outcomes and delegation payloads."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  correlation_id:
+    type: uuid
+    required: true
+    description: "Runtime correlation ID."
+  artifacts:
+    type: list
+    required: false
+    default: []
+    description: "Already loaded dispatch-worker spec artifacts."
+  artifact_paths:
+    type: list
+    required: false
+    default: []
+    description: "Persisted dispatch-worker spec paths to load."
+  receipt_dir:
+    type: str
+    required: false
+    default: ".onex_state/session/dispatch_execution"
+    description: "Explicit receipt directory for idempotency state."
+  dry_run:
+    type: bool
+    required: false
+    default: false
+
+outputs:
+  outcomes:
+    type: list
+    description: "Per-spec status: delegated|dry_run|failed|rejected|skipped_duplicate."
+  delegation_payloads:
+    type: list
+    description: "Runtime delegation payloads for orchestrator/runtime publication."
+  total_delegated:
+    type: int
+  total_failed:
+    type: int
+  total_rejected:
+    type: int
+  total_skipped:
+    type: int
+
+terminal_event: onex.evt.omnimarket.dispatch-worker-execution-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dispatch-worker-execution-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.dispatch-worker-execution-completed.v1
+    - onex.cmd.omnimarket.delegation-request.v1
+
+dod_evidence:
+  PYTEST:
+    description: "dispatch-worker execution effect golden-chain tests"
+    command: "uv run pytest tests/test_golden_chain_dispatch_worker_execution_effect.py -q"
+    pass_criteria: "all tests pass; payloads are publishable; retries are idempotent"
+  ARCHITECTURE:
+    description: "no shell fallback or direct Agent/TaskCreate side effect"
+    pass_criteria: "handler returns delegation payloads and writes receipts only"
