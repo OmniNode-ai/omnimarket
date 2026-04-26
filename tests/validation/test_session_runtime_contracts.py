@@ -19,7 +19,11 @@ def _assert_effects_runtime_owner(node_name: str) -> None:
     contract = _load_contract(node_name)
     descriptor = contract.get("descriptor")
     assert isinstance(descriptor, dict)
-    assert "effects" in descriptor.get("runtime_profiles", [])
+    runtime_profiles = descriptor.get("runtime_profiles", [])
+    assert isinstance(runtime_profiles, list)
+    assert "effects" in runtime_profiles
+    assert "main" not in runtime_profiles
+    assert "dead" not in runtime_profiles
 
 
 def test_session_command_consumers_are_effects_runtime_owned() -> None:
