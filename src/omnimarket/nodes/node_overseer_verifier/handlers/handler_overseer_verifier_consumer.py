@@ -67,8 +67,8 @@ if TYPE_CHECKING:
         ProtocolEventBusPublisher,
     )
 
-TOPIC_OVERSEER_VERIFIER_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"
-TOPIC_OVERSEER_VERIFY = "onex.cmd.omnimarket.overseer-verify.v1"
+TOPIC_OVERSEER_VERIFIER_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_OVERSEER_VERIFY = "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
 

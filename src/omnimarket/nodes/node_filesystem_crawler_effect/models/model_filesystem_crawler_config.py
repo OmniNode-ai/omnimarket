@@ -6,10 +6,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-TOPIC_DOCUMENT_CHANGED = "onex.evt.omnimemory.document-changed.v1"
-TOPIC_DOCUMENT_DISCOVERED = "onex.evt.omnimemory.document-discovered.v1"
-TOPIC_DOCUMENT_INDEXED = "onex.evt.omnimemory.document-indexed.v1"
-TOPIC_DOCUMENT_REMOVED = "onex.evt.omnimemory.document-removed.v1"
+TOPIC_DOCUMENT_CHANGED = "onex.evt.omnimemory.document-changed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_DOCUMENT_DISCOVERED = "onex.evt.omnimemory.document-discovered.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_DOCUMENT_INDEXED = "onex.evt.omnimemory.document-indexed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_DOCUMENT_REMOVED = "onex.evt.omnimemory.document-removed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 class ModelFilesystemCrawlerConfig(BaseModel):

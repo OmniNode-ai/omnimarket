@@ -25,7 +25,7 @@ from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightHaltCondition,
 )
 
-TOPIC_OVERSEER_TICK = "onex.evt.omnimarket.overseer-tick.v1"
+TOPIC_OVERSEER_TICK = "onex.evt.omnimarket.overseer-tick.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,9 @@ OVERSEER_TICK_LOG = Path(".onex_state/overseer-ticks.jsonl")
 # Re-exported alias for the contract-declared topic. The source of truth lives
 # in node_overnight/topics.py (and contract.yaml publish_topics). Callers that
 # previously imported OVERSEER_TICK_TOPIC from this module keep working.
-OVERSEER_TICK_TOPIC = TOPIC_OVERSEER_TICK
+OVERSEER_TICK_TOPIC = (
+    TOPIC_OVERSEER_TICK  # onex-topic-allow: pending contract auto-wiring
+)
 
 
 def resolve_state_root(explicit: Path | None = None) -> Path:

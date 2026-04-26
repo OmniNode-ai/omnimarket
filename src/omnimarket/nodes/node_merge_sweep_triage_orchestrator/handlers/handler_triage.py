@@ -51,12 +51,16 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
 _log = logging.getLogger(__name__)
 
 # Topics from contract.yaml — never inline elsewhere
-TOPIC_AUTO_MERGE_ARM = "onex.cmd.omnimarket.pr-auto-merge-arm.v1"
-TOPIC_REBASE = "onex.cmd.omnimarket.pr-rebase.v1"
-TOPIC_CI_RERUN = "onex.cmd.omnimarket.pr-ci-rerun.v1"
-TOPIC_THREAD_REPLY = "onex.cmd.omnimarket.pr-thread-reply.v1"
-TOPIC_CONFLICT_HUNK = "onex.cmd.omnimarket.pr-conflict-hunk.v1"
-TOPIC_CI_FIX = "onex.cmd.omnimarket.pr-ci-fix.v1"
+TOPIC_AUTO_MERGE_ARM = "onex.cmd.omnimarket.pr-auto-merge-arm.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_REBASE = (
+    "onex.cmd.omnimarket.pr-rebase.v1"  # onex-topic-allow: pending contract auto-wiring
+)
+TOPIC_CI_RERUN = "onex.cmd.omnimarket.pr-ci-rerun.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_THREAD_REPLY = "onex.cmd.omnimarket.pr-thread-reply.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_CONFLICT_HUNK = "onex.cmd.omnimarket.pr-conflict-hunk.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_CI_FIX = (
+    "onex.cmd.omnimarket.pr-ci-fix.v1"  # onex-topic-allow: pending contract auto-wiring
+)
 
 _PROTECTED_BASES = {"main", "master", "develop"}
 

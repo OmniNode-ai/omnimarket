@@ -58,8 +58,8 @@ HANDLER_TYPE: HandlerType = "NODE_HANDLER"
 HANDLER_CATEGORY: HandlerCategory = "ORCHESTRATOR"
 
 # Topics read from contract — never hardcode in application logic
-_TOPIC_TICKET_PIPELINE_START = "onex.cmd.omnimarket.ticket-pipeline-start.v1"
-_TOPIC_PIPELINE_FILL_COMPLETED = "onex.evt.omnimarket.pipeline-fill-completed.v1"
+_TOPIC_TICKET_PIPELINE_START = "onex.cmd.omnimarket.ticket-pipeline-start.v1"  # onex-topic-allow: pending contract auto-wiring
+_TOPIC_PIPELINE_FILL_COMPLETED = "onex.evt.omnimarket.pipeline-fill-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 _LINEAR_API_URL = "https://api.linear.app/graphql"

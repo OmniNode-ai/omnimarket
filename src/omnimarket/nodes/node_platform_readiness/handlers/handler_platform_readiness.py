@@ -21,10 +21,10 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 SOW_PHASE2_REQUIRED_TOPICS: list[str] = [
-    "onex.evt.savings.estimation-completed.v1",
-    "onex.evt.model-router.routing-decision.v1",
-    "onex.evt.baselines.computation-completed.v1",
-    "onex.evt.build-loop.dod-checked.v1",
+    "onex.evt.savings.estimation-completed.v1",  # onex-topic-allow: pending contract auto-wiring
+    "onex.evt.model-router.routing-decision.v1",  # onex-topic-allow: pending contract auto-wiring
+    "onex.evt.baselines.computation-completed.v1",  # onex-topic-allow: pending contract auto-wiring
+    "onex.evt.build-loop.dod-checked.v1",  # onex-topic-allow: pending contract auto-wiring
 ]
 
 # SSH target for .201 infra checks — override via ONEX_INFRA_SSH_TARGET env var

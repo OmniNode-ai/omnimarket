@@ -61,10 +61,10 @@ from omnimarket.nodes.node_overnight.protocols.protocol_phase_handlers import (
     ProtocolPlatformReadinessHandler,
 )
 
-TOPIC_OVERNIGHT_COMPLETE = "onex.evt.omnimarket.overnight-session-completed.v1"
-TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight-phase-completed.v1"
-TOPIC_OVERNIGHT_PHASE_START = "onex.evt.omnimarket.overnight-phase-start.v1"
-TOPIC_OVERNIGHT_START = "onex.cmd.omnimarket.overnight-start.v1"
+TOPIC_OVERNIGHT_COMPLETE = "onex.evt.omnimarket.overnight-session-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight-phase-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_OVERNIGHT_PHASE_START = "onex.evt.omnimarket.overnight-phase-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_OVERNIGHT_START = "onex.cmd.omnimarket.overnight-start.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
 

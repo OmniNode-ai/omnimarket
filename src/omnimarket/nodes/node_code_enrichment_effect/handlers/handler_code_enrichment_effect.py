@@ -35,8 +35,8 @@ from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_r
 logger = logging.getLogger(__name__)
 
 # Topic bindings from contract.yaml event_bus
-TOPIC_CODE_ENTITIES_EXTRACTED: str = "onex.evt.omnimarket.code-entities-extracted.v1"
-TOPIC_CODE_ENRICHED: str = "onex.evt.omnimarket.code-enriched.v1"
+TOPIC_CODE_ENTITIES_EXTRACTED: str = "onex.evt.omnimarket.code-entities-extracted.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_CODE_ENRICHED: str = "onex.evt.omnimarket.code-enriched.v1"  # onex-topic-allow: pending contract auto-wiring
 
 DEFAULT_ENRICHMENT_BATCH_SIZE = 25
 DEFAULT_CONFIDENCE_THRESHOLD = 0.7

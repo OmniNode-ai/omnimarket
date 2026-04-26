@@ -1,0 +1,27 @@
+schema_version: "1.0.0"
+ticket_id: OMN-9151
+summary: "Add suppression markers to hardcoded topic strings (omnimarket transitional)"
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "omnimarket PR 402 checks pass (test, deploy-gate, CodeRabbit, CI Summary)"
+    command: "gh pr checks 402 --repo OmniNode-ai/omnimarket --watch"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Suppression markers do not change runtime behavior; affected handlers import cleanly in deployed runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import HandlerBuildLoopOrchestrator; from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer import HandlerOverseerVerifierConsumer; print('deploy smoke ok')\""
+  - id: "dod-002"
+    description: "ValidatorHardcodedTopics passes clean across src/ with markers in place"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -c 'from omnibase_core.validators.validator_hardcoded_topics import ValidatorHardcodedTopics; r = ValidatorHardcodedTopics().validate_path(\"src\"); assert r.passed, r.violations'"

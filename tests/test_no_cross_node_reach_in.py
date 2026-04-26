@@ -44,7 +44,7 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket/nodes/node_build_loop_orchestrator/handlers/handler_build_loop_orchestrator.py:50",
         "omnimarket/nodes/node_build_loop_orchestrator/handlers/handler_build_loop_orchestrator.py:53",
         "omnimarket/nodes/node_build_loop_orchestrator/handlers/handler_build_loop_orchestrator.py:75",
-        "omnimarket/nodes/node_build_loop_orchestrator/handlers/handler_build_loop_orchestrator.py:654",
+        "omnimarket/nodes/node_build_loop_orchestrator/handlers/handler_build_loop_orchestrator.py:652",
         # node_pr_lifecycle_fix_effect → node_pr_lifecycle_inventory_compute
         "omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_admin_merge.py:26",
         # node_baseline_compare → node_baseline_capture

@@ -42,9 +42,7 @@ from omnimarket.nodes.node_session_bootstrap.models.model_session_contract impor
     ModelSessionContract,
 )
 
-_TOPIC_SESSION_CRON_HEALTH_VIOLATION = (
-    "onex.evt.omnimarket.session-cron-health-violation.v1"
-)
+_TOPIC_SESSION_CRON_HEALTH_VIOLATION = "onex.evt.omnimarket.session-cron-health-violation.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
 
