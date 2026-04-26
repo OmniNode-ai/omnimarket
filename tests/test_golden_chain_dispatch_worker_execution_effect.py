@@ -120,6 +120,29 @@ def test_retry_skips_existing_receipt(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_existing_receipt_skips_before_payload_emission(tmp_path: Path) -> None:
+    handler = HandlerDispatchWorkerExecution()
+    artifact = _artifact()
+    command = ModelDispatchWorkerExecutionInput(
+        correlation_id=uuid4(),
+        artifacts=(artifact,),
+        receipt_dir=str(tmp_path / "receipts"),
+    )
+    receipt_path = handler._receipt_path(Path(command.receipt_dir), artifact)
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text("{}\n")
+
+    result = handler.handle(command)
+
+    assert result.total_delegated == 0
+    assert result.total_skipped == 1
+    assert (
+        result.outcomes[0].status == EnumDispatchWorkerExecutionStatus.SKIPPED_DUPLICATE
+    )
+    assert result.delegation_payloads == ()
+
+
+@pytest.mark.unit
 def test_rejected_compiled_spec_emits_rejected_outcome(tmp_path: Path) -> None:
     result = HandlerDispatchWorkerExecution().handle(
         ModelDispatchWorkerExecutionInput(
@@ -180,16 +203,18 @@ async def test_delegation_payload_is_publishable(
     )
 
     await event_bus.start()
-    for payload in result.delegation_payloads:
-        await event_bus.publish(
-            payload.topic,
-            key=None,
-            value=json.dumps(payload.payload).encode(),
-        )
+    try:
+        for payload in result.delegation_payloads:
+            await event_bus.publish(
+                payload.topic,
+                key=None,
+                value=json.dumps(payload.payload).encode(),
+            )
 
-    history = await event_bus.get_event_history(topic=_TOPIC_DELEGATION_REQUEST)
-    assert len(history) == 1
-    deserialized = json.loads(history[0].value)
-    assert deserialized["task_type"] == "agent_dispatch"
-    assert deserialized["correlation_chain"] == "sess-test.disp-001.OMN-9874"
-    await event_bus.close()
+        history = await event_bus.get_event_history(topic=_TOPIC_DELEGATION_REQUEST)
+        assert len(history) == 1
+        deserialized = json.loads(history[0].value)
+        assert deserialized["task_type"] == "agent_dispatch"
+        assert deserialized["correlation_chain"] == "sess-test.disp-001.OMN-9874"
+    finally:
+        await event_bus.close()

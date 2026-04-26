@@ -1380,7 +1380,10 @@ class HandlerSessionOrchestrator:
         artifact_dir = os.path.join(abs_state_dir, "dispatch_specs")
         os.makedirs(artifact_dir, exist_ok=True)
         safe_ticket = ticket_id.lower().replace("/", "-")
-        path = os.path.join(artifact_dir, f"{dispatch_id}-{safe_ticket}.json")
+        safe_session = session_id.lower().replace("/", "-")
+        path = os.path.join(
+            artifact_dir, f"{safe_session}-{dispatch_id}-{safe_ticket}.json"
+        )
         payload = {
             "session_id": session_id,
             "ticket_id": ticket_id,

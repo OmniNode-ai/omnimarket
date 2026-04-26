@@ -290,7 +290,7 @@ def _extract_primary_repo(targets: list[str]) -> str:
         if m:
             return m.group(1)
     for t in targets:
-        candidate = t.strip().split("/", 1)[0]
+        candidate = t.strip().split("/", 1)[0].lower()
         if candidate in _CANONICAL_REPOS:
             return candidate
     return ""

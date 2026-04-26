@@ -102,17 +102,6 @@ class HandlerDispatchWorkerExecution:
                 )
                 continue
 
-            if receipt_path.exists():
-                total_skipped += 1
-                outcomes.append(
-                    self._outcome(
-                        spec,
-                        status=EnumDispatchWorkerExecutionStatus.SKIPPED_DUPLICATE,
-                        receipt_path=str(receipt_path),
-                    )
-                )
-                continue
-
             if spec.dispatch_worker.rejected_reason:
                 total_rejected += 1
                 outcomes.append(
@@ -126,7 +115,18 @@ class HandlerDispatchWorkerExecution:
 
             try:
                 payload = self._build_delegation_payload(spec, command)
-                self._write_receipt(receipt_path, spec, payload)
+                try:
+                    self._write_receipt(receipt_path, spec, payload)
+                except FileExistsError:
+                    total_skipped += 1
+                    outcomes.append(
+                        self._outcome(
+                            spec,
+                            status=EnumDispatchWorkerExecutionStatus.SKIPPED_DUPLICATE,
+                            receipt_path=str(receipt_path),
+                        )
+                    )
+                    continue
                 delegation_payloads.append(payload)
                 total_delegated += 1
                 outcomes.append(
@@ -238,7 +238,7 @@ class HandlerDispatchWorkerExecution:
             "delegation_event_type": payload.event_type,
             "written_at": datetime.now(tz=UTC).isoformat(),
         }
-        with receipt_path.open("w", encoding="utf-8") as fh:
+        with receipt_path.open("x", encoding="utf-8") as fh:
             json.dump(receipt, fh, indent=2)
             fh.write("\n")
 

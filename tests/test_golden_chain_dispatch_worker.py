@@ -196,7 +196,7 @@ class TestDispatchWorkerGoldenChain:
                 name="session-disp-001-omn-9358",
                 role=EnumWorkerRole.fixer,
                 scope="Run the ONEX ticket pipeline for OMN-9358",
-                targets=["OMN-9358", "omnimarket"],
+                targets=["OMN-9358", "OmniMarket"],
             ),
             existing_task_subjects=[],
         )

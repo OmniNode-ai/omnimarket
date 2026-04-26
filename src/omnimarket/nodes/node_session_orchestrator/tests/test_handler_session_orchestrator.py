@@ -408,6 +408,7 @@ class TestPhase3Dispatch:
         assert parsed["status"] == "compiled_dispatch_worker"
         artifact_path = pathlib.Path(parsed["dispatch_artifact_path"])
         assert artifact_path.exists()
+        assert artifact_path.name == "sess-test-disp-001-omn-1.json"
         artifact = json.loads(artifact_path.read_text())
         assert artifact["ticket_id"] == "OMN-1"
         assert artifact["dispatch_worker"]["proposed_agent_spawn_args"]["name"] == (
