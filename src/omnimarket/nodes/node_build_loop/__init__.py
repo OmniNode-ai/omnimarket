@@ -10,6 +10,7 @@ from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
 )
 from omnimarket.nodes.node_build_loop.models.model_loop_state import (
+    TERMINAL_PHASES,
     EnumBuildLoopPhase,
     ModelLoopState,
 )
@@ -18,6 +19,7 @@ from omnimarket.nodes.node_build_loop.models.model_phase_transition_event import
 )
 
 __all__ = [
+    "TERMINAL_PHASES",
     "EnumBuildLoopPhase",
     "HandlerBuildLoop",
     "ModelLoopCompletedEvent",

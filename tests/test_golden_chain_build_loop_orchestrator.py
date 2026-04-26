@@ -27,6 +27,9 @@ from omnimarket.nodes.node_build_loop.models.model_loop_state import (
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     HandlerBuildLoopOrchestrator,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command import (
+    ModelOrchestratorStartCommand,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
     ClassifyResult,
@@ -193,8 +196,40 @@ class TestBuildLoopOrchestratorGoldenChain:
         assert result.cycles_completed == 1
         assert result.cycles_failed == 0
         assert result.total_tickets_dispatched == 1
+        assert result.run_id == str(result.correlation_id)
+        assert result.workflow_name == "build_loop"
+        assert result.event_type == "build-loop-orchestrator-completed"
         assert len(result.cycle_summaries) == 1
         assert result.cycle_summaries[0].final_phase == EnumBuildLoopPhase.COMPLETE
+
+    async def test_contract_start_command_shape_runs_observe_mode(self) -> None:
+        """Auto-wiring passes the contract-declared start command model."""
+        command = ModelOrchestratorStartCommand(
+            correlation_id=uuid4(),
+            mode="observe",
+            max_cycles=1,
+            dry_run=True,
+            requested_at=datetime.now(tz=UTC),
+        )
+        orch = _make_orchestrator()
+
+        result = await orch.handle(command)
+
+        assert result.cycles_completed == 1
+        assert result.cycles_failed == 0
+        assert result.run_id == str(command.correlation_id)
+
+    def test_contract_start_command_accepts_legacy_close_out_spelling(self) -> None:
+        """Support already-published close-out commands while normalizing mode."""
+        command = ModelOrchestratorStartCommand(
+            correlation_id=uuid4(),
+            mode="close-out",
+            requested_at=datetime.now(tz=UTC),
+        )
+
+        assert command.mode == "close_out"
+        assert command.skip_closeout is False
+        assert command.max_tickets == 5
 
     async def test_skip_closeout(self) -> None:
         """skip_closeout=True skips CLOSING_OUT, goes IDLE -> VERIFYING."""
