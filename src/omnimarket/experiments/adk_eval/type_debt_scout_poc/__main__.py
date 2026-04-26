@@ -125,6 +125,21 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+# ModelTrackBConfig.max_tokens is constrained to ge=256; mirror that bound at
+# the argparse boundary so a CLI input error fails fast with a clear message
+# instead of raising as a Pydantic ValidationError deeper in the pipeline.
+_MIN_MAX_TOKENS = 256
+
+
+def _max_tokens_int(value: str) -> int:
+    """argparse type for --max-tokens; mirrors the model-side ge=256 bound."""
+    parsed = int(value)
+    if parsed < _MIN_MAX_TOKENS:
+        msg = f"must be >= {_MIN_MAX_TOKENS} (got {parsed})"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="type_debt_scout_poc",
@@ -140,7 +155,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--model-id",
         default="cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
     )
-    parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--max-tokens", type=_max_tokens_int, default=4096)
     return parser.parse_args(argv)
 
 
