@@ -44,15 +44,12 @@ from omnibase_core.protocols.event_bus.protocol_event_envelope import (
     ProtocolEventEnvelope,
 )
 
-from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
-    HandlerBuildLoop,
-)
-from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
-    ModelLoopStartCommand,
-)
-from omnimarket.nodes.node_build_loop.models.model_loop_state import (
+from omnimarket.nodes.node_build_loop import (
     TERMINAL_PHASES,
     EnumBuildLoopPhase,
+    HandlerBuildLoop,
+    ModelLoopStartCommand,
+    ModelPhaseTransitionEvent,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_loop_cycle_summary import (
     ModelLoopCycleSummary,
@@ -72,11 +69,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ProtocolVerifyHandler,
     ScoredTicket,
 )
+from omnimarket.nodes.node_overseer_verifier import ModelVerifierRequest
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
     HandlerOverseerVerifier,
-)
-from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
-    ModelVerifierRequest,
 )
 from omnimarket.protocols.protocol_overseer_verifier import ProtocolOverseerVerifier
 
@@ -669,10 +664,6 @@ class HandlerBuildLoopOrchestrator:
         """Publish a phase transition event to the event bus."""
         if self._event_bus is None:
             return
-
-        from omnimarket.nodes.node_build_loop.models.model_phase_transition_event import (
-            ModelPhaseTransitionEvent,
-        )
 
         if isinstance(event, ModelPhaseTransitionEvent):
             payload = json.dumps(event.model_dump(mode="json")).encode()

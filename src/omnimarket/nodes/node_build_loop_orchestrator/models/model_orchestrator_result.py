@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_loop_cycle_summary import (
     ModelLoopCycleSummary,
@@ -31,32 +31,29 @@ class ModelOrchestratorResult(BaseModel):
     total_tickets_dispatched: int = Field(
         default=0, ge=0, description="Total tickets dispatched across all cycles."
     )
+    run_id: str = Field(default="", description="Build-loop terminal projection ID.")
+    workflow_name: str = Field(
+        default="build_loop", description="Build-loop terminal projection workflow."
+    )
+    event_type: str = Field(
+        default="build-loop-orchestrator-completed",
+        description="Build-loop terminal projection event type.",
+    )
+    terminal_event_at: datetime = Field(
+        default_factory=lambda: datetime.now(tz=UTC),
+        description="Build-loop terminal projection timestamp.",
+    )
 
-    @computed_field
-    @property
-    def run_id(self) -> str:
-        """Workflow run identifier used by build_loop terminal projections."""
-        return str(self.correlation_id)
-
-    @computed_field
-    @property
-    def workflow_name(self) -> str:
-        """Workflow name used by build_loop terminal projections."""
-        return "build_loop"
-
-    @computed_field
-    @property
-    def event_type(self) -> str:
-        """Terminal event discriminator used by build_loop projections."""
-        return "build-loop-orchestrator-completed"
-
-    @computed_field
-    @property
-    def terminal_event_at(self) -> datetime:
-        """Timestamp of the final cycle summary, or now for empty results."""
+    def model_post_init(self, __context: object) -> None:
+        """Populate terminal projection fields from the orchestrator result."""
+        if not self.run_id:
+            object.__setattr__(self, "run_id", str(self.correlation_id))
         if self.cycle_summaries:
-            return max(summary.completed_at for summary in self.cycle_summaries)
-        return datetime.now(tz=UTC)
+            object.__setattr__(
+                self,
+                "terminal_event_at",
+                max(summary.completed_at for summary in self.cycle_summaries),
+            )
 
 
 __all__: list[str] = ["ModelOrchestratorResult"]
