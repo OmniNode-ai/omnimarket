@@ -14,6 +14,10 @@ uuid: "b2c3d4e5-f6a7-8901-bcde-f23456789012"
 node_type: "EFFECT"
 input_model: "ModelCodeEnrichmentRequest"
 output_model: "ModelCodeEnrichmentResult"
+handler:
+  module: omnimarket.nodes.node_code_enrichment_effect.handlers.handler_code_enrichment_effect
+  class: HandlerCodeEnrichmentEffect
+  input_model: ModelCodeEnrichmentRequest
 description: |
   Enriches code entities with LLM-generated classification, description, and
   architectural pattern. Uses contract-driven model routing: local .201 Qwen3-Coder

@@ -11,6 +11,10 @@ uuid: "cb6d3224-5f18-4da1-be8c-e5a15a1c659e"
 node_type: EFFECT
 input_model: "ModelCrawlTickCommand"
 output_model: "ModelFilesystemCrawlResult"
+handler:
+  module: omnimarket.nodes.node_filesystem_crawler_effect.handlers.handler_filesystem_crawler
+  class: HandlerFilesystemCrawler
+  input_model: ModelCrawlTickCommand
 description: |
   FilesystemCrawlerEffect walks configured path prefixes for .md files
   and emits document lifecycle events using a two-stage mtime → SHA-256
