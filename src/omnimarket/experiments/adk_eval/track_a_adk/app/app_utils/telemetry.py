@@ -19,15 +19,18 @@ import os
 def setup_telemetry() -> str | None:
     """Configure OpenTelemetry and GenAI telemetry with GCS upload.
 
-    LOGS_BUCKET_NAME may be supplied with or without a ``gs://`` scheme. We
-    normalize by stripping any leading scheme and trailing slashes before
-    composing the upload URI so we never produce ``gs://gs://...``.
+    LOGS_BUCKET_NAME may be supplied with or without a ``gs://`` scheme,
+    with surrounding whitespace, or with mixed-case scheme. We trim
+    whitespace first, then case-insensitively strip the ``gs://`` prefix,
+    then strip slashes — so we never compose ``gs://gs://...`` and never
+    leak whitespace into a bucket name.
     """
 
     raw_bucket = os.environ.get("LOGS_BUCKET_NAME")
-    bucket = (
-        raw_bucket.removeprefix("gs://").strip("/") if raw_bucket else None
-    ) or None
+    normalized = raw_bucket.strip() if raw_bucket else ""
+    if normalized.lower().startswith("gs://"):
+        normalized = normalized[len("gs://") :]
+    bucket = normalized.strip("/") or None
     capture_content = (
         os.environ.get("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "false")
         .strip()

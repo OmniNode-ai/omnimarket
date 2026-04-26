@@ -112,6 +112,19 @@ async def _measure_runs(
     )
 
 
+def _positive_int(value: str) -> int:
+    """argparse type that rejects 0 and negative integers.
+
+    --runs 0 used to fall through and surface as "All runs failed", which
+    is a confusing CLI for a boundary-check bug rather than a real failure.
+    """
+    parsed = int(value)
+    if parsed < 1:
+        msg = f"must be >= 1 (got {parsed})"
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="type_debt_scout_poc",
@@ -120,7 +133,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--metrics", type=Path, required=True)
-    parser.add_argument("--runs", type=int, default=5)
+    parser.add_argument("--runs", type=_positive_int, default=5)
     parser.add_argument("--repo-name", default="omnibase_core")
     parser.add_argument("--base-url", default=None)
     parser.add_argument(
@@ -151,15 +164,10 @@ async def _main_async(args: argparse.Namespace) -> int:
     )
     ended = datetime.now(UTC)
 
-    if not canonical_list:
-        print("All runs failed; nothing to write.", file=sys.stderr)  # noqa: T201
-        return 3
-
-    canonical = canonical_list[0]
-
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(canonical, indent=2), encoding="utf-8")
-
+    # Always persist metrics — even when every run failed, the per_run
+    # records, latency summary, and counts are the failure evidence we need
+    # most. Returning early without writing them loses exactly the data
+    # that would explain the failure post-mortem.
     metrics = {
         "track": "B",
         "runner": "omnimarket.experiments.adk_eval.type_debt_scout_poc",
@@ -173,6 +181,17 @@ async def _main_async(args: argparse.Namespace) -> int:
     }
     args.metrics.parent.mkdir(parents=True, exist_ok=True)
     args.metrics.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+
+    if not canonical_list:
+        print(  # noqa: T201
+            f"All {args.runs} run(s) failed; metrics written to {args.metrics}.",
+            file=sys.stderr,
+        )
+        return 3
+
+    canonical = canonical_list[0]
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(canonical, indent=2), encoding="utf-8")
 
     summary = {
         "output": str(args.output),
