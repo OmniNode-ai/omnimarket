@@ -17,6 +17,8 @@ handler:
 descriptor:
   node_archetype: orchestrator
   purity: impure
+  runtime_profiles:
+    - effects
   # idempotent with respect to cron registration: handler checks CronList before
   # calling CronCreate -- does not create duplicate crons on re-run. State files
   # (.onex_state/session-crons-*.json) are overwritten, not appended.

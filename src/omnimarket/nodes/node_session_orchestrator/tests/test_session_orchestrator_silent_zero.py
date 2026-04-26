@@ -33,6 +33,7 @@ from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchest
     HandlerSessionOrchestrator,
     ModelHealthDimensionResult,
     ModelSessionOrchestratorCommand,
+    SessionLinearFetchError,
 )
 
 # ---------------------------------------------------------------------------
@@ -98,15 +99,10 @@ class TestInvalidOrderByRaises:
     enabling OMN-9561 to be fixed with confidence.
     """
 
-    def test_graphql_error_response_currently_silent(
+    def test_graphql_error_response_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Verify: when Linear returns errors[], _fetch_linear_active_tickets returns [].
-
-        This test documents the CURRENT (broken) behavior — errors are silently
-        swallowed. It ensures any fix maintains backward-compatibility awareness.
-        The companion test below asserts the DESIRED behavior.
-        """
+        """Linear errors[] must raise instead of collapsing to an empty queue."""
         monkeypatch.setenv("LINEAR_API_KEY", "test-key-123")
         handler = HandlerSessionOrchestrator(probes=[])
 
@@ -119,28 +115,16 @@ class TestInvalidOrderByRaises:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            result = handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
+        with (
+            patch("urllib.request.urlopen", return_value=mock_resp),
+            pytest.raises(SessionLinearFetchError),
+        ):
+            handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
 
-        # CURRENT behavior: silently returns [] even on GraphQL errors
-        # This is the silent-zero bug documented by OMN-9561
-        assert result == [], (
-            "Current handler silently returns [] on GraphQL error. "
-            "OMN-9561 fix should change this to raise."
-        )
-
-    def test_graphql_error_produces_indistinguishable_empty_queue(
+    def test_graphql_error_produces_error_status_not_empty_queue(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Regression anchor: GraphQL error currently produces COMPLETE + empty queue.
-
-        This is the OMN-9561 failure mode. The fix must change this to either raise
-        or return a distinct error status. This test anchors the CURRENT (broken)
-        state so CI detects if behavior changes in either direction unexpectedly.
-
-        When OMN-9561 is fixed: flip the assertion to assert result.status == ERROR
-        (or similar) and remove this comment.
-        """
+        """GraphQL errors surface as session ERROR, not COMPLETE with no work."""
         monkeypatch.setenv("LINEAR_API_KEY", "test-key-123")
 
         error_body = _make_linear_error_response(
@@ -158,34 +142,27 @@ class TestInvalidOrderByRaises:
         with patch("urllib.request.urlopen", return_value=mock_resp):
             result = handler.handle(cmd)
 
-        # Silent-zero regression anchor: must explicitly confirm which broken state exists.
-        # This assertion documents the bug — it is NOT validating correct behavior.
         assert result.dispatch_queue == [], (
-            "Silent-zero: GraphQL error collapses to empty queue"
+            "Failed fetch must not produce a dispatch queue"
         )
-        assert result.status == EnumSessionStatus.COMPLETE, (
-            "Silent-zero: GraphQL error looks like 'no work to do' (OMN-9561 regression anchor)"
-        )
+        assert result.status == EnumSessionStatus.ERROR
+        assert "Phase 2 Linear fetch failed" in result.halt_reason
 
-    def test_network_error_on_linear_fetch_produces_empty_not_raise(
+    def test_network_error_on_linear_fetch_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Network failure on Linear fetch: currently swallowed, returns [].
-
-        Contrast with GraphQL semantic errors (invalid query params). Both produce
-        empty — this test verifies the network-error path is also silent, establishing
-        the full scope of silent-zero coverage needed.
-        """
+        """Network failure must not be reported as legitimate empty sprint."""
         monkeypatch.setenv("LINEAR_API_KEY", "test-key-123")
         handler = HandlerSessionOrchestrator(probes=[])
 
-        with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.URLError("connection refused"),
+        with (
+            patch(
+                "urllib.request.urlopen",
+                side_effect=urllib.error.URLError("connection refused"),
+            ),
+            pytest.raises(SessionLinearFetchError),
         ):
-            result = handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
-
-        assert result == [], "Network errors are currently swallowed — returns []"
+            handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
 
 
 class TestEmptyVsErrorDistinction:
@@ -256,13 +233,10 @@ class TestEmptyVsErrorDistinction:
 class TestMalformedFilterRaises:
     """Verify malformed filter inputs surface errors rather than silently returning empty."""
 
-    def test_graphql_variable_error_response_is_silent(
+    def test_graphql_variable_error_response_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When Linear returns a variable-type error, currently swallowed to [].
-
-        This covers the filter-parameter analog of the invalid-orderBy bug.
-        """
+        """Filter-variable errors raise instead of silently returning []."""
         monkeypatch.setenv("LINEAR_API_KEY", "test-key-123")
         handler = HandlerSessionOrchestrator(probes=[])
 
@@ -279,40 +253,36 @@ class TestMalformedFilterRaises:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            result = handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
+        with (
+            patch("urllib.request.urlopen", return_value=mock_resp),
+            pytest.raises(SessionLinearFetchError),
+        ):
+            handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
 
-        assert result == [], (
-            "Filter-variable errors silently return [] — same silent-zero pattern as OMN-9561"
-        )
-
-    def test_http_401_raises_httperror_swallowed_to_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """401 Unauthorized from Linear: currently caught and swallowed to []."""
+    def test_http_401_raises_fetch_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """401 Unauthorized from Linear raises visibly."""
         monkeypatch.setenv("LINEAR_API_KEY", "bad-key")
         handler = HandlerSessionOrchestrator(probes=[])
 
-        with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.HTTPError(
-                url="https://api.linear.app/graphql",
-                code=401,
-                msg="Unauthorized",
-                hdrs=http.client.HTTPMessage(),
-                fp=None,
+        with (
+            patch(
+                "urllib.request.urlopen",
+                side_effect=urllib.error.HTTPError(
+                    url="https://api.linear.app/graphql",
+                    code=401,
+                    msg="Unauthorized",
+                    hdrs=http.client.HTTPMessage(),
+                    fp=None,
+                ),
             ),
+            pytest.raises(SessionLinearFetchError),
         ):
-            result = handler._fetch_linear_active_tickets("bad-key")  # noqa: SLF001
+            handler._fetch_linear_active_tickets("bad-key")  # noqa: SLF001
 
-        assert result == [], (
-            "401 is currently swallowed — adversarial coverage of auth errors"
-        )
-
-    def test_malformed_json_response_swallowed_to_empty(
+    def test_malformed_json_response_raises_fetch_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Truncated/corrupt JSON from Linear: currently caught and swallowed to []."""
+        """Truncated/corrupt JSON from Linear raises visibly."""
         monkeypatch.setenv("LINEAR_API_KEY", "test-key-123")
         handler = HandlerSessionOrchestrator(probes=[])
 
@@ -321,10 +291,11 @@ class TestMalformedFilterRaises:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            result = handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
-
-        assert result == [], "Corrupt JSON currently swallowed — silent-zero coverage"
+        with (
+            patch("urllib.request.urlopen", return_value=mock_resp),
+            pytest.raises(SessionLinearFetchError),
+        ):
+            handler._fetch_linear_active_tickets("test-key-123")  # noqa: SLF001
 
 
 class TestPhase2NoLinearKey:

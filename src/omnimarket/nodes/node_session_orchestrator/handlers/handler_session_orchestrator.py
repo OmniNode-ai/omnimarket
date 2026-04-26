@@ -190,6 +190,10 @@ class ModelSessionOrchestratorResult(BaseModel):
 ProbeCallable = Callable[[], ModelHealthDimensionResult]
 
 
+class SessionLinearFetchError(RuntimeError):
+    """Raised when Phase 2 cannot distinguish Linear failure from empty sprint."""
+
+
 # ---------------------------------------------------------------------------
 # Default probes (production implementations)
 # ---------------------------------------------------------------------------
@@ -871,7 +875,18 @@ class HandlerSessionOrchestrator:
             )
 
         # Phase 2: RSD scoring
-        dispatch_queue = self._run_phase2(session_id, command)
+        try:
+            dispatch_queue = self._run_phase2(session_id, command)
+        except SessionLinearFetchError as exc:
+            logger.warning("Phase 2: Linear fetch failed visibly: %s", exc)
+            return ModelSessionOrchestratorResult(
+                session_id=session_id,
+                correlation_id=correlation_id,
+                status=EnumSessionStatus.ERROR,
+                halt_reason=f"Phase 2 Linear fetch failed: {exc}",
+                health_report=health_report,
+                dry_run=command.dry_run,
+            )
         logger.info(
             "Phase 2: scored %d items for session %s", len(dispatch_queue), session_id
         )
@@ -1050,11 +1065,12 @@ class HandlerSessionOrchestrator:
         return ids
 
     def _fetch_linear_active_tickets(self, linear_key: str) -> list[dict[str, Any]]:
-        """Fetch unstarted/in-progress tickets from Linear via GraphQL."""
+        """Fetch Active Sprint unstarted/in-progress tickets from Linear."""
         query = """
         {
           issues(filter: {
             state: { type: { in: ["started", "unstarted"] } }
+            project: { name: { eq: "Active Sprint" } }
           }, first: 50, orderBy: updatedAt) {
             nodes {
               id
@@ -1063,6 +1079,7 @@ class HandlerSessionOrchestrator:
               priority
               labels { nodes { name } }
               updatedAt
+              project { name }
               children { nodes { id state { type } } }
             }
           }
@@ -1081,13 +1098,21 @@ class HandlerSessionOrchestrator:
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data: dict[str, Any] = json.loads(resp.read().decode())
+            errors = data.get("errors")
+            if errors:
+                raise SessionLinearFetchError(
+                    f"Linear GraphQL errors: {json.dumps(errors)[:500]}"
+                )
             nodes: list[dict[str, Any]] = (
                 data.get("data", {}).get("issues", {}).get("nodes", [])
             )
+            if not isinstance(nodes, list):
+                raise SessionLinearFetchError("Linear response missing issues.nodes")
             return nodes
         except Exception as exc:
-            logger.warning("Phase 2: Linear fetch failed: %s", exc)
-            return []
+            if isinstance(exc, SessionLinearFetchError):
+                raise
+            raise SessionLinearFetchError(str(exc)) from exc
 
     def _load_standing_orders(self, path: str) -> dict[str, float]:
         """Load standing orders priority boosts. Returns {ticket_id: boost}."""
