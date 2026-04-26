@@ -88,8 +88,8 @@ outputs:
   dispatch_receipts:
     type: list
     description: >
-      Receipts for dispatched items (Phase 3 output). Empty in stub.
-      TODO(OMN-8367): Type as list[ModelDispatchReceipt] once Phase 3 is implemented.
+      Receipts for Phase 3 dispatch-worker specs. Each receipt includes ticket_id,
+      dispatch_id, correlation_chain, status, and dispatch_artifact_path.
   dry_run:
     type: bool
 
@@ -115,11 +115,13 @@ dod_evidence:
     description: "Phase 3 dispatch"
     artifacts:
       - path: "{state_dir}/in_flight.yaml"
-        description: "In-flight dispatch state written before dispatching"
+        description: "In-flight dispatch state written before compiling dispatch-worker specs"
+      - path: "{state_dir}/dispatch_specs/{dispatch_id}-{ticket_id}.json"
+        description: "Compiled dispatch-worker prompt/spec artifact for runtime execution"
       - path: "{state_dir}/ledger.jsonl"
         description: "One JSON line appended per completed session"
       - path: "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py"
-        description: "Unit tests covering dispatch with dry_run, empty queue, receipt format"
+        description: "Unit tests covering dry_run, empty queue, receipt format, persisted specs, and no shell dispatch"
     status: implemented
 
 env_requirements:

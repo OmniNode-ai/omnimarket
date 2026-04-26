@@ -14,6 +14,7 @@ import json
 import pathlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 
@@ -387,17 +388,31 @@ class TestPhase3Dispatch:
 
         handler = HandlerSessionOrchestrator(probes=[])
         state_dir = str(tmp_path / "session")
-        handler._run_phase3(  # noqa: SLF001
-            "sess-test",
-            ["OMN-1"],
-            ModelSessionOrchestratorCommand(dry_run=False, state_dir=state_dir),
-        )
+        with patch(
+            "omnimarket.nodes.node_session_orchestrator.handlers."
+            "handler_session_orchestrator.subprocess.Popen",
+            side_effect=AssertionError("Phase 3 must not shell-dispatch tickets"),
+        ):
+            receipts = handler._run_phase3(  # noqa: SLF001
+                "sess-test",
+                ["OMN-1"],
+                ModelSessionOrchestratorCommand(dry_run=False, state_dir=state_dir),
+            )
         inflight_path = tmp_path / "session" / "in_flight.yaml"
         assert inflight_path.exists()
         data = _yaml.safe_load(inflight_path.read_text())
         assert data["session_id"] == "sess-test"
         assert data["resumable"] is True
         assert "OMN-1" in data["dispatch_queue"]
+        parsed = json.loads(receipts[0])
+        assert parsed["status"] == "compiled_dispatch_worker"
+        artifact_path = pathlib.Path(parsed["dispatch_artifact_path"])
+        assert artifact_path.exists()
+        artifact = json.loads(artifact_path.read_text())
+        assert artifact["ticket_id"] == "OMN-1"
+        assert artifact["dispatch_worker"]["proposed_agent_spawn_args"]["name"] == (
+            "session-disp-001-omn-1"
+        )
 
     def test_full_session_phase0_dry_run_completes(self) -> None:
         probes = [_green_probe(f"d{i}") for i in range(8)]

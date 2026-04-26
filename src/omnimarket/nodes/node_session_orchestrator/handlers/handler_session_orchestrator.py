@@ -8,9 +8,9 @@ ModelSessionHealthReport, applies blocking rules.
 Phase 2 (RSD scoring): implemented — queries Linear for Active Sprint tickets,
 computes RSD priority score, writes rsd-scored-{timestamp}.yaml to state_dir.
 
-Phase 3 (dispatch): implemented — writes in_flight.yaml, dispatches top-N tickets
-via `claude -p /onex:ticket_pipeline` subprocesses with correlation chain propagation,
-writes dispatch receipts and ledger entry.
+Phase 3 (dispatch): implemented — writes in_flight.yaml, compiles top-N tickets
+into dispatch-worker specs with correlation chain propagation, writes dispatch
+receipts and ledger entry.
 
 Probe callables are injected at construction time for testability. Production
 probes call existing skills via subprocess or SSH. All config comes from env vars
@@ -40,6 +40,13 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.node_dispatch_worker import (
+    EnumWorkerRole,
+    ModelDispatchWorkerCommand,
+    ModelDispatchWorkerResult,
+    NodeDispatchWorker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +174,7 @@ class ModelDispatchReceipt(BaseModel):
     dispatched_at: datetime
     dry_run: bool
     status: str
+    dispatch_artifact_path: str = ""
 
 
 class ModelSessionOrchestratorResult(BaseModel):
@@ -805,7 +813,7 @@ class HandlerSessionOrchestrator:
 
     Phase 1: health gate (8 dimensions, SSH/subprocess probes).
     Phase 2: RSD scoring via Linear GraphQL + standing orders.
-    Phase 3: dispatch via claude -p /onex:ticket_pipeline subprocesses.
+    Phase 3: compile dispatch-worker specs for ticket pipeline execution.
 
     Probe callables are injected at construction time for testability.
     Default probes invoke real external systems (SSH, gh CLI, subprocess).
@@ -1221,7 +1229,7 @@ class HandlerSessionOrchestrator:
         dispatch_queue: list[str],
         command: ModelSessionOrchestratorCommand,
     ) -> list[str]:
-        """Dispatch top-N tickets from Phase 2 queue with correlation chain."""
+        """Compile top-N tickets from Phase 2 queue with correlation chain."""
         if not dispatch_queue:
             logger.info("Phase 3: empty queue — nothing to dispatch.")
             return []
@@ -1229,7 +1237,7 @@ class HandlerSessionOrchestrator:
         max_dispatch = 5
         targets = dispatch_queue[:max_dispatch]
         logger.info(
-            "Phase 3: dispatching %d/%d items for session %s",
+            "Phase 3: compiling dispatch specs for %d/%d items for session %s",
             len(targets),
             len(dispatch_queue),
             session_id,
@@ -1252,10 +1260,11 @@ class HandlerSessionOrchestrator:
                 correlation_chain=correlation_chain,
                 session_id=session_id,
                 dry_run=command.dry_run,
+                state_dir=command.state_dir,
             )
             receipts.append(receipt)
             logger.info(
-                "Phase 3: dispatched %s → %s (status=%s)",
+                "Phase 3: compiled %s → %s (status=%s)",
                 ticket_id,
                 dispatch_id,
                 receipt.status,
@@ -1271,6 +1280,7 @@ class HandlerSessionOrchestrator:
                     "dispatch_id": r.dispatch_id,
                     "correlation_chain": r.correlation_chain,
                     "status": r.status,
+                    "dispatch_artifact_path": r.dispatch_artifact_path,
                 }
             )
             for r in receipts
@@ -1283,8 +1293,9 @@ class HandlerSessionOrchestrator:
         correlation_chain: str,
         session_id: str,
         dry_run: bool,
+        state_dir: str,
     ) -> ModelDispatchReceipt:
-        """Invoke /onex:ticket_pipeline for a single ticket via claude -p."""
+        """Compile a dispatch-worker spec for a single ticket."""
         if dry_run:
             return ModelDispatchReceipt(
                 ticket_id=ticket_id,
@@ -1295,32 +1306,32 @@ class HandlerSessionOrchestrator:
                 status="dry_run",
             )
 
-        env = {**os.environ}
-        env["ONEX_SESSION_ID"] = session_id
-        env["ONEX_DISPATCH_ID"] = dispatch_id
-        env["ONEX_CORRELATION_PREFIX"] = correlation_chain
-        env["ONEX_RUN_ID"] = f"{dispatch_id}-{ticket_id}"
-        env["ONEX_UNSAFE_ALLOW_EDITS"] = "1"
-
         try:
-            proc = subprocess.Popen(
-                [
-                    "claude",
-                    "-p",
-                    f"/onex:ticket_pipeline {ticket_id}",
-                    "--allowedTools",
-                    "Bash,Read,Write,Edit,Glob,Grep,"
-                    "mcp__linear-server__*,mcp__github__*",
-                ],
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
+            compiled = self._compile_dispatch_worker(
+                ticket_id=ticket_id,
+                dispatch_id=dispatch_id,
+                correlation_chain=correlation_chain,
+                session_id=session_id,
             )
-            status = f"dispatched:pid={proc.pid}"
+            if compiled.rejected_reason:
+                status = f"rejected:{compiled.rejected_reason}"
+                artifact_path = ""
+            else:
+                artifact_path = self._write_dispatch_artifact(
+                    session_id=session_id,
+                    ticket_id=ticket_id,
+                    dispatch_id=dispatch_id,
+                    correlation_chain=correlation_chain,
+                    compiled=compiled,
+                    state_dir=state_dir,
+                )
+                status = "compiled_dispatch_worker"
         except Exception as exc:
-            logger.warning("Phase 3: dispatch failed for %s: %s", ticket_id, exc)
+            logger.warning(
+                "Phase 3: dispatch compile failed for %s: %s", ticket_id, exc
+            )
             status = f"failed:{exc!s}"
+            artifact_path = ""
 
         return ModelDispatchReceipt(
             ticket_id=ticket_id,
@@ -1329,7 +1340,59 @@ class HandlerSessionOrchestrator:
             dispatched_at=_now(),
             dry_run=False,
             status=status,
+            dispatch_artifact_path=artifact_path,
         )
+
+    def _compile_dispatch_worker(
+        self,
+        ticket_id: str,
+        dispatch_id: str,
+        correlation_chain: str,
+        session_id: str,
+    ) -> ModelDispatchWorkerResult:
+        worker_name = f"session-{dispatch_id}-{ticket_id.lower()}".replace("_", "-")
+        command = ModelDispatchWorkerCommand(
+            name=worker_name,
+            team="Omninode",
+            role=EnumWorkerRole.fixer,
+            scope=(
+                f"Run the ONEX ticket pipeline for {ticket_id} as part of "
+                f"session {session_id}. Correlation chain: {correlation_chain}."
+            ),
+            targets=[ticket_id, "omnimarket"],
+            collision_fences=[],
+            reports_to="team-lead",
+            model="sonnet",
+            replace=False,
+        )
+        return NodeDispatchWorker().handle(command)
+
+    def _write_dispatch_artifact(
+        self,
+        session_id: str,
+        ticket_id: str,
+        dispatch_id: str,
+        correlation_chain: str,
+        compiled: ModelDispatchWorkerResult,
+        state_dir: str,
+    ) -> str:
+        abs_state_dir = os.path.abspath(state_dir)
+        artifact_dir = os.path.join(abs_state_dir, "dispatch_specs")
+        os.makedirs(artifact_dir, exist_ok=True)
+        safe_ticket = ticket_id.lower().replace("/", "-")
+        path = os.path.join(artifact_dir, f"{dispatch_id}-{safe_ticket}.json")
+        payload = {
+            "session_id": session_id,
+            "ticket_id": ticket_id,
+            "dispatch_id": dispatch_id,
+            "correlation_chain": correlation_chain,
+            "compiled_at": _now().isoformat(),
+            "dispatch_worker": compiled.model_dump(mode="json"),
+        }
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.write("\n")
+        return path
 
     def _write_inflight(
         self,

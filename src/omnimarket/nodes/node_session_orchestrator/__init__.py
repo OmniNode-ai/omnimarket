@@ -5,7 +5,7 @@
 All three phases fully implemented (OMN-8367 / OMN-8687):
 - Phase 1 (health gate): probes 8 health dimensions, applies blocking rules.
 - Phase 2 (RSD scoring): queries Linear, scores tickets, writes rsd-scored snapshot.
-- Phase 3 (dispatch): writes in_flight.yaml, dispatches tickets via claude -p subprocesses.
+- Phase 3 (dispatch): writes in_flight.yaml, compiles dispatch-worker specs.
 """
 
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (

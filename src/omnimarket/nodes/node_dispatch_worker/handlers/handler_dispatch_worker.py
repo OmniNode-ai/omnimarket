@@ -259,6 +259,16 @@ _ROLE_TEMPLATES: dict[EnumWorkerRole, str] = {
 
 _TICKET_RE = re.compile(r"\bOMN-\d+\b")
 _PR_RE = re.compile(r"([a-zA-Z0-9_-]+)#(\d+)")
+_CANONICAL_REPOS = {
+    "omniclaude",
+    "omnibase_core",
+    "omnibase_infra",
+    "omnibase_spi",
+    "omnibase_compat",
+    "omnimarket",
+    "omnidash",
+    "omniintelligence",
+}
 
 
 def _slugify(text: str, max_len: int = 64) -> str:
@@ -279,6 +289,10 @@ def _extract_primary_repo(targets: list[str]) -> str:
         m = _PR_RE.search(t)
         if m:
             return m.group(1)
+    for t in targets:
+        candidate = t.strip().split("/", 1)[0]
+        if candidate in _CANONICAL_REPOS:
+            return candidate
     return ""
 
 
