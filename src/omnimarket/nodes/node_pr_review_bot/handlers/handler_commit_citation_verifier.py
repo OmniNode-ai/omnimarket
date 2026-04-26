@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
-TOPIC_THREAD_RESOLVED = "onex.evt.omnimarket.review-bot-thread-resolved.v1"
+TOPIC_THREAD_RESOLVED = "onex.evt.omnimarket.review-bot-thread-resolved.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
 

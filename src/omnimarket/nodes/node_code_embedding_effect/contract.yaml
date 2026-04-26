@@ -14,6 +14,10 @@ uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 node_type: "EFFECT"
 input_model: "ModelCodeEmbeddingRequest"
 output_model: "ModelCodeEmbeddingResult"
+handler:
+  module: omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect
+  class: HandlerCodeEmbeddingEffect
+  input_model: ModelCodeEmbeddingRequest
 description: |
   Consumes code-entities-extracted.v1 events, generates vector embeddings
   via a contract-configured embedding model endpoint, and upserts vectors

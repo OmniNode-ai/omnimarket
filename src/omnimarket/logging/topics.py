@@ -5,4 +5,4 @@
 
 from __future__ import annotations
 
-LOG_ENTRY_TOPIC = "onex.evt.platform.log-entry.v1"
+LOG_ENTRY_TOPIC = "onex.evt.platform.log-entry.v1"  # onex-topic-sot

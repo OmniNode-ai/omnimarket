@@ -8,8 +8,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-TOPIC_DOCUMENT_INDEXED = "onex.evt.omnimemory.document-indexed.v1"
-TOPIC_DOCUMENT_PARSE_FAILED = "onex.evt.omnimemory.document-parse-failed.v1"
+TOPIC_DOCUMENT_INDEXED = "onex.evt.omnimemory.document-indexed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_DOCUMENT_PARSE_FAILED = "onex.evt.omnimemory.document-parse-failed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 class ModelKreuzbergParseConfig(BaseModel):

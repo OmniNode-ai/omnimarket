@@ -31,7 +31,9 @@ class EnumWiringStatus(StrEnum):
 
     WIRED = "WIRED"
     UNWIRED = "UNWIRED"
-    ORPHAN_TOPIC = "ORPHAN_TOPIC"
+    ORPHAN_TOPIC = (
+        "ORPHAN_TOPIC"  # onex-topic-allow: enum value, not a topic assignment
+    )
 
 
 class EnumSymmetryStatus(StrEnum):
@@ -48,7 +50,9 @@ class EnumFindingType(StrEnum):
     PLACEHOLDER_DESCRIPTION = "PLACEHOLDER_DESCRIPTION"
     MISSING_DESCRIPTION = "MISSING_DESCRIPTION"
     UNWIRED_HANDLER = "UNWIRED_HANDLER"
-    ORPHAN_TOPIC = "ORPHAN_TOPIC"
+    ORPHAN_TOPIC = (
+        "ORPHAN_TOPIC"  # onex-topic-allow: enum value, not a topic assignment
+    )
     PRODUCER_ONLY = "PRODUCER_ONLY"
     CONSUMER_ONLY = "CONSUMER_ONLY"
 

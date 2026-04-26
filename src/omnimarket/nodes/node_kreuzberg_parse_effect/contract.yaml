@@ -12,6 +12,10 @@ uuid: "a4e72f19-3c8b-4d56-b0a1-7f9e2d45c830"
 node_type: EFFECT
 input_model: "ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent"
 output_model: "ModelKreuzbergParseResult"
+handler:
+  module: omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse
+  class: HandlerKreuzbergParse
+  input_model: ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent
 description: |
   KreuzbergParseEffect consumes document-discovered and document-changed events,
   calls the kreuzberg HTTP service to extract plain text from the raw document,

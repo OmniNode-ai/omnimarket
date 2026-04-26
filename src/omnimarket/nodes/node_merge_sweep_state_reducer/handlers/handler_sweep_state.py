@@ -70,8 +70,8 @@ from omnimarket.nodes.node_thread_reply_effect.models.model_thread_replied_event
 _log = logging.getLogger(__name__)
 
 # Topics from contract.yaml
-TOPIC_STATE_REDUCED = "onex.evt.omnimarket.merge-sweep-state-reduced.v1"
-TOPIC_SWEEP_COMPLETED = "onex.evt.omnimarket.merge-sweep-completed.v1"
+TOPIC_STATE_REDUCED = "onex.evt.omnimarket.merge-sweep-state-reduced.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_SWEEP_COMPLETED = "onex.evt.omnimarket.merge-sweep-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 NODE_ID = "node_merge_sweep_state_reducer"
 

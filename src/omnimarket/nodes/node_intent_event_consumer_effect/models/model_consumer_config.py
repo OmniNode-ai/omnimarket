@@ -9,9 +9,9 @@ list format per OMN-1746 for EventBusSubcontractWiring compatibility.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-TOPIC_INTENT_CLASSIFIED = "onex.evt.omniintelligence.intent-classified.v1"
-TOPIC_INTENT_CLASSIFIED_DLQ = "onex.evt.omniintelligence.intent-classified-dlq.v1"
-TOPIC_INTENT_STORED = "onex.evt.omnimemory.intent-stored.v1"
+TOPIC_INTENT_CLASSIFIED = "onex.evt.omniintelligence.intent-classified.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_INTENT_CLASSIFIED_DLQ = "onex.evt.omniintelligence.intent-classified-dlq.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_INTENT_STORED = "onex.evt.omnimemory.intent-stored.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 # omnimemory-model-exempt: handler config

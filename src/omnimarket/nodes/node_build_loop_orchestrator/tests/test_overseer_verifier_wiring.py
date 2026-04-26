@@ -22,9 +22,11 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_o
 )
 
 TOPIC_OVERSEER_VERIFICATION_COMPLETED = (
-    "onex.evt.omnimarket.overseer-verifier-completed.v1"
+    "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-test-fixture
 )
-TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"
+TOPIC_OVERSEER_VERIFY_REQUESTED = (
+    "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-test-fixture
+)
 
 
 class _FakeMessage:

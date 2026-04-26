@@ -41,7 +41,7 @@ from omnimarket.nodes.node_model_router.models.model_routing_result import (
     ModelRoutingResult,
 )
 
-TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"
+TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
 

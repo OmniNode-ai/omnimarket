@@ -11,6 +11,10 @@ uuid: "6fc349b1-34f0-4760-b547-6e8bebf0c9c0"
 node_type: EFFECT
 input_model: "ModelIntentClassifiedEvent"
 output_model: "ModelIntentStoredEvent"
+handler:
+  module: omnimarket.nodes.node_intent_event_consumer_effect.handler_intent_event_consumer
+  class: HandlerIntentEventConsumer
+  input_model: ModelIntentClassifiedEvent
 description: |
   Consumes intent-classified.v1 events from omniintelligence Kafka topic
   and persists them to Memgraph using HandlerIntentStorageAdapter.
