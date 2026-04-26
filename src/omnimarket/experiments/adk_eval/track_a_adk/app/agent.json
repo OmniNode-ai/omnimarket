@@ -1,7 +1,7 @@
 {
   "name": "type-debt-scout-adk",
   "description": "Prioritizes mypy findings for type-debt triage.",
-  "url": "http://127.0.0.1:8011/a2a/app",
+  "url": "http://127.0.0.1:8000/a2a/app",
   "version": "0.1.0",
   "capabilities": {
     "streaming": false,

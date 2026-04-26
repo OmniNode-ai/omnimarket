@@ -24,7 +24,10 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.experiments.adk_eval.tools.mypy_parser import ModelMypyFinding
+from omnimarket.experiments.adk_eval.tools.mypy_parser import (
+    ModelMypyFinding,
+    parse_mypy_jsonl,
+)
 from omnimarket.experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
     ModelTrackBConfig,
     _build_router,
@@ -34,26 +37,13 @@ from omnimarket.experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout
 
 
 def _load_findings(path: Path) -> list[ModelMypyFinding]:
-    raw = path.read_text(encoding="utf-8")
-    findings: list[ModelMypyFinding] = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        payload = json.loads(line)
-        column_raw = payload.get("column")
-        if column_raw is not None and isinstance(column_raw, int) and column_raw < 0:
-            payload["column"] = None
-        normalized = {
-            "file": payload["file"],
-            "line": payload["line"],
-            "column": payload.get("column"),
-            "severity": payload["severity"],
-            "error_code": payload.get("error_code") or payload["code"],
-            "message": payload["message"],
-        }
-        findings.append(ModelMypyFinding.model_validate(normalized))
-    return findings
+    """Load mypy JSONL findings via the shared parser.
+
+    Delegates column normalization and error_code derivation to
+    ``parse_mypy_jsonl`` so the CLI runner cannot drift from the canonical
+    parsing rules used elsewhere in the toolchain.
+    """
+    return parse_mypy_jsonl(path.read_text(encoding="utf-8"))
 
 
 async def _measure_runs(

@@ -148,7 +148,13 @@ def run_mypy_and_parse(repo_path: Path, target: str = "src/") -> list[ModelMypyF
     except FileNotFoundError as e:
         msg = f"Failed to launch mypy subprocess: {e!r}"
         raise RuntimeError(msg) from e
-    # mypy exits non-zero on findings; that is expected. Parse stdout regardless.
+    # mypy exits 1 on findings; parse stdout in that case.
+    if proc.returncode not in (0, 1):
+        msg = (
+            f"mypy failed with exit code {proc.returncode} in {repo_path}: "
+            f"{proc.stderr.strip()}"
+        )
+        raise RuntimeError(msg)
     return parse_mypy_jsonl(proc.stdout)
 
 

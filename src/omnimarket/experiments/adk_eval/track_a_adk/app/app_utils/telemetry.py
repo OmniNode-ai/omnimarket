@@ -17,11 +17,21 @@ import os
 
 
 def setup_telemetry() -> str | None:
-    """Configure OpenTelemetry and GenAI telemetry with GCS upload."""
+    """Configure OpenTelemetry and GenAI telemetry with GCS upload.
 
-    bucket = os.environ.get("LOGS_BUCKET_NAME")
-    capture_content = os.environ.get(
-        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "false"
+    LOGS_BUCKET_NAME may be supplied with or without a ``gs://`` scheme. We
+    normalize by stripping any leading scheme and trailing slashes before
+    composing the upload URI so we never produce ``gs://gs://...``.
+    """
+
+    raw_bucket = os.environ.get("LOGS_BUCKET_NAME")
+    bucket = (
+        raw_bucket.removeprefix("gs://").strip("/") if raw_bucket else None
+    ) or None
+    capture_content = (
+        os.environ.get("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "false")
+        .strip()
+        .lower()
     )
     if bucket and capture_content != "false":
         logging.info(
@@ -38,14 +48,16 @@ def setup_telemetry() -> str | None:
             "OTEL_RESOURCE_ATTRIBUTES",
             f"service.namespace=track-a-adk,service.version={commit_sha}",
         )
-        path = os.environ.get("GENAI_TELEMETRY_PATH", "completions")
+        path = os.environ.get("GENAI_TELEMETRY_PATH", "completions").strip("/")
         os.environ.setdefault(
             "OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH",
             f"gs://{bucket}/{path}",
         )
     else:
         logging.info(
-            "Prompt-response logging disabled (set LOGS_BUCKET_NAME=gs://your-bucket and OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT to enable)"
+            "Prompt-response logging disabled (set LOGS_BUCKET_NAME=your-bucket and "
+            "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT to enable; "
+            "the gs:// scheme is added automatically)"
         )
 
     return bucket

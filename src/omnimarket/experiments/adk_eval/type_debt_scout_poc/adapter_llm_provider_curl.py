@@ -53,13 +53,19 @@ class AdapterLlmProviderCurl:
         provider_type: str = "local",
         timeout_seconds: float = 180.0,
         api_key: str | None = None,
+        curl_executable: str = "/usr/bin/curl",
     ) -> None:
+        # Pin to /usr/bin/curl by default: the docstring explicitly states the
+        # macOS firewall only permits the system curl; relying on PATH would
+        # silently reintroduce the failure this provider exists to avoid.
+        # Override is allowed for tests / alternate platforms.
         self._base_url = base_url.rstrip("/")
         self._default_model = default_model
         self._provider_name = provider_name
         self._provider_type = provider_type
         self._timeout_seconds = timeout_seconds
         self._api_key = api_key
+        self._curl_executable = curl_executable
         self._is_available = True
 
     @property
@@ -91,7 +97,7 @@ class AdapterLlmProviderCurl:
             payload["max_tokens"] = request.max_tokens
 
         cmd: list[str] = [
-            "curl",
+            self._curl_executable,
             "-fsS",
             "--max-time",
             str(int(self._timeout_seconds)),
@@ -105,15 +111,20 @@ class AdapterLlmProviderCurl:
                 "-X",
                 "POST",
                 f"{self._base_url}/v1/chat/completions",
+                # Read body from stdin (@-) so the JSON payload — which contains
+                # repository findings — is not visible in process listings via
+                # ps / /proc/[pid]/cmdline while curl is running.
                 "--data-binary",
-                json.dumps(payload),
+                "@-",
             ]
         )
 
+        payload_json = json.dumps(payload)
         started = datetime.now(UTC)
         proc = await asyncio.to_thread(
             subprocess.run,
             cmd,
+            input=payload_json,
             capture_output=True,
             text=True,
             timeout=self._timeout_seconds + 5,

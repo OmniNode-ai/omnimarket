@@ -11,28 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-FROM python:3.12-slim
-
-RUN pip install --no-cache-dir uv==0.8.13
-RUN useradd --create-home --uid 10001 appuser
-
-WORKDIR /code
-
-COPY ./pyproject.toml ./README.md ./uv.lock* ./
-
-COPY ./app ./app
-
-RUN uv sync --frozen
-RUN chown -R appuser:appuser /code
-
-ARG COMMIT_SHA=""
-ENV COMMIT_SHA=${COMMIT_SHA}
-
-ARG AGENT_VERSION=0.0.0
-ENV AGENT_VERSION=${AGENT_VERSION}
-
-EXPOSE 8080
-
-USER appuser
-CMD ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
+"""Package marker so ``app.app_utils.telemetry`` and ``app.app_utils.typing``
+imports resolve when the track_a_adk subproject runs from its own venv.
+"""
