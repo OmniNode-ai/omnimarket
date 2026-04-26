@@ -44,21 +44,21 @@ from omnibase_core.protocols.event_bus.protocol_event_envelope import (
     ProtocolEventEnvelope,
 )
 
-from omnimarket.nodes.node_build_loop.handlers.handler_build_loop import (
-    HandlerBuildLoop,
-)
-from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
-    ModelLoopStartCommand,
-)
-from omnimarket.nodes.node_build_loop.models.model_loop_state import (
+from omnimarket.nodes.node_build_loop import (
     TERMINAL_PHASES,
     EnumBuildLoopPhase,
+    HandlerBuildLoop,
+    ModelLoopStartCommand,
+    ModelPhaseTransitionEvent,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_loop_cycle_summary import (
     ModelLoopCycleSummary,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_result import (
     ModelOrchestratorResult,
+)
+from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command import (
+    ModelOrchestratorStartCommand,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
@@ -69,11 +69,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ProtocolVerifyHandler,
     ScoredTicket,
 )
+from omnimarket.nodes.node_overseer_verifier import ModelVerifierRequest
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
     HandlerOverseerVerifier,
-)
-from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
-    ModelVerifierRequest,
 )
 from omnimarket.protocols.protocol_overseer_verifier import ProtocolOverseerVerifier
 
@@ -191,7 +189,7 @@ class HandlerBuildLoopOrchestrator:
 
     async def handle(
         self,
-        command: ModelLoopStartCommand,
+        command: ModelLoopStartCommand | ModelOrchestratorStartCommand,
     ) -> ModelOrchestratorResult:
         """Run the autonomous build loop for up to max_cycles.
 
@@ -201,14 +199,15 @@ class HandlerBuildLoopOrchestrator:
         Returns:
             ModelOrchestratorResult with per-cycle summaries.
         """
+        loop_command = self._to_loop_command(command)
         self._ensure_sub_handlers()
         logger.info(
             "[BUILD-LOOP-ORCH] === ENTRY === handle() called "
             "(correlation_id=%s, max_cycles=%d, dry_run=%s, skip_closeout=%s)",
-            command.correlation_id,
-            command.max_cycles,
-            command.dry_run,
-            command.skip_closeout,
+            loop_command.correlation_id,
+            loop_command.max_cycles,
+            loop_command.dry_run,
+            loop_command.skip_closeout,
         )
 
         summaries: list[ModelLoopCycleSummary] = []
@@ -216,14 +215,14 @@ class HandlerBuildLoopOrchestrator:
         cycles_completed = 0
         cycles_failed = 0
 
-        for cycle_idx in range(command.max_cycles):
+        for cycle_idx in range(loop_command.max_cycles):
             logger.info(
                 "[BUILD-LOOP-ORCH] Starting cycle %d/%d (correlation_id=%s)",
                 cycle_idx + 1,
-                command.max_cycles,
-                command.correlation_id,
+                loop_command.max_cycles,
+                loop_command.correlation_id,
             )
-            summary = await self._run_cycle(command)
+            summary = await self._run_cycle(loop_command)
             summaries.append(summary)
 
             if summary.final_phase == EnumBuildLoopPhase.COMPLETE:
@@ -245,15 +244,32 @@ class HandlerBuildLoopOrchestrator:
             cycles_completed,
             cycles_failed,
             total_dispatched,
-            command.correlation_id,
+            loop_command.correlation_id,
         )
 
         return ModelOrchestratorResult(
-            correlation_id=command.correlation_id,
+            correlation_id=loop_command.correlation_id,
             cycles_completed=cycles_completed,
             cycles_failed=cycles_failed,
             cycle_summaries=tuple(summaries),
             total_tickets_dispatched=total_dispatched,
+        )
+
+    @staticmethod
+    def _to_loop_command(
+        command: ModelLoopStartCommand | ModelOrchestratorStartCommand,
+    ) -> ModelLoopStartCommand:
+        """Convert the contract command into the FSM command shape."""
+        if isinstance(command, ModelLoopStartCommand):
+            return command
+        return ModelLoopStartCommand(
+            correlation_id=command.correlation_id,
+            max_cycles=command.max_cycles,
+            mode=command.mode.value,
+            skip_closeout=command.skip_closeout,
+            max_tickets=command.max_tickets,
+            dry_run=command.dry_run,
+            requested_at=command.requested_at,
         )
 
     async def _run_cycle(
@@ -648,10 +664,6 @@ class HandlerBuildLoopOrchestrator:
         """Publish a phase transition event to the event bus."""
         if self._event_bus is None:
             return
-
-        from omnimarket.nodes.node_build_loop.models.model_phase_transition_event import (
-            ModelPhaseTransitionEvent,
-        )
 
         if isinstance(event, ModelPhaseTransitionEvent):
             payload = json.dumps(event.model_dump(mode="json")).encode()
