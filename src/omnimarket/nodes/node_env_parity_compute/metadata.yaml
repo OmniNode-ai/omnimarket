@@ -1,0 +1,19 @@
+name: node_env_parity_compute
+version: "1.0.0"
+description: "Computes environment parity between local and deployed runtime (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_env_parity_compute: "omnimarket.nodes.node_env_parity_compute"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "env", "parity", "environment", "runtime"]
+pack: "sweep"
+display_name: "Env Parity Compute"
+node_role: "compute"

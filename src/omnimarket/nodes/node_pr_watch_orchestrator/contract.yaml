@@ -1,0 +1,20 @@
+---
+name: node_pr_watch_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Orchestrates PR watch with polling, event emission, stateful tracking. STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator
+  class: HandlerPrWatchOrchestrator
+  input_model: omnimarket.nodes.node_pr_watch_orchestrator.models.model_pr_watch_orchestrator_request.ModelPrWatchOrchestratorRequest
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000

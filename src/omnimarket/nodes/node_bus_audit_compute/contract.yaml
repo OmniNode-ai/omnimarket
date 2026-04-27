@@ -1,0 +1,20 @@
+---
+name: node_bus_audit_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Audits event bus topic health and wiring completeness. STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_bus_audit_compute.handlers.handler_bus_audit_compute
+  class: HandlerBusAuditCompute
+  input_model: omnimarket.nodes.node_bus_audit_compute.models.model_bus_audit_compute_request.ModelBusAuditComputeRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000

@@ -187,6 +187,12 @@ node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
 node_audit_trail_compactor = "omnimarket.nodes.node_audit_trail_compactor"
 node_state_persist_effect = "omnimarket.nodes.node_state_persist_effect"
 node_full_triage_orchestrator = "omnimarket.nodes.node_full_triage_orchestrator"
+node_integration_sweep_orchestrator = "omnimarket.nodes.node_integration_sweep_orchestrator"
+node_dod_sweep_orchestrator = "omnimarket.nodes.node_dod_sweep_orchestrator"
+node_bus_audit_compute = "omnimarket.nodes.node_bus_audit_compute"
+node_gap_compute = "omnimarket.nodes.node_gap_compute"
+node_pr_watch_orchestrator = "omnimarket.nodes.node_pr_watch_orchestrator"
+node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
