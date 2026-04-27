@@ -13,6 +13,7 @@ import shutil
 import socket as sock_mod
 import tempfile
 import time
+from pathlib import Path
 
 import pytest
 
@@ -40,7 +41,7 @@ def _make_short_sock(name: str) -> tuple[str, str]:
 
 @pytest.mark.unit
 def test_socket_check_target_fail_when_missing(
-    tmp_path: pytest.TempPathFactory,
+    tmp_path: Path,
 ) -> None:
     """DOWN when socket path does not exist."""
     nonexistent = tmp_path / "missing.sock"

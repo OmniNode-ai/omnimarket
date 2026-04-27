@@ -26,6 +26,8 @@ class SocketCheckTarget:
     """Check a Unix domain socket file via stat()."""
 
     def __init__(self, socket_path: str, stale_after_seconds: int = 300) -> None:
+        if stale_after_seconds < 0:
+            raise ValueError("stale_after_seconds must be >= 0")
         self._socket_path = socket_path
         self._stale_after_seconds = stale_after_seconds
 
