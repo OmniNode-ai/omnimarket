@@ -531,6 +531,109 @@ class TestEvidenceCollector:
         assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
         assert results[1].status == EnumEvidenceCheckStatus.FAILED
 
+    def test_test_passes_check_type_pass(self, tmp_path: Path) -> None:
+        """check_type: test_passes runs the command and VERIFIES on exit code 0.
+
+        Regression for OMN-10046 — previously test_passes fell through to the
+        unknown-check-type branch and FAILED with "Supported: command,
+        file_exists.", blocking 5 legitimately-Done tickets.
+        """
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Pytest exits 0",
+                    "checks": [
+                        {
+                            "check_type": "test_passes",
+                            "check_value": "true",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        # Ensure the message reflects test_passes execution, not the unknown-type path.
+        assert "Unknown check_type" not in (results[0].message or "")
+
+    def test_test_passes_check_type_fail(self, tmp_path: Path) -> None:
+        """check_type: test_passes FAILS when the command exits non-zero."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Pytest exits 1",
+                    "checks": [
+                        {
+                            "check_type": "test_passes",
+                            "check_value": "false",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "Unknown check_type" not in (results[0].message or "")
+
+    def test_test_passes_accepts_command_field(self, tmp_path: Path) -> None:
+        """test_passes accepts `command` as well as `check_value` for parity with command checks."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Pytest via command field",
+                    "checks": [
+                        {
+                            "check_type": "test_passes",
+                            "command": "true",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    def test_test_passes_empty_command_fails(self, tmp_path: Path) -> None:
+        """test_passes with no command/check_value FAILS (cannot silently pass)."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "No command",
+                    "checks": [
+                        {
+                            "check_type": "test_passes",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+
 
 @pytest.mark.unit
 class TestHandlerWithCollector:
