@@ -72,12 +72,17 @@ def test_codex_shims_remain_dispatch_only() -> None:
         if path.parent.name == "session-bootstrap":
             assert '--node-alias "session_bootstrap"' in text
             assert "--timeout-ms 30000" in text
+            assert '"contract": {' in text
+            assert "cost_ceiling_usd" in text
         elif path.parent.name == "session-orchestrator":
             assert '--node-alias "session_orchestrator"' in text
             assert "--timeout-ms 300000" in text
+            assert "Generate a UUIDv4 `correlation_id`" in text
         elif path.parent.name == "merge-sweep":
             assert '--node-alias "pr_lifecycle_orchestrator"' in text
             assert "--timeout-ms 300000" in text
+            assert "run_id" in text
+            assert "filesystem-safe identifier" in text
         elif path.parent.name == "aislop-sweep":
             assert '--node-alias "aislop_sweep"' in text
             assert "--timeout-ms 120000" in text
@@ -104,9 +109,12 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         if path.parent.name == "session-bootstrap":
             assert '--node-alias "session_bootstrap"' in text
             assert "--timeout-ms 30000" in text
+            assert '"contract": {' in text
+            assert "cost_ceiling_usd" in text
         elif path.parent.name == "session-orchestrator":
             assert '--node-alias "session_orchestrator"' in text
             assert "--timeout-ms 300000" in text
+            assert "Generate a UUIDv4 `correlation_id`" in text
         elif path.parent.name == "aislop-sweep":
             assert '--node-alias "aislop_sweep"' in text
             assert "--timeout-ms 120000" in text

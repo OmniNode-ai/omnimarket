@@ -49,6 +49,14 @@ Map user inputs into a JSON payload using the same field names:
 - `verify`
 - `verify_timeout_seconds`
 
+Always include:
+
+- `correlation_id`: UUIDv4, generated if the user does not supply one
+- `run_id`: filesystem-safe identifier such as `merge-sweep-YYYYMMDDTHHMMSSZ`
+
+Only include `onex_state_dir` when the user explicitly wants a non-default
+artifact location.
+
 If `ok` is `true` and `output_payloads` is present, treat `output_payloads[0]`
 as the primary node result.
 

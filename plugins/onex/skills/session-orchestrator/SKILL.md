@@ -45,6 +45,9 @@ Map user inputs into a JSON payload using the same field names:
 - `state_dir`
 - `phase`
 
+Generate a UUIDv4 `correlation_id` when the user does not supply one. Omit
+`session_id` only when you want the node to auto-generate it.
+
 If `ok` is `true` and `output_payloads` is present, treat `output_payloads[0]`
 as the primary node result.
 

@@ -36,18 +36,40 @@ env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request
   --timeout-ms 30000
 ```
 
-Map user inputs into a JSON payload using the same field names:
+Build the payload with a nested `contract` object. A minimal shape is:
 
-- `session_id`
-- `session_label`
-- `phases_expected`
-- `max_cycles`
-- `cost_ceiling`
-- `session_mode`
-- `active_sprint_id`
-- `model_routing_preference`
-- `state_dir`
-- `dry_run`
+```json
+{
+  "session_id": "<session-id>",
+  "session_mode": "build",
+  "active_sprint_id": "auto-detect",
+  "model_routing_preference": "local-first",
+  "state_dir": ".onex_state",
+  "dry_run": false,
+  "contract": {
+    "session_id": "<same session-id>",
+    "session_label": "<today> session",
+    "phases_expected": ["build_loop", "merge_sweep", "platform_readiness"],
+    "max_cycles": 0,
+    "cost_ceiling_usd": 10.0,
+    "session_mode": "build",
+    "active_sprint_id": "auto-detect",
+    "model_routing_preference": "local-first"
+  }
+}
+```
+
+Map user arguments into that shape:
+
+- `cost_ceiling` -> `contract.cost_ceiling_usd`
+- `session_label` -> `contract.session_label`
+- `phases_expected` -> `contract.phases_expected` as a JSON array of strings
+- `max_cycles` -> `contract.max_cycles`
+- `dry_run` -> top-level `dry_run`, and mirror it into `contract.dry_run` if the user explicitly asks for that contract flag
+
+Keep `session_id`, `session_mode`, `active_sprint_id`, and
+`model_routing_preference` aligned between the top-level request and the nested
+`contract`.
 
 If `ok` is `true` and `output_payloads` is present, treat `output_payloads[0]`
 as the primary node result.
