@@ -1,54 +1,66 @@
-# Codex Adapter — OmniMarket
+# Codex Adapter - OmniMarket
 
 ## Overview
 
-Codex adapters are instruction files that tell the OpenAI Codex agent how to
-invoke OmniMarket packages through the runtime-owned local ingress. Each
-instruction file describes the request/response wrapper for a single node.
-**No business logic lives in the instruction file.**
+Codex adapters are thin `SKILL.md` shims packaged in a Codex plugin. Each
+skill describes how Codex should invoke one OmniMarket node through the
+runtime-owned local ingress. No business logic lives in the skill.
 
 ## How it works
 
-1. The Codex agent reads the instruction file as part of its system context
-2. When the user requests the relevant operation, the agent builds a JSON payload
-3. The agent invokes `scripts/run_codex_runtime_request.py` against the local runtime socket
-4. The runtime dispatches the backing OmniMarket node and returns a typed JSON response
-5. The agent formats `dispatch_result` or surfaces the structured runtime error
+1. Codex loads the skill metadata.
+2. When the user requests the operation, Codex invokes the matching skill.
+3. The skill dispatches to `scripts/run_codex_runtime_request.py`
+4. The runtime owns execution and returns a typed JSON response
+5. Codex renders `output_payloads[0]` when present, or falls back to
+   `dispatch_result` without reimplementing workflow logic
 
 ## File conventions
 
 | File | Purpose |
 |------|---------|
-| `aislop-sweep-instructions.md` | Example instructions for the aislop-sweep node |
-| `pr-lifecycle-orchestrator-instructions.md` | Example instructions for the PR lifecycle / merge-sweep node |
-| `session-bootstrap-instructions.md` | Example instructions for the session bootstrap node |
-| `session-orchestrator-instructions.md` | Example instructions for the session orchestrator node |
-| `template.md` | Generic template with placeholders for new instructions |
+| `template.md` | Generic Codex `SKILL.md` template |
+| `skills/<skill-slug>/SKILL.md` | Generated Codex skill shim |
 | `runtime_client.py` | Stdlib-friendly local runtime ingress client |
-| `scripts/run_codex_runtime_request.py` | Repo-local request wrapper that bootstraps `src/` import resolution |
+| `../../../scripts/run_codex_runtime_request.py` | Repo-local request wrapper that bootstraps `src/` import resolution |
+| `../../../plugins/onex/.codex-plugin/plugin.json` | Repo-local Codex plugin manifest |
 
-Instructions are provided to Codex via its instruction/system prompt configuration.
+The repo-local plugin mirrors the Claude Code `onex` plugin surface while using
+Codex-native plugin and skill metadata.
 
-## Wrapper responsibilities
+## Current install path
 
-1. **Argument collection and validation** — Parse user-provided arguments and map
-   them to the event payload schema from `contract.yaml`.
-2. **Command options mapping** — Translate arguments into the structured event
-   payload fields expected by the node.
-3. **Correlation ID generation** — Generate a unique `correlation_id` (UUID v4) for
-   each invocation to track request/response pairs inside the runtime dispatch path.
-4. **Runtime ingress dispatch** — Invoke the local runtime client instead of
-   publishing directly to Kafka or calling the node CLI.
-5. **Response handling** — Parse the runtime JSON response and distinguish
-   `dispatch_result` from structured `error`.
-6. **Output formatting** — Transform the runtime response into a clear reply
+On this machine, `codex exec` reliably loads skills from `~/.codex/skills`.
+The repo-local marketplace/plugin path is still not surfacing ONEX skills in
+`codex exec`, even though the plugin metadata is valid.
+
+Install the current ONEX skills with:
+
+```bash
+uv run python scripts/install_codex_skills.py --force
+```
+
+This creates symlinks from `plugins/onex/skills/*` into `~/.codex/skills/`.
+
+## Shim responsibilities
+
+1. **Argument collection and validation** - Parse user-provided arguments and map
+   them to fields from `contract.yaml`.
+2. **Command options mapping** - Translate arguments into the structured JSON
+   payload expected by the node.
+3. **Runtime ingress dispatch** - Run the backing node through the
+   runtime-owned Unix socket path instead of direct Kafka or direct local CLIs.
+4. **Response handling** - Prefer `output_payloads[0]` for the business result
+   and fall back to `dispatch_result` when the handler did not emit a typed
+   output payload.
+5. **Output formatting** - Transform the runtime response into a clear reply
    for the user.
-7. **Timeout and error handling** — Pass the node timeout to the runtime ingress,
-   report structured runtime errors clearly, and treat dry-run GitHub/Linear
-   reachability gaps as explicit degraded states.
+6. **Timeout and error handling** - Use the node's `descriptor.timeout_ms` as
+   the timeout budget and surface structured runtime ingress errors directly.
 
-## Creating new instructions
+## Creating new skills
 
-1. Copy `template.md` to `<skill-name>-instructions.md`
+1. Generate a skill with `scripts/generate_adapter.py --formats codex`
 2. Replace all `{{PLACEHOLDER}}` values using the node's `contract.yaml`
-3. Add the resulting file to your Codex agent's instruction configuration
+3. Copy generated `skills/<skill-slug>/SKILL.md` into `plugins/onex/skills/`
+4. Keep the skill as a thin shim; move behavior changes into the backing node

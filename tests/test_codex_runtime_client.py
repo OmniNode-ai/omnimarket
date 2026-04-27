@@ -43,7 +43,7 @@ class _OneShotSocketServer(threading.Thread):
                         buf.extend(chunk)
                     self.request_line = bytes(buf)
                     conn.sendall(json.dumps(self._response).encode("utf-8") + b"\n")
-        except Exception as exc:  # pragma: no cover - surfaced through assertions
+        except Exception as exc:  # pragma: no cover
             self.error = exc
             self.ready.set()
 
@@ -62,7 +62,7 @@ def test_default_socket_path_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     assert default_socket_path() == "/tmp/onex-runtime.sock"
 
 
-def test_dispatch_sync_round_trip(tmp_path: Path) -> None:
+def test_dispatch_sync_round_trip() -> None:
     socket_path = _socket_path("omnimarket-runtime-test")
     response = {
         "ok": True,
@@ -140,9 +140,7 @@ def test_main_returns_zero_for_ok_response(
         socket_path.unlink()
 
 
-def test_main_returns_one_for_runtime_error(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_main_returns_one_for_runtime_error(capsys: pytest.CaptureFixture[str]) -> None:
     socket_path = _socket_path("omnimarket-runtime-main-error")
     response = {
         "ok": False,

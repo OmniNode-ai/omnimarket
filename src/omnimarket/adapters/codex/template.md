@@ -1,8 +1,13 @@
-# {{SKILL_DISPLAY_NAME}} — Codex Instructions
+---
+name: {{SKILL_SLUG}}
+description: Thin Codex skill shim for the OmniMarket {{NODE_NAME}} node. Use when the user asks to {{TRIGGER_DESCRIPTION}}.
+---
 
-You have access to the OmniMarket `{{NODE_NAME}}` node through the local runtime
-ingress client. When the user asks you to {{TRIGGER_DESCRIPTION}}, use this
-procedure. **Do not implement the logic yourself.**
+# {{SKILL_DISPLAY_NAME}}
+
+You have access to the OmniMarket `{{NODE_NAME}}` node through the local
+runtime ingress client. When the user asks you to {{TRIGGER_DESCRIPTION}}, use
+this procedure. Do not implement the node logic yourself.
 
 ## Supported arguments
 
@@ -12,22 +17,21 @@ procedure. **Do not implement the logic yourself.**
 
 ## Procedure
 
-### Step 1 — Assemble payload
+### Step 1 - Build JSON payload
 
-Build a JSON payload from the user's request:
+Map user-provided arguments into a JSON object that matches the backing node's
+input model. Omit fields the user did not specify so the node can apply its
+own defaults.
+
+Use this dispatch shape:
 
 ```json
-{
-  "correlation_id": "<generate a UUID v4>"
-}
+{{PAYLOAD_TEMPLATE}}
 ```
 
-Only include fields the user explicitly specified. The node applies defaults for
-omitted fields.
+### Step 2 - Dispatch through the local runtime client
 
-### Step 2 — Dispatch through the local runtime client
-
-Run:
+Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
@@ -36,31 +40,41 @@ env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request
   --timeout-ms {{TIMEOUT_MS}}
 ```
 
-Notes:
-- `scripts/run_codex_runtime_request.py` is the supported repo-local request wrapper.
-- `{{NODE_ALIAS}}` resolves through the runtime ingress route table.
-- The command prints a JSON response object to stdout.
+The command prints a JSON response object to stdout.
 
-### Step 3 — Interpret the response
+### Step 3 - Interpret the response
 
-If `ok` is `true`, render `dispatch_result` clearly for the user.
+If `ok` is `true` and `output_payloads` is present, treat `output_payloads[0]`
+as the primary node result and render that clearly for the user.
+
+If `ok` is `true` and `output_payloads` is absent, fall back to rendering
+`dispatch_result`.
 
 If `ok` is `false`, surface `error.code` and `error.message` directly.
 
-If the dry run depends on GitHub or Linear and those systems are unreachable,
-report that degraded condition explicitly rather than inventing inventory or
-ticket state.
+If a dry run depends on GitHub or Linear and those systems are unreachable,
+report that degraded condition explicitly rather than inventing remote state.
 
-### Step 4 — Format output
+### Step 4 - Format output
 
-On success: render the runtime `dispatch_result` in a clear format for the user.
+On success: prefer `output_payloads[0]`; if it is absent, render the runtime
+`dispatch_result`.
 
 On timeout: report that the operation timed out.
 
 On error: surface the runtime ingress error code and message.
 
+## Contract
+
+- Backing node: `omnimarket/nodes/{{NODE_DIR}}/`
+- Local request wrapper: `scripts/run_codex_runtime_request.py`
+- Route alias: `{{NODE_ALIAS}}`
+- Command topic: `{{COMMAND_TOPIC}}`
+- Completion topic: `{{COMPLETION_TOPIC}}`
+- Contract timeout: {{TIMEOUT_MS}} ms
+
 ## Important
 
 Do not implement any business logic. All processing runs in the OmniMarket
-`{{NODE_NAME}}` node. These instructions only cover runtime ingress dispatch and
-output formatting.
+`{{NODE_NAME}}` node. These instructions only cover argument mapping, node
+dispatch, and output formatting.

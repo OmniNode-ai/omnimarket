@@ -121,6 +121,19 @@ class TestBuildSubstitutions:
             == "onex.evt.omnimarket.test-orchestrator-completed.v1"
         )
 
+    def test_terminal_event_preferred_for_completion_topic(self) -> None:
+        contract = {
+            **FIXTURE_CONTRACT,
+            "terminal_event": "onex.evt.omnimarket.test-orchestrator-terminal.v1",
+        }
+        subs = generate_adapter._build_substitutions(
+            "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, contract
+        )
+        assert (
+            subs["COMPLETION_TOPIC"]
+            == "onex.evt.omnimarket.test-orchestrator-terminal.v1"
+        )
+
     def test_timeout_ms_extracted(self) -> None:
         subs = generate_adapter._build_substitutions(
             "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
@@ -138,6 +151,13 @@ class TestBuildSubstitutions:
             "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
         )
         assert subs["CATEGORY"] == "omnimarket"
+
+    def test_entry_flags_are_cli_options(self) -> None:
+        subs = generate_adapter._build_substitutions(
+            "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
+        )
+        assert "[--dry-run]" in subs["ENTRY_FLAGS"]
+        assert "[--repos <repos>]" in subs["ENTRY_FLAGS"]
 
     def test_node_alias_uses_contract_name(self) -> None:
         subs = generate_adapter._build_substitutions(
@@ -189,7 +209,7 @@ class TestOutputFilename:
     def test_codex_uses_instructions_md(self) -> None:
         assert (
             generate_adapter._output_filename("codex", "aislop-sweep")
-            == "aislop-sweep-instructions.md"
+            == "skills/aislop-sweep/SKILL.md"
         )
 
 
@@ -292,7 +312,13 @@ class TestGenerateAdaptersGemini:
         assert "test-orchestrator.md" in names
         assert "test_orchestrator_SKILL.md" in names
         assert "test-orchestrator.mdc" in names
-        assert "test-orchestrator-instructions.md" in names
+        assert "SKILL.md" in names
+
+        codex_paths = {p.as_posix() for p in generated}
+        assert any(
+            path.endswith("codex/skills/test-orchestrator/SKILL.md")
+            for path in codex_paths
+        )
 
 
 class TestExtractArgsTable:

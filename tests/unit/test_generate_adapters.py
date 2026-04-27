@@ -229,9 +229,7 @@ class TestRenderers:
 
     def _instructions_kwargs(self) -> dict[str, object]:
         kwargs = dict(self._COMMON)
-        kwargs.pop("entry_flags")
-        kwargs.pop("command_topic")
-        kwargs.pop("completion_topic")
+        kwargs.pop("contract_inputs")
         return kwargs
 
     def test_render_skill_md_contains_node_name(self) -> None:
@@ -280,16 +278,23 @@ class TestRenderers:
         assert "node_test_orchestrator" in content
         assert "scripts/run_codex_runtime_request.py" in content
         assert '--node-alias "test_orchestrator"' in content
+        assert "--payload '<json-payload>'" in content
+        assert "--timeout-ms 60000" in content
+        assert "output_payloads[0]" in content
 
     def test_render_instructions_md_deterministic(self) -> None:
         c1 = _render_instructions_md(**self._instructions_kwargs())
         c2 = _render_instructions_md(**self._instructions_kwargs())
         assert c1 == c2
 
-    def test_render_instructions_md_uses_contract_inputs_table(self) -> None:
-        content = _render_instructions_md(**self._instructions_kwargs())
-        assert "| dry_run | Run without making changes | False |" in content
-        assert "| ticket | Ticket ID to process | — |" in content
+    def test_render_instructions_md_normalizes_entry_flags(self) -> None:
+        kwargs = {
+            **self._instructions_kwargs(),
+            "entry_flags": {"dry_run": "Run without changes"},
+        }
+        content = _render_instructions_md(**kwargs)
+        assert '"correlation_id": "<uuid4>"' in content
+        assert " dry_run \\" not in content
 
     def test_render_with_no_entry_flags(self) -> None:
         kwargs = {**self._skill_kwargs(), "entry_flags": {}}
@@ -370,7 +375,8 @@ class TestGenerateAdaptersForNode:
 
         assert paths["skill_md"].name == "test-orchestrator_SKILL.md"
         assert paths["mdc"].name == "test-orchestrator.mdc"
-        assert paths["instructions_md"].name == "test-orchestrator-instructions.md"
+        assert paths["instructions_md"].name == "SKILL.md"
+        assert paths["instructions_md"].parent.name == "test-orchestrator"
 
     def test_deterministic_output(self, tmp_path: Path) -> None:
         """Same input always produces identical file content."""
@@ -463,7 +469,7 @@ class TestMainCLI:
         assert rc == 0
         assert (output_dir / "claude_code" / "orch_SKILL.md").exists()
         assert (output_dir / "cursor" / "orch.mdc").exists()
-        assert (output_dir / "codex" / "orch-instructions.md").exists()
+        assert (output_dir / "codex" / "skills" / "orch" / "SKILL.md").exists()
 
     def test_main_dry_run_no_file_output(self, tmp_path: Path) -> None:
         nodes_dir = tmp_path / "nodes"
