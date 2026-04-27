@@ -18,12 +18,14 @@ Related:
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
@@ -566,6 +568,75 @@ class TestPrLifecycleOrchestratorGoldenChain:
         source = inspect.getsource(mod)
         assert "from omnibase_infra" not in source
         assert "import omnibase_infra" not in source
+
+    async def test_handler_does_not_read_contract_yaml_at_init(self) -> None:
+        """OMN-9806: handler must not open contract.yaml during __init__ or handle()."""
+        import importlib
+        import inspect
+
+        mod = importlib.import_module(
+            "omnimarket.nodes.node_pr_lifecycle_orchestrator."
+            "handlers.handler_pr_lifecycle_orchestrator"
+        )
+        source = inspect.getsource(mod)
+        tree = ast.parse(source)
+
+        assert not any(
+            isinstance(node, (ast.Import, ast.ImportFrom))
+            and (
+                any(alias.name == "yaml" for alias in getattr(node, "names", ()))
+                or getattr(node, "module", "") == "yaml"
+            )
+            for node in ast.walk(tree)
+        )
+        assert not any(
+            isinstance(node, ast.Call)
+            and (
+                (
+                    isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "yaml"
+                    and node.func.attr == "safe_load"
+                )
+                or (isinstance(node.func, ast.Name) and node.func.id == "safe_load")
+            )
+            for node in ast.walk(tree)
+        )
+        assert not any(
+            isinstance(node, ast.FunctionDef) and node.name == "_load_contract"
+            for node in ast.walk(tree)
+        )
+        assert not any(
+            isinstance(node, ast.Name)
+            and node.id in {"_load_contract", "contract_path"}
+            for node in ast.walk(tree)
+        )
+        assert not any(
+            isinstance(node, ast.Attribute)
+            and node.attr in {"_load_contract", "contract_path"}
+            for node in ast.walk(tree)
+        )
+        assert not any(
+            isinstance(node, ast.Constant) and node.value == "contract.yaml"
+            for node in ast.walk(tree)
+        )
+
+    async def test_transitional_topic_constants_match_contract_yaml(self) -> None:
+        """OMN-9806: transitional handler constants must not drift from contract topics."""
+        import importlib
+
+        mod = importlib.import_module(
+            "omnimarket.nodes.node_pr_lifecycle_orchestrator."
+            "handlers.handler_pr_lifecycle_orchestrator"
+        )
+        contract_path = Path(mod.__file__).parents[1] / "contract.yaml"
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        publish_topics = set(contract["event_bus"]["publish_topics"])
+
+        assert mod.TOPIC_PHASE_TRANSITION in publish_topics
+        assert mod.TOPIC_COMPLETED in publish_topics
+        assert mod.TOPIC_FIXER_DISPATCH_START in publish_topics
+        assert contract["terminal_event"] == mod.TOPIC_COMPLETED
 
     async def test_correlation_id_preserved_in_result(self) -> None:
         """correlation_id from command appears unchanged in result."""

@@ -39,7 +39,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
@@ -65,6 +64,10 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+TOPIC_PHASE_TRANSITION = "onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_FIXER_DISPATCH_START = "onex.cmd.omnimarket.fixer-dispatch-start.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 # ---------------------------------------------------------------------------
@@ -288,13 +291,6 @@ def _orch_checks_to_ci_status(checks_status: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _load_contract(contract_path: Path | None = None) -> dict[str, Any]:
-    _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-    with open(_path) as f:
-        data: dict[str, Any] = yaml.safe_load(f)
-    return data
-
-
 class HandlerPrLifecycleOrchestrator:
     """FSM orchestrator composing 5 pr_lifecycle sub-handlers.
 
@@ -312,21 +308,10 @@ class HandlerPrLifecycleOrchestrator:
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
         event_bus: ProtocolEventBusPublisher | None = None,
-        contract_path: Path | None = None,
     ) -> None:
-        contract = _load_contract(contract_path)
-        publish_topics: list[str] = contract.get("event_bus", {}).get(
-            "publish_topics", []
-        )
-        self._topic_phase_transition = next(
-            (t for t in publish_topics if "phase-transition" in t), ""
-        )
-        self._topic_completed = next(
-            (t for t in publish_topics if "completed" in t), ""
-        )
-        self._topic_fixer_dispatch_start = next(
-            (t for t in publish_topics if "fixer-dispatch-start" in t), ""
-        )
+        self._topic_phase_transition = TOPIC_PHASE_TRANSITION
+        self._topic_completed = TOPIC_COMPLETED
+        self._topic_fixer_dispatch_start = TOPIC_FIXER_DISPATCH_START
 
         self._inventory = inventory
         self._triage = triage
