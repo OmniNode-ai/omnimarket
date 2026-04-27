@@ -23,6 +23,7 @@ class EnumCheckTarget(StrEnum):
     KAFKA_CONSUMERS = "kafka_consumers"
     LLM_ENDPOINTS = "llm_endpoints"
     DOCKER_CONTAINERS = "docker_containers"
+    UNIX_SOCKET = "unix_socket"
 
 
 class ModelWatchdogCheckResult(BaseModel):
