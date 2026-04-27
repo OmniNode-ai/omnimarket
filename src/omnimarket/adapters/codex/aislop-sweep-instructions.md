@@ -1,9 +1,9 @@
 # AI Slop Sweep — Codex Instructions
 
-You have access to the OmniMarket aislop-sweep node via the ONEX event bus. When
-the user asks you to scan for AI-generated quality anti-patterns, code quality
-issues, or "AI slop", use this procedure. **Do not implement scanning logic
-yourself.**
+You have access to the OmniMarket `node_aislop_sweep` node through the local
+runtime ingress client. When the user asks you to scan for AI-generated quality
+anti-patterns, code quality issues, or "AI slop", use this procedure. **Do not
+implement scanning logic yourself.**
 
 ## Supported arguments
 
@@ -39,28 +39,36 @@ omitted fields.
 
 ### Step 2 — Publish command event
 
-Publish to the ONEX event bus:
-- **Topic:** `onex.cmd.market.aislop-sweep-requested.v1`
-- **Payload:** The JSON from Step 1
+Run:
 
-### Step 3 — Monitor completion
+```bash
+env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
+  --node-alias "aislop_sweep" \
+  --payload '<json-payload>' \
+  --timeout-ms 120000
+```
 
-Listen on the ONEX event bus:
-- **Topic:** `onex.evt.market.aislop-sweep-completed.v1`
-- **Filter:** Match the `correlation_id` from Step 1
-- **Timeout:** 120000 ms (2 minutes)
+The command prints a JSON response object to stdout.
+
+### Step 3 — Interpret the response
+
+If `ok` is `true`, render `dispatch_result` as a summary with findings grouped
+by severity and check category. Include total counts and per-repo breakdowns.
+
+If `ok` is `false`, surface `error.code` and `error.message` directly.
 
 ### Step 4 — Format output
 
-On success: render the completion payload as a summary with findings grouped by
-severity and check category. Include total counts and per-repo breakdowns.
+On success: render the runtime `dispatch_result` as a summary with findings
+grouped by severity and check category. Include total counts and per-repo
+breakdowns.
 
 On timeout: report that the sweep timed out after 120 seconds.
 
-On error: surface the error message from the completion event payload.
+On error: surface the runtime ingress error code and message.
 
 ## Important
 
 Do not implement any scanning, triaging, or ticket-creation logic. All business
 logic runs in the OmniMarket `aislop_sweep` node. These instructions only cover
-event publish/subscribe and output formatting.
+runtime ingress dispatch and output formatting.

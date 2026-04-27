@@ -139,6 +139,12 @@ class TestBuildSubstitutions:
         )
         assert subs["CATEGORY"] == "omnimarket"
 
+    def test_node_alias_uses_contract_name(self) -> None:
+        subs = generate_adapter._build_substitutions(
+            "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
+        )
+        assert subs["NODE_ALIAS"] == "test_orchestrator"
+
 
 class TestApplySubstitutions:
     def test_replaces_placeholders(self) -> None:
@@ -185,6 +191,30 @@ class TestOutputFilename:
             generate_adapter._output_filename("codex", "aislop-sweep")
             == "aislop-sweep-instructions.md"
         )
+
+
+class TestCodexTemplate:
+    def test_codex_template_uses_runtime_wrapper(
+        self, node_dir: Path, output_dir: Path
+    ) -> None:
+        generate_adapter.generate_adapters(node_dir, output_dir, formats=("codex",))
+        content = (
+            output_dir / "codex" / "test-orchestrator-instructions.md"
+        ).read_text()
+        assert "scripts/run_codex_runtime_request.py" in content
+        assert '--node-alias "test_orchestrator"' in content
+        assert "runtime" in content
+        assert "ingress" in content
+
+    def test_codex_template_uses_contract_input_table(
+        self, node_dir: Path, output_dir: Path
+    ) -> None:
+        generate_adapter.generate_adapters(node_dir, output_dir, formats=("codex",))
+        content = (
+            output_dir / "codex" / "test-orchestrator-instructions.md"
+        ).read_text()
+        assert "| dry_run | Report only, no side effects | False |" in content
+        assert "| repos | Target repositories | all |" in content
 
 
 class TestGenerateAdaptersGemini:

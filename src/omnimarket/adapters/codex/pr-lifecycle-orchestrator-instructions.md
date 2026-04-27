@@ -1,14 +1,21 @@
-# {{SKILL_DISPLAY_NAME}} — Codex Instructions
+# PR Lifecycle — Codex Instructions
 
-You have access to the OmniMarket `{{NODE_NAME}}` node through the local runtime
-ingress client. When the user asks you to {{TRIGGER_DESCRIPTION}}, use this
+You have access to the OmniMarket `node_pr_lifecycle_orchestrator` node through the local runtime
+ingress client. When the user asks you to pr lifecycle orchestrator — fsm orchestrator wiring 5 sub-handlers (inventory, triage, merge, fix, reducer), use this
 procedure. **Do not implement the logic yourself.**
 
 ## Supported arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-{{ARGS_TABLE}}
+| dry_run | Run without side effects | False |
+| inventory_only | Stop after inventory; no triage, merge, or fix | False |
+| fix_only | Only fix non-green PRs; skip merge | False |
+| merge_only | Only merge green PRs; skip fix | False |
+| repos | Comma-separated repo slugs to filter (empty = all) |  |
+| enable_auto_rebase | Auto-rebase stale (Track A-update) PR branches before merge | True |
+| verify | Run verification_sweep per-PR as pre-merge gate (OMN-7742) | False |
+| verify_timeout_seconds | Hard per-PR verification timeout in seconds | 30 |
 
 ## Procedure
 
@@ -31,14 +38,14 @@ Run:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "{{NODE_ALIAS}}" \
+  --node-alias "pr_lifecycle_orchestrator" \
   --payload '<json-payload>' \
-  --timeout-ms {{TIMEOUT_MS}}
+  --timeout-ms 300000
 ```
 
 Notes:
 - `scripts/run_codex_runtime_request.py` is the supported repo-local request wrapper.
-- `{{NODE_ALIAS}}` resolves through the runtime ingress route table.
+- `pr_lifecycle_orchestrator` resolves through the runtime ingress route table.
 - The command prints a JSON response object to stdout.
 
 ### Step 3 — Interpret the response
@@ -62,5 +69,5 @@ On error: surface the runtime ingress error code and message.
 ## Important
 
 Do not implement any business logic. All processing runs in the OmniMarket
-`{{NODE_NAME}}` node. These instructions only cover runtime ingress dispatch and
+`node_pr_lifecycle_orchestrator` node. These instructions only cover runtime ingress dispatch and
 output formatting.

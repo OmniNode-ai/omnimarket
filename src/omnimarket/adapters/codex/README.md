@@ -3,23 +3,29 @@
 ## Overview
 
 Codex adapters are instruction files that tell the OpenAI Codex agent how to
-invoke OmniMarket packages via the ONEX event bus. Each instruction file
-describes the event-publish/monitor pattern for a single node. **No business
-logic lives in the instruction file.**
+invoke OmniMarket packages through the runtime-owned local ingress. Each
+instruction file describes the request/response wrapper for a single node.
+**No business logic lives in the instruction file.**
 
 ## How it works
 
 1. The Codex agent reads the instruction file as part of its system context
-2. When the user requests the relevant operation, the agent publishes a command event
-3. The OmniMarket node picks up the command, executes, and publishes a completion event
-4. The agent monitors for the completion event and formats the result
+2. When the user requests the relevant operation, the agent builds a JSON payload
+3. The agent invokes `scripts/run_codex_runtime_request.py` against the local runtime socket
+4. The runtime dispatches the backing OmniMarket node and returns a typed JSON response
+5. The agent formats `dispatch_result` or surfaces the structured runtime error
 
 ## File conventions
 
 | File | Purpose |
 |------|---------|
 | `aislop-sweep-instructions.md` | Example instructions for the aislop-sweep node |
+| `pr-lifecycle-orchestrator-instructions.md` | Example instructions for the PR lifecycle / merge-sweep node |
+| `session-bootstrap-instructions.md` | Example instructions for the session bootstrap node |
+| `session-orchestrator-instructions.md` | Example instructions for the session orchestrator node |
 | `template.md` | Generic template with placeholders for new instructions |
+| `runtime_client.py` | Stdlib-friendly local runtime ingress client |
+| `scripts/run_codex_runtime_request.py` | Repo-local request wrapper that bootstraps `src/` import resolution |
 
 Instructions are provided to Codex via its instruction/system prompt configuration.
 
@@ -30,16 +36,16 @@ Instructions are provided to Codex via its instruction/system prompt configurati
 2. **Command options mapping** — Translate arguments into the structured event
    payload fields expected by the node.
 3. **Correlation ID generation** — Generate a unique `correlation_id` (UUID v4) for
-   each invocation to track request/response pairs on the bus.
-4. **Event publishing** — Publish the command event to the node's `subscribe_topics`
-   topic with the assembled payload and correlation ID.
-5. **Completion monitoring** — Listen on the node's `publish_topics` topic, filtering
-   by correlation ID, with a configurable timeout.
-6. **Output formatting** — Transform the completion event payload into a clear
-   response for the user.
-7. **Timeout and error handling** — If no completion event arrives within the node's
-   `descriptor.timeout_ms`, report a timeout error. Surface any error payloads
-   from the completion event clearly.
+   each invocation to track request/response pairs inside the runtime dispatch path.
+4. **Runtime ingress dispatch** — Invoke the local runtime client instead of
+   publishing directly to Kafka or calling the node CLI.
+5. **Response handling** — Parse the runtime JSON response and distinguish
+   `dispatch_result` from structured `error`.
+6. **Output formatting** — Transform the runtime response into a clear reply
+   for the user.
+7. **Timeout and error handling** — Pass the node timeout to the runtime ingress,
+   report structured runtime errors clearly, and treat dry-run GitHub/Linear
+   reachability gaps as explicit degraded states.
 
 ## Creating new instructions
 
