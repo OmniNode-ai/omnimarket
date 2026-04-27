@@ -1,0 +1,20 @@
+---
+name: node_env_parity_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Computes environment parity between local and deployed runtime. STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute
+  class: HandlerEnvParityCompute
+  input_model: omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_request.ModelEnvParityComputeRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000

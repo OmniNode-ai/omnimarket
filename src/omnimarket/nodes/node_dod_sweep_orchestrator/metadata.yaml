@@ -1,0 +1,19 @@
+name: node_dod_sweep_orchestrator
+version: "1.0.0"
+description: "Orchestrates DoD (Definition of Done) sweep across tickets (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dod_sweep_orchestrator: "omnimarket.nodes.node_dod_sweep_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "dod", "sweep", "definition-of-done"]
+pack: "sweep"
+display_name: "DoD Sweep Orchestrator"
+node_role: "orchestrator"

@@ -1,0 +1,20 @@
+---
+name: node_gap_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Computes gaps in pipeline coverage and node wiring. STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_gap_compute.handlers.handler_gap_compute
+  class: HandlerGapCompute
+  input_model: omnimarket.nodes.node_gap_compute.models.model_gap_compute_request.ModelGapComputeRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000

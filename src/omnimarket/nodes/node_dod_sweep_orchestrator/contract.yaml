@@ -1,0 +1,20 @@
+---
+name: node_dod_sweep_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Orchestrates DoD (Definition of Done) sweep across tickets. STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator
+  class: HandlerDodSweepOrchestrator
+  input_model: omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request.ModelDodSweepOrchestratorRequest
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
