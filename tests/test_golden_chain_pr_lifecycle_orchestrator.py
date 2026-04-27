@@ -567,6 +567,22 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert "from omnibase_infra" not in source
         assert "import omnibase_infra" not in source
 
+    async def test_handler_does_not_read_contract_yaml_at_init(self) -> None:
+        """OMN-9806: handler must not open contract.yaml during __init__ or handle()."""
+        import importlib
+        import inspect
+
+        mod = importlib.import_module(
+            "omnimarket.nodes.node_pr_lifecycle_orchestrator."
+            "handlers.handler_pr_lifecycle_orchestrator"
+        )
+        source = inspect.getsource(mod)
+        assert "yaml.safe_load" not in source
+        assert "_load_contract" not in source
+        assert "contract_path" not in source
+        assert "import yaml" not in source
+        assert "contract.yaml" not in source
+
     async def test_correlation_id_preserved_in_result(self) -> None:
         """correlation_id from command appears unchanged in result."""
         cid = uuid4()
