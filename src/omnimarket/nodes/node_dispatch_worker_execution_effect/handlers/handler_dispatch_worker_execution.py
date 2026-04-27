@@ -86,7 +86,7 @@ class HandlerDispatchWorkerExecution:
         total_rejected = 0
         total_skipped = 0
 
-        receipt_dir = Path(command.receipt_dir)
+        receipt_dir = Path(command.resolved_receipt_dir)
 
         for spec in specs:
             receipt_path = self._receipt_path(receipt_dir, spec)

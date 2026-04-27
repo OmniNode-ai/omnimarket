@@ -218,3 +218,39 @@ async def test_delegation_payload_is_publishable(
         assert deserialized["correlation_chain"] == "sess-test.disp-001.OMN-9874"
     finally:
         await event_bus.close()
+
+
+@pytest.mark.unit
+def test_receipt_dir_derived_from_custom_state_dir(tmp_path: Path) -> None:
+    custom_state = tmp_path / "custom_state"
+    command = ModelDispatchWorkerExecutionInput(
+        correlation_id=uuid4(),
+        artifacts=(_artifact(),),
+        state_dir=str(custom_state),
+    )
+    assert command.receipt_dir is None
+    assert command.resolved_receipt_dir == f"{custom_state}/dispatch_execution"
+
+    result = HandlerDispatchWorkerExecution().handle(command)
+    assert result.total_delegated == 1
+    receipt_path = Path(result.outcomes[0].receipt_path)
+    assert receipt_path.is_relative_to(custom_state / "dispatch_execution")
+
+
+@pytest.mark.unit
+def test_explicit_receipt_dir_overrides_state_dir(tmp_path: Path) -> None:
+    custom_state = tmp_path / "ignored_state"
+    explicit_receipts = tmp_path / "explicit_receipts"
+    command = ModelDispatchWorkerExecutionInput(
+        correlation_id=uuid4(),
+        artifacts=(_artifact(),),
+        state_dir=str(custom_state),
+        receipt_dir=str(explicit_receipts),
+    )
+    assert command.resolved_receipt_dir == str(explicit_receipts)
+
+    result = HandlerDispatchWorkerExecution().handle(command)
+    assert result.total_delegated == 1
+    receipt_path = Path(result.outcomes[0].receipt_path)
+    assert receipt_path.is_relative_to(explicit_receipts)
+    assert not (custom_state / "dispatch_execution").exists()

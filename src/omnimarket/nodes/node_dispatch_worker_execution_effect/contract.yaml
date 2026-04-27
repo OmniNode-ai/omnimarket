@@ -54,11 +54,22 @@ inputs:
     required: false
     default: []
     description: "Persisted dispatch-worker spec paths to load."
+  state_dir:
+    type: str
+    required: false
+    default: ".onex_state/session"
+    description: >
+      Session state root. Used to derive receipt_dir when receipt_dir is not
+      supplied, keeping receipts colocated with dispatch_specs and other
+      session state under custom state-dir scopes.
   receipt_dir:
     type: str
     required: false
-    default: ".onex_state/session/dispatch_execution"
-    description: "Explicit receipt directory for idempotency state."
+    default: null
+    description: >
+      Explicit receipt directory for idempotency state. When null, the handler
+      derives it as {state_dir}/dispatch_execution so receipts follow custom
+      state-dir scoping.
   dry_run:
     type: bool
     required: false
