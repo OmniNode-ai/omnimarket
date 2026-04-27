@@ -211,7 +211,14 @@ class EvidenceCollector:
         messages: list[str] = []
         for check in checks:
             check_type = check.get("check_type") or ""
-            if check_type == "command":
+            if check_type in ("command", "test_passes"):
+                # ``test_passes`` is a semantic alias for ``command`` that signals
+                # the command is a test runner (typically ``uv run pytest ...``).
+                # Both share the same execution path: run the shell command and
+                # treat exit code 0 as VERIFIED. The alias exists so contracts
+                # can declare intent (running tests) distinct from generic
+                # commands without forcing every shell-based check into the same
+                # bucket. Regression for OMN-10046.
                 ok, msg = self._run_command_check(check, ticket_id)
                 if not ok:
                     return ModelEvidenceCheckResult(
@@ -241,7 +248,10 @@ class EvidenceCollector:
                     evidence_id=evidence_id,
                     description=description,
                     status=EnumEvidenceCheckStatus.FAILED,
-                    message=f"Unknown check_type: {label!r}. Supported: command, file_exists.",
+                    message=(
+                        f"Unknown check_type: {label!r}. "
+                        "Supported: command, test_passes, file_exists."
+                    ),
                 )
 
         return ModelEvidenceCheckResult(
