@@ -147,6 +147,7 @@ node_skill_overseer_verify_orchestrator = "omnimarket.nodes.node_skill_overseer_
 node_skill_dispatch_engine_orchestrator = "omnimarket.nodes.node_skill_dispatch_engine_orchestrator"
 node_model_router = "omnimarket.nodes.node_model_router"
 node_dispatch_worker = "omnimarket.nodes.node_dispatch_worker"
+node_dispatch_worker_execution_effect = "omnimarket.nodes.node_dispatch_worker_execution_effect"
 node_filesystem_crawler_effect = "omnimarket.nodes.node_filesystem_crawler_effect"
 node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
 node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"

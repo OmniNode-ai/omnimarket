@@ -188,6 +188,23 @@ class TestDispatchWorkerGoldenChain:
         assert spawn["model"] == "sonnet"
         assert spawn["subagent_type"] == "general-purpose"
 
+    def test_dispatch_worker_fixer_accepts_bare_repo_target(self) -> None:
+        """Session dispatch can provide a Linear ticket plus owning repo target."""
+        handler = HandlerDispatchWorker()
+        result = handler.handle(
+            _cmd(
+                name="session-disp-001-omn-9358",
+                role=EnumWorkerRole.fixer,
+                scope="Run the ONEX ticket pipeline for OMN-9358",
+                targets=["OMN-9358", "OmniMarket"],
+            ),
+            existing_task_subjects=[],
+        )
+
+        assert result.rejected_reason == ""
+        assert "OMN-9358" in result.validated_prompt_template
+        assert "/OMN-9358/omnimarket/" in result.validated_prompt_template
+
     def test_dispatch_worker_template_version_bumped_on_content_change(self) -> None:
         """Fixer template content matches the golden fixture.
 

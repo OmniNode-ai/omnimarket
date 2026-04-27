@@ -1,0 +1,23 @@
+name: node_dispatch_worker_execution_effect
+version: "1.0.0"
+description: "Converts compiled dispatch-worker specs into runtime delegation payloads with idempotency receipts"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dispatch_worker_execution_effect: "omnimarket.nodes.node_dispatch_worker_execution_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "dispatch", "worker", "delegation", "session"]
+pack: "orchestration"
+display_name: "Dispatch Worker Execution Effect"
+node_role: "effect"
