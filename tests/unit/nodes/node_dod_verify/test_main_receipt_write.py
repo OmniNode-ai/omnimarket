@@ -65,7 +65,7 @@ def _run_main(
         cmd.extend(["--output-path", str(output_path)])
     env = {
         "PATH": "/usr/bin:/bin:/usr/local/bin",
-        "PYTHONPATH": str(Path(__file__).resolve().parents[5] / "src"),
+        "PYTHONPATH": str(Path(__file__).resolve().parents[4] / "src"),
     }
     if evidence_root is not None:
         env["ONEX_EVIDENCE_ROOT"] = str(evidence_root)
