@@ -15,6 +15,7 @@ import pytest
 
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
     HandlerSessionOrchestrator,
+    SessionLinearFetchError,
 )
 
 
@@ -35,21 +36,25 @@ def test_fetch_linear_active_tickets_query_uses_valid_orderby() -> None:
     assert "orderBy: updatedAt" in source, (
         "GraphQL query must include orderBy: updatedAt (the valid enum value)"
     )
+    assert 'project: { name: { eq: "Active Sprint" } }' in source, (
+        "Session Phase 2 must only score tickets from the Active Sprint project"
+    )
 
 
 @pytest.mark.unit
-def test_fetch_linear_active_tickets_returns_empty_on_http_error() -> None:
-    """Regression guard: network failures return [] rather than crashing.
+def test_fetch_linear_active_tickets_raises_on_http_error() -> None:
+    """Network failures must not be indistinguishable from an empty sprint.
 
-    The orderBy fix restores happy-path behavior, but the defensive catch must
-    stay intact for real network failures.
+    Returning [] here causes silent zero-dispatch: callers cannot tell whether
+    Linear is unavailable or the Active Sprint is legitimately empty.
     """
     handler = HandlerSessionOrchestrator()
 
-    with patch(
-        "omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator.urllib.request.urlopen",
-        side_effect=OSError("network unreachable"),
+    with (
+        patch(
+            "omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator.urllib.request.urlopen",
+            side_effect=OSError("network unreachable"),
+        ),
+        pytest.raises(SessionLinearFetchError),
     ):
-        result = handler._fetch_linear_active_tickets("fake-key")
-
-    assert result == []
+        handler._fetch_linear_active_tickets("fake-key")
