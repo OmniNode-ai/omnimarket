@@ -25,8 +25,12 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 
 
 def _make_short_sock(name: str) -> tuple[str, str]:
-    """Create a socket file in /tmp with a short path; return (dir, sock_path)."""
-    d = tempfile.mkdtemp(dir="/tmp")
+    """Create a socket file under the system temp dir; return (dir, sock_path).
+
+    Uses tempfile.gettempdir() rather than a hardcoded /tmp so the path stays
+    within the 108-char AF_UNIX limit on macOS/Linux across CI environments.
+    """
+    d = tempfile.mkdtemp(dir=tempfile.gettempdir())
     sock_path = os.path.join(d, name)
     s = sock_mod.socket(sock_mod.AF_UNIX, sock_mod.SOCK_STREAM)
     s.bind(sock_path)

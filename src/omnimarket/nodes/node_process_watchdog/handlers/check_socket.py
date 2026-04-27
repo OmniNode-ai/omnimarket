@@ -47,7 +47,7 @@ class SocketCheckTarget:
                 status=EnumCheckStatus.DOWN,
                 message=f"Socket does not exist: {self._socket_path}",
             )
-        except OSError as e:
+        except (OSError, ValueError) as e:
             return ModelWatchdogCheckResult(
                 target=self.name,
                 category=self.category,
