@@ -45,7 +45,7 @@ behavior without modifying handler code.
 
 ## Repository Layout
 
-```
+```text
 omnimarket/
 ├── src/omnimarket/
 │   ├── nodes/                  # All node packages (node_<name>/)
@@ -80,7 +80,7 @@ omnimarket/
 
 Each node lives in `src/omnimarket/nodes/node_<name>/` and contains:
 
-```
+```text
 node_<name>/
 ├── __init__.py           # Package root (entry-point target)
 ├── contract.yaml         # Handler bindings, topics, FSM, terminal events
