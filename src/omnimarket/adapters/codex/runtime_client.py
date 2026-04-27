@@ -69,6 +69,7 @@ class ModelLocalRuntimeClientResponse(BaseModel):
     terminal_event: str | None = None
     correlation_id: UUID | None = None
     dispatch_result: dict[str, object] | None = None
+    output_payloads: list[dict[str, object]] | None = None
     error: ModelLocalRuntimeClientError | None = None
 
 

@@ -72,6 +72,7 @@ def test_dispatch_sync_round_trip(tmp_path: Path) -> None:
         "topic": "onex.cmd.omnimarket.session-orchestrator-start.v1",
         "terminal_event": "onex.evt.omnimarket.session-orchestrator-completed.v1",
         "dispatch_result": {"status": "complete", "dispatch_queue": []},
+        "output_payloads": [{"status": "complete", "dispatch_queue": []}],
     }
     server = _OneShotSocketServer(socket_path, response)
     server.start()
@@ -91,6 +92,7 @@ def test_dispatch_sync_round_trip(tmp_path: Path) -> None:
     assert result.ok is True
     assert result.contract_name == "session_orchestrator"
     assert result.dispatch_result == {"status": "complete", "dispatch_queue": []}
+    assert result.output_payloads == [{"status": "complete", "dispatch_queue": []}]
 
     assert server.request_line is not None
     request = json.loads(server.request_line.decode("utf-8").strip())
