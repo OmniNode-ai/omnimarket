@@ -62,11 +62,12 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py:36",
         # node_ledger_append_effect → node_ledger_orchestrator (command model, not event)
         "omnimarket/nodes/node_ledger_append_effect/handlers/handler_ledger_append.py:25",
-        # node_pr_lifecycle_orchestrator reach-ins (line numbers shifted by OMN-8390 verify wiring)
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:908",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:961",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1030",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1092",
+        # node_pr_lifecycle_orchestrator reach-ins (OMN-9806 keeps these as
+        # temporary exceptions until shared lifecycle models move to events.*)
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:893",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:946",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1015",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1077",
         # node_overnight → node_build_loop
         "omnimarket/nodes/node_overnight/handlers/handler_overnight.py:1071",
         # node_pipeline_fill → node_rsd_fill_compute
