@@ -1221,7 +1221,7 @@ dependencies = [
 [[package]]
 name = "omnibase-core"
 version = "0.40.0"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?branch=main#dec250b00ff2b662bbdd368542c00b5bb4e73751" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?branch=main#e78013ec71d079cce69908bd6ab6df5d9776799f" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1339,7 +1339,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?branch=main" },
-    { name = "omnibase-core", specifier = ">=0.40.0" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?branch=main" },
     { name = "omnibase-infra", specifier = ">=0.32.0" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?branch=main" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?branch=main" },
