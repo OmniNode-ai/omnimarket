@@ -18,7 +18,7 @@ dependencies:
   - "omninode-memory>=0.1.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["memory", "filesystem", "crawler", "document", "effect"]
+tags: ["memory", "filesystem", "crawler", "document", "effect", "content-type", "crawl"]
 pack: "memory"
 display_name: "Filesystem Crawler Effect"
 node_role: "effect"

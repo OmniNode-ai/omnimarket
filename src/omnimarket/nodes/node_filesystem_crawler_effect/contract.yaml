@@ -59,6 +59,12 @@ published_events:
     trigger: "Document successfully crawled and indexed (discovered or changed)"
     description: "Emitted after a document is fully crawled and written to the index."
 
+  - topic_suffix: "onex.evt.omnimarket.content-discovered.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimarket.content-discovered.v1"
+    event_type: "ContentDiscovered"
+    trigger: "File discovered during content-type-aware crawl"
+    description: "Emitted per file found by HandlerCrawlFilesystem with content_type, SHA-256, and metadata."
+
 # === EVENT TYPE CONFIGURATION ===
 event_type:
   version: {major: 1, minor: 0, patch: 0}
@@ -67,6 +73,7 @@ event_type:
     - "document_changed"
     - "document_removed"
     - "document_indexed"
+    - "content_discovered"
   event_categories: ["crawl", "document", "filesystem", "effect"]
   publish_events: true
   subscribe_events: true
@@ -90,6 +97,7 @@ event_bus:
     - "onex.evt.omnimemory.document-changed.v1"
     - "onex.evt.omnimemory.document-removed.v1"
     - "onex.evt.omnimemory.document-indexed.v1"
+    - "onex.evt.omnimarket.content-discovered.v1"
 
   subscribe_topic_metadata:
     "onex.cmd.omnimemory.crawl-tick.v1":
@@ -113,12 +121,20 @@ event_bus:
       schema_ref: "omnimemory.models.crawl.model_document_indexed_event.ModelDocumentIndexedEvent"
       description: "Document indexed event."
 
+    "onex.evt.omnimarket.content-discovered.v1":
+      schema_ref: "omnimarket.nodes.node_filesystem_crawler_effect.models.model_content_discovered_event.ModelContentDiscoveredEvent"
+      description: "Content discovered event from content-type-aware crawl."
+
 # === HANDLER ROUTING ===
 handler_routing:
   handlers:
     - operation: "crawl_tick"
       handler_class: "HandlerFilesystemCrawler"
       handler_module: "omnimarket.nodes.node_filesystem_crawler_effect.handlers.handler_filesystem_crawler"
+
+    - operation: "crawl_filesystem"
+      handler_class: "HandlerCrawlFilesystem"
+      handler_module: "omnimarket.nodes.node_filesystem_crawler_effect.handlers.handler_crawl_filesystem"
 
 # === DEPENDENCIES ===
 dependencies:
