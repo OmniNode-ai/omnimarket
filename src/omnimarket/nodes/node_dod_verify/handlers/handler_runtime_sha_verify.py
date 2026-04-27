@@ -55,14 +55,19 @@ class HandlerRuntimeShaVerify:
     ModelDodReceipt. No side effects beyond the SSH call.
     """
 
+    _SCHEMA_VERSION = "1.0.0"
+    _VERIFIER = "foreground-runtime-sha-verifier"
+
     def handle(self, request: ModelRuntimeShaVerifyRequest) -> ModelDodReceipt:
         """Run the SHA probe and return a PASS or FAIL receipt."""
         run_timestamp = datetime.now(tz=UTC)
+        probe_cmd = self._probe_command(request)
         try:
             deployed_sha = self._probe_deployed_sha(request)
         except Exception as exc:
-            return self._error_receipt(request, run_timestamp, str(exc))
+            return self._error_receipt(request, run_timestamp, probe_cmd, str(exc))
 
+        probe_stdout = deployed_sha + "\n"
         match = deployed_sha.lower() == request.merge_sha.lower()
         output = ModelRuntimeShaMatchOutput(
             runtime_host=request.runtime_host,
@@ -72,14 +77,18 @@ class HandlerRuntimeShaVerify:
         )
         status = EnumReceiptStatus.PASS if match else EnumReceiptStatus.FAIL
         return ModelDodReceipt(
+            schema_version=self._SCHEMA_VERSION,
             ticket_id=request.ticket_id,
             evidence_item_id=request.evidence_item_id,
             check_type=CHECK_TYPE_RUNTIME_SHA_MATCH,
-            check_value=self._probe_command(request),
+            check_value=probe_cmd,
             status=status,
             run_timestamp=run_timestamp,
             commit_sha=deployed_sha,
             runner=request.runner,
+            verifier=self._VERIFIER,
+            probe_command=probe_cmd,
+            probe_stdout=probe_stdout,
             actual_output=output.model_dump_json(),
             exit_code=0 if match else 1,
             pr_number=request.pr_number,
@@ -141,6 +150,7 @@ class HandlerRuntimeShaVerify:
         self,
         request: ModelRuntimeShaVerifyRequest,
         run_timestamp: datetime,
+        probe_cmd: str,
         error_msg: str,
     ) -> ModelDodReceipt:
         error_output = json.dumps(
@@ -153,14 +163,18 @@ class HandlerRuntimeShaVerify:
             }
         )
         return ModelDodReceipt(
+            schema_version=self._SCHEMA_VERSION,
             ticket_id=request.ticket_id,
             evidence_item_id=request.evidence_item_id,
             check_type=CHECK_TYPE_RUNTIME_SHA_MATCH,
-            check_value=self._probe_command(request),
+            check_value=probe_cmd,
             status=EnumReceiptStatus.FAIL,
             run_timestamp=run_timestamp,
             commit_sha="0" * 7,
             runner=request.runner,
+            verifier=self._VERIFIER,
+            probe_command=probe_cmd,
+            probe_stdout="",
             actual_output=error_output,
             exit_code=1,
             pr_number=request.pr_number,
