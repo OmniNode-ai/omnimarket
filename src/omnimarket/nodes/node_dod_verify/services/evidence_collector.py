@@ -261,12 +261,83 @@ class EvidenceCollector:
             message="; ".join(messages) if messages else None,
         )
 
+    def _resolve_cwd(
+        self,
+        cwd_template: str,
+        ticket_id: str,
+    ) -> tuple[str | None, str | None]:
+        """Resolve a ``cwd`` template string into an absolute, contained path.
+
+        Supports the ``${OMNI_HOME}``, ``${PR_NUMBER}``, ``${REPO}``, and
+        ``${TICKET_ID}`` template tokens introduced by OMN-10078 (mirroring
+        the OMN-10086 substitution pattern from the contract-compliance
+        runner). Returns ``(resolved_path, None)`` on success or
+        ``(None, error_message)`` on failure.
+
+        Containment rules (defence-in-depth — the model itself does not
+        validate `cwd`):
+
+        - ``..`` segments in the raw input are rejected up-front
+        - the resolved path must be relative to ``OMNI_HOME`` (when set);
+          paths that escape via symlinks are rejected after ``Path.resolve()``
+        - the resolved path must exist and be a directory
+        """
+        if ".." in Path(cwd_template).parts:
+            return None, f"cwd path traversal not allowed: {cwd_template}"
+
+        # Build the substitution table. Missing tokens leave the literal
+        # ``${TOKEN}`` in place — the existence/containment check below is
+        # what flags a bad cwd.
+        substitutions = {
+            "OMNI_HOME": os.environ.get("OMNI_HOME", ""),
+            "PR_NUMBER": os.environ.get("PR_NUMBER", ""),
+            "REPO": os.environ.get("REPO", ""),
+            "TICKET_ID": ticket_id,
+        }
+        rendered = cwd_template
+        for token, value in substitutions.items():
+            rendered = rendered.replace(f"${{{token}}}", value)
+        # Also support bare $TOKEN form via os.path.expandvars for any
+        # tokens we did not template explicitly (e.g. user-set vars).
+        rendered = os.path.expandvars(rendered)
+
+        if "${" in rendered or rendered == "":
+            return None, (
+                f"cwd contains unresolved template tokens or is empty after "
+                f"substitution: {cwd_template!r} -> {rendered!r}"
+            )
+
+        candidate = Path(rendered).resolve()
+
+        omni_home = os.environ.get("OMNI_HOME")
+        if omni_home:
+            base = Path(omni_home).resolve()
+            if not candidate.is_relative_to(base):
+                return None, (
+                    f"cwd escapes OMNI_HOME containment: {cwd_template!r} "
+                    f"resolved to {candidate}"
+                )
+
+        if not candidate.exists():
+            return None, f"cwd does not exist: {cwd_template!r} -> {candidate}"
+        if not candidate.is_dir():
+            return None, f"cwd is not a directory: {candidate}"
+
+        return str(candidate), None
+
     def _run_command_check(
         self,
         check: dict[str, Any],
         ticket_id: str,
     ) -> tuple[bool, str]:
-        """Execute a command-type check. Returns (success, message)."""
+        """Execute a command-type check. Returns (success, message).
+
+        OMN-10078: when ``check["cwd"]`` is set, the runner expands its
+        ``${OMNI_HOME}/${PR_NUMBER}/${REPO}/${TICKET_ID}`` template tokens,
+        containment-checks the resolved path against ``OMNI_HOME``, and
+        passes ``cwd=`` to ``subprocess.run``. When ``cwd`` is absent the
+        runner inherits its caller's working directory (legacy behaviour).
+        """
         # Prefer explicit `command` field; fall back to `check_value`
         cmd_str = check.get("command") or check.get("check_value", "")
         if not cmd_str:
@@ -275,7 +346,21 @@ class EvidenceCollector:
         # Template substitution for common placeholders (escaped to prevent shell injection)
         cmd_str = cmd_str.replace("{ticket_id}", shlex.quote(ticket_id))
 
-        logger.info("Running command check: %s", cmd_str)
+        # OMN-10078: resolve optional cwd via template-substitution +
+        # containment-check pipeline. None => inherit caller cwd.
+        run_cwd: str | None = None
+        cwd_template = check.get("cwd")
+        if cwd_template is not None:
+            if not isinstance(cwd_template, str):
+                return False, f"cwd must be a string, got {type(cwd_template).__name__}"
+            resolved, err = self._resolve_cwd(cwd_template, ticket_id)
+            if err is not None:
+                return False, err
+            run_cwd = resolved
+
+        logger.info(
+            "Running command check (cwd=%s): %s", run_cwd or "<inherit>", cmd_str
+        )
 
         start = time.monotonic()
         try:
@@ -285,6 +370,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 timeout=self._timeout,
+                cwd=run_cwd,
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
         except subprocess.TimeoutExpired:

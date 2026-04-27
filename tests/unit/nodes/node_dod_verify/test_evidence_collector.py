@@ -636,6 +636,357 @@ class TestEvidenceCollector:
 
 
 @pytest.mark.unit
+class TestEvidenceCollectorCwd:
+    """OMN-10078: ``cwd`` field on a command/test_passes check.
+
+    Replaces the brittle ``cd ${OMNI_HOME}/<repo> && `` shell-prefix fix that
+    PR #448 (OMN-10049) introduced. The runner must:
+
+    - default to inherited cwd when the field is absent (backwards compat)
+    - expand ``${OMNI_HOME}``, ``${PR_NUMBER}``, ``${REPO}``, ``${TICKET_ID}``
+      template tokens before resolution
+    - reject ``..`` segments and paths that escape ``OMNI_HOME`` after symlink
+      resolution
+    - actually pass ``cwd=`` to subprocess.run (proven via ``pwd`` stdout)
+    """
+
+    def test_cwd_absent_inherits_caller_cwd(self, tmp_path: Path) -> None:
+        """When cwd is omitted, behaviour matches the legacy inherited-cwd path."""
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "No cwd declared",
+                    "checks": [{"check_type": "command", "command": "true"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    def test_cwd_runs_command_in_specified_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A literal cwd is passed to subprocess.run and pwd reflects it."""
+        target = tmp_path / "subdir"
+        target.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Runs in subdir",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": str(target),
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        # ``pwd`` resolves the cwd target; the receipt message includes the
+        # truncated stdout via the OK message format.
+        # Use Path.resolve() because macOS routes /private/var symlinks.
+        expected = str(Path(target).resolve())
+        assert expected in (results[0].message or "")
+
+    def test_cwd_omni_home_template_expanded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``${OMNI_HOME}`` in cwd is substituted before resolution."""
+        sub = tmp_path / "repo"
+        sub.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "OMNI_HOME templated cwd",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": "${OMNI_HOME}/repo",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert str(Path(sub).resolve()) in (results[0].message or "")
+
+    def test_cwd_ticket_id_token_expanded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``${TICKET_ID}`` is substituted with the active ticket id."""
+        sub = tmp_path / "OMN-TEST"
+        sub.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "TICKET_ID templated cwd",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": "${OMNI_HOME}/${TICKET_ID}",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert str(Path(sub).resolve()) in (results[0].message or "")
+
+    def test_cwd_pr_number_and_repo_tokens_expanded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mirrors OMN-10086: PR_NUMBER and REPO env vars feed cwd substitution."""
+        sub = tmp_path / "456" / "OmniNode-ai" / "omnibase_core"
+        sub.mkdir(parents=True)
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        monkeypatch.setenv("PR_NUMBER", "456")
+        monkeypatch.setenv("REPO", "OmniNode-ai/omnibase_core")
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "PR_NUMBER + REPO templated cwd",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": "${OMNI_HOME}/${PR_NUMBER}/${REPO}",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert str(Path(sub).resolve()) in (results[0].message or "")
+
+    def test_cwd_traversal_segments_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``..`` segments in raw cwd are rejected before any substitution."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Traversal cwd",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": "${OMNI_HOME}/../etc",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "traversal" in (results[0].message or "").lower()
+
+    def test_cwd_outside_omni_home_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Resolved cwd outside OMNI_HOME is rejected as a containment violation."""
+        outside = tmp_path.parent / "outside-cwd"
+        outside.mkdir(exist_ok=True)
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Absolute cwd outside base",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": str(outside),
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert (
+            "containment" in (results[0].message or "").lower()
+            or "escapes" in (results[0].message or "").lower()
+        )
+
+    def test_cwd_unresolved_template_token_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An undefined env-var template (e.g. ${REPO} when REPO is unset) fails fast."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        monkeypatch.delenv("REPO", raising=False)
+        monkeypatch.delenv("PR_NUMBER", raising=False)
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Unset REPO token",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": "${OMNI_HOME}/${REPO_UNSET_TOKEN}",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        # ${REPO_UNSET_TOKEN} is not in the substitution table and is not a
+        # set env var; expandvars leaves it literal => unresolved-token path.
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        msg = (results[0].message or "").lower()
+        assert "unresolved" in msg or "does not exist" in msg
+
+    def test_cwd_missing_directory_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cwd that resolves to a non-existent path fails with a clear message."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Missing cwd dir",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": "${OMNI_HOME}/nope-does-not-exist",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "does not exist" in (results[0].message or "").lower()
+
+    def test_cwd_non_string_value_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cwd that isn't a string (e.g. dict) fails with a type error."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "cwd as dict",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": "pwd",
+                            "cwd": {"not": "a string"},
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "must be a string" in (results[0].message or "").lower()
+
+    def test_cwd_works_for_test_passes_check_type(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """test_passes shares the command runner; cwd applies to it too."""
+        sub = tmp_path / "tests-dir"
+        sub.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "test_passes with cwd",
+                    "checks": [
+                        {
+                            "check_type": "test_passes",
+                            "check_value": "pwd",
+                            "cwd": str(sub),
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert str(Path(sub).resolve()) in (results[0].message or "")
+
+
+@pytest.mark.unit
 class TestHandlerWithCollector:
     """Integration tests: handler auto-collects evidence when not provided."""
 
