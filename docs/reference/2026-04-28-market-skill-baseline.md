@@ -1,20 +1,20 @@
 # Market Skill Baseline
 
-Captured at: `2026-04-28T17:43:44.325005+00:00`
+Captured at: `2026-04-28T18:16:05.511859+00:00`
 Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket`
 
 ## Summary
 
-- Working: `5`
-- Degraded: `2`
+- Working: `7`
+- Degraded: `0`
 - Failing: `0`
 
 ## Inventory
 
 | Skill | Node | Contract | CLI smoke | Focused tests | Status |
 |-------|------|----------|-----------|---------------|--------|
-| aislop_sweep | node_aislop_sweep | aislop_sweep | pass | pass | degraded |
-| pr_lifecycle_orchestrator | node_pr_lifecycle_orchestrator | pr_lifecycle_orchestrator | pass | pass | degraded |
+| aislop_sweep | node_aislop_sweep | aislop_sweep | pass | pass | working |
+| pr_lifecycle_orchestrator | node_pr_lifecycle_orchestrator | pr_lifecycle_orchestrator | pass | pass | working |
 | pr_polish | node_pr_polish | pr_polish | pass | pass | working |
 | local_review | node_local_review | local_review | pass | pass | working |
 | coderabbit_triage | node_coderabbit_triage | coderabbit_triage | pass | pass | working |
@@ -30,12 +30,10 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
 - Node type: `compute`
 - Timeout: `120000`
 - Terminal event: `onex.evt.omnimarket.aislop-sweep-completed.v1`
-- Inputs: `repos, dry_run`
-- Contract/model input match: `False`
-- CLI smoke status: `degraded`
+- Inputs: `target_dirs, checks, dry_run, severity_threshold`
+- Contract/model input match: `True`
+- CLI smoke status: `working`
 - CLI smoke summary: `{"dry_run": true, "findings_count": 115, "repos_scanned": 1, "status": "findings"}`
-- Contract-only inputs: `repos`
-- Model-only inputs: `checks, severity_threshold, target_dirs`
 - CLI smoke notes: `findings are expected to exit non-zero; this still proves the node ran`
 - Focused tests: `pass`
 - Focused test targets: `tests/test_golden_chain_aislop_sweep.py`
@@ -48,7 +46,7 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-13 passed, 2 warnings in 0.07s`
+13 passed, 2 warnings in 0.14s`
 
 ### pr_lifecycle_orchestrator
 
@@ -57,11 +55,10 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
 - Node type: `orchestrator`
 - Timeout: `300000`
 - Terminal event: `onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1`
-- Inputs: `correlation_id, dry_run, inventory_only, fix_only, merge_only, repos, enable_auto_rebase, verify, verify_timeout_seconds`
-- Contract/model input match: `False`
-- CLI smoke status: `degraded`
+- Inputs: `correlation_id, run_id, dry_run, inventory_only, fix_only, merge_only, repos, max_parallel_polish, enable_auto_rebase, use_dag_ordering, enable_trivial_comment_resolution, enable_admin_merge_fallback, admin_fallback_threshold_minutes, verify, verify_timeout_seconds`
+- Contract/model input match: `True`
+- CLI smoke status: `working`
 - CLI smoke summary: `{"final_state": "COMPLETE", "prs_fixed": 0, "prs_inventoried": 0, "prs_merged": 0, "prs_verified": 0}`
-- Model-only inputs: `admin_fallback_threshold_minutes, enable_admin_merge_fallback, enable_trivial_comment_resolution, max_parallel_polish, run_id, use_dag_ordering`
 - Focused tests: `pass`
 - Focused test targets: `tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py, tests/test_golden_chain_pr_lifecycle_orchestrator.py`
 - Focused test output: `...............................                                          [100%]
@@ -73,7 +70,7 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-31 passed, 2 warnings in 1.41s`
+31 passed, 2 warnings in 1.52s`
 
 ### pr_polish
 
@@ -97,7 +94,7 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-9 passed, 2 warnings in 0.03s`
+9 passed, 2 warnings in 0.04s`
 
 ### local_review
 
@@ -121,7 +118,7 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-9 passed, 2 warnings in 0.03s`
+9 passed, 2 warnings in 0.04s`
 
 ### coderabbit_triage
 
@@ -145,7 +142,7 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-28 passed, 2 warnings in 1.11s`
+28 passed, 2 warnings in 1.27s`
 
 ### session_bootstrap
 
@@ -181,7 +178,7 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
 - Inputs: `correlation_id, session_id, mode, dry_run, skip_health, standing_orders_path, state_dir, phase`
 - Contract/model input match: `True`
 - CLI smoke status: `working`
-- CLI smoke summary: `{"dispatch_queue_count": 0, "dry_run": true, "session_id": "sess-20260428-1743", "status": "complete"}`
+- CLI smoke summary: `{"dispatch_queue_count": 0, "dry_run": true, "session_id": "sess-20260428-1815", "status": "complete"}`
 - CLI smoke notes: `smoke intentionally bypasses health probes to isolate the market-owned CLI path`
 - CLI smoke stderr: `WARNING omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator: skip_health=True — bypassing Phase 1 health gate (emergency only)`
 - Focused tests: `pass`
@@ -195,4 +192,4 @@ Repo root: `/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/om
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-34 passed, 2 warnings in 10.57s`
+34 passed, 2 warnings in 10.64s`
