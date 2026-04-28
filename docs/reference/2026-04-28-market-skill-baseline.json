@@ -1,0 +1,477 @@
+{
+  "captured_at": "2026-04-28T17:43:44.325005Z",
+  "repo_root": "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket",
+  "skills": [
+    {
+      "skill_name": "aislop_sweep",
+      "contract": {
+        "contract_name": "aislop_sweep",
+        "node_name": "node_aislop_sweep",
+        "node_type": "compute",
+        "timeout_ms": 120000,
+        "terminal_event": "onex.evt.omnimarket.aislop-sweep-completed.v1",
+        "inputs": [
+          "repos",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": false,
+        "contract_only_fields": [
+          "repos"
+        ],
+        "model_only_fields": [
+          "checks",
+          "severity_threshold",
+          "target_dirs"
+        ]
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "omnimarket.nodes.node_aislop_sweep",
+          "--repos",
+          "omnimarket",
+          "--dry-run",
+          "--severity-threshold",
+          "CRITICAL"
+        ],
+        "returncode": 1,
+        "summary": {
+          "status": "findings",
+          "repos_scanned": 1,
+          "findings_count": 115,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": [
+          "findings are expected to exit non-zero; this still proves the node ran"
+        ]
+      },
+      "pytest": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_aislop_sweep.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_aislop_sweep.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          ".............                                                            [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n13 passed, 2 warnings in 0.07s"
+        ]
+      },
+      "overall_status": "degraded"
+    },
+    {
+      "skill_name": "pr_lifecycle_orchestrator",
+      "contract": {
+        "contract_name": "pr_lifecycle_orchestrator",
+        "node_name": "node_pr_lifecycle_orchestrator",
+        "node_type": "orchestrator",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
+        "inputs": [
+          "correlation_id",
+          "dry_run",
+          "inventory_only",
+          "fix_only",
+          "merge_only",
+          "repos",
+          "enable_auto_rebase",
+          "verify",
+          "verify_timeout_seconds"
+        ]
+      },
+      "input_drift": {
+        "matches": false,
+        "contract_only_fields": [],
+        "model_only_fields": [
+          "admin_fallback_threshold_minutes",
+          "enable_admin_merge_fallback",
+          "enable_trivial_comment_resolution",
+          "max_parallel_polish",
+          "run_id",
+          "use_dag_ordering"
+        ]
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "omnimarket.nodes.node_pr_lifecycle_orchestrator",
+          "--input",
+          "{\"payload\":{\"correlation_id\":\"aecd3a4c-87c9-4546-bab3-37f0181831f9\",\"run_id\":\"market-skill-baseline\",\"dry_run\":true,\"inventory_only\":true,\"fix_only\":false,\"merge_only\":false,\"repos\":\"\",\"max_parallel_polish\":20,\"enable_auto_rebase\":true,\"use_dag_ordering\":true,\"enable_trivial_comment_resolution\":true,\"enable_admin_merge_fallback\":true,\"admin_fallback_threshold_minutes\":30,\"verify\":false,\"verify_timeout_seconds\":30},\"envelope_id\":\"4a3c29d2-1bb4-4695-a335-99ee0d0e74fe\",\"envelope_timestamp\":\"2026-04-28T17:43:04.455658Z\",\"correlation_id\":\"aecd3a4c-87c9-4546-bab3-37f0181831f9\",\"source_tool\":null,\"target_tool\":null,\"metadata\":{\"trace_id\":null,\"span_id\":null,\"parent_span_id\":null,\"request_id\":null,\"headers\":{},\"tags\":{}},\"security_context\":null,\"event_type\":\"omnimarket.pr-lifecycle-orchestrator-start\",\"payload_type\":null,\"payload_schema_version\":null,\"priority\":5,\"timeout_seconds\":null,\"retry_count\":0,\"request_id\":null,\"trace_id\":null,\"span_id\":null,\"onex_version\":{\"major\":1,\"minor\":0,\"patch\":0,\"prerelease\":null,\"build\":null},\"envelope_version\":{\"major\":2,\"minor\":1,\"patch\":0,\"prerelease\":null,\"build\":null}}"
+        ],
+        "returncode": 0,
+        "summary": {
+          "final_state": "COMPLETE",
+          "prs_inventoried": 0,
+          "prs_merged": 0,
+          "prs_fixed": 0,
+          "prs_verified": 0
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "pytest",
+          "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py",
+          "tests/test_golden_chain_pr_lifecycle_orchestrator.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py",
+            "tests/test_golden_chain_pr_lifecycle_orchestrator.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "...............................                                          [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n31 passed, 2 warnings in 1.41s"
+        ]
+      },
+      "overall_status": "degraded"
+    },
+    {
+      "skill_name": "pr_polish",
+      "contract": {
+        "contract_name": "pr_polish",
+        "node_name": "node_pr_polish",
+        "node_type": "compute",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.pr-polish-completed.v1",
+        "inputs": [
+          "pr_number",
+          "skip_conflicts",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "omnimarket.nodes.node_pr_polish",
+          "--dry-run"
+        ],
+        "returncode": 0,
+        "summary": {
+          "current_phase": "init",
+          "skip_conflicts": false,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_pr_polish.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_pr_polish.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          ".........                                                                [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n9 passed, 2 warnings in 0.03s"
+        ]
+      },
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "local_review",
+      "contract": {
+        "contract_name": "local_review",
+        "node_name": "node_local_review",
+        "node_type": "compute",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.local-review-completed.v1",
+        "inputs": [
+          "max_iterations",
+          "required_clean_runs",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "omnimarket.nodes.node_local_review",
+          "--dry-run"
+        ],
+        "returncode": 0,
+        "summary": {
+          "current_phase": "init",
+          "max_iterations": 10,
+          "required_clean_runs": 2,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_local_review.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_local_review.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          ".........                                                                [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n9 passed, 2 warnings in 0.03s"
+        ]
+      },
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "coderabbit_triage",
+      "contract": {
+        "contract_name": "coderabbit_triage",
+        "node_name": "node_coderabbit_triage",
+        "node_type": "compute",
+        "timeout_ms": 120000,
+        "terminal_event": "onex.evt.omnimarket.coderabbit-triage-completed.v1",
+        "inputs": [
+          "repo",
+          "pr_number",
+          "correlation_id",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "omnimarket.nodes.node_coderabbit_triage",
+          "--repo",
+          "OmniNode-ai/omnimarket",
+          "--pr",
+          "1",
+          "--dry-run"
+        ],
+        "returncode": 0,
+        "summary": {
+          "total_threads": 1,
+          "blocking_count": 0,
+          "suggestion_count": 1,
+          "unknown_count": 0,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_coderabbit_triage.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_coderabbit_triage.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "............................                                             [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n28 passed, 2 warnings in 1.11s"
+        ]
+      },
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "session_bootstrap",
+      "contract": {
+        "contract_name": "session_bootstrap",
+        "node_name": "node_session_bootstrap",
+        "node_type": "orchestrator",
+        "timeout_ms": 30000,
+        "terminal_event": "onex.evt.omnimarket.session-bootstrap-completed.v2",
+        "inputs": [
+          "session_id",
+          "session_mode",
+          "active_sprint_id",
+          "model_routing_preference",
+          "contract",
+          "state_dir",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "omnimarket.nodes.node_session_bootstrap",
+          "--dry-run",
+          "--state-dir",
+          "/tmp/market-skill-baseline-bootstrap"
+        ],
+        "returncode": 0,
+        "summary": {
+          "status": "ready",
+          "crons_registered_count": 4,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_session_bootstrap.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_session_bootstrap.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "........................                                                 [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n24 passed, 2 warnings in 0.04s"
+        ]
+      },
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "session_orchestrator",
+      "contract": {
+        "contract_name": "session_orchestrator",
+        "node_name": "node_session_orchestrator",
+        "node_type": "orchestrator",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.session-orchestrator-completed.v1",
+        "inputs": [
+          "correlation_id",
+          "session_id",
+          "mode",
+          "dry_run",
+          "skip_health",
+          "standing_orders_path",
+          "state_dir",
+          "phase"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "omnimarket.nodes.node_session_orchestrator",
+          "--skip-health",
+          "--phase",
+          "1",
+          "--dry-run",
+          "--output-json"
+        ],
+        "returncode": 0,
+        "summary": {
+          "status": "complete",
+          "session_id": "sess-20260428-1743",
+          "dry_run": true,
+          "dispatch_queue_count": 0
+        },
+        "stderr": "WARNING omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator: skip_health=True \u2014 bypassing Phase 1 health gate (emergency only)",
+        "notes": [
+          "smoke intentionally bypasses health probes to isolate the market-owned CLI path"
+        ]
+      },
+      "pytest": {
+        "passed": true,
+        "command": [
+          "/Users/jonah/Code/omni_home/omni_worktrees/market-skills-baseline/omnimarket/.venv/bin/python3",
+          "-m",
+          "pytest",
+          "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py",
+          "tests/unit/test_handler_session_orchestrator_graphql.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py",
+            "tests/unit/test_handler_session_orchestrator_graphql.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "..................................                                       [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n34 passed, 2 warnings in 10.57s"
+        ]
+      },
+      "overall_status": "working"
+    }
+  ]
+}
