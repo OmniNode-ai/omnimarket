@@ -21,15 +21,26 @@ descriptor:
   timeout_ms: 120000
 
 inputs:
-  repos:
+  target_dirs:
     type: list[str]
-    description: "List of repository paths to scan"
-    required: true
+    description: "List of repository directories to scan"
+    required: false
+    default: []
+  checks:
+    type: list[str] | null
+    description: "Optional sweep check categories to run; null means all checks"
+    required: false
+    default: null
   dry_run:
     type: bool
     description: "If true, report findings without creating tickets"
     required: false
     default: false
+  severity_threshold:
+    type: str
+    description: "Minimum severity threshold to report"
+    required: false
+    default: "WARNING"
 
 outputs:
   findings:

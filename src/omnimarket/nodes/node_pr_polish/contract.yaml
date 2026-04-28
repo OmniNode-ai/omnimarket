@@ -22,13 +22,56 @@ descriptor:
   timeout_ms: 300000
 
 inputs:
+  repo:
+    type: str
+    description: "GitHub repo slug (owner/repo) for live polish"
+    required: false
   pr_number:
     type: int
     description: "PR number to polish"
     required: false
+  ticket_id:
+    type: str
+    description: "Linear ticket ID for traceability"
+    required: false
+  required_clean_runs:
+    type: int
+    description: "Consecutive clean local-review passes required before done"
+    required: false
+    default: 4
+  max_iterations:
+    type: int
+    description: "Maximum local-review cycles before stopping"
+    required: false
+    default: 10
   skip_conflicts:
     type: bool
     description: "Skip merge conflict resolution phase"
+    required: false
+    default: false
+  skip_pr_review:
+    type: bool
+    description: "Skip PR review comments and CI repair phase"
+    required: false
+    default: false
+  skip_local_review:
+    type: bool
+    description: "Skip local review phase"
+    required: false
+    default: false
+  no_ci:
+    type: bool
+    description: "Skip CI fetch in the PR review phase"
+    required: false
+    default: false
+  no_push:
+    type: bool
+    description: "Apply fixes locally without pushing"
+    required: false
+    default: false
+  no_automerge:
+    type: bool
+    description: "Skip enabling GitHub automerge at the end"
     required: false
     default: false
   dry_run:
@@ -36,6 +79,14 @@ inputs:
     description: "Run without side effects"
     required: false
     default: false
+  worktree_path:
+    type: str
+    description: "Explicit worktree path override for live polish"
+    required: false
+  run_dir:
+    type: str
+    description: "Explicit state directory for breadcrumbs and result.json"
+    required: false
 
 outputs:
   final_phase:
