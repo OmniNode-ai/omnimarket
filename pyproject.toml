@@ -46,6 +46,7 @@ dependencies = [
     "radon>=6.0.1",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.3.0",
+    "docker>=7.0.0",
 ]
 
 [project.urls]
