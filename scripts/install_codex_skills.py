@@ -12,12 +12,54 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _default_source_dir() -> Path:
+def _default_repo_source_dir() -> Path:
     return _repo_root() / "plugins" / "onex" / "skills"
+
+
+def _default_codex_home() -> Path:
+    return Path.home() / ".codex"
+
+
+def _default_marketplace_source_dir(codex_home: Path) -> Path:
+    return (
+        codex_home
+        / ".tmp"
+        / "marketplaces"
+        / "omninode-tools"
+        / "plugins"
+        / "onex"
+        / "skills"
+    )
 
 
 def _iter_skill_dirs(source_dir: Path) -> list[Path]:
     return sorted(path for path in source_dir.iterdir() if path.is_dir())
+
+
+def resolve_source_dir(
+    *,
+    source: str,
+    codex_home: Path,
+    explicit_source_dir: Path | None = None,
+) -> Path:
+    if explicit_source_dir is not None:
+        source_dir = explicit_source_dir.resolve()
+    elif source == "repo":
+        source_dir = _default_repo_source_dir().resolve()
+    elif source == "marketplace":
+        source_dir = _default_marketplace_source_dir(codex_home).resolve()
+    else:
+        marketplace_dir = _default_marketplace_source_dir(codex_home)
+        source_dir = (
+            marketplace_dir.resolve()
+            if marketplace_dir.is_dir()
+            else _default_repo_source_dir().resolve()
+        )
+
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"skill source directory not found: {source_dir}")
+
+    return source_dir
 
 
 def install_skills(source_dir: Path, dest_dir: Path, force: bool = False) -> list[str]:
@@ -48,16 +90,26 @@ def main() -> None:
         description="Install ONEX Codex skills into ~/.codex/skills via symlinks."
     )
     parser.add_argument(
+        "--source",
+        choices=("auto", "repo", "marketplace"),
+        default="auto",
+        help="Select the skill source. 'auto' prefers marketplace-sync when present.",
+    )
+    parser.add_argument(
+        "--codex-home",
+        type=Path,
+        default=_default_codex_home(),
+        help="Codex home used for marketplace-sync and default install destination",
+    )
+    parser.add_argument(
         "--source-dir",
         type=Path,
-        default=_default_source_dir(),
-        help="Directory containing skill subdirectories",
+        help="Override the skill source directory explicitly",
     )
     parser.add_argument(
         "--dest-dir",
         type=Path,
-        default=Path.home() / ".codex" / "skills",
-        help="Codex skills directory",
+        help="Codex skills directory override",
     )
     parser.add_argument(
         "--force",
@@ -66,7 +118,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    actions = install_skills(args.source_dir, args.dest_dir, force=args.force)
+    source_dir = resolve_source_dir(
+        source=args.source,
+        codex_home=args.codex_home,
+        explicit_source_dir=args.source_dir,
+    )
+    dest_dir = args.dest_dir or (args.codex_home / "skills")
+
+    print(f"source {source_dir}")
+    print(f"dest {dest_dir.resolve()}")
+
+    actions = install_skills(source_dir, dest_dir, force=args.force)
     for line in actions:
         print(line)
 

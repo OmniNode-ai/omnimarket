@@ -5,7 +5,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.install_codex_skills import install_skills
+import pytest
+
+from scripts.install_codex_skills import install_skills, resolve_source_dir
 
 
 def test_install_codex_skills_symlinks_each_skill(tmp_path: Path) -> None:
@@ -39,3 +41,42 @@ def test_install_codex_skills_skips_existing_without_force(tmp_path: Path) -> No
 
     assert actions == ["skip session-bootstrap: destination exists"]
     assert existing.exists()
+
+
+def test_resolve_source_dir_prefers_marketplace_when_present(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    marketplace_dir = (
+        codex_home
+        / ".tmp"
+        / "marketplaces"
+        / "omninode-tools"
+        / "plugins"
+        / "onex"
+        / "skills"
+    )
+    marketplace_dir.mkdir(parents=True)
+
+    resolved = resolve_source_dir(source="auto", codex_home=codex_home)
+
+    assert resolved == marketplace_dir.resolve()
+
+
+def test_resolve_source_dir_uses_explicit_source_dir(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    explicit_source = tmp_path / "custom-skills"
+    explicit_source.mkdir(parents=True)
+
+    resolved = resolve_source_dir(
+        source="marketplace",
+        codex_home=codex_home,
+        explicit_source_dir=explicit_source,
+    )
+
+    assert resolved == explicit_source.resolve()
+
+
+def test_resolve_source_dir_marketplace_requires_synced_tree(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+
+    with pytest.raises(FileNotFoundError, match="skill source directory not found"):
+        resolve_source_dir(source="marketplace", codex_home=codex_home)

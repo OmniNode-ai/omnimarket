@@ -55,10 +55,19 @@ In isolated `CODEX_HOME` testing, the ONEX skills appeared in
 Install the current ONEX skills with:
 
 ```bash
-uv run python scripts/install_codex_skills.py --force
+uv run python scripts/install_codex_skills.py --source auto --force
 ```
 
-This creates symlinks from `plugins/onex/skills/*` into `~/.codex/skills/`.
+This creates symlinks into `~/.codex/skills/`, preferring the synced Git
+marketplace tree when it is present and falling back to the repo-local
+`plugins/onex/skills/*` tree otherwise.
+
+To force the marketplace-backed bridge explicitly after `codex plugin
+marketplace add ...`:
+
+```bash
+uv run python scripts/install_codex_skills.py --source marketplace --force
+```
 
 ## Shim responsibilities
 
