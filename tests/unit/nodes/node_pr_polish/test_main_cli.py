@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parents[5]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def _write_executable(path: Path, content: str) -> None:

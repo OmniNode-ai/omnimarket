@@ -63,6 +63,8 @@ def run_live_pr_polish(
             raise RuntimeError("repo is required for live pr_polish execution")
         if command.pr_number is None:
             raise RuntimeError("pr_number is required for live pr_polish execution")
+        if command.required_clean_runs > command.max_iterations:
+            raise RuntimeError("required_clean_runs cannot exceed max_iterations")
 
         worktree = _resolve_worktree_path(command)
         expected_branch = _resolve_pr_head_branch(command.repo, command.pr_number)
@@ -71,6 +73,10 @@ def run_live_pr_polish(
             timeout=15,
         )
         if branch_before != expected_branch:
+            if command.dry_run:
+                raise RuntimeError(
+                    "dry_run requires the worktree to already be on the PR head branch"
+                )
             _run_checked(
                 ["git", "-C", str(worktree), "checkout", expected_branch],
                 timeout=30,
@@ -84,7 +90,8 @@ def run_live_pr_polish(
                 f"worktree branch mismatch: expected {expected_branch!r}, got {branch_after!r}"
             )
 
-        _run_checked(["pre-commit", "install"], cwd=worktree, timeout=60)
+        if not command.dry_run:
+            _run_checked(["pre-commit", "install"], cwd=worktree, timeout=60)
         skill_cmd = _build_skill_command(command)
         _run_skill(
             claude_bin=claude_bin or os.environ.get("CLAUDE_BIN", "claude"),
@@ -148,8 +155,10 @@ def _resolve_worktree_path(command: ModelPrPolishStartCommand) -> Path:
         if not path.exists():
             raise RuntimeError(f"worktree_path does not exist: {path}")
         return path
-    assert command.repo is not None
-    assert command.pr_number is not None
+    if command.repo is None:
+        raise RuntimeError("repo is required to resolve worktree path")
+    if command.pr_number is None:
+        raise RuntimeError("pr_number is required to resolve worktree path")
     expected_branch = _resolve_pr_head_branch(command.repo, command.pr_number)
     output = _run_checked(
         ["git", "worktree", "list", "--porcelain"],
