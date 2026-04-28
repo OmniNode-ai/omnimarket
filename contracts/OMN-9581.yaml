@@ -5,7 +5,7 @@ summary: "Real CheckTarget classes for node_process_watchdog Phase 2"
 is_seam_ticket: false
 interface_change: false
 interfaces_touched:
-  - "src/omnimarket/nodes/node_process_watchdog/targets/"
+  - "public_api"
 evidence_requirements:
   - kind: "ci"
     description: "omnimarket PR #439 checks pass (lint, typecheck, test, deploy-gate)"
