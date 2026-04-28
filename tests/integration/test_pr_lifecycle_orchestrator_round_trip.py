@@ -110,65 +110,65 @@ async def test_event_bus_round_trip_reaches_terminal_topic(
 ) -> None:
     """The subscribed command topic must dispatch the orchestrator and publish completion."""
     await integration_event_bus.start()
+    try:
+        pr = PrRecord(
+            pr_number=201,
+            repo="OmniNode-ai/omnimarket",
+            checks_status="failure",
+        )
+        triage = TriageRecord(
+            pr_number=201,
+            repo="OmniNode-ai/omnimarket",
+            category=EnumPrCategory.RED,
+        )
+        orchestrator = _TestOrchestrator(
+            _mock_prs=(pr,),
+            inventory=_MockInventory((pr,)),
+            triage=_MockTriage((triage,)),
+            reducer=_MockReducer(
+                (
+                    ReducerIntent(
+                        pr_number=201,
+                        repo="OmniNode-ai/omnimarket",
+                        intent=EnumReducerIntent.FIX,
+                    ),
+                )
+            ),
+            fix=_MockFix(),
+        )
+        adapter = HandlerBusAdapter(
+            handler=_TypedHandlerWrapper(orchestrator),
+            handler_name="pr-lifecycle-orchestrator",
+            input_model_cls=ModelPrLifecycleStartCommand,
+            output_topic=TOPIC_COMPLETED,
+            bus=integration_event_bus,
+        )
 
-    pr = PrRecord(
-        pr_number=201,
-        repo="OmniNode-ai/omnimarket",
-        checks_status="failure",
-    )
-    triage = TriageRecord(
-        pr_number=201,
-        repo="OmniNode-ai/omnimarket",
-        category=EnumPrCategory.RED,
-    )
-    orchestrator = _TestOrchestrator(
-        _mock_prs=(pr,),
-        inventory=_MockInventory((pr,)),
-        triage=_MockTriage((triage,)),
-        reducer=_MockReducer(
-            (
-                ReducerIntent(
-                    pr_number=201,
-                    repo="OmniNode-ai/omnimarket",
-                    intent=EnumReducerIntent.FIX,
-                ),
-            )
-        ),
-        fix=_MockFix(),
-    )
-    adapter = HandlerBusAdapter(
-        handler=_TypedHandlerWrapper(orchestrator),
-        handler_name="pr-lifecycle-orchestrator",
-        input_model_cls=ModelPrLifecycleStartCommand,
-        output_topic=TOPIC_COMPLETED,
-        bus=integration_event_bus,
-    )
+        await integration_event_bus.subscribe(
+            _START_TOPIC,
+            on_message=adapter.on_message,
+            group_id="omnimarket-pr-lifecycle-orchestrator-test",
+        )
 
-    await integration_event_bus.subscribe(
-        _START_TOPIC,
-        on_message=adapter.on_message,
-        group_id="omnimarket-pr-lifecycle-orchestrator-test",
-    )
+        command = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="omn-10182-inmemory",
+            fix_only=True,
+        )
+        await integration_event_bus.publish(
+            _START_TOPIC,
+            key=None,
+            value=command.model_dump_json().encode("utf-8"),
+        )
 
-    command = ModelPrLifecycleStartCommand(
-        correlation_id=uuid4(),
-        run_id="omn-10182-inmemory",
-        fix_only=True,
-    )
-    await integration_event_bus.publish(
-        _START_TOPIC,
-        key=None,
-        value=command.model_dump_json().encode("utf-8"),
-    )
+        history = await integration_event_bus.get_event_history(topic=TOPIC_COMPLETED)
+        assert len(history) == 1, f"expected 1 terminal event on {TOPIC_COMPLETED}"
 
-    history = await integration_event_bus.get_event_history(topic=TOPIC_COMPLETED)
-    assert len(history) == 1, f"expected 1 terminal event on {TOPIC_COMPLETED}"
-
-    payload = json.loads(history[0].value)
-    assert payload["correlation_id"] == str(command.correlation_id)
-    assert payload["final_state"] == "COMPLETE"
-    assert payload["prs_inventoried"] == 1
-    assert payload["prs_fixed"] == 1
-    assert payload["prs_merged"] == 0
-
-    await integration_event_bus.close()
+        payload = json.loads(history[0].value)
+        assert payload["correlation_id"] == str(command.correlation_id)
+        assert payload["final_state"] == "COMPLETE"
+        assert payload["prs_inventoried"] == 1
+        assert payload["prs_fixed"] == 1
+        assert payload["prs_merged"] == 0
+    finally:
+        await integration_event_bus.close()

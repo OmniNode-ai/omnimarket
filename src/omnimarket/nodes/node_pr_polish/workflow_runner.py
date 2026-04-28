@@ -157,15 +157,15 @@ def _resolve_worktree_path(command: ModelPrPolishStartCommand) -> Path:
         timeout=15,
     )
     for block in output.split("\n\n"):
-        path = ""
+        raw_path = ""
         branch = ""
         for line in block.splitlines():
             if line.startswith("worktree "):
-                path = line[9:].strip()
+                raw_path = line[9:].strip()
             elif line.startswith("branch "):
                 branch = line[7:].strip()
         if branch.endswith(f"/{expected_branch}") or branch == expected_branch:
-            candidate = Path(path)
+            candidate = Path(raw_path)
             if candidate.exists():
                 return candidate
     raise RuntimeError(
