@@ -39,8 +39,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
-  push:
-    branches-ignore: [main]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -142,15 +140,6 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            # On push events, find the open PR for this branch via gh CLI
-            PR=$(gh pr list --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-            if [ -z "$PR" ]; then
-              echo "No open PR found for branch ${{ github.ref_name }} — skipping review."
-              echo "pr_number=" >> "$GITHUB_OUTPUT"
-            else
-              echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
-            fi
           else
             echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           fi

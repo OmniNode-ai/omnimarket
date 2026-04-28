@@ -35,12 +35,15 @@ import hmac
 import json
 import os
 import sys
+import time
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import click
 
 TOPIC = "onex.cmd.deploy.rebuild-requested.v1"
+COMPLETED_TOPIC = "onex.evt.deploy.rebuild-completed.v1"
 
 _RUNTIME_PATH_PATTERNS = [
     "src/omnimarket/*",
@@ -68,6 +71,20 @@ def _sign_envelope(envelope: dict, secret: str) -> dict:
     return {**envelope, "_signature": signature}
 
 
+def _kafka_sasl_config(
+    bootstrap_servers: str,
+    username: str,
+    password: str,
+) -> dict[str, str | int | float | bool]:
+    return {
+        "bootstrap.servers": bootstrap_servers,
+        "security.protocol": "SASL_SSL",
+        "sasl.mechanisms": "PLAIN",
+        "sasl.username": username,
+        "sasl.password": password,
+    }
+
+
 def publish_rebuild_event(
     bootstrap_servers: str,
     username: str,
@@ -90,14 +107,7 @@ def publish_rebuild_event(
     }
     signed = _sign_envelope(envelope, hmac_secret)
 
-    producer_config: dict[str, str | int | float | bool] = {
-        "bootstrap.servers": bootstrap_servers,
-        "security.protocol": "SASL_SSL",
-        "sasl.mechanisms": "PLAIN",
-        "sasl.username": username,
-        "sasl.password": password,
-    }
-    producer = Producer(producer_config)
+    producer = Producer(_kafka_sasl_config(bootstrap_servers, username, password))
 
     delivery_error: BaseException | None = None
 
@@ -119,6 +129,57 @@ def publish_rebuild_event(
 
     if delivery_error is not None:
         raise RuntimeError(f"Kafka delivery failed: {delivery_error}") from None
+
+
+def wait_for_rebuild_completion(
+    bootstrap_servers: str,
+    username: str,
+    password: str,
+    correlation_id: str,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """Wait for a deploy-agent rebuild-completed event by correlation ID."""
+    from confluent_kafka import Consumer  # type: ignore[import-untyped]
+
+    consumer_config = {
+        **_kafka_sasl_config(bootstrap_servers, username, password),
+        "group.id": f"gha-runtime-rebuild-trigger-{correlation_id[:8]}",
+        "auto.offset.reset": "latest",
+        "enable.auto.commit": False,
+    }
+    consumer = Consumer(consumer_config)
+    consumer.subscribe([COMPLETED_TOPIC])
+
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while time.monotonic() < deadline:
+            msg = consumer.poll(1.0)
+            if msg is None:
+                continue
+            error = msg.error()
+            if error is not None:
+                raise RuntimeError(f"Kafka consumer error: {error}")
+
+            raw = msg.value()
+            if isinstance(raw, bytes | bytearray):
+                payload = json.loads(raw.decode("utf-8"))
+            elif isinstance(raw, str):
+                payload = json.loads(raw)
+            else:
+                payload = raw
+
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("correlation_id") != correlation_id:
+                continue
+            return payload
+    finally:
+        consumer.close()
+
+    raise TimeoutError(
+        f"Timed out after {timeout_seconds:.0f}s waiting for {COMPLETED_TOPIC} "
+        f"correlation_id={correlation_id}"
+    )
 
 
 @click.command()
@@ -153,6 +214,19 @@ def publish_rebuild_event(
     default=False,
     help="Check trigger conditions and print decision without publishing",
 )
+@click.option(
+    "--wait-for-completion",
+    is_flag=True,
+    default=False,
+    help="Wait for matching deploy-agent rebuild-completed event after publishing",
+)
+@click.option(
+    "--completion-timeout-seconds",
+    default=900.0,
+    type=float,
+    show_default=True,
+    help="Seconds to wait for rebuild-completed when --wait-for-completion is set",
+)
 def main(
     changed_files: str,
     labels: str,
@@ -160,6 +234,8 @@ def main(
     requested_by: str,
     correlation_id: str,
     dry_run: bool,
+    wait_for_completion: bool,
+    completion_timeout_seconds: float,
 ) -> None:
     """Publish rebuild-requested event if PR contains runtime changes.
 
@@ -172,15 +248,15 @@ def main(
         else []
     )
     label_list: list[str] = (
-        [lb.strip() for lb in labels.split(",") if lb.strip()]
-        if labels
-        else []
+        [lb.strip() for lb in labels.split(",") if lb.strip()] if labels else []
     )
 
     corr_id = correlation_id or str(uuid.uuid4())
 
     if not should_trigger(files, label_list):
-        click.echo("No rebuild trigger: no runtime_change label or runtime path changes detected.")
+        click.echo(
+            "No rebuild trigger: no runtime_change label or runtime path changes detected."
+        )
         sys.exit(0)
 
     click.echo(
@@ -217,11 +293,37 @@ def main(
             correlation_id=corr_id,
             requested_by=requested_by,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         click.echo(f"Delivery error: {exc}", err=True)
         sys.exit(1)
 
     click.echo(f"Published rebuild-requested to {TOPIC} (correlation_id={corr_id})")
+
+    if wait_for_completion:
+        try:
+            completion = wait_for_rebuild_completion(
+                bootstrap_servers=bootstrap_servers,
+                username=username,
+                password=password,
+                correlation_id=corr_id,
+                timeout_seconds=completion_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            click.echo(str(exc), err=True)
+            sys.exit(1)
+        except Exception as exc:
+            click.echo(f"Completion monitor error: {exc}", err=True)
+            sys.exit(1)
+
+        status = str(completion.get("status", "")).lower()
+        click.echo(
+            "Received rebuild-completed "
+            f"status={status or '<missing>'} correlation_id={corr_id}"
+        )
+        if status != "success":
+            errors = completion.get("errors", [])
+            click.echo(f"Deploy-agent rebuild failed: {errors}", err=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
