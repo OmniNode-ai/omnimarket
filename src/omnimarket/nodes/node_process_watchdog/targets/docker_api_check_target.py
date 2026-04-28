@@ -1,4 +1,4 @@
-"""DockerApiCheckTarget — Docker SDK container health check.
+"""TargetDockerApi — Docker SDK container health check.
 
 Uses the Docker SDK (docker-py) to inspect container state via the Docker
 daemon API. Prefer over subprocess ``docker inspect`` for structured data
@@ -24,7 +24,7 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 logger = logging.getLogger(__name__)
 
 
-class DockerApiCheckTarget:
+class TargetDockerApi:
     def __init__(
         self,
         container_name: str,
@@ -135,4 +135,4 @@ class DockerApiCheckTarget:
             return False
 
 
-__all__: list[str] = ["DockerApiCheckTarget"]
+__all__: list[str] = ["TargetDockerApi"]

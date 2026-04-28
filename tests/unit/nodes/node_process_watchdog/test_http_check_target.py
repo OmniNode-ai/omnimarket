@@ -1,4 +1,4 @@
-"""Unit tests for HttpCheckTarget — mocked urllib, no network access."""
+"""Unit tests for TargetHttp — mocked urllib, no network access."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
     EnumCheckTarget,
 )
 from omnimarket.nodes.node_process_watchdog.targets.http_check_target import (
-    HttpCheckTarget,
+    TargetHttp,
 )
 
 
-def _target(**overrides: object) -> HttpCheckTarget:
+def _target(**overrides: object) -> TargetHttp:
     defaults = {
         "name": "test-endpoint",
         "url": "http://localhost:8000/health",
@@ -23,11 +23,11 @@ def _target(**overrides: object) -> HttpCheckTarget:
         "category": EnumCheckTarget.LLM_ENDPOINTS,
     }
     defaults.update(overrides)
-    return HttpCheckTarget(**defaults)
+    return TargetHttp(**defaults)
 
 
 @pytest.mark.unit
-class TestHttpCheckTargetValidation:
+class TestTargetHttpValidation:
     def test_rejects_empty_name(self) -> None:
         with pytest.raises(ValueError, match="name"):
             _target(name="")
@@ -46,7 +46,7 @@ class TestHttpCheckTargetValidation:
 
 
 @pytest.mark.unit
-class TestHttpCheckTargetCheck:
+class TestTargetHttpCheck:
     @patch(
         "omnimarket.nodes.node_process_watchdog.targets.http_check_target.urllib.request.urlopen"
     )

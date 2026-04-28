@@ -1,4 +1,4 @@
-"""Unit tests for DockerApiCheckTarget — mocked Docker SDK, no daemon access."""
+"""Unit tests for TargetDockerApi — mocked Docker SDK, no daemon access."""
 
 from __future__ import annotations
 
@@ -11,17 +11,17 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
     EnumCheckTarget,
 )
 from omnimarket.nodes.node_process_watchdog.targets.docker_api_check_target import (
-    DockerApiCheckTarget,
+    TargetDockerApi,
 )
 
 
-def _target(**overrides: object) -> DockerApiCheckTarget:
+def _target(**overrides: object) -> TargetDockerApi:
     defaults = {
         "container_name": "test-container",
         "category": EnumCheckTarget.DOCKER_CONTAINERS,
     }
     defaults.update(overrides)
-    return DockerApiCheckTarget(**defaults)
+    return TargetDockerApi(**defaults)
 
 
 def _mock_container(status: str, health_status: str | None = None) -> MagicMock:
@@ -34,14 +34,14 @@ def _mock_container(status: str, health_status: str | None = None) -> MagicMock:
 
 
 @pytest.mark.unit
-class TestDockerApiCheckTargetValidation:
+class TestTargetDockerApiValidation:
     def test_rejects_empty_container_name(self) -> None:
         with pytest.raises(ValueError, match="container_name"):
             _target(container_name="")
 
 
 @pytest.mark.unit
-class TestDockerApiCheckTargetCheck:
+class TestTargetDockerApiCheck:
     @patch("docker.from_env")
     def test_healthy_when_running(self, mock_from_env: MagicMock) -> None:
         mock_container = _mock_container("running", "healthy")

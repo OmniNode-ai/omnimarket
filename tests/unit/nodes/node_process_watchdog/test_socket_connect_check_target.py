@@ -1,4 +1,4 @@
-"""Unit tests for SocketConnectCheckTarget — mocked socket, no network access."""
+"""Unit tests for TargetSocketConnect — mocked socket, no network access."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
     EnumCheckTarget,
 )
 from omnimarket.nodes.node_process_watchdog.targets.socket_connect_check_target import (
-    SocketConnectCheckTarget,
+    TargetSocketConnect,
 )
 
 
-def _target(**overrides: object) -> SocketConnectCheckTarget:
+def _target(**overrides: object) -> TargetSocketConnect:
     defaults = {
         "name": "test-emit-daemon",
         "host": "127.0.0.1",
@@ -24,11 +24,11 @@ def _target(**overrides: object) -> SocketConnectCheckTarget:
         "category": EnumCheckTarget.EMIT_DAEMON,
     }
     defaults.update(overrides)
-    return SocketConnectCheckTarget(**defaults)
+    return TargetSocketConnect(**defaults)
 
 
 @pytest.mark.unit
-class TestSocketConnectCheckTargetValidation:
+class TestTargetSocketConnectValidation:
     def test_rejects_empty_name(self) -> None:
         with pytest.raises(ValueError, match="name"):
             _target(name="")
@@ -51,7 +51,7 @@ class TestSocketConnectCheckTargetValidation:
 
 
 @pytest.mark.unit
-class TestSocketConnectCheckTargetCheck:
+class TestTargetSocketConnectCheck:
     @patch(
         "omnimarket.nodes.node_process_watchdog.targets.socket_connect_check_target.socket.socket"
     )

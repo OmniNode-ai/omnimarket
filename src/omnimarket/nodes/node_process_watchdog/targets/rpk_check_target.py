@@ -1,4 +1,4 @@
-"""RpkCheckTarget — Kafka consumer group health via rpk subprocess.
+"""TargetRpk — Kafka consumer group health via rpk subprocess.
 
 Wraps ``rpk group describe <group> --format json`` to check consumer group
 membership and lag. All subprocess boundaries are mockable.
@@ -20,7 +20,7 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 )
 
 
-class RpkCheckTarget:
+class TargetRpk:
     def __init__(
         self,
         consumer_group: str,
@@ -101,4 +101,4 @@ class RpkCheckTarget:
         return False
 
 
-__all__: list[str] = ["RpkCheckTarget"]
+__all__: list[str] = ["TargetRpk"]

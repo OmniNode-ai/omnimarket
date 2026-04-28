@@ -1,4 +1,4 @@
-"""SocketConnectCheckTarget — TCP socket connect health check.
+"""TargetSocketConnect — TCP socket connect health check.
 
 Connects to a TCP host:port and optionally sends a health probe line.
 No subprocess, no Docker — pure stdlib socket.
@@ -21,7 +21,7 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 )
 
 
-class SocketConnectCheckTarget:
+class TargetSocketConnect:
     def __init__(
         self,
         name: str,
@@ -97,4 +97,4 @@ class SocketConnectCheckTarget:
         return False
 
 
-__all__: list[str] = ["SocketConnectCheckTarget"]
+__all__: list[str] = ["TargetSocketConnect"]

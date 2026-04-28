@@ -5,21 +5,21 @@ All I/O boundaries are mockable for unit testing without network access.
 """
 
 from omnimarket.nodes.node_process_watchdog.targets.docker_api_check_target import (
-    DockerApiCheckTarget,
+    TargetDockerApi,
 )
 from omnimarket.nodes.node_process_watchdog.targets.http_check_target import (
-    HttpCheckTarget,
+    TargetHttp,
 )
 from omnimarket.nodes.node_process_watchdog.targets.rpk_check_target import (
-    RpkCheckTarget,
+    TargetRpk,
 )
 from omnimarket.nodes.node_process_watchdog.targets.socket_connect_check_target import (
-    SocketConnectCheckTarget,
+    TargetSocketConnect,
 )
 
 __all__: list[str] = [
-    "DockerApiCheckTarget",
-    "HttpCheckTarget",
-    "RpkCheckTarget",
-    "SocketConnectCheckTarget",
+    "TargetDockerApi",
+    "TargetHttp",
+    "TargetRpk",
+    "TargetSocketConnect",
 ]

@@ -1,4 +1,4 @@
-"""HttpCheckTarget — generic HTTP GET health check with configurable timeout.
+"""TargetHttp — generic HTTP GET health check with configurable timeout.
 
 Status mapping:
   HEALTHY  — 2xx response
@@ -19,7 +19,7 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 )
 
 
-class HttpCheckTarget:
+class TargetHttp:
     def __init__(
         self,
         name: str,
@@ -90,4 +90,4 @@ class HttpCheckTarget:
         return False
 
 
-__all__: list[str] = ["HttpCheckTarget"]
+__all__: list[str] = ["TargetHttp"]

@@ -1,4 +1,4 @@
-"""Unit tests for RpkCheckTarget — mocked subprocess, no rpk binary needed."""
+"""Unit tests for TargetRpk — mocked subprocess, no rpk binary needed."""
 
 from __future__ import annotations
 
@@ -12,18 +12,18 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
     EnumCheckTarget,
 )
 from omnimarket.nodes.node_process_watchdog.targets.rpk_check_target import (
-    RpkCheckTarget,
+    TargetRpk,
 )
 
 
-def _target(**overrides: object) -> RpkCheckTarget:
+def _target(**overrides: object) -> TargetRpk:
     defaults = {
         "consumer_group": "test-consumers",
         "timeout": 10.0,
         "category": EnumCheckTarget.KAFKA_CONSUMERS,
     }
     defaults.update(overrides)
-    return RpkCheckTarget(**defaults)
+    return TargetRpk(**defaults)
 
 
 def _completed_process(
@@ -40,7 +40,7 @@ def _completed_process(
 
 
 @pytest.mark.unit
-class TestRpkCheckTargetValidation:
+class TestTargetRpkValidation:
     def test_rejects_empty_consumer_group(self) -> None:
         with pytest.raises(ValueError, match="consumer_group"):
             _target(consumer_group="")
@@ -55,7 +55,7 @@ class TestRpkCheckTargetValidation:
 
 
 @pytest.mark.unit
-class TestRpkCheckTargetCheck:
+class TestTargetRpkCheck:
     @patch(
         "omnimarket.nodes.node_process_watchdog.targets.rpk_check_target.subprocess.run"
     )
