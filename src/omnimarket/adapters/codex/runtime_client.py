@@ -10,6 +10,7 @@ import contextlib
 import json
 import os
 import socket
+import sys
 from pathlib import Path
 from uuid import UUID
 
@@ -285,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
             message=str(exc),
         )
 
-    os.sys.stdout.write(response.model_dump_json(indent=2) + "\n")
+    sys.stdout.write(response.model_dump_json(indent=2) + "\n")
     return _response_to_exit_code(response)
 
 
