@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "docker>=7.0.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["watchdog", "monitoring", "health", "infrastructure", "alerting"]
