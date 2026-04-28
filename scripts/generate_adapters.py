@@ -336,7 +336,7 @@ description: Thin Codex skill shim for the OmniMarket {node_name} node. Use when
 
 # {display_name}
 
-You have access to the OmniMarket `{node_name}` node through the local runtime ingress client.
+You have access to the OmniMarket `{node_name}` node through the Pattern B broker client.
 When the user asks you to run {slug} or {description.lower().rstrip(".")},
 use this procedure. Do not implement the node logic yourself.
 
@@ -361,13 +361,13 @@ Use this dispatch shape:
 }}
 ```
 
-### Step 2 - Dispatch through the local runtime client
+### Step 2 - Dispatch through the Pattern B broker client
 
 Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \\
-  --node-alias "{node_alias}" \\
+  --command-name "{node_alias}" \\
   --payload '<json-payload>' \\
   --timeout-ms {timeout_ms}
 ```
@@ -394,13 +394,13 @@ On success: prefer `output_payloads[0]`; if it is absent, render the runtime
 
 On timeout: report that the operation timed out.
 
-On error: surface the runtime ingress error code and message.
+On error: surface the broker client error code and message.
 
 ## Contract
 
 - Backing node: `omnimarket/nodes/{node_name}/`
-- Local request wrapper: `scripts/run_codex_runtime_request.py`
-- Route alias: `{node_alias}`
+- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Command name: `{node_alias}`
 - Command topic: `{command_topic}`
 - Completion topic: `{completion_topic}`
 - Contract timeout: {timeout_ms} ms

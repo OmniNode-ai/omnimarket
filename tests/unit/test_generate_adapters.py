@@ -277,7 +277,7 @@ class TestRenderers:
         content = _render_instructions_md(**self._instructions_kwargs())
         assert "node_test_orchestrator" in content
         assert "scripts/run_codex_runtime_request.py" in content
-        assert '--node-alias "test_orchestrator"' in content
+        assert '--command-name "test_orchestrator"' in content
         assert "--payload '<json-payload>'" in content
         assert "--timeout-ms 60000" in content
         assert "output_payloads[0]" in content

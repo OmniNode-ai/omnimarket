@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_session_bootstrap. Use to initialize
 
 # Session Bootstrap
 
-This skill is a thin runtime-ingress shim over the OmniMarket
+This skill is a thin Pattern B broker shim over the OmniMarket
 `node_session_bootstrap` node. The node owns session contract validation,
 snapshot persistence, and scheduler-plan emission. Do not add timer setup
 logic or fallback scheduler logic to this skill.
@@ -31,7 +31,7 @@ Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "session_bootstrap" \
+  --command-name "session_bootstrap" \
   --payload '<json-payload>' \
   --timeout-ms 30000
 ```
@@ -79,8 +79,8 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 ## Contract
 
 - Backing node: `src/omnimarket/nodes/node_session_bootstrap/`
-- Local request wrapper: `scripts/run_codex_runtime_request.py`
-- Route alias: `session_bootstrap`
+- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Command name: `session_bootstrap`
 - Runtime topic: `onex.cmd.omnimarket.session-bootstrap-start.v2`
 - Completion topic: `onex.evt.omnimarket.session-bootstrap-completed.v2`
 

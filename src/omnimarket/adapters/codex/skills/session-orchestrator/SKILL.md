@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_session_orchestrator. Use to run the
 
 # Session Orchestrator
 
-This skill is a thin runtime-ingress shim over the OmniMarket
+This skill is a thin Pattern B broker shim over the OmniMarket
 `node_session_orchestrator` node. The node owns health gating, queue scoring,
 and dispatch planning. Do not add local health probes, dispatch compilation, or
 ticket triage logic to this skill.
@@ -29,7 +29,7 @@ Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "session_orchestrator" \
+  --command-name "session_orchestrator" \
   --payload '<json-payload>' \
   --timeout-ms 300000
 ```
@@ -56,8 +56,8 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 ## Contract
 
 - Backing node: `src/omnimarket/nodes/node_session_orchestrator/`
-- Local request wrapper: `scripts/run_codex_runtime_request.py`
-- Route alias: `session_orchestrator`
+- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Command name: `session_orchestrator`
 - Runtime topic: `onex.cmd.omnimarket.session-orchestrator-start.v1`
 - Completion topic: `onex.evt.omnimarket.session-orchestrator-completed.v1`
 

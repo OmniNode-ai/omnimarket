@@ -1,34 +1,68 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Local runtime ingress client for Codex-facing OmniMarket skills."""
+"""Pattern B broker client for Codex-facing OmniMarket skills."""
 
 from __future__ import annotations
 
 import argparse
-import contextlib
+import asyncio
 import json
 import os
-import socket
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from uuid import UUID
+from typing import Protocol, cast
+from uuid import UUID, uuid4
 
+from omnibase_core.dispatch.dispatch_bus_client import DispatchBusClient
+from omnibase_core.models.dispatch.model_dispatch_bus_command import (
+    ModelDispatchBusCommand,
+)
+from omnibase_core.models.dispatch.model_dispatch_bus_route import (
+    ModelDispatchBusRoute,
+)
+from omnibase_core.models.dispatch.model_dispatch_bus_terminal_result import (
+    ModelDispatchBusTerminalResult,
+)
+from omnibase_core.protocols.event_bus.protocol_dispatch_bus_client_transport import (
+    ProtocolDispatchBusClientTransport,
+)
+from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+from omnibase_infra.event_bus.topic_constants import (
+    TOPIC_PATTERN_B_DISPATCH_COMMAND,
+    TOPIC_PATTERN_B_DISPATCH_COMPLETED,
+)
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-_DEFAULT_SOCKET_PATH = "/tmp/onex-runtime.sock"
-_RECV_BUFSIZE = 4096
-_MAX_RESPONSE_SIZE = 1_048_576
-_MAX_READ_ITERATIONS = 64
+_DEFAULT_COMMAND_TOPIC = TOPIC_PATTERN_B_DISPATCH_COMMAND
+_DEFAULT_RESPONSE_TOPIC = TOPIC_PATTERN_B_DISPATCH_COMPLETED
+_DEFAULT_REQUESTER = "codex"
 
 
-def default_socket_path() -> str:
-    """Resolve the runtime ingress socket path."""
-    return os.environ.get("ONEX_RUNTIME_SOCKET_PATH", _DEFAULT_SOCKET_PATH)
+def default_command_topic() -> str:
+    """Resolve the Pattern B broker command topic."""
+    return os.environ.get("ONEX_PATTERN_B_COMMAND_TOPIC", _DEFAULT_COMMAND_TOPIC)
 
 
-class ModelLocalRuntimeClientError(BaseModel):
-    """Structured error returned by the runtime ingress client."""
+def default_response_topic() -> str:
+    """Resolve the Pattern B broker response topic."""
+    return os.environ.get("ONEX_PATTERN_B_RESPONSE_TOPIC", _DEFAULT_RESPONSE_TOPIC)
+
+
+def default_requester() -> str:
+    """Resolve the requester label attached to broker commands."""
+    return os.environ.get("ONEX_PATTERN_B_REQUESTER", _DEFAULT_REQUESTER)
+
+
+class _ProtocolLifecycleTransport(ProtocolDispatchBusClientTransport, Protocol):
+    async def start(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+class ModelPatternBBrokerClientError(BaseModel):
+    """Structured error returned by the broker client."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -38,140 +72,51 @@ class ModelLocalRuntimeClientError(BaseModel):
     retryable: bool | None = None
 
 
-class ModelLocalRuntimeClientRequest(BaseModel):
-    """Request envelope for the runtime ingress client."""
+class ModelPatternBBrokerClientRequest(BaseModel):
+    """Request envelope for Codex skill dispatch over Pattern B."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    node_alias: str = Field(..., min_length=1)
+    command_name: str = Field(..., min_length=1)
     payload: dict[str, object] = Field(default_factory=dict)
     correlation_id: UUID | None = None
     timeout_ms: int = Field(default=300_000, gt=0, le=900_000)
+    response_topic: str = Field(default_factory=default_response_topic, min_length=1)
 
-    @field_validator("node_alias")
+    @field_validator("command_name")
     @classmethod
-    def _validate_node_alias(cls, value: str) -> str:
+    def _validate_command_name(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
-            raise ValueError("node_alias must be a non-empty string")
+            raise ValueError("command_name must be a non-empty string")
+        return normalized
+
+    @field_validator("response_topic")
+    @classmethod
+    def _validate_response_topic(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("response_topic must be a non-empty string")
         return normalized
 
 
-class ModelLocalRuntimeClientResponse(BaseModel):
-    """Structured response returned by the runtime ingress."""
+class ModelPatternBBrokerClientResponse(BaseModel):
+    """Structured response returned by the Pattern B broker."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ok: bool
-    node_alias: str = Field(..., min_length=1)
-    resolved_node_name: str | None = None
-    contract_name: str | None = None
-    topic: str | None = None
-    terminal_event: str | None = None
+    command_name: str = Field(..., min_length=1)
+    command_topic: str = Field(..., min_length=1)
+    response_topic: str = Field(..., min_length=1)
     correlation_id: UUID | None = None
     dispatch_result: dict[str, object] | None = None
     output_payloads: list[dict[str, object]] | None = None
-    error: ModelLocalRuntimeClientError | None = None
+    error: ModelPatternBBrokerClientError | None = None
 
 
-class LocalRuntimeIngressClient:
-    """Synchronous Unix-socket client for the runtime local ingress."""
-
-    def __init__(
-        self,
-        socket_path: str | None = None,
-        timeout_seconds: float = 5.0,
-    ) -> None:
-        self._socket_path = socket_path or default_socket_path()
-        self._timeout_seconds = timeout_seconds
-        self._sock: socket.socket | None = None
-        self._buf = bytearray()
-
-    def _connect(self) -> socket.socket:
-        if self._sock is not None:
-            return self._sock
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            sock.settimeout(self._timeout_seconds)
-            sock.connect(self._socket_path)
-        except Exception:
-            sock.close()
-            raise
-        self._sock = sock
-        self._buf = bytearray()
-        return sock
-
-    def _read_response(self, sock: socket.socket) -> dict[str, object]:
-        iterations = 0
-        while b"\n" not in self._buf:
-            chunk = sock.recv(_RECV_BUFSIZE)
-            if not chunk:
-                raise ConnectionResetError("runtime ingress closed connection")
-            self._buf.extend(chunk)
-            iterations += 1
-            if len(self._buf) > _MAX_RESPONSE_SIZE:
-                raise ValueError("runtime ingress response exceeded size limit")
-            if iterations >= _MAX_READ_ITERATIONS:
-                raise ValueError("runtime ingress response exceeded read limit")
-        idx = self._buf.index(b"\n")
-        line = self._buf[:idx]
-        self._buf = self._buf[idx + 1 :]
-        raw = json.loads(line.decode("utf-8"))
-        if not isinstance(raw, dict):
-            raise ValueError("runtime ingress returned a non-object JSON response")
-        return raw
-
-    def _send_and_recv(
-        self, request: ModelLocalRuntimeClientRequest
-    ) -> dict[str, object]:
-        line = request.model_dump_json().encode("utf-8") + b"\n"
-        try:
-            sock = self._connect()
-            sock.sendall(line)
-            return self._read_response(sock)
-        except OSError:
-            self.close()
-            sock = self._connect()
-            sock.sendall(line)
-            return self._read_response(sock)
-
-    def dispatch_sync(
-        self,
-        *,
-        node_alias: str,
-        payload: dict[str, object] | None = None,
-        correlation_id: UUID | str | None = None,
-        timeout_ms: int = 300_000,
-    ) -> ModelLocalRuntimeClientResponse:
-        """Dispatch a node request through the runtime local ingress."""
-
-        request = ModelLocalRuntimeClientRequest.model_validate(
-            {
-                "node_alias": node_alias,
-                "payload": payload or {},
-                "correlation_id": correlation_id,
-                "timeout_ms": timeout_ms,
-            }
-        )
-        raw = self._send_and_recv(request)
-        return ModelLocalRuntimeClientResponse.model_validate(raw)
-
-    def close(self) -> None:
-        if self._sock is not None:
-            with contextlib.suppress(OSError):
-                self._sock.close()
-            self._sock = None
-            self._buf = bytearray()
-
-    def __enter__(self) -> LocalRuntimeIngressClient:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
-
-    def __del__(self) -> None:
-        with contextlib.suppress(Exception):
-            self.close()
+def _default_event_bus_factory() -> _ProtocolLifecycleTransport:
+    return cast(_ProtocolLifecycleTransport, EventBusKafka.default())
 
 
 def _load_payload(
@@ -192,21 +137,157 @@ def _load_payload(
     return raw
 
 
-def _response_to_exit_code(response: ModelLocalRuntimeClientResponse) -> int:
+def _output_payloads(payload: object) -> list[dict[str, object]] | None:
+    if isinstance(payload, dict):
+        return [payload]
+    if isinstance(payload, list) and all(isinstance(item, dict) for item in payload):
+        return cast(list[dict[str, object]], payload)
+    return None
+
+
+def _dispatch_result(
+    result: ModelDispatchBusTerminalResult,
+) -> dict[str, object]:
+    return result.model_dump(mode="json", exclude_none=True)
+
+
+class PatternBBrokerClient:
+    """Async client for broker-backed skill dispatch."""
+
+    def __init__(
+        self,
+        *,
+        event_bus_factory: Callable[[], _ProtocolLifecycleTransport] | None = None,
+        requester: str | None = None,
+        command_topic: str | None = None,
+    ) -> None:
+        self._event_bus_factory = event_bus_factory or _default_event_bus_factory
+        self._requester = requester or default_requester()
+        self._command_topic = command_topic or default_command_topic()
+
+    async def dispatch_async(
+        self,
+        *,
+        command_name: str,
+        payload: dict[str, object] | None = None,
+        correlation_id: UUID | str | None = None,
+        timeout_ms: int = 300_000,
+        response_topic: str | None = None,
+    ) -> ModelPatternBBrokerClientResponse:
+        request = ModelPatternBBrokerClientRequest.model_validate(
+            {
+                "command_name": command_name,
+                "payload": payload or {},
+                "correlation_id": correlation_id,
+                "timeout_ms": timeout_ms,
+                "response_topic": response_topic or default_response_topic(),
+            }
+        )
+
+        transport = cast(_ProtocolLifecycleTransport, self._event_bus_factory())
+        await transport.start()
+        try:
+            broker_client = DispatchBusClient(transport, source=self._requester)
+            route = ModelDispatchBusRoute(
+                contract_path=Path("pattern-b-broker"),
+                command_topic=self._command_topic,
+                terminal_topic=request.response_topic,
+            )
+            command = ModelDispatchBusCommand(
+                command_name=request.command_name,
+                requester=self._requester,
+                payload=request.payload,
+                correlation_id=request.correlation_id or uuid4(),
+                response_topic=request.response_topic,
+                timeout_seconds=max(1, min(900, request.timeout_ms // 1000)),
+            )
+            unsubscribe, result_queue = await broker_client.wait_for_result(
+                route,
+                correlation_id=str(command.correlation_id),
+            )
+            try:
+                await broker_client.publish_command(route, command)
+                terminal_result = await asyncio.wait_for(
+                    result_queue.get(),
+                    timeout=command.timeout_seconds,
+                )
+            except TimeoutError:
+                terminal_result = ModelDispatchBusTerminalResult(
+                    correlation_id=command.correlation_id,
+                    status="timeout",
+                    error_message="Timed out waiting for Pattern B broker terminal result.",
+                )
+            finally:
+                await unsubscribe()
+        finally:
+            await transport.close()
+
+        ok = terminal_result.status == "completed"
+        if ok:
+            return ModelPatternBBrokerClientResponse(
+                ok=True,
+                command_name=request.command_name,
+                command_topic=self._command_topic,
+                response_topic=request.response_topic,
+                correlation_id=terminal_result.correlation_id,
+                dispatch_result=_dispatch_result(terminal_result),
+                output_payloads=_output_payloads(terminal_result.payload),
+            )
+        return ModelPatternBBrokerClientResponse(
+            ok=False,
+            command_name=request.command_name,
+            command_topic=self._command_topic,
+            response_topic=request.response_topic,
+            correlation_id=terminal_result.correlation_id,
+            dispatch_result=_dispatch_result(terminal_result),
+            error=ModelPatternBBrokerClientError(
+                code=f"broker_{terminal_result.status}",
+                message=terminal_result.error_message
+                or "Pattern B broker request did not complete successfully.",
+                retryable=terminal_result.status == "timeout",
+            ),
+        )
+
+    def dispatch_sync(
+        self,
+        *,
+        command_name: str,
+        payload: dict[str, object] | None = None,
+        correlation_id: UUID | str | None = None,
+        timeout_ms: int = 300_000,
+        response_topic: str | None = None,
+    ) -> ModelPatternBBrokerClientResponse:
+        return asyncio.run(
+            self.dispatch_async(
+                command_name=command_name,
+                payload=payload,
+                correlation_id=correlation_id,
+                timeout_ms=timeout_ms,
+                response_topic=response_topic,
+            )
+        )
+
+
+LocalRuntimeIngressClient = PatternBBrokerClient
+
+
+def _response_to_exit_code(response: ModelPatternBBrokerClientResponse) -> int:
     return 0 if response.ok else 1
 
 
 def _build_cli_error_response(
     *,
-    node_alias: str,
+    command_name: str,
     code: str,
     message: str,
     details: dict[str, object] | None = None,
-) -> ModelLocalRuntimeClientResponse:
-    return ModelLocalRuntimeClientResponse(
+) -> ModelPatternBBrokerClientResponse:
+    return ModelPatternBBrokerClientResponse(
         ok=False,
-        node_alias=node_alias,
-        error=ModelLocalRuntimeClientError(
+        command_name=command_name,
+        command_topic=default_command_topic(),
+        response_topic=default_response_topic(),
+        error=ModelPatternBBrokerClientError(
             code=code,
             message=message,
             details=details,
@@ -216,10 +297,16 @@ def _build_cli_error_response(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--node-alias", required=True, help="Contract or node alias")
+    parser.add_argument(
+        "--command-name",
+        "--node-alias",
+        dest="command_name",
+        required=True,
+        help="Logical Pattern B command name",
+    )
     parser.add_argument(
         "--payload",
-        help="Inline JSON object payload forwarded to the runtime ingress",
+        help="Inline JSON object payload forwarded to the Pattern B broker",
     )
     parser.add_argument(
         "--payload-file",
@@ -229,18 +316,12 @@ def main(argv: list[str] | None = None) -> int:
         "--timeout-ms",
         type=int,
         default=300_000,
-        help="Dispatch timeout passed to the runtime ingress",
+        help="Dispatch timeout passed to the Pattern B broker",
     )
     parser.add_argument(
-        "--socket-path",
-        default=default_socket_path(),
-        help="Unix socket path for the runtime ingress",
-    )
-    parser.add_argument(
-        "--socket-timeout-seconds",
-        type=float,
-        default=5.0,
-        help="Socket connect/read timeout in seconds",
+        "--response-topic",
+        default=default_response_topic(),
+        help="Broker response topic used for correlated terminal results",
     )
     parser.add_argument(
         "--correlation-id",
@@ -250,39 +331,37 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         payload = _load_payload(payload=args.payload, payload_file=args.payload_file)
-        with LocalRuntimeIngressClient(
-            socket_path=args.socket_path,
-            timeout_seconds=args.socket_timeout_seconds,
-        ) as client:
-            response = client.dispatch_sync(
-                node_alias=args.node_alias,
-                payload=payload,
-                correlation_id=args.correlation_id,
-                timeout_ms=args.timeout_ms,
-            )
+        client = PatternBBrokerClient()
+        response = client.dispatch_sync(
+            command_name=args.command_name,
+            payload=payload,
+            correlation_id=args.correlation_id,
+            timeout_ms=args.timeout_ms,
+            response_topic=args.response_topic,
+        )
     except FileNotFoundError as exc:
         response = _build_cli_error_response(
-            node_alias=args.node_alias,
+            command_name=args.command_name,
             code="payload_file_missing",
             message=str(exc),
         )
     except json.JSONDecodeError as exc:
         response = _build_cli_error_response(
-            node_alias=args.node_alias,
+            command_name=args.command_name,
             code="payload_invalid",
             message=f"Invalid JSON payload: {exc}",
         )
     except ValidationError as exc:
         response = _build_cli_error_response(
-            node_alias=args.node_alias,
+            command_name=args.command_name,
             code="payload_invalid",
-            message="Invalid local runtime client request",
+            message="Invalid Pattern B broker client request",
             details={"errors": json.loads(exc.json(include_url=False))},
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         response = _build_cli_error_response(
-            node_alias=args.node_alias,
-            code="runtime_client_error",
+            command_name=args.command_name,
+            code="broker_client_error",
             message=str(exc),
         )
 
@@ -296,9 +375,12 @@ if __name__ == "__main__":
 
 __all__ = [
     "LocalRuntimeIngressClient",
-    "ModelLocalRuntimeClientError",
-    "ModelLocalRuntimeClientRequest",
-    "ModelLocalRuntimeClientResponse",
-    "default_socket_path",
+    "ModelPatternBBrokerClientError",
+    "ModelPatternBBrokerClientRequest",
+    "ModelPatternBBrokerClientResponse",
+    "PatternBBrokerClient",
+    "default_command_topic",
+    "default_requester",
+    "default_response_topic",
     "main",
 ]

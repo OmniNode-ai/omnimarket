@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_aislop_sweep. Use when scanning Omni
 
 # AI Slop Sweep
 
-This skill is a thin runtime-ingress shim over the OmniMarket
+This skill is a thin Pattern B broker shim over the OmniMarket
 `node_aislop_sweep` node. Collect arguments, dispatch the node, and render the
 node result. Do not add scan logic, grep fallbacks, ticket logic, or
 remediation logic to this skill.
@@ -25,7 +25,7 @@ Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "aislop_sweep" \
+  --command-name "aislop_sweep" \
   --payload '<json-payload>' \
   --timeout-ms 120000
 ```
@@ -49,8 +49,8 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 ## Contract
 
 - Backing node: `src/omnimarket/nodes/node_aislop_sweep/`
-- Local request wrapper: `scripts/run_codex_runtime_request.py`
-- Route alias: `aislop_sweep`
+- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Command name: `aislop_sweep`
 - Runtime topic: `onex.cmd.omnimarket.aislop-sweep-start.v1`
 - Completion topic: `onex.evt.omnimarket.aislop-sweep-completed.v1`
 

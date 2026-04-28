@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_pr_lifecycle_orchestrator. Use for o
 
 # Merge Sweep
 
-This skill is a thin runtime-ingress shim over the OmniMarket
+This skill is a thin Pattern B broker shim over the OmniMarket
 `node_pr_lifecycle_orchestrator` node. The node owns PR inventory, triage,
 verification, merge, and fix dispatch behavior. Do not add GitHub scripting,
 queue logic, or PR classification logic to this skill.
@@ -30,7 +30,7 @@ Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "pr_lifecycle_orchestrator" \
+  --command-name "pr_lifecycle_orchestrator" \
   --payload '<json-payload>' \
   --timeout-ms 300000
 ```
@@ -65,8 +65,8 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 ## Contract
 
 - Backing node: `src/omnimarket/nodes/node_pr_lifecycle_orchestrator/`
-- Local request wrapper: `scripts/run_codex_runtime_request.py`
-- Route alias: `pr_lifecycle_orchestrator`
+- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Command name: `pr_lifecycle_orchestrator`
 - Runtime topic: `onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1`
 - Completion topic: `onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1`
 
