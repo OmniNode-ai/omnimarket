@@ -57,8 +57,8 @@ Always include:
 Only include `onex_state_dir` when the user explicitly wants a non-default
 artifact location.
 
-If `ok` is `true` and `output_payloads` is present, treat `output_payloads[0]`
-as the primary node result.
+If `ok` is `true` and `output_payloads` is non-empty, treat `output_payloads[0]`
+as the primary node result. Otherwise, fall back to `dispatch_result`.
 
 If `ok` is `false`, surface `error.code` and `error.message` directly.
 

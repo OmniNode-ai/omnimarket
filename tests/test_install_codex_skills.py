@@ -36,11 +36,14 @@ def test_install_codex_skills_skips_existing_without_force(tmp_path: Path) -> No
     (skill_dir / "SKILL.md").write_text("# session-bootstrap\n")
     existing = dest_dir / "session-bootstrap"
     existing.mkdir(parents=True)
+    (existing / "sentinel.txt").write_text("keep", encoding="utf-8")
 
     actions = install_skills(source_dir, dest_dir, force=False)
 
     assert actions == ["skip session-bootstrap: destination exists"]
-    assert existing.exists()
+    assert existing.is_dir()
+    assert not existing.is_symlink()
+    assert (existing / "sentinel.txt").read_text(encoding="utf-8") == "keep"
 
 
 def test_install_codex_skills_replaces_existing_with_force(tmp_path: Path) -> None:
