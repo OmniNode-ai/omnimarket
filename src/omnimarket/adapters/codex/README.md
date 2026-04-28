@@ -22,8 +22,8 @@ runtime-owned Pattern B broker. No business logic lives in the skill.
 | `template.md` | Generic Codex `SKILL.md` template |
 | `skills/<skill-slug>/SKILL.md` | Generated Codex skill shim |
 | `runtime_client.py` | Stdlib-friendly Pattern B broker client |
-| `../../../scripts/run_codex_runtime_request.py` | Repo-local request wrapper that bootstraps `src/` import resolution |
-| `../../../plugins/onex/.codex-plugin/plugin.json` | Repo-local Codex plugin manifest |
+| `../../../../scripts/run_codex_runtime_request.py` | Repo-local request wrapper that bootstraps `src/` import resolution |
+| `../../../../plugins/onex/.codex-plugin/plugin.json` | Repo-local Codex plugin manifest |
 
 The repo-local plugin mirrors the Claude Code `onex` plugin surface while using
 Codex-native plugin and skill metadata.

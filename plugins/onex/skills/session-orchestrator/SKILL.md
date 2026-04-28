@@ -28,7 +28,7 @@ ticket triage logic to this skill.
 Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
-env -u PYTHONPATH uv run scripts/run_codex_runtime_request.py \
+env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \
   --command-name "session_orchestrator" \
   --payload '<json-payload>' \
   --timeout-ms 300000

@@ -25,8 +25,11 @@ def test_codex_marketplace_registers_onex_plugin() -> None:
     marketplace = json.loads(marketplace_path.read_text())
 
     assert marketplace["name"] == "omninode-tools"
-    plugin = marketplace["plugins"][0]
-    assert plugin["name"] == "onex"
+    plugin = next(
+        (item for item in marketplace["plugins"] if item.get("name") == "onex"),
+        None,
+    )
+    assert plugin is not None, "onex plugin not found in marketplace plugins"
     assert plugin["source"] == {"source": "local", "path": "./plugins/onex"}
     assert plugin["policy"]["installation"] == "AVAILABLE"
     assert plugin["policy"]["authentication"] == "ON_INSTALL"
@@ -67,7 +70,7 @@ def test_codex_shims_remain_dispatch_only() -> None:
     for path in (PLUGIN_ROOT / "skills").glob("*/SKILL.md"):
         text = path.read_text()
         assert "Backing node:" in text
-        assert "scripts/run_codex_runtime_request.py" in text
+        assert "uv run python scripts/run_codex_runtime_request.py" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -100,16 +103,16 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             "*/SKILL.md"
         )
     )
-    assert source_skill_paths
     assert {path.parent.name for path in source_skill_paths} == {
         "aislop-sweep",
+        "merge-sweep",
         "session-bootstrap",
         "session-orchestrator",
     }
 
     for path in source_skill_paths:
         text = path.read_text()
-        assert "scripts/run_codex_runtime_request.py" in text
+        assert "uv run python scripts/run_codex_runtime_request.py" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -123,6 +126,11 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         elif path.parent.name == "aislop-sweep":
             assert '--command-name "aislop_sweep"' in text
             assert "--timeout-ms 120000" in text
+        elif path.parent.name == "merge-sweep":
+            assert '--command-name "pr_lifecycle_orchestrator"' in text
+            assert "--timeout-ms 300000" in text
+            assert "run_id" in text
+            assert "filesystem-safe identifier" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text

@@ -51,7 +51,7 @@ class ModelDispatchBusCommand(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict)
     correlation_id: UUID
     response_topic: str
-    timeout_seconds: int
+    timeout_seconds: float
 
 
 class ModelDispatchBusTerminalResult(BaseModel):
@@ -306,7 +306,7 @@ class PatternBBrokerClient:
                 payload=request.payload,
                 correlation_id=request.correlation_id or uuid4(),
                 response_topic=request.response_topic,
-                timeout_seconds=max(1, min(900, (request.timeout_ms + 999) // 1000)),
+                timeout_seconds=max(1.0, min(900.0, request.timeout_ms / 1000)),
             )
             unsubscribe, result_queue = await broker_client.wait_for_result(
                 route,

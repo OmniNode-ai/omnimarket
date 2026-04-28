@@ -294,7 +294,9 @@ class TestRenderers:
         }
         content = _render_instructions_md(**kwargs)
         assert '"correlation_id": "<uuid4>"' in content
+        assert '"dry_run": "<value>"' in content
         assert " dry_run \\" not in content
+        assert "uv run python scripts/run_codex_runtime_request.py" in content
 
     def test_render_with_no_entry_flags(self) -> None:
         kwargs = {**self._skill_kwargs(), "entry_flags": {}}

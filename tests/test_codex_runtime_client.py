@@ -67,11 +67,14 @@ async def _install_broker_worker(
     result_payload: dict[str, object] | None = None,
     result_status: str = "completed",
     result_error: str | None = None,
+    received_commands: list[ModelDispatchBusCommand] | None = None,
 ) -> None:
     async def on_command(message: ModelEventMessage) -> None:
         envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
             message.value
         )
+        if received_commands is not None:
+            received_commands.append(envelope.payload)
         terminal = ModelDispatchBusTerminalResult(
             correlation_id=envelope.payload.correlation_id,
             status=cast("object", result_status),
@@ -127,11 +130,13 @@ def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_dispatch_async_round_trip() -> None:
     bus = EventBusInmemory(environment="test", group="codex-pattern-b")
+    received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     await _install_broker_worker(
         bus,
         command_topic=default_command_topic(),
         result_payload={"status": "complete", "dispatch_queue": []},
+        received_commands=received_commands,
     )
 
     client = PatternBBrokerClient(
@@ -153,6 +158,7 @@ async def test_dispatch_async_round_trip() -> None:
     assert result.output_payloads == [{"status": "complete", "dispatch_queue": []}]
     assert result.dispatch_result is not None
     assert result.dispatch_result["status"] == "completed"
+    assert received_commands[0].timeout_seconds == 1.234
 
 
 def test_main_returns_zero_for_ok_response(

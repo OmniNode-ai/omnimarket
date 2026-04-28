@@ -138,6 +138,17 @@ def _entry_flag_to_cli(flag: str) -> str:
     return f"--{flag.replace('_', '-')}"
 
 
+def _build_dispatch_payload_example(entry_flags: dict[str, str]) -> str:
+    payload_lines = ['  "correlation_id": "<uuid4>"']
+    for index, flag in enumerate(entry_flags):
+        normalized = flag.lstrip("-").replace("-", "_")
+        separator = "," if index < len(entry_flags) - 1 else ""
+        payload_lines.append(f'  "{normalized}": "<value>"{separator}')
+    if len(payload_lines) > 1:
+        payload_lines[0] += ","
+    return "{\n" + "\n".join(payload_lines) + "\n}"
+
+
 # ---------------------------------------------------------------------------
 # Template renderers
 # ---------------------------------------------------------------------------
@@ -328,6 +339,7 @@ def _render_instructions_md(
     timeout_ms: int,
 ) -> str:
     args_table = _build_args_table(entry_flags)
+    payload_example = _build_dispatch_payload_example(entry_flags)
     return f"""\
 ---
 name: {slug}
@@ -356,9 +368,7 @@ own defaults.
 Use this dispatch shape:
 
 ```json
-{{
-  "correlation_id": "<uuid4>"
-}}
+{payload_example}
 ```
 
 ### Step 2 - Dispatch through the Pattern B broker client
@@ -366,7 +376,7 @@ Use this dispatch shape:
 Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
-env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \\
+env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \\
   --command-name "{node_alias}" \\
   --payload '<json-payload>' \\
   --timeout-ms {timeout_ms}

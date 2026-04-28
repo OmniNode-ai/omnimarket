@@ -43,6 +43,23 @@ def test_install_codex_skills_skips_existing_without_force(tmp_path: Path) -> No
     assert existing.exists()
 
 
+def test_install_codex_skills_replaces_existing_with_force(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    dest_dir = tmp_path / "dest"
+    skill_dir = source_dir / "session-bootstrap"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("# session-bootstrap\n")
+    existing = dest_dir / "session-bootstrap"
+    existing.mkdir(parents=True)
+    (existing / "SKILL.md").write_text("# stale\n")
+
+    actions = install_skills(source_dir, dest_dir, force=True)
+
+    assert actions == [f"link session-bootstrap -> {skill_dir.resolve()}"]
+    assert existing.is_symlink()
+    assert existing.resolve() == skill_dir.resolve()
+
+
 def test_resolve_source_dir_prefers_marketplace_when_present(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     marketplace_dir = (
