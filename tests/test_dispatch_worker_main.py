@@ -37,6 +37,9 @@ def _run(
     A 30-second timeout is applied by default so a hung invocation cannot block
     the entire test run indefinitely.
     """
+    import os
+
+    env = {k: v for k, v in os.environ.items() if k != "ONEX_STATE_DIR"}
     cmd = [
         "uv",
         "run",
@@ -49,6 +52,7 @@ def _run(
         cmd,
         capture_output=True,
         text=True,
+        env=env,
         cwd=str(cwd or _WORKTREE_ROOT),
         timeout=timeout,
     )

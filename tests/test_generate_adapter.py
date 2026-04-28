@@ -121,6 +121,19 @@ class TestBuildSubstitutions:
             == "onex.evt.omnimarket.test-orchestrator-completed.v1"
         )
 
+    def test_terminal_event_preferred_for_completion_topic(self) -> None:
+        contract = {
+            **FIXTURE_CONTRACT,
+            "terminal_event": "onex.evt.omnimarket.test-orchestrator-terminal.v1",
+        }
+        subs = generate_adapter._build_substitutions(
+            "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, contract
+        )
+        assert (
+            subs["COMPLETION_TOPIC"]
+            == "onex.evt.omnimarket.test-orchestrator-terminal.v1"
+        )
+
     def test_timeout_ms_extracted(self) -> None:
         subs = generate_adapter._build_substitutions(
             "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
@@ -138,6 +151,13 @@ class TestBuildSubstitutions:
             "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
         )
         assert subs["CATEGORY"] == "omnimarket"
+
+    def test_entry_flags_are_cli_options(self) -> None:
+        subs = generate_adapter._build_substitutions(
+            "node_test_orchestrator", FIXTURE_METADATA_ORCHESTRATOR, FIXTURE_CONTRACT
+        )
+        assert "[--dry-run]" in subs["ENTRY_FLAGS"]
+        assert "[--repos <repos>]" in subs["ENTRY_FLAGS"]
 
     def test_node_alias_uses_contract_name(self) -> None:
         subs = generate_adapter._build_substitutions(
@@ -189,7 +209,7 @@ class TestOutputFilename:
     def test_codex_uses_instructions_md(self) -> None:
         assert (
             generate_adapter._output_filename("codex", "aislop-sweep")
-            == "aislop-sweep-instructions.md"
+            == "skills/aislop-sweep/SKILL.md"
         )
 
 
@@ -199,19 +219,17 @@ class TestCodexTemplate:
     ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("codex",))
         content = (
-            output_dir / "codex" / "test-orchestrator-instructions.md"
+            output_dir / "codex" / "skills" / "test-orchestrator" / "SKILL.md"
         ).read_text()
         assert "scripts/run_codex_runtime_request.py" in content
-        assert '--node-alias "test_orchestrator"' in content
-        assert "runtime" in content
-        assert "ingress" in content
+        assert '--command-name "test_orchestrator"' in content
 
     def test_codex_template_uses_contract_input_table(
         self, node_dir: Path, output_dir: Path
     ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("codex",))
         content = (
-            output_dir / "codex" / "test-orchestrator-instructions.md"
+            output_dir / "codex" / "skills" / "test-orchestrator" / "SKILL.md"
         ).read_text()
         assert "| dry_run | Report only, no side effects | False |" in content
         assert "| repos | Target repositories | all |" in content
@@ -292,7 +310,13 @@ class TestGenerateAdaptersGemini:
         assert "test-orchestrator.md" in names
         assert "test_orchestrator_SKILL.md" in names
         assert "test-orchestrator.mdc" in names
-        assert "test-orchestrator-instructions.md" in names
+        assert "SKILL.md" in names
+
+        codex_paths = {p.as_posix() for p in generated}
+        assert any(
+            path.endswith("codex/skills/test-orchestrator/SKILL.md")
+            for path in codex_paths
+        )
 
 
 class TestExtractArgsTable:

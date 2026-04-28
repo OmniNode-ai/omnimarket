@@ -1,176 +1,242 @@
-"""Focused tests for the Codex runtime ingress client."""
+"""Focused tests for the Codex Pattern B broker client."""
 
 from __future__ import annotations
 
-import json
-import socket
-import threading
-from contextlib import suppress
-from pathlib import Path
+import asyncio
+from datetime import UTC, datetime
+from typing import cast
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
+from omnimarket.adapters.codex import runtime_client
 from omnimarket.adapters.codex.runtime_client import (
-    LocalRuntimeIngressClient,
-    default_socket_path,
+    ModelDispatchBusCommand,
+    ModelDispatchBusTerminalResult,
+    PatternBBrokerClient,
+    default_command_topic,
+    default_requester,
+    default_response_topic,
     main,
 )
 
 
-class _OneShotSocketServer(threading.Thread):
-    def __init__(self, socket_path: Path, response: dict[str, object]) -> None:
-        super().__init__(daemon=True)
-        self._socket_path = socket_path
-        self._response = response
-        self.ready = threading.Event()
-        self.request_line: bytes | None = None
-        self.error: Exception | None = None
+class _BrokerTestTransport:
+    def __init__(self, bus: EventBusInmemory) -> None:
+        self._bus = bus
 
-    def run(self) -> None:
-        try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
-                server.bind(str(self._socket_path))
-                server.listen(1)
-                self.ready.set()
-                conn, _ = server.accept()
-                with conn:
-                    buf = bytearray()
-                    while b"\n" not in buf:
-                        chunk = conn.recv(4096)
-                        if not chunk:
-                            break
-                        buf.extend(chunk)
-                    self.request_line = bytes(buf)
-                    conn.sendall(json.dumps(self._response).encode("utf-8") + b"\n")
-        except Exception as exc:  # pragma: no cover - surfaced through assertions
-            self.error = exc
-            self.ready.set()
+    async def start(self) -> None:
+        return None
 
+    async def close(self) -> None:
+        return None
 
-def _socket_path(name: str) -> Path:
-    return Path("/tmp") / f"{name}-{uuid4().hex}.sock"
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        await self._bus.publish(topic, key, value, headers)
 
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        from uuid import uuid4
 
-def test_default_socket_path_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ONEX_RUNTIME_SOCKET_PATH", "/tmp/custom-runtime.sock")
-    assert default_socket_path() == "/tmp/custom-runtime.sock"
-
-
-def test_default_socket_path_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ONEX_RUNTIME_SOCKET_PATH", raising=False)
-    assert default_socket_path() == "/tmp/onex-runtime.sock"
-
-
-def test_dispatch_sync_round_trip(tmp_path: Path) -> None:
-    socket_path = _socket_path("omnimarket-runtime-test")
-    response = {
-        "ok": True,
-        "node_alias": "session_orchestrator",
-        "resolved_node_name": "node_session_orchestrator",
-        "contract_name": "session_orchestrator",
-        "topic": "onex.cmd.omnimarket.session-orchestrator-start.v1",
-        "terminal_event": "onex.evt.omnimarket.session-orchestrator-completed.v1",
-        "dispatch_result": {"status": "complete", "dispatch_queue": []},
-        "output_payloads": [{"status": "complete", "dispatch_queue": []}],
-    }
-    server = _OneShotSocketServer(socket_path, response)
-    server.start()
-    assert server.ready.wait(timeout=2.0)
-
-    with LocalRuntimeIngressClient(
-        socket_path=str(socket_path), timeout_seconds=2.0
-    ) as client:
-        result = client.dispatch_sync(
-            node_alias="session_orchestrator",
-            payload={"dry_run": True},
-            timeout_ms=1234,
+        group_id = str(kwargs.get("group_id", f"test-broker-{uuid4()}"))
+        return await self._bus.subscribe(
+            topic,
+            on_message=on_message,
+            group_id=group_id,  # type: ignore[arg-type]
         )
 
-    server.join(timeout=2.0)
-    assert server.error is None
-    assert result.ok is True
-    assert result.contract_name == "session_orchestrator"
-    assert result.dispatch_result == {"status": "complete", "dispatch_queue": []}
-    assert result.output_payloads == [{"status": "complete", "dispatch_queue": []}]
 
-    assert server.request_line is not None
-    request = json.loads(server.request_line.decode("utf-8").strip())
-    assert request["node_alias"] == "session_orchestrator"
-    assert request["payload"] == {"dry_run": True}
-    assert request["timeout_ms"] == 1234
-    with suppress(FileNotFoundError):
-        socket_path.unlink()
+async def _install_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    result_payload: dict[str, object] | None = None,
+    result_status: str = "completed",
+    result_error: str | None = None,
+    received_commands: list[ModelDispatchBusCommand] | None = None,
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        if received_commands is not None:
+            received_commands.append(envelope.payload)
+        terminal = ModelDispatchBusTerminalResult(
+            correlation_id=envelope.payload.correlation_id,
+            status=cast("object", result_status),
+            payload=result_payload,
+            error_message=result_error,
+        )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-broker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic, group_id=f"broker-{uuid4()}", on_message=on_command
+    )
+
+
+def test_default_command_topic_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "ONEX_PATTERN_B_COMMAND_TOPIC",
+        "onex.cmd.omnibase-infra.custom-pattern-b-dispatch.v1",
+    )
+    assert (
+        default_command_topic()
+        == "onex.cmd.omnibase-infra.custom-pattern-b-dispatch.v1"
+    )
+
+
+def test_default_response_topic_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "ONEX_PATTERN_B_RESPONSE_TOPIC",
+        "onex.evt.omnibase-infra.custom-pattern-b-dispatch-completed.v1",
+    )
+    assert (
+        default_response_topic()
+        == "onex.evt.omnibase-infra.custom-pattern-b-dispatch-completed.v1"
+    )
+
+
+def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONEX_PATTERN_B_REQUESTER", "codex-test")
+    assert default_requester() == "codex-test"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_round_trip() -> None:
+    bus = EventBusInmemory(environment="test", group="codex-pattern-b")
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    await _install_broker_worker(
+        bus,
+        command_topic=default_command_topic(),
+        result_payload={"status": "complete", "dispatch_queue": []},
+        received_commands=received_commands,
+    )
+
+    client = PatternBBrokerClient(
+        event_bus_factory=lambda: _BrokerTestTransport(bus),
+        requester="codex-test",
+    )
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True},
+        timeout_ms=1234,
+        response_topic="onex.evt.omnibase-infra.pattern-b-dispatch-test.v1",
+    )
+
+    await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "session_orchestrator"
+    assert result.command_topic == default_command_topic()
+    assert result.output_payloads == [{"status": "complete", "dispatch_queue": []}]
+    assert result.dispatch_result is not None
+    assert result.dispatch_result["status"] == "completed"
+    assert received_commands[0].timeout_seconds == 1.234
 
 
 def test_main_returns_zero_for_ok_response(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    socket_path = _socket_path("omnimarket-runtime-main-ok")
     payload_file = tmp_path / "payload.json"
     payload_file.write_text('{"dry_run": true}', encoding="utf-8")
-    response = {
-        "ok": True,
-        "node_alias": "pr_lifecycle_orchestrator",
-        "resolved_node_name": "node_pr_lifecycle_orchestrator",
-        "contract_name": "pr_lifecycle_orchestrator",
-        "dispatch_result": {"final_state": "COMPLETE"},
-    }
-    server = _OneShotSocketServer(socket_path, response)
-    server.start()
-    assert server.ready.wait(timeout=2.0)
+
+    bus = EventBusInmemory(environment="test", group="codex-pattern-b-main-ok")
+    asyncio.run(bus.start())
+    asyncio.run(
+        _install_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            result_payload={"final_state": "COMPLETE"},
+        )
+    )
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        lambda: _BrokerTestTransport(bus),
+    )
 
     rc = main(
         [
-            "--node-alias",
+            "--command-name",
             "pr_lifecycle_orchestrator",
             "--payload-file",
             str(payload_file),
-            "--socket-path",
-            str(socket_path),
+            "--response-topic",
+            "onex.evt.omnibase-infra.pattern-b-dispatch-main-ok.v1",
         ]
     )
 
-    server.join(timeout=2.0)
+    asyncio.run(bus.close())
+
     assert rc == 0
     captured = capsys.readouterr()
     assert '"ok": true' in captured.out.lower()
     assert '"final_state": "COMPLETE"' in captured.out
-    with suppress(FileNotFoundError):
-        socket_path.unlink()
 
 
-def test_main_returns_one_for_runtime_error(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_main_returns_one_for_failed_response(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    socket_path = _socket_path("omnimarket-runtime-main-error")
-    response = {
-        "ok": False,
-        "node_alias": "aislop_sweep",
-        "error": {
-            "code": "runtime_unavailable",
-            "message": "runtime is draining",
-            "retryable": True,
-        },
-    }
-    server = _OneShotSocketServer(socket_path, response)
-    server.start()
-    assert server.ready.wait(timeout=2.0)
+    bus = EventBusInmemory(environment="test", group="codex-pattern-b-main-error")
+    asyncio.run(bus.start())
+    asyncio.run(
+        _install_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            result_status="failed",
+            result_error="runtime is draining",
+        )
+    )
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        lambda: _BrokerTestTransport(bus),
+    )
 
     rc = main(
         [
-            "--node-alias",
+            "--command-name",
             "aislop_sweep",
             "--payload",
-            '{"repos":["omnimarket"],"dry_run":true}',
-            "--socket-path",
-            str(socket_path),
+            '{"target_dirs":["/tmp/repo"],"dry_run":true}',
+            "--response-topic",
+            "onex.evt.omnibase-infra.pattern-b-dispatch-main-error.v1",
         ]
     )
 
-    server.join(timeout=2.0)
+    asyncio.run(bus.close())
+
     assert rc == 1
     captured = capsys.readouterr()
-    assert '"code": "runtime_unavailable"' in captured.out
-    with suppress(FileNotFoundError):
-        socket_path.unlink()
+    assert '"code": "broker_failed"' in captured.out
+    assert '"runtime is draining"' in captured.out

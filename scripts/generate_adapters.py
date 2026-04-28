@@ -5,7 +5,7 @@ Reads metadata.yaml and contract.yaml for each node under src/omnimarket/nodes/,
 filters to nodes with node_role=orchestrator, and generates:
   - adapters/claude_code/{slug}_SKILL.md
   - adapters/cursor/{slug}.mdc
-  - adapters/codex/{slug}-instructions.md
+  - adapters/codex/skills/{slug}/SKILL.md
 
 Usage:
     python scripts/generate_adapters.py
@@ -69,6 +69,11 @@ def _get_timeout_ms(contract: dict[str, Any]) -> int:
         return 120000
 
 
+def _get_timeout_seconds(contract: dict[str, Any]) -> int:
+    timeout_ms = _get_timeout_ms(contract)
+    return max(1, (timeout_ms + 999) // 1000)
+
+
 def _build_args_table(entry_flags: dict[str, str]) -> str:
     """Build a markdown table from entry_flags dict (key=flag, value=description)."""
     if not entry_flags:
@@ -125,6 +130,23 @@ def _build_cli_examples(slug: str, entry_flags: dict[str, str]) -> str:
     for flag in list(entry_flags.keys())[:2]:
         lines.append(f"/{slug} {flag}")
     return "\n".join(lines)
+
+
+def _entry_flag_to_cli(flag: str) -> str:
+    if flag.startswith("--"):
+        return flag
+    return f"--{flag.replace('_', '-')}"
+
+
+def _build_dispatch_payload_example(entry_flags: dict[str, str]) -> str:
+    payload_lines = ['  "correlation_id": "<uuid4>"']
+    for index, flag in enumerate(entry_flags):
+        normalized = flag.lstrip("-").replace("-", "_")
+        separator = "," if index < len(entry_flags) - 1 else ""
+        payload_lines.append(f'  "{normalized}": "<value>"{separator}')
+    if len(payload_lines) > 1:
+        payload_lines[0] += ","
+    return "{\n" + "\n".join(payload_lines) + "\n}"
 
 
 # ---------------------------------------------------------------------------
@@ -311,16 +333,24 @@ def _render_instructions_md(
     slug: str,
     display_name: str,
     description: str,
-    contract_inputs: dict[str, Any],
+    entry_flags: dict[str, str],
+    command_topic: str,
+    completion_topic: str,
     timeout_ms: int,
 ) -> str:
-    args_table = _build_contract_inputs_table(contract_inputs)
+    args_table = _build_args_table(entry_flags)
+    payload_example = _build_dispatch_payload_example(entry_flags)
     return f"""\
-# {display_name} — Instructions
+---
+name: {slug}
+description: Thin Codex skill shim for the OmniMarket {node_name} node. Use when the user asks to run {slug}.
+---
 
-You have access to the OmniMarket `{node_name}` node through the local runtime ingress client.
+# {display_name}
+
+You have access to the OmniMarket `{node_name}` node through the Pattern B broker client.
 When the user asks you to run {slug} or {description.lower().rstrip(".")},
-use this procedure. **Do not implement the logic yourself.**
+use this procedure. Do not implement the node logic yourself.
 
 ## Supported arguments
 
@@ -329,54 +359,67 @@ use this procedure. **Do not implement the logic yourself.**
 {args_table}
 ## Procedure
 
-### Step 1 — Assemble payload
+### Step 1 - Build JSON payload
 
-Build a JSON payload from the user's request:
+Map user-provided arguments into a JSON object that matches the backing node's
+input model. Omit fields the user did not specify so the node can apply its
+own defaults.
+
+Use this dispatch shape:
 
 ```json
-{{
-  "correlation_id": "<generate a UUID v4>"
-}}
+{payload_example}
 ```
 
-Only include fields the user explicitly specified. The node applies defaults for
-omitted fields.
+### Step 2 - Dispatch through the Pattern B broker client
 
-### Step 2 — Dispatch through the local runtime client
-
-Run:
+Run from the `omnimarket` repo or an `omnimarket` worktree:
 
 ```bash
-env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "{node_alias}" \
-  --payload '<json-payload>' \
+env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \\
+  --command-name "{node_alias}" \\
+  --payload '<json-payload>' \\
   --timeout-ms {timeout_ms}
 ```
 
 The command prints a JSON response object to stdout.
 
-### Step 3 — Interpret the response
+### Step 3 - Interpret the response
 
-If `ok` is `true`, render `dispatch_result` clearly for the user.
+If `ok` is `true` and `output_payloads` is present, treat `output_payloads[0]`
+as the primary node result and render that clearly for the user.
+
+If `ok` is `true` and `output_payloads` is absent, fall back to rendering
+`dispatch_result`.
 
 If `ok` is `false`, surface `error.code` and `error.message` directly.
 
 If a dry run depends on GitHub or Linear and those systems are unreachable,
 report that degraded condition explicitly rather than inventing remote state.
 
-### Step 4 — Format output
+### Step 4 - Format output
 
-On success: render the runtime `dispatch_result` in a clear format for the user.
+On success: prefer `output_payloads[0]`; if it is absent, render the runtime
+`dispatch_result`.
 
 On timeout: report that the operation timed out.
 
-On error: surface the runtime ingress error code and message.
+On error: surface the broker client error code and message.
+
+## Contract
+
+- Backing node: `omnimarket/nodes/{node_name}/`
+- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Command name: `{node_alias}`
+- Command topic: `{command_topic}`
+- Completion topic: `{completion_topic}`
+- Contract timeout: {timeout_ms} ms
 
 ## Important
 
 Do not implement any business logic. All processing runs in the OmniMarket
-`{node_name}` node. These instructions only cover runtime ingress dispatch and
-output formatting.
+`{node_name}` node. These instructions only cover argument mapping, node
+dispatch, and output formatting.
 """
 
 
@@ -456,15 +499,7 @@ def generate_adapters_for_node(
         "completion_topic": completion_topic,
         "timeout_ms": timeout_ms,
     }
-    codex_kwargs = {
-        "node_name": node_name,
-        "node_alias": node_alias,
-        "slug": slug,
-        "display_name": display_name,
-        "description": description,
-        "contract_inputs": contract_inputs,
-        "timeout_ms": timeout_ms,
-    }
+    instructions_kwargs = {**shared_kwargs, "node_alias": node_alias}
 
     skill_content = _render_skill_md(
         pack=pack,
@@ -472,7 +507,7 @@ def generate_adapters_for_node(
         **shared_kwargs,
     )
     mdc_content = _render_mdc(**shared_kwargs)
-    instructions_content = _render_instructions_md(**codex_kwargs)
+    instructions_content = _render_instructions_md(**instructions_kwargs)
 
     claude_dir = output_dir / "claude_code"
     cursor_dir = output_dir / "cursor"
@@ -480,7 +515,7 @@ def generate_adapters_for_node(
 
     skill_path = claude_dir / f"{slug}_SKILL.md"
     mdc_path = cursor_dir / f"{slug}.mdc"
-    instructions_path = codex_dir / f"{slug}-instructions.md"
+    instructions_path = codex_dir / "skills" / slug / "SKILL.md"
 
     if not dry_run:
         claude_dir.mkdir(parents=True, exist_ok=True)
@@ -489,6 +524,7 @@ def generate_adapters_for_node(
 
         skill_path.write_text(skill_content)
         mdc_path.write_text(mdc_content)
+        instructions_path.parent.mkdir(parents=True, exist_ok=True)
         instructions_path.write_text(instructions_content)
 
     return {

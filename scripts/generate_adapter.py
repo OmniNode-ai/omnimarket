@@ -4,7 +4,7 @@
 Reads metadata.yaml and contract.yaml for each orchestrator node and generates:
   - SKILL.md (Claude Code skill adapter)
   - .mdc (Cursor rules adapter)
-  - instructions.md (Codex/generic adapter)
+  - skills/<slug>/SKILL.md (Codex skill adapter)
   - gemini.md (Gemini CLI adapter)
 
 Only processes nodes where metadata.yaml declares node_role=orchestrator.
@@ -47,6 +47,9 @@ def _get_command_topic(contract: dict[str, Any]) -> str:
 
 
 def _get_completion_topic(contract: dict[str, Any]) -> str:
+    terminal_event = contract.get("terminal_event")
+    if isinstance(terminal_event, str) and terminal_event:
+        return terminal_event
     try:
         return contract["event_bus"]["publish_topics"][0]
     except (KeyError, IndexError, TypeError):
@@ -58,6 +61,11 @@ def _get_timeout_ms(contract: dict[str, Any]) -> int:
         return int(contract["descriptor"]["timeout_ms"])
     except (KeyError, TypeError, ValueError):
         return 60000
+
+
+def _get_timeout_seconds(contract: dict[str, Any]) -> int:
+    timeout_ms = _get_timeout_ms(contract)
+    return max(1, (timeout_ms + 999) // 1000)
 
 
 def _extract_args_table(contract: dict[str, Any]) -> str:
@@ -77,6 +85,34 @@ def _extract_args_table(contract: dict[str, Any]) -> str:
     return "\n".join(lines) if lines else "| (no arguments) | — | — |"
 
 
+def _format_cli_flag(field: str, spec: dict[str, Any]) -> str:
+    flag = f"--{field.replace('_', '-')}"
+    required = bool(spec.get("required", False))
+    field_type = str(spec.get("type", "str")).lower()
+    default = spec.get("default")
+
+    if field_type == "bool" and default is False:
+        rendered = flag
+    else:
+        rendered = f"{flag} <{field}>"
+
+    return rendered if required else f"[{rendered}]"
+
+
+def _extract_cli_args(contract: dict[str, Any]) -> str:
+    inputs = contract.get("inputs", {})
+    if not isinstance(inputs, dict) or not inputs:
+        return "[node options]"
+
+    flags = [
+        _format_cli_flag(field, spec)
+        for field, spec in inputs.items()
+        if isinstance(spec, dict)
+    ]
+    separator = " " + "\\" + "\n  "
+    return separator.join(flags) if flags else "[node options]"
+
+
 def _build_substitutions(
     node_name: str,
     metadata: dict[str, Any],
@@ -87,8 +123,6 @@ def _build_substitutions(
         or node_name.replace("node_", "").replace("_", " ").title()
     )
     description = metadata.get("description", f"Run {display_name} via OmniMarket.")
-    entry_flags = metadata.get("entry_flags") or []
-    flags_str = " ".join(entry_flags) if entry_flags else ""
     skill_slug = node_name.replace("node_", "").replace("_", "-")
     node_alias = str(contract.get("name", "")).strip() or node_name
 
@@ -103,8 +137,9 @@ def _build_substitutions(
         "COMMAND_TOPIC": _get_command_topic(contract),
         "COMPLETION_TOPIC": _get_completion_topic(contract),
         "TIMEOUT_MS": str(_get_timeout_ms(contract)),
+        "TIMEOUT_SECONDS": str(_get_timeout_seconds(contract)),
         "ARGS_TABLE": _extract_args_table(contract),
-        "ENTRY_FLAGS": flags_str,
+        "ENTRY_FLAGS": _extract_cli_args(contract),
         "CATEGORY": metadata.get("pack", "omnimarket"),
         "TAG_1": metadata.get("pack", "omnimarket"),
         "TAG_2": skill_slug,
@@ -112,6 +147,7 @@ def _build_substitutions(
         "EXAMPLE_VALUE_1": "true",
         "PAYLOAD_FIELD_2": "repos",
         "EXAMPLE_VALUE_2": '["omniclaude"]',
+        "PAYLOAD_TEMPLATE": '{\n  "correlation_id": "<uuid4>"\n}',
         "GLOB_PATTERN_1": "**/*.py",
         "GLOB_PATTERN_2": "**/*.ts",
         "EXAMPLE_USER_INTENT_1": f"run {skill_slug}",
@@ -148,7 +184,7 @@ def _output_filename(adapter_type: str, skill_slug: str) -> str:
     if adapter_type == "cursor":
         return f"{skill_slug}.mdc"
     if adapter_type == "codex":
-        return f"{skill_slug}-instructions.md"
+        return f"skills/{skill_slug}/SKILL.md"
     if adapter_type == "gemini":
         return f"{skill_slug}.md"
     raise ValueError(f"Unknown adapter type: {adapter_type}")
