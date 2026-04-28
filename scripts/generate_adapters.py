@@ -79,6 +79,35 @@ def _build_args_table(entry_flags: dict[str, str]) -> str:
     return "\n".join(rows) + "\n"
 
 
+def _build_contract_inputs_table(contract_inputs: dict[str, Any]) -> str:
+    """Build a markdown table from contract inputs."""
+    rows = []
+    for field, spec in contract_inputs.items():
+        if field == "correlation_id":
+            continue
+        if not isinstance(spec, dict):
+            continue
+        description = str(spec.get("description", ""))
+        default = spec.get("default", "—")
+        rows.append(f"| {field} | {description} | {default} |")
+    if not rows:
+        return "| (none) | — | — |\n"
+    return "\n".join(rows) + "\n"
+
+
+def _derive_entry_flags(contract_inputs: dict[str, Any]) -> dict[str, str]:
+    """Derive a user-facing flag map when metadata omits entry_flags."""
+    derived: dict[str, str] = {}
+    for field, spec in contract_inputs.items():
+        if field == "correlation_id":
+            continue
+        if not isinstance(spec, dict):
+            continue
+        description = str(spec.get("description", "")).strip() or "Contract input"
+        derived[field] = description
+    return derived
+
+
 def _build_args_frontmatter(entry_flags: dict[str, str]) -> str:
     """Build SKILL.md frontmatter args block from entry_flags dict."""
     if not entry_flags:
@@ -278,19 +307,18 @@ and output formatting.
 def _render_instructions_md(
     *,
     node_name: str,
+    node_alias: str,
     slug: str,
     display_name: str,
     description: str,
-    entry_flags: dict[str, str],
-    command_topic: str,
-    completion_topic: str,
+    contract_inputs: dict[str, Any],
     timeout_ms: int,
 ) -> str:
-    args_table = _build_args_table(entry_flags)
+    args_table = _build_contract_inputs_table(contract_inputs)
     return f"""\
 # {display_name} — Instructions
 
-You have access to the OmniMarket `{node_name}` node via the ONEX event bus.
+You have access to the OmniMarket `{node_name}` node through the local runtime ingress client.
 When the user asks you to run {slug} or {description.lower().rstrip(".")},
 use this procedure. **Do not implement the logic yourself.**
 
@@ -314,35 +342,40 @@ Build a JSON payload from the user's request:
 Only include fields the user explicitly specified. The node applies defaults for
 omitted fields.
 
-### Step 2 — Publish command event
+### Step 2 — Dispatch through the local runtime client
 
-Publish to the ONEX event bus:
-- **Topic:** `{command_topic}`
-- **Payload:** The JSON from Step 1
+Run:
 
-Source: `contract.yaml → event_bus.subscribe_topics[0]`
+```bash
+env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
+  --node-alias "{node_alias}" \
+  --payload '<json-payload>' \
+  --timeout-ms {timeout_ms}
+```
 
-### Step 3 — Monitor completion
+The command prints a JSON response object to stdout.
 
-Listen on the ONEX event bus:
-- **Topic:** `{completion_topic}`
-- **Filter:** Match the `correlation_id` from Step 1
-- **Timeout:** {timeout_ms} ms
+### Step 3 — Interpret the response
 
-Source: `contract.yaml → terminal_event` or `event_bus.publish_topics[-1]`
+If `ok` is `true`, render `dispatch_result` clearly for the user.
+
+If `ok` is `false`, surface `error.code` and `error.message` directly.
+
+If a dry run depends on GitHub or Linear and those systems are unreachable,
+report that degraded condition explicitly rather than inventing remote state.
 
 ### Step 4 — Format output
 
-On success: render the completion payload in a clear format for the user.
+On success: render the runtime `dispatch_result` in a clear format for the user.
 
 On timeout: report that the operation timed out.
 
-On error: surface the error message from the completion event payload.
+On error: surface the runtime ingress error code and message.
 
 ## Important
 
 Do not implement any business logic. All processing runs in the OmniMarket
-`{node_name}` node. These instructions only cover event publish/subscribe and
+`{node_name}` node. These instructions only cover runtime ingress dispatch and
 output formatting.
 """
 
@@ -400,8 +433,14 @@ def generate_adapters_for_node(
     display_name = metadata.get("display_name") or slug.replace("-", " ").title()
     description = metadata.get("description", f"OmniMarket {display_name} node")
     pack = metadata.get("pack", "omnimarket")
-    entry_flags: dict[str, str] = metadata.get("entry_flags") or {}
+    contract_inputs = (
+        contract.get("inputs") if isinstance(contract.get("inputs"), dict) else {}
+    )
+    entry_flags: dict[str, str] = metadata.get("entry_flags") or _derive_entry_flags(
+        contract_inputs
+    )
     tags: list[str] = metadata.get("tags") or []
+    node_alias = str(contract.get("name", "")).strip() or node_name
 
     command_topic = _get_command_topic(contract)
     completion_topic = _get_completion_topic(contract)
@@ -417,6 +456,15 @@ def generate_adapters_for_node(
         "completion_topic": completion_topic,
         "timeout_ms": timeout_ms,
     }
+    codex_kwargs = {
+        "node_name": node_name,
+        "node_alias": node_alias,
+        "slug": slug,
+        "display_name": display_name,
+        "description": description,
+        "contract_inputs": contract_inputs,
+        "timeout_ms": timeout_ms,
+    }
 
     skill_content = _render_skill_md(
         pack=pack,
@@ -424,7 +472,7 @@ def generate_adapters_for_node(
         **shared_kwargs,
     )
     mdc_content = _render_mdc(**shared_kwargs)
-    instructions_content = _render_instructions_md(**shared_kwargs)
+    instructions_content = _render_instructions_md(**codex_kwargs)
 
     claude_dir = output_dir / "claude_code"
     cursor_dir = output_dir / "cursor"

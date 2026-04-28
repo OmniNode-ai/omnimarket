@@ -28,6 +28,7 @@ generate_adapters_for_node = _mod.generate_adapters_for_node
 _render_skill_md = _mod._render_skill_md
 _render_mdc = _mod._render_mdc
 _render_instructions_md = _mod._render_instructions_md
+_build_contract_inputs_table = _mod._build_contract_inputs_table
 _get_command_topic = _mod._get_command_topic
 _get_completion_topic = _mod._get_completion_topic
 _get_timeout_ms = _mod._get_timeout_ms
@@ -191,6 +192,7 @@ class TestHelpers:
 class TestRenderers:
     _COMMON = {
         "node_name": "node_test_orchestrator",
+        "node_alias": "test_orchestrator",
         "slug": "test-orchestrator",
         "display_name": "Test Orchestrator",
         "description": "A test orchestrator node",
@@ -198,60 +200,106 @@ class TestRenderers:
             "--dry-run": "Run without making changes",
             "--ticket": "Ticket ID to process",
         },
+        "contract_inputs": {
+            "dry_run": {
+                "description": "Run without making changes",
+                "default": False,
+            },
+            "ticket": {
+                "description": "Ticket ID to process",
+                "default": "—",
+            },
+        },
         "command_topic": "onex.cmd.omnimarket.test-start.v1",
         "completion_topic": "onex.evt.omnimarket.test-completed.v1",
         "timeout_ms": 60000,
     }
 
+    def _skill_kwargs(self) -> dict[str, object]:
+        kwargs = dict(self._COMMON)
+        kwargs.pop("node_alias")
+        kwargs.pop("contract_inputs")
+        return kwargs
+
+    def _mdc_kwargs(self) -> dict[str, object]:
+        kwargs = dict(self._COMMON)
+        kwargs.pop("node_alias")
+        kwargs.pop("contract_inputs")
+        return kwargs
+
+    def _instructions_kwargs(self) -> dict[str, object]:
+        kwargs = dict(self._COMMON)
+        kwargs.pop("entry_flags")
+        kwargs.pop("command_topic")
+        kwargs.pop("completion_topic")
+        return kwargs
+
     def test_render_skill_md_contains_node_name(self) -> None:
-        content = _render_skill_md(pack="testing", tags=["test"], **self._COMMON)
+        content = _render_skill_md(
+            pack="testing", tags=["test"], **self._skill_kwargs()
+        )
         assert "node_test_orchestrator" in content
 
     def test_render_skill_md_contains_topics(self) -> None:
-        content = _render_skill_md(pack="testing", tags=["test"], **self._COMMON)
+        content = _render_skill_md(
+            pack="testing", tags=["test"], **self._skill_kwargs()
+        )
         assert "onex.cmd.omnimarket.test-start.v1" in content
         assert "onex.evt.omnimarket.test-completed.v1" in content
 
     def test_render_skill_md_contains_timeout(self) -> None:
-        content = _render_skill_md(pack="testing", tags=["test"], **self._COMMON)
+        content = _render_skill_md(
+            pack="testing", tags=["test"], **self._skill_kwargs()
+        )
         assert "60000" in content
 
     def test_render_skill_md_contains_entry_flags(self) -> None:
-        content = _render_skill_md(pack="testing", tags=["test"], **self._COMMON)
+        content = _render_skill_md(
+            pack="testing", tags=["test"], **self._skill_kwargs()
+        )
         assert "--dry-run" in content
         assert "--ticket" in content
 
     def test_render_skill_md_deterministic(self) -> None:
-        c1 = _render_skill_md(pack="testing", tags=["test"], **self._COMMON)
-        c2 = _render_skill_md(pack="testing", tags=["test"], **self._COMMON)
+        c1 = _render_skill_md(pack="testing", tags=["test"], **self._skill_kwargs())
+        c2 = _render_skill_md(pack="testing", tags=["test"], **self._skill_kwargs())
         assert c1 == c2
 
     def test_render_mdc_contains_topics(self) -> None:
-        content = _render_mdc(**self._COMMON)
+        content = _render_mdc(**self._mdc_kwargs())
         assert "onex.cmd.omnimarket.test-start.v1" in content
         assert "onex.evt.omnimarket.test-completed.v1" in content
 
     def test_render_mdc_deterministic(self) -> None:
-        c1 = _render_mdc(**self._COMMON)
-        c2 = _render_mdc(**self._COMMON)
+        c1 = _render_mdc(**self._mdc_kwargs())
+        c2 = _render_mdc(**self._mdc_kwargs())
         assert c1 == c2
 
     def test_render_instructions_md_contains_node_name(self) -> None:
-        content = _render_instructions_md(**self._COMMON)
+        content = _render_instructions_md(**self._instructions_kwargs())
         assert "node_test_orchestrator" in content
+        assert "scripts/run_codex_runtime_request.py" in content
+        assert '--node-alias "test_orchestrator"' in content
 
     def test_render_instructions_md_deterministic(self) -> None:
-        c1 = _render_instructions_md(**self._COMMON)
-        c2 = _render_instructions_md(**self._COMMON)
+        c1 = _render_instructions_md(**self._instructions_kwargs())
+        c2 = _render_instructions_md(**self._instructions_kwargs())
         assert c1 == c2
 
+    def test_render_instructions_md_uses_contract_inputs_table(self) -> None:
+        content = _render_instructions_md(**self._instructions_kwargs())
+        assert "| dry_run | Run without making changes | False |" in content
+        assert "| ticket | Ticket ID to process | — |" in content
+
     def test_render_with_no_entry_flags(self) -> None:
-        kwargs = {**self._COMMON, "entry_flags": {}}
+        kwargs = {**self._skill_kwargs(), "entry_flags": {}}
         content = _render_skill_md(pack="testing", tags=[], **kwargs)
         assert "No entry flags" in content
 
     def test_render_skill_md_has_valid_yaml_frontmatter(self) -> None:
-        content = _render_skill_md(pack="testing", tags=["test"], **self._COMMON)
+        content = _render_skill_md(
+            pack="testing", tags=["test"], **self._skill_kwargs()
+        )
         # Extract frontmatter between first pair of ---
         parts = content.split("---")
         assert len(parts) >= 3
@@ -434,3 +482,16 @@ class TestMainCLI:
 
         assert rc == 0
         assert not output_dir.exists()
+
+
+@pytest.mark.unit
+class TestContractInputTable:
+    def test_build_contract_inputs_table_skips_correlation_id(self) -> None:
+        table = _build_contract_inputs_table(
+            {
+                "correlation_id": {"description": "internal", "default": "—"},
+                "dry_run": {"description": "Run without changes", "default": False},
+            }
+        )
+        assert "correlation_id" not in table
+        assert "dry_run" in table

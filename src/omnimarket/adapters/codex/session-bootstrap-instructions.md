@@ -1,14 +1,20 @@
-# {{SKILL_DISPLAY_NAME}} — Codex Instructions
+# Session Bootstrap — Codex Instructions
 
-You have access to the OmniMarket `{{NODE_NAME}}` node through the local runtime
-ingress client. When the user asks you to {{TRIGGER_DESCRIPTION}}, use this
+You have access to the OmniMarket `node_session_bootstrap` node through the local runtime
+ingress client. When the user asks you to overnight session bootstrapper — reads contract, writes snapshot, configures timers, use this
 procedure. **Do not implement the logic yourself.**
 
 ## Supported arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-{{ARGS_TABLE}}
+| session_id |  | — |
+| session_mode | Controls which crons are activated and what halt conditions apply | — |
+| active_sprint_id | Linear cycle ID, or 'auto-detect' to query Linear for active sprint | auto-detect |
+| model_routing_preference | Routing preference passed to dogfood gate at dispatch time | local-first |
+| contract | ModelSessionContract -- session-level verification contract | — |
+| state_dir |  | .onex_state |
+| dry_run |  | False |
 
 ## Procedure
 
@@ -31,14 +37,14 @@ Run:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "{{NODE_ALIAS}}" \
+  --node-alias "session_bootstrap" \
   --payload '<json-payload>' \
-  --timeout-ms {{TIMEOUT_MS}}
+  --timeout-ms 30000
 ```
 
 Notes:
 - `scripts/run_codex_runtime_request.py` is the supported repo-local request wrapper.
-- `{{NODE_ALIAS}}` resolves through the runtime ingress route table.
+- `session_bootstrap` resolves through the runtime ingress route table.
 - The command prints a JSON response object to stdout.
 
 ### Step 3 — Interpret the response
@@ -62,5 +68,5 @@ On error: surface the runtime ingress error code and message.
 ## Important
 
 Do not implement any business logic. All processing runs in the OmniMarket
-`{{NODE_NAME}}` node. These instructions only cover runtime ingress dispatch and
+`node_session_bootstrap` node. These instructions only cover runtime ingress dispatch and
 output formatting.

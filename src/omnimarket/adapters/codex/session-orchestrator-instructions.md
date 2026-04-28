@@ -1,14 +1,20 @@
-# {{SKILL_DISPLAY_NAME}} — Codex Instructions
+# Session Orchestrator — Codex Instructions
 
-You have access to the OmniMarket `{{NODE_NAME}}` node through the local runtime
-ingress client. When the user asks you to {{TRIGGER_DESCRIPTION}}, use this
+You have access to the OmniMarket `node_session_orchestrator` node through the local runtime
+ingress client. When the user asks you to unified session orchestrator — health gate → rsd scoring → dispatch (omn-8367 poc), use this
 procedure. **Do not implement the logic yourself.**
 
 ## Supported arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-{{ARGS_TABLE}}
+| session_id | sess-{date}-{time} identifier. Auto-generated if not provided. | — |
+| mode | Execution mode. interactive awaits user approval after Phase 1. | interactive |
+| dry_run | Print plan without dispatching workers. | False |
+| skip_health | Skip Phase 1 health gate. Emergency use only. | False |
+| standing_orders_path |  | .onex_state/session/standing_orders.json |
+| state_dir |  | .onex_state/session |
+| phase | Run only a specific phase (1/2/3). 0 = all phases. | 0 |
 
 ## Procedure
 
@@ -31,14 +37,14 @@ Run:
 
 ```bash
 env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
-  --node-alias "{{NODE_ALIAS}}" \
+  --node-alias "session_orchestrator" \
   --payload '<json-payload>' \
-  --timeout-ms {{TIMEOUT_MS}}
+  --timeout-ms 300000
 ```
 
 Notes:
 - `scripts/run_codex_runtime_request.py` is the supported repo-local request wrapper.
-- `{{NODE_ALIAS}}` resolves through the runtime ingress route table.
+- `session_orchestrator` resolves through the runtime ingress route table.
 - The command prints a JSON response object to stdout.
 
 ### Step 3 — Interpret the response
@@ -62,5 +68,5 @@ On error: surface the runtime ingress error code and message.
 ## Important
 
 Do not implement any business logic. All processing runs in the OmniMarket
-`{{NODE_NAME}}` node. These instructions only cover runtime ingress dispatch and
+`node_session_orchestrator` node. These instructions only cover runtime ingress dispatch and
 output formatting.

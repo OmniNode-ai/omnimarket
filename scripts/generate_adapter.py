@@ -67,6 +67,8 @@ def _extract_args_table(contract: dict[str, Any]) -> str:
         return "| (no arguments) | — | — |"
     lines = []
     for field, spec in inputs.items():
+        if field == "correlation_id":
+            continue
         if not isinstance(spec, dict):
             continue
         desc = spec.get("description", "")
@@ -88,10 +90,12 @@ def _build_substitutions(
     entry_flags = metadata.get("entry_flags") or []
     flags_str = " ".join(entry_flags) if entry_flags else ""
     skill_slug = node_name.replace("node_", "").replace("_", "-")
+    node_alias = str(contract.get("name", "")).strip() or node_name
 
     return {
         "SKILL_DISPLAY_NAME": display_name,
         "NODE_NAME": node_name,
+        "NODE_ALIAS": node_alias,
         "NODE_DIR": node_name,
         "SKILL_SLUG": skill_slug,
         "SKILL_DESCRIPTION": description,
@@ -104,13 +108,6 @@ def _build_substitutions(
         "CATEGORY": metadata.get("pack", "omnimarket"),
         "TAG_1": metadata.get("pack", "omnimarket"),
         "TAG_2": skill_slug,
-        # Placeholder args — override via metadata.entry_flags or contract.inputs
-        "ARG_1": "dry_run",
-        "ARG_1_DESCRIPTION": "Report only — no side effects",
-        "ARG_1_DEFAULT": "false",
-        "ARG_2": "repos",
-        "ARG_2_DESCRIPTION": "Target repositories (comma-separated)",
-        "ARG_2_DEFAULT": "all",
         "PAYLOAD_FIELD_1": "dry_run",
         "EXAMPLE_VALUE_1": "true",
         "PAYLOAD_FIELD_2": "repos",
