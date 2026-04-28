@@ -1,0 +1,20 @@
+version: 1
+ticket_id: OMN-9727
+title: "Market node deployment trigger waits for deploy-agent completion"
+repo: omnimarket
+change_type: runtime_deploy_verification
+summary: >
+  Make the omnimarket runtime rebuild trigger optionally wait for the deploy-agent
+  rebuild-completed event, and enable that wait in the GitHub Actions merge
+  trigger so runtime deploy failures are visible to CI.
+runtime_impact:
+  deploy_required: false
+  restart_required: false
+validation:
+  local:
+    - "uv run pytest tests/unit/scripts/test_trigger_rebuild_on_merge.py -q"
+    - "uv run ruff check scripts/trigger_rebuild_on_merge.py tests/unit/scripts/test_trigger_rebuild_on_merge.py"
+    - "uv run ruff format --check scripts/trigger_rebuild_on_merge.py tests/unit/scripts/test_trigger_rebuild_on_merge.py"
+post_merge:
+  - "Observe the next runtime_change merge workflow waits for onex.evt.deploy.rebuild-completed.v1."
+  - "Confirm failed deploy-agent completion exits the workflow non-zero."
