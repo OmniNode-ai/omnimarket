@@ -46,7 +46,16 @@ class TargetDockerApi:
     def check(self) -> ModelWatchdogCheckResult:
         try:
             import docker
+        except ImportError:
+            return ModelWatchdogCheckResult(
+                target=self.name,
+                category=self._category,
+                status=EnumCheckStatus.UNKNOWN,
+                message="Docker SDK (docker-py) not installed",
+            )
 
+        client = None
+        try:
             client = docker.from_env()
             container = client.containers.get(self._container_name)
             container.reload()
@@ -89,13 +98,6 @@ class TargetDockerApi:
                 message=f"Container {self._container_name} running",
                 details={"status": status, "health": health_status},
             )
-        except ImportError:
-            return ModelWatchdogCheckResult(
-                target=self.name,
-                category=self._category,
-                status=EnumCheckStatus.UNKNOWN,
-                message="Docker SDK (docker-py) not installed",
-            )
         except Exception as e:
             error_msg = str(e)
             if "No such container" in error_msg or "not found" in error_msg.lower():
@@ -121,8 +123,12 @@ class TargetDockerApi:
                 status=EnumCheckStatus.UNKNOWN,
                 message=f"Docker check error: {e}",
             )
+        finally:
+            if client is not None:
+                client.close()
 
     def restart(self) -> bool:
+        client = None
         try:
             import docker
 
@@ -133,6 +139,9 @@ class TargetDockerApi:
         except Exception:
             logger.warning("Docker restart failed for %s", self._container_name)
             return False
+        finally:
+            if client is not None:
+                client.close()
 
 
 __all__: list[str] = ["TargetDockerApi"]

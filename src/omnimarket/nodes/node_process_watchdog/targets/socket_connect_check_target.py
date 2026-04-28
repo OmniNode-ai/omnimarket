@@ -53,11 +53,11 @@ class TargetSocketConnect:
         return self._category
 
     def check(self) -> ModelWatchdogCheckResult:
+        sock: socket.socket | None = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(self._timeout)
             sock.connect((self._host, self._port))
-            sock.close()
             return ModelWatchdogCheckResult(
                 target=self._name,
                 category=self._category,
@@ -92,6 +92,9 @@ class TargetSocketConnect:
                 status=EnumCheckStatus.UNKNOWN,
                 message=f"Socket check error: {e}",
             )
+        finally:
+            if sock is not None:
+                sock.close()
 
     def restart(self) -> bool:
         return False

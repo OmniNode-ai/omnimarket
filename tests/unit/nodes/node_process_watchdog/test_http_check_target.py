@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
 
 import pytest
 
@@ -71,6 +72,21 @@ class TestTargetHttpCheck:
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_resp
 
+        result = _target().check()
+        assert result.status == EnumCheckStatus.DEGRADED
+        assert result.details["status_code"] == 503
+
+    @patch(
+        "omnimarket.nodes.node_process_watchdog.targets.http_check_target.urllib.request.urlopen",
+        side_effect=HTTPError(
+            url="http://localhost:8000/health",
+            code=503,
+            msg="service unavailable",
+            hdrs=None,
+            fp=None,
+        ),
+    )
+    def test_degraded_on_http_error(self, mock_urlopen: MagicMock) -> None:
         result = _target().check()
         assert result.status == EnumCheckStatus.DEGRADED
         assert result.details["status_code"] == 503

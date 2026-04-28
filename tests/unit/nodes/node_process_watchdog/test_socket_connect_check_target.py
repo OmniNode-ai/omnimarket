@@ -66,13 +66,17 @@ class TestTargetSocketConnectCheck:
         mock_sock.close.assert_called_once()
 
     @patch(
-        "omnimarket.nodes.node_process_watchdog.targets.socket_connect_check_target.socket.socket",
-        side_effect=ConnectionRefusedError("refused"),
+        "omnimarket.nodes.node_process_watchdog.targets.socket_connect_check_target.socket.socket"
     )
     def test_down_on_connection_refused(self, mock_socket_cls: MagicMock) -> None:
+        mock_sock = MagicMock()
+        mock_sock.connect.side_effect = ConnectionRefusedError("refused")
+        mock_socket_cls.return_value = mock_sock
+
         result = _target().check()
         assert result.status == EnumCheckStatus.DOWN
         assert "refused" in result.message.lower()
+        mock_sock.close.assert_called_once()
 
     @patch(
         "omnimarket.nodes.node_process_watchdog.targets.socket_connect_check_target.socket.socket",

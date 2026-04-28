@@ -49,6 +49,7 @@ class TestTargetDockerApiCheck:
 
         result = _target().check()
         assert result.status == EnumCheckStatus.HEALTHY
+        mock_from_env.return_value.close.assert_called_once()
 
     @patch("docker.from_env")
     def test_healthy_running_no_health_config(self, mock_from_env: MagicMock) -> None:
@@ -91,6 +92,7 @@ class TestTargetDockerApiCheck:
         result = _target().check()
         assert result.status == EnumCheckStatus.DOWN
         assert "not found" in result.message.lower()
+        mock_from_env.return_value.close.assert_called_once()
 
     @patch("docker.from_env")
     def test_down_when_daemon_unreachable(self, mock_from_env: MagicMock) -> None:
@@ -118,9 +120,11 @@ class TestTargetDockerApiCheck:
 
         assert _target().restart() is True
         mock_container.restart.assert_called_once_with(timeout=10)
+        mock_from_env.return_value.close.assert_called_once()
 
     @patch("docker.from_env")
     def test_restart_returns_false_on_failure(self, mock_from_env: MagicMock) -> None:
         mock_from_env.return_value.containers.get.side_effect = Exception("fail")
 
         assert _target().restart() is False
+        mock_from_env.return_value.close.assert_called_once()

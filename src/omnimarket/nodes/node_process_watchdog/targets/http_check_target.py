@@ -64,6 +64,14 @@ class TargetHttp:
                     message=f"HTTP {self._url} returned {resp.status}",
                     details={"status_code": resp.status},
                 )
+        except urllib.error.HTTPError as e:
+            return ModelWatchdogCheckResult(
+                target=self._name,
+                category=self._category,
+                status=EnumCheckStatus.DEGRADED,
+                message=f"HTTP {self._url} returned {e.code}",
+                details={"status_code": e.code},
+            )
         except urllib.error.URLError as e:
             return ModelWatchdogCheckResult(
                 target=self._name,
