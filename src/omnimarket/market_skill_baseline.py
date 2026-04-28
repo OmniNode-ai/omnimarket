@@ -11,12 +11,12 @@ import os
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 from uuid import uuid4
 
 import yaml
@@ -28,7 +28,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OMNI_HOME = REPO_ROOT.parents[2]
+OMNI_HOME = REPO_ROOT.parent
 
 
 class ModelCommandResult(BaseModel):
@@ -257,7 +257,7 @@ def _compute_input_drift(
 
 
 @contextmanager
-def _fake_gh_script(body: str) -> Iterable[Path]:
+def _fake_gh_script(body: str) -> Iterator[Path]:
     with tempfile.TemporaryDirectory(prefix="market-skill-gh-") as tmp:
         path = Path(tmp) / "gh"
         path.write_text(body, encoding="utf-8")
@@ -266,7 +266,7 @@ def _fake_gh_script(body: str) -> Iterable[Path]:
 
 
 @contextmanager
-def _fake_bin_scripts(scripts: dict[str, str]) -> Iterable[Path]:
+def _fake_bin_scripts(scripts: dict[str, str]) -> Iterator[Path]:
     with tempfile.TemporaryDirectory(prefix="market-skill-bin-") as tmp:
         bin_dir = Path(tmp)
         for name, body in scripts.items():
@@ -360,12 +360,13 @@ def _summarize_session_bootstrap(payload: dict[str, object]) -> dict[str, object
 
 
 def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, object]:
+    dispatch_queue = payload.get("dispatch_queue", [])
     return {
         "status": payload.get("status"),
         "session_id": payload.get("session_id"),
         "dry_run": payload.get("dry_run"),
-        "dispatch_queue_count": len(payload.get("dispatch_queue", []))
-        if isinstance(payload.get("dispatch_queue"), list)
+        "dispatch_queue_count": len(dispatch_queue)
+        if isinstance(dispatch_queue, list)
         else 0,
     }
 
@@ -651,7 +652,7 @@ def run_pytest_targets(spec: ModelMarketSkillSpec) -> ModelCommandResult:
     command = [sys.executable, "-m", "pytest", *spec.pytest_targets, "-q"]
     completed = _run_command(command=command, env={"ONEX_STATE_DIR": ""})
     passed = completed.returncode == 0
-    summary = {"targets": list(spec.pytest_targets)}
+    summary: dict[str, object] = {"targets": list(spec.pytest_targets)}
     if passed:
         summary["result"] = "passed"
     return ModelCommandResult(
@@ -788,9 +789,8 @@ def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
             lines.append(
                 f"- Focused tests: `{'pass' if item.pytest.passed else 'fail'}`"
             )
-            lines.append(
-                f"- Focused test targets: `{', '.join(item.pytest.summary.get('targets', []))}`"
-            )
+            targets = cast(list[str], item.pytest.summary["targets"])
+            lines.append(f"- Focused test targets: `{', '.join(targets)}`")
             if item.pytest.notes:
                 lines.append(
                     f"- Focused test output: `{' | '.join(item.pytest.notes)}`"
