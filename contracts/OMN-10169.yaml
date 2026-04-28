@@ -1,0 +1,40 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10169
+summary: "Pin omnimarket to omnibase-spi >=0.20.5 for runtime protocol imports"
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "PyPI publishes omnibase-spi 0.20.5"
+    command: "curl -fsS https://pypi.org/pypi/omnibase-spi/json | jq -e '.releases | has(\"0.20.5\")' >/dev/null"
+  - kind: "manual"
+    description: "omnibase_spi runtime protocol import works from the published wheel"
+    command: "uv run --with \"omnibase-spi==0.20.5\" python -c \"from omnibase_spi.protocols.runtime import protocol_handler_resolver; print('ok')\""
+  - kind: "ci"
+    description: "omnimarket PR checks pass, including deploy gate"
+    command: "gh pr checks 432 --repo OmniNode-ai/omnimarket --watch"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "PyPI release 0.20.5 exists"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "curl -fsS https://pypi.org/pypi/omnibase-spi/json | jq -e '.releases | has(\"0.20.5\")' >/dev/null"
+  - id: "dod-002"
+    description: "Published omnibase-spi 0.20.5 exposes protocols.runtime"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --with \"omnibase-spi==0.20.5\" python -c \"from omnibase_spi.protocols.runtime import protocol_handler_resolver; print('ok')\""
+  - id: "dod-003"
+    description: "Dependency floor is raised in pyproject.toml"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -F '\"omnibase-spi>=0.20.5\"' pyproject.toml"
