@@ -31,7 +31,7 @@ jobs:
     name: Trigger Deploy Agent Rebuild
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -68,4 +68,6 @@ jobs:
             --changed-files "$PR_CHANGED_FILES" \
             --labels "$PR_LABELS" \
             --git-ref "origin/main" \
-            --requested-by "gha/omnimarket/pr-$PR_NUMBER"
+            --requested-by "gha/omnimarket/pr-$PR_NUMBER" \
+            --wait-for-completion \
+            --completion-timeout-seconds 900

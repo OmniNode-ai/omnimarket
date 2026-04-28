@@ -46,6 +46,12 @@ inputs:
     type: uuid
     description: "Unique sweep run ID"
     required: true
+  run_id:
+    type: str
+    description: >
+      Human-readable sweep run identifier used as the result.json directory name
+      under $ONEX_STATE_DIR/merge-sweep/{run_id}/. Restricted to [A-Za-z0-9._-].
+    required: true
   dry_run:
     type: bool
     description: "Run without side effects"
@@ -71,11 +77,37 @@ inputs:
     description: "Comma-separated repo slugs to filter (empty = all)"
     required: false
     default: ""
+  max_parallel_polish:
+    type: int
+    description: "Maximum concurrent pr-polish agents dispatched during FIXING"
+    required: false
+    default: 20
+    minimum: 1
   enable_auto_rebase:
     type: bool
     description: "Auto-rebase stale (Track A-update) PR branches before merge"
     required: false
     default: true
+  use_dag_ordering:
+    type: bool
+    description: "Merge PRs in repo dependency order"
+    required: false
+    default: true
+  enable_trivial_comment_resolution:
+    type: bool
+    description: "Auto-resolve trivial CodeRabbit or bot review threads before merge"
+    required: false
+    default: true
+  enable_admin_merge_fallback:
+    type: bool
+    description: "Admin-merge PRs stuck in queue past the configured threshold"
+    required: false
+    default: true
+  admin_fallback_threshold_minutes:
+    type: int
+    description: "Minutes before a merge-queued PR is considered stuck"
+    required: false
+    default: 30
   verify:
     type: bool
     description: "Run verification_sweep per-PR as pre-merge gate (OMN-7742)"

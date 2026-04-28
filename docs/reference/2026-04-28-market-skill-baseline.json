@@ -1,0 +1,349 @@
+{
+  "captured_at": "2026-04-28T20:26:35.546006Z",
+  "repo_root": "<omnimarket>",
+  "skills": [
+    {
+      "skill_name": "aislop_sweep",
+      "contract": {
+        "contract_name": "aislop_sweep",
+        "node_name": "node_aislop_sweep",
+        "node_type": "compute",
+        "timeout_ms": 120000,
+        "terminal_event": "onex.evt.omnimarket.aislop-sweep-completed.v1",
+        "inputs": [
+          "target_dirs",
+          "checks",
+          "dry_run",
+          "severity_threshold"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_aislop_sweep",
+          "--repos",
+          "omnimarket",
+          "--dry-run",
+          "--severity-threshold",
+          "CRITICAL"
+        ],
+        "returncode": 1,
+        "summary": {
+          "status": "findings",
+          "repos_scanned": 1,
+          "findings_count": 115,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": [
+          "findings are expected to exit non-zero; this still proves the node ran"
+        ]
+      },
+      "pytest": null,
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "pr_lifecycle_orchestrator",
+      "contract": {
+        "contract_name": "pr_lifecycle_orchestrator",
+        "node_name": "node_pr_lifecycle_orchestrator",
+        "node_type": "orchestrator",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
+        "inputs": [
+          "correlation_id",
+          "run_id",
+          "dry_run",
+          "inventory_only",
+          "fix_only",
+          "merge_only",
+          "repos",
+          "max_parallel_polish",
+          "enable_auto_rebase",
+          "use_dag_ordering",
+          "enable_trivial_comment_resolution",
+          "enable_admin_merge_fallback",
+          "admin_fallback_threshold_minutes",
+          "verify",
+          "verify_timeout_seconds"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_pr_lifecycle_orchestrator",
+          "--input",
+          "{\"payload\":{\"correlation_id\":\"92c4f07e-4f8f-4502-b0b3-25feab51e969\",\"run_id\":\"market-skill-baseline\",\"dry_run\":true,\"inventory_only\":true,\"fix_only\":false,\"merge_only\":false,\"repos\":\"\",\"max_parallel_polish\":20,\"enable_auto_rebase\":true,\"use_dag_ordering\":true,\"enable_trivial_comment_resolution\":true,\"enable_admin_merge_fallback\":true,\"admin_fallback_threshold_minutes\":30,\"verify\":false,\"verify_timeout_seconds\":30},\"envelope_id\":\"7afe7a6d-e80e-4513-b2ff-f2f423681aa2\",\"envelope_timestamp\":\"2026-04-28T20:26:33.291689Z\",\"correlation_id\":\"92c4f07e-4f8f-4502-b0b3-25feab51e969\",\"source_tool\":null,\"target_tool\":null,\"metadata\":{\"trace_id\":null,\"span_id\":null,\"parent_span_id\":null,\"request_id\":null,\"headers\":{},\"tags\":{}},\"security_context\":null,\"event_type\":\"omnimarket.pr-lifecycle-orchestrator-start\",\"payload_type\":null,\"payload_schema_version\":null,\"priority\":5,\"timeout_seconds\":null,\"retry_count\":0,\"request_id\":null,\"trace_id\":null,\"span_id\":null,\"onex_version\":{\"major\":1,\"minor\":0,\"patch\":0,\"prerelease\":null,\"build\":null},\"envelope_version\":{\"major\":2,\"minor\":1,\"patch\":0,\"prerelease\":null,\"build\":null}}"
+        ],
+        "returncode": 0,
+        "summary": {
+          "final_state": "COMPLETE",
+          "prs_inventoried": 0,
+          "prs_merged": 0,
+          "prs_fixed": 0,
+          "prs_verified": 0
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": null,
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "pr_polish",
+      "contract": {
+        "contract_name": "pr_polish",
+        "node_name": "node_pr_polish",
+        "node_type": "compute",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.pr-polish-completed.v1",
+        "inputs": [
+          "repo",
+          "pr_number",
+          "ticket_id",
+          "required_clean_runs",
+          "max_iterations",
+          "skip_conflicts",
+          "skip_pr_review",
+          "skip_local_review",
+          "no_ci",
+          "no_push",
+          "no_automerge",
+          "dry_run",
+          "worktree_path",
+          "run_dir"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_pr_polish",
+          "--repo",
+          "OmniNode-ai/omnimarket",
+          "--pr-number",
+          "1",
+          "--dry-run",
+          "--no-push",
+          "--no-automerge",
+          "--worktree-path",
+          "<tmp>/market-skill/worktree",
+          "--run-dir",
+          "<tmp>/market-skill/run"
+        ],
+        "returncode": 0,
+        "summary": {
+          "final_phase": "done",
+          "pr_number": 1,
+          "error_message": null
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": null,
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "local_review",
+      "contract": {
+        "contract_name": "local_review",
+        "node_name": "node_local_review",
+        "node_type": "compute",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.local-review-completed.v1",
+        "inputs": [
+          "max_iterations",
+          "required_clean_runs",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_local_review",
+          "--dry-run"
+        ],
+        "returncode": 0,
+        "summary": {
+          "current_phase": "init",
+          "max_iterations": 10,
+          "required_clean_runs": 2,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": null,
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "coderabbit_triage",
+      "contract": {
+        "contract_name": "coderabbit_triage",
+        "node_name": "node_coderabbit_triage",
+        "node_type": "compute",
+        "timeout_ms": 120000,
+        "terminal_event": "onex.evt.omnimarket.coderabbit-triage-completed.v1",
+        "inputs": [
+          "repo",
+          "pr_number",
+          "correlation_id",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_coderabbit_triage",
+          "--repo",
+          "OmniNode-ai/omnimarket",
+          "--pr",
+          "1",
+          "--dry-run"
+        ],
+        "returncode": 0,
+        "summary": {
+          "total_threads": 1,
+          "blocking_count": 0,
+          "suggestion_count": 1,
+          "unknown_count": 0,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": null,
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "session_bootstrap",
+      "contract": {
+        "contract_name": "session_bootstrap",
+        "node_name": "node_session_bootstrap",
+        "node_type": "orchestrator",
+        "timeout_ms": 30000,
+        "terminal_event": "onex.evt.omnimarket.session-bootstrap-completed.v2",
+        "inputs": [
+          "session_id",
+          "session_mode",
+          "active_sprint_id",
+          "model_routing_preference",
+          "contract",
+          "state_dir",
+          "dry_run"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_session_bootstrap",
+          "--dry-run",
+          "--state-dir",
+          "<tmp>/market-skill/state"
+        ],
+        "returncode": 0,
+        "summary": {
+          "status": "ready",
+          "crons_registered_count": 4,
+          "dry_run": true
+        },
+        "stderr": "",
+        "notes": []
+      },
+      "pytest": null,
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "session_orchestrator",
+      "contract": {
+        "contract_name": "session_orchestrator",
+        "node_name": "node_session_orchestrator",
+        "node_type": "orchestrator",
+        "timeout_ms": 300000,
+        "terminal_event": "onex.evt.omnimarket.session-orchestrator-completed.v1",
+        "inputs": [
+          "correlation_id",
+          "session_id",
+          "mode",
+          "dry_run",
+          "skip_health",
+          "standing_orders_path",
+          "state_dir",
+          "phase"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_session_orchestrator",
+          "--skip-health",
+          "--phase",
+          "1",
+          "--dry-run",
+          "--output-json"
+        ],
+        "returncode": 0,
+        "summary": {
+          "status": "complete",
+          "session_id": "sess-20260428-2026",
+          "dry_run": true,
+          "dispatch_queue_count": 0
+        },
+        "stderr": "WARNING omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator: skip_health=True \u2014 bypassing Phase 1 health gate (emergency only)",
+        "notes": [
+          "smoke intentionally bypasses health probes to isolate the market-owned CLI path"
+        ]
+      },
+      "pytest": null,
+      "overall_status": "working"
+    }
+  ]
+}

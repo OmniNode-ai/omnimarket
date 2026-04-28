@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for PrPolishDispatchAdapter (OMN-9284).
+"""Unit tests for PrPolishDispatchAdapter (OMN-9284, OMN-10180).
 
-Injects a recording spawner so we assert the exact argv passed to
-``claude -p`` AND the breadcrumb directory is created on disk. Both
-assertions are required — per the diagnosis, the failure mode is "handler
-returns success with zero real side effect," so tests must observe the side
-effect, not just the return value.
+Injects a recording spawner so we assert the exact subprocess argv and the
+breadcrumb directory written on disk. Both assertions are required — the
+failure mode is "handler returns success with zero real side effect," so
+tests must observe the side effect, not just the return value.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ class _RecordingSpawner:
         stderr: int,
         start_new_session: bool,
         env: dict[str, str] | None,
+        cwd: str | None,
     ) -> object:
         self.calls.append(
             {
@@ -41,6 +41,7 @@ class _RecordingSpawner:
                 "stderr_is_fd": isinstance(stderr, int),
                 "start_new_session": start_new_session,
                 "env": env,
+                "cwd": cwd,
             }
         )
         return object()
@@ -48,12 +49,12 @@ class _RecordingSpawner:
 
 @pytest.mark.unit
 class TestPrPolishDispatchAdapter:
-    async def test_dispatch_review_fix_spawns_claude_and_writes_breadcrumb(
+    async def test_dispatch_review_fix_spawns_node_pr_polish_and_writes_breadcrumb(
         self, tmp_path: Path
     ) -> None:
         spawner = _RecordingSpawner()
         adapter = PrPolishDispatchAdapter(
-            claude_bin="claude-test",
+            python_bin="/usr/bin/python-test",
             state_dir=tmp_path,
             spawner=spawner,
         )
@@ -66,13 +67,23 @@ class TestPrPolishDispatchAdapter:
         assert len(spawner.calls) == 1
         call = spawner.calls[0]
         argv = list(call["argv"])  # type: ignore[arg-type]
-        assert argv[0] == "claude-test"
-        assert argv[1] == "-p"
-        assert "/onex:pr_polish" in argv[2]
-        assert "--repo OmniNode-ai/omnimarket" in argv[2]
-        assert "--pr 42" in argv[2]
-        assert "--ticket OMN-8085" in argv[2]
+        assert argv[:3] == [
+            "/usr/bin/python-test",
+            "-m",
+            "omnimarket.nodes.node_pr_polish",
+        ]
+        assert "--repo" in argv
+        assert "OmniNode-ai/omnimarket" in argv
+        assert "--pr-number" in argv
+        assert "42" in argv
+        assert "--ticket" in argv
+        assert "OMN-8085" in argv
+        assert "--run-dir" in argv
         assert call["start_new_session"] is True
+        assert call["cwd"] is not None
+        env = call["env"]  # type: ignore[assignment]
+        assert isinstance(env, dict)
+        assert "PYTHONPATH" in env
 
         polish_root = tmp_path / "pr-polish"
         run_dirs = list(polish_root.iterdir())
@@ -91,13 +102,13 @@ class TestPrPolishDispatchAdapter:
     ) -> None:
         spawner = _RecordingSpawner()
         adapter = PrPolishDispatchAdapter(
-            claude_bin="claude", state_dir=tmp_path, spawner=spawner
+            python_bin="/usr/bin/python-test", state_dir=tmp_path, spawner=spawner
         )
 
         await adapter.dispatch_review_fix("OmniNode-ai/omnimarket", 99, None)
 
         argv = list(spawner.calls[0]["argv"])  # type: ignore[arg-type]
-        assert "--ticket" not in argv[2]
+        assert "--ticket" not in argv
 
     async def test_dispatch_coderabbit_reply_uses_coderabbit_skill(
         self, tmp_path: Path
@@ -139,6 +150,7 @@ class TestPrPolishDispatchAdapter:
             stderr: int,
             start_new_session: bool,
             env: dict[str, str] | None,
+            cwd: str | None,
         ) -> object:
             raise OSError("simulated spawn failure")
 
@@ -188,6 +200,7 @@ class TestPrPolishDispatchAdapter:
             stderr: int,
             start_new_session: bool,
             env: dict[str, str] | None,
+            cwd: str | None,
         ) -> object:
             return _FakeProc()
 
