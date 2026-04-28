@@ -70,7 +70,14 @@ if [[ "$1" == "-C" && "$3" == "rev-parse" ]]; then
     printf 'feature/test-pr\\n'
     exit 0
   fi
-  printf 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\\n'
+  if [[ -f "${{ONEX_STATE_DIR}}/skill-mutated.txt" ]]; then
+    printf 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\\n'
+  else
+    printf '1111111111111111111111111111111111111111\\n'
+  fi
+  exit 0
+fi
+if [[ "$1" == "-C" && "$3" == "status" && "$4" == "--porcelain" ]]; then
   exit 0
 fi
 if [[ "$1" == "-C" && "$3" == "checkout" ]]; then
@@ -110,6 +117,7 @@ exit 1
         """#!/usr/bin/env bash
 printf '%s\\n' "$PWD" > "${ONEX_STATE_DIR}/claude-cwd.txt"
 printf '%s\\n' "$*" > "${ONEX_STATE_DIR}/claude-argv.txt"
+touch "${ONEX_STATE_DIR}/skill-mutated.txt"
 exit 0
 """,
     )
@@ -159,6 +167,11 @@ exit 0
     assert result["push_status"] == "pushed"
     assert result["auto_merge_status"] == "armed"
     assert result["coderabbit_triage"]["total_threads"] == 0
+    assert result["head_sha_before_skill"] == "1111111111111111111111111111111111111111"
+    assert result["head_sha_after_skill"] == "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    assert result["skill_changed_head"] is True
+    assert result["worktree_dirty_after_skill"] is False
+    assert result["worktree_dirty_after_run"] is False
     assert (tmp_path / "state" / "claude-cwd.txt").read_text().strip() == str(worktree)
     assert "/onex:pr_polish 42" in (tmp_path / "state" / "claude-argv.txt").read_text()
     assert "--no-push" in (tmp_path / "state" / "claude-argv.txt").read_text()
@@ -212,7 +225,14 @@ if [[ "$1" == "worktree" && "$2" == "list" ]]; then
   exit 0
 fi
 if [[ "$1" == "-C" && "$3" == "rev-parse" ]]; then
-  printf 'feature/no-push\\n'
+  if [[ "$4" == "--abbrev-ref" ]]; then
+    printf 'feature/no-push\\n'
+  else
+    printf '2222222222222222222222222222222222222222\\n'
+  fi
+  exit 0
+fi
+if [[ "$1" == "-C" && "$3" == "status" && "$4" == "--porcelain" ]]; then
   exit 0
 fi
 if [[ "$1" == "-C" && "$3" == "checkout" ]]; then
@@ -274,4 +294,9 @@ exit 0
     assert result["push_status"] == "skipped"
     assert result["auto_merge_status"] == "skipped"
     assert result["coderabbit_triage"]["dry_run"] is True
+    assert result["head_sha_before_skill"] == "2222222222222222222222222222222222222222"
+    assert result["head_sha_after_skill"] == "2222222222222222222222222222222222222222"
+    assert result["skill_changed_head"] is False
+    assert result["worktree_dirty_after_skill"] is False
+    assert result["worktree_dirty_after_run"] is False
     assert "--no-push" in (tmp_path / "state" / "claude-argv-no-push.txt").read_text()

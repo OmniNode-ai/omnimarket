@@ -15,6 +15,7 @@ module owns that live path:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -62,6 +63,7 @@ def run_live_pr_polish(
         "started_at": started_at.isoformat(),
         "dry_run": command.dry_run,
     }
+    worktree: Path | None = None
 
     try:
         if not command.repo:
@@ -97,6 +99,10 @@ def run_live_pr_polish(
 
         if not command.dry_run:
             _run_checked(["pre-commit", "install"], cwd=worktree, timeout=60)
+        head_sha_before_skill = _git_stdout(
+            ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+            timeout=15,
+        )
         skill_cmd = _build_skill_command(command)
         _run_skill(
             claude_bin=claude_bin or os.environ.get("CLAUDE_BIN", "claude"),
@@ -105,6 +111,14 @@ def run_live_pr_polish(
             log_path=log_path,
         )
         payload["skill_command"] = skill_cmd
+        head_sha_after_skill = _git_stdout(
+            ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+            timeout=15,
+        )
+        payload["head_sha_before_skill"] = head_sha_before_skill
+        payload["head_sha_after_skill"] = head_sha_after_skill
+        payload["skill_changed_head"] = head_sha_before_skill != head_sha_after_skill
+        payload["worktree_dirty_after_skill"] = _worktree_is_dirty(worktree)
 
         coderabbit_result = _run_coderabbit_triage(
             command.repo,
@@ -164,6 +178,7 @@ def run_live_pr_polish(
                 "worktree_path": str(worktree),
                 "expected_branch": expected_branch,
                 "actual_branch": branch_after,
+                "worktree_dirty_after_run": _worktree_is_dirty(worktree),
                 "completed_at": completed.completed_at.isoformat(),
             }
         )
@@ -183,6 +198,17 @@ def run_live_pr_polish(
                 "completed_at": completed.completed_at.isoformat(),
             }
         )
+
+    if worktree is not None:
+        with contextlib.suppress(Exception):
+            payload.setdefault("worktree_path", str(worktree))
+            payload.setdefault(
+                "head_sha_after_run",
+                _git_stdout(
+                    ["git", "-C", str(worktree), "rev-parse", "HEAD"], timeout=15
+                ),
+            )
+            payload.setdefault("worktree_dirty_after_run", _worktree_is_dirty(worktree))
 
     payload["completed_event"] = completed.model_dump(mode="json")
     (run_dir / "result.json").write_text(json.dumps(payload, indent=2))
@@ -408,6 +434,15 @@ def _run_skill(
         raise RuntimeError(
             f"pr_polish skill failed with exit {proc.returncode}; see {log_path}"
         )
+
+
+def _worktree_is_dirty(worktree: Path) -> bool:
+    return bool(
+        _git_stdout(
+            ["git", "-C", str(worktree), "status", "--porcelain"],
+            timeout=15,
+        )
+    )
 
 
 def _git_stdout(argv: list[str], *, timeout: int) -> str:
