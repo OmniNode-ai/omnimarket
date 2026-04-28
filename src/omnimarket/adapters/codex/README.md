@@ -44,6 +44,14 @@ skills in `codex exec` or `codex debug prompt-input`, even though the cloned
 plugin metadata is valid and the synced tree contains the expected `SKILL.md`
 files.
 
+The current working bridge path is therefore:
+
+1. `codex plugin marketplace add ...` to sync the Git marketplace source
+2. symlink the synced `plugins/onex/skills/*` entries into `$CODEX_HOME/skills`
+
+In isolated `CODEX_HOME` testing, the ONEX skills appeared in
+`codex debug prompt-input` immediately after those symlinks were created.
+
 Install the current ONEX skills with:
 
 ```bash
