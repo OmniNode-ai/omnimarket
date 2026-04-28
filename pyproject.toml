@@ -310,6 +310,10 @@ ignore_missing_imports = true
 module = ["requests", "requests.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["docker", "docker.*"]
+ignore_missing_imports = true
+
 # track_a_adk is a standalone ADK subproject with its own venv/pyproject.
 # Its app.* modules are not importable from the omnimarket package root,
 # so suppress the not-found and untyped errors for that subtree.
