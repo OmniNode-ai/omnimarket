@@ -101,6 +101,11 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         )
     )
     assert source_skill_paths
+    assert {path.parent.name for path in source_skill_paths} == {
+        "aislop-sweep",
+        "session-bootstrap",
+        "session-orchestrator",
+    }
 
     for path in source_skill_paths:
         text = path.read_text()

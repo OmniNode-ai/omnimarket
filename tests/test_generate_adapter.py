@@ -219,19 +219,17 @@ class TestCodexTemplate:
     ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("codex",))
         content = (
-            output_dir / "codex" / "test-orchestrator-instructions.md"
+            output_dir / "codex" / "skills" / "test-orchestrator" / "SKILL.md"
         ).read_text()
         assert "scripts/run_codex_runtime_request.py" in content
-        assert '--node-alias "test_orchestrator"' in content
-        assert "runtime" in content
-        assert "ingress" in content
+        assert '--command-name "test_orchestrator"' in content
 
     def test_codex_template_uses_contract_input_table(
         self, node_dir: Path, output_dir: Path
     ) -> None:
         generate_adapter.generate_adapters(node_dir, output_dir, formats=("codex",))
         content = (
-            output_dir / "codex" / "test-orchestrator-instructions.md"
+            output_dir / "codex" / "skills" / "test-orchestrator" / "SKILL.md"
         ).read_text()
         assert "| dry_run | Report only, no side effects | False |" in content
         assert "| repos | Target repositories | all |" in content

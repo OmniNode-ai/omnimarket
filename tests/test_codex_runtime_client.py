@@ -8,18 +8,14 @@ from typing import cast
 from uuid import uuid4
 
 import pytest
-from omnibase_core.models.dispatch.model_dispatch_bus_command import (
-    ModelDispatchBusCommand,
-)
-from omnibase_core.models.dispatch.model_dispatch_bus_terminal_result import (
-    ModelDispatchBusTerminalResult,
-)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from omnimarket.adapters.codex import runtime_client
 from omnimarket.adapters.codex.runtime_client import (
+    ModelDispatchBusCommand,
+    ModelDispatchBusTerminalResult,
     PatternBBrokerClient,
     default_command_topic,
     default_requester,
@@ -51,9 +47,17 @@ class _BrokerTestTransport:
         self,
         topic: str,
         node_identity: object,
-        on_message,
-    ):
-        return await self._bus.subscribe(topic, node_identity, on_message=on_message)
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        from uuid import uuid4
+
+        group_id = str(kwargs.get("group_id", f"test-broker-{uuid4()}"))
+        return await self._bus.subscribe(
+            topic,
+            on_message=on_message,
+            group_id=group_id,  # type: ignore[arg-type]
+        )
 
 
 async def _install_broker_worker(

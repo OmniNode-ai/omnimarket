@@ -36,7 +36,7 @@ omitted fields.
 Run:
 
 ```bash
-env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
+env -u PYTHONPATH uv run scripts/run_codex_runtime_request.py \
   --node-alias "session_bootstrap" \
   --payload '<json-payload>' \
   --timeout-ms 30000

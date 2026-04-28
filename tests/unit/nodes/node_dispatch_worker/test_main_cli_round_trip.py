@@ -49,6 +49,9 @@ def test_json_input_round_trips_to_dispatch_worker_result(tmp_path: Path) -> Non
         }
     )
 
+    import os
+
+    env = {k: v for k, v in os.environ.items() if k != "ONEX_STATE_DIR"}
     completed = subprocess.run(
         [
             sys.executable,
@@ -72,6 +75,7 @@ def test_json_input_round_trips_to_dispatch_worker_result(tmp_path: Path) -> Non
         capture_output=True,
         check=False,
         cwd=_REPO_ROOT,
+        env=env,
         text=True,
         timeout=30,
     )

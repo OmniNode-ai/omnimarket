@@ -37,7 +37,7 @@ omitted fields.
 Run:
 
 ```bash
-env -u PYTHONPATH /opt/homebrew/bin/python3.13 scripts/run_codex_runtime_request.py \
+env -u PYTHONPATH uv run scripts/run_codex_runtime_request.py \
   --node-alias "pr_lifecycle_orchestrator" \
   --payload '<json-payload>' \
   --timeout-ms 300000
