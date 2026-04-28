@@ -265,6 +265,17 @@ def _fake_gh_script(body: str) -> Iterable[Path]:
         yield path
 
 
+@contextmanager
+def _fake_bin_scripts(scripts: dict[str, str]) -> Iterable[Path]:
+    with tempfile.TemporaryDirectory(prefix="market-skill-bin-") as tmp:
+        bin_dir = Path(tmp)
+        for name, body in scripts.items():
+            path = bin_dir / name
+            path.write_text(body, encoding="utf-8")
+            path.chmod(0o755)
+        yield bin_dir
+
+
 def _run_command(
     *,
     command: list[str],
@@ -314,9 +325,9 @@ def _summarize_pr_lifecycle(payload: dict[str, object]) -> dict[str, object]:
 
 def _summarize_pr_polish(payload: dict[str, object]) -> dict[str, object]:
     return {
-        "current_phase": payload.get("current_phase"),
-        "skip_conflicts": payload.get("skip_conflicts"),
-        "dry_run": payload.get("dry_run"),
+        "final_phase": payload.get("final_phase"),
+        "pr_number": payload.get("pr_number"),
+        "error_message": payload.get("error_message"),
     }
 
 
@@ -436,10 +447,73 @@ def _smoke_pr_lifecycle_orchestrator() -> ModelCommandResult:
 
 
 def _smoke_pr_polish() -> ModelCommandResult:
-    command = [sys.executable, "-m", "omnimarket.nodes.node_pr_polish", "--dry-run"]
-    completed = _run_command(command=command)
+    with tempfile.TemporaryDirectory(prefix="market-skill-pr-polish-") as tmp:
+        tmp_path = Path(tmp)
+        worktree = tmp_path / "worktree"
+        worktree.mkdir()
+        run_dir = tmp_path / "run"
+        command = [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_pr_polish",
+            "--repo",
+            "OmniNode-ai/omnimarket",
+            "--pr-number",
+            "1",
+            "--dry-run",
+            "--no-push",
+            "--no-automerge",
+            "--worktree-path",
+            str(worktree),
+            "--run-dir",
+            str(run_dir),
+        ]
+        scripts = {
+            "gh": """#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$7" == "headRefName" ]]; then
+    printf '{"headRefName":"feature/market-baseline"}'
+    exit 0
+  fi
+  printf '{}'
+  exit 0
+fi
+if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+  printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
+  exit 0
+fi
+echo "unexpected gh invocation: $*" >&2
+exit 1
+""",
+            "git": """#!/usr/bin/env bash
+if [[ "$1" == "-C" && "$3" == "rev-parse" ]]; then
+  if [[ "$4" == "--abbrev-ref" ]]; then
+    printf 'feature/market-baseline'
+    exit 0
+  fi
+  printf 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+  exit 0
+fi
+echo "unexpected git invocation: $*" >&2
+exit 1
+""",
+            "claude": """#!/usr/bin/env bash
+printf '%s\n' "$PWD" > "${ONEX_STATE_DIR}/claude-cwd.txt"
+printf '%s\n' "$*" > "${ONEX_STATE_DIR}/claude-argv.txt"
+exit 0
+""",
+        }
+        with _fake_bin_scripts(scripts) as bin_dir:
+            completed = _run_command(
+                command=command,
+                env={
+                    "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+                    "ONEX_STATE_DIR": str(tmp_path / "state"),
+                    "CLAUDE_BIN": str(bin_dir / "claude"),
+                },
+            )
     payload = _parse_json(completed.stdout)
-    passed = completed.returncode == 0 and payload.get("current_phase") == "init"
+    passed = completed.returncode == 0 and payload.get("final_phase") == "done"
     return ModelCommandResult(
         passed=passed,
         command=command,
@@ -575,7 +649,7 @@ def run_pytest_targets(spec: ModelMarketSkillSpec) -> ModelCommandResult:
     """Run focused proof tests for one market skill."""
 
     command = [sys.executable, "-m", "pytest", *spec.pytest_targets, "-q"]
-    completed = _run_command(command=command)
+    completed = _run_command(command=command, env={"ONEX_STATE_DIR": ""})
     passed = completed.returncode == 0
     summary = {"targets": list(spec.pytest_targets)}
     if passed:
@@ -724,4 +798,4 @@ def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
             if item.pytest.stderr:
                 lines.append(f"- Focused test stderr: `{item.pytest.stderr}`")
         lines.append("")
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip()
