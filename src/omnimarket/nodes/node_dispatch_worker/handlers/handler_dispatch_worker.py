@@ -14,6 +14,7 @@ without a version bump.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import logging
 import os
 import re
@@ -29,6 +30,56 @@ from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_result i
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _persist_dispatch_record(
+    spec: ModelDispatchWorkerCommand, validated_prompt: str
+) -> None:
+    """Persist a dispatch record snapshot for the worker about to be spawned.
+
+    Skips persistence when ``ONEX_STATE_DIR`` is unset — production runtimes
+    always set it, but unit tests that don't care about the audit trail can
+    leave it unset and avoid pulling omniclaude into their venv.
+
+    When ``ONEX_STATE_DIR`` is set, imports the writer + record model lazily
+    from omniclaude. Phase 1 leaves those modules in omniclaude; Phase 2
+    relocates them into omnibase_core (master plan known boundary violation
+    note). Failing loud on a broken import chain is intentional — the
+    dispatch record is the audit trail downstream verification depends on;
+    silent skip is not acceptable when persistence was requested.
+    """
+    if not os.environ.get("ONEX_STATE_DIR"):
+        return
+
+    try:
+        from omniclaude.hooks.lib.dispatch_record_writer import (  # type: ignore[import-not-found]
+            write_dispatch_record,
+        )
+        from omniclaude.hooks.model_dispatch_record import (  # type: ignore[import-not-found]
+            ModelDispatchRecord,
+        )
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "dispatch_record_writer import chain broken — ensure omniclaude is "
+            f"installed in the runtime environment. Underlying error: {exc}"
+        ) from exc
+
+    ticket = next(
+        (t for t in (spec.targets or []) if t.startswith("OMN-")),
+        "",
+    )
+    digest = hashlib.sha256(validated_prompt.encode("utf-8")).hexdigest()[:16]
+    record = ModelDispatchRecord(
+        agent_id=spec.name,
+        dispatched_at=datetime.datetime.now(datetime.UTC),
+        dispatcher="node_dispatch_worker",
+        ticket=ticket or spec.name,
+        allowed_tools=[],
+        prompt_digest=digest,
+        parent_session_id=os.environ.get("ONEX_PARENT_SESSION_ID", "unknown"),
+    )
+    write_dispatch_record(record)
+
 
 # ---------------------------------------------------------------------------
 # Role cap defaults (minutes)
@@ -437,6 +488,9 @@ class HandlerDispatchWorker:
 
         # --- task description ---
         task_desc = f"[{command.role}] {command.name}: {command.scope}"
+
+        # --- persist dispatch record (audit trail) ---
+        _persist_dispatch_record(command, prompt)
 
         return ModelDispatchWorkerResult(
             validated_task_description=task_desc,
