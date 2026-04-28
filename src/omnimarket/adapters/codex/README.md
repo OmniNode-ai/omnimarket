@@ -30,9 +30,19 @@ Codex-native plugin and skill metadata.
 
 ## Current install path
 
-On this machine, `codex exec` reliably loads skills from `~/.codex/skills`.
-The repo-local marketplace/plugin path is still not surfacing ONEX skills in
-`codex exec`, even though the plugin metadata is valid.
+The repo now ships a real Git marketplace source:
+
+- marketplace root: `.agents/plugins/marketplace.json`
+- plugin manifest: `plugins/onex/.codex-plugin/plugin.json`
+
+`codex plugin marketplace add OmniNode-ai/omnimarket --ref <branch>` now
+clones and validates the marketplace correctly.
+
+On this machine, `codex exec` still reliably loads ONEX skills only from
+`~/.codex/skills`. The Git marketplace sync path does not yet surface ONEX
+skills in `codex exec` or `codex debug prompt-input`, even though the cloned
+plugin metadata is valid and the synced tree contains the expected `SKILL.md`
+files.
 
 Install the current ONEX skills with:
 
