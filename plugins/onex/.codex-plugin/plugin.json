@@ -1,0 +1,40 @@
+{
+  "name": "onex",
+  "version": "0.1.0",
+  "description": "Codex-native ONEX skill shims for OmniMarket nodes.",
+  "author": {
+    "name": "OmniNode",
+    "email": "dev@omninode.ai",
+    "url": "https://github.com/OmniNode-ai"
+  },
+  "homepage": "https://github.com/OmniNode-ai/omnimarket",
+  "repository": "https://github.com/OmniNode-ai/omnimarket",
+  "license": "MIT",
+  "keywords": [
+    "onex",
+    "omnimarket",
+    "omninode",
+    "skills",
+    "codex",
+    "workflow-automation"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ONEX",
+    "shortDescription": "Thin Codex shims for OmniMarket workflows.",
+    "longDescription": "Codex-native skill wrappers that dispatch to OmniMarket ONEX nodes. Skills collect arguments, invoke the backing node, and render results without owning business logic.",
+    "developerName": "OmniNode",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/OmniNode-ai/omnimarket",
+    "defaultPrompt": [
+      "Run an AI slop sweep in dry-run mode.",
+      "Run a merge sweep inventory.",
+      "Check OmniNode workflow health."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

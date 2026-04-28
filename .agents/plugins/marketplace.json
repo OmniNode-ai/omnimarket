@@ -1,0 +1,20 @@
+{
+  "name": "omninode-tools",
+  "interface": {
+    "displayName": "OmniNode Tools"
+  },
+  "plugins": [
+    {
+      "name": "onex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/onex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
