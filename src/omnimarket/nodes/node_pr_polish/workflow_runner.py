@@ -99,6 +99,42 @@ def run_live_pr_polish(
             worktree=worktree,
             log_path=log_path,
         )
+        payload["skill_command"] = skill_cmd
+
+        if command.no_push:
+            payload["push_status"] = "skipped"
+            payload["auto_merge_status"] = "skipped"
+        else:
+            _run_checked(
+                ["uv", "run", "pre-commit", "run", "--all-files"],
+                cwd=worktree,
+                timeout=1800,
+            )
+            payload["pre_push_pre_commit"] = "passed"
+            push_branch = _resolve_pr_head_branch(command.repo, command.pr_number)
+            _run_checked(
+                ["git", "-C", str(worktree), "push", "origin", f"HEAD:{push_branch}"],
+                timeout=300,
+            )
+            payload["push_status"] = "pushed"
+            payload["push_branch"] = push_branch
+            local_sha = _git_stdout(
+                ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+                timeout=15,
+            )
+            remote_sha = _resolve_pr_head_sha(command.repo, command.pr_number)
+            payload["local_head_sha"] = local_sha
+            payload["remote_head_sha"] = remote_sha
+            if local_sha != remote_sha:
+                raise RuntimeError(
+                    "post-push SHA mismatch: "
+                    f"local HEAD {local_sha[:8]} != remote PR head {remote_sha[:8]}"
+                )
+            if command.no_automerge:
+                payload["auto_merge_status"] = "skipped"
+            else:
+                _enable_auto_merge(command.repo, command.pr_number)
+                payload["auto_merge_status"] = "armed"
 
         completed = ModelPrPolishCompletedEvent(
             correlation_id=command.correlation_id,
@@ -113,7 +149,6 @@ def run_live_pr_polish(
                 "worktree_path": str(worktree),
                 "expected_branch": expected_branch,
                 "actual_branch": branch_after,
-                "skill_command": skill_cmd,
                 "completed_at": completed.completed_at.isoformat(),
             }
         )
@@ -227,13 +262,94 @@ def _build_skill_command(command: ModelPrPolishStartCommand) -> str:
         parts.append("--skip-local-review")
     if command.no_ci:
         parts.append("--no-ci")
-    if command.no_push:
-        parts.append("--no-push")
+    parts.append("--no-push")
     if command.no_automerge:
         parts.append("--no-automerge")
     if command.dry_run:
         parts.append("--dry-run")
     return " ".join(parts)
+
+
+def _resolve_pr_head_sha(repo: str, pr_number: int) -> str:
+    output = _run_checked(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "headRefOid",
+        ],
+        cwd=_REPO_ROOT,
+        timeout=30,
+    )
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"gh pr view returned invalid JSON headRefOid for {repo}#{pr_number}"
+        ) from exc
+    sha = str(payload.get("headRefOid") or "").strip()
+    if not sha:
+        raise RuntimeError(
+            f"gh pr view returned empty headRefOid for {repo}#{pr_number}"
+        )
+    return sha
+
+
+def _resolve_pr_node_id(repo: str, pr_number: int) -> str:
+    output = _run_checked(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "id",
+        ],
+        cwd=_REPO_ROOT,
+        timeout=30,
+    )
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"gh pr view returned invalid JSON id for {repo}#{pr_number}"
+        ) from exc
+    node_id = str(payload.get("id") or "").strip()
+    if not node_id:
+        raise RuntimeError(f"gh pr view returned empty id for {repo}#{pr_number}")
+    return node_id
+
+
+def _enable_auto_merge(repo: str, pr_number: int) -> None:
+    pr_node_id = _resolve_pr_node_id(repo, pr_number)
+    graphql = (
+        "mutation($id: ID!, $method: PullRequestMergeMethod!) {"
+        "  enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) {"
+        "    pullRequest { number }"
+        "  }"
+        "}"
+    )
+    _run_checked(
+        [
+            "gh",
+            "api",
+            "graphql",
+            "-F",
+            f"id={pr_node_id}",
+            "-F",
+            "method=SQUASH",
+            "-f",
+            f"query={graphql}",
+        ],
+        cwd=_REPO_ROOT,
+        timeout=30,
+    )
 
 
 def _run_skill(
