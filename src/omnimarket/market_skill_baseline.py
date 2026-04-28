@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,11 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OMNI_HOME = REPO_ROOT.parent
+REPO_ROOT_LABEL = "<omnimarket>"
+OMNI_HOME_LABEL = "<omni_home>"
+TEMP_MARKET_SKILL_PATTERN = re.compile(
+    r"(?:/private)?/var/folders/[^ ]+/T/market-skill-[^/ ]+|/tmp/market-skill-[^/ ]+"
+)
 
 
 class ModelCommandResult(BaseModel):
@@ -295,6 +301,35 @@ def _run_command(
     )
 
 
+def _sanitize_report_value(value: str) -> str:
+    """Remove workstation-specific paths from persisted baseline artifacts."""
+
+    sanitized = value.replace(sys.executable, "python")
+    sanitized = sanitized.replace(str(REPO_ROOT), REPO_ROOT_LABEL)
+    sanitized = sanitized.replace(str(OMNI_HOME), OMNI_HOME_LABEL)
+    sanitized = TEMP_MARKET_SKILL_PATTERN.sub("<tmp>/market-skill", sanitized)
+    return sanitized
+
+
+def _sanitize_command(command: list[str]) -> list[str]:
+    return [_sanitize_report_value(item) for item in command]
+
+
+def _failure_command_result(
+    *,
+    stage: str,
+    error: BaseException,
+    command: list[str] | None = None,
+) -> ModelCommandResult:
+    return ModelCommandResult(
+        passed=False,
+        command=_sanitize_command(command or []),
+        returncode=1,
+        summary={"stage": stage, "error_type": type(error).__name__},
+        stderr=str(error),
+    )
+
+
 def _parse_json(stdout: str) -> dict[str, object]:
     parsed = json.loads(stdout)
     if not isinstance(parsed, dict):
@@ -412,7 +447,7 @@ def _smoke_aislop_sweep() -> ModelCommandResult:
         )
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_aislop(payload),
         stderr=completed.stderr.strip(),
@@ -428,19 +463,22 @@ def _smoke_pr_lifecycle_orchestrator() -> ModelCommandResult:
         "--input",
         _pr_lifecycle_envelope_json(),
     ]
-    with _fake_gh_script("#!/usr/bin/env bash\nexit 0\n") as gh_path:
+    with (
+        tempfile.TemporaryDirectory(prefix="market-skill-pr-lifecycle-") as tmp,
+        _fake_gh_script("#!/usr/bin/env bash\nexit 0\n") as gh_path,
+    ):
         completed = _run_command(
             command=command,
             env={
                 "PATH": f"{gh_path.parent}{os.pathsep}{os.environ.get('PATH', '')}",
-                "ONEX_STATE_DIR": "/tmp/market-skill-baseline-pr-lifecycle",
+                "ONEX_STATE_DIR": str(Path(tmp) / "state"),
             },
         )
     payload = _parse_json(completed.stdout)
     passed = completed.returncode == 0 and payload.get("final_state") == "COMPLETE"
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_pr_lifecycle(payload),
         stderr=completed.stderr.strip(),
@@ -517,7 +555,7 @@ exit 0
     passed = completed.returncode == 0 and payload.get("final_phase") == "done"
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_pr_polish(payload),
         stderr=completed.stderr.strip(),
@@ -531,7 +569,7 @@ def _smoke_local_review() -> ModelCommandResult:
     passed = completed.returncode == 0 and payload.get("current_phase") == "init"
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_local_review(payload),
         stderr=completed.stderr.strip(),
@@ -571,7 +609,7 @@ exit 1
     )
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_coderabbit(payload),
         stderr=completed.stderr.strip(),
@@ -579,20 +617,21 @@ exit 1
 
 
 def _smoke_session_bootstrap() -> ModelCommandResult:
-    command = [
-        sys.executable,
-        "-m",
-        "omnimarket.nodes.node_session_bootstrap",
-        "--dry-run",
-        "--state-dir",
-        "/tmp/market-skill-baseline-bootstrap",
-    ]
-    completed = _run_command(command=command)
+    with tempfile.TemporaryDirectory(prefix="market-skill-session-bootstrap-") as tmp:
+        command = [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_session_bootstrap",
+            "--dry-run",
+            "--state-dir",
+            str(Path(tmp) / "state"),
+        ]
+        completed = _run_command(command=command)
     payload = _parse_json(completed.stdout)
     passed = completed.returncode == 0 and payload.get("status") == "ready"
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_session_bootstrap(payload),
         stderr=completed.stderr.strip(),
@@ -621,7 +660,7 @@ def _smoke_session_orchestrator() -> ModelCommandResult:
     ]
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_session_orchestrator(payload),
         stderr=completed.stderr.strip(),
@@ -657,7 +696,7 @@ def run_pytest_targets(spec: ModelMarketSkillSpec) -> ModelCommandResult:
         summary["result"] = "passed"
     return ModelCommandResult(
         passed=passed,
-        command=command,
+        command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=summary,
         stderr=completed.stderr.strip(),
@@ -677,13 +716,22 @@ def _overall_status(
         and (pytest_result is None or pytest_result.passed)
     ):
         return "working"
-    if (
-        cli_smoke.passed
-        or (pytest_result is not None and pytest_result.passed)
-        or not input_drift.matches
-    ):
+    if cli_smoke.passed or (pytest_result is not None and pytest_result.passed):
         return "degraded"
+    if not input_drift.matches:
+        return "failing"
     return "failing"
+
+
+def _fallback_contract(spec: ModelMarketSkillSpec) -> ModelContractInventory:
+    return ModelContractInventory(
+        contract_name=spec.node_name,
+        node_name=spec.node_name,
+        node_type="unknown",
+        timeout_ms=0,
+        terminal_event="unknown",
+        inputs=[],
+    )
 
 
 def capture_market_skill_baseline(
@@ -697,10 +745,60 @@ def capture_market_skill_baseline(
     for spec in iter_market_skill_specs():
         if skill_names and spec.skill_name not in skill_names:
             continue
-        contract = _load_contract(spec)
-        input_drift = _compute_input_drift(contract, spec)
-        cli_smoke = run_cli_smoke(spec)
-        pytest_result = run_pytest_targets(spec) if run_pytest else None
+        try:
+            contract = _load_contract(spec)
+        except Exception as exc:
+            contract = _fallback_contract(spec)
+            input_drift = ModelInputDrift(
+                matches=False,
+                contract_only_fields=[],
+                model_only_fields=[],
+            )
+            cli_smoke = _failure_command_result(stage="load_contract", error=exc)
+            results.append(
+                ModelMarketSkillResult(
+                    skill_name=spec.skill_name,
+                    contract=contract,
+                    input_drift=input_drift,
+                    cli_smoke=cli_smoke,
+                    pytest=None,
+                    overall_status="failing",
+                )
+            )
+            continue
+
+        try:
+            input_drift = _compute_input_drift(contract, spec)
+        except Exception as exc:
+            input_drift = ModelInputDrift(
+                matches=False,
+                contract_only_fields=[],
+                model_only_fields=[],
+            )
+            cli_smoke = _failure_command_result(stage="compute_input_drift", error=exc)
+            results.append(
+                ModelMarketSkillResult(
+                    skill_name=spec.skill_name,
+                    contract=contract,
+                    input_drift=input_drift,
+                    cli_smoke=cli_smoke,
+                    pytest=None,
+                    overall_status="failing",
+                )
+            )
+            continue
+
+        try:
+            cli_smoke = run_cli_smoke(spec)
+        except Exception as exc:
+            cli_smoke = _failure_command_result(stage="cli_smoke", error=exc)
+
+        pytest_result = None
+        if run_pytest:
+            try:
+                pytest_result = run_pytest_targets(spec)
+            except Exception as exc:
+                pytest_result = _failure_command_result(stage="pytest", error=exc)
         results.append(
             ModelMarketSkillResult(
                 skill_name=spec.skill_name,
@@ -717,7 +815,7 @@ def capture_market_skill_baseline(
         )
     return ModelMarketSkillBaselineReport(
         captured_at=datetime.now(tz=UTC),
-        repo_root=str(REPO_ROOT),
+        repo_root=REPO_ROOT_LABEL,
         skills=results,
     )
 
@@ -769,7 +867,7 @@ def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
                 f"- Terminal event: `{item.contract.terminal_event}`",
                 f"- Inputs: `{', '.join(item.contract.inputs)}`",
                 f"- Contract/model input match: `{item.input_drift.matches}`",
-                f"- CLI smoke status: `{item.overall_status if item.cli_smoke.passed else 'failing'}`",
+                f"- CLI smoke status: `{'pass' if item.cli_smoke.passed else 'fail'}`",
                 f"- CLI smoke summary: `{json.dumps(item.cli_smoke.summary, sort_keys=True)}`",
             ]
         )
