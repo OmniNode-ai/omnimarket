@@ -22,6 +22,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage import (
+    HandlerCoderabbitTriage,
+    ModelCoderabbitTriageCommand,
+    ModelCoderabbitTriageResult,
+)
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_completed_event import (
     ModelPrPolishCompletedEvent,
 )
@@ -101,7 +106,15 @@ def run_live_pr_polish(
         )
         payload["skill_command"] = skill_cmd
 
-        if command.no_push:
+        coderabbit_result = _run_coderabbit_triage(
+            command.repo,
+            command.pr_number,
+            correlation_id=str(command.correlation_id),
+            dry_run=command.dry_run or command.no_push,
+        )
+        payload["coderabbit_triage"] = coderabbit_result.model_dump(mode="json")
+
+        if command.no_push or command.dry_run:
             payload["push_status"] = "skipped"
             payload["auto_merge_status"] = "skipped"
         else:
@@ -130,7 +143,9 @@ def run_live_pr_polish(
                     "post-push SHA mismatch: "
                     f"local HEAD {local_sha[:8]} != remote PR head {remote_sha[:8]}"
                 )
-            if command.no_automerge:
+            if coderabbit_result.has_blockers:
+                payload["auto_merge_status"] = "blocked_by_coderabbit"
+            elif command.no_automerge:
                 payload["auto_merge_status"] = "skipped"
             else:
                 _enable_auto_merge(command.repo, command.pr_number)
@@ -349,6 +364,24 @@ def _enable_auto_merge(repo: str, pr_number: int) -> None:
         ],
         cwd=_REPO_ROOT,
         timeout=30,
+    )
+
+
+def _run_coderabbit_triage(
+    repo: str,
+    pr_number: int,
+    *,
+    correlation_id: str,
+    dry_run: bool,
+) -> ModelCoderabbitTriageResult:
+    handler = HandlerCoderabbitTriage()
+    return handler.handle(
+        ModelCoderabbitTriageCommand(
+            repo=repo,
+            pr_number=pr_number,
+            correlation_id=correlation_id,
+            dry_run=dry_run,
+        )
     )
 
 

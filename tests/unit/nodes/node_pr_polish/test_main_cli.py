@@ -47,7 +47,11 @@ if [[ "$1" == "pr" && "$2" == "view" ]]; then
   exit 0
 fi
 if [[ "$1" == "api" && "$2" == "graphql" ]]; then
-  printf '%s\\n' "$*" > "${ONEX_STATE_DIR}/gh-graphql-argv.txt"
+  if echo "$*" | grep -q 'enablePullRequestAutoMerge'; then
+    printf '%s\\n' "$*" > "${ONEX_STATE_DIR}/gh-graphql-argv.txt"
+    exit 0
+  fi
+  printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
   exit 0
 fi
 echo "unexpected gh invocation: $*" >&2
@@ -154,6 +158,7 @@ exit 0
     assert result["worktree_path"] == str(worktree)
     assert result["push_status"] == "pushed"
     assert result["auto_merge_status"] == "armed"
+    assert result["coderabbit_triage"]["total_threads"] == 0
     assert (tmp_path / "state" / "claude-cwd.txt").read_text().strip() == str(worktree)
     assert "/onex:pr_polish 42" in (tmp_path / "state" / "claude-argv.txt").read_text()
     assert "--no-push" in (tmp_path / "state" / "claude-argv.txt").read_text()
@@ -189,6 +194,10 @@ def test_live_cli_no_push_skips_finalize_side_effects(tmp_path: Path) -> None:
         """#!/usr/bin/env bash
 if [[ "$1" == "pr" && "$2" == "view" ]]; then
   printf '{"headRefName":"feature/no-push"}'
+  exit 0
+fi
+if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+  printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
   exit 0
 fi
 echo "unexpected gh invocation: $*" >&2
@@ -264,4 +273,5 @@ exit 0
     result = json.loads((run_dir / "result.json").read_text())
     assert result["push_status"] == "skipped"
     assert result["auto_merge_status"] == "skipped"
+    assert result["coderabbit_triage"]["dry_run"] is True
     assert "--no-push" in (tmp_path / "state" / "claude-argv-no-push.txt").read_text()
