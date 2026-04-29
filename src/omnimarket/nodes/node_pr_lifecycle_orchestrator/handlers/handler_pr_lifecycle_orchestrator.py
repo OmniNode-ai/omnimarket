@@ -496,11 +496,16 @@ class HandlerPrLifecycleOrchestrator:
                 self._reducer = _StubReducerHandler()
         if self._merge is None:
             try:
+                from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
+                    GitHubMergeQueueAdapter,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge import (
                     HandlerPrLifecycleMerge,
                 )
 
-                merge_handler = HandlerPrLifecycleMerge()
+                merge_handler = HandlerPrLifecycleMerge(
+                    github_adapter=GitHubMergeQueueAdapter(),
+                )
                 self._check_protocol_conformance(
                     merge_handler, ProtocolMergeHandler, "merge"
                 )
@@ -1024,6 +1029,7 @@ class HandlerPrLifecycleOrchestrator:
                 pr_number=pr.pr_number,
                 repo=pr.repo,
                 triage_verdict=pr.category.value,
+                use_merge_queue=True,
                 dry_run=dry_run,
                 requested_at=datetime.now(tz=UTC),
             )
