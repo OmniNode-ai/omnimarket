@@ -891,11 +891,12 @@ def capture_market_skill_baseline(
 def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
     """Render a compact markdown baseline report."""
 
+    cohort_date = report.captured_at.date().isoformat()
     lines = [
         "# Market Skill Baseline",
         "",
         f"Captured at: `{report.captured_at.isoformat()}`",
-        "Baseline window: `2026-04-28` reference cohort; captured_at is the exact regeneration time.",
+        f"Baseline window: `{cohort_date}` capture cohort; captured_at is the exact regeneration time.",
         f"Repo root: `{report.repo_root}`",
         "",
         "## Summary",
