@@ -12,15 +12,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
+import tempfile
 from datetime import UTC, datetime
 
-from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
-    HandlerDispatchWorker,
-)
-from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command import (
-    EnumWorkerRole,
-    ModelDispatchWorkerCommand,
-)
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_completed_event import (
     ModelPipelineCompletedEvent,
 )
@@ -238,28 +234,70 @@ class HandlerTicketPipeline:
         state: ModelPipelineState,
         started_at: datetime,
     ) -> ModelPipelinePhaseResult:
-        command = ModelDispatchWorkerCommand(
-            name=f"ticket-pipeline-{state.ticket_id.lower()}",
-            team="ticket-pipeline",
-            role=EnumWorkerRole.fixer,
-            scope=(
+        command = {
+            "name": f"ticket-pipeline-{state.ticket_id.lower()}",
+            "team": "ticket-pipeline",
+            "role": "fixer",
+            "scope": (
                 "Implement the ticket using omnimarket-owned workflow rules; "
                 "produce tests, PR, and durable evidence before completion."
             ),
-            targets=[state.ticket_id, "omnimarket"],
-            collision_fences=[],
-            reports_to="ticket-pipeline",
-            wall_clock_cap_min=90,
-        )
-        previous_state_dir = os.environ.get("ONEX_STATE_DIR")
-        os.environ.pop("ONEX_STATE_DIR", None)
-        try:
-            result = HandlerDispatchWorker().handle(command, existing_task_subjects=[])
-        finally:
-            if previous_state_dir is None:
-                os.environ.pop("ONEX_STATE_DIR", None)
-            else:
-                os.environ["ONEX_STATE_DIR"] = previous_state_dir
+            "targets": [state.ticket_id, "omnimarket"],
+            "collision_fences": [],
+            "reports_to": "ticket-pipeline",
+            "wall_clock_cap_min": 90,
+        }
+        dispatch_env = dict(os.environ)
+        dispatch_env.pop("ONEX_STATE_DIR", None)
+        with tempfile.TemporaryDirectory(
+            prefix="ticket-pipeline-dispatch-tasks-"
+        ) as tasks_dir:
+            os.makedirs(os.path.join(tasks_dir, command["team"]), exist_ok=True)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "omnimarket.nodes.node_dispatch_worker",
+                    "--name",
+                    "ignored",
+                    "--team",
+                    "ignored",
+                    "--role",
+                    "fixer",
+                    "--scope",
+                    "ignored",
+                    "--targets",
+                    "IGNORED",
+                    "--json-input",
+                    json.dumps(command),
+                    "--tasks-dir",
+                    tasks_dir,
+                ],
+                capture_output=True,
+                check=False,
+                env=dispatch_env,
+                text=True,
+                timeout=30,
+            )
+        if completed.returncode != 0:
+            return ModelPipelinePhaseResult(
+                correlation_id=state.correlation_id,
+                ticket_id=state.ticket_id,
+                phase=EnumPipelinePhase.IMPLEMENT,
+                status=EnumPipelinePhaseResultStatus.FAILED,
+                dry_run=state.dry_run,
+                started_at=started_at,
+                completed_at=datetime.now(tz=UTC),
+                message="Failed to compile dispatch-worker prompt",
+                details={
+                    "execution_mode": "compile_only",
+                    "side_effects": "none",
+                    "dispatch_worker_command": command,
+                    "returncode": completed.returncode,
+                    "stderr": completed.stderr.strip(),
+                },
+            )
+        result = json.loads(completed.stdout)
         return ModelPipelinePhaseResult(
             correlation_id=state.correlation_id,
             ticket_id=state.ticket_id,
@@ -272,8 +310,8 @@ class HandlerTicketPipeline:
             details={
                 "execution_mode": "compile_only",
                 "side_effects": "none",
-                "dispatch_worker_command": command.model_dump(mode="json"),
-                "dispatch_worker_result": result.model_dump(mode="json"),
+                "dispatch_worker_command": command,
+                "dispatch_worker_result": result,
             },
         )
 
