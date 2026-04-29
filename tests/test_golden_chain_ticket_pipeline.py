@@ -19,11 +19,16 @@ from pydantic import ValidationError
 from omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline import (
     HandlerTicketPipeline,
 )
+from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_phase_result import (
+    EnumPipelinePhaseResultStatus,
+    ModelPipelinePhaseResult,
+)
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command import (
     ModelPipelineStartCommand,
 )
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_state import (
     EnumPipelinePhase,
+    ModelPipelineState,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.ticket-pipeline-start.v1"
@@ -76,6 +81,36 @@ class TestTicketPipelineGoldenChain:
         assert report.phase_events[0].to_phase == EnumPipelinePhase.IMPLEMENT
         assert report.phase_events[-1].from_phase == EnumPipelinePhase.IMPLEMENT
         assert report.phase_events[-1].to_phase == EnumPipelinePhase.BLOCKED
+
+    async def test_failed_phase_result_stops_at_failed(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Explicit FAILED phase results preserve failed terminal state."""
+
+        class FailingPreFlightHandler(HandlerTicketPipeline):
+            def execute_phase(
+                self,
+                state: ModelPipelineState,
+            ) -> ModelPipelinePhaseResult:
+                started_at = datetime.now(tz=UTC)
+                return ModelPipelinePhaseResult(
+                    correlation_id=state.correlation_id,
+                    ticket_id=state.ticket_id,
+                    phase=state.current_phase,
+                    status=EnumPipelinePhaseResultStatus.FAILED,
+                    dry_run=state.dry_run,
+                    started_at=started_at,
+                    completed_at=datetime.now(tz=UTC),
+                    message="preflight failed",
+                )
+
+        handler = FailingPreFlightHandler()
+        report = handler.run_executable_pipeline(_make_command())
+
+        assert report.stop_reason == "failed"
+        assert report.state.current_phase == EnumPipelinePhase.FAILED
+        assert report.completed.final_phase == EnumPipelinePhase.FAILED
+        assert report.phase_events[-1].to_phase == EnumPipelinePhase.FAILED
 
     async def test_explicit_phase_results_can_drive_full_fsm(
         self, event_bus: EventBusInmemory
@@ -349,6 +384,7 @@ class TestTicketPipelineGoldenChain:
             capture_output=True,
             text=True,
             check=False,
+            timeout=30,
         )
 
         assert completed.returncode == 0
@@ -376,6 +412,7 @@ class TestTicketPipelineGoldenChain:
             capture_output=True,
             text=True,
             check=False,
+            timeout=30,
         )
 
         assert completed.returncode == 0

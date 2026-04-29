@@ -216,23 +216,28 @@ class HandlerTicketPipeline:
                 "validated": [
                     "ticket_id",
                     "correlation_id",
-                    "requested_phase",
+                    "skip_to",
                     "dry_run",
                 ],
                 "side_effects": "none",
             },
         )
 
-    def _block_on_result(
+    def _stop_on_result(
         self,
         state: ModelPipelineState,
         result: ModelPipelinePhaseResult,
     ) -> tuple[ModelPipelineState, ModelPipelinePhaseEvent]:
         now = datetime.now(tz=UTC)
         message = result.message or f"Phase {result.phase.value} blocked"
+        terminal_phase = (
+            EnumPipelinePhase.FAILED
+            if result.status == EnumPipelinePhaseResultStatus.FAILED
+            else EnumPipelinePhase.BLOCKED
+        )
         new_state = state.model_copy(
             update={
-                "current_phase": EnumPipelinePhase.BLOCKED,
+                "current_phase": terminal_phase,
                 "error_message": message,
             }
         )
@@ -240,7 +245,7 @@ class HandlerTicketPipeline:
             correlation_id=state.correlation_id,
             ticket_id=state.ticket_id,
             from_phase=state.current_phase,
-            to_phase=EnumPipelinePhase.BLOCKED,
+            to_phase=terminal_phase,
             success=False,
             timestamp=now,
             error_message=message,
@@ -267,7 +272,7 @@ class HandlerTicketPipeline:
                 events.append(event)
                 continue
 
-            state, event = self._block_on_result(state, result)
+            state, event = self._stop_on_result(state, result)
             events.append(event)
             stop_reason = result.status.value
             break
@@ -314,7 +319,7 @@ class HandlerTicketPipeline:
                 if result.success:
                     state, event = self.advance(state, phase_success=True)
                 else:
-                    state, event = self._block_on_result(state, result)
+                    state, event = self._stop_on_result(state, result)
                 events.append(event)
                 if not result.success:
                     break

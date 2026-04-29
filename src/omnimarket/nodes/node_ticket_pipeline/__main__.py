@@ -29,7 +29,7 @@ from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command i
     ModelPipelineStartCommand,
 )
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_state import (
-    EXECUTABLE_PHASES,
+    EXECUTABLE_PHASE_ORDER,
 )
 
 _log = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def main() -> None:
     parser.add_argument(
         "--skip-to",
         default=None,
-        choices=[phase.value for phase in EXECUTABLE_PHASES],
+        choices=[phase.value for phase in EXECUTABLE_PHASE_ORDER],
         help=(
             "Resume from specified phase: pre_flight|implement|local_review|"
             "create_pr|test_iterate|ci_watch|pr_review|auto_merge"
@@ -83,7 +83,7 @@ def main() -> None:
 
     sys.stdout.write(report.model_dump_json(indent=2) + "\n")
 
-    if report.stopped_at.value in ("failed",):
+    if report.stop_reason == "failed":
         sys.exit(1)
 
 
