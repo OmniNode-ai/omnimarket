@@ -247,15 +247,18 @@ class HandlerTicketPipeline:
                 "produce tests, PR, and durable evidence before completion."
             ),
             targets=[state.ticket_id, "omnimarket"],
-            collision_fences=["none - no in-progress collision fences at compile time"],
+            collision_fences=[],
             reports_to="ticket-pipeline",
             wall_clock_cap_min=90,
         )
-        previous_state_dir = os.environ.pop("ONEX_STATE_DIR", None)
+        previous_state_dir = os.environ.get("ONEX_STATE_DIR")
+        os.environ.pop("ONEX_STATE_DIR", None)
         try:
             result = HandlerDispatchWorker().handle(command, existing_task_subjects=[])
         finally:
-            if previous_state_dir is not None:
+            if previous_state_dir is None:
+                os.environ.pop("ONEX_STATE_DIR", None)
+            else:
                 os.environ["ONEX_STATE_DIR"] = previous_state_dir
         return ModelPipelinePhaseResult(
             correlation_id=state.correlation_id,

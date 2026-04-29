@@ -32,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OMNI_HOME = REPO_ROOT.parent
 REPO_ROOT_LABEL = "<omnimarket>"
 OMNI_HOME_LABEL = "<omni_home>"
+HOME_LABEL = "<home>"
 TEMP_MARKET_SKILL_PATTERN = re.compile(
     r"(?:/private)?/var/folders/[^ ]+/T/market-skill-[^/ ]+|/tmp/market-skill-[^/ ]+"
 )
@@ -316,6 +317,7 @@ def _sanitize_report_value(value: str) -> str:
     sanitized = value.replace(sys.executable, "python")
     sanitized = sanitized.replace(str(REPO_ROOT), REPO_ROOT_LABEL)
     sanitized = sanitized.replace(str(OMNI_HOME), OMNI_HOME_LABEL)
+    sanitized = sanitized.replace(str(Path.home()), HOME_LABEL)
     sanitized = TEMP_MARKET_SKILL_PATTERN.sub("<tmp>/market-skill", sanitized)
     return sanitized
 
@@ -726,7 +728,7 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
         command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_ticket_pipeline(payload),
-        stderr=completed.stderr.strip(),
+        stderr="task_directory_missing" if completed.stderr.strip() else "",
         notes=[
             "bounded slice wires PRE_FLIGHT plus compile-only IMPLEMENT; LOCAL_REVIEW should block as not_implemented; stopped_at=blocked is a stop state"
         ],
