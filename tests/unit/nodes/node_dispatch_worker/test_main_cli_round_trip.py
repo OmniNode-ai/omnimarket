@@ -85,3 +85,54 @@ def test_json_input_round_trips_to_dispatch_worker_result(tmp_path: Path) -> Non
     assert result.proposed_agent_spawn_args["name"] == "json-fixer"
     assert result.rejected_reason == ""
     assert result.collision_fence_embeds == ["omnimarket#999 (owned by other-worker)"]
+
+
+@pytest.mark.unit
+def test_module_cli_persists_dispatch_record_in_omnimarket_env(tmp_path: Path) -> None:
+    """The module CLI writes dispatch records without requiring omniclaude."""
+    tasks_dir = tmp_path / "tasks"
+    (tasks_dir / "Omninode").mkdir(parents=True)
+    state_dir = tmp_path / "state"
+
+    import os
+
+    env = dict(os.environ)
+    env["ONEX_STATE_DIR"] = str(state_dir)
+    env["ONEX_PARENT_SESSION_ID"] = "parent-session-10273"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_dispatch_worker",
+            "--name",
+            "json-fixer-10273",
+            "--team",
+            "Omninode",
+            "--role",
+            "fixer",
+            "--scope",
+            "smoke",
+            "--targets",
+            "OMN-10273",
+            "omnimarket#443",
+            "--tasks-dir",
+            str(tasks_dir),
+        ],
+        capture_output=True,
+        check=False,
+        cwd=_REPO_ROOT,
+        env=env,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    result = ModelDispatchWorkerResult.model_validate_json(completed.stdout)
+    assert result.proposed_agent_spawn_args["name"] == "json-fixer-10273"
+
+    record_path = state_dir / "dispatches" / "json-fixer-10273.yaml"
+    assert record_path.is_file()
+    record_text = record_path.read_text(encoding="utf-8")
+    assert "ticket: OMN-10273" in record_text
+    assert "parent_session_id: parent-session-10273" in record_text
+    assert "omniclaude" not in completed.stderr
