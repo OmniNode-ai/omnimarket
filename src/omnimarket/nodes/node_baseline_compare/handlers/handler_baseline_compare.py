@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -47,6 +46,8 @@ _DEFAULT_OUTPUT_BASE = ".onex_state/baselines"
 
 def _default_omni_home() -> str:
     """Resolve the workspace root from the operator environment."""
+    import os
+
     return os.environ["OMNI_HOME"]
 
 

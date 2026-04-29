@@ -1,6 +1,7 @@
 ---
 schema_version: "1.0.0"
 ticket_id: OMN-10344
+title: "Make baseline capture root-safe"
 summary: "Make baseline capture root-safe and exclude protected private infrastructure from default PR probing"
 is_seam_ticket: true
 interface_change: true
