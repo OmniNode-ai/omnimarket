@@ -1,6 +1,7 @@
 ---
 schema_version: "1.0.0"
 ticket_id: OMN-10274
+title: "Queue manager Track A must use live merge-queue adapter"
 summary: "Queue manager Track A must use live merge-queue adapter"
 is_seam_ticket: false
 interface_change: false
