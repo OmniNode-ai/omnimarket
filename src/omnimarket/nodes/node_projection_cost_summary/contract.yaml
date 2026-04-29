@@ -1,0 +1,34 @@
+---
+name: node_projection_cost_summary
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Emits repeatable cost summary snapshots for downstream dashboard consumers.
+
+handler:
+  module: omnibase_infra.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
+  class: HandlerProjectionCostSummary
+
+handler_routing:
+  routing_strategy: payload_type_match
+  routes:
+    - input_model: omniintelligence.models.events.ModelLLMCallCompletedEvent
+      output_model: omniintelligence.models.events.ModelCostSummarySnapshot
+    - input_model: omniintelligence.models.events.ModelSavingsEstimatedEvent
+      output_model: omniintelligence.models.events.ModelCostSummarySnapshot
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - window
+    - snapshot_timestamp_minute
+
+event_bus:
+  consumer_group: local.omnibase_infra.node_projection_cost_summary.consume.v1
+  subscribe_topics:
+    - onex.evt.omniintelligence.llm-call-completed.v1
+    - onex.evt.omnibase-infra.savings-estimated.v1
+  publish_topics:
+    - onex.snapshot.projection.cost.summary.v1
