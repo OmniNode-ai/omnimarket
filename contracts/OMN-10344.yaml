@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10344
+title: "Make baseline capture root-safe"
+summary: "Make baseline capture root-safe and exclude protected private infrastructure from default PR probing"
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "Baseline capture root-safety tests pass"
+    command: "uv run pytest tests/unit/nodes/node_baseline_capture/test_baseline_capture_root_safety.py tests/test_golden_chain_baseline_capture.py tests/test_golden_chain_baseline_compare.py -q"
+  - kind: "ci"
+    description: "omnimarket PR checks pass, including contract validation and deploy gate"
+    command: "gh pr checks <PR> --repo OmniNode-ai/omnimarket --watch"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports baseline capture/compare handlers in the runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture import ModelBaselineCaptureRequest; from omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare import ModelBaselineCompareRequest; print('baseline root-safety deploy smoke ok')\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Baseline capture root-safety and golden-chain tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_baseline_capture/test_baseline_capture_root_safety.py tests/test_golden_chain_baseline_capture.py tests/test_golden_chain_baseline_compare.py -q"
+  - id: "dod-002"
+    description: "Post-merge deploy smoke imports baseline capture/compare handlers in the runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture import ModelBaselineCaptureRequest; from omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare import ModelBaselineCompareRequest; print('baseline root-safety deploy smoke ok')\""

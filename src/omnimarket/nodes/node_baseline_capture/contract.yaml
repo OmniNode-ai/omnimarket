@@ -40,9 +40,8 @@ inputs:
     required: false
   omni_home:
     type: str
-    description: "Root path of the omni_home workspace"
+    description: "Root path of the omni_home workspace. Defaults to required OMNI_HOME environment variable."
     required: false
-    default: "/Volumes/PRO-G40/Code/omni_home"
   dry_run:
     type: bool
     description: "If true, capture and return snapshot without writing artifact"

@@ -35,9 +35,8 @@ inputs:
     required: false
   omni_home:
     type: str
-    description: "Root path of the omni_home workspace"
+    description: "Root path of the omni_home workspace. Defaults to required OMNI_HOME environment variable."
     required: false
-    default: "/Volumes/PRO-G40/Code/omni_home"
   baseline_path:
     type: str
     description: "Override artifact lookup path"

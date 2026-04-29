@@ -14,7 +14,7 @@ from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
 
 logger = logging.getLogger(__name__)
 
-_WORKTREES_SUBDIR = "worktrees"
+_WORKTREES_SUBDIR = "omni_worktrees"
 
 
 def _get_branch_age_days(worktree_path: Path) -> float:
@@ -62,10 +62,7 @@ class ProbeGitBranches:
 
         Returns empty list on any failure — probe errors are non-fatal.
         """
-        worktrees_root = Path(omni_home).parent.parent / "omni_worktrees"
-        if not worktrees_root.exists():
-            # Try the sibling path pattern used in the platform
-            worktrees_root = Path("/Volumes/PRO-G40/Code/omni_worktrees")
+        worktrees_root = Path(omni_home) / _WORKTREES_SUBDIR
         if not worktrees_root.exists():
             logger.warning("Worktrees directory not found at %s", worktrees_root)
             return []
