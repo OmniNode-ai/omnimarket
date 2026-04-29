@@ -85,6 +85,9 @@ node_data_verification = "omnimarket.nodes.node_data_verification"
 node_process_watchdog = "omnimarket.nodes.node_process_watchdog"
 node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
+node_projection_cost_by_repo = "omnimarket.nodes.node_projection_cost_by_repo"
+node_projection_cost_summary = "omnimarket.nodes.node_projection_cost_summary"
+node_projection_cost_token_usage = "omnimarket.nodes.node_projection_cost_token_usage"
 node_projection_savings = "omnimarket.nodes.node_projection_savings"
 node_projection_delegation = "omnimarket.nodes.node_projection_delegation"
 node_projection_overnight = "omnimarket.nodes.node_projection_overnight"
@@ -215,7 +218,7 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 packages = ["src/omnimarket"]
 
 [tool.hatch.build]
-artifacts = ["src/omnimarket/**/*.yaml"]
+artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]
 
 [dependency-groups]
 dev = [
