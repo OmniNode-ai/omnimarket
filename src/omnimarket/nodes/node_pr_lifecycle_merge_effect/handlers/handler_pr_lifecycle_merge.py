@@ -86,32 +86,6 @@ class ProtocolGitHubMergeAdapter(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Default no-op adapter (used in standalone / dry-run mode)
-# ---------------------------------------------------------------------------
-
-
-class _NoopGitHubMergeAdapter:
-    """No-op GitHub merge adapter for dry_run and standalone execution."""
-
-    async def merge_pr(
-        self,
-        repo: str,
-        pr_number: int,
-        use_merge_queue: bool,
-    ) -> str:
-        strategy = "queue" if use_merge_queue else "squash"
-        return f"[noop] would auto-merge {repo}#{pr_number} via {strategy}"
-
-    async def post_pr_comment(
-        self,
-        repo: str,
-        pr_number: int,
-        body: str,
-    ) -> None:
-        logger.debug("[noop] would post comment on %s#%s: %s", repo, pr_number, body)
-
-
-# ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
 
@@ -120,8 +94,8 @@ class HandlerPrLifecycleMerge:
     """Executes auto-merge for PRs classified green by triage.
 
     Accepts a protocol adapter for GitHub merge operations so tests can
-    inject mocks without any infrastructure. Default adapter is a no-op
-    suitable for dry_run and standalone execution.
+    inject mocks without any infrastructure. Non-dry-run execution requires an
+    adapter; dry-run behavior is handled internally without external calls.
 
     Merge queue policy:
       - use_merge_queue=True  -> merge queue path (no method specified)
@@ -132,9 +106,7 @@ class HandlerPrLifecycleMerge:
         self,
         github_adapter: ProtocolGitHubMergeAdapter | None = None,
     ) -> None:
-        self._github: ProtocolGitHubMergeAdapter = (
-            github_adapter or _NoopGitHubMergeAdapter()
-        )
+        self._github = github_adapter
 
     @property
     def handler_type(self) -> HandlerType:
@@ -152,8 +124,8 @@ class HandlerPrLifecycleMerge:
         """Execute auto-merge for a green PR.
 
         Validates that the triage verdict is 'green' before proceeding.
-        In dry_run mode, the no-op adapter describes the action that would
-        be taken without making any external calls.
+        In dry_run mode, the handler describes the action that would be taken
+        without making any external calls.
 
         Args:
             command: Merge command including PR coordinates and policy flags.
@@ -203,6 +175,27 @@ class HandlerPrLifecycleMerge:
                 repo=command.repo,
                 merged=merged,
                 merge_action=merge_action,
+                error=error,
+                completed_at=datetime.now(tz=UTC),
+            )
+
+        if self._github is None:
+            error = (
+                "Non-dry-run PR lifecycle merge requires an injected GitHub "
+                "merge adapter; refusing to use a no-op fallback."
+            )
+            logger.error(
+                "PR lifecycle merge misconfigured: pr=%s repo=%s correlation_id=%s",
+                command.pr_number,
+                command.repo,
+                command.correlation_id,
+            )
+            return ModelPrMergeResult(
+                correlation_id=command.correlation_id,
+                pr_number=command.pr_number,
+                repo=command.repo,
+                merged=False,
+                merge_action="failed: missing GitHub merge adapter",
                 error=error,
                 completed_at=datetime.now(tz=UTC),
             )
