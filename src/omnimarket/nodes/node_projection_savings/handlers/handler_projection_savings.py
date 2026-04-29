@@ -33,9 +33,9 @@ class ModelSavingsEstimatedEvent(BaseModel):
     @field_validator("event_timestamp")
     @classmethod
     def validate_tz_aware(cls, value: datetime) -> datetime:
-        if value.tzinfo is None:
+        if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("event_timestamp must be timezone-aware")
-        return value
+        return value.astimezone(UTC)
 
     @model_validator(mode="after")
     def validate_savings_consistency(self) -> ModelSavingsEstimatedEvent:
@@ -62,10 +62,17 @@ class HandlerProjectionSavings:
         Delegates to project() with a ModelSavingsEstimatedEvent and
         a DatabaseAdapter from input_data['_db'].
         """
-        db_raw = input_data.pop("_db", None)
+        payload = dict(input_data)
+        db_raw = payload.pop("_db", None)
         if not isinstance(db_raw, DatabaseAdapter):
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        event = ModelSavingsEstimatedEvent(**input_data)
+        event_data = {
+            key: value
+            for key, value in payload.items()
+            if not key.startswith("_")
+            and key not in {"rows", "event_landed", "latency_ms"}
+        }
+        event = ModelSavingsEstimatedEvent(**event_data)
         result = self.project(event, db_raw)
         return result.model_dump(mode="json")
 
@@ -76,8 +83,9 @@ class HandlerProjectionSavings:
     ) -> ModelProjectionResult:
         """UPSERT a single savings estimate event."""
         now = datetime.now(tz=UTC).isoformat()
+        event_timestamp = event.event_timestamp.astimezone(UTC).isoformat()
         row: dict[str, object] = {
-            "event_timestamp": event.event_timestamp.isoformat(),
+            "event_timestamp": event_timestamp,
             "session_id": event.session_id,
             "model_local": event.model_local,
             "model_cloud_baseline": event.model_cloud_baseline,

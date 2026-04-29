@@ -7,7 +7,7 @@ description: >
   Emits repeatable cost-by-repository snapshots for downstream dashboard consumers.
 
 handler:
-  module: omnibase_infra.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo
+  module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo
   class: HandlerProjectionCostByRepo
 
 handler_routing:
@@ -28,4 +28,4 @@ event_bus:
   subscribe_topics:
     - onex.evt.omniintelligence.llm-call-completed.v1
   publish_topics:
-    - onex.snapshot.projection.cost.by_repo.v1
+    - onex.evt.omnimarket.cost-by-repo-snapshot.v1

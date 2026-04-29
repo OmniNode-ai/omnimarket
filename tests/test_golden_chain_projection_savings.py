@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 import yaml
 
 from omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings import (
@@ -49,6 +50,73 @@ class TestSavingsProjection:
             "machine_id": "m-201",
             "created_at": rows[0]["created_at"],
         }
+
+    def test_project_normalizes_event_timestamp_to_utc_identity(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        offset_tz = timezone(timedelta(hours=-4))
+        HANDLER.project(
+            ModelSavingsEstimatedEvent(
+                event_timestamp=datetime(2026, 4, 29, 8, 0, tzinfo=offset_tz),
+                session_id="sess-offset",
+                model_local="qwen3-coder-30b",
+                model_cloud_baseline="claude-opus-4",
+                local_cost_usd=Decimal("1.000000"),
+                cloud_cost_usd=Decimal("2.000000"),
+                savings_usd=Decimal("1.000000"),
+            ),
+            db,
+        )
+        HANDLER.project(
+            ModelSavingsEstimatedEvent(
+                event_timestamp=datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
+                session_id="sess-offset",
+                model_local="qwen3-coder-30b",
+                model_cloud_baseline="claude-opus-4",
+                local_cost_usd=Decimal("0.500000"),
+                cloud_cost_usd=Decimal("2.000000"),
+                savings_usd=Decimal("1.500000"),
+            ),
+            db,
+        )
+
+        rows = db.query("savings_estimates")
+        assert len(rows) == 1
+        assert rows[0]["event_timestamp"] == "2026-04-29T12:00:00+00:00"
+        assert rows[0]["savings_usd"] == Decimal("1.500000")
+
+    def test_handle_strips_transport_metadata(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(
+            {
+                "_db": db,
+                "_topic": "onex.evt.omnibase-infra.savings-estimated.v1",
+                "_partition": 0,
+                "_offset": 1,
+                "rows": [],
+                "event_landed": True,
+                "latency_ms": 12,
+                "event_timestamp": "2026-04-29T12:00:00Z",
+                "session_id": "sess-transport",
+                "model_local": "qwen3-coder-30b",
+                "model_cloud_baseline": "claude-opus-4",
+                "local_cost_usd": "0.100000",
+                "cloud_cost_usd": "0.300000",
+                "savings_usd": "0.200000",
+            }
+        )
+        assert result["rows_upserted"] == 1
+
+    def test_inmemory_upsert_rejects_missing_conflict_keys(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        with pytest.raises(KeyError):
+            db.upsert(
+                "savings_estimates", "session_id,event_timestamp", {"session_id": "s1"}
+            )
+
+    def test_inmemory_upsert_rejects_empty_conflict_key(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        with pytest.raises(ValueError, match="conflict_key must contain"):
+            db.upsert("savings_estimates", " , ", {"session_id": "s1"})
 
     def test_upsert_by_session_timestamp_local_and_cloud_baseline(self) -> None:
         db = InmemoryDatabaseAdapter()
@@ -109,6 +177,19 @@ class TestSavingsProjection:
             contract["event_bus"]["consumer_group"]
             == "local.omnibase_infra.node_projection_savings.consume.v1"
         )
+
+    def test_migration_declares_handler_schema(self) -> None:
+        migration_path = Path(
+            "src/omnimarket/nodes/node_projection_savings/migrations/"
+            "074_create_savings_estimates.sql"
+        )
+        migration = migration_path.read_text()
+        assert "CREATE TABLE IF NOT EXISTS savings_estimates" in migration
+        assert "event_timestamp TIMESTAMPTZ NOT NULL" in migration
+        assert "session_id TEXT NOT NULL" in migration
+        assert "model_local TEXT NOT NULL" in migration
+        assert "model_cloud_baseline TEXT NOT NULL" in migration
+        assert "ux_savings_estimates_identity" in migration
 
     def test_fixture_replay_matches_golden_checksums(self) -> None:
         db = InmemoryDatabaseAdapter()

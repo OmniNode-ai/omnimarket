@@ -7,6 +7,7 @@ and verify the handler calls execute() with the correct arguments.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
@@ -338,6 +339,11 @@ class TestSavingsHandler:
         )
         assert result is True
         mock_db.execute.assert_called_once()
+        call_args = mock_db.execute.call_args[0]
+        assert call_args[1].isoformat() == "2026-04-06T12:00:00+00:00"
+        assert call_args[5] == Decimal("0.010000")
+        assert call_args[6] == Decimal("0.050000")
+        assert call_args[7] == Decimal("0.040000")
 
     @pytest.mark.asyncio
     async def test_missing_session_id_skips(self, mock_db: AsyncMock) -> None:
@@ -349,6 +355,30 @@ class TestSavingsHandler:
         runner._db = mock_db
 
         data = {"model_local": "qwen3-coder-30b"}
+        result = await runner.project_event(
+            "onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta()
+        )
+        assert result is True
+        mock_db.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_required_amount_skips(self, mock_db: AsyncMock) -> None:
+        from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
+            SavingsProjectionRunner,
+        )
+
+        runner = SavingsProjectionRunner()
+        runner._db = mock_db
+
+        data = {
+            "session_id": "sess-savings-invalid",
+            "event_timestamp": "2026-04-06T12:00:00Z",
+            "model_local": "qwen3-coder-30b",
+            "model_cloud_baseline": "claude-opus-4",
+            "local_cost_usd": "not-a-decimal",
+            "cloud_cost_usd": "0.050000",
+            "savings_usd": "0.040000",
+        }
         result = await runner.project_event(
             "onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta()
         )

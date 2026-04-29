@@ -59,11 +59,18 @@ class InmemoryDatabaseAdapter:
             self.tables[table] = []
 
         rows = self.tables[table]
-        conflict_keys = [key.strip() for key in conflict_key.split(",")]
+        conflict_keys = [key.strip() for key in conflict_key.split(",") if key.strip()]
+        if not conflict_keys:
+            raise ValueError("conflict_key must contain at least one key")
+        missing = [key for key in conflict_keys if key not in row]
+        if missing:
+            raise KeyError(f"row missing conflict key(s): {missing}")
 
         # Find existing row with same conflict key value(s).
         for i, existing in enumerate(rows):
-            if all(existing.get(key) == row.get(key) for key in conflict_keys):
+            if all(
+                key in existing and existing[key] == row[key] for key in conflict_keys
+            ):
                 rows[i] = row
                 self.upsert_count += 1
                 return True

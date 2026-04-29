@@ -7,7 +7,7 @@ description: >
   Emits repeatable token usage snapshots for downstream dashboard consumers.
 
 handler:
-  module: omnibase_infra.nodes.node_projection_cost_token_usage.handlers.handler_projection_cost_token_usage
+  module: omnimarket.nodes.node_projection_cost_token_usage.handlers.handler_projection_cost_token_usage
   class: HandlerProjectionCostTokenUsage
 
 handler_routing:
@@ -28,4 +28,4 @@ event_bus:
   subscribe_topics:
     - onex.evt.omniintelligence.llm-call-completed.v1
   publish_topics:
-    - onex.snapshot.projection.cost.token_usage.v1
+    - onex.evt.omnimarket.cost-token-usage-snapshot.v1

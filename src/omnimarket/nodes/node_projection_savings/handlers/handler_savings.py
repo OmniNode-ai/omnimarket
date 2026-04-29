@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
+from datetime import UTC
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -101,6 +101,10 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             or data.get("timestamp")
             or data.get("emitted_at")
         )
+        if event_timestamp.tzinfo is None or event_timestamp.utcoffset() is None:
+            logger.warning("savings-estimated event has naive event_timestamp")
+            return True
+        event_timestamp = event_timestamp.astimezone(UTC)
 
         model_local = str(
             data.get("model_local") or data.get("modelLocal") or ""
@@ -112,19 +116,28 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             logger.warning("savings-estimated event missing model identifiers")
             return True
 
-        local_cost_usd = _safe_cost_str(
-            data.get("local_cost_usd") or data.get("localCostUsd")
+        local_cost_usd = _required_decimal(
+            _first_present(data, "local_cost_usd", "localCostUsd"),
+            field_name="local_cost_usd",
+            session_id=session_id,
         )
-        cloud_cost_usd = _safe_cost_str(
-            data.get("cloud_cost_usd") or data.get("cloudCostUsd")
+        cloud_cost_usd = _required_decimal(
+            _first_present(data, "cloud_cost_usd", "cloudCostUsd"),
+            field_name="cloud_cost_usd",
+            session_id=session_id,
         )
-        savings_usd = _safe_cost_str(data.get("savings_usd") or data.get("savingsUsd"))
+        savings_usd = _required_decimal(
+            _first_present(data, "savings_usd", "savingsUsd"),
+            field_name="savings_usd",
+            session_id=session_id,
+        )
+        if local_cost_usd is None or cloud_cost_usd is None or savings_usd is None:
+            return True
+
         repo_name = _str_or_none(data.get("repo_name") or data.get("repoName"))
         machine_id = _str_or_none(data.get("machine_id") or data.get("machineId"))
 
-        if _safe_decimal(savings_usd) != (
-            _safe_decimal(cloud_cost_usd) - _safe_decimal(local_cost_usd)
-        ):
+        if savings_usd != cloud_cost_usd - local_cost_usd:
             logger.warning(
                 "savings-estimated event has inconsistent savings for session %s",
                 session_id,
@@ -162,44 +175,42 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             machine_id,
         )
         logger.info(
-            "Projected savings-estimated for session %s (total_savings=$%.4f)",
+            "Projected savings-estimated for session %s (total_savings=$%s)",
             session_id,
-            float(savings_usd),
+            savings_usd,
         )
         return True
 
 
-def _safe_int(value: Any, default: int = 0) -> int:
+def _first_present(data: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in data and data[key] is not None:
+            return data[key]
+    return None
+
+
+def _required_decimal(
+    value: Any,
+    *,
+    field_name: str,
+    session_id: str,
+) -> Decimal | None:
     if value is None:
-        return default
-    try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        return default
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    if value is None:
-        return default
-    try:
-        n = float(value)
-        return n if math.isfinite(n) else default
-    except (ValueError, TypeError):
-        return default
-
-
-def _safe_cost_str(value: Any) -> str:
-    n = _safe_float(value)
-    return str(n)
-
-
-def _safe_decimal(value: Any, default: Decimal = Decimal("0")) -> Decimal:
-    if value is None:
-        return default
+        logger.warning(
+            "savings-estimated event missing %s for session %s",
+            field_name,
+            session_id,
+        )
+        return None
     try:
         return Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):
-        return default
+        logger.warning(
+            "savings-estimated event has invalid %s for session %s",
+            field_name,
+            session_id,
+        )
+        return None
 
 
 def _str_or_none(value: Any) -> str | None:

@@ -7,7 +7,7 @@ description: >
   Emits repeatable cost summary snapshots for downstream dashboard consumers.
 
 handler:
-  module: omnibase_infra.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
+  module: omnimarket.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
   class: HandlerProjectionCostSummary
 
 handler_routing:
@@ -31,4 +31,4 @@ event_bus:
     - onex.evt.omniintelligence.llm-call-completed.v1
     - onex.evt.omnibase-infra.savings-estimated.v1
   publish_topics:
-    - onex.snapshot.projection.cost.summary.v1
+    - onex.evt.omnimarket.cost-summary-snapshot.v1
