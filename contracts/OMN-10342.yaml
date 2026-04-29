@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10342
+title: "Declare cost projection snapshot contracts"
+summary: "Declare cost summary, by-repo, and token-usage snapshot node contracts and consumer groups."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "protocols"
+evidence_requirements:
+  - kind: "tests"
+    description: "Cost projection snapshot contract tests pass"
+    command: "uv run pytest tests/test_cost_projection_snapshot_contracts.py -q"
+  - kind: "tests"
+    description: "Touched cost projection contract tests pass ruff"
+    command: "uv run ruff check tests/test_cost_projection_snapshot_contracts.py"
+  - kind: "manual"
+    description: "Post-merge deploy smoke confirms cost snapshot contracts are packaged in the runtime image"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from importlib import resources; root = resources.files('omnimarket.nodes'); assert (root / 'node_projection_cost_summary' / 'contract.yaml').is_file(); assert (root / 'node_projection_cost_by_repo' / 'contract.yaml').is_file(); assert (root / 'node_projection_cost_token_usage' / 'contract.yaml').is_file(); print('deploy smoke ok')\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Cost projection snapshot contract tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_cost_projection_snapshot_contracts.py -q"
+  - id: "dod-002"
+    description: "Touched cost projection contract tests pass ruff"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check tests/test_cost_projection_snapshot_contracts.py"
+  - id: "dod-003"
+    description: "Post-merge deploy smoke plan for cost snapshot contracts"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from importlib import resources; root = resources.files('omnimarket.nodes'); assert (root / 'node_projection_cost_summary' / 'contract.yaml').is_file(); assert (root / 'node_projection_cost_by_repo' / 'contract.yaml').is_file(); assert (root / 'node_projection_cost_token_usage' / 'contract.yaml').is_file(); print('deploy smoke ok')\""

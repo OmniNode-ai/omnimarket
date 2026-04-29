@@ -1,0 +1,31 @@
+---
+name: node_projection_cost_by_repo
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Emits repeatable cost-by-repository snapshots for downstream dashboard consumers.
+
+handler:
+  module: omnibase_infra.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo
+  class: HandlerProjectionCostByRepo
+
+handler_routing:
+  routing_strategy: payload_type_match
+  routes:
+    - input_model: omniintelligence.models.events.ModelLLMCallCompletedEvent
+      output_model: omniintelligence.models.events.ModelCostByRepoSnapshot
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - window
+    - snapshot_timestamp_minute
+
+event_bus:
+  consumer_group: local.omnibase_infra.node_projection_cost_by_repo.consume.v1
+  subscribe_topics:
+    - onex.evt.omniintelligence.llm-call-completed.v1
+  publish_topics:
+    - onex.snapshot.projection.cost.by_repo.v1
