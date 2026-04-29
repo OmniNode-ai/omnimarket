@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-04-29T15:13:01.306814Z",
+  "captured_at": "2026-04-29T15:59:43.957500Z",
   "repo_root": "<omnimarket>",
   "skills": [
     {
@@ -46,7 +46,27 @@
           "findings are expected to exit non-zero; this still proves the node ran"
         ]
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_aislop_sweep.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_aislop_sweep.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          ".............                                                            [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n13 passed, 2 warnings in 0.07s"
+        ]
+      },
       "overall_status": "working"
     },
     {
@@ -87,7 +107,7 @@
           "-m",
           "omnimarket.nodes.node_pr_lifecycle_orchestrator",
           "--input",
-          "{\"payload\":{\"correlation_id\":\"7e894a85-60be-4f99-ab13-7dd8c7f30d73\",\"run_id\":\"market-skill-baseline\",\"dry_run\":true,\"inventory_only\":true,\"fix_only\":false,\"merge_only\":false,\"repos\":\"\",\"max_parallel_polish\":20,\"enable_auto_rebase\":true,\"use_dag_ordering\":true,\"enable_trivial_comment_resolution\":true,\"enable_admin_merge_fallback\":true,\"admin_fallback_threshold_minutes\":30,\"verify\":false,\"verify_timeout_seconds\":30},\"envelope_id\":\"6e56cc77-ceed-4d69-b993-42817e12d9cd\",\"envelope_timestamp\":\"2026-04-29T15:12:57.668480Z\",\"correlation_id\":\"7e894a85-60be-4f99-ab13-7dd8c7f30d73\",\"source_tool\":null,\"target_tool\":null,\"metadata\":{\"trace_id\":null,\"span_id\":null,\"parent_span_id\":null,\"request_id\":null,\"headers\":{},\"tags\":{}},\"security_context\":null,\"event_type\":\"omnimarket.pr-lifecycle-orchestrator-start\",\"payload_type\":null,\"payload_schema_version\":null,\"priority\":5,\"timeout_seconds\":null,\"retry_count\":0,\"request_id\":null,\"trace_id\":null,\"span_id\":null,\"onex_version\":{\"major\":1,\"minor\":0,\"patch\":0,\"prerelease\":null,\"build\":null},\"envelope_version\":{\"major\":2,\"minor\":1,\"patch\":0,\"prerelease\":null,\"build\":null}}"
+          "{\"payload\":{\"correlation_id\":\"4d777272-9b91-4ec2-953e-0543525bbe02\",\"run_id\":\"market-skill-baseline\",\"dry_run\":true,\"inventory_only\":true,\"fix_only\":false,\"merge_only\":false,\"repos\":\"\",\"max_parallel_polish\":20,\"enable_auto_rebase\":true,\"use_dag_ordering\":true,\"enable_trivial_comment_resolution\":true,\"enable_admin_merge_fallback\":true,\"admin_fallback_threshold_minutes\":30,\"verify\":false,\"verify_timeout_seconds\":30},\"envelope_id\":\"ab65b7aa-2bd5-4c64-a7f6-b70c8602934e\",\"envelope_timestamp\":\"2026-04-29T15:59:05.915556Z\",\"correlation_id\":\"4d777272-9b91-4ec2-953e-0543525bbe02\",\"source_tool\":null,\"target_tool\":null,\"metadata\":{\"trace_id\":null,\"span_id\":null,\"parent_span_id\":null,\"request_id\":null,\"headers\":{},\"tags\":{}},\"security_context\":null,\"event_type\":\"omnimarket.pr-lifecycle-orchestrator-start\",\"payload_type\":null,\"payload_schema_version\":null,\"priority\":5,\"timeout_seconds\":null,\"retry_count\":0,\"request_id\":null,\"trace_id\":null,\"span_id\":null,\"onex_version\":{\"major\":1,\"minor\":0,\"patch\":0,\"prerelease\":null,\"build\":null},\"envelope_version\":{\"major\":2,\"minor\":1,\"patch\":0,\"prerelease\":null,\"build\":null}}"
         ],
         "returncode": 0,
         "summary": {
@@ -100,7 +120,29 @@
         "stderr": "",
         "notes": []
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py",
+          "tests/test_golden_chain_pr_lifecycle_orchestrator.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py",
+            "tests/test_golden_chain_pr_lifecycle_orchestrator.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "...............................                                          [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n31 passed, 2 warnings in 1.29s"
+        ]
+      },
       "overall_status": "working"
     },
     {
@@ -160,7 +202,27 @@
         "stderr": "",
         "notes": []
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_pr_polish.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_pr_polish.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          ".........                                                                [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n9 passed, 2 warnings in 0.04s"
+        ]
+      },
       "overall_status": "working"
     },
     {
@@ -200,7 +262,27 @@
         "stderr": "",
         "notes": []
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_local_review.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_local_review.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          ".........                                                                [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n9 passed, 2 warnings in 0.03s"
+        ]
+      },
       "overall_status": "working"
     },
     {
@@ -246,7 +328,27 @@
         "stderr": "",
         "notes": []
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_coderabbit_triage.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_coderabbit_triage.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "............................                                             [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n28 passed, 2 warnings in 1.25s"
+        ]
+      },
       "overall_status": "working"
     },
     {
@@ -291,7 +393,27 @@
         "stderr": "",
         "notes": []
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_session_bootstrap.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_session_bootstrap.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "........................                                                 [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n24 passed, 2 warnings in 0.05s"
+        ]
+      },
       "overall_status": "working"
     },
     {
@@ -333,7 +455,7 @@
         "returncode": 0,
         "summary": {
           "status": "complete",
-          "session_id": "sess-20260429-1513",
+          "session_id": "sess-20260429-1559",
           "dry_run": true,
           "dispatch_queue_count": 0
         },
@@ -342,7 +464,29 @@
           "smoke intentionally bypasses health probes to isolate the market-owned CLI path"
         ]
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py",
+          "tests/unit/test_handler_session_orchestrator_graphql.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py",
+            "tests/unit/test_handler_session_orchestrator_graphql.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "..................................                                       [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n34 passed, 2 warnings in 10.71s"
+        ]
+      },
       "overall_status": "working"
     },
     {
@@ -386,7 +530,27 @@
           "first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented"
         ]
       },
-      "pytest": null,
+      "pytest": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "pytest",
+          "tests/test_golden_chain_ticket_pipeline.py",
+          "-q"
+        ],
+        "returncode": 0,
+        "summary": {
+          "targets": [
+            "tests/test_golden_chain_ticket_pipeline.py"
+          ],
+          "result": "passed"
+        },
+        "stderr": "",
+        "notes": [
+          "..................                                                       [100%]\n=============================== warnings summary ===============================\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n<frozen importlib._bootstrap>:488\n  <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n18 passed, 2 warnings in 0.23s"
+        ]
+      },
       "overall_status": "working"
     }
   ]
