@@ -163,7 +163,11 @@ exit 1
             "phase": "address_comments",
             "status": "handled_by_market_coderabbit_triage",
         },
-        {"phase": "local_review", "status": "passed"},
+        {
+            "phase": "local_review",
+            "status": "deferred_to_pre_push_gate",
+            "detail": "Push mode runs the full pre-commit gate once before publishing.",
+        },
     ]
     assert not (tmp_path / "state" / "claude-argv.txt").exists()
     assert (

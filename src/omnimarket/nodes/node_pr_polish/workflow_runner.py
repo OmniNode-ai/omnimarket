@@ -287,13 +287,13 @@ def _run_market_polish_phases(
             }
         )
     else:
-        _run_checked(
-            ["uv", "run", "pre-commit", "run", "--all-files"],
-            cwd=worktree,
-            timeout=1800,
+        results.append(
+            {
+                "phase": "local_review",
+                "status": "deferred_to_pre_push_gate",
+                "detail": "Push mode runs the full pre-commit gate once before publishing.",
+            }
         )
-        _append_log_line(log_path, "market local_review: pre-commit passed")
-        results.append({"phase": "local_review", "status": "passed"})
 
     return results
 
