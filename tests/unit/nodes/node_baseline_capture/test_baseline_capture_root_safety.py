@@ -76,3 +76,8 @@ async def test_github_pr_probe_omits_omninode_infra_by_default(monkeypatch) -> N
 
     assert "OmniNode-ai/omninode_infra" not in requested_repos
     assert "OmniNode-ai/omnimarket" in requested_repos
+
+
+def test_github_pr_probe_rejects_bare_string_repo_allowlist() -> None:
+    with pytest.raises(TypeError, match="sequence of repo names"):
+        probe_github_prs.ProbeGitHubPRs("OmniNode-ai/omnimarket")

@@ -36,6 +36,8 @@ class ProbeGitHubPRs:
 
     def __init__(self, repos: Sequence[str] | None = None) -> None:
         """Initialise with an explicit repo allowlist."""
+        if isinstance(repos, str):
+            raise TypeError("repos must be a sequence of repo names, not a string")
         self._repos = tuple(repos) if repos is not None else _DEFAULT_OMNINODE_REPOS
 
     async def collect(self, omni_home: str) -> list[ProbeSnapshotItem]:
