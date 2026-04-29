@@ -25,6 +25,13 @@ def test_all_market_skill_cli_smokes_pass() -> None:
         )
 
 
+def test_market_skill_baseline_includes_ticket_pipeline() -> None:
+    specs = {spec.skill_name: spec for spec in iter_market_skill_specs()}
+
+    assert "ticket_pipeline" in specs
+    assert specs["ticket_pipeline"].module == "omnimarket.nodes.node_ticket_pipeline"
+
+
 def test_baseline_continues_after_one_skill_smoke_failure(monkeypatch) -> None:
     failing_skill = iter_market_skill_specs()[0].skill_name
 

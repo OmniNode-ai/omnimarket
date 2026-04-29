@@ -43,6 +43,8 @@ _PHASE_ORDER: tuple[EnumPipelinePhase, ...] = (
     EnumPipelinePhase.AUTO_MERGE,
 )
 
+EXECUTABLE_PHASES: frozenset[EnumPipelinePhase] = frozenset(_PHASE_ORDER)
+
 TERMINAL_PHASES: frozenset[EnumPipelinePhase] = frozenset(
     {EnumPipelinePhase.DONE, EnumPipelinePhase.FAILED, EnumPipelinePhase.BLOCKED}
 )
@@ -87,6 +89,7 @@ class ModelPipelineState(BaseModel):
 
 
 __all__: list[str] = [
+    "EXECUTABLE_PHASES",
     "TERMINAL_PHASES",
     "EnumPipelinePhase",
     "ModelPipelineState",

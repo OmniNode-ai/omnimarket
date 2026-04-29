@@ -91,6 +91,7 @@ class ModelMarketSkillSpec(BaseModel):
         "coderabbit_triage",
         "session_bootstrap",
         "session_orchestrator",
+        "ticket_pipeline",
     ]
 
 
@@ -191,6 +192,14 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
             "tests/unit/test_handler_session_orchestrator_graphql.py",
         ),
         smoke_kind="session_orchestrator",
+    ),
+    ModelMarketSkillSpec(
+        skill_name="ticket_pipeline",
+        node_name="node_ticket_pipeline",
+        module="omnimarket.nodes.node_ticket_pipeline",
+        contract_path="src/omnimarket/nodes/node_ticket_pipeline/contract.yaml",
+        pytest_targets=("tests/test_golden_chain_ticket_pipeline.py",),
+        smoke_kind="ticket_pipeline",
     ),
 )
 
@@ -403,6 +412,16 @@ def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, obj
         "dispatch_queue_count": len(dispatch_queue)
         if isinstance(dispatch_queue, list)
         else 0,
+    }
+
+
+def _summarize_ticket_pipeline(payload: dict[str, object]) -> dict[str, object]:
+    results = payload.get("phase_results", [])
+    return {
+        "stopped_at": payload.get("stopped_at"),
+        "stop_reason": payload.get("stop_reason"),
+        "ran_phase": payload.get("ran_phase"),
+        "phase_results_count": len(results) if isinstance(results, list) else 0,
     }
 
 
@@ -668,6 +687,33 @@ def _smoke_session_orchestrator() -> ModelCommandResult:
     )
 
 
+def _smoke_ticket_pipeline() -> ModelCommandResult:
+    command = [
+        sys.executable,
+        "-m",
+        "omnimarket.nodes.node_ticket_pipeline",
+        "OMN-9360",
+        "--dry-run",
+    ]
+    completed = _run_command(command=command)
+    payload = _parse_json(completed.stdout)
+    passed = (
+        completed.returncode == 0
+        and payload.get("stopped_at") == "blocked"
+        and payload.get("stop_reason") == "not_implemented"
+    )
+    return ModelCommandResult(
+        passed=passed,
+        command=_sanitize_command(command),
+        returncode=completed.returncode,
+        summary=_summarize_ticket_pipeline(payload),
+        stderr=completed.stderr.strip(),
+        notes=[
+            "first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented"
+        ],
+    )
+
+
 SMOKE_RUNNERS: dict[str, Callable[[], ModelCommandResult]] = {
     "aislop_sweep": _smoke_aislop_sweep,
     "pr_lifecycle_orchestrator": _smoke_pr_lifecycle_orchestrator,
@@ -676,6 +722,7 @@ SMOKE_RUNNERS: dict[str, Callable[[], ModelCommandResult]] = {
     "coderabbit_triage": _smoke_coderabbit_triage,
     "session_bootstrap": _smoke_session_bootstrap,
     "session_orchestrator": _smoke_session_orchestrator,
+    "ticket_pipeline": _smoke_ticket_pipeline,
 }
 
 
