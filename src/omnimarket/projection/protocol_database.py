@@ -59,11 +59,11 @@ class InmemoryDatabaseAdapter:
             self.tables[table] = []
 
         rows = self.tables[table]
-        conflict_val = row.get(conflict_key)
+        conflict_keys = [key.strip() for key in conflict_key.split(",")]
 
-        # Find existing row with same conflict key value
+        # Find existing row with same conflict key value(s).
         for i, existing in enumerate(rows):
-            if existing.get(conflict_key) == conflict_val:
+            if all(existing.get(key) == row.get(key) for key in conflict_keys):
                 rows[i] = row
                 self.upsert_count += 1
                 return True

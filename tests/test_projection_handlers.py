@@ -325,11 +325,12 @@ class TestSavingsHandler:
         data = {
             "session_id": "sess-savings-1",
             "correlation_id": "corr-sav-1",
-            "actual_total_tokens": 5000,
-            "actual_cost_usd": 0.05,
-            "direct_savings_usd": 0.03,
-            "estimated_total_savings_usd": 0.04,
-            "timestamp": "2026-04-06T12:00:00Z",
+            "event_timestamp": "2026-04-06T12:00:00Z",
+            "model_local": "qwen3-coder-30b",
+            "model_cloud_baseline": "claude-opus-4",
+            "local_cost_usd": "0.010000",
+            "cloud_cost_usd": "0.050000",
+            "savings_usd": "0.040000",
         }
 
         result = await runner.project_event(
@@ -347,7 +348,7 @@ class TestSavingsHandler:
         runner = SavingsProjectionRunner()
         runner._db = mock_db
 
-        data = {"actual_total_tokens": 100}
+        data = {"model_local": "qwen3-coder-30b"}
         result = await runner.project_event(
             "onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta()
         )

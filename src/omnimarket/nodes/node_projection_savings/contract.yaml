@@ -5,7 +5,6 @@ node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Projects savings-estimated events into the savings_estimates table.
-  SOW WARN blocker — savings attribution must be operational.
   Source topic: onex.evt.omnibase-infra.savings-estimated.v1.
 
 handler:
@@ -17,12 +16,13 @@ terminal_event: onex.evt.omnimarket.projection-savings-applied.v1
 db_io:
   db_tables:
     - name: savings_estimates
-      migration: "0034_savings_estimates.sql"
+      migration: "074_create_savings_estimates.sql"
       access: write
-      database: omnidash_analytics
+      database: omnibase_infra
       role: estimates
 
 event_bus:
+  consumer_group: local.omnibase_infra.node_projection_savings.consume.v1
   subscribe_topics:
     - onex.evt.omnibase-infra.savings-estimated.v1
   publish_topics:
