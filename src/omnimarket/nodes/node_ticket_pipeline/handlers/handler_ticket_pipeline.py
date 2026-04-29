@@ -19,6 +19,11 @@ from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_completed_event
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_phase_event import (
     ModelPipelinePhaseEvent,
 )
+from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_phase_result import (
+    EnumPipelinePhaseResultStatus,
+    ModelPipelineExecutionReport,
+    ModelPipelinePhaseResult,
+)
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command import (
     ModelPipelineStartCommand,
 )
@@ -43,7 +48,7 @@ class HandlerTicketPipeline:
         return ModelPipelineState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
-            current_phase=EnumPipelinePhase.IDLE,
+            current_phase=command.skip_to or EnumPipelinePhase.PRE_FLIGHT,
             skip_test_iterate=command.skip_test_iterate,
             dry_run=command.dry_run,
             max_consecutive_failures=3,
@@ -149,10 +154,140 @@ class HandlerTicketPipeline:
     def handle(self, command: ModelPipelineStartCommand) -> ModelPipelineCompletedEvent:
         """Typed RuntimeLocal handler protocol entry point.
 
-        Delegates to run_full_pipeline with the provided typed command.
+        Delegates to the safe executable slice. This handler intentionally does
+        not claim full pipeline autonomy while later phases are not wired.
         """
-        _state, _events, completed = self.run_full_pipeline(command)
-        return completed
+        report = self.run_executable_pipeline(command)
+        return report.completed
+
+    def execute_phase(
+        self,
+        state: ModelPipelineState,
+    ) -> ModelPipelinePhaseResult:
+        """Execute the current node-owned phase and return an explicit result."""
+        started_at = datetime.now(tz=UTC)
+        if state.current_phase == EnumPipelinePhase.PRE_FLIGHT:
+            result = self._execute_pre_flight(state, started_at)
+        elif state.current_phase in TERMINAL_PHASES:
+            result = ModelPipelinePhaseResult(
+                correlation_id=state.correlation_id,
+                ticket_id=state.ticket_id,
+                phase=state.current_phase,
+                status=EnumPipelinePhaseResultStatus.BLOCKED,
+                dry_run=state.dry_run,
+                started_at=started_at,
+                completed_at=datetime.now(tz=UTC),
+                message=f"Cannot execute terminal phase: {state.current_phase.value}",
+            )
+        else:
+            result = ModelPipelinePhaseResult(
+                correlation_id=state.correlation_id,
+                ticket_id=state.ticket_id,
+                phase=state.current_phase,
+                status=EnumPipelinePhaseResultStatus.NOT_IMPLEMENTED,
+                dry_run=state.dry_run,
+                started_at=started_at,
+                completed_at=datetime.now(tz=UTC),
+                message=(
+                    f"Phase {state.current_phase.value} is not implemented in "
+                    "the first ticket-pipeline slice"
+                ),
+                details={"blocked_reason": "phase_not_wired"},
+            )
+        return result
+
+    def _execute_pre_flight(
+        self,
+        state: ModelPipelineState,
+        started_at: datetime,
+    ) -> ModelPipelinePhaseResult:
+        return ModelPipelinePhaseResult(
+            correlation_id=state.correlation_id,
+            ticket_id=state.ticket_id,
+            phase=EnumPipelinePhase.PRE_FLIGHT,
+            status=EnumPipelinePhaseResultStatus.SUCCEEDED,
+            dry_run=state.dry_run,
+            started_at=started_at,
+            completed_at=datetime.now(tz=UTC),
+            message="Pre-flight validation passed",
+            details={
+                "ticket_id": state.ticket_id,
+                "dry_run": state.dry_run,
+                "validated": [
+                    "ticket_id",
+                    "correlation_id",
+                    "skip_to",
+                    "dry_run",
+                ],
+                "side_effects": "none",
+            },
+        )
+
+    def _stop_on_result(
+        self,
+        state: ModelPipelineState,
+        result: ModelPipelinePhaseResult,
+    ) -> tuple[ModelPipelineState, ModelPipelinePhaseEvent]:
+        now = datetime.now(tz=UTC)
+        message = result.message or f"Phase {result.phase.value} blocked"
+        terminal_phase = (
+            EnumPipelinePhase.FAILED
+            if result.status == EnumPipelinePhaseResultStatus.FAILED
+            else EnumPipelinePhase.BLOCKED
+        )
+        new_state = state.model_copy(
+            update={
+                "current_phase": terminal_phase,
+                "error_message": message,
+            }
+        )
+        event = ModelPipelinePhaseEvent(
+            correlation_id=state.correlation_id,
+            ticket_id=state.ticket_id,
+            from_phase=state.current_phase,
+            to_phase=terminal_phase,
+            success=False,
+            timestamp=now,
+            error_message=message,
+        )
+        return new_state, event
+
+    def run_executable_pipeline(
+        self,
+        command: ModelPipelineStartCommand,
+    ) -> ModelPipelineExecutionReport:
+        """Run the honest node-owned execution slice until it must stop."""
+        started_at = datetime.now(tz=UTC)
+        state = self.start(command)
+        events: list[ModelPipelinePhaseEvent] = []
+        results: list[ModelPipelinePhaseResult] = []
+        stop_reason = "terminal_phase"
+
+        while state.current_phase not in TERMINAL_PHASES:
+            result = self.execute_phase(state)
+            results.append(result)
+
+            if result.success:
+                state, event = self.advance(state, phase_success=True)
+                events.append(event)
+                continue
+
+            state, event = self._stop_on_result(state, result)
+            events.append(event)
+            stop_reason = result.status.value
+            break
+
+        completed = self.make_completed_event(state, started_at)
+        ran_phase = results[-1].phase if results else None
+        return ModelPipelineExecutionReport(
+            state=state,
+            phase_results=results,
+            phase_events=events,
+            completed=completed,
+            ran_phase=ran_phase,
+            stopped_at=state.current_phase,
+            stop_reason=stop_reason,
+        )
 
     def run_full_pipeline(
         self,
@@ -163,22 +298,34 @@ class HandlerTicketPipeline:
         list[ModelPipelinePhaseEvent],
         ModelPipelineCompletedEvent,
     ]:
-        """Run a complete pipeline through all phases with provided results.
+        """Run a pipeline with explicit injected results, or the safe slice.
 
-        Deterministic entry point for testing. phase_results maps each phase
-        to success/failure. If not provided, all phases succeed.
+        Missing phase results no longer imply success. Without injected results,
+        only PRE_FLIGHT executes and later side-effect phases block as not wired.
         """
+        if phase_results is None:
+            report = self.run_executable_pipeline(command)
+            return report.state, report.phase_events, report.completed
+
         started_at = datetime.now(tz=UTC)
         state = self.start(command)
         events: list[ModelPipelinePhaseEvent] = []
-        results = phase_results or {}
+        results = phase_results
 
         while state.current_phase not in TERMINAL_PHASES:
-            target = next_phase(
-                state.current_phase,
-                skip_test_iterate=state.skip_test_iterate,
-            )
-            success = results.get(target, True)
+            target = state.current_phase
+            if target not in results:
+                result = self.execute_phase(state)
+                if result.success:
+                    state, event = self.advance(state, phase_success=True)
+                else:
+                    state, event = self._stop_on_result(state, result)
+                events.append(event)
+                if not result.success:
+                    break
+                continue
+
+            success = results[target]
             error_msg = None if success else f"Phase {target.value} failed"
 
             state, event = self.advance(

@@ -5,10 +5,9 @@ node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Per-ticket execution pipeline WorkflowPackage. Coordinates the multi-phase
-  autonomous ticket pipeline: PRE_FLIGHT -> IMPLEMENT -> LOCAL_REVIEW ->
-  CREATE_PR -> TEST_ITERATE -> CI_WATCH -> PR_REVIEW -> AUTO_MERGE -> DONE.
-  Circuit breaker trips after 3 consecutive failures.
+  Per-ticket execution pipeline WorkflowPackage. This first market-owned slice
+  executes PRE_FLIGHT deterministically and blocks later side-effect phases as
+  not implemented until they are explicitly wired.
 
 handler:
   module: omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline
@@ -36,14 +35,19 @@ inputs:
     description: "Run without side effects"
     required: false
     default: false
+  skip_to:
+    type: str
+    description: "Validated resume phase for the bounded pipeline slice"
+    required: false
+    default: null
 
 outputs:
   final_phase:
     type: str
-    description: "Terminal phase reached (done, failed, or blocked)"
-  pr_number:
-    type: int
-    description: "PR number created during pipeline"
+    description: "Terminal phase reached (blocked for unwired phases)"
+  phase_results:
+    type: list
+    description: "Explicit phase execution results emitted by the bounded slice"
 
 terminal_event: onex.evt.omnimarket.ticket-pipeline-completed.v1
 

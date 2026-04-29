@@ -2,16 +2,16 @@
 # SPDX-License-Identifier: MIT
 """CLI entry point for node_ticket_pipeline.
 
-Initializes the ticket pipeline FSM for a given Linear ticket and outputs
-the initial pipeline state as JSON. Actual phase execution is orchestrated
-by the caller (agent or skill surface) using the emitted phase events.
+Runs the safe ticket-pipeline execution slice for a given Linear ticket and
+outputs a parseable JSON report. Only PRE_FLIGHT is wired in this first slice;
+later side-effect phases stop as blocked/not_implemented.
 
 Usage:
     python -m omnimarket.nodes.node_ticket_pipeline OMN-1234
     python -m omnimarket.nodes.node_ticket_pipeline OMN-1234 --dry-run
     python -m omnimarket.nodes.node_ticket_pipeline OMN-1234 --skip-to ci_watch
 
-Outputs JSON to stdout: ModelPipelineState model.
+Outputs JSON to stdout: ModelPipelineExecutionReport model.
 """
 
 from __future__ import annotations
@@ -27,6 +27,9 @@ from omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline impo
 )
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command import (
     ModelPipelineStartCommand,
+)
+from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_state import (
+    EXECUTABLE_PHASE_ORDER,
 )
 
 _log = logging.getLogger(__name__)
@@ -45,6 +48,7 @@ def main() -> None:
     parser.add_argument(
         "--skip-to",
         default=None,
+        choices=[phase.value for phase in EXECUTABLE_PHASE_ORDER],
         help=(
             "Resume from specified phase: pre_flight|implement|local_review|"
             "create_pr|test_iterate|ci_watch|pr_review|auto_merge"
@@ -75,11 +79,11 @@ def main() -> None:
     )
 
     handler = HandlerTicketPipeline()
-    state = handler.start(command)
+    report = handler.run_executable_pipeline(command)
 
-    sys.stdout.write(state.model_dump_json(indent=2) + "\n")
+    sys.stdout.write(report.model_dump_json(indent=2) + "\n")
 
-    if state.current_phase.value in ("FAILED",):
+    if report.stop_reason == "failed":
         sys.exit(1)
 
 
