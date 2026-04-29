@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10341
+title: "Remove Claude shell execution from market PR polish"
+summary: "Cut node_pr_polish and lifecycle CodeRabbit dispatch over to market-owned OmniNode processes instead of Claude slash-command execution."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "omnimarket PR #453 checks pass, including market-skill-baseline, typecheck, tests, and deploy-gate."
+    command: "gh pr checks 453 --repo OmniNode-ai/omnimarket --watch"
+  - kind: "manual"
+    description: "Focused PR-polish and lifecycle dispatch tests prove no Claude slash-command path is used."
+    command: "uv run pytest tests/unit/nodes/node_pr_polish/test_main_cli.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_adapter_pr_polish_dispatch.py tests/test_golden_chain_pr_polish.py -q"
+  - kind: "manual"
+    description: "Strict market skill baseline remains fully working after the node-owned cutover."
+    command: "uv run python scripts/run_market_skill_baseline.py --strict"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Focused tests prove pr_polish and lifecycle dispatch use market node modules rather than Claude slash commands."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_polish/test_main_cli.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_adapter_pr_polish_dispatch.py tests/test_golden_chain_pr_polish.py -q"
+  - id: "dod-002"
+    description: "Strict baseline proves the market-owned skill inventory remains green."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/run_market_skill_baseline.py --strict"
+  - id: "dod-003"
+    description: "deploy gate evidence: post-merge runtime validation imports market PR-polish and CodeRabbit node entrypoints before claiming live runtime completion."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python - <<'PY'\nfrom omnimarket.nodes.node_pr_polish.workflow_runner import run_live_pr_polish\nfrom omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage import HandlerCoderabbitTriage\nprint(run_live_pr_polish.__name__, HandlerCoderabbitTriage.__name__)\nPY"

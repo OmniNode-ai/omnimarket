@@ -73,6 +73,9 @@ if [[ "$1" == "-C" && "$3" == "rev-parse" ]]; then
   printf 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\\n'
   exit 0
 fi
+if [[ "$1" == "-C" && "$3" == "diff" ]]; then
+  exit 0
+fi
 if [[ "$1" == "-C" && "$3" == "checkout" ]]; then
   exit 0
 fi
@@ -105,20 +108,10 @@ echo "unexpected pre-commit invocation: $*" >&2
 exit 1
 """,
     )
-    _write_executable(
-        fake_bin / "claude",
-        """#!/usr/bin/env bash
-printf '%s\\n' "$PWD" > "${ONEX_STATE_DIR}/claude-cwd.txt"
-printf '%s\\n' "$*" > "${ONEX_STATE_DIR}/claude-argv.txt"
-exit 0
-""",
-    )
-
     env = {
         **os.environ,
         "ONEX_STATE_DIR": str(tmp_path / "state"),
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-        "CLAUDE_BIN": str(fake_bin / "claude"),
     }
 
     completed = subprocess.run(
@@ -159,14 +152,24 @@ exit 0
     assert result["push_status"] == "pushed"
     assert result["auto_merge_status"] == "armed"
     assert result["coderabbit_triage"]["total_threads"] == 0
-    assert (tmp_path / "state" / "claude-cwd.txt").read_text().strip() == str(worktree)
-    assert "/onex:pr_polish 42" in (tmp_path / "state" / "claude-argv.txt").read_text()
-    assert "--no-push" in (tmp_path / "state" / "claude-argv.txt").read_text()
-    assert (
-        "--required-clean-runs 2"
-        in (tmp_path / "state" / "claude-argv.txt").read_text()
-    )
-    assert "--max-iterations 3" in (tmp_path / "state" / "claude-argv.txt").read_text()
+    assert result["phase_results"] == [
+        {"phase": "resolve_conflicts", "status": "clean"},
+        {
+            "phase": "fix_ci",
+            "status": "deferred_to_required_checks",
+            "detail": "CI state is enforced by GitHub required checks before merge.",
+        },
+        {
+            "phase": "address_comments",
+            "status": "handled_by_market_coderabbit_triage",
+        },
+        {
+            "phase": "local_review",
+            "status": "deferred_to_pre_push_gate",
+            "detail": "Push mode runs the full pre-commit gate once before publishing.",
+        },
+    ]
+    assert not (tmp_path / "state" / "claude-argv.txt").exists()
     assert (
         "run pre-commit run --all-files"
         in (tmp_path / "state" / "pre-commit-argv.txt").read_text()
@@ -215,6 +218,9 @@ if [[ "$1" == "-C" && "$3" == "rev-parse" ]]; then
   printf 'feature/no-push\\n'
   exit 0
 fi
+if [[ "$1" == "-C" && "$3" == "diff" ]]; then
+  exit 0
+fi
 if [[ "$1" == "-C" && "$3" == "checkout" ]]; then
   exit 0
 fi
@@ -232,19 +238,10 @@ echo "unexpected pre-commit invocation: $*" >&2
 exit 1
 """,
     )
-    _write_executable(
-        fake_bin / "claude",
-        """#!/usr/bin/env bash
-printf '%s\\n' "$*" > "${ONEX_STATE_DIR}/claude-argv-no-push.txt"
-exit 0
-""",
-    )
-
     env = {
         **os.environ,
         "ONEX_STATE_DIR": str(tmp_path / "state"),
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-        "CLAUDE_BIN": str(fake_bin / "claude"),
     }
 
     completed = subprocess.run(
@@ -274,4 +271,9 @@ exit 0
     assert result["push_status"] == "skipped"
     assert result["auto_merge_status"] == "skipped"
     assert result["coderabbit_triage"]["dry_run"] is True
-    assert "--no-push" in (tmp_path / "state" / "claude-argv-no-push.txt").read_text()
+    assert {
+        "phase": "local_review",
+        "status": "skipped_non_mutating_mode",
+        "detail": "Use push mode to run local review before publishing.",
+    } in result["phase_results"]
+    assert not (tmp_path / "state" / "claude-argv-no-push.txt").exists()

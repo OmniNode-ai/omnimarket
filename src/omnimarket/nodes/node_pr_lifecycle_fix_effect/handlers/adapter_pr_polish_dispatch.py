@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Live agent-dispatch adapter for pr_lifecycle_fix_effect.
+"""Live node-dispatch adapter for pr_lifecycle_fix_effect.
 
 Spawns detached workers for PR review-fix and CodeRabbit auto-reply flows.
 Review-fix now dispatches the real ``node_pr_polish`` CLI so the node owns
-repo/worktree resolution and result persistence instead of raw ``claude -p``
-argv scraping. Related: OMN-9284, OMN-10180.
+repo/worktree resolution and result persistence. Related: OMN-9284, OMN-10180.
 """
 
 from __future__ import annotations
@@ -89,26 +88,24 @@ def _default_spawner(
 
 
 class PrPolishDispatchAdapter:
-    """Dispatch ``/onex:pr_polish`` and ``/onex:coderabbit_triage`` sub-agents.
+    """Dispatch market-owned PR polish and CodeRabbit triage node workers.
 
     Each dispatch:
       * Creates ``$ONEX_STATE_DIR/pr-polish/{repo_slug}-{pr}-{run_id}/`` and
         writes a ``dispatch.json`` breadcrumb so subsequent ticks can see that
         a worker was actually spawned (the signal that was missing pre-9284).
-      * Spawns ``claude -p '<skill invocation>'`` detached
-        (``start_new_session=True``, stdout/stderr redirected to a log file
-        inside the state dir). The orchestrator does not block on the worker.
+      * Spawns an ``omnimarket.nodes.*`` module detached (``start_new_session=True``,
+        stdout/stderr redirected to a log file inside the state dir). The
+        orchestrator does not block on the worker.
     """
 
     def __init__(
         self,
         *,
-        claude_bin: str | None = None,
         python_bin: str | None = None,
         state_dir: Path | None = None,
         spawner: ProtocolSubprocessSpawner | None = None,
     ) -> None:
-        self._claude_bin = claude_bin or os.environ.get("CLAUDE_BIN", "claude")
         self._python_bin = python_bin or sys.executable
         self._state_dir = state_dir or self._resolve_state_dir()
         self._repo_root = Path(__file__).resolve().parents[5]
@@ -125,8 +122,7 @@ class PrPolishDispatchAdapter:
         return self._spawn_review_fix(repo, pr_number, ticket_id)
 
     async def dispatch_coderabbit_reply(self, repo: str, pr_number: int) -> str:
-        skill_cmd = f"/onex:coderabbit_triage --repo {repo} --pr {pr_number}"
-        return self._spawn("coderabbit-reply", repo, pr_number, skill_cmd, None)
+        return self._spawn_coderabbit_reply(repo, pr_number)
 
     def _spawn_review_fix(
         self,
@@ -171,31 +167,41 @@ class PrPolishDispatchAdapter:
         )
         return f"dispatched review-fix agent on {repo}#{pr_number} run_id={run_id}"
 
-    def _spawn(
-        self,
-        kind: str,
-        repo: str,
-        pr_number: int,
-        skill_cmd: str,
-        ticket_id: str | None,
-    ) -> str:
+    def _spawn_coderabbit_reply(self, repo: str, pr_number: int) -> str:
         run_id = uuid.uuid4().hex[:12]
         run_dir = self._make_run_dir(repo, pr_number, run_id)
         log_path = run_dir / "worker.log"
-        argv = [self._claude_bin, "-p", skill_cmd]
+        argv = [
+            self._python_bin,
+            "-m",
+            "omnimarket.nodes.node_coderabbit_triage",
+            "--repo",
+            repo,
+            "--pr",
+            str(pr_number),
+        ]
+        env = os.environ.copy()
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            f"{self._src_root}{os.pathsep}{existing_pythonpath}"
+            if existing_pythonpath
+            else str(self._src_root)
+        )
         self._spawn_process(
-            kind=kind,
+            kind="coderabbit-reply",
             repo=repo,
             pr_number=pr_number,
-            ticket_id=ticket_id,
+            ticket_id=None,
             run_id=run_id,
             run_dir=run_dir,
             log_path=log_path,
             argv=argv,
-            env=None,
-            cwd=None,
+            env=env,
+            cwd=str(self._repo_root),
         )
-        return f"dispatched {kind} agent on {repo}#{pr_number} run_id={run_id}"
+        return (
+            f"dispatched coderabbit-reply agent on {repo}#{pr_number} run_id={run_id}"
+        )
 
     def _spawn_process(
         self,

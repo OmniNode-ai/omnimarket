@@ -572,13 +572,11 @@ if [[ "$1" == "-C" && "$3" == "rev-parse" ]]; then
   printf 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
   exit 0
 fi
+if [[ "$1" == "-C" && "$3" == "diff" ]]; then
+  exit 0
+fi
 echo "unexpected git invocation: $*" >&2
 exit 1
-""",
-            "claude": """#!/usr/bin/env bash
-printf '%s\n' "$PWD" > "${ONEX_STATE_DIR}/claude-cwd.txt"
-printf '%s\n' "$*" > "${ONEX_STATE_DIR}/claude-argv.txt"
-exit 0
 """,
         }
         with _fake_bin_scripts(scripts) as bin_dir:
@@ -587,7 +585,6 @@ exit 0
                 env={
                     "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
                     "ONEX_STATE_DIR": str(tmp_path / "state"),
-                    "CLAUDE_BIN": str(bin_dir / "claude"),
                 },
             )
     payload = _parse_json(completed.stdout)
