@@ -16,6 +16,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import subprocess
 from typing import Protocol, runtime_checkable
@@ -28,6 +29,8 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecy
 )
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_ADMIN_MERGE_TIMEOUT_SECONDS: float = 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -55,8 +58,17 @@ class ModelAdminMergeResult(BaseModel):
 class ProtocolAdminMergeAdapter(Protocol):
     """Minimal GitHub merge operations for admin merge fallback."""
 
-    async def admin_merge(self, repo: str, pr_number: int) -> None:
-        """Admin-merge a PR via gh pr merge --admin --squash."""
+    async def admin_merge(
+        self,
+        repo: str,
+        pr_number: int,
+        timeout_seconds: float = _DEFAULT_ADMIN_MERGE_TIMEOUT_SECONDS,
+    ) -> None:
+        """Admin-merge a PR via gh pr merge --admin --squash.
+
+        Must enforce a hard timeout and raise asyncio.TimeoutError when the
+        underlying subprocess exceeds timeout_seconds.
+        """
         ...
 
 
@@ -65,21 +77,39 @@ class ProtocolAdminMergeAdapter(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def _run_gh_admin_merge(repo: str, pr_number: int) -> subprocess.CompletedProcess[str]:
+    """Synchronous subprocess call — runs on a worker thread via asyncio.to_thread.
+
+    Kept as a module-level function so tests can monkeypatch it cleanly.
+    """
+    return subprocess.run(
+        [
+            "gh",
+            "pr",
+            "merge",
+            str(pr_number),
+            "--admin",
+            "--squash",
+            "--repo",
+            repo,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
 class _LiveAdminMergeAdapter:
-    async def admin_merge(self, repo: str, pr_number: int) -> None:
-        result = subprocess.run(
-            [
-                "gh",
-                "pr",
-                "merge",
-                str(pr_number),
-                "--admin",
-                "--squash",
-                "--repo",
-                repo,
-            ],
-            capture_output=True,
-            text=True,
+    async def admin_merge(
+        self,
+        repo: str,
+        pr_number: int,
+        timeout_seconds: float = _DEFAULT_ADMIN_MERGE_TIMEOUT_SECONDS,
+    ) -> None:
+        # Run the blocking gh CLI call on a thread; bound it with a hard timeout
+        # so a hung gh process never blocks the asyncio event loop.
+        result = await asyncio.wait_for(
+            asyncio.to_thread(_run_gh_admin_merge, repo, pr_number),
+            timeout=timeout_seconds,
         )
         if result.returncode != 0:
             msg = (
@@ -123,6 +153,7 @@ class HandlerAdminMerge:
         stuck_prs: list[ModelStuckQueueEntry],
         enable_admin_merge_fallback: bool = True,
         dry_run: bool = False,
+        timeout_seconds: float = _DEFAULT_ADMIN_MERGE_TIMEOUT_SECONDS,
     ) -> ModelAdminMergeResult:
         """Admin-merge all stuck PRs unless explicitly disabled.
 
@@ -130,6 +161,8 @@ class HandlerAdminMerge:
             stuck_prs: PRs identified as stuck by inventory compute.
             enable_admin_merge_fallback: Default ON; set False to disable.
             dry_run: When True, log intent without merging.
+            timeout_seconds: Hard timeout per subprocess invocation. Prevents a
+                hung gh process from stalling the sweep.
 
         Returns:
             ModelAdminMergeResult with merge counts.
@@ -158,10 +191,22 @@ class HandlerAdminMerge:
                 prs_merged += 1
                 continue
             try:
-                await self._adapter.admin_merge(repo=pr.repo, pr_number=pr.pr_number)
+                await self._adapter.admin_merge(
+                    repo=pr.repo,
+                    pr_number=pr.pr_number,
+                    timeout_seconds=timeout_seconds,
+                )
                 prs_merged += 1
                 logger.info(
                     "admin-merge succeeded: pr=%s repo=%s", pr.pr_number, pr.repo
+                )
+            except TimeoutError:
+                prs_failed += 1
+                logger.warning(
+                    "admin-merge timed out after %.1fs: pr=%s repo=%s",
+                    timeout_seconds,
+                    pr.pr_number,
+                    pr.repo,
                 )
             except Exception as exc:
                 prs_failed += 1

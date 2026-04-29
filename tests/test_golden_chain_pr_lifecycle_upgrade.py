@@ -391,7 +391,9 @@ class TestAdminMergeFallbackOptIn:
         """opt-in=True, dry_run=True: prs_merged=1 and ADMIN MERGE TRIGGERED logged."""
 
         class MockAdminAdapter:
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
+            async def admin_merge(
+                self, repo: str, pr_number: int, timeout_seconds: float = 60.0
+            ) -> None:
                 pytest.fail("Should not call admin_merge in dry_run")
 
         stuck_pr = self._make_stuck_pr(pr_number=77)
@@ -413,7 +415,9 @@ class TestAdminMergeFallbackOptIn:
         """opt-in=False: all PRs skipped, adapter.admin_merge NOT called."""
 
         class MockAdminAdapter:
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
+            async def admin_merge(
+                self, repo: str, pr_number: int, timeout_seconds: float = 60.0
+            ) -> None:
                 pytest.fail("Should not call admin_merge when opt-in=False")
 
         stuck_pr = self._make_stuck_pr(pr_number=78)
@@ -435,7 +439,9 @@ class TestAdminMergeFallbackOptIn:
             def __init__(self) -> None:
                 self.merged: list[tuple[str, int]] = []
 
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
+            async def admin_merge(
+                self, repo: str, pr_number: int, timeout_seconds: float = 60.0
+            ) -> None:
                 self.merged.append((repo, pr_number))
 
         stuck_pr = self._make_stuck_pr(pr_number=79)

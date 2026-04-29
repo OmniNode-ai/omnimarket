@@ -21,6 +21,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+    ModelStuckQueueEntry,
+)
+
 # ---------------------------------------------------------------------------
 # Shared data models
 # ---------------------------------------------------------------------------
@@ -109,6 +113,13 @@ class InventoryResult(BaseModel):
 
     prs: tuple[PrRecord, ...] = Field(default_factory=tuple)
     total_collected: int = Field(default=0, ge=0)
+    stuck_queue_prs: tuple[ModelStuckQueueEntry, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "PRs stuck in the merge queue past the threshold. Consumed by the "
+            "admin-merge-fallback sub-handler when enable_admin_merge_fallback=True."
+        ),
+    )
 
 
 class PrTriageResult(BaseModel):
@@ -148,6 +159,16 @@ class FixResult(BaseModel):
 
     prs_dispatched: int = Field(default=0, ge=0)
     prs_skipped: int = Field(default=0, ge=0)
+
+
+class AdminMergeResult(BaseModel):
+    """Result from the admin-merge fallback handler (OMN-9114)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prs_merged: int = Field(default=0, ge=0)
+    prs_skipped: int = Field(default=0, ge=0)
+    prs_failed: int = Field(default=0, ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -220,3 +241,17 @@ class ProtocolFixHandler(Protocol):
         prs_to_fix: tuple[TriageRecord, ...],
         dry_run: bool = False,
     ) -> FixResult: ...
+
+
+@runtime_checkable
+class ProtocolAdminMergeHandler(Protocol):
+    """Admin-merge fallback for PRs stuck in the merge queue (OMN-9114)."""
+
+    async def handle(
+        self,
+        *,
+        stuck_prs: list[ModelStuckQueueEntry],
+        enable_admin_merge_fallback: bool = True,
+        dry_run: bool = False,
+        timeout_seconds: float = 60.0,
+    ) -> AdminMergeResult: ...

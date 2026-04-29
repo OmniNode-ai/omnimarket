@@ -745,3 +745,229 @@ class TestAdminMergeFallbackDefaultOn:
         sig = inspect.signature(HandlerAdminMerge.handle)
         param = sig.parameters["enable_admin_merge_fallback"]
         assert param.default is True
+
+
+# ---------------------------------------------------------------------------
+# OMN-9114 Path B: end-to-end propagation through the orchestrator
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAdminMergePropagationThroughOrchestrator:
+    """command.enable_admin_merge_fallback must drive admin-merge dispatch."""
+
+    def _make_stuck_pr_entry(self, pr_number: int) -> object:
+        from datetime import UTC, datetime, timedelta
+
+        from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+            ModelStuckQueueEntry,
+        )
+
+        return ModelStuckQueueEntry(
+            pr_number=pr_number,
+            repo="OmniNode-ai/omnimarket",
+            title=f"stuck #{pr_number}",
+            queue_entered_at=datetime.now(tz=UTC) - timedelta(minutes=45),
+            queue_age_minutes=45.0,
+        )
+
+    class _RecordingAdminMerge:
+        def __init__(self) -> None:
+            self.call_count = 0
+            self.received_enable: bool | None = None
+            self.received_timeout: float | None = None
+            self.received_dry_run: bool | None = None
+            self.received_stuck_count: int = 0
+
+        async def handle(
+            self,
+            *,
+            stuck_prs: list[object],
+            enable_admin_merge_fallback: bool = True,
+            dry_run: bool = False,
+            timeout_seconds: float = 60.0,
+        ) -> object:
+            from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+                AdminMergeResult,
+            )
+
+            self.call_count += 1
+            self.received_enable = enable_admin_merge_fallback
+            self.received_timeout = timeout_seconds
+            self.received_dry_run = dry_run
+            self.received_stuck_count = len(stuck_prs)
+            if not enable_admin_merge_fallback:
+                return AdminMergeResult(
+                    prs_merged=0, prs_skipped=len(stuck_prs), prs_failed=0
+                )
+            return AdminMergeResult(
+                prs_merged=len(stuck_prs), prs_skipped=0, prs_failed=0
+            )
+
+    async def test_enable_true_propagates_to_admin_merge(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When enable_admin_merge_fallback=True and stuck PRs exist, admin-merge fires."""
+        from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+            InventoryResult,
+        )
+
+        stuck = self._make_stuck_pr_entry(pr_number=201)
+
+        class _StuckInventory(MockInventory):
+            async def handle(  # type: ignore[override]
+                self,
+                *,
+                correlation_id: UUID,
+                repos: tuple[str, ...] = (),
+                dry_run: bool = False,
+            ) -> InventoryResult:
+                return InventoryResult(
+                    prs=(),
+                    total_collected=0,
+                    stuck_queue_prs=(stuck,),  # type: ignore[arg-type]
+                )
+
+        admin = self._RecordingAdminMerge()
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        orch = HandlerPrLifecycleOrchestrator(
+            inventory=_StuckInventory(),  # type: ignore[arg-type]
+            triage=MockTriage(),
+            reducer=MockReducer(),
+            merge=MockMerge(),
+            fix=MockFix(),
+            admin_merge=admin,  # type: ignore[arg-type]
+        )
+        cmd = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="20260417-210000-propTrue",
+            enable_admin_merge_fallback=True,
+            admin_merge_timeout_seconds=30.0,
+        )
+
+        result = await orch.handle(cmd)
+
+        assert result.final_state == "COMPLETE"
+        assert admin.call_count == 1
+        assert admin.received_enable is True
+        assert admin.received_timeout == 30.0
+        assert admin.received_stuck_count == 1
+
+    async def test_enable_false_skips_admin_merge(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When enable_admin_merge_fallback=False, admin-merge dispatch is skipped.
+
+        The orchestrator short-circuits before calling the sub-handler at all;
+        this is the concrete regression guard against the "inert flag" bug.
+        """
+        from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+            InventoryResult,
+        )
+
+        stuck = self._make_stuck_pr_entry(pr_number=202)
+
+        class _StuckInventory(MockInventory):
+            async def handle(  # type: ignore[override]
+                self,
+                *,
+                correlation_id: UUID,
+                repos: tuple[str, ...] = (),
+                dry_run: bool = False,
+            ) -> InventoryResult:
+                return InventoryResult(
+                    prs=(),
+                    total_collected=0,
+                    stuck_queue_prs=(stuck,),  # type: ignore[arg-type]
+                )
+
+        admin = self._RecordingAdminMerge()
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        orch = HandlerPrLifecycleOrchestrator(
+            inventory=_StuckInventory(),  # type: ignore[arg-type]
+            triage=MockTriage(),
+            reducer=MockReducer(),
+            merge=MockMerge(),
+            fix=MockFix(),
+            admin_merge=admin,  # type: ignore[arg-type]
+        )
+        cmd = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="20260417-210000-propFalse",
+            enable_admin_merge_fallback=False,
+        )
+
+        result = await orch.handle(cmd)
+
+        assert result.final_state == "COMPLETE"
+        assert admin.call_count == 0
+
+    async def test_no_stuck_prs_skips_admin_merge(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When no stuck PRs present, admin-merge handler is not called at all."""
+        admin = self._RecordingAdminMerge()
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        orch = HandlerPrLifecycleOrchestrator(
+            inventory=MockInventory(),
+            triage=MockTriage(),
+            reducer=MockReducer(),
+            merge=MockMerge(),
+            fix=MockFix(),
+            admin_merge=admin,  # type: ignore[arg-type]
+        )
+        cmd = ModelPrLifecycleStartCommand(
+            correlation_id=uuid4(),
+            run_id="20260417-210000-noStuck",
+            enable_admin_merge_fallback=True,
+        )
+
+        result = await orch.handle(cmd)
+
+        assert result.final_state == "COMPLETE"
+        assert admin.call_count == 0
+
+
+@pytest.mark.unit
+class TestAdminMergeTimeoutSurfacesAsFailure:
+    """A hung gh subprocess must be cut off by timeout and logged as a failure."""
+
+    async def test_adapter_timeout_increments_prs_failed(self) -> None:
+        import asyncio as _asyncio
+        from datetime import UTC, datetime, timedelta
+
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
+            HandlerAdminMerge,
+            ModelAdminMergeResult,
+        )
+        from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
+            ModelStuckQueueEntry,
+        )
+
+        class _HungAdapter:
+            async def admin_merge(
+                self, repo: str, pr_number: int, timeout_seconds: float = 60.0
+            ) -> None:
+                # Simulate a hung gh subprocess: sleep longer than the timeout
+                # and let asyncio.wait_for cut us off.
+                await _asyncio.wait_for(_asyncio.sleep(10.0), timeout=timeout_seconds)
+
+        stuck = ModelStuckQueueEntry(
+            pr_number=301,
+            repo="OmniNode-ai/omnimarket",
+            title="hung",
+            queue_entered_at=datetime.now(tz=UTC) - timedelta(minutes=45),
+            queue_age_minutes=45.0,
+        )
+        handler = HandlerAdminMerge(adapter=_HungAdapter())
+
+        result = await handler.handle(
+            stuck_prs=[stuck],
+            enable_admin_merge_fallback=True,
+            dry_run=False,
+            timeout_seconds=0.05,
+        )
+
+        assert isinstance(result, ModelAdminMergeResult)
+        assert result.prs_merged == 0
+        assert result.prs_failed == 1

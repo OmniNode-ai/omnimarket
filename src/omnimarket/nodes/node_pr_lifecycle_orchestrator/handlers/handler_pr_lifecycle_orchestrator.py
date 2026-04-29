@@ -40,10 +40,12 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+    AdminMergeResult,
     EnumReducerIntent,
     FixResult,
     InventoryResult,
     MergeResult,
+    ProtocolAdminMergeHandler,
     ProtocolFixHandler,
     ProtocolInventoryHandler,
     ProtocolMergeHandler,
@@ -123,6 +125,14 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default=30,
         description="Minutes before a merge-queued PR is considered stuck.",
     )
+    admin_merge_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description=(
+            "Hard timeout for each admin-merge subprocess invocation (gh pr merge "
+            "--admin). Prevents a hung gh process from blocking the sweep."
+        ),
+    )
 
 
 class ModelPrLifecycleResult(BaseModel):
@@ -166,6 +176,7 @@ class _SweepState:
     prs_merged: int = 0
     prs_fixed: int = 0
     prs_skipped: int = 0
+    prs_admin_merged: int = 0
     error_message: str | None = None
 
     # Inter-phase data
@@ -241,6 +252,21 @@ class _StubFixHandler:
         return FixResult(prs_dispatched=0, prs_skipped=0)
 
 
+class _StubAdminMergeHandler:
+    async def handle(
+        self,
+        *,
+        stuck_prs: Any,
+        enable_admin_merge_fallback: bool = True,
+        dry_run: bool = False,
+        timeout_seconds: float = 60.0,
+    ) -> AdminMergeResult:
+        logger.warning(
+            "[PR-LIFECYCLE-ORCH] admin_merge stub called (sub-node not wired)"
+        )
+        return AdminMergeResult(prs_merged=0, prs_skipped=len(stuck_prs), prs_failed=0)
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator handler
 # ---------------------------------------------------------------------------
@@ -269,6 +295,7 @@ class HandlerPrLifecycleOrchestrator:
         reducer: ProtocolStateReducerHandler | None = None,
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
+        admin_merge: ProtocolAdminMergeHandler | None = None,
         event_bus: ProtocolEventBusPublisher | None = None,
         contract_path: Path | None = None,
     ) -> None:
@@ -288,6 +315,7 @@ class HandlerPrLifecycleOrchestrator:
         self._reducer = reducer
         self._merge = merge
         self._fix = fix
+        self._admin_merge = admin_merge
         self._event_bus = event_bus
 
     def _ensure_sub_handlers(self) -> None:
@@ -341,6 +369,15 @@ class HandlerPrLifecycleOrchestrator:
                 self._fix = cast(ProtocolFixHandler, HandlerPrLifecycleFix())
             except ImportError:
                 self._fix = _StubFixHandler()
+        if self._admin_merge is None:
+            try:
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
+                    HandlerAdminMerge,
+                )
+
+                self._admin_merge = cast(ProtocolAdminMergeHandler, HandlerAdminMerge())
+            except ImportError:
+                self._admin_merge = _StubAdminMergeHandler()
 
     async def handle(
         self,
@@ -534,6 +571,38 @@ class HandlerPrLifecycleOrchestrator:
                     sum(r.prs_skipped for r in fix_results),
                 )
                 next_from = "FIXING"
+
+            # Phase: ADMIN-MERGE fallback (OMN-9114). Runs after fix/merge so
+            # stuck queue heads get cleared on the next sweep iteration.
+            stuck_prs = list(inv_result.stuck_queue_prs)
+            if (
+                command.enable_admin_merge_fallback
+                and stuck_prs
+                and not command.fix_only
+            ):
+                assert self._admin_merge is not None
+                logger.info(
+                    "[PR-LIFECYCLE-ORCH] admin-merge fallback: %d stuck PR(s) "
+                    "(enable=%s, dry_run=%s)",
+                    len(stuck_prs),
+                    command.enable_admin_merge_fallback,
+                    command.dry_run,
+                )
+                admin_result = await self._admin_merge.handle(
+                    stuck_prs=stuck_prs,
+                    enable_admin_merge_fallback=command.enable_admin_merge_fallback,
+                    dry_run=command.dry_run,
+                    timeout_seconds=command.admin_merge_timeout_seconds,
+                )
+                state.prs_admin_merged = admin_result.prs_merged
+                state.prs_merged += admin_result.prs_merged
+                logger.info(
+                    "[PR-LIFECYCLE-ORCH] admin-merge completed: "
+                    "%d merged, %d skipped, %d failed",
+                    admin_result.prs_merged,
+                    admin_result.prs_skipped,
+                    admin_result.prs_failed,
+                )
 
             state.fsm = EnumOrchestratorState.COMPLETE
             await self._publish_phase_event(
