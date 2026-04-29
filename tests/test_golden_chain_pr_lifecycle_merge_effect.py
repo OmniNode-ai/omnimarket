@@ -196,6 +196,18 @@ class TestPrLifecycleMergeEffectGoldenChain:
         assert "[noop]" in result.merge_action
         assert result.error is None
 
+    async def test_non_dry_run_without_adapter_fails_closed(self) -> None:
+        """Default handler refuses non-dry-run execution without a live adapter."""
+        handler = HandlerPrLifecycleMerge()
+        command = _make_command(triage_verdict="green", dry_run=False)
+
+        result = await handler.handle(command)
+
+        assert result.merged is False
+        assert result.error is not None
+        assert "requires an injected GitHub merge adapter" in result.error
+        assert "missing GitHub merge adapter" in result.merge_action
+
     async def test_dry_run_with_injected_adapter_does_not_call_adapter(self) -> None:
         """dry_run=True should bypass injected adapter side effects."""
         adapter = _RecordingGitHubMergeAdapter()

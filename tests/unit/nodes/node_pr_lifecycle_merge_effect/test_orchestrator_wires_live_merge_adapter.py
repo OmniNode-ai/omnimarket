@@ -14,7 +14,6 @@ from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_mer
 )
 from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.handler_pr_lifecycle_merge import (
     HandlerPrLifecycleMerge,
-    _NoopGitHubMergeAdapter,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
@@ -35,9 +34,8 @@ class TestOrchestratorWiresLiveMergeAdapter:
         assert isinstance(merge, HandlerPrLifecycleMerge)
         assert isinstance(merge._github, GitHubMergeQueueAdapter), (
             "Track A green-PR merge must use the live merge-queue adapter; "
-            "the no-op adapter is dry-run/test-only."
+            "there is no production no-op fallback."
         )
-        assert not isinstance(merge._github, _NoopGitHubMergeAdapter)
 
     async def test_merge_fanout_requests_merge_queue(self) -> None:
         class _RecordingMerge:
