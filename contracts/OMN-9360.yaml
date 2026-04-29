@@ -39,3 +39,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env -u PYTHONPATH uv run python -m omnimarket.nodes.node_ticket_pipeline OMN-9360 --skip-to pre_flight --dry-run"
+  - id: "dod-004"
+    description: "Post-merge deploy/readiness smoke plan for the market-owned ticket pipeline CLI"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_ticket_pipeline OMN-9360 --skip-to pre_flight --dry-run"
