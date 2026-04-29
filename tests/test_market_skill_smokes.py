@@ -77,6 +77,18 @@ def test_baseline_report_sanitizes_local_paths() -> None:
     assert sanitized == ["python", "<omnimarket>/tmp/work"]
 
 
+def test_baseline_report_sanitizes_home_paths() -> None:
+    value = (
+        f"WARNING: Task directory not found: {market_skill_baseline.Path.home()}"
+        "/.claude/tasks/ticket-pipeline"
+    )
+
+    assert (
+        market_skill_baseline._sanitize_report_value(value)
+        == "WARNING: Task directory not found: <home>/.claude/tasks/ticket-pipeline"
+    )
+
+
 def test_markdown_reports_cli_smoke_status_not_overall(monkeypatch) -> None:
     spec = iter_market_skill_specs()[0]
 
@@ -105,3 +117,16 @@ def test_markdown_reports_cli_smoke_status_not_overall(monkeypatch) -> None:
 
     assert report.skills[0].overall_status == "degraded"
     assert "- CLI smoke status: `pass`" in markdown
+
+
+def test_session_orchestrator_summary_redacts_run_variant_values() -> None:
+    summary = market_skill_baseline._summarize_session_orchestrator(
+        {
+            "status": "complete",
+            "session_id": "sess-20260429-1559",
+            "dry_run": True,
+            "dispatch_queue": [],
+        }
+    )
+
+    assert summary["session_id"] == "sess-<redacted>"

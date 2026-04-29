@@ -6,8 +6,9 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Per-ticket execution pipeline WorkflowPackage. This first market-owned slice
-  executes PRE_FLIGHT deterministically and blocks later side-effect phases as
-  not implemented until they are explicitly wired.
+  executes PRE_FLIGHT deterministically, compiles an IMPLEMENT dispatch-worker
+  prompt without spawning an agent, and blocks later side-effect phases as not
+  implemented until they are explicitly wired.
 
 handler:
   module: omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline

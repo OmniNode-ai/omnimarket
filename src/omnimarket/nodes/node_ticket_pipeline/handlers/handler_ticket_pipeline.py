@@ -11,6 +11,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
+import sys
+import tempfile
 from datetime import UTC, datetime
 
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_completed_event import (
@@ -168,6 +172,8 @@ class HandlerTicketPipeline:
         started_at = datetime.now(tz=UTC)
         if state.current_phase == EnumPipelinePhase.PRE_FLIGHT:
             result = self._execute_pre_flight(state, started_at)
+        elif state.current_phase == EnumPipelinePhase.IMPLEMENT:
+            result = self._execute_implement(state, started_at)
         elif state.current_phase in TERMINAL_PHASES:
             result = ModelPipelinePhaseResult(
                 correlation_id=state.correlation_id,
@@ -220,6 +226,93 @@ class HandlerTicketPipeline:
                     "dry_run",
                 ],
                 "side_effects": "none",
+            },
+        )
+
+    def _execute_implement(
+        self,
+        state: ModelPipelineState,
+        started_at: datetime,
+    ) -> ModelPipelinePhaseResult:
+        team = "ticket-pipeline"
+        command = {
+            "name": f"ticket-pipeline-{state.ticket_id.lower()}",
+            "team": team,
+            "role": "fixer",
+            "scope": (
+                "Implement the ticket using omnimarket-owned workflow rules; "
+                "produce tests, PR, and durable evidence before completion."
+            ),
+            "targets": [state.ticket_id, "omnimarket"],
+            "collision_fences": [],
+            "reports_to": "ticket-pipeline",
+            "wall_clock_cap_min": 90,
+        }
+        dispatch_env = dict(os.environ)
+        dispatch_env.pop("ONEX_STATE_DIR", None)
+        with tempfile.TemporaryDirectory(
+            prefix="ticket-pipeline-dispatch-tasks-"
+        ) as tasks_dir:
+            os.makedirs(os.path.join(tasks_dir, team), exist_ok=True)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "omnimarket.nodes.node_dispatch_worker",
+                    "--name",
+                    "ignored",
+                    "--team",
+                    "ignored",
+                    "--role",
+                    "fixer",
+                    "--scope",
+                    "ignored",
+                    "--targets",
+                    "IGNORED",
+                    "--json-input",
+                    json.dumps(command),
+                    "--tasks-dir",
+                    tasks_dir,
+                ],
+                capture_output=True,
+                check=False,
+                env=dispatch_env,
+                text=True,
+                timeout=30,
+            )
+        if completed.returncode != 0:
+            return ModelPipelinePhaseResult(
+                correlation_id=state.correlation_id,
+                ticket_id=state.ticket_id,
+                phase=EnumPipelinePhase.IMPLEMENT,
+                status=EnumPipelinePhaseResultStatus.FAILED,
+                dry_run=state.dry_run,
+                started_at=started_at,
+                completed_at=datetime.now(tz=UTC),
+                message="Failed to compile dispatch-worker prompt",
+                details={
+                    "execution_mode": "compile_only",
+                    "side_effects": "none",
+                    "dispatch_worker_command": command,
+                    "returncode": completed.returncode,
+                    "stderr": completed.stderr.strip(),
+                },
+            )
+        result = json.loads(completed.stdout)
+        return ModelPipelinePhaseResult(
+            correlation_id=state.correlation_id,
+            ticket_id=state.ticket_id,
+            phase=EnumPipelinePhase.IMPLEMENT,
+            status=EnumPipelinePhaseResultStatus.SUCCEEDED,
+            dry_run=state.dry_run,
+            started_at=started_at,
+            completed_at=datetime.now(tz=UTC),
+            message="Compiled dispatch-worker prompt for implementation phase",
+            details={
+                "execution_mode": "compile_only",
+                "side_effects": "none",
+                "dispatch_worker_command": command,
+                "dispatch_worker_result": result,
             },
         )
 

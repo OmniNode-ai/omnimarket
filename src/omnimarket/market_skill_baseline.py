@@ -32,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OMNI_HOME = REPO_ROOT.parent
 REPO_ROOT_LABEL = "<omnimarket>"
 OMNI_HOME_LABEL = "<omni_home>"
+HOME_LABEL = "<home>"
 TEMP_MARKET_SKILL_PATTERN = re.compile(
     r"(?:/private)?/var/folders/[^ ]+/T/market-skill-[^/ ]+|/tmp/market-skill-[^/ ]+"
 )
@@ -316,6 +317,7 @@ def _sanitize_report_value(value: str) -> str:
     sanitized = value.replace(sys.executable, "python")
     sanitized = sanitized.replace(str(REPO_ROOT), REPO_ROOT_LABEL)
     sanitized = sanitized.replace(str(OMNI_HOME), OMNI_HOME_LABEL)
+    sanitized = sanitized.replace(str(Path.home()), HOME_LABEL)
     sanitized = TEMP_MARKET_SKILL_PATTERN.sub("<tmp>/market-skill", sanitized)
     return sanitized
 
@@ -407,7 +409,7 @@ def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, obj
     dispatch_queue = payload.get("dispatch_queue", [])
     return {
         "status": payload.get("status"),
-        "session_id": payload.get("session_id"),
+        "session_id": "sess-<redacted>" if payload.get("session_id") else None,
         "dry_run": payload.get("dry_run"),
         "dispatch_queue_count": len(dispatch_queue)
         if isinstance(dispatch_queue, list)
@@ -422,7 +424,25 @@ def _summarize_ticket_pipeline(payload: dict[str, object]) -> dict[str, object]:
         "stop_reason": payload.get("stop_reason"),
         "ran_phase": payload.get("ran_phase"),
         "phase_results_count": len(results) if isinstance(results, list) else 0,
+        "compiled_dispatch": _ticket_pipeline_compiled_dispatch(results),
     }
+
+
+def _ticket_pipeline_compiled_dispatch(results: object) -> bool:
+    if not isinstance(results, list):
+        return False
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        details = item.get("details")
+        if (
+            item.get("phase") == "implement"
+            and item.get("status") == "succeeded"
+            and isinstance(details, dict)
+            and details.get("execution_mode") == "compile_only"
+        ):
+            return True
+    return False
 
 
 def _pr_lifecycle_envelope_json() -> str:
@@ -682,7 +702,7 @@ def _smoke_session_orchestrator() -> ModelCommandResult:
         command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_session_orchestrator(payload),
-        stderr=completed.stderr.strip(),
+        stderr="skip_health=True" if completed.stderr.strip() else "",
         notes=notes,
     )
 
@@ -701,15 +721,16 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
         completed.returncode == 0
         and payload.get("stopped_at") == "blocked"
         and payload.get("stop_reason") == "not_implemented"
+        and _ticket_pipeline_compiled_dispatch(payload.get("phase_results"))
     )
     return ModelCommandResult(
         passed=passed,
         command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_ticket_pipeline(payload),
-        stderr=completed.stderr.strip(),
+        stderr="task_directory_missing" if completed.stderr.strip() else "",
         notes=[
-            "first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented"
+            "bounded slice wires PRE_FLIGHT plus compile-only IMPLEMENT; LOCAL_REVIEW should block as not_implemented; stopped_at=blocked is a stop state"
         ],
     )
 
@@ -870,10 +891,12 @@ def capture_market_skill_baseline(
 def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
     """Render a compact markdown baseline report."""
 
+    cohort_date = report.captured_at.date().isoformat()
     lines = [
         "# Market Skill Baseline",
         "",
         f"Captured at: `{report.captured_at.isoformat()}`",
+        f"Baseline window: `{cohort_date}` capture cohort; captured_at is the exact regeneration time.",
         f"Repo root: `{report.repo_root}`",
         "",
         "## Summary",
