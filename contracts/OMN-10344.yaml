@@ -14,6 +14,9 @@ evidence_requirements:
   - kind: "ci"
     description: "omnimarket PR checks pass, including contract validation and deploy gate"
     command: "gh pr checks <PR> --repo OmniNode-ai/omnimarket --watch"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports baseline capture/compare handlers in the runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture import ModelBaselineCaptureRequest; from omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare import ModelBaselineCompareRequest; print('baseline root-safety deploy smoke ok')\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -25,3 +28,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_baseline_capture/test_baseline_capture_root_safety.py tests/test_golden_chain_baseline_capture.py tests/test_golden_chain_baseline_compare.py -q"
+  - id: "dod-002"
+    description: "Post-merge deploy smoke imports baseline capture/compare handlers in the runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_baseline_capture.handlers.handler_baseline_capture import ModelBaselineCaptureRequest; from omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare import ModelBaselineCompareRequest; print('baseline root-safety deploy smoke ok')\""
