@@ -21,8 +21,11 @@ Target table schema (from omnidash migration 0003):
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+import yaml
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
@@ -33,16 +36,40 @@ CONFLICT_KEY = "id"
 class ModelLlmCallCompletedEvent(BaseModel):
     """Inbound event from onex.evt.omniintelligence.llm-call-completed.v1."""
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
 
-    call_id: str = Field(..., description="Unique call identifier.")
-    model_name: str = Field(default="unknown", description="LLM model name.")
+    call_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("call_id", "correlation_id", "input_hash"),
+        description="Unique call identifier.",
+    )
+    model_name: str = Field(
+        default="unknown",
+        validation_alias=AliasChoices("model_name", "model_id"),
+        description="LLM model name.",
+    )
     session_id: str | None = Field(default=None, description="Session ID.")
     total_tokens: int = Field(default=0, ge=0)
-    prompt_tokens: int = Field(default=0, ge=0)
-    completion_tokens: int = Field(default=0, ge=0)
-    estimated_cost_usd: float = Field(default=0.0, ge=0.0)
+    prompt_tokens: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices("prompt_tokens", "input_tokens"),
+    )
+    completion_tokens: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices("completion_tokens", "output_tokens"),
+    )
+    estimated_cost_usd: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=AliasChoices("estimated_cost_usd", "cost_usd"),
+    )
     usage_source: str = Field(default="API", description="API | ESTIMATED | MISSING.")
+    gpu_seconds: float | None = Field(default=None, ge=0.0)
+    gpu_type: str | None = Field(default=None, max_length=64)
+    gpu_count: int | None = Field(default=None, ge=0)
+    compute_usage_source: str | None = Field(default=None)
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
 
 
@@ -57,6 +84,11 @@ class ModelProjectionResult(BaseModel):
 
 class HandlerProjectionLlmCost:
     """Project LLM call completed events into llm_cost_aggregates."""
+
+    def __init__(self, pricing_manifest_path: str | Path | None = None) -> None:
+        self._pricing_manifest_path = (
+            Path(pricing_manifest_path) if pricing_manifest_path is not None else None
+        )
 
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.
@@ -79,9 +111,11 @@ class HandlerProjectionLlmCost:
         """UPSERT a single LLM cost event as an hourly aggregate row."""
         now = datetime.now(tz=UTC)
         event_time = event.timestamp or now.isoformat()
+        call_id = event.call_id or f"{event.model_name}:{event.session_id}:{event_time}"
+        compute_cost_usd = self._compute_cost_usd(event)
 
         row: dict[str, object] = {
-            "id": event.call_id,
+            "id": call_id,
             "bucket_time": event_time,
             "granularity": "hour",
             "model_name": event.model_name,
@@ -90,8 +124,11 @@ class HandlerProjectionLlmCost:
             "prompt_tokens": event.prompt_tokens,
             "completion_tokens": event.completion_tokens,
             "estimated_cost_usd": event.estimated_cost_usd,
+            "compute_cost_usd": compute_cost_usd,
+            "total_cost_usd": round(event.estimated_cost_usd + compute_cost_usd, 10),
             "call_count": 1,
             "usage_source": event.usage_source,
+            "compute_usage_source": event.compute_usage_source,
             "ingested_at": now.isoformat(),
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
@@ -108,6 +145,78 @@ class HandlerProjectionLlmCost:
             result = self.project(event, db)
             count += result.rows_upserted
         return ModelProjectionResult(rows_upserted=count)
+
+    def _compute_cost_usd(self, event: ModelLlmCallCompletedEvent) -> float:
+        if (
+            event.gpu_seconds is None
+            or event.gpu_type is None
+            or event.gpu_count is None
+            or event.gpu_count == 0
+        ):
+            return 0.0
+
+        rates = self._load_compute_cost_rates()
+        rate = rates.get(event.gpu_type)
+        if rate is None:
+            return 0.0
+
+        hourly_rate = rate["electricity_per_hour"] + rate["amortization_per_hour"]
+        return round((event.gpu_seconds / 3600.0) * hourly_rate * event.gpu_count, 10)
+
+    def _load_compute_cost_rates(self) -> dict[str, dict[str, float]]:
+        manifest_path = self._pricing_manifest_path or _default_pricing_manifest_path()
+        if manifest_path is None or not manifest_path.exists():
+            return {}
+
+        raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return {}
+        raw_compute_cost = raw.get("compute_cost", {})
+        if not isinstance(raw_compute_cost, dict):
+            return {}
+
+        rates: dict[str, dict[str, float]] = {}
+        for gpu_type, entry in raw_compute_cost.items():
+            if not isinstance(gpu_type, str) or not isinstance(entry, dict):
+                continue
+            electricity = _float_or_none(entry.get("electricity_per_hour"))
+            amortization = _float_or_none(entry.get("amortization_per_hour"))
+            if electricity is None or amortization is None:
+                continue
+            rates[gpu_type] = {
+                "electricity_per_hour": electricity,
+                "amortization_per_hour": amortization,
+            }
+        return rates
+
+
+def _float_or_none(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _default_pricing_manifest_path() -> Path | None:
+    import os
+
+    configured = os.environ.get("OMNI_PRICING_MANIFEST_PATH")
+    if configured:
+        return Path(configured)
+
+    omni_home = os.environ.get("OMNI_HOME")
+    if omni_home:
+        return (
+            Path(omni_home)
+            / "omnibase_infra"
+            / "src"
+            / "omnibase_infra"
+            / "configs"
+            / "pricing_manifest.yaml"
+        )
+    return None
 
 
 __all__: list[str] = [
