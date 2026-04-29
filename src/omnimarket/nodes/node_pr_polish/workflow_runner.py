@@ -9,7 +9,7 @@ module owns that live path:
 - resolve the correct worktree for ``repo`` + ``pr_number``
 - verify checkout matches the PR head branch
 - install pre-commit hooks in the worktree
-- run the authoritative ``/onex:pr_polish`` skill inside that worktree
+- run market-owned deterministic polish phases inside that worktree
 - persist ``result.json`` under the dispatched run directory
 """
 
@@ -42,8 +42,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 
 def run_live_pr_polish(
     command: ModelPrPolishStartCommand,
-    *,
-    claude_bin: str | None = None,
 ) -> ModelPrPolishCompletedEvent:
     """Run the live repo/worktree-aware polish workflow and persist result.json."""
     started_at = datetime.now(tz=UTC)
@@ -97,14 +95,12 @@ def run_live_pr_polish(
 
         if not command.dry_run:
             _run_checked(["pre-commit", "install"], cwd=worktree, timeout=60)
-        skill_cmd = _build_skill_command(command)
-        _run_skill(
-            claude_bin=claude_bin or os.environ.get("CLAUDE_BIN", "claude"),
-            skill_cmd=skill_cmd,
+        phase_results = _run_market_polish_phases(
+            command,
             worktree=worktree,
             log_path=log_path,
         )
-        payload["skill_command"] = skill_cmd
+        payload["phase_results"] = phase_results
 
         coderabbit_result = _run_coderabbit_triage(
             command.repo,
@@ -232,6 +228,76 @@ def _resolve_worktree_path(command: ModelPrPolishStartCommand) -> Path:
     )
 
 
+def _run_market_polish_phases(
+    command: ModelPrPolishStartCommand,
+    *,
+    worktree: Path,
+    log_path: Path,
+) -> list[dict[str, object]]:
+    """Run deterministic market-owned polish phases.
+
+    This intentionally does not shell to Claude, Codex, or slash-command
+    adapters. A future code-modifying repair step must be another OmniNode node
+    with its own contract and evidence surface.
+    """
+    results: list[dict[str, object]] = []
+    if command.skip_conflicts:
+        results.append({"phase": "resolve_conflicts", "status": "skipped"})
+    else:
+        unmerged = _git_stdout(
+            ["git", "-C", str(worktree), "diff", "--name-only", "--diff-filter=U"],
+            timeout=30,
+        )
+        if unmerged:
+            raise RuntimeError(
+                "unmerged conflict paths remain; deterministic pr_polish will not "
+                f"guess a resolution: {unmerged}"
+            )
+        results.append({"phase": "resolve_conflicts", "status": "clean"})
+
+    if command.no_ci:
+        results.append({"phase": "fix_ci", "status": "skipped"})
+    else:
+        results.append(
+            {
+                "phase": "fix_ci",
+                "status": "deferred_to_required_checks",
+                "detail": "CI state is enforced by GitHub required checks before merge.",
+            }
+        )
+
+    if command.skip_pr_review:
+        results.append({"phase": "address_comments", "status": "skipped"})
+    else:
+        results.append(
+            {
+                "phase": "address_comments",
+                "status": "handled_by_market_coderabbit_triage",
+            }
+        )
+
+    if command.skip_local_review:
+        results.append({"phase": "local_review", "status": "skipped"})
+    elif command.dry_run or command.no_push:
+        results.append(
+            {
+                "phase": "local_review",
+                "status": "skipped_non_mutating_mode",
+                "detail": "Use push mode to run local review before publishing.",
+            }
+        )
+    else:
+        _run_checked(
+            ["uv", "run", "pre-commit", "run", "--all-files"],
+            cwd=worktree,
+            timeout=1800,
+        )
+        _append_log_line(log_path, "market local_review: pre-commit passed")
+        results.append({"phase": "local_review", "status": "passed"})
+
+    return results
+
+
 def _resolve_pr_head_branch(repo: str, pr_number: int) -> str:
     output = _run_checked(
         [
@@ -259,30 +325,6 @@ def _resolve_pr_head_branch(repo: str, pr_number: int) -> str:
             f"gh pr view returned empty headRefName for {repo}#{pr_number}"
         )
     return branch
-
-
-def _build_skill_command(command: ModelPrPolishStartCommand) -> str:
-    if command.pr_number is None:
-        raise RuntimeError("pr_number is required to build pr_polish skill command")
-    parts = ["/onex:pr_polish", str(command.pr_number)]
-    if command.required_clean_runs != 4:
-        parts.extend(["--required-clean-runs", str(command.required_clean_runs)])
-    if command.max_iterations != 10:
-        parts.extend(["--max-iterations", str(command.max_iterations)])
-    if command.skip_conflicts:
-        parts.append("--skip-conflicts")
-    if command.skip_pr_review:
-        parts.append("--skip-pr-review")
-    if command.skip_local_review:
-        parts.append("--skip-local-review")
-    if command.no_ci:
-        parts.append("--no-ci")
-    parts.append("--no-push")
-    if command.no_automerge:
-        parts.append("--no-automerge")
-    if command.dry_run:
-        parts.append("--dry-run")
-    return " ".join(parts)
 
 
 def _resolve_pr_head_sha(repo: str, pr_number: int) -> str:
@@ -385,29 +427,9 @@ def _run_coderabbit_triage(
     )
 
 
-def _run_skill(
-    *,
-    claude_bin: str,
-    skill_cmd: str,
-    worktree: Path,
-    log_path: Path,
-) -> None:
-    env = os.environ.copy()
-    env["PYTHONUNBUFFERED"] = "1"
+def _append_log_line(log_path: Path, line: str) -> None:
     with log_path.open("ab") as log_fh:
-        proc = subprocess.run(
-            [claude_bin, "-p", skill_cmd],
-            cwd=worktree,
-            env=env,
-            stdout=log_fh,
-            stderr=subprocess.STDOUT,
-            check=False,
-            timeout=3600,
-        )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"pr_polish skill failed with exit {proc.returncode}; see {log_path}"
-        )
+        log_fh.write((line + "\n").encode())
 
 
 def _git_stdout(argv: list[str], *, timeout: int) -> str:

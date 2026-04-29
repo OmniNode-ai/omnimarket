@@ -110,21 +110,31 @@ class TestPrPolishDispatchAdapter:
         argv = list(spawner.calls[0]["argv"])  # type: ignore[arg-type]
         assert "--ticket" not in argv
 
-    async def test_dispatch_coderabbit_reply_uses_coderabbit_skill(
+    async def test_dispatch_coderabbit_reply_uses_coderabbit_node(
         self, tmp_path: Path
     ) -> None:
         spawner = _RecordingSpawner()
         adapter = PrPolishDispatchAdapter(
-            claude_bin="claude", state_dir=tmp_path, spawner=spawner
+            python_bin="/usr/bin/python-test", state_dir=tmp_path, spawner=spawner
         )
 
         result = await adapter.dispatch_coderabbit_reply("OmniNode-ai/omnimarket", 7)
 
         assert "dispatched coderabbit-reply" in result
         argv = list(spawner.calls[0]["argv"])  # type: ignore[arg-type]
-        assert "/onex:coderabbit_triage" in argv[2]
-        assert "--repo OmniNode-ai/omnimarket" in argv[2]
-        assert "--pr 7" in argv[2]
+        assert argv[:3] == [
+            "/usr/bin/python-test",
+            "-m",
+            "omnimarket.nodes.node_coderabbit_triage",
+        ]
+        assert "--repo" in argv
+        assert "OmniNode-ai/omnimarket" in argv
+        assert "--pr" in argv
+        assert "7" in argv
+        assert spawner.calls[0]["cwd"] is not None
+        env = spawner.calls[0]["env"]  # type: ignore[assignment]
+        assert isinstance(env, dict)
+        assert "PYTHONPATH" in env
 
         run_dirs = list((tmp_path / "pr-polish").iterdir())
         assert len(run_dirs) == 1
@@ -155,7 +165,6 @@ class TestPrPolishDispatchAdapter:
             raise OSError("simulated spawn failure")
 
         adapter = PrPolishDispatchAdapter(
-            claude_bin="claude",
             state_dir=tmp_path,
             spawner=_failing_spawner,
         )
@@ -205,7 +214,6 @@ class TestPrPolishDispatchAdapter:
             return _FakeProc()
 
         adapter = PrPolishDispatchAdapter(
-            claude_bin="claude",
             state_dir=tmp_path,
             spawner=_spawner,
         )
@@ -226,9 +234,7 @@ class TestPrPolishDispatchAdapter:
         self, tmp_path: Path
     ) -> None:
         spawner = _RecordingSpawner()
-        adapter = PrPolishDispatchAdapter(
-            claude_bin="claude", state_dir=tmp_path, spawner=spawner
-        )
+        adapter = PrPolishDispatchAdapter(state_dir=tmp_path, spawner=spawner)
 
         await adapter.dispatch_review_fix("o/r", 1, None)
         await adapter.dispatch_review_fix("o/r", 1, None)
