@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,6 @@ import yaml
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
-    deterministic_correlation_id,
     safe_parse_date,
 )
 
@@ -39,8 +39,8 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
 class SavingsProjectionRunner(BaseProjectionRunner):
     """Projects savings-estimated events into savings_estimates table.
 
-    SQL: INSERT ... ON CONFLICT (source_event_id) DO UPDATE
-    Matches omnidash projectSavingsEstimated() exactly.
+    SQL: INSERT ... ON CONFLICT
+    (session_id, event_timestamp, model_local, model_cloud_baseline) DO UPDATE.
     """
 
     def __init__(self, contract_path: Path | None = None) -> None:
@@ -94,133 +94,77 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             logger.warning("savings-estimated event missing session_id")
             return True
 
-        correlation_id = str(
-            data.get("correlation_id") or data.get("correlationId") or ""
-        ).strip()
-        subscribe = self.subscribe_topics
-        source_topic = subscribe[0] if subscribe else ""
-        source_event_id = correlation_id or deterministic_correlation_id(
-            source_topic, meta.partition, meta.offset
-        )
-
         event_timestamp = safe_parse_date(
-            data.get("timestamp_iso") or data.get("timestamp") or data.get("emitted_at")
+            data.get("event_timestamp")
+            or data.get("eventTimestamp")
+            or data.get("timestamp_iso")
+            or data.get("timestamp")
+            or data.get("emitted_at")
         )
 
-        actual_total_tokens = _safe_int(
-            data.get("actual_total_tokens") or data.get("actualTotalTokens")
-        )
-        actual_cost_usd = _safe_cost_str(
-            data.get("actual_cost_usd") or data.get("actualCostUsd")
-        )
-        actual_model_id = _str_or_none(
-            data.get("actual_model_id") or data.get("actualModelId")
-        )
-        counterfactual_model_id = _str_or_none(
-            data.get("counterfactual_model_id") or data.get("counterfactualModelId")
-        )
-        direct_savings_usd = _safe_cost_str(
-            data.get("direct_savings_usd") or data.get("directSavingsUsd")
-        )
-        direct_tokens_saved = _safe_int(
-            data.get("direct_tokens_saved") or data.get("directTokensSaved")
-        )
-        estimated_total_savings_usd = _safe_cost_str(
-            data.get("estimated_total_savings_usd")
-            or data.get("estimatedTotalSavingsUsd")
-        )
-        estimated_total_tokens_saved = _safe_int(
-            data.get("estimated_total_tokens_saved")
-            or data.get("estimatedTotalTokensSaved")
-        )
-        categories = data.get("categories") or []
-        direct_confidence = _safe_float(
-            data.get("direct_confidence") or data.get("directConfidence")
-        )
-        heuristic_confidence_avg = _safe_float(
-            data.get("heuristic_confidence_avg") or data.get("heuristicConfidenceAvg")
-        )
-        estimation_method = str(
-            data.get("estimation_method")
-            or data.get("estimationMethod")
-            or "tiered_attribution_v1"
-        )
-        treatment_group = _str_or_none(
-            data.get("treatment_group") or data.get("treatmentGroup")
-        )
-        is_measured = bool(data.get("is_measured") or data.get("isMeasured") or False)
-        completeness_status = str(
-            data.get("completeness_status")
-            or data.get("completenessStatus")
-            or "complete"
-        )
-        pricing_manifest_version = _str_or_none(
-            data.get("pricing_manifest_version") or data.get("pricingManifestVersion")
-        )
-        schema_version = str(data.get("schema_version") or "1.0")
+        model_local = str(
+            data.get("model_local") or data.get("modelLocal") or ""
+        ).strip()
+        model_cloud_baseline = str(
+            data.get("model_cloud_baseline") or data.get("modelCloudBaseline") or ""
+        ).strip()
+        if not model_local or not model_cloud_baseline:
+            logger.warning("savings-estimated event missing model identifiers")
+            return True
 
-        import json
+        local_cost_usd = _safe_cost_str(
+            data.get("local_cost_usd") or data.get("localCostUsd")
+        )
+        cloud_cost_usd = _safe_cost_str(
+            data.get("cloud_cost_usd") or data.get("cloudCostUsd")
+        )
+        savings_usd = _safe_cost_str(data.get("savings_usd") or data.get("savingsUsd"))
+        repo_name = _str_or_none(data.get("repo_name") or data.get("repoName"))
+        machine_id = _str_or_none(data.get("machine_id") or data.get("machineId"))
 
-        categories_json = json.dumps(categories) if categories else "[]"
+        if _safe_decimal(savings_usd) != (
+            _safe_decimal(cloud_cost_usd) - _safe_decimal(local_cost_usd)
+        ):
+            logger.warning(
+                "savings-estimated event has inconsistent savings for session %s",
+                session_id,
+            )
+            return True
 
         await self.db.execute(
             f"""
             INSERT INTO {self._table_estimates} (
-              source_event_id, session_id, correlation_id, schema_version,
-              actual_total_tokens, actual_cost_usd, actual_model_id, counterfactual_model_id,
-              direct_savings_usd, direct_tokens_saved,
-              estimated_total_savings_usd, estimated_total_tokens_saved,
-              categories, direct_confidence, heuristic_confidence_avg,
-              estimation_method, treatment_group, is_measured,
-              completeness_status, pricing_manifest_version, event_timestamp
+              event_timestamp, session_id, model_local, model_cloud_baseline,
+              local_cost_usd, cloud_cost_usd, savings_usd,
+              repo_name, machine_id
             ) VALUES (
               $1, $2, $3, $4,
-              $5, $6, $7, $8,
-              $9, $10,
-              $11, $12,
-              $13::jsonb, $14, $15,
-              $16, $17, $18,
-              $19, $20, $21
+              $5, $6, $7,
+              $8, $9
             )
-            ON CONFLICT (source_event_id) DO UPDATE SET
-              actual_total_tokens = EXCLUDED.actual_total_tokens,
-              actual_cost_usd = EXCLUDED.actual_cost_usd,
-              direct_savings_usd = EXCLUDED.direct_savings_usd,
-              direct_tokens_saved = EXCLUDED.direct_tokens_saved,
-              estimated_total_savings_usd = EXCLUDED.estimated_total_savings_usd,
-              estimated_total_tokens_saved = EXCLUDED.estimated_total_tokens_saved,
-              categories = EXCLUDED.categories,
-              direct_confidence = EXCLUDED.direct_confidence,
-              heuristic_confidence_avg = EXCLUDED.heuristic_confidence_avg,
-              completeness_status = EXCLUDED.completeness_status,
-              ingested_at = NOW()
+            ON CONFLICT (
+              session_id, event_timestamp, model_local, model_cloud_baseline
+            ) DO UPDATE SET
+              local_cost_usd = EXCLUDED.local_cost_usd,
+              cloud_cost_usd = EXCLUDED.cloud_cost_usd,
+              savings_usd = EXCLUDED.savings_usd,
+              repo_name = EXCLUDED.repo_name,
+              machine_id = EXCLUDED.machine_id
             """,
-            source_event_id,
-            session_id,
-            correlation_id or None,
-            schema_version,
-            actual_total_tokens,
-            actual_cost_usd,
-            actual_model_id,
-            counterfactual_model_id,
-            direct_savings_usd,
-            direct_tokens_saved,
-            estimated_total_savings_usd,
-            estimated_total_tokens_saved,
-            categories_json,
-            direct_confidence,
-            heuristic_confidence_avg,
-            estimation_method,
-            treatment_group,
-            is_measured,
-            completeness_status,
-            pricing_manifest_version,
             event_timestamp,
+            session_id,
+            model_local,
+            model_cloud_baseline,
+            local_cost_usd,
+            cloud_cost_usd,
+            savings_usd,
+            repo_name,
+            machine_id,
         )
         logger.info(
             "Projected savings-estimated for session %s (total_savings=$%.4f)",
             session_id,
-            float(estimated_total_savings_usd),
+            float(savings_usd),
         )
         return True
 
@@ -247,6 +191,15 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 def _safe_cost_str(value: Any) -> str:
     n = _safe_float(value)
     return str(n)
+
+
+def _safe_decimal(value: Any, default: Decimal = Decimal("0")) -> Decimal:
+    if value is None:
+        return default
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return default
 
 
 def _str_or_none(value: Any) -> str | None:
