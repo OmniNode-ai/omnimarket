@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10340
+title: "Project savings estimates"
+summary: "Consume savings-estimated events and project deterministic rows into savings_estimates."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "protocols"
+evidence_requirements:
+  - kind: "ci"
+    description: "omnimarket PR #452 checks pass, including Golden Chain Suite, E2E Workflow Runner, contract-validation, and deploy-gate"
+    command: "gh pr checks 452 --repo OmniNode-ai/omnimarket --watch"
+  - kind: "tests"
+    description: "Savings projection golden-chain replay and handler tests pass"
+    command: "uv run pytest tests/test_golden_chain_projection_savings.py tests/test_projection_handlers.py::TestSavingsHandler -q"
+  - kind: "manual"
+    description: "Post-merge deploy smoke confirms the savings projection handler imports in the deployed runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings import HandlerProjectionSavings; print('deploy smoke ok', HandlerProjectionSavings.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Savings projection golden-chain replay and handler tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_projection_savings.py tests/test_projection_handlers.py::TestSavingsHandler -q"
+  - id: "dod-002"
+    description: "Touched savings projection paths pass lint and deploy-readiness import smoke"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_projection_savings tests/test_golden_chain_projection_savings.py tests/test_projection_handlers.py && uv run python -c \"from omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings import HandlerProjectionSavings; print('deploy readiness smoke', HandlerProjectionSavings.__name__)\""
+  - id: "dod-003"
+    description: "Post-merge deploy smoke plan for the savings projection handler"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings import HandlerProjectionSavings; print('deploy smoke ok', HandlerProjectionSavings.__name__)\""
