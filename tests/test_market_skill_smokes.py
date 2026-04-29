@@ -105,3 +105,16 @@ def test_markdown_reports_cli_smoke_status_not_overall(monkeypatch) -> None:
 
     assert report.skills[0].overall_status == "degraded"
     assert "- CLI smoke status: `pass`" in markdown
+
+
+def test_session_orchestrator_summary_redacts_run_variant_values() -> None:
+    summary = market_skill_baseline._summarize_session_orchestrator(
+        {
+            "status": "complete",
+            "session_id": "sess-20260429-1559",
+            "dry_run": True,
+            "dispatch_queue": [],
+        }
+    )
+
+    assert summary["session_id"] == "sess-<redacted>"

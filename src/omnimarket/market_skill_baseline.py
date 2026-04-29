@@ -407,7 +407,7 @@ def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, obj
     dispatch_queue = payload.get("dispatch_queue", [])
     return {
         "status": payload.get("status"),
-        "session_id": payload.get("session_id"),
+        "session_id": "sess-<redacted>" if payload.get("session_id") else None,
         "dry_run": payload.get("dry_run"),
         "dispatch_queue_count": len(dispatch_queue)
         if isinstance(dispatch_queue, list)
@@ -682,7 +682,7 @@ def _smoke_session_orchestrator() -> ModelCommandResult:
         command=_sanitize_command(command),
         returncode=completed.returncode,
         summary=_summarize_session_orchestrator(payload),
-        stderr=completed.stderr.strip(),
+        stderr="skip_health=True" if completed.stderr.strip() else "",
         notes=notes,
     )
 
@@ -709,7 +709,7 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
         summary=_summarize_ticket_pipeline(payload),
         stderr=completed.stderr.strip(),
         notes=[
-            "first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented"
+            "first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented; stopped_at=blocked is a stop state"
         ],
     )
 
@@ -874,6 +874,7 @@ def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
         "# Market Skill Baseline",
         "",
         f"Captured at: `{report.captured_at.isoformat()}`",
+        "Baseline window: `2026-04-28` reference cohort; captured_at is the exact regeneration time.",
         f"Repo root: `{report.repo_root}`",
         "",
         "## Summary",
