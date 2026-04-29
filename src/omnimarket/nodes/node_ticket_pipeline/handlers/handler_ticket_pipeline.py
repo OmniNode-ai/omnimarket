@@ -234,9 +234,10 @@ class HandlerTicketPipeline:
         state: ModelPipelineState,
         started_at: datetime,
     ) -> ModelPipelinePhaseResult:
+        team = "ticket-pipeline"
         command = {
             "name": f"ticket-pipeline-{state.ticket_id.lower()}",
-            "team": "ticket-pipeline",
+            "team": team,
             "role": "fixer",
             "scope": (
                 "Implement the ticket using omnimarket-owned workflow rules; "
@@ -252,7 +253,7 @@ class HandlerTicketPipeline:
         with tempfile.TemporaryDirectory(
             prefix="ticket-pipeline-dispatch-tasks-"
         ) as tasks_dir:
-            os.makedirs(os.path.join(tasks_dir, command["team"]), exist_ok=True)
+            os.makedirs(os.path.join(tasks_dir, team), exist_ok=True)
             completed = subprocess.run(
                 [
                     sys.executable,
