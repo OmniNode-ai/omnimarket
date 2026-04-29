@@ -108,8 +108,8 @@ class TestLlmCostProjection:
         )
 
         row = db.query("llm_cost_aggregates")[0]
-        assert row["total_cost_usd"] == 0.0
         assert row["compute_cost_usd"] == 0.8
+        assert row["total_cost_usd"] == 0.8
         assert row["compute_usage_source"] == "ESTIMATED"
 
     def test_replay_task_7_gpu_fixture_matches_golden(self, tmp_path: Path) -> None:
