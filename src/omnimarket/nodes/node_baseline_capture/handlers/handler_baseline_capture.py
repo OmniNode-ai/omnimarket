@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -32,6 +33,11 @@ _DEFAULT_PROBES: list[str] = [
 ]
 
 _DEFAULT_OUTPUT_BASE = ".onex_state/baselines"
+
+
+def _default_omni_home() -> str:
+    """Resolve the workspace root from the operator environment."""
+    return os.environ["OMNI_HOME"]
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +81,8 @@ class ModelBaselineCaptureRequest(BaseModel):
         default=None, description="Human-readable label for this baseline."
     )
     omni_home: str = Field(
-        default="/Volumes/PRO-G40/Code/omni_home",
-        description="Root path of the omni_home workspace.",
+        default_factory=_default_omni_home,
+        description="Root path of the omni_home workspace. Defaults to OMNI_HOME.",
     )
     output_path: str | None = Field(
         default=None,

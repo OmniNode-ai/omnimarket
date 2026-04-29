@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
@@ -14,7 +15,7 @@ from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
 
 logger = logging.getLogger(__name__)
 
-_OMNINODE_REPOS = [
+_DEFAULT_OMNINODE_REPOS = (
     "OmniNode-ai/omniclaude",
     "OmniNode-ai/omnibase_core",
     "OmniNode-ai/omnibase_infra",
@@ -23,16 +24,19 @@ _OMNINODE_REPOS = [
     "OmniNode-ai/omniintelligence",
     "OmniNode-ai/omnimemory",
     "OmniNode-ai/omnimarket",
-    "OmniNode-ai/omninode_infra",
     "OmniNode-ai/omniweb",
     "OmniNode-ai/onex_change_control",
-]
+)
 
 
 class ProbeGitHubPRs:
     """Probe that collects open GitHub PRs across all OmniNode repositories."""
 
     name: str = "github_prs"
+
+    def __init__(self, repos: Sequence[str] | None = None) -> None:
+        """Initialise with an explicit repo allowlist."""
+        self._repos = tuple(repos) if repos is not None else _DEFAULT_OMNINODE_REPOS
 
     async def collect(self, omni_home: str) -> list[ProbeSnapshotItem]:
         """Collect open PRs using gh CLI.
@@ -42,7 +46,7 @@ class ProbeGitHubPRs:
         results: list[ProbeSnapshotItem] = []
         now = datetime.now(UTC)
 
-        for repo in _OMNINODE_REPOS:
+        for repo in self._repos:
             try:
                 proc = subprocess.run(
                     [

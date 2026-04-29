@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,11 @@ logger = logging.getLogger(__name__)
 _DEFAULT_OUTPUT_BASE = ".onex_state/baselines"
 
 
+def _default_omni_home() -> str:
+    """Resolve the workspace root from the operator environment."""
+    return os.environ["OMNI_HOME"]
+
+
 # ---------------------------------------------------------------------------
 # Request / result models
 # ---------------------------------------------------------------------------
@@ -62,8 +68,8 @@ class ModelBaselineCompareRequest(BaseModel):
         description="Probe names to compare. None = compare all probes present in baseline.",
     )
     omni_home: str = Field(
-        default="/Volumes/PRO-G40/Code/omni_home",
-        description="Root path of the omni_home workspace.",
+        default_factory=_default_omni_home,
+        description="Root path of the omni_home workspace. Defaults to OMNI_HOME.",
     )
     baseline_path: str | None = Field(
         default=None,

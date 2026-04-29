@@ -39,6 +39,13 @@ from omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare im
 
 _NOW = datetime.now(UTC)
 
+
+@pytest.fixture(autouse=True)
+def _omni_home_env(monkeypatch, tmp_path: Path) -> None:
+    """Baseline compare defaults should resolve from OMNI_HOME in tests."""
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
+
+
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
