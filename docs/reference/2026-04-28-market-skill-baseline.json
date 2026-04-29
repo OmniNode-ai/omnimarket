@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-04-28T20:26:35.546006Z",
+  "captured_at": "2026-04-29T15:13:01.306814Z",
   "repo_root": "<omnimarket>",
   "skills": [
     {
@@ -38,7 +38,7 @@
         "summary": {
           "status": "findings",
           "repos_scanned": 1,
-          "findings_count": 115,
+          "findings_count": 118,
           "dry_run": true
         },
         "stderr": "",
@@ -87,7 +87,7 @@
           "-m",
           "omnimarket.nodes.node_pr_lifecycle_orchestrator",
           "--input",
-          "{\"payload\":{\"correlation_id\":\"92c4f07e-4f8f-4502-b0b3-25feab51e969\",\"run_id\":\"market-skill-baseline\",\"dry_run\":true,\"inventory_only\":true,\"fix_only\":false,\"merge_only\":false,\"repos\":\"\",\"max_parallel_polish\":20,\"enable_auto_rebase\":true,\"use_dag_ordering\":true,\"enable_trivial_comment_resolution\":true,\"enable_admin_merge_fallback\":true,\"admin_fallback_threshold_minutes\":30,\"verify\":false,\"verify_timeout_seconds\":30},\"envelope_id\":\"7afe7a6d-e80e-4513-b2ff-f2f423681aa2\",\"envelope_timestamp\":\"2026-04-28T20:26:33.291689Z\",\"correlation_id\":\"92c4f07e-4f8f-4502-b0b3-25feab51e969\",\"source_tool\":null,\"target_tool\":null,\"metadata\":{\"trace_id\":null,\"span_id\":null,\"parent_span_id\":null,\"request_id\":null,\"headers\":{},\"tags\":{}},\"security_context\":null,\"event_type\":\"omnimarket.pr-lifecycle-orchestrator-start\",\"payload_type\":null,\"payload_schema_version\":null,\"priority\":5,\"timeout_seconds\":null,\"retry_count\":0,\"request_id\":null,\"trace_id\":null,\"span_id\":null,\"onex_version\":{\"major\":1,\"minor\":0,\"patch\":0,\"prerelease\":null,\"build\":null},\"envelope_version\":{\"major\":2,\"minor\":1,\"patch\":0,\"prerelease\":null,\"build\":null}}"
+          "{\"payload\":{\"correlation_id\":\"7e894a85-60be-4f99-ab13-7dd8c7f30d73\",\"run_id\":\"market-skill-baseline\",\"dry_run\":true,\"inventory_only\":true,\"fix_only\":false,\"merge_only\":false,\"repos\":\"\",\"max_parallel_polish\":20,\"enable_auto_rebase\":true,\"use_dag_ordering\":true,\"enable_trivial_comment_resolution\":true,\"enable_admin_merge_fallback\":true,\"admin_fallback_threshold_minutes\":30,\"verify\":false,\"verify_timeout_seconds\":30},\"envelope_id\":\"6e56cc77-ceed-4d69-b993-42817e12d9cd\",\"envelope_timestamp\":\"2026-04-29T15:12:57.668480Z\",\"correlation_id\":\"7e894a85-60be-4f99-ab13-7dd8c7f30d73\",\"source_tool\":null,\"target_tool\":null,\"metadata\":{\"trace_id\":null,\"span_id\":null,\"parent_span_id\":null,\"request_id\":null,\"headers\":{},\"tags\":{}},\"security_context\":null,\"event_type\":\"omnimarket.pr-lifecycle-orchestrator-start\",\"payload_type\":null,\"payload_schema_version\":null,\"priority\":5,\"timeout_seconds\":null,\"retry_count\":0,\"request_id\":null,\"trace_id\":null,\"span_id\":null,\"onex_version\":{\"major\":1,\"minor\":0,\"patch\":0,\"prerelease\":null,\"build\":null},\"envelope_version\":{\"major\":2,\"minor\":1,\"patch\":0,\"prerelease\":null,\"build\":null}}"
         ],
         "returncode": 0,
         "summary": {
@@ -333,13 +333,57 @@
         "returncode": 0,
         "summary": {
           "status": "complete",
-          "session_id": "sess-20260428-2026",
+          "session_id": "sess-20260429-1513",
           "dry_run": true,
           "dispatch_queue_count": 0
         },
         "stderr": "WARNING omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator: skip_health=True \u2014 bypassing Phase 1 health gate (emergency only)",
         "notes": [
           "smoke intentionally bypasses health probes to isolate the market-owned CLI path"
+        ]
+      },
+      "pytest": null,
+      "overall_status": "working"
+    },
+    {
+      "skill_name": "ticket_pipeline",
+      "contract": {
+        "contract_name": "ticket_pipeline",
+        "node_name": "node_ticket_pipeline",
+        "node_type": "compute",
+        "timeout_ms": 600000,
+        "terminal_event": "onex.evt.omnimarket.ticket-pipeline-completed.v1",
+        "inputs": [
+          "ticket_id",
+          "skip_test_iterate",
+          "dry_run",
+          "skip_to"
+        ]
+      },
+      "input_drift": {
+        "matches": true,
+        "contract_only_fields": [],
+        "model_only_fields": []
+      },
+      "cli_smoke": {
+        "passed": true,
+        "command": [
+          "python",
+          "-m",
+          "omnimarket.nodes.node_ticket_pipeline",
+          "OMN-9360",
+          "--dry-run"
+        ],
+        "returncode": 0,
+        "summary": {
+          "stopped_at": "blocked",
+          "stop_reason": "not_implemented",
+          "ran_phase": "implement",
+          "phase_results_count": 2
+        },
+        "stderr": "",
+        "notes": [
+          "first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented"
         ]
       },
       "pytest": null,

@@ -1,11 +1,11 @@
 # Market Skill Baseline
 
-Captured at: `2026-04-28T20:26:35.546006+00:00`
+Captured at: `2026-04-29T15:13:01.306814+00:00`
 Repo root: `<omnimarket>`
 
 ## Summary
 
-- Working: `7`
+- Working: `8`
 - Degraded: `0`
 - Failing: `0`
 
@@ -20,6 +20,7 @@ Repo root: `<omnimarket>`
 | coderabbit_triage | node_coderabbit_triage | coderabbit_triage | pass | not-run | working |
 | session_bootstrap | node_session_bootstrap | session_bootstrap | pass | not-run | working |
 | session_orchestrator | node_session_orchestrator | session_orchestrator | pass | not-run | working |
+| ticket_pipeline | node_ticket_pipeline | ticket_pipeline | pass | not-run | working |
 
 ## Details
 
@@ -33,7 +34,7 @@ Repo root: `<omnimarket>`
 - Inputs: `target_dirs, checks, dry_run, severity_threshold`
 - Contract/model input match: `True`
 - CLI smoke status: `pass`
-- CLI smoke summary: `{"dry_run": true, "findings_count": 115, "repos_scanned": 1, "status": "findings"}`
+- CLI smoke summary: `{"dry_run": true, "findings_count": 118, "repos_scanned": 1, "status": "findings"}`
 - CLI smoke notes: `findings are expected to exit non-zero; this still proves the node ran`
 
 ### pr_lifecycle_orchestrator
@@ -106,6 +107,19 @@ Repo root: `<omnimarket>`
 - Inputs: `correlation_id, session_id, mode, dry_run, skip_health, standing_orders_path, state_dir, phase`
 - Contract/model input match: `True`
 - CLI smoke status: `pass`
-- CLI smoke summary: `{"dispatch_queue_count": 0, "dry_run": true, "session_id": "sess-20260428-2026", "status": "complete"}`
+- CLI smoke summary: `{"dispatch_queue_count": 0, "dry_run": true, "session_id": "sess-20260429-1513", "status": "complete"}`
 - CLI smoke notes: `smoke intentionally bypasses health probes to isolate the market-owned CLI path`
 - CLI smoke stderr: `WARNING omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator: skip_health=True — bypassing Phase 1 health gate (emergency only)`
+
+### ticket_pipeline
+
+- Node: `node_ticket_pipeline`
+- Contract: `ticket_pipeline`
+- Node type: `compute`
+- Timeout: `600000`
+- Terminal event: `onex.evt.omnimarket.ticket-pipeline-completed.v1`
+- Inputs: `ticket_id, skip_test_iterate, dry_run, skip_to`
+- Contract/model input match: `True`
+- CLI smoke status: `pass`
+- CLI smoke summary: `{"phase_results_count": 2, "ran_phase": "implement", "stop_reason": "not_implemented", "stopped_at": "blocked"}`
+- CLI smoke notes: `first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented`
