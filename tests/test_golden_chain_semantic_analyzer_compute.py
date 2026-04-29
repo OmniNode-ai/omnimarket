@@ -9,6 +9,7 @@ Verifies embed, extract_entities, and analyze operations.
 
 from __future__ import annotations
 
+import hashlib
 from uuid import UUID
 
 import pytest
@@ -60,10 +61,12 @@ class _StubEmbeddingProvider:
         correlation_id: UUID | None = None,
         timeout_seconds: float | None = None,
     ) -> list[float]:
-        # Deterministic: use hash of text to produce a fixed vector
-        h = hash(text) % 1000
-        base = float(h) / 1000.0
-        return [base, 1.0 - base, base * 0.5, 0.25]
+        # Deterministic across Python processes: built-in hash() is salted.
+        digest = hashlib.sha256(text.encode("utf-8")).digest()
+        return [
+            int.from_bytes(digest[offset : offset + 2], "big") / 65535.0
+            for offset in range(0, _EMBEDDING_DIM * 2, 2)
+        ]
 
     async def generate_embeddings_batch(
         self,
