@@ -7,6 +7,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_dispatch_queue_drainer.handlers.handler_dispatch_queue_drainer import (
+    _to_dispatch_worker_command,
+)
 from omnimarket.nodes.node_dispatch_queue_drainer.models import ModelDispatchQueueItem
 
 
@@ -22,7 +25,7 @@ def test_queue_item_converts_to_dispatch_worker_command() -> None:
         collision_fences=["omnimarket#443 (owned by other-worker)"],
     )
 
-    command = item.to_dispatch_worker_command()
+    command = _to_dispatch_worker_command(item)
 
     assert command.name == "omn-9437-fixer"
     assert command.role == "fixer"

@@ -16,6 +16,7 @@ from omnimarket.nodes.node_dispatch_queue_drainer.models import (
     ModelDispatchQueueDrainerResult,
     ModelDispatchQueueItem,
 )
+from omnimarket.nodes.node_dispatch_worker import ModelDispatchWorkerCommand
 from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
     HandlerDispatchWorker,
 )
@@ -67,7 +68,7 @@ class HandlerDispatchQueueDrainer:
 
         try:
             item = ModelDispatchQueueItem.model_validate(raw)
-            command = item.to_dispatch_worker_command()
+            command = _to_dispatch_worker_command(item)
         except ValidationError as exc:
             result = ModelDispatchQueueDrainerResult(
                 status="blocked",
@@ -82,7 +83,7 @@ class HandlerDispatchQueueDrainer:
                 status="blocked",
                 queue_item_path=str(selected_path),
                 blocked_reason=missing_repo_reason,
-                dispatch_worker_command=command,
+                dispatch_worker_command=command.model_dump(mode="json"),
             )
             return self._write_result(result, resolved_state_dir)
 
@@ -101,15 +102,15 @@ class HandlerDispatchQueueDrainer:
                 status="blocked",
                 queue_item_path=str(selected_path),
                 blocked_reason=f"dispatch worker rejected: {compiled.rejected_reason}",
-                dispatch_worker_command=command,
-                dispatch_worker_result=compiled,
+                dispatch_worker_command=command.model_dump(mode="json"),
+                dispatch_worker_result=compiled.model_dump(mode="json"),
             )
         else:
             result = ModelDispatchQueueDrainerResult(
                 status="compiled",
                 queue_item_path=str(selected_path),
-                dispatch_worker_command=command,
-                dispatch_worker_result=compiled,
+                dispatch_worker_command=command.model_dump(mode="json"),
+                dispatch_worker_result=compiled.model_dump(mode="json"),
             )
         return self._write_result(result, resolved_state_dir)
 
@@ -169,6 +170,23 @@ def _resolve_state_dir(state_dir: Path | None) -> Path:
 
 def _resolve_omni_home() -> Path:
     return Path(os.environ.get("OMNI_HOME", "/Users/jonah/Code/omni_home"))
+
+
+def _to_dispatch_worker_command(
+    item: ModelDispatchQueueItem,
+) -> ModelDispatchWorkerCommand:
+    return ModelDispatchWorkerCommand(
+        name=item.name,
+        team=item.team,
+        role=item.role,
+        scope=item.scope,
+        targets=item.targets,
+        collision_fences=item.collision_fences,
+        reports_to=item.reports_to,
+        wall_clock_cap_min=item.wall_clock_cap_min,
+        model=item.model,
+        replace=item.replace,
+    )
 
 
 __all__: list[str] = ["HandlerDispatchQueueDrainer"]

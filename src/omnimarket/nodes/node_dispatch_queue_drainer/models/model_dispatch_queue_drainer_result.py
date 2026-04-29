@@ -9,13 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command import (
-    ModelDispatchWorkerCommand,
-)
-from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_result import (
-    ModelDispatchWorkerResult,
-)
-
 
 class ModelDispatchQueueDrainerResult(BaseModel):
     """Terminal compile-only result for one queue-drainer run."""
@@ -26,8 +19,8 @@ class ModelDispatchQueueDrainerResult(BaseModel):
     queue_item_path: str = ""
     result_artifact_path: str = ""
     blocked_reason: str = ""
-    dispatch_worker_command: ModelDispatchWorkerCommand | None = None
-    dispatch_worker_result: ModelDispatchWorkerResult | None = None
+    dispatch_worker_command: dict[str, object] | None = None
+    dispatch_worker_result: dict[str, object] | None = None
     processed_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
 

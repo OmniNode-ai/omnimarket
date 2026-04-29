@@ -52,9 +52,9 @@ def test_handler_compiles_one_queue_item_without_moving_it(tmp_path: Path) -> No
     assert queue_item.exists()
     assert result.dispatch_worker_command is not None
     assert result.dispatch_worker_result is not None
-    assert result.dispatch_worker_result.proposed_agent_spawn_args["name"] == (
-        "omn-9437-fixer"
-    )
+    spawn_args = result.dispatch_worker_result["proposed_agent_spawn_args"]
+    assert isinstance(spawn_args, dict)
+    assert spawn_args["name"] == ("omn-9437-fixer")
     artifact = Path(result.result_artifact_path)
     assert artifact.is_file()
     artifact_payload = json.loads(artifact.read_text(encoding="utf-8"))
