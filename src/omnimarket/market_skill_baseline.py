@@ -422,7 +422,25 @@ def _summarize_ticket_pipeline(payload: dict[str, object]) -> dict[str, object]:
         "stop_reason": payload.get("stop_reason"),
         "ran_phase": payload.get("ran_phase"),
         "phase_results_count": len(results) if isinstance(results, list) else 0,
+        "compiled_dispatch": _ticket_pipeline_compiled_dispatch(results),
     }
+
+
+def _ticket_pipeline_compiled_dispatch(results: object) -> bool:
+    if not isinstance(results, list):
+        return False
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        details = item.get("details")
+        if (
+            item.get("phase") == "implement"
+            and item.get("status") == "succeeded"
+            and isinstance(details, dict)
+            and details.get("execution_mode") == "compile_only"
+        ):
+            return True
+    return False
 
 
 def _pr_lifecycle_envelope_json() -> str:
@@ -701,6 +719,7 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
         completed.returncode == 0
         and payload.get("stopped_at") == "blocked"
         and payload.get("stop_reason") == "not_implemented"
+        and _ticket_pipeline_compiled_dispatch(payload.get("phase_results"))
     )
     return ModelCommandResult(
         passed=passed,
@@ -709,7 +728,7 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
         summary=_summarize_ticket_pipeline(payload),
         stderr=completed.stderr.strip(),
         notes=[
-            "first slice only wires PRE_FLIGHT; IMPLEMENT should block as not_implemented; stopped_at=blocked is a stop state"
+            "bounded slice wires PRE_FLIGHT plus compile-only IMPLEMENT; LOCAL_REVIEW should block as not_implemented; stopped_at=blocked is a stop state"
         ],
     )
 

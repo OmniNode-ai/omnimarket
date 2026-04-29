@@ -11,8 +11,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 
+from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
+    HandlerDispatchWorker,
+)
+from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command import (
+    EnumWorkerRole,
+    ModelDispatchWorkerCommand,
+)
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_completed_event import (
     ModelPipelineCompletedEvent,
 )
@@ -168,6 +176,8 @@ class HandlerTicketPipeline:
         started_at = datetime.now(tz=UTC)
         if state.current_phase == EnumPipelinePhase.PRE_FLIGHT:
             result = self._execute_pre_flight(state, started_at)
+        elif state.current_phase == EnumPipelinePhase.IMPLEMENT:
+            result = self._execute_implement(state, started_at)
         elif state.current_phase in TERMINAL_PHASES:
             result = ModelPipelinePhaseResult(
                 correlation_id=state.correlation_id,
@@ -220,6 +230,47 @@ class HandlerTicketPipeline:
                     "dry_run",
                 ],
                 "side_effects": "none",
+            },
+        )
+
+    def _execute_implement(
+        self,
+        state: ModelPipelineState,
+        started_at: datetime,
+    ) -> ModelPipelinePhaseResult:
+        command = ModelDispatchWorkerCommand(
+            name=f"ticket-pipeline-{state.ticket_id.lower()}",
+            team="ticket-pipeline",
+            role=EnumWorkerRole.fixer,
+            scope=(
+                "Implement the ticket using omnimarket-owned workflow rules; "
+                "produce tests, PR, and durable evidence before completion."
+            ),
+            targets=[state.ticket_id, "omnimarket"],
+            collision_fences=["none - no in-progress collision fences at compile time"],
+            reports_to="ticket-pipeline",
+            wall_clock_cap_min=90,
+        )
+        previous_state_dir = os.environ.pop("ONEX_STATE_DIR", None)
+        try:
+            result = HandlerDispatchWorker().handle(command, existing_task_subjects=[])
+        finally:
+            if previous_state_dir is not None:
+                os.environ["ONEX_STATE_DIR"] = previous_state_dir
+        return ModelPipelinePhaseResult(
+            correlation_id=state.correlation_id,
+            ticket_id=state.ticket_id,
+            phase=EnumPipelinePhase.IMPLEMENT,
+            status=EnumPipelinePhaseResultStatus.SUCCEEDED,
+            dry_run=state.dry_run,
+            started_at=started_at,
+            completed_at=datetime.now(tz=UTC),
+            message="Compiled dispatch-worker prompt for implementation phase",
+            details={
+                "execution_mode": "compile_only",
+                "side_effects": "none",
+                "dispatch_worker_command": command.model_dump(mode="json"),
+                "dispatch_worker_result": result.model_dump(mode="json"),
             },
         )
 

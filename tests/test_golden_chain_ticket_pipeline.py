@@ -56,7 +56,7 @@ def _make_command(
 class TestTicketPipelineGoldenChain:
     """Golden chain: start command -> phase transitions -> completion."""
 
-    async def test_safe_slice_runs_preflight_then_blocks_implement(
+    async def test_safe_slice_runs_preflight_and_implement_then_blocks_local_review(
         self, event_bus: EventBusInmemory
     ) -> None:
         """Default execution is honest and stops at the first unwired phase."""
@@ -68,18 +68,25 @@ class TestTicketPipelineGoldenChain:
         assert report.state.current_phase == EnumPipelinePhase.BLOCKED
         assert report.completed.final_phase == EnumPipelinePhase.BLOCKED
         assert report.completed.ticket_id == "OMN-9999"
-        assert report.ran_phase == EnumPipelinePhase.IMPLEMENT
+        assert report.ran_phase == EnumPipelinePhase.LOCAL_REVIEW
         assert report.stop_reason == "not_implemented"
 
         assert [result.phase for result in report.phase_results] == [
             EnumPipelinePhase.PRE_FLIGHT,
             EnumPipelinePhase.IMPLEMENT,
+            EnumPipelinePhase.LOCAL_REVIEW,
         ]
         assert report.phase_results[0].status == "succeeded"
-        assert report.phase_results[1].status == "not_implemented"
+        assert report.phase_results[1].status == "succeeded"
+        assert report.phase_results[1].details["execution_mode"] == "compile_only"
+        assert "dispatch_worker_command" in report.phase_results[1].details
+        assert "dispatch_worker_result" in report.phase_results[1].details
+        assert report.phase_results[2].status == "not_implemented"
         assert report.phase_events[0].from_phase == EnumPipelinePhase.PRE_FLIGHT
         assert report.phase_events[0].to_phase == EnumPipelinePhase.IMPLEMENT
-        assert report.phase_events[-1].from_phase == EnumPipelinePhase.IMPLEMENT
+        assert report.phase_events[1].from_phase == EnumPipelinePhase.IMPLEMENT
+        assert report.phase_events[1].to_phase == EnumPipelinePhase.LOCAL_REVIEW
+        assert report.phase_events[-1].from_phase == EnumPipelinePhase.LOCAL_REVIEW
         assert report.phase_events[-1].to_phase == EnumPipelinePhase.BLOCKED
 
     async def test_failed_phase_result_stops_at_failed(
@@ -286,10 +293,10 @@ class TestTicketPipelineGoldenChain:
 
         assert len(completed_events) == 1
         assert completed_events[0]["final_phase"] == "blocked"
-        assert len(phase_events) == 2
+        assert len(phase_events) == 3
 
         phase_history = await event_bus.get_event_history(topic=PHASE_TOPIC)
-        assert len(phase_history) == 2
+        assert len(phase_history) == 3
 
         completed_history = await event_bus.get_event_history(topic=COMPLETED_TOPIC)
         assert len(completed_history) == 1
@@ -394,7 +401,11 @@ class TestTicketPipelineGoldenChain:
         assert [item["phase"] for item in payload["phase_results"]] == [
             "pre_flight",
             "implement",
+            "local_review",
         ]
+        assert (
+            payload["phase_results"][1]["details"]["execution_mode"] == "compile_only"
+        )
 
     async def test_cli_skip_to_stops_at_requested_unwired_phase(
         self, event_bus: EventBusInmemory

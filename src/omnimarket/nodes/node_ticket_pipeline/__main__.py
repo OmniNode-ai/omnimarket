@@ -3,7 +3,7 @@
 """CLI entry point for node_ticket_pipeline.
 
 Runs the safe ticket-pipeline execution slice for a given Linear ticket and
-outputs a parseable JSON report. Only PRE_FLIGHT is wired in this first slice;
+outputs a parseable JSON report. PRE_FLIGHT and compile-only IMPLEMENT are wired;
 later side-effect phases stop as blocked/not_implemented.
 
 Usage:
