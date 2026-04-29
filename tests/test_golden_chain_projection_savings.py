@@ -49,6 +49,7 @@ class TestSavingsProjection:
             "repo_name": "omniclaude",
             "machine_id": "m-201",
             "created_at": rows[0]["created_at"],
+            "updated_at": rows[0]["updated_at"],
         }
 
     def test_project_normalizes_event_timestamp_to_utc_identity(self) -> None:
@@ -148,6 +149,51 @@ class TestSavingsProjection:
         assert len(rows) == 1
         assert rows[0]["savings_usd"] == Decimal("1.500000")
 
+    def test_upsert_refreshes_updated_at(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings as module
+
+        timestamps = [
+            datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
+            datetime(2026, 4, 29, 12, 5, tzinfo=UTC),
+        ]
+
+        class FakeDateTime:
+            @classmethod
+            def now(cls, tz: timezone | None = None) -> datetime:
+                value = timestamps.pop(0)
+                if tz is not None:
+                    return value.astimezone(tz)
+                return value
+
+        monkeypatch.setattr(module, "datetime", FakeDateTime)
+        db = InmemoryDatabaseAdapter()
+        event = ModelSavingsEstimatedEvent(
+            event_timestamp=datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
+            session_id="s1",
+            model_local="qwen3-coder-30b",
+            model_cloud_baseline="claude-opus-4",
+            local_cost_usd=Decimal("1.000000"),
+            cloud_cost_usd=Decimal("2.000000"),
+            savings_usd=Decimal("1.000000"),
+        )
+
+        HANDLER.project(event, db)
+        first_row = db.query("savings_estimates")[0]
+        HANDLER.project(
+            event.model_copy(
+                update={
+                    "local_cost_usd": Decimal("0.500000"),
+                    "savings_usd": Decimal("1.500000"),
+                }
+            ),
+            db,
+        )
+
+        rows = db.query("savings_estimates")
+        assert len(rows) == 1
+        assert first_row["updated_at"] == "2026-04-29T12:00:00+00:00"
+        assert rows[0]["updated_at"] == "2026-04-29T12:05:00+00:00"
+
     def test_project_batch(self) -> None:
         db = InmemoryDatabaseAdapter()
         events = [
@@ -190,6 +236,8 @@ class TestSavingsProjection:
         assert "model_local TEXT NOT NULL" in migration
         assert "model_cloud_baseline TEXT NOT NULL" in migration
         assert "ux_savings_estimates_identity" in migration
+        assert "trg_savings_estimates_updated_at" in migration
+        assert "NEW.updated_at = NOW()" in migration
 
     def test_fixture_replay_matches_golden_checksums(self) -> None:
         db = InmemoryDatabaseAdapter()
@@ -221,6 +269,10 @@ class TestSavingsProjection:
 
 
 def _row_checksum(row: dict[str, object]) -> str:
-    stable = {key: str(value) for key, value in row.items() if key != "created_at"}
+    stable = {
+        key: str(value)
+        for key, value in row.items()
+        if key not in {"created_at", "updated_at"}
+    }
     encoded = json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()

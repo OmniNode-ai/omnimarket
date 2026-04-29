@@ -4,11 +4,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
-SUBSCRIBE_TOPIC_LLM_CALL_COMPLETED = "onex.evt.omniintelligence.llm-call-completed.v1"
-SUBSCRIBE_TOPIC_SAVINGS_ESTIMATED = "onex.evt.omnibase-infra.savings-estimated.v1"
-PUBLISH_TOPIC_COST_SUMMARY = "onex.evt.omnimarket.cost-summary-snapshot.v1"
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
+
+_CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+SUBSCRIBE_TOPICS = contract_subscribe_topics(_CONTRACT_PATH)
+PUBLISH_TOPICS = contract_publish_topics(_CONTRACT_PATH)
+SUBSCRIBE_TOPIC_LLM_CALL_COMPLETED = SUBSCRIBE_TOPICS[0]
+SUBSCRIBE_TOPIC_SAVINGS_ESTIMATED = SUBSCRIBE_TOPICS[1]
+PUBLISH_TOPIC_COST_SUMMARY = PUBLISH_TOPICS[0]
 
 
 class HandlerProjectionCostSummary:
@@ -18,20 +27,20 @@ class HandlerProjectionCostSummary:
         """Return a summary snapshot payload for downstream dashboard consumers."""
 
         estimated_cost = _decimal_text(
-            input_data.get("estimated_cost_usd")
-            or input_data.get("estimatedCostUsd")
-            or input_data.get("total_cost_usd")
-            or input_data.get("totalCostUsd")
-            or input_data.get("cloud_cost_usd")
-            or input_data.get("cloudCostUsd")
-            or "0"
+            _first_present(
+                input_data,
+                "estimated_cost_usd",
+                "estimatedCostUsd",
+                "total_cost_usd",
+                "totalCostUsd",
+                "cloud_cost_usd",
+                "cloudCostUsd",
+            )
         )
-        savings = _decimal_text(
-            input_data.get("savings_usd") or input_data.get("savingsUsd") or "0"
-        )
+        savings = _decimal_text(_first_present(input_data, "savings_usd", "savingsUsd"))
         return {
             "snapshot_type": "cost_summary",
-            "window": _text(input_data.get("window") or "latest"),
+            "window": _text(_first_present(input_data, "window", default="latest")),
             "snapshot_timestamp_minute": _snapshot_timestamp_minute(input_data),
             "total_estimated_cost_usd": estimated_cost,
             "total_savings_usd": savings,
@@ -44,14 +53,15 @@ class NodeProjectionCostSummary(HandlerProjectionCostSummary):
 
 
 def _snapshot_timestamp_minute(payload: dict[str, Any]) -> str:
-    raw = (
-        payload.get("snapshot_timestamp_minute")
-        or payload.get("snapshotTimestampMinute")
-        or payload.get("event_timestamp")
-        or payload.get("eventTimestamp")
-        or payload.get("timestamp_iso")
-        or payload.get("timestamp")
-        or payload.get("emitted_at")
+    raw = _first_present(
+        payload,
+        "snapshot_timestamp_minute",
+        "snapshotTimestampMinute",
+        "event_timestamp",
+        "eventTimestamp",
+        "timestamp_iso",
+        "timestamp",
+        "emitted_at",
     )
     dt = _parse_datetime(raw)
     return dt.astimezone(UTC).replace(second=0, microsecond=0).isoformat()
@@ -60,7 +70,7 @@ def _snapshot_timestamp_minute(payload: dict[str, Any]) -> str:
 def _parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
         dt = value
-    elif value:
+    elif value is not None:
         try:
             dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except ValueError:
@@ -83,4 +93,17 @@ def _text(value: Any) -> str:
     return str(value).strip()
 
 
-__all__ = ["HandlerProjectionCostSummary", "NodeProjectionCostSummary"]
+def _first_present(payload: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return default
+
+
+__all__ = [
+    "PUBLISH_TOPIC_COST_SUMMARY",
+    "SUBSCRIBE_TOPIC_LLM_CALL_COMPLETED",
+    "SUBSCRIBE_TOPIC_SAVINGS_ESTIMATED",
+    "HandlerProjectionCostSummary",
+    "NodeProjectionCostSummary",
+]

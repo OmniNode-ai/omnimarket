@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
-SUBSCRIBE_TOPIC_LLM_CALL_COMPLETED = "onex.evt.omniintelligence.llm-call-completed.v1"
-PUBLISH_TOPIC_COST_BY_REPO = "onex.evt.omnimarket.cost-by-repo-snapshot.v1"
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
+
+_CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+SUBSCRIBE_TOPICS = contract_subscribe_topics(_CONTRACT_PATH)
+PUBLISH_TOPICS = contract_publish_topics(_CONTRACT_PATH)
+SUBSCRIBE_TOPIC_LLM_CALL_COMPLETED = SUBSCRIBE_TOPICS[0]
+PUBLISH_TOPIC_COST_BY_REPO = PUBLISH_TOPICS[0]
 
 
 class HandlerProjectionCostByRepo:
@@ -17,27 +26,28 @@ class HandlerProjectionCostByRepo:
         """Return a snapshot-shaped payload for downstream dashboard consumers."""
 
         repo_name = _text(
-            input_data.get("repo_name")
-            or input_data.get("repoName")
-            or input_data.get("repository")
-            or "unknown"
+            _first_present(
+                input_data, "repo_name", "repoName", "repository", default="unknown"
+            )
         )
         return {
             "snapshot_type": "cost_by_repo",
-            "window": _text(input_data.get("window") or "latest"),
+            "window": _text(_first_present(input_data, "window", default="latest")),
             "snapshot_timestamp_minute": _snapshot_timestamp_minute(input_data),
             "repositories": [
                 {
                     "repo_name": repo_name,
                     "estimated_cost_usd": _decimal_text(
-                        input_data.get("estimated_cost_usd")
-                        or input_data.get("estimatedCostUsd")
-                        or input_data.get("total_cost_usd")
-                        or input_data.get("totalCostUsd")
-                        or "0"
+                        _first_present(
+                            input_data,
+                            "estimated_cost_usd",
+                            "estimatedCostUsd",
+                            "total_cost_usd",
+                            "totalCostUsd",
+                        )
                     ),
                     "total_tokens": _int_value(
-                        input_data.get("total_tokens") or input_data.get("totalTokens")
+                        _first_present(input_data, "total_tokens", "totalTokens")
                     ),
                 }
             ],
@@ -50,14 +60,15 @@ class NodeProjectionCostByRepo(HandlerProjectionCostByRepo):
 
 
 def _snapshot_timestamp_minute(payload: dict[str, Any]) -> str:
-    raw = (
-        payload.get("snapshot_timestamp_minute")
-        or payload.get("snapshotTimestampMinute")
-        or payload.get("event_timestamp")
-        or payload.get("eventTimestamp")
-        or payload.get("timestamp_iso")
-        or payload.get("timestamp")
-        or payload.get("emitted_at")
+    raw = _first_present(
+        payload,
+        "snapshot_timestamp_minute",
+        "snapshotTimestampMinute",
+        "event_timestamp",
+        "eventTimestamp",
+        "timestamp_iso",
+        "timestamp",
+        "emitted_at",
     )
     dt = _parse_datetime(raw)
     return dt.astimezone(UTC).replace(second=0, microsecond=0).isoformat()
@@ -66,7 +77,7 @@ def _snapshot_timestamp_minute(payload: dict[str, Any]) -> str:
 def _parse_datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
         dt = value
-    elif value:
+    elif value is not None:
         try:
             dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except ValueError:
@@ -96,4 +107,16 @@ def _text(value: Any) -> str:
     return str(value).strip()
 
 
-__all__ = ["HandlerProjectionCostByRepo", "NodeProjectionCostByRepo"]
+def _first_present(payload: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return default
+
+
+__all__ = [
+    "PUBLISH_TOPIC_COST_BY_REPO",
+    "SUBSCRIBE_TOPIC_LLM_CALL_COMPLETED",
+    "HandlerProjectionCostByRepo",
+    "NodeProjectionCostByRepo",
+]

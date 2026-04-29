@@ -26,3 +26,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_savings_estimates_identity
         model_local,
         model_cloud_baseline
     );
+
+CREATE OR REPLACE FUNCTION refresh_savings_estimates_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_savings_estimates_updated_at ON savings_estimates;
+CREATE TRIGGER trg_savings_estimates_updated_at
+    BEFORE UPDATE ON savings_estimates
+    FOR EACH ROW
+    EXECUTE FUNCTION refresh_savings_estimates_updated_at();

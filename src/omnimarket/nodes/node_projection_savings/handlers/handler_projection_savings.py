@@ -95,6 +95,7 @@ class HandlerProjectionSavings:
             "repo_name": event.repo_name,
             "machine_id": event.machine_id,
             "created_at": now,
+            "updated_at": now,
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)

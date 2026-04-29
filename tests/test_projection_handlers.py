@@ -340,6 +340,7 @@ class TestSavingsHandler:
         assert result is True
         mock_db.execute.assert_called_once()
         call_args = mock_db.execute.call_args[0]
+        assert "updated_at = NOW()" in call_args[0]
         assert call_args[1].isoformat() == "2026-04-06T12:00:00+00:00"
         assert call_args[5] == Decimal("0.010000")
         assert call_args[6] == Decimal("0.050000")

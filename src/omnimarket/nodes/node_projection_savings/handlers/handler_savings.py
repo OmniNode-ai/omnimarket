@@ -162,7 +162,8 @@ class SavingsProjectionRunner(BaseProjectionRunner):
               cloud_cost_usd = EXCLUDED.cloud_cost_usd,
               savings_usd = EXCLUDED.savings_usd,
               repo_name = EXCLUDED.repo_name,
-              machine_id = EXCLUDED.machine_id
+              machine_id = EXCLUDED.machine_id,
+              updated_at = NOW()
             """,
             event_timestamp,
             session_id,
