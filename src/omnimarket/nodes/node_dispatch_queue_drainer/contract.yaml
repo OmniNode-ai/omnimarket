@@ -1,0 +1,24 @@
+version: 0.1.0
+name: node_dispatch_queue_drainer
+description: >
+  Compile one legacy .onex_state/dispatch_queue YAML item through
+  node_dispatch_worker without spawning agents or moving queue files.
+handler:
+  module: omnimarket.nodes.node_dispatch_queue_drainer.handlers.handler_dispatch_queue_drainer
+  class: HandlerDispatchQueueDrainer
+models:
+  input:
+    module: omnimarket.nodes.node_dispatch_queue_drainer.models.model_dispatch_queue_item
+    class: ModelDispatchQueueItem
+  output:
+    module: omnimarket.nodes.node_dispatch_queue_drainer.models.model_dispatch_queue_drainer_result
+    class: ModelDispatchQueueDrainerResult
+capabilities:
+  - compile_legacy_dispatch_queue_item
+invariants:
+  - first_slice_limit_is_one
+  - no_agent_or_taskcreate_spawn
+  - no_queue_file_move_or_delete_by_default
+verification:
+  focused_tests:
+    command: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_dispatch_queue_drainer -v

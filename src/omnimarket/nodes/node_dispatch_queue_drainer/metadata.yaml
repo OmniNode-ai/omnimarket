@@ -1,0 +1,6 @@
+name: node_dispatch_queue_drainer
+version: 0.1.0
+description: Compile one legacy dispatch queue YAML item without spawning agents.
+entry_points:
+  onex.nodes:
+    node_dispatch_queue_drainer: "omnimarket.nodes.node_dispatch_queue_drainer"
