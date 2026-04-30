@@ -39,3 +39,16 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py::TestDurableEvidenceGate::test_stale_occ_main_hard_fails -v"
+  - id: "dod-005"
+    description: |
+      Deploy posture for this slice. The DurableEvidenceGate service this PR adds
+      is pure-logic + Protocol-typed probes — there is no runtime container to
+      deploy, no Kafka topic to produce, and no subprocess-backed wiring. Concrete
+      probe implementations (subprocess git ls-tree, gh pr view, yaml-load-on-ref)
+      and the FSM-phase wiring that invokes the gate before any Linear Done
+      transition ship in a follow-up ticket and will carry their own deploy
+      evidence at that time.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'no deploy required for this slice — pure-logic gate, no runtime container or topic touched; follow-up ticket carries the deploy evidence when concrete probes and FSM wiring land'"

@@ -46,6 +46,10 @@ _PR_URL_RE = re.compile(
     r"^https://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/pull/(?P<num>\d+)"
 )
 
+# Git short SHA is 7 hex chars; full is 40. Anything outside [7,40] hex chars
+# is treated as a malformed citation and skipped (see CR thread on PR #467).
+_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
 
 class DurableEvidenceGateError(Exception):
     """Raised when the durable-evidence gate refuses a Linear Done transition.
@@ -124,7 +128,7 @@ def extract_cited_merge_commits(
     Pure function — no I/O.
     """
     citations: list[ModelCitedMergeCommit] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, int, str]] = set()
     items = contract.get("dod_evidence", [])
     if not isinstance(items, list):
         return citations
@@ -142,14 +146,27 @@ def extract_cited_merge_commits(
             sha = cand.get("commit_sha")
             if not isinstance(pr_url, str) or not isinstance(sha, str):
                 continue
+            # Skip malformed SHAs (the docstring contracts that malformed
+            # citations are skipped, not raised). Without this guard a sha
+            # like "abc" reaches ModelCitedMergeCommit and raises
+            # ValidationError on min_length=7.
+            if not _SHA_RE.match(sha):
+                continue
             parsed = parse_pr_url(pr_url)
             if parsed is None:
                 continue
-            key = (pr_url, sha)
+            repo, num = parsed
+            # Dedupe on the normalized identity (repo, pr_number, sha) — NOT
+            # the raw pr_url. parse_pr_url() accepts multiple URL shapes for
+            # the same PR (e.g. ``/pull/123`` vs ``/pull/123/files``); keying
+            # on raw pr_url would treat them as distinct citations and
+            # double-call gh_pr_view AND falsely hard-fail
+            # CONTRACT_ON_OCC_MAIN when local and OCC main spell the same
+            # PR differently.
+            key = (repo, num, sha)
             if key in seen:
                 continue
             seen.add(key)
-            repo, num = parsed
             citations.append(
                 ModelCitedMergeCommit(
                     pr_url=pr_url,
@@ -306,8 +323,11 @@ class DurableEvidenceGate:
             )
         else:
             main_citations = extract_cited_merge_commits(main_contract)
-            local_keys = {(c.pr_url, c.cited_sha) for c in citations}
-            main_keys = {(c.pr_url, c.cited_sha) for c in main_citations}
+            # Compare on normalized identity (repo, pr_number, sha) — NOT raw
+            # pr_url — so different URL spellings for the same PR do not
+            # produce a false stale-main hard fail.
+            local_keys = {(c.repo, c.pr_number, c.cited_sha) for c in citations}
+            main_keys = {(c.repo, c.pr_number, c.cited_sha) for c in main_citations}
             if citations and not local_keys.issubset(main_keys):
                 missing = local_keys - main_keys
                 checks.append(

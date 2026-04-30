@@ -362,6 +362,52 @@ class TestDurableEvidenceGate:
         assert err.result.status == EnumDurableEvidenceStatus.FAIL
         assert "receipt_tracked" in str(err)
 
+    def test_url_variants_across_local_and_main_do_not_hard_fail(self) -> None:
+        """Local contract spells the PR as ``/pull/123`` and OCC main spells
+        it as ``/pull/123/files`` — same PR + same SHA, must PASS the
+        CONTRACT_ON_OCC_MAIN check (regression for CR thread on PR #467).
+        """
+        local_contract = _ticket_contract(
+            pr_url="https://github.com/OmniNode-ai/omnibase_core/pull/949",
+            commit_sha="abcdef1234567890abcdef1234567890abcdef12",
+        )
+        main_contract = _ticket_contract(
+            pr_url=("https://github.com/OmniNode-ai/omnibase_core/pull/949/files"),
+            commit_sha="abcdef1234567890abcdef1234567890abcdef12",
+        )
+
+        gate = _make_gate(
+            tracked={
+                (
+                    "/fake/onex_change_control",
+                    "main",
+                    "evidence/OMN-9855/dod_report.json",
+                ): True,
+            },
+            pr_view={
+                ("OmniNode-ai/omnibase_core", 949): (
+                    "MERGED",
+                    "abcdef1234567890abcdef1234567890abcdef12",
+                ),
+            },
+            contract_on_main=main_contract,
+        )
+
+        result = gate.evaluate(
+            ticket_id="OMN-9855",
+            contract=local_contract,
+            receipt_rel_path="evidence/OMN-9855/dod_report.json",
+            contract_rel_path="contracts/OMN-9855.yaml",
+        )
+
+        assert result.status == EnumDurableEvidenceStatus.PASS
+        main_check = next(
+            c
+            for c in result.checks
+            if c.check == EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN
+        )
+        assert main_check.passed is True
+
     def test_evaluate_no_citations_still_runs_other_checks(self) -> None:
         """Contract with zero PR/commit citations passes the citation check
         but still enforces receipt-tracked + contract-on-main."""
@@ -473,6 +519,67 @@ class TestExtractCitedMergeCommits:
     def test_handles_non_list_dod_evidence(self) -> None:
         assert extract_cited_merge_commits({"dod_evidence": "not-a-list"}) == []
         assert extract_cited_merge_commits({}) == []
+
+    def test_extract_skips_malformed_short_sha(self) -> None:
+        """A valid pr_url paired with a malformed short SHA must be skipped,
+        NOT raise ValidationError out of the extractor.
+
+        Regression for CR thread on PR #467: previously the extractor accepted
+        any string sha and let ``ModelCitedMergeCommit(min_length=7)`` raise.
+        The docstring contracts that malformed citations are skipped.
+        """
+        contract = {
+            "dod_evidence": [
+                {
+                    "id": "dod-malformed",
+                    "pr_url": "https://github.com/OmniNode-ai/omnibase_core/pull/949",
+                    "commit_sha": "abc",  # too short, must be skipped
+                },
+                {
+                    "id": "dod-also-bad",
+                    "pr_url": "https://github.com/OmniNode-ai/omnibase_core/pull/950",
+                    "commit_sha": "zzzzzzz",  # right length, non-hex, must be skipped
+                },
+            ]
+        }
+
+        cites = extract_cited_merge_commits(contract)
+
+        assert cites == []
+
+    def test_url_variants_dedupe_to_same_citation(self) -> None:
+        """``/pull/123`` and ``/pull/123/files`` for the same PR+SHA dedupe
+        to a single citation.
+
+        Regression for CR thread on PR #467: previously the extractor keyed
+        dedupe on raw pr_url, so two URL variants for the same PR became
+        two separate citations — double gh_pr_view() calls AND a false
+        CONTRACT_ON_OCC_MAIN hard-fail when local and OCC main spell the
+        same PR differently.
+        """
+        contract = {
+            "dod_evidence": [
+                {
+                    "id": "dod-001",
+                    "pr_url": "https://github.com/OmniNode-ai/omnibase_core/pull/123",
+                    "commit_sha": "deadbeef1234567",
+                },
+                {
+                    "id": "dod-002",
+                    "pr_url": (
+                        "https://github.com/OmniNode-ai/omnibase_core/pull/123/files"
+                    ),
+                    "commit_sha": "deadbeef1234567",
+                },
+            ]
+        }
+
+        cites = extract_cited_merge_commits(contract)
+
+        assert len(cites) == 1
+        assert cites[0].repo == "OmniNode-ai/omnibase_core"
+        assert cites[0].pr_number == 123
+        assert cites[0].cited_sha == "deadbeef1234567"
 
 
 @pytest.mark.unit
