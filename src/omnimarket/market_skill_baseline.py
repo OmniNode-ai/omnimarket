@@ -191,6 +191,7 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         pytest_targets=(
             "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py",
             "tests/unit/test_handler_session_orchestrator_graphql.py",
+            "tests/test_codex_runtime_client.py::test_session_orchestrator_pattern_b_runs_node_end_to_end",
         ),
         smoke_kind="session_orchestrator",
     ),

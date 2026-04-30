@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
@@ -22,6 +24,10 @@ from omnimarket.adapters.codex.runtime_client import (
     default_response_topic,
     default_target_runtime_address,
     main,
+)
+from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
+    HandlerSessionOrchestrator,
+    ModelSessionOrchestratorCommand,
 )
 
 
@@ -98,6 +104,54 @@ async def _install_broker_worker(
 
     await bus.subscribe(
         command_topic, group_id=f"broker-{uuid4()}", on_message=on_command
+    )
+
+
+async def _install_session_orchestrator_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = ModelSessionOrchestratorCommand.model_validate(
+                envelope.payload.payload
+            )
+            node_result = HandlerSessionOrchestrator(probes=[]).handle(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-session-orchestrator-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"session-orchestrator-broker-{uuid4()}",
+        on_message=on_command,
     )
 
 
@@ -213,6 +267,112 @@ async def test_dispatch_async_uses_env_target_runtime_address(
     assert (
         received_commands[0].target_runtime_address
         == "runtime://omninode-pc/stability-test/effects"
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_orchestrator_pattern_b_runs_node_end_to_end(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture_path = tmp_path / "linear-fixture.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {
+                        "identifier": "OMN-10400",
+                        "title": "Prove orchestrated CLI output",
+                        "priority": 1,
+                        "labels": {"nodes": []},
+                        "updatedAt": "2026-04-12T00:00:00Z",
+                        "children": {"nodes": []},
+                    },
+                    {
+                        "identifier": "OMN-10399",
+                        "title": "Retrofit remaining working surfaces",
+                        "priority": 4,
+                        "labels": {"nodes": []},
+                        "updatedAt": "2026-04-12T00:00:00Z",
+                        "children": {"nodes": []},
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+    monkeypatch.setenv("ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE", str(fixture_path))
+    state_dir = tmp_path / "state"
+    response_topic = "onex.evt.omnibase-infra.pattern-b-session-orchestrator-e2e.v1"
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-session-orchestrator-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_session_orchestrator_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="session_orchestrator",
+            payload={
+                "skip_health": True,
+                "dry_run": False,
+                "phase": 0,
+                "state_dir": str(state_dir),
+                "session_id": "sess-pattern-b",
+                "correlation_id": "sess-pattern-b.codex",
+            },
+            timeout_ms=300_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "session_orchestrator"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    payload = result.output_payloads[0]
+    assert payload["status"] == "complete"
+    assert payload["dispatch_queue"] == ["OMN-10400", "OMN-10399"]
+    receipts = payload["dispatch_receipts"]
+    assert isinstance(receipts, list)
+    assert len(receipts) == 2
+    parsed_receipts = [json.loads(str(receipt)) for receipt in receipts]
+    assert [receipt["ticket_id"] for receipt in parsed_receipts] == [
+        "OMN-10400",
+        "OMN-10399",
+    ]
+    assert all(
+        receipt["status"] == "compiled_dispatch_worker" for receipt in parsed_receipts
+    )
+    assert (state_dir / "in_flight.yaml").exists()
+    assert (state_dir / "ledger.jsonl").exists()
+    assert list(state_dir.glob("rsd-scored-*.yaml"))
+    dispatch_specs = list((state_dir / "dispatch_specs").glob("*.json"))
+    assert len(dispatch_specs) == 2
+    assert all(
+        Path(str(receipt["dispatch_artifact_path"])).exists()
+        for receipt in parsed_receipts
+    )
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "session_orchestrator"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
     )
 
 
