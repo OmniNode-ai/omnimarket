@@ -29,6 +29,12 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
 )
+from omnimarket.nodes.node_local_review.handlers.handler_local_review import (
+    HandlerLocalReview,
+)
+from omnimarket.nodes.node_local_review.models.model_local_review_start_command import (
+    ModelLocalReviewStartCommand,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleStartCommand,
@@ -355,6 +361,54 @@ async def _install_pr_polish_broker_worker(
     await bus.subscribe(
         command_topic,
         group_id=f"pr-polish-broker-{uuid4()}",
+        on_message=on_command,
+    )
+
+
+async def _install_local_review_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = ModelLocalReviewStartCommand.model_validate(
+                envelope.payload.payload
+            )
+            node_result = HandlerLocalReview().handle(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-local-review-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"local-review-broker-{uuid4()}",
         on_message=on_command,
     )
 
@@ -776,6 +830,63 @@ async def test_pr_polish_pattern_b_runs_node_end_to_end() -> None:
     assert payload["error_message"] is None
     assert len(received_commands) == 1
     assert received_commands[0].command_name == "pr_polish"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_review_pattern_b_runs_node_end_to_end() -> None:
+    correlation_id = uuid4()
+    requested_at = datetime.now(UTC)
+    response_topic = "onex.evt.omnibase-infra.pattern-b-local-review-e2e.v1"
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-local-review-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_local_review_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="local_review",
+            payload={
+                "correlation_id": str(correlation_id),
+                "max_iterations": 3,
+                "required_clean_runs": 2,
+                "dry_run": True,
+                "requested_at": requested_at.isoformat(),
+            },
+            timeout_ms=300_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "local_review"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    payload = result.output_payloads[0]
+    assert payload["correlation_id"] == str(correlation_id)
+    assert payload["final_phase"] == "done"
+    assert payload["iteration_count"] == 1
+    assert payload["error_message"] is None
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "local_review"
     assert received_commands[0].response_topic == response_topic
     assert (
         received_commands[0].target_runtime_address
