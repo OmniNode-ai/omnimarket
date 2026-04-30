@@ -20,11 +20,16 @@ Related:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
+from pathlib import Path
+from statistics import mean
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,21 @@ class ModelEndpointConfig(BaseModel):
     timeout_seconds: float = Field(default=120.0, description="Request timeout.")
 
 
+class ModelDelegationHarnessSample(BaseModel):
+    """Router-readable subset of node_llm_eval_harness sample output."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    model_key: str = Field(..., min_length=1)
+    task_type: str = Field(..., min_length=1)
+    score: float = Field(..., ge=0.0, le=1.0)
+
+    @field_validator("task_type", mode="before")
+    @classmethod
+    def _normalize_task_type(cls, value: Any) -> str:
+        return str(value).lower()
+
+
 # Complexity keywords for routing
 _SIMPLE_KEYWORDS: frozenset[str] = frozenset(
     {
@@ -72,6 +92,86 @@ _SIMPLE_KEYWORDS: frozenset[str] = frozenset(
         "comment",
     }
 )
+
+_MIN_HARNESS_SAMPLES: int = 20
+_TASK_TYPE_CODE_GENERATION = "code_generation"
+_TASK_TYPE_CLASSIFICATION = "classification"
+
+
+def load_llm_eval_harness_samples(
+    path: str | Path,
+) -> tuple[ModelDelegationHarnessSample, ...]:
+    """Read node_llm_eval_harness JSON output for delegation routing."""
+    harness_path = Path(path)
+    try:
+        payload = json.loads(harness_path.read_text())
+    except json.JSONDecodeError as exc:
+        msg = f"Invalid llm_eval_harness JSON at {harness_path}: {exc}"
+        raise ValueError(msg) from exc
+
+    raw_samples = payload.get("samples") if isinstance(payload, dict) else None
+    if not isinstance(raw_samples, list):
+        msg = f"llm_eval_harness output at {harness_path} must contain samples list"
+        raise ValueError(msg)
+
+    try:
+        return tuple(
+            ModelDelegationHarnessSample.model_validate(s) for s in raw_samples
+        )
+    except ValidationError as exc:
+        msg = f"Invalid llm_eval_harness sample in {harness_path}: {exc}"
+        raise ValueError(msg) from exc
+
+
+def _tier_key_aliases(tier: EnumModelTier) -> frozenset[str]:
+    """Return accepted harness model_key spellings for a model tier."""
+    return frozenset({tier.value, tier.name, tier.name.lower()})
+
+
+def _infer_eval_task_type(text: str) -> str:
+    """Map routing text to the closest harness task dimension."""
+    if any(kw in text for kw in _SIMPLE_KEYWORDS):
+        return _TASK_TYPE_CLASSIFICATION
+    return _TASK_TYPE_CODE_GENERATION
+
+
+def _coerce_harness_samples(
+    samples: Iterable[ModelDelegationHarnessSample | Mapping[str, Any]],
+) -> tuple[ModelDelegationHarnessSample, ...]:
+    return tuple(
+        sample
+        if isinstance(sample, ModelDelegationHarnessSample)
+        else ModelDelegationHarnessSample.model_validate(sample)
+        for sample in samples
+    )
+
+
+def _route_from_mature_harness_samples(
+    *,
+    task_type: str,
+    available: frozenset[EnumModelTier],
+    samples: Iterable[ModelDelegationHarnessSample | Mapping[str, Any]],
+) -> EnumModelTier | None:
+    """Return the highest-scoring available tier with enough harness samples."""
+    normalized_samples = _coerce_harness_samples(samples)
+    if not normalized_samples:
+        return None
+
+    scored: list[tuple[float, EnumModelTier]] = []
+    for tier in available:
+        aliases = _tier_key_aliases(tier)
+        tier_scores = [
+            sample.score
+            for sample in normalized_samples
+            if sample.task_type == task_type and sample.model_key in aliases
+        ]
+        if len(tier_scores) >= _MIN_HARNESS_SAMPLES:
+            scored.append((mean(tier_scores), tier))
+
+    if not scored:
+        return None
+    return max(scored, key=lambda item: item[0])[1]
+
 
 _COMPLEX_KEYWORDS: frozenset[str] = frozenset(
     {
@@ -205,6 +305,8 @@ def route_ticket_to_tier(
     description: str,
     labels: tuple[str, ...] = (),
     available_tiers: frozenset[EnumModelTier] | None = None,
+    harness_samples: Iterable[ModelDelegationHarnessSample | Mapping[str, Any]] = (),
+    harness_result_path: str | Path | None = None,
 ) -> EnumModelTier:
     """Route a ticket to the appropriate model tier based on complexity.
 
@@ -219,6 +321,18 @@ def route_ticket_to_tier(
     """
     text = f"{title} {description} {' '.join(labels)}".lower()
     available = available_tiers or frozenset(EnumModelTier)
+    samples = (
+        load_llm_eval_harness_samples(harness_result_path)
+        if harness_result_path is not None
+        else tuple(harness_samples)
+    )
+    harness_tier = _route_from_mature_harness_samples(
+        task_type=_infer_eval_task_type(text),
+        available=available,
+        samples=samples,
+    )
+    if harness_tier is not None:
+        return harness_tier
 
     # GLM is primary for all code generation tasks
     if EnumModelTier.FRONTIER_GLM in available:
@@ -294,8 +408,10 @@ def route_to_template(target_handler_source: str) -> str:
 
 __all__: list[str] = [
     "EnumModelTier",
+    "ModelDelegationHarnessSample",
     "ModelEndpointConfig",
     "build_endpoint_configs",
+    "load_llm_eval_harness_samples",
     "route_ticket_to_tier",
     "route_to_template",
 ]

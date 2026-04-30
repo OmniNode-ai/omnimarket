@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10382
+title: "Project shared usage source values"
+summary: "Normalize LLM cost projection usage_source values through the shared EnumUsageSource vocabulary."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "protocols"
+evidence_requirements:
+  - kind: "tests"
+    description: "LLM cost projection handler and golden-chain tests pass with shared usage_source values."
+    command: "PYTHONPATH=/Users/jonah/Code/omni_home/omni_worktrees/OMN-10382/omnibase_core/src:src uv run pytest tests/test_projection_handlers.py::TestLlmCostHandler tests/test_golden_chain_projection_llm_cost.py -q"
+  - kind: "manual"
+    description: "Changed LLM cost projection and build-loop usage source paths typecheck."
+    command: "PYTHONPATH=/Users/jonah/Code/omni_home/omni_worktrees/OMN-10382/omnibase_core/src:src uv run mypy src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_llm_cost.py src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_projection_llm_cost.py src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py"
+  - kind: "manual"
+    description: "Post-merge deploy smoke confirms usage-source enum and touched runtime handlers import in the deployed runtime container."
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.enums.enum_usage_source import EnumUsageSource; from omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost import LlmCostProjectionRunner; from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost import HandlerProjectionLlmCost; print('deploy smoke ok', EnumUsageSource.MEASURED.value, LlmCostProjectionRunner.__name__, HandlerProjectionLlmCost.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Focused LLM cost projection handler and golden-chain tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "PYTHONPATH=/Users/jonah/Code/omni_home/omni_worktrees/OMN-10382/omnibase_core/src:src uv run pytest tests/test_projection_handlers.py::TestLlmCostHandler tests/test_golden_chain_projection_llm_cost.py -q"
+  - id: "dod-002"
+    description: "Changed runtime paths pass typecheck against the stacked omnibase_core enum dependency."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "PYTHONPATH=/Users/jonah/Code/omni_home/omni_worktrees/OMN-10382/omnibase_core/src:src uv run mypy src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_llm_cost.py src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_projection_llm_cost.py src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py"
+  - id: "dod-003"
+    description: "Post-merge deploy smoke plan imports shared usage-source enum and touched runtime handlers in the deployed runtime container."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.enums.enum_usage_source import EnumUsageSource; from omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost import LlmCostProjectionRunner; from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost import HandlerProjectionLlmCost; print('deploy smoke ok', EnumUsageSource.MEASURED.value, LlmCostProjectionRunner.__name__, HandlerProjectionLlmCost.__name__)\""

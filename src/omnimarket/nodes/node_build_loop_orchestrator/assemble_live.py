@@ -40,6 +40,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
 )
@@ -1002,7 +1003,11 @@ class LiveBuildDispatchHandler:
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
-            "usage_source": "API" if usage else "ESTIMATED",
+            "usage_source": (
+                EnumUsageSource.MEASURED.value
+                if usage
+                else EnumUsageSource.ESTIMATED.value
+            ),
             "estimated_cost_usd": _estimate_cost(model, total_tokens),
             "total_cost_usd": _estimate_cost(model, total_tokens),
             "reported_cost_usd": 0,

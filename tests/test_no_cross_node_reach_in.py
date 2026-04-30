@@ -33,7 +33,7 @@ _REACH_IN_PATTERN = re.compile(
 _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
     [
         # node_build_loop_orchestrator → node_build_loop (multiple tickets pending)
-        "omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py:43",
+        "omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py:44",
         "omnimarket/nodes/node_build_loop_orchestrator/__main__.py:26",
         "omnimarket/nodes/node_build_loop_orchestrator/models/model_phase_command_intent.py:10",
         "omnimarket/nodes/node_build_loop_orchestrator/models/model_loop_cycle_summary.py:15",

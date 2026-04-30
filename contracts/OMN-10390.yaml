@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10390
+title: "Verify llm_eval_harness feeds delegation router"
+summary: "Wire mature llm_eval_harness samples into the omnimarket delegation router and verify routing uses harness evidence once enough samples exist."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "Delegation router harness sample tests pass"
+    command: "uv run pytest tests/unit/nodes/node_build_loop_orchestrator/test_delegation_router.py -q"
+  - kind: "manual"
+    description: "Touched router paths pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py tests/unit/nodes/node_build_loop_orchestrator/test_delegation_router.py"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports the delegation router adapter in the runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import DelegationRouterAdapter; print(DelegationRouterAdapter.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Delegation router harness sample tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_build_loop_orchestrator/test_delegation_router.py -q"
+  - id: "dod-002"
+    description: "Touched router paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py tests/unit/nodes/node_build_loop_orchestrator/test_delegation_router.py"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke imports the delegation router adapter in the runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import DelegationRouterAdapter; print(DelegationRouterAdapter.__name__)\""
