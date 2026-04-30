@@ -29,6 +29,10 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
 )
+from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage import (
+    HandlerCoderabbitTriage,
+    ModelCoderabbitTriageCommand,
+)
 from omnimarket.nodes.node_local_review.handlers.handler_local_review import (
     HandlerLocalReview,
 )
@@ -409,6 +413,96 @@ async def _install_local_review_broker_worker(
     await bus.subscribe(
         command_topic,
         group_id=f"local-review-broker-{uuid4()}",
+        on_message=on_command,
+    )
+
+
+class _PatternBCoderabbitTriageHandler(HandlerCoderabbitTriage):
+    def _fetch_review_threads(
+        self,
+        owner: str,
+        repo: str,
+        pr_number: int,
+    ) -> list[dict[str, object]]:
+        assert owner == "OmniNode-ai"
+        assert repo == "omnimarket"
+        assert pr_number == 464
+        return [
+            {
+                "id": "PRT_blocking",
+                "isResolved": False,
+                "comments": {
+                    "nodes": [
+                        {
+                            "databaseId": 1001,
+                            "author": {"login": "coderabbitai[bot]"},
+                            "body": "critical: this can cause a regression",
+                            "url": "https://github.test/thread/blocking",
+                        }
+                    ]
+                },
+            },
+            {
+                "id": "PRT_suggestion",
+                "isResolved": False,
+                "comments": {
+                    "nodes": [
+                        {
+                            "databaseId": 1002,
+                            "author": {"login": "coderabbitai[bot]"},
+                            "body": "nitpick: prefer a clearer variable name",
+                            "url": "https://github.test/thread/suggestion",
+                        }
+                    ]
+                },
+            },
+        ]
+
+
+async def _install_coderabbit_triage_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = ModelCoderabbitTriageCommand.model_validate(
+                envelope.payload.payload
+            )
+            node_result = _PatternBCoderabbitTriageHandler().handle(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-coderabbit-triage-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"coderabbit-triage-broker-{uuid4()}",
         on_message=on_command,
     )
 
@@ -887,6 +981,71 @@ async def test_local_review_pattern_b_runs_node_end_to_end() -> None:
     assert payload["error_message"] is None
     assert len(received_commands) == 1
     assert received_commands[0].command_name == "local_review"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
+    )
+
+
+@pytest.mark.asyncio
+async def test_coderabbit_triage_pattern_b_runs_node_end_to_end() -> None:
+    correlation_id = str(uuid4())
+    response_topic = "onex.evt.omnibase-infra.pattern-b-coderabbit-triage-e2e.v1"
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-coderabbit-triage-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_coderabbit_triage_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="coderabbit_triage",
+            payload={
+                "repo": "OmniNode-ai/omnimarket",
+                "pr_number": 464,
+                "correlation_id": correlation_id,
+                "dry_run": True,
+            },
+            timeout_ms=120_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "coderabbit_triage"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    payload = result.output_payloads[0]
+    assert payload["correlation_id"] == correlation_id
+    assert payload["repo"] == "OmniNode-ai/omnimarket"
+    assert payload["pr_number"] == 464
+    assert payload["dry_run"] is True
+    assert payload["total_threads"] == 2
+    assert payload["blocking_count"] == 1
+    assert payload["suggestion_count"] == 1
+    assert payload["resolved_count"] == 0
+    threads = payload["threads"]
+    assert isinstance(threads, list)
+    assert {str(thread["severity"]) for thread in threads} == {
+        "BLOCKING",
+        "SUGGESTION",
+    }
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "coderabbit_triage"
     assert received_commands[0].response_topic == response_topic
     assert (
         received_commands[0].target_runtime_address

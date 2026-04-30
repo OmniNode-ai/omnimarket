@@ -182,7 +182,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_coderabbit_triage",
         module="omnimarket.nodes.node_coderabbit_triage",
         contract_path="src/omnimarket/nodes/node_coderabbit_triage/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_coderabbit_triage.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_coderabbit_triage.py",
+            "tests/test_codex_runtime_client.py::test_coderabbit_triage_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="coderabbit_triage",
     ),
     ModelMarketSkillSpec(
