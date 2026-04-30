@@ -346,9 +346,10 @@ def _finding_from_report(item: dict[str, object]) -> ModelGapFinding:
     category = EnumGapCategory(str(item.get("category") or "CONTRACT_DRIFT"))
     boundary_kind = str(item.get("boundary_kind") or "unknown")
     rule_name = str(item.get("rule_name") or "unknown")
+    repos_value = item.get("repos")
     repo = (
-        str((item.get("repos") or ["unknown"])[0])
-        if isinstance(item.get("repos"), list)
+        str(repos_value[0])
+        if isinstance(repos_value, list) and repos_value
         else "unknown"
     )
     message = str(item.get("message") or item.get("mismatch_shape") or rule_name)
