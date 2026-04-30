@@ -407,12 +407,16 @@ def _summarize_session_bootstrap(payload: dict[str, object]) -> dict[str, object
 
 def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, object]:
     dispatch_queue = payload.get("dispatch_queue", [])
+    dispatch_receipts = payload.get("dispatch_receipts", [])
     return {
         "status": payload.get("status"),
         "session_id": "sess-<redacted>" if payload.get("session_id") else None,
         "dry_run": payload.get("dry_run"),
         "dispatch_queue_count": len(dispatch_queue)
         if isinstance(dispatch_queue, list)
+        else 0,
+        "dispatch_receipt_count": len(dispatch_receipts)
+        if isinstance(dispatch_receipts, list)
         else 0,
     }
 
@@ -678,33 +682,96 @@ def _smoke_session_bootstrap() -> ModelCommandResult:
 
 
 def _smoke_session_orchestrator() -> ModelCommandResult:
-    command = [
-        sys.executable,
-        "-m",
-        "omnimarket.nodes.node_session_orchestrator",
-        "--skip-health",
-        "--phase",
-        "1",
-        "--dry-run",
-        "--output-json",
-    ]
-    completed = _run_command(
-        command=command,
-        env={"ONEX_INFRA_HOST": "127.0.0.1", "ONEX_INFRA_USER": "jonah"},
-    )
-    payload = _parse_json(completed.stdout)
-    passed = completed.returncode == 0 and payload.get("status") == "complete"
-    notes = [
-        "smoke intentionally bypasses health probes to isolate the market-owned CLI path"
-    ]
-    return ModelCommandResult(
-        passed=passed,
-        command=_sanitize_command(command),
-        returncode=completed.returncode,
-        summary=_summarize_session_orchestrator(payload),
-        stderr="skip_health=True" if completed.stderr.strip() else "",
-        notes=notes,
-    )
+    with tempfile.TemporaryDirectory(
+        prefix="market-skill-session-orchestrator-"
+    ) as tmp:
+        tmp_path = Path(tmp)
+        state_dir = tmp_path / "state"
+        fixture_path = tmp_path / "linear-fixture.json"
+        fixture_path.write_text(
+            json.dumps(
+                {
+                    "nodes": [
+                        {
+                            "identifier": "OMN-10400",
+                            "title": "Real surfaces CLI output",
+                            "priority": 1,
+                            "labels": {"nodes": [{"name": "market"}]},
+                            "updatedAt": "2026-04-20T00:00:00Z",
+                            "children": {"nodes": []},
+                        },
+                        {
+                            "identifier": "OMN-10399",
+                            "title": "Ticket pipeline CLI output",
+                            "priority": 2,
+                            "labels": {"nodes": []},
+                            "updatedAt": "2026-04-18T00:00:00Z",
+                            "children": {"nodes": []},
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        command = [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_session_orchestrator",
+            "--skip-health",
+            "--phase",
+            "0",
+            "--state-dir",
+            str(state_dir),
+            "--session-id",
+            "sess-market-baseline",
+            "--output-json",
+        ]
+        completed = _run_command(
+            command=command,
+            env={
+                "ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE": str(fixture_path),
+            },
+        )
+        payload = _parse_json(completed.stdout)
+        dispatch_receipts_raw = payload.get("dispatch_receipts")
+        dispatch_receipts = (
+            dispatch_receipts_raw if isinstance(dispatch_receipts_raw, list) else []
+        )
+        receipt_payloads = [
+            json.loads(item) for item in dispatch_receipts if isinstance(item, str)
+        ]
+        artifact_paths = [
+            Path(str(item.get("dispatch_artifact_path")))
+            for item in receipt_payloads
+            if item.get("dispatch_artifact_path")
+        ]
+        evidence_paths = [
+            state_dir / "in_flight.yaml",
+            state_dir / "ledger.jsonl",
+            *artifact_paths,
+            *state_dir.glob("rsd-scored-*.yaml"),
+        ]
+        dispatch_queue = payload.get("dispatch_queue")
+        passed = (
+            completed.returncode == 0
+            and payload.get("status") == "complete"
+            and isinstance(dispatch_queue, list)
+            and len(dispatch_queue) == 2
+            and len(receipt_payloads) == 2
+            and all(path.exists() for path in evidence_paths)
+        )
+        notes = [
+            "smoke bypasses health probes and uses a deterministic Linear fixture "
+            "to exercise Phase 2 scoring plus Phase 3 dispatch artifacts"
+        ]
+        return ModelCommandResult(
+            passed=passed,
+            command=_sanitize_command(command),
+            returncode=completed.returncode,
+            summary=_summarize_session_orchestrator(payload),
+            stderr="skip_health=True" if completed.stderr.strip() else "",
+            notes=notes,
+        )
 
 
 def _smoke_ticket_pipeline() -> ModelCommandResult:

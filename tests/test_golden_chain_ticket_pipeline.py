@@ -396,16 +396,14 @@ class TestTicketPipelineGoldenChain:
 
         assert completed.returncode == 0
         payload = json.loads(completed.stdout)
-        assert payload["stopped_at"] == "blocked"
-        assert payload["stop_reason"] == "not_implemented"
-        assert [item["phase"] for item in payload["phase_results"]] == [
+        assert payload["result_summary"]["stopped_at"] == "blocked"
+        assert payload["result_summary"]["stop_reason"] == "not_implemented"
+        assert [item["name"] for item in payload["steps"]] == [
             "pre_flight",
             "implement",
             "local_review",
         ]
-        assert (
-            payload["phase_results"][1]["details"]["execution_mode"] == "compile_only"
-        )
+        assert payload["steps"][1]["details"]["execution_mode"] == "compile_only"
 
     async def test_cli_skip_to_stops_at_requested_unwired_phase(
         self, event_bus: EventBusInmemory
@@ -428,6 +426,6 @@ class TestTicketPipelineGoldenChain:
 
         assert completed.returncode == 0
         payload = json.loads(completed.stdout)
-        assert payload["ran_phase"] == "create_pr"
-        assert payload["phase_results"][0]["status"] == "not_implemented"
-        assert payload["stopped_at"] == "blocked"
+        assert payload["result_summary"]["ran_phase"] == "create_pr"
+        assert payload["steps"][0]["status"] == "not_implemented"
+        assert payload["result_summary"]["stopped_at"] == "blocked"

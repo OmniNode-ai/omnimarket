@@ -126,7 +126,23 @@ def test_session_orchestrator_summary_redacts_run_variant_values() -> None:
             "session_id": "sess-20260429-1559",
             "dry_run": True,
             "dispatch_queue": [],
+            "dispatch_receipts": ["{}"],
         }
     )
 
     assert summary["session_id"] == "sess-<redacted>"
+    assert summary["dispatch_receipt_count"] == 1
+
+
+def test_session_orchestrator_smoke_runs_phase2_and_phase3() -> None:
+    result = market_skill_baseline.run_cli_smoke(
+        next(
+            spec
+            for spec in market_skill_baseline.iter_market_skill_specs()
+            if spec.skill_name == "session_orchestrator"
+        )
+    )
+
+    assert result.passed
+    assert result.summary["dispatch_queue_count"] == 2
+    assert result.summary["dispatch_receipt_count"] == 2
