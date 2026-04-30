@@ -165,6 +165,21 @@ class ModelPatternBBrokerAclResult(BaseModel):
     matched_rule: str | None = Field(default=None, max_length=128)
 
 
+class ModelPatternBBrokerQualityGateResult(BaseModel):
+    """Quality-gate result required before broker publication."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    acl: ModelPatternBBrokerAclResult
+    request_id: UUID
+    correlation_id: UUID
+    evaluated_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
+
+    @property
+    def allowed(self) -> bool:
+        return self.acl.decision is EnumPatternBBrokerAclDecision.allow
+
+
 class ModelPatternBBrokerDispatchRequest(BaseModel):
     """Dispatch request accepted by the Pattern B broker publish adapter."""
 
@@ -331,6 +346,7 @@ __all__ = [
     "ModelPatternBBrokerAclResult",
     "ModelPatternBBrokerDispatchRequest",
     "ModelPatternBBrokerPublishReceipt",
+    "ModelPatternBBrokerQualityGateResult",
     "ModelPatternBBrokerRuntimeConfig",
     "ModelPatternBBrokerTerminalEvent",
     "ModelPatternBBrokerTopicBindings",

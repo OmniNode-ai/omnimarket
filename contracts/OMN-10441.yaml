@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10441
+title: "Add Pattern B broker ACL and quality gate hook"
+summary: "Add minimum broker ACL evaluation and wire publish-side dispatch through an explicit quality-gate allow decision."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "Pattern B broker ACL and quality-gate tests pass"
+    command: "uv run pytest tests/unit/nodes/node_pattern_b_broker -q"
+  - kind: "manual"
+    description: "Touched Pattern B broker files pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_pattern_b_broker tests/unit/nodes/node_pattern_b_broker"
+  - kind: "manual"
+    description: "Ticket contract validates"
+    command: "uv run validate-yaml contracts/OMN-10441.yaml"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Pattern B broker ACL and quality-gate tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_pattern_b_broker -q"
+  - id: "dod-002"
+    description: "Touched Pattern B broker files pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_pattern_b_broker tests/unit/nodes/node_pattern_b_broker"
+  - id: "dod-003"
+    description: "Ticket contract validates"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run validate-yaml contracts/OMN-10441.yaml"
+  - id: "dod-deploy"
+    description: |
+      Deploy posture for this slice. OMN-10441 adds pure in-process ACL and
+      publish-time quality-gate enforcement with EventBusInmemory tests. It
+      does not add live Kafka wiring, process registration, shell execution, or
+      runtime deployment hooks.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'no deploy required for OMN-10441 - pure ACL and quality-gate hook tested locally; follow-up ticket carries end-to-end runtime proof'"

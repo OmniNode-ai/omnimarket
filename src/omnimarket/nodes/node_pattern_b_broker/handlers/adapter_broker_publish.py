@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_acl import (
+    AdapterPatternBBrokerAcl,
+    ProtocolPatternBBrokerQualityGate,
+)
 from omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_contract_config import (
     load_pattern_b_broker_config,
 )
 from omnimarket.nodes.node_pattern_b_broker.models import (
+    EnumPatternBBrokerAclDecision,
     EnumPatternBBrokerState,
     ModelPatternBBrokerDispatchRequest,
     ModelPatternBBrokerPublishReceipt,
@@ -34,9 +39,11 @@ class AdapterPatternBBrokerPublish:
         *,
         event_bus: ProtocolPatternBBrokerEventPublisher,
         config: ModelPatternBBrokerRuntimeConfig | None = None,
+        quality_gate: ProtocolPatternBBrokerQualityGate | None = None,
     ) -> None:
         self._event_bus = event_bus
         self._config = config or load_pattern_b_broker_config()
+        self._quality_gate = quality_gate or AdapterPatternBBrokerAcl(self._config)
 
     @property
     def config(self) -> ModelPatternBBrokerRuntimeConfig:
@@ -47,7 +54,7 @@ class AdapterPatternBBrokerPublish:
         request: ModelPatternBBrokerDispatchRequest,
     ) -> ModelPatternBBrokerPublishReceipt:
         """Validate and publish a dispatch request to the contract topic."""
-        self._validate_publishable(request)
+        self._enforce_quality_gate(request)
         payload = request.model_dump_json().encode("utf-8")
         key = str(request.request_id)
         topic = self._config.topics.dispatch_request_topic
@@ -68,21 +75,12 @@ class AdapterPatternBBrokerPublish:
             wait_policy=request.wait_policy,
         )
 
-    def _validate_publishable(
+    def _enforce_quality_gate(
         self, request: ModelPatternBBrokerDispatchRequest
     ) -> None:
-        if request.originator not in self._config.allowed_originators:
-            raise PermissionError(
-                f"originator {request.originator.value!r} is not allowed by broker contract"
-            )
-        if request.recipient not in self._config.allowed_recipients:
-            raise PermissionError(
-                f"recipient {request.recipient.value!r} is not allowed by broker contract"
-            )
-        if request.state is not EnumPatternBBrokerState.accepted:
-            raise ValueError(
-                "only accepted Pattern B dispatch requests can be published"
-            )
+        result = self._quality_gate.evaluate(request)
+        if result.acl.decision is not EnumPatternBBrokerAclDecision.allow:
+            raise PermissionError(result.acl.reason)
 
 
 __all__ = ["AdapterPatternBBrokerPublish", "ProtocolPatternBBrokerEventPublisher"]

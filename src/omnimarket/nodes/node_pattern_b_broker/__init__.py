@@ -1,11 +1,13 @@
 """Pattern B broker contract boundary for cross-CLI delegation."""
 
 from omnimarket.nodes.node_pattern_b_broker.handlers import (
+    AdapterPatternBBrokerAcl,
     AdapterPatternBBrokerPublish,
     AdapterPatternBBrokerTerminalConsumer,
     ProtocolPatternBBrokerEventMessage,
     ProtocolPatternBBrokerEventPublisher,
     ProtocolPatternBBrokerEventSubscriber,
+    ProtocolPatternBBrokerQualityGate,
     load_pattern_b_broker_config,
 )
 from omnimarket.nodes.node_pattern_b_broker.models import (
@@ -19,6 +21,7 @@ from omnimarket.nodes.node_pattern_b_broker.models import (
     ModelPatternBBrokerAclResult,
     ModelPatternBBrokerDispatchRequest,
     ModelPatternBBrokerPublishReceipt,
+    ModelPatternBBrokerQualityGateResult,
     ModelPatternBBrokerRuntimeConfig,
     ModelPatternBBrokerTerminalEvent,
     ModelPatternBBrokerTopicBindings,
@@ -26,6 +29,7 @@ from omnimarket.nodes.node_pattern_b_broker.models import (
 )
 
 __all__ = [
+    "AdapterPatternBBrokerAcl",
     "AdapterPatternBBrokerPublish",
     "AdapterPatternBBrokerTerminalConsumer",
     "EnumPatternBBrokerAclDecision",
@@ -38,6 +42,7 @@ __all__ = [
     "ModelPatternBBrokerAclResult",
     "ModelPatternBBrokerDispatchRequest",
     "ModelPatternBBrokerPublishReceipt",
+    "ModelPatternBBrokerQualityGateResult",
     "ModelPatternBBrokerRuntimeConfig",
     "ModelPatternBBrokerTerminalEvent",
     "ModelPatternBBrokerTopicBindings",
@@ -45,5 +50,6 @@ __all__ = [
     "ProtocolPatternBBrokerEventMessage",
     "ProtocolPatternBBrokerEventPublisher",
     "ProtocolPatternBBrokerEventSubscriber",
+    "ProtocolPatternBBrokerQualityGate",
     "load_pattern_b_broker_config",
 ]
