@@ -137,10 +137,10 @@ class TestLlmCostHandler:
             "onex.evt.omniintelligence.llm-call-completed.v1", data, _make_meta()
         )
         assert result is True
-        # Should default to API for unrecognized source
+        # Should default to unknown for unrecognized source
         call_args = mock_db.execute.call_args[0]
         # The 8th positional param is usage_source (index 7 in the args tuple)
-        assert "API" in call_args
+        assert "unknown" in call_args
 
 
 class TestDelegationHandler:

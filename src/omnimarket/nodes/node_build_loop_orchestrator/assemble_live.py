@@ -36,6 +36,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import httpx
+from omnibase_core.enums.cost import EnumUsageSource
 from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
@@ -1002,7 +1003,11 @@ class LiveBuildDispatchHandler:
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
-            "usage_source": "API" if usage else "ESTIMATED",
+            "usage_source": (
+                EnumUsageSource.MEASURED.value
+                if usage
+                else EnumUsageSource.ESTIMATED.value
+            ),
             "estimated_cost_usd": _estimate_cost(model, total_tokens),
             "total_cost_usd": _estimate_cost(model, total_tokens),
             "reported_cost_usd": 0,

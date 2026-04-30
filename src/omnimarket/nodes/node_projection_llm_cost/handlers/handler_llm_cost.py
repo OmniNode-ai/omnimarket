@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_core.enums.cost import EnumUsageSource
 
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -33,8 +34,6 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "injection_effectiveness",
     }
 )
-
-VALID_USAGE_SOURCES = {"API", "ESTIMATED", "MISSING"}
 
 
 class LlmCostProjectionRunner(BaseProjectionRunner):
@@ -107,16 +106,20 @@ class LlmCostProjectionRunner(BaseProjectionRunner):
             )
             or data.get("usage_source")
             or data.get("usageSource")
-            or ("ESTIMATED" if data.get("usage_is_estimated") else "API")
+            or (
+                EnumUsageSource.ESTIMATED.value
+                if data.get("usage_is_estimated")
+                else EnumUsageSource.MEASURED.value
+            )
         )
-        usage_source_upper = str(usage_source_raw).upper()
-        if usage_source_upper not in VALID_USAGE_SOURCES:
+        try:
+            usage_source = EnumUsageSource(usage_source_raw).value
+        except ValueError:
             logger.warning(
-                "LLM cost event has unrecognised usage_source %r -- defaulting to API",
+                "LLM cost event has unrecognised usage_source %r -- defaulting to unknown",
                 usage_source_raw,
             )
-            usage_source_upper = "API"
-        usage_source = usage_source_upper
+            usage_source = EnumUsageSource.UNKNOWN.value
 
         granularity_raw = data.get("granularity") or "hour"
         granularity = granularity_raw if granularity_raw in ("hour", "day") else "hour"
