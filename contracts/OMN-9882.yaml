@@ -6,8 +6,7 @@ summary: "Extend the Codex ONEX plugin surface with dispatch-only shims for node
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
-  - "codex_skill"
-  - "runtime_ingress"
+  - "public_api"
 evidence_requirements:
   - kind: "manual"
     description: "Codex plugin shim and installer tests pass"
