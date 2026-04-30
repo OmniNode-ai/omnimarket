@@ -74,6 +74,8 @@ def test_codex_shims_remain_dispatch_only() -> None:
         assert "--target-runtime-address" in text
         assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
         assert "runtime://..." in text
+        assert "--compile-only" in text
+        assert "broker-free preflight" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -87,8 +89,6 @@ def test_codex_shims_remain_dispatch_only() -> None:
         elif path.parent.name == "merge-sweep":
             assert '--command-name "pr_lifecycle_orchestrator"' in text
             assert "--timeout-ms 300000" in text
-            assert "--compile-only" in text
-            assert "broker-free preflight" in text
             assert "run_id" in text
             assert "filesystem-safe identifier" in text
         elif path.parent.name == "aislop-sweep":
@@ -121,6 +121,8 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         assert "--target-runtime-address" in text
         assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
         assert "runtime://..." in text
+        assert "--compile-only" in text
+        assert "broker-free preflight" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -137,8 +139,6 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         elif path.parent.name == "merge-sweep":
             assert '--command-name "pr_lifecycle_orchestrator"' in text
             assert "--timeout-ms 300000" in text
-            assert "--compile-only" in text
-            assert "broker-free preflight" in text
             assert "run_id" in text
             assert "filesystem-safe identifier" in text
         else:

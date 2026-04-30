@@ -35,6 +35,10 @@ If the user supplies a `runtime://...` target, add
 `--target-runtime-address '<runtime-address>'` to the request command. If the
 argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
+For broker-free preflight, add `--compile-only`. This validates the payload,
+command topic, response topic, correlation id, timeout, and target runtime
+address without publishing to Kafka or starting a runtime.
+
 Map user inputs into a JSON payload:
 
 - `target_dirs` -> absolute path list in `target_dirs`
