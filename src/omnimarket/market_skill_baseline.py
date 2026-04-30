@@ -895,6 +895,101 @@ def _fallback_contract(spec: ModelMarketSkillSpec) -> ModelContractInventory:
     )
 
 
+def capture_market_skill_result(
+    spec: ModelMarketSkillSpec,
+    *,
+    run_pytest: bool = True,
+) -> ModelMarketSkillResult:
+    """Capture one market-skill baseline result."""
+
+    try:
+        contract = _load_contract(spec)
+    except Exception as exc:
+        contract = _fallback_contract(spec)
+        input_drift = ModelInputDrift(
+            matches=False,
+            contract_only_fields=[],
+            model_only_fields=[],
+        )
+        cli_smoke = _failure_command_result(stage="load_contract", error=exc)
+        return ModelMarketSkillResult(
+            skill_name=spec.skill_name,
+            contract=contract,
+            input_drift=input_drift,
+            cli_smoke=cli_smoke,
+            pytest=None,
+            overall_status="failing",
+        )
+
+    try:
+        input_drift = _compute_input_drift(contract, spec)
+    except Exception as exc:
+        input_drift = ModelInputDrift(
+            matches=False,
+            contract_only_fields=[],
+            model_only_fields=[],
+        )
+        cli_smoke = _failure_command_result(stage="compute_input_drift", error=exc)
+        return ModelMarketSkillResult(
+            skill_name=spec.skill_name,
+            contract=contract,
+            input_drift=input_drift,
+            cli_smoke=cli_smoke,
+            pytest=None,
+            overall_status="failing",
+        )
+
+    try:
+        cli_smoke = run_cli_smoke(spec)
+    except Exception as exc:
+        cli_smoke = _failure_command_result(stage="cli_smoke", error=exc)
+
+    pytest_result = None
+    if run_pytest:
+        try:
+            pytest_result = run_pytest_targets(spec)
+        except Exception as exc:
+            pytest_result = _failure_command_result(stage="pytest", error=exc)
+
+    return ModelMarketSkillResult(
+        skill_name=spec.skill_name,
+        contract=contract,
+        input_drift=input_drift,
+        cli_smoke=cli_smoke,
+        pytest=pytest_result,
+        overall_status=_overall_status(
+            input_drift=input_drift,
+            cli_smoke=cli_smoke,
+            pytest_result=pytest_result,
+        ),
+    )
+
+
+def iter_market_skill_baseline_results(
+    *,
+    run_pytest: bool = True,
+    skill_names: set[str] | None = None,
+) -> Iterator[ModelMarketSkillResult]:
+    """Yield market-skill baseline results as each skill completes."""
+
+    for spec in iter_market_skill_specs():
+        if skill_names and spec.skill_name not in skill_names:
+            continue
+        yield capture_market_skill_result(spec, run_pytest=run_pytest)
+
+
+def build_market_skill_baseline_report(
+    results: list[ModelMarketSkillResult],
+) -> ModelMarketSkillBaselineReport:
+    """Build a baseline report from already-captured skill results."""
+
+    return ModelMarketSkillBaselineReport(
+        captured_at=datetime.now(tz=UTC),
+        repo_root=REPO_ROOT_LABEL,
+        skills=results,
+    )
+
+
 def capture_market_skill_baseline(
     *,
     run_pytest: bool = True,
@@ -902,82 +997,13 @@ def capture_market_skill_baseline(
 ) -> ModelMarketSkillBaselineReport:
     """Capture the current market-only baseline."""
 
-    results: list[ModelMarketSkillResult] = []
-    for spec in iter_market_skill_specs():
-        if skill_names and spec.skill_name not in skill_names:
-            continue
-        try:
-            contract = _load_contract(spec)
-        except Exception as exc:
-            contract = _fallback_contract(spec)
-            input_drift = ModelInputDrift(
-                matches=False,
-                contract_only_fields=[],
-                model_only_fields=[],
-            )
-            cli_smoke = _failure_command_result(stage="load_contract", error=exc)
-            results.append(
-                ModelMarketSkillResult(
-                    skill_name=spec.skill_name,
-                    contract=contract,
-                    input_drift=input_drift,
-                    cli_smoke=cli_smoke,
-                    pytest=None,
-                    overall_status="failing",
-                )
-            )
-            continue
-
-        try:
-            input_drift = _compute_input_drift(contract, spec)
-        except Exception as exc:
-            input_drift = ModelInputDrift(
-                matches=False,
-                contract_only_fields=[],
-                model_only_fields=[],
-            )
-            cli_smoke = _failure_command_result(stage="compute_input_drift", error=exc)
-            results.append(
-                ModelMarketSkillResult(
-                    skill_name=spec.skill_name,
-                    contract=contract,
-                    input_drift=input_drift,
-                    cli_smoke=cli_smoke,
-                    pytest=None,
-                    overall_status="failing",
-                )
-            )
-            continue
-
-        try:
-            cli_smoke = run_cli_smoke(spec)
-        except Exception as exc:
-            cli_smoke = _failure_command_result(stage="cli_smoke", error=exc)
-
-        pytest_result = None
-        if run_pytest:
-            try:
-                pytest_result = run_pytest_targets(spec)
-            except Exception as exc:
-                pytest_result = _failure_command_result(stage="pytest", error=exc)
-        results.append(
-            ModelMarketSkillResult(
-                skill_name=spec.skill_name,
-                contract=contract,
-                input_drift=input_drift,
-                cli_smoke=cli_smoke,
-                pytest=pytest_result,
-                overall_status=_overall_status(
-                    input_drift=input_drift,
-                    cli_smoke=cli_smoke,
-                    pytest_result=pytest_result,
-                ),
+    return build_market_skill_baseline_report(
+        list(
+            iter_market_skill_baseline_results(
+                run_pytest=run_pytest,
+                skill_names=skill_names,
             )
         )
-    return ModelMarketSkillBaselineReport(
-        captured_at=datetime.now(tz=UTC),
-        repo_root=REPO_ROOT_LABEL,
-        skills=results,
     )
 
 
