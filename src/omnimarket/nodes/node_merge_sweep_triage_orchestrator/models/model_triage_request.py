@@ -40,6 +40,10 @@ class ModelTriageRequest(BaseModel):
         default=True,
         description="Emit a pr_polish command for every Track B PR in addition to specialized remediation commands.",
     )
+    dry_run: bool = Field(
+        default=True,
+        description="When true, emitted pr_polish commands run without push/automerge side effects.",
+    )
 
 
 class ModelAutoMergeArmCommand(BaseModel):

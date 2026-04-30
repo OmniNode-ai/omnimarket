@@ -119,9 +119,9 @@ class HandlerTriageOrchestrator:
                         correlation_id=request.correlation_id,
                         repo=classified_pr.pr.repo,
                         pr_number=classified_pr.pr.number,
-                        no_push=True,
-                        no_automerge=True,
-                        dry_run=True,
+                        no_push=request.dry_run,
+                        no_automerge=request.dry_run,
+                        dry_run=request.dry_run,
                         requested_at=datetime.now(UTC),
                     )
                 )

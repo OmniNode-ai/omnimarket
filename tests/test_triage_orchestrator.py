@@ -261,6 +261,40 @@ async def test_track_b_default_also_emits_pr_polish_start() -> None:
 
 
 @pytest.mark.asyncio
+async def test_track_b_non_dry_run_emits_live_pr_polish_start() -> None:
+    """Non-dry-run triage emits a live pr_polish command."""
+    pr = _pr(602, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = ModelTriageRequest(
+        classification=ModelMergeSweepResult(classified=classified),
+        run_id=_RUN_ID,
+        correlation_id=_CORR_ID,
+        dry_run=False,
+    )
+
+    mock_proc = _mock_proc(
+        {
+            "statusCheckRollup": [
+                {
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887768",
+                }
+            ]
+        }
+    )
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    polish_cmd = next(
+        event for event in output.events if isinstance(event, ModelPrPolishStartCommand)
+    )
+    assert polish_cmd.dry_run is False
+    assert polish_cmd.no_push is False
+    assert polish_cmd.no_automerge is False
+
+
+@pytest.mark.asyncio
 async def test_rule_13_changes_requested_skip() -> None:
     """Rule 13: CHANGES_REQUESTED → SKIP."""
     pr = _pr(700, review_decision="CHANGES_REQUESTED")
