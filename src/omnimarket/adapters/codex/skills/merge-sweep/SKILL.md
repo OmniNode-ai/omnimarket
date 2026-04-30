@@ -23,6 +23,7 @@ queue logic, or PR classification logic to this skill.
 | `verify` | Run verification before merge | `false` |
 | `verify_timeout_seconds` | Per-PR verification timeout | `30` |
 | `onex_state_dir` | Optional state artifact directory override | Default `ONEX_STATE_DIR` |
+| `target_runtime_address` | Optional `runtime://...` runtime target | Uses `ONEX_TARGET_RUNTIME_ADDRESS` when set |
 
 ## Dispatch
 
@@ -34,6 +35,10 @@ env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \
   --payload '<json-payload>' \
   --timeout-ms 300000
 ```
+
+If the user supplies a `runtime://...` target, add
+`--target-runtime-address '<runtime-address>'` to the request command. If the
+argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
 Map user inputs into a JSON payload using the same field names:
 
