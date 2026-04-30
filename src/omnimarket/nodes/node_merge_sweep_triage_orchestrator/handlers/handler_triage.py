@@ -134,8 +134,10 @@ class HandlerTriageOrchestrator:
             if cmd is not None:
                 raw_cmds.append(cmd)
 
-        # total_prs = actionable count only; skipped PRs never emit outcomes
-        total_prs = len(raw_cmds)
+        # total_prs = actionable PR count only. A Track B PR may fan out to both
+        # polish and specialized remediation commands, but it is still one PR in
+        # the reducer terminal count.
+        total_prs = len({(cmd.repo, cmd.pr_number) for cmd in raw_cmds})
         # Phase 2 models use run_id: str, not UUID — model_copy handles both
         events: list[Any] = []
         for cmd in raw_cmds:

@@ -36,6 +36,9 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
     ModelThreadReplyCommand,
     ModelTriageRequest,
 )
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
+    ModelPrPolishStartCommand,
+)
 
 _RUN_ID = UUID("00000000-0000-4000-a000-000000000001")
 _CORR_ID = UUID("00000000-0000-4000-a000-000000000002")
@@ -522,6 +525,44 @@ async def test_phase1_rule_6_still_works() -> None:
     assert len(output.events) == 1
     assert isinstance(output.events[0], ModelCiRerunCommand)
     assert output.events[0].run_id_github == "99887766"
+
+
+@pytest.mark.asyncio
+async def test_track_b_polish_fanout_counts_as_one_pr() -> None:
+    """Track B can emit polish + remediation commands but remains one reducer PR."""
+    pr = _pr(600, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = ModelTriageRequest(
+        classification=ModelMergeSweepResult(classified=classified),
+        run_id=_RUN_ID,
+        correlation_id=_CORR_ID,
+        emit_pr_polish_commands=True,
+        dry_run=False,
+    )
+
+    mock_proc = _mock_proc(
+        {
+            "statusCheckRollup": [
+                {
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887766",
+                }
+            ]
+        }
+    )
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    polish_cmd = next(
+        e for e in output.events if isinstance(e, ModelPrPolishStartCommand)
+    )
+    ci_cmd = next(e for e in output.events if isinstance(e, ModelCiRerunCommand))
+
+    assert polish_cmd.dry_run is False
+    assert polish_cmd.no_push is False
+    assert polish_cmd.no_automerge is False
+    assert ci_cmd.total_prs == 1
 
 
 @pytest.mark.asyncio
