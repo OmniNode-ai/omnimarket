@@ -79,6 +79,7 @@ def _make_request(classified: list[ModelClassifiedPR]) -> ModelTriageRequest:
         classification=ModelMergeSweepResult(classified=classified),
         run_id=_RUN_ID,
         correlation_id=_CORR_ID,
+        emit_pr_polish_commands=False,
     )
 
 

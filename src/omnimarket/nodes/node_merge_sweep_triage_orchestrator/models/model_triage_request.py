@@ -36,6 +36,10 @@ class ModelTriageRequest(BaseModel):
         default=0,
         description="Total number of PRs in this sweep run (set by orchestrator from len(classified)).",
     )
+    emit_pr_polish_commands: bool = Field(
+        default=True,
+        description="Emit a pr_polish command for every Track B PR in addition to specialized remediation commands.",
+    )
 
 
 class ModelAutoMergeArmCommand(BaseModel):

@@ -29,6 +29,9 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
     ModelRebaseCommand,
     ModelTriageRequest,
 )
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
+    ModelPrPolishStartCommand,
+)
 
 _RUN_ID = UUID("00000000-0000-4000-a000-000000000001")
 _CORR_ID = UUID("00000000-0000-4000-a000-000000000002")
@@ -75,6 +78,7 @@ def _make_request(classified: list[ModelClassifiedPR]) -> ModelTriageRequest:
         classification=ModelMergeSweepResult(classified=classified),
         run_id=_RUN_ID,
         correlation_id=_CORR_ID,
+        emit_pr_polish_commands=False,
     )
 
 
@@ -217,6 +221,43 @@ async def test_rule_6_b_polish_blocked_emits_ci_rerun() -> None:
     assert isinstance(cmd, ModelCiRerunCommand)
     assert cmd.pr_number == 600
     assert cmd.run_id_github == "99887766"
+
+
+@pytest.mark.asyncio
+async def test_track_b_default_also_emits_pr_polish_start() -> None:
+    """Every Track B PR is sent to pr_polish by default."""
+    pr = _pr(601, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = ModelTriageRequest(
+        classification=ModelMergeSweepResult(classified=classified),
+        run_id=_RUN_ID,
+        correlation_id=_CORR_ID,
+    )
+
+    mock_proc = _mock_proc(
+        {
+            "statusCheckRollup": [
+                {
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887767",
+                }
+            ]
+        }
+    )
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert any(isinstance(event, ModelPrPolishStartCommand) for event in output.events)
+    polish_cmd = next(
+        event for event in output.events if isinstance(event, ModelPrPolishStartCommand)
+    )
+    assert polish_cmd.repo == "OmniNode-ai/omni_home"
+    assert polish_cmd.pr_number == 601
+    assert polish_cmd.dry_run is True
+    assert polish_cmd.no_push is True
+    assert polish_cmd.no_automerge is True
+    assert any(isinstance(event, ModelCiRerunCommand) for event in output.events)
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -46,6 +47,9 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
     ModelRebaseCommand,
     ModelThreadReplyCommand,
     ModelTriageRequest,
+)
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
+    ModelPrPolishStartCommand,
 )
 
 _log = logging.getLogger(__name__)
@@ -106,6 +110,21 @@ class HandlerTriageOrchestrator:
 
         # First pass: collect actionable commands with placeholder total_prs=0
         for classified_pr in request.classification.classified:
+            if (
+                request.emit_pr_polish_commands
+                and classified_pr.track == EnumPRTrack.B_POLISH
+            ):
+                raw_cmds.append(
+                    ModelPrPolishStartCommand(
+                        correlation_id=request.correlation_id,
+                        repo=classified_pr.pr.repo,
+                        pr_number=classified_pr.pr.number,
+                        no_push=True,
+                        no_automerge=True,
+                        dry_run=True,
+                        requested_at=datetime.now(UTC),
+                    )
+                )
             cmd = await self._classify_to_command(
                 classified_pr,
                 request.run_id,
@@ -122,9 +141,12 @@ class HandlerTriageOrchestrator:
         for cmd in raw_cmds:
             if isinstance(
                 cmd,
-                ModelThreadReplyCommand | ModelConflictHunkCommand | ModelCiFixCommand,
+                ModelThreadReplyCommand
+                | ModelConflictHunkCommand
+                | ModelCiFixCommand
+                | ModelPrPolishStartCommand,
             ):
-                # Phase 2 models don't carry total_prs — emit as-is
+                # Phase 2 and pr_polish commands don't carry total_prs — emit as-is
                 events.append(cmd)
             else:
                 events.append(cmd.model_copy(update={"total_prs": total_prs}))

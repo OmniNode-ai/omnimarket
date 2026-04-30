@@ -112,6 +112,7 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
         classification=ModelMergeSweepResult(classified=classified),
         run_id=_RUN_ID,
         correlation_id=_CORR_ID,
+        emit_pr_polish_commands=False,
     )
 
     # --- Node 1: Orchestrator ---
