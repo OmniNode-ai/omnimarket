@@ -24,6 +24,7 @@ logic or fallback scheduler logic to this skill.
 | `model_routing_preference` | `local-first`, `frontier-only`, or `hybrid` | `local-first` |
 | `state_dir` | State output directory | `.onex_state` |
 | `dry_run` | Build artifacts without mutating scheduler state | `false` |
+| `target_runtime_address` | Optional `runtime://...` runtime target | Uses `ONEX_TARGET_RUNTIME_ADDRESS` when set |
 
 ## Dispatch
 
@@ -35,6 +36,10 @@ env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \
   --payload '<json-payload>' \
   --timeout-ms 30000
 ```
+
+If the user supplies a `runtime://...` target, add
+`--target-runtime-address '<runtime-address>'` to the request command. If the
+argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
 Build the payload with a nested `contract` object. A minimal shape is:
 

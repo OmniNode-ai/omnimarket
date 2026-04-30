@@ -22,6 +22,7 @@ ticket triage logic to this skill.
 | `standing_orders_path` | Standing orders input path | `.onex_state/session/standing_orders.json` |
 | `state_dir` | Session state directory | `.onex_state/session` |
 | `phase` | Run one phase only (`1`, `2`, `3`) or `0` for full loop | `0` |
+| `target_runtime_address` | Optional `runtime://...` runtime target | Uses `ONEX_TARGET_RUNTIME_ADDRESS` when set |
 
 ## Dispatch
 
@@ -33,6 +34,10 @@ env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \
   --payload '<json-payload>' \
   --timeout-ms 300000
 ```
+
+If the user supplies a `runtime://...` target, add
+`--target-runtime-address '<runtime-address>'` to the request command. If the
+argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
 Map user inputs into a JSON payload using the same field names:
 

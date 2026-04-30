@@ -18,6 +18,7 @@ remediation logic to this skill.
 | `checks` | Optional list of check categories | All checks |
 | `--dry-run` | Report findings without side effects | `false` |
 | `severity_threshold` | Minimum severity to report | `WARNING` |
+| `target_runtime_address` | Optional `runtime://...` runtime target | Uses `ONEX_TARGET_RUNTIME_ADDRESS` when set |
 
 ## Dispatch
 
@@ -29,6 +30,10 @@ env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \
   --payload '<json-payload>' \
   --timeout-ms 120000
 ```
+
+If the user supplies a `runtime://...` target, add
+`--target-runtime-address '<runtime-address>'` to the request command. If the
+argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
 Map user inputs into a JSON payload:
 

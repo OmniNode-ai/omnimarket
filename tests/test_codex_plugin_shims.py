@@ -71,6 +71,9 @@ def test_codex_shims_remain_dispatch_only() -> None:
         text = path.read_text()
         assert "Backing node:" in text
         assert "uv run python scripts/run_codex_runtime_request.py" in text
+        assert "--target-runtime-address" in text
+        assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
+        assert "runtime://..." in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -113,6 +116,9 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
     for path in source_skill_paths:
         text = path.read_text()
         assert "uv run python scripts/run_codex_runtime_request.py" in text
+        assert "--target-runtime-address" in text
+        assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
+        assert "runtime://..." in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
