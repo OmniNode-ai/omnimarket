@@ -180,7 +180,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_session_bootstrap",
         module="omnimarket.nodes.node_session_bootstrap",
         contract_path="src/omnimarket/nodes/node_session_bootstrap/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_session_bootstrap.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_session_bootstrap.py",
+            "tests/test_codex_runtime_client.py::test_session_bootstrap_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="session_bootstrap",
     ),
     ModelMarketSkillSpec(

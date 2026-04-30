@@ -1,6 +1,6 @@
 # Market Skill Baseline
 
-Captured at: `2026-04-30T16:25:18.741442+00:00`
+Captured at: `2026-04-30T16:32:43.360315+00:00`
 Baseline window: `2026-04-30` capture cohort; captured_at is the exact regeneration time.
 Repo root: `<omnimarket>`
 
@@ -48,7 +48,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-13 passed, 2 warnings in 0.08s`
+13 passed, 2 warnings in 0.26s`
 
 ### pr_lifecycle_orchestrator
 
@@ -72,7 +72,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-31 passed, 2 warnings in 1.41s`
+31 passed, 2 warnings in 4.03s`
 
 ### pr_polish
 
@@ -96,7 +96,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-9 passed, 2 warnings in 0.04s`
+9 passed, 2 warnings in 0.06s`
 
 ### local_review
 
@@ -144,7 +144,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-28 passed, 2 warnings in 1.09s`
+28 passed, 2 warnings in 1.20s`
 
 ### session_bootstrap
 
@@ -158,8 +158,8 @@ Repo root: `<omnimarket>`
 - CLI smoke status: `pass`
 - CLI smoke summary: `{"crons_registered_count": 4, "dry_run": true, "status": "ready"}`
 - Focused tests: `pass`
-- Focused test targets: `tests/test_golden_chain_session_bootstrap.py`
-- Focused test output: `........................                                                 [100%]
+- Focused test targets: `tests/test_golden_chain_session_bootstrap.py, tests/test_codex_runtime_client.py::test_session_bootstrap_pattern_b_runs_node_end_to_end`
+- Focused test output: `.........................                                                [100%]
 =============================== warnings summary ===============================
 <frozen importlib._bootstrap>:488
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
@@ -168,7 +168,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-24 passed, 2 warnings in 0.06s`
+25 passed, 2 warnings in 0.09s`
 
 ### session_orchestrator
 
@@ -194,7 +194,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-36 passed, 2 warnings in 10.60s`
+36 passed, 2 warnings in 10.68s`
 
 ### ticket_pipeline
 
@@ -219,4 +219,4 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-18 passed, 2 warnings in 1.10s`
+18 passed, 2 warnings in 1.09s`

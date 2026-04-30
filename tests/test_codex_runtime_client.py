@@ -25,6 +25,10 @@ from omnimarket.adapters.codex.runtime_client import (
     default_target_runtime_address,
     main,
 )
+from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
+    HandlerSessionBootstrap,
+    ModelBootstrapCommand,
+)
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
     HandlerSessionOrchestrator,
     ModelSessionOrchestratorCommand,
@@ -155,6 +159,64 @@ async def _install_session_orchestrator_broker_worker(
     )
 
 
+async def _install_session_bootstrap_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    def cron_list() -> list[dict[str, str]]:
+        return []
+
+    def cron_create(*, cron: str, prompt: str, recurring: bool) -> str:
+        assert prompt
+        assert recurring is True
+        safe_cron = cron.replace("*", "star").replace("/", "-").replace(" ", "-")
+        return f"cron-{safe_cron}"
+
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = ModelBootstrapCommand.model_validate(envelope.payload.payload)
+            node_result = HandlerSessionBootstrap(
+                cron_list_fn=cron_list,
+                cron_create_fn=cron_create,
+            ).handle(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-session-bootstrap-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"session-bootstrap-broker-{uuid4()}",
+        on_message=on_command,
+    )
+
+
 def test_default_command_topic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "ONEX_PATTERN_B_COMMAND_TOPIC",
@@ -267,6 +329,101 @@ async def test_dispatch_async_uses_env_target_runtime_address(
     assert (
         received_commands[0].target_runtime_address
         == "runtime://omninode-pc/stability-test/effects"
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_bootstrap_pattern_b_runs_node_end_to_end(
+    tmp_path: Path,
+) -> None:
+    session_id = "sess-bootstrap-pattern-b"
+    state_dir = tmp_path / "state"
+    response_topic = "onex.evt.omnibase-infra.pattern-b-session-bootstrap-e2e.v1"
+    payload = {
+        "session_id": session_id,
+        "session_mode": "build",
+        "active_sprint_id": "auto-detect",
+        "model_routing_preference": "local-first",
+        "state_dir": str(state_dir),
+        "dry_run": False,
+        "contract": {
+            "session_id": session_id,
+            "session_label": "Pattern B bootstrap proof",
+            "phases_expected": [
+                "build_loop",
+                "merge_sweep",
+                "platform_readiness",
+            ],
+            "max_cycles": 0,
+            "cost_ceiling_usd": 10.0,
+            "halt_on_build_loop_failure": True,
+            "dry_run": False,
+            "schema_version": "1.0",
+            "session_mode": "build",
+            "active_sprint_id": "auto-detect",
+            "model_routing_preference": "local-first",
+        },
+    }
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-session-bootstrap-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_session_bootstrap_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="session_bootstrap",
+            payload=payload,
+            timeout_ms=30_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "session_bootstrap"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    result_payload = result.output_payloads[0]
+    assert result_payload["status"] == "ready"
+    assert result_payload["session_id"] == session_id
+    assert result_payload["dry_run"] is False
+    crons_registered = result_payload["crons_registered"]
+    assert isinstance(crons_registered, list)
+    assert len(crons_registered) == 4
+    contract_path = Path(str(result_payload["contract_path"]))
+    assert contract_path == state_dir / f"session-contract-{session_id}.json"
+    assert contract_path.exists()
+    contract_payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    assert contract_payload["session_id"] == session_id
+    assert contract_payload["phases_expected"] == [
+        "build_loop",
+        "merge_sweep",
+        "platform_readiness",
+    ]
+    cron_path = state_dir / f"session-crons-{session_id}.json"
+    assert cron_path.exists()
+    cron_payload = json.loads(cron_path.read_text(encoding="utf-8"))
+    assert cron_payload["session_id"] == session_id
+    assert cron_payload["cron_ids"] == crons_registered
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "session_bootstrap"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
     )
 
 
