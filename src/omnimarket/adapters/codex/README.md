@@ -11,8 +11,10 @@ runtime-owned Pattern B broker. No business logic lives in the skill.
 1. Codex loads the skill metadata.
 2. When the user requests the operation, Codex invokes the matching skill.
 3. The skill dispatches to `scripts/run_codex_runtime_request.py`
-4. The runtime owns execution and returns a typed JSON response
-5. Codex renders `output_payloads[0]` when present, or falls back to
+4. The request may include `--target-runtime-address runtime://...` or
+   `ONEX_TARGET_RUNTIME_ADDRESS` when the caller needs a specific runtime
+5. The runtime owns execution and returns a typed JSON response
+6. Codex renders `output_payloads[0]` when present, or falls back to
    `dispatch_result` without reimplementing workflow logic
 
 ## File conventions
@@ -78,12 +80,15 @@ uv run python scripts/install_codex_skills.py --source marketplace --force
 3. **Broker dispatch** - Run the backing node through the runtime-owned
    Pattern B broker path instead of direct CLI execution or a second dispatch
    implementation in the skill layer.
-4. **Response handling** - Prefer `output_payloads[0]` for the business result
+4. **Runtime targeting** - Preserve an optional `runtime://...` address on the
+   broker command so the runtime layer can route work to a concrete runtime
+   without treating a lane such as stability-test as a special flag.
+5. **Response handling** - Prefer `output_payloads[0]` for the business result
    and fall back to `dispatch_result` when the handler did not emit a typed
    output payload.
-5. **Output formatting** - Transform the runtime response into a clear reply
+6. **Output formatting** - Transform the runtime response into a clear reply
    for the user.
-6. **Timeout and error handling** - Use the node's `descriptor.timeout_ms` as
+7. **Timeout and error handling** - Use the node's `descriptor.timeout_ms` as
    the timeout budget and surface structured broker client errors directly.
 
 ## Creating new skills

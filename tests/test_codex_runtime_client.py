@@ -20,6 +20,7 @@ from omnimarket.adapters.codex.runtime_client import (
     default_command_topic,
     default_requester,
     default_response_topic,
+    default_target_runtime_address,
     main,
 )
 
@@ -127,6 +128,17 @@ def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert default_requester() == "codex-test"
 
 
+def test_default_target_runtime_address_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "ONEX_TARGET_RUNTIME_ADDRESS",
+        " runtime://omninode-pc/stability-test/main ",
+    )
+
+    assert (
+        default_target_runtime_address() == "runtime://omninode-pc/stability-test/main"
+    )
+
+
 @pytest.mark.asyncio
 async def test_dispatch_async_round_trip() -> None:
     bus = EventBusInmemory(environment="test", group="codex-pattern-b")
@@ -148,6 +160,7 @@ async def test_dispatch_async_round_trip() -> None:
         payload={"dry_run": True},
         timeout_ms=1234,
         response_topic="onex.evt.omnibase-infra.pattern-b-dispatch-test.v1",
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
     )
 
     await bus.close()
@@ -159,6 +172,104 @@ async def test_dispatch_async_round_trip() -> None:
     assert result.dispatch_result is not None
     assert result.dispatch_result["status"] == "completed"
     assert received_commands[0].timeout_seconds == 1.234
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_uses_env_target_runtime_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "ONEX_TARGET_RUNTIME_ADDRESS",
+        "runtime://omninode-pc/stability-test/effects",
+    )
+    bus = EventBusInmemory(environment="test", group="codex-pattern-b-env-target")
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    await _install_broker_worker(
+        bus,
+        command_topic=default_command_topic(),
+        result_payload={"status": "complete"},
+        received_commands=received_commands,
+    )
+
+    client = PatternBBrokerClient(
+        event_bus_factory=lambda: _BrokerTestTransport(bus),
+        requester="codex-test",
+    )
+    result = await client.dispatch_async(
+        command_name="aislop_sweep",
+        payload={"dry_run": True},
+        timeout_ms=1234,
+        response_topic="onex.evt.omnibase-infra.pattern-b-dispatch-env-target.v1",
+    )
+
+    await bus.close()
+
+    assert result.ok is True
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/effects"
+    )
+
+
+@pytest.mark.parametrize(
+    "command_name",
+    [
+        "aislop_sweep",
+        "pr_lifecycle_orchestrator",
+        "session_bootstrap",
+        "session_orchestrator",
+    ],
+)
+@pytest.mark.asyncio
+async def test_market_plugin_commands_can_target_addressed_runtime(
+    command_name: str,
+) -> None:
+    bus = EventBusInmemory(
+        environment="test",
+        group=f"codex-pattern-b-addressed-{command_name}",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    await _install_broker_worker(
+        bus,
+        command_topic=default_command_topic(),
+        result_payload={"status": "accepted", "command_name": command_name},
+        received_commands=received_commands,
+    )
+
+    client = PatternBBrokerClient(
+        event_bus_factory=lambda: _BrokerTestTransport(bus),
+        requester="codex-test",
+    )
+    result = await client.dispatch_async(
+        command_name=command_name,
+        payload={"dry_run": True},
+        timeout_ms=1234,
+        response_topic=(
+            "onex.evt.omnibase-infra.pattern-b-dispatch-"
+            f"{command_name.replace('_', '-')}.v1"
+        ),
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == command_name
+    assert result.output_payloads == [
+        {"status": "accepted", "command_name": command_name}
+    ]
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == command_name
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
+    )
 
 
 def test_main_returns_zero_for_ok_response(
@@ -170,12 +281,14 @@ def test_main_returns_zero_for_ok_response(
     payload_file.write_text('{"dry_run": true}', encoding="utf-8")
 
     bus = EventBusInmemory(environment="test", group="codex-pattern-b-main-ok")
+    received_commands: list[ModelDispatchBusCommand] = []
     asyncio.run(bus.start())
     asyncio.run(
         _install_broker_worker(
             bus,
             command_topic=default_command_topic(),
             result_payload={"final_state": "COMPLETE"},
+            received_commands=received_commands,
         )
     )
     monkeypatch.setattr(
@@ -192,6 +305,8 @@ def test_main_returns_zero_for_ok_response(
             str(payload_file),
             "--response-topic",
             "onex.evt.omnibase-infra.pattern-b-dispatch-main-ok.v1",
+            "--target-runtime-address",
+            "runtime://omninode-pc/stability-test/worker",
         ]
     )
 
@@ -201,6 +316,10 @@ def test_main_returns_zero_for_ok_response(
     captured = capsys.readouterr()
     assert '"ok": true' in captured.out.lower()
     assert '"final_state": "COMPLETE"' in captured.out
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/worker"
+    )
 
 
 def test_main_returns_one_for_failed_response(
