@@ -9,6 +9,8 @@ contract_version: {major: 0, minor: 2, patch: 0}
 node_version: {major: 0, minor: 2, patch: 0}
 uuid: "6fc349b1-34f0-4760-b547-6e8bebf0c9c0"
 node_type: EFFECT
+runtime_profiles:
+  - memory
 input_model: "ModelIntentClassifiedEvent"
 output_model: "ModelIntentStoredEvent"
 handler:
