@@ -17,6 +17,9 @@ evidence_requirements:
     description: "Codex plugin shims document the optional target runtime address flag while remaining dispatch-only."
     command: "env -u PYTHONPATH uv run pytest tests/test_codex_plugin_shims.py -q"
   - kind: "manual"
+    description: "Broker-free compile-only preflight proves market skill requests compile addressed command envelopes without Kafka or live runtime startup."
+    command: "env -u PYTHONPATH uv run pytest tests/test_codex_runtime_client.py::test_market_plugin_commands_compile_without_broker tests/test_codex_runtime_client.py::test_main_compile_only_outputs_command_without_broker -q"
+  - kind: "manual"
     description: "No live runtime or .201 mutation is performed by this proof."
     command: "PR body states no containers were started, no deploy/restart/install was performed, and .201 was not mutated."
 emergency_bypass:
@@ -43,6 +46,12 @@ dod_evidence:
       - check_type: "command"
         check_value: "env -u PYTHONPATH uv run pytest tests/test_codex_plugin_shims.py -q"
   - id: "dod-004"
+    description: "Compile-only preflight validates addressed broker command envelopes without publishing to Kafka."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run pytest tests/test_codex_runtime_client.py::test_market_plugin_commands_compile_without_broker tests/test_codex_runtime_client.py::test_main_compile_only_outputs_command_without_broker -q"
+  - id: "dod-005"
     description: "Post-merge deploy/readiness smoke plan: runtime client imports and validates a runtime:// target address in the deployed runtime container."
     source: "manual"
     checks:

@@ -87,6 +87,8 @@ def test_codex_shims_remain_dispatch_only() -> None:
         elif path.parent.name == "merge-sweep":
             assert '--command-name "pr_lifecycle_orchestrator"' in text
             assert "--timeout-ms 300000" in text
+            assert "--compile-only" in text
+            assert "broker-free preflight" in text
             assert "run_id" in text
             assert "filesystem-safe identifier" in text
         elif path.parent.name == "aislop-sweep":
@@ -135,6 +137,8 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         elif path.parent.name == "merge-sweep":
             assert '--command-name "pr_lifecycle_orchestrator"' in text
             assert "--timeout-ms 300000" in text
+            assert "--compile-only" in text
+            assert "broker-free preflight" in text
             assert "run_id" in text
             assert "filesystem-safe identifier" in text
         else:

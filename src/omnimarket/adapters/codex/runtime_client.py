@@ -246,6 +246,31 @@ class ModelPatternBBrokerClientResponse(BaseModel):
     error: ModelPatternBBrokerClientError | None = None
 
 
+def _build_client_request(
+    *,
+    command_name: str,
+    payload: dict[str, object] | None = None,
+    correlation_id: UUID | str | None = None,
+    timeout_ms: int = 300_000,
+    response_topic: str | None = None,
+    target_runtime_address: str | None = None,
+) -> ModelPatternBBrokerClientRequest:
+    return ModelPatternBBrokerClientRequest.model_validate(
+        {
+            "command_name": command_name,
+            "payload": payload or {},
+            "correlation_id": correlation_id,
+            "timeout_ms": timeout_ms,
+            "response_topic": response_topic or default_response_topic(),
+            "target_runtime_address": (
+                target_runtime_address
+                if target_runtime_address is not None
+                else default_target_runtime_address()
+            ),
+        }
+    )
+
+
 def _default_event_bus_factory() -> _ProtocolLifecycleTransport:
     return cast(_ProtocolLifecycleTransport, EventBusKafka.default())
 
@@ -282,6 +307,22 @@ def _dispatch_result(
     return cast(dict[str, object], result.model_dump(mode="json", exclude_none=True))
 
 
+def _build_dispatch_command(
+    request: ModelPatternBBrokerClientRequest,
+    *,
+    requester: str,
+) -> ModelDispatchBusCommand:
+    return ModelDispatchBusCommand(
+        command_name=request.command_name,
+        requester=requester,
+        payload=request.payload,
+        correlation_id=request.correlation_id or uuid4(),
+        response_topic=request.response_topic,
+        timeout_seconds=max(1.0, min(900.0, request.timeout_ms / 1000)),
+        target_runtime_address=request.target_runtime_address,
+    )
+
+
 class PatternBBrokerClient:
     """Async client for broker-backed skill dispatch."""
 
@@ -296,6 +337,49 @@ class PatternBBrokerClient:
         self._requester = requester or default_requester()
         self._command_topic = command_topic or default_command_topic()
 
+    def compile_request(
+        self,
+        *,
+        command_name: str,
+        payload: dict[str, object] | None = None,
+        correlation_id: UUID | str | None = None,
+        timeout_ms: int = 300_000,
+        response_topic: str | None = None,
+        target_runtime_address: str | None = None,
+    ) -> ModelPatternBBrokerClientResponse:
+        """Compile the broker command envelope without touching the event bus."""
+        request = _build_client_request(
+            command_name=command_name,
+            payload=payload,
+            correlation_id=correlation_id,
+            timeout_ms=timeout_ms,
+            response_topic=response_topic,
+            target_runtime_address=target_runtime_address,
+        )
+        command = _build_dispatch_command(request, requester=self._requester)
+        compiled_command = command.model_dump(mode="json", exclude_none=True)
+        return ModelPatternBBrokerClientResponse(
+            ok=True,
+            command_name=request.command_name,
+            command_topic=self._command_topic,
+            response_topic=request.response_topic,
+            correlation_id=command.correlation_id,
+            dispatch_result={
+                "status": "compiled",
+                "command_topic": self._command_topic,
+                "response_topic": request.response_topic,
+                "command": compiled_command,
+            },
+            output_payloads=[
+                {
+                    "status": "compiled",
+                    "command_topic": self._command_topic,
+                    "response_topic": request.response_topic,
+                    "command": compiled_command,
+                }
+            ],
+        )
+
     async def dispatch_async(
         self,
         *,
@@ -306,19 +390,13 @@ class PatternBBrokerClient:
         response_topic: str | None = None,
         target_runtime_address: str | None = None,
     ) -> ModelPatternBBrokerClientResponse:
-        request = ModelPatternBBrokerClientRequest.model_validate(
-            {
-                "command_name": command_name,
-                "payload": payload or {},
-                "correlation_id": correlation_id,
-                "timeout_ms": timeout_ms,
-                "response_topic": response_topic or default_response_topic(),
-                "target_runtime_address": (
-                    target_runtime_address
-                    if target_runtime_address is not None
-                    else default_target_runtime_address()
-                ),
-            }
+        request = _build_client_request(
+            command_name=command_name,
+            payload=payload,
+            correlation_id=correlation_id,
+            timeout_ms=timeout_ms,
+            response_topic=response_topic,
+            target_runtime_address=target_runtime_address,
         )
 
         transport = self._event_bus_factory()
@@ -330,15 +408,7 @@ class PatternBBrokerClient:
                 command_topic=self._command_topic,
                 terminal_topic=request.response_topic,
             )
-            command = ModelDispatchBusCommand(
-                command_name=request.command_name,
-                requester=self._requester,
-                payload=request.payload,
-                correlation_id=request.correlation_id or uuid4(),
-                response_topic=request.response_topic,
-                timeout_seconds=max(1.0, min(900.0, request.timeout_ms / 1000)),
-                target_runtime_address=request.target_runtime_address,
-            )
+            command = _build_dispatch_command(request, requester=self._requester)
             unsubscribe, result_queue = await broker_client.wait_for_result(
                 route,
                 correlation_id=str(command.correlation_id),
@@ -472,6 +542,14 @@ def main(argv: list[str] | None = None) -> int:
         default=default_target_runtime_address(),
         help="Optional runtime:// address to target for this broker request",
     )
+    parser.add_argument(
+        "--compile-only",
+        action="store_true",
+        help=(
+            "Validate and print the broker command envelope without publishing "
+            "to the event bus"
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -495,14 +573,24 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         client = PatternBBrokerClient()
-        response = client.dispatch_sync(
-            command_name=args.command_name,
-            payload=payload,
-            correlation_id=args.correlation_id,
-            timeout_ms=args.timeout_ms,
-            response_topic=args.response_topic,
-            target_runtime_address=args.target_runtime_address,
-        )
+        if args.compile_only:
+            response = client.compile_request(
+                command_name=args.command_name,
+                payload=payload,
+                correlation_id=args.correlation_id,
+                timeout_ms=args.timeout_ms,
+                response_topic=args.response_topic,
+                target_runtime_address=args.target_runtime_address,
+            )
+        else:
+            response = client.dispatch_sync(
+                command_name=args.command_name,
+                payload=payload,
+                correlation_id=args.correlation_id,
+                timeout_ms=args.timeout_ms,
+                response_topic=args.response_topic,
+                target_runtime_address=args.target_runtime_address,
+            )
     except ValidationError as exc:
         response = _build_cli_error_response(
             command_name=args.command_name,
