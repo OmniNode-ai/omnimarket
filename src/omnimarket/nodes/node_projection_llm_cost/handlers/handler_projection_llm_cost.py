@@ -14,7 +14,7 @@ Target table schema (from omnidash migration 0003):
   completion_tokens INT DEFAULT 0
   estimated_cost_usd NUMERIC(12,10) DEFAULT 0
   call_count INT DEFAULT 1
-  usage_source TEXT DEFAULT 'API' (API | ESTIMATED | MISSING)
+  usage_source TEXT DEFAULT 'measured'
   ingested_at TIMESTAMPTZ DEFAULT NOW()
 """
 
@@ -27,6 +27,7 @@ from typing import Any
 import yaml
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "llm_cost_aggregates"
@@ -65,11 +66,11 @@ class ModelLlmCallCompletedEvent(BaseModel):
         ge=0.0,
         validation_alias=AliasChoices("estimated_cost_usd", "cost_usd"),
     )
-    usage_source: str = Field(default="API", description="API | ESTIMATED | MISSING.")
+    usage_source: EnumUsageSource = Field(default=EnumUsageSource.MEASURED)
     gpu_seconds: float | None = Field(default=None, ge=0.0)
     gpu_type: str | None = Field(default=None, max_length=64)
     gpu_count: int | None = Field(default=None, ge=0)
-    compute_usage_source: str | None = Field(default=None)
+    compute_usage_source: EnumUsageSource | None = Field(default=None)
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
 
 
@@ -127,8 +128,12 @@ class HandlerProjectionLlmCost:
             "compute_cost_usd": compute_cost_usd,
             "total_cost_usd": round(event.estimated_cost_usd + compute_cost_usd, 10),
             "call_count": 1,
-            "usage_source": event.usage_source,
-            "compute_usage_source": event.compute_usage_source,
+            "usage_source": event.usage_source.value,
+            "compute_usage_source": (
+                event.compute_usage_source.value
+                if event.compute_usage_source is not None
+                else None
+            ),
             "ingested_at": now.isoformat(),
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)

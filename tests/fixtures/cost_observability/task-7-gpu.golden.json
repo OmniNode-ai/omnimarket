@@ -2,7 +2,7 @@
   {
     "call_count": 1,
     "compute_cost_usd": 0.8,
-    "compute_usage_source": "ESTIMATED",
+    "compute_usage_source": "estimated",
     "completion_tokens": 25,
     "estimated_cost_usd": 0.0,
     "granularity": "hour",
@@ -12,12 +12,12 @@
     "session_id": "sess-a",
     "total_cost_usd": 0.8,
     "total_tokens": 125,
-    "usage_source": "ESTIMATED"
+    "usage_source": "estimated"
   },
   {
     "call_count": 1,
     "compute_cost_usd": 0.54,
-    "compute_usage_source": "API",
+    "compute_usage_source": "measured",
     "completion_tokens": 20,
     "estimated_cost_usd": 0.0,
     "granularity": "hour",
@@ -27,7 +27,7 @@
     "session_id": "sess-a",
     "total_cost_usd": 0.54,
     "total_tokens": 110,
-    "usage_source": "API"
+    "usage_source": "measured"
   },
   {
     "call_count": 1,
@@ -42,12 +42,12 @@
     "session_id": "sess-b",
     "total_cost_usd": 0.0045,
     "total_tokens": 1200,
-    "usage_source": "API"
+    "usage_source": "measured"
   },
   {
     "call_count": 1,
     "compute_cost_usd": 0.135,
-    "compute_usage_source": "ESTIMATED",
+    "compute_usage_source": "estimated",
     "completion_tokens": 10,
     "estimated_cost_usd": 0.0,
     "granularity": "hour",
@@ -57,12 +57,12 @@
     "session_id": "sess-c",
     "total_cost_usd": 0.135,
     "total_tokens": 60,
-    "usage_source": "ESTIMATED"
+    "usage_source": "estimated"
   },
   {
     "call_count": 1,
     "compute_cost_usd": 0.04,
-    "compute_usage_source": "ESTIMATED",
+    "compute_usage_source": "estimated",
     "completion_tokens": 0,
     "estimated_cost_usd": 0.0,
     "granularity": "hour",
@@ -72,12 +72,12 @@
     "session_id": "sess-d",
     "total_cost_usd": 0.04,
     "total_tokens": 80,
-    "usage_source": "ESTIMATED"
+    "usage_source": "estimated"
   },
   {
     "call_count": 1,
     "compute_cost_usd": 0.0,
-    "compute_usage_source": "MISSING",
+    "compute_usage_source": "unknown",
     "completion_tokens": 5,
     "estimated_cost_usd": 0.0,
     "granularity": "hour",
@@ -87,6 +87,6 @@
     "session_id": "sess-e",
     "total_cost_usd": 0.0,
     "total_tokens": 25,
-    "usage_source": "MISSING"
+    "usage_source": "unknown"
   }
 ]

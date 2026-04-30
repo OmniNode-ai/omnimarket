@@ -70,7 +70,7 @@ class TestLlmCostProjection:
             db,
         )
         rows = db.query("llm_cost_aggregates")
-        assert rows[0]["usage_source"] == "ESTIMATED"
+        assert rows[0]["usage_source"] == "estimated"
 
     def test_compute_cost_projected_from_manifest_at_projection_time(
         self, tmp_path: Path
@@ -110,7 +110,7 @@ class TestLlmCostProjection:
         row = db.query("llm_cost_aggregates")[0]
         assert row["compute_cost_usd"] == 0.8
         assert row["total_cost_usd"] == 0.8
-        assert row["compute_usage_source"] == "ESTIMATED"
+        assert row["compute_usage_source"] == "estimated"
 
     def test_replay_task_7_gpu_fixture_matches_golden(self, tmp_path: Path) -> None:
         manifest = tmp_path / "pricing_manifest.yaml"
