@@ -7,9 +7,17 @@ from omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_publish impo
     AdapterPatternBBrokerPublish,
     ProtocolPatternBBrokerEventPublisher,
 )
+from omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_terminal_consumer import (
+    AdapterPatternBBrokerTerminalConsumer,
+    ProtocolPatternBBrokerEventMessage,
+    ProtocolPatternBBrokerEventSubscriber,
+)
 
 __all__ = [
     "AdapterPatternBBrokerPublish",
+    "AdapterPatternBBrokerTerminalConsumer",
+    "ProtocolPatternBBrokerEventMessage",
     "ProtocolPatternBBrokerEventPublisher",
+    "ProtocolPatternBBrokerEventSubscriber",
     "load_pattern_b_broker_config",
 ]
