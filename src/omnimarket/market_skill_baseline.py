@@ -137,7 +137,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_aislop_sweep",
         module="omnimarket.nodes.node_aislop_sweep",
         contract_path="src/omnimarket/nodes/node_aislop_sweep/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_aislop_sweep.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_aislop_sweep.py",
+            "tests/test_codex_runtime_client.py::test_aislop_sweep_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="aislop_sweep",
     ),
     ModelMarketSkillSpec(

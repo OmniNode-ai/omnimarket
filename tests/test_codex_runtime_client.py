@@ -25,6 +25,10 @@ from omnimarket.adapters.codex.runtime_client import (
     default_target_runtime_address,
     main,
 )
+from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
+    AislopSweepRequest,
+    NodeAislopSweep,
+)
 from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
     HandlerSessionBootstrap,
     ModelBootstrapCommand,
@@ -108,6 +112,52 @@ async def _install_broker_worker(
 
     await bus.subscribe(
         command_topic, group_id=f"broker-{uuid4()}", on_message=on_command
+    )
+
+
+async def _install_aislop_sweep_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = AislopSweepRequest.model_validate(envelope.payload.payload)
+            node_result = NodeAislopSweep().handle(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-aislop-sweep-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"aislop-sweep-broker-{uuid4()}",
+        on_message=on_command,
     )
 
 
@@ -329,6 +379,73 @@ async def test_dispatch_async_uses_env_target_runtime_address(
     assert (
         received_commands[0].target_runtime_address
         == "runtime://omninode-pc/stability-test/effects"
+    )
+
+
+@pytest.mark.asyncio
+async def test_aislop_sweep_pattern_b_runs_node_end_to_end(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "fixture_repo"
+    src_dir = repo_dir / "src"
+    src_dir.mkdir(parents=True)
+    (src_dir / "bad.py").write_text(
+        '# TODO: remove before merge\nONEX_EVENT_BUS_TYPE = "inmemory"\n',
+        encoding="utf-8",
+    )
+    response_topic = "onex.evt.omnibase-infra.pattern-b-aislop-sweep-e2e.v1"
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-aislop-sweep-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_aislop_sweep_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="aislop_sweep",
+            payload={
+                "target_dirs": [str(repo_dir)],
+                "checks": ["prohibited-patterns", "todo-fixme"],
+                "dry_run": True,
+                "severity_threshold": "WARNING",
+            },
+            timeout_ms=120_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "aislop_sweep"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    payload = result.output_payloads[0]
+    assert payload["status"] == "findings"
+    assert payload["repos_scanned"] == 1
+    assert payload["dry_run"] is True
+    findings = payload["findings"]
+    assert isinstance(findings, list)
+    assert len(findings) == 2
+    checks = {str(finding["check"]) for finding in findings}
+    severities = {str(finding["severity"]) for finding in findings}
+    assert checks == {"prohibited-patterns", "todo-fixme"}
+    assert "CRITICAL" in severities
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "aislop_sweep"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
     )
 
 
