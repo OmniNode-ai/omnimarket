@@ -1,6 +1,6 @@
 # OmniMarket
 
-OmniMarket is the portable ONEX workflow package registry — the consolidation
+OmniMarket is the portable ONEX (OmniNode eXecution) workflow package registry — the consolidation
 target for all OmniNode automation logic. It ships ~135 contract-backed node
 entry points covering build loops, PR lifecycle management, sweeps, projections,
 ledger, memory orchestration, session management, and diagnostics. Platform
