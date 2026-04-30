@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10442
+title: "Add Pattern B broker end-to-end proof surfaces"
+summary: "Add in-memory golden-chain and reusable proof-runner evidence for the Pattern B broker publish-to-terminal flow."
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Pattern B broker unit and golden-chain proof tests pass"
+    command: "uv run pytest tests/unit/nodes/node_pattern_b_broker tests/test_golden_chain_pattern_b_broker.py tests/unit/scripts/test_pattern_b_broker_proof.py -q"
+  - kind: "manual"
+    description: "Pattern B broker proof runner passes in-memory mode"
+    command: "uv run python scripts/proof_pattern_b_broker.py --mode inmemory"
+  - kind: "manual"
+    description: "Ticket contract validates"
+    command: "uv run validate-yaml contracts/OMN-10442.yaml"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Pattern B broker unit and golden-chain proof tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_pattern_b_broker tests/test_golden_chain_pattern_b_broker.py tests/unit/scripts/test_pattern_b_broker_proof.py -q"
+  - id: "dod-002"
+    description: "Pattern B broker proof runner passes in-memory mode"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/proof_pattern_b_broker.py --mode inmemory"
+  - id: "dod-003"
+    description: "Ticket contract validates"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run validate-yaml contracts/OMN-10442.yaml"
+  - id: "dod-deploy"
+    description: |
+      Deploy posture for this slice. OMN-10442 adds in-memory proof surfaces
+      and an explicit host-live proof command that skips clearly unless
+      KAFKA_BOOTSTRAP_SERVERS is configured. It does not start, restart, deploy,
+      or mutate .201.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'no deploy required for OMN-10442 - in-memory proof only; host-live proof is explicitly gated by KAFKA_BOOTSTRAP_SERVERS'"
