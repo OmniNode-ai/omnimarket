@@ -359,6 +359,18 @@ def test_main_compile_only_outputs_command_without_broker(
     )
 
 
+def test_compile_only_rejects_explicit_empty_response_topic() -> None:
+    client = PatternBBrokerClient(requester="codex-test")
+
+    with pytest.raises(ValueError, match="response_topic"):
+        client.compile_request(
+            command_name="pr_lifecycle_orchestrator",
+            payload={"inventory_only": True, "dry_run": True},
+            response_topic="",
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+
+
 def test_main_returns_zero_for_ok_response(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

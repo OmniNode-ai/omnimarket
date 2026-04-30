@@ -261,7 +261,11 @@ def _build_client_request(
             "payload": payload or {},
             "correlation_id": correlation_id,
             "timeout_ms": timeout_ms,
-            "response_topic": response_topic or default_response_topic(),
+            "response_topic": (
+                response_topic
+                if response_topic is not None
+                else default_response_topic()
+            ),
             "target_runtime_address": (
                 target_runtime_address
                 if target_runtime_address is not None
