@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_gap_compute. Use when running OmniNo
 
 # Gap
 
-This skill is a thin Pattern B broker shim over the OmniMarket
+This skill is a thin Codex runtime adapter shim over the OmniMarket
 `node_gap_compute` node. The node owns contract/report gap detection and
 classification. Do not add Linear, GitHub, grep, or fix orchestration logic to
 this skill.
@@ -44,7 +44,7 @@ If the user supplies a `runtime://...` target, add
 `--target-runtime-address '<runtime-address>'` to the request command. If the
 argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
-For broker-free preflight, add `--compile-only`. This validates the payload,
+For event-bus-free preflight, add `--compile-only`. This validates the payload,
 command topic, response topic, correlation id, timeout, and target runtime
 address without publishing to Kafka or starting a runtime.
 
@@ -72,7 +72,7 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 ## Contract
 
 - Backing node: `src/omnimarket/nodes/node_gap_compute/`
-- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Codex adapter request wrapper: `scripts/run_codex_runtime_request.py`
 - Command name: `gap_compute`
 - Runtime topic: `onex.cmd.omnimarket.gap-compute.v1`
 - Completion topic: `onex.evt.omnimarket.gap-compute.v1`

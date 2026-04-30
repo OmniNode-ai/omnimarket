@@ -340,6 +340,59 @@ class TestPhase2RSD:
         assert "OMN-999" not in result
         assert result.get("OMN-998") == 2.0
 
+    def test_phase2_fixture_scores_without_linear_key(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fixture_path = tmp_path / "linear-fixture.json"
+        fixture_path.write_text(
+            json.dumps(
+                {
+                    "nodes": [
+                        {
+                            "identifier": "OMN-10400",
+                            "title": "Urgent",
+                            "priority": 1,
+                            "labels": {"nodes": []},
+                            "updatedAt": "2026-04-12T00:00:00Z",
+                            "children": {"nodes": []},
+                        },
+                        {
+                            "identifier": "OMN-10399",
+                            "title": "Low priority",
+                            "priority": 4,
+                            "labels": {"nodes": []},
+                            "updatedAt": "2026-04-12T00:00:00Z",
+                            "children": {"nodes": []},
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+        monkeypatch.setenv(
+            "ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE", str(fixture_path)
+        )
+
+        handler = HandlerSessionOrchestrator(probes=[])
+        result = handler.handle(
+            ModelSessionOrchestratorCommand(
+                skip_health=True,
+                dry_run=False,
+                phase=0,
+                state_dir=str(tmp_path / "state"),
+                session_id="sess-fixture",
+            )
+        )
+
+        assert result.status == EnumSessionStatus.COMPLETE
+        assert result.dispatch_queue == ["OMN-10400", "OMN-10399"]
+        assert len(result.dispatch_receipts) == 2
+        assert (tmp_path / "state" / "in_flight.yaml").exists()
+        assert (tmp_path / "state" / "ledger.jsonl").exists()
+        assert list((tmp_path / "state").glob("rsd-scored-*.yaml"))
+        assert len(list((tmp_path / "state" / "dispatch_specs").glob("*.json"))) == 2
+
 
 class TestPhase3Dispatch:
     def test_phase3_dry_run_returns_receipts_without_subprocess(self) -> None:

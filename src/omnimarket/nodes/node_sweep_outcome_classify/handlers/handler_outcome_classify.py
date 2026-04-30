@@ -25,7 +25,7 @@ Phase 2 classification table:
                                   patch_applied=False → FAILED
                                   local_tests_passed=False → DEGRADED
 
-- unknown event_type → STUCK (safe fallback)
+- unsupported event types are rejected by ModelSweepOutcomeInput before dispatch
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 
 from omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome import (
     EnumSweepOutcome,
+    EnumSweepOutcomeEventType,
     ModelSweepOutcomeClassified,
     ModelSweepOutcomeInput,
 )
@@ -73,40 +74,40 @@ class HandlerSweepOutcomeClassify:
         self, req: ModelSweepOutcomeInput
     ) -> tuple[EnumSweepOutcome, str | None, list[str]]:
         """Pure classification. Returns (outcome, error, conflict_files)."""
-        if req.event_type == "armed":
+        if req.event_type == EnumSweepOutcomeEventType.ARMED:
             if req.armed is True:
                 return EnumSweepOutcome.ARMED, None, []
             return EnumSweepOutcome.FAILED, req.error, []
 
-        if req.event_type == "rebase_completed":
+        if req.event_type == EnumSweepOutcomeEventType.REBASE_COMPLETED:
             if req.success is True:
                 return EnumSweepOutcome.REBASED, None, []
             if req.conflict_files:
                 return EnumSweepOutcome.STUCK, req.error, req.conflict_files
             return EnumSweepOutcome.FAILED, req.error, []
 
-        if req.event_type == "ci_rerun_triggered":
+        if req.event_type == EnumSweepOutcomeEventType.CI_RERUN_TRIGGERED:
             if req.rerun_triggered is True:
                 return EnumSweepOutcome.CI_RERUN_TRIGGERED, None, []
             return EnumSweepOutcome.FAILED, req.error, []
 
-        if req.event_type == "merged":
+        if req.event_type == EnumSweepOutcomeEventType.MERGED:
             return EnumSweepOutcome.MERGED, None, []
 
         # Phase 2 event types
-        if req.event_type == "thread_replied":
+        if req.event_type == EnumSweepOutcomeEventType.THREAD_REPLIED:
             if req.reply_posted is True:
                 return EnumSweepOutcome.SUCCESS, None, []
             return EnumSweepOutcome.DEGRADED, req.error, []
 
-        if req.event_type == "conflict_resolved":
+        if req.event_type == EnumSweepOutcomeEventType.CONFLICT_RESOLVED:
             if req.resolution_committed is True:
                 return EnumSweepOutcome.SUCCESS, None, []
             if req.is_noop is True:
                 return EnumSweepOutcome.NOOP, None, []
             return EnumSweepOutcome.DEGRADED, req.error, []
 
-        if req.event_type == "ci_fix_attempted":
+        if req.event_type == EnumSweepOutcomeEventType.CI_FIX_ATTEMPTED:
             if req.is_noop is True:
                 return EnumSweepOutcome.NOOP, None, []
             if req.patch_applied is True and req.local_tests_passed is True:
@@ -114,6 +115,14 @@ class HandlerSweepOutcomeClassify:
             if req.patch_applied is False:
                 return EnumSweepOutcome.FAILED, req.error, []
             # patch applied but tests failed
+            return EnumSweepOutcome.DEGRADED, req.error, []
+
+        if req.event_type == EnumSweepOutcomeEventType.PR_POLISH_COMPLETED:
+            final_phase = str(req.extra.get("final_phase") or "").lower()
+            if final_phase == "done":
+                return EnumSweepOutcome.SUCCESS, None, []
+            if final_phase == "failed":
+                return EnumSweepOutcome.FAILED, req.error, []
             return EnumSweepOutcome.DEGRADED, req.error, []
 
         # Unknown event type — safe fallback

@@ -65,11 +65,39 @@ _DEFAULT_REPOS = [
 
 
 def _is_green(pr: dict[str, Any]) -> bool:
+    return _required_check_state(pr)[0]
+
+
+def _required_check_state(pr: dict[str, Any]) -> tuple[bool, bool, bool]:
     rollup = pr.get("statusCheckRollup") or []
     required = [c for c in rollup if c.get("isRequired")]
     if not required:
-        return True
-    return all(c.get("conclusion") == "SUCCESS" for c in required)
+        return True, False, False
+
+    failed_conclusions = {
+        "ACTION_REQUIRED",
+        "CANCELLED",
+        "FAILURE",
+        "FAILED",
+        "STARTUP_FAILURE",
+        "STALE",
+        "TIMED_OUT",
+    }
+    failed = False
+    pending = False
+    for check in required:
+        conclusion = str(check.get("conclusion") or "").upper()
+        status = str(check.get("status") or check.get("state") or "").upper()
+        if conclusion == "SUCCESS":
+            continue
+        if conclusion in failed_conclusions:
+            failed = True
+            continue
+        if status in {"FAILURE", "ERROR"}:
+            failed = True
+            continue
+        pending = True
+    return not failed and not pending, failed, pending
 
 
 def _to_pr_info(
@@ -77,6 +105,7 @@ def _to_pr_info(
 ) -> ModelPRInfo:
     review_decision_raw = pr.get("reviewDecision")
     review_decision = review_decision_raw if review_decision_raw else None
+    checks_pass, checks_failed, checks_pending = _required_check_state(pr)
     return ModelPRInfo(
         number=pr["number"],
         title=pr.get("title", ""),
@@ -85,7 +114,9 @@ def _to_pr_info(
         merge_state_status=pr.get("mergeStateStatus", "UNKNOWN"),
         is_draft=pr.get("isDraft", False),
         review_decision=review_decision,
-        required_checks_pass=_is_green(pr),
+        required_checks_pass=checks_pass,
+        required_checks_failed=checks_failed,
+        required_checks_pending=checks_pending,
         labels=[lbl["name"] for lbl in (pr.get("labels") or [])],
         required_approving_review_count=required_approving,
     )

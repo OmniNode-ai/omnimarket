@@ -137,7 +137,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_aislop_sweep",
         module="omnimarket.nodes.node_aislop_sweep",
         contract_path="src/omnimarket/nodes/node_aislop_sweep/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_aislop_sweep.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_aislop_sweep.py",
+            "tests/test_codex_runtime_client.py::test_aislop_sweep_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="aislop_sweep",
     ),
     ModelMarketSkillSpec(
@@ -148,6 +151,7 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         pytest_targets=(
             "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py",
             "tests/test_golden_chain_pr_lifecycle_orchestrator.py",
+            "tests/test_codex_runtime_client.py::test_merge_sweep_pattern_b_runs_pr_lifecycle_end_to_end",
         ),
         smoke_kind="pr_lifecycle_orchestrator",
     ),
@@ -156,7 +160,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_pr_polish",
         module="omnimarket.nodes.node_pr_polish",
         contract_path="src/omnimarket/nodes/node_pr_polish/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_pr_polish.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_pr_polish.py",
+            "tests/test_codex_runtime_client.py::test_pr_polish_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="pr_polish",
     ),
     ModelMarketSkillSpec(
@@ -164,7 +171,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_local_review",
         module="omnimarket.nodes.node_local_review",
         contract_path="src/omnimarket/nodes/node_local_review/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_local_review.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_local_review.py",
+            "tests/test_codex_runtime_client.py::test_local_review_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="local_review",
     ),
     ModelMarketSkillSpec(
@@ -172,7 +182,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_coderabbit_triage",
         module="omnimarket.nodes.node_coderabbit_triage",
         contract_path="src/omnimarket/nodes/node_coderabbit_triage/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_coderabbit_triage.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_coderabbit_triage.py",
+            "tests/test_codex_runtime_client.py::test_coderabbit_triage_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="coderabbit_triage",
     ),
     ModelMarketSkillSpec(
@@ -180,7 +193,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_session_bootstrap",
         module="omnimarket.nodes.node_session_bootstrap",
         contract_path="src/omnimarket/nodes/node_session_bootstrap/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_session_bootstrap.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_session_bootstrap.py",
+            "tests/test_codex_runtime_client.py::test_session_bootstrap_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="session_bootstrap",
     ),
     ModelMarketSkillSpec(
@@ -191,6 +207,7 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         pytest_targets=(
             "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py",
             "tests/unit/test_handler_session_orchestrator_graphql.py",
+            "tests/test_codex_runtime_client.py::test_session_orchestrator_pattern_b_runs_node_end_to_end",
         ),
         smoke_kind="session_orchestrator",
     ),
@@ -199,7 +216,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_ticket_pipeline",
         module="omnimarket.nodes.node_ticket_pipeline",
         contract_path="src/omnimarket/nodes/node_ticket_pipeline/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_ticket_pipeline.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_ticket_pipeline.py",
+            "tests/test_codex_runtime_client.py::test_ticket_pipeline_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="ticket_pipeline",
     ),
 )
@@ -407,6 +427,7 @@ def _summarize_session_bootstrap(payload: dict[str, object]) -> dict[str, object
 
 def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, object]:
     dispatch_queue = payload.get("dispatch_queue", [])
+    dispatch_receipts = payload.get("dispatch_receipts", [])
     return {
         "status": payload.get("status"),
         "session_id": "sess-<redacted>" if payload.get("session_id") else None,
@@ -414,15 +435,21 @@ def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, obj
         "dispatch_queue_count": len(dispatch_queue)
         if isinstance(dispatch_queue, list)
         else 0,
+        "dispatch_receipt_count": len(dispatch_receipts)
+        if isinstance(dispatch_receipts, list)
+        else 0,
     }
 
 
 def _summarize_ticket_pipeline(payload: dict[str, object]) -> dict[str, object]:
-    results = payload.get("phase_results", [])
+    result_summary = payload.get("result_summary")
+    if not isinstance(result_summary, dict):
+        result_summary = {}
+    results = payload.get("steps", payload.get("phase_results", []))
     return {
-        "stopped_at": payload.get("stopped_at"),
-        "stop_reason": payload.get("stop_reason"),
-        "ran_phase": payload.get("ran_phase"),
+        "stopped_at": result_summary.get("stopped_at", payload.get("stopped_at")),
+        "stop_reason": result_summary.get("stop_reason", payload.get("stop_reason")),
+        "ran_phase": result_summary.get("ran_phase", payload.get("ran_phase")),
         "phase_results_count": len(results) if isinstance(results, list) else 0,
         "compiled_dispatch": _ticket_pipeline_compiled_dispatch(results),
     }
@@ -436,7 +463,7 @@ def _ticket_pipeline_compiled_dispatch(results: object) -> bool:
             continue
         details = item.get("details")
         if (
-            item.get("phase") == "implement"
+            item.get("phase", item.get("name")) == "implement"
             and item.get("status") == "succeeded"
             and isinstance(details, dict)
             and details.get("execution_mode") == "compile_only"
@@ -675,33 +702,96 @@ def _smoke_session_bootstrap() -> ModelCommandResult:
 
 
 def _smoke_session_orchestrator() -> ModelCommandResult:
-    command = [
-        sys.executable,
-        "-m",
-        "omnimarket.nodes.node_session_orchestrator",
-        "--skip-health",
-        "--phase",
-        "1",
-        "--dry-run",
-        "--output-json",
-    ]
-    completed = _run_command(
-        command=command,
-        env={"ONEX_INFRA_HOST": "127.0.0.1", "ONEX_INFRA_USER": "jonah"},
-    )
-    payload = _parse_json(completed.stdout)
-    passed = completed.returncode == 0 and payload.get("status") == "complete"
-    notes = [
-        "smoke intentionally bypasses health probes to isolate the market-owned CLI path"
-    ]
-    return ModelCommandResult(
-        passed=passed,
-        command=_sanitize_command(command),
-        returncode=completed.returncode,
-        summary=_summarize_session_orchestrator(payload),
-        stderr="skip_health=True" if completed.stderr.strip() else "",
-        notes=notes,
-    )
+    with tempfile.TemporaryDirectory(
+        prefix="market-skill-session-orchestrator-"
+    ) as tmp:
+        tmp_path = Path(tmp)
+        state_dir = tmp_path / "state"
+        fixture_path = tmp_path / "linear-fixture.json"
+        fixture_path.write_text(
+            json.dumps(
+                {
+                    "nodes": [
+                        {
+                            "identifier": "OMN-10400",
+                            "title": "Real surfaces CLI output",
+                            "priority": 1,
+                            "labels": {"nodes": [{"name": "market"}]},
+                            "updatedAt": "2026-04-20T00:00:00Z",
+                            "children": {"nodes": []},
+                        },
+                        {
+                            "identifier": "OMN-10399",
+                            "title": "Ticket pipeline CLI output",
+                            "priority": 2,
+                            "labels": {"nodes": []},
+                            "updatedAt": "2026-04-18T00:00:00Z",
+                            "children": {"nodes": []},
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        command = [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_session_orchestrator",
+            "--skip-health",
+            "--phase",
+            "0",
+            "--state-dir",
+            str(state_dir),
+            "--session-id",
+            "sess-market-baseline",
+            "--output-json",
+        ]
+        completed = _run_command(
+            command=command,
+            env={
+                "ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE": str(fixture_path),
+            },
+        )
+        payload = _parse_json(completed.stdout)
+        dispatch_receipts_raw = payload.get("dispatch_receipts")
+        dispatch_receipts = (
+            dispatch_receipts_raw if isinstance(dispatch_receipts_raw, list) else []
+        )
+        receipt_payloads = [
+            json.loads(item) for item in dispatch_receipts if isinstance(item, str)
+        ]
+        artifact_paths = [
+            Path(str(item.get("dispatch_artifact_path")))
+            for item in receipt_payloads
+            if item.get("dispatch_artifact_path")
+        ]
+        evidence_paths = [
+            state_dir / "in_flight.yaml",
+            state_dir / "ledger.jsonl",
+            *artifact_paths,
+            *state_dir.glob("rsd-scored-*.yaml"),
+        ]
+        dispatch_queue = payload.get("dispatch_queue")
+        passed = (
+            completed.returncode == 0
+            and payload.get("status") == "complete"
+            and isinstance(dispatch_queue, list)
+            and len(dispatch_queue) == 2
+            and len(receipt_payloads) == 2
+            and all(path.exists() for path in evidence_paths)
+        )
+        notes = [
+            "smoke bypasses health probes and uses a deterministic Linear fixture "
+            "to exercise Phase 2 scoring plus Phase 3 dispatch artifacts"
+        ]
+        return ModelCommandResult(
+            passed=passed,
+            command=_sanitize_command(command),
+            returncode=completed.returncode,
+            summary=_summarize_session_orchestrator(payload),
+            stderr="skip_health=True" if completed.stderr.strip() else "",
+            notes=notes,
+        )
 
 
 def _smoke_ticket_pipeline() -> ModelCommandResult:
@@ -714,11 +804,17 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
     ]
     completed = _run_command(command=command)
     payload = _parse_json(completed.stdout)
+    result_summary = payload.get("result_summary")
+    if not isinstance(result_summary, dict):
+        result_summary = {}
     passed = (
         completed.returncode == 0
-        and payload.get("stopped_at") == "blocked"
-        and payload.get("stop_reason") == "not_implemented"
-        and _ticket_pipeline_compiled_dispatch(payload.get("phase_results"))
+        and result_summary.get("stopped_at", payload.get("stopped_at")) == "blocked"
+        and result_summary.get("stop_reason", payload.get("stop_reason"))
+        == "not_implemented"
+        and _ticket_pipeline_compiled_dispatch(
+            payload.get("steps", payload.get("phase_results"))
+        )
     )
     return ModelCommandResult(
         passed=passed,
@@ -799,85 +895,94 @@ def _fallback_contract(spec: ModelMarketSkillSpec) -> ModelContractInventory:
     )
 
 
-def capture_market_skill_baseline(
+def capture_market_skill_result(
+    spec: ModelMarketSkillSpec,
+    *,
+    run_pytest: bool = True,
+) -> ModelMarketSkillResult:
+    """Capture one market-skill baseline result."""
+
+    try:
+        contract = _load_contract(spec)
+    except Exception as exc:
+        contract = _fallback_contract(spec)
+        input_drift = ModelInputDrift(
+            matches=False,
+            contract_only_fields=[],
+            model_only_fields=[],
+        )
+        cli_smoke = _failure_command_result(stage="load_contract", error=exc)
+        return ModelMarketSkillResult(
+            skill_name=spec.skill_name,
+            contract=contract,
+            input_drift=input_drift,
+            cli_smoke=cli_smoke,
+            pytest=None,
+            overall_status="failing",
+        )
+
+    try:
+        input_drift = _compute_input_drift(contract, spec)
+    except Exception as exc:
+        input_drift = ModelInputDrift(
+            matches=False,
+            contract_only_fields=[],
+            model_only_fields=[],
+        )
+        cli_smoke = _failure_command_result(stage="compute_input_drift", error=exc)
+        return ModelMarketSkillResult(
+            skill_name=spec.skill_name,
+            contract=contract,
+            input_drift=input_drift,
+            cli_smoke=cli_smoke,
+            pytest=None,
+            overall_status="failing",
+        )
+
+    try:
+        cli_smoke = run_cli_smoke(spec)
+    except Exception as exc:
+        cli_smoke = _failure_command_result(stage="cli_smoke", error=exc)
+
+    pytest_result = None
+    if run_pytest:
+        try:
+            pytest_result = run_pytest_targets(spec)
+        except Exception as exc:
+            pytest_result = _failure_command_result(stage="pytest", error=exc)
+
+    return ModelMarketSkillResult(
+        skill_name=spec.skill_name,
+        contract=contract,
+        input_drift=input_drift,
+        cli_smoke=cli_smoke,
+        pytest=pytest_result,
+        overall_status=_overall_status(
+            input_drift=input_drift,
+            cli_smoke=cli_smoke,
+            pytest_result=pytest_result,
+        ),
+    )
+
+
+def iter_market_skill_baseline_results(
     *,
     run_pytest: bool = True,
     skill_names: set[str] | None = None,
-) -> ModelMarketSkillBaselineReport:
-    """Capture the current market-only baseline."""
+) -> Iterator[ModelMarketSkillResult]:
+    """Yield market-skill baseline results as each skill completes."""
 
-    results: list[ModelMarketSkillResult] = []
     for spec in iter_market_skill_specs():
         if skill_names and spec.skill_name not in skill_names:
             continue
-        try:
-            contract = _load_contract(spec)
-        except Exception as exc:
-            contract = _fallback_contract(spec)
-            input_drift = ModelInputDrift(
-                matches=False,
-                contract_only_fields=[],
-                model_only_fields=[],
-            )
-            cli_smoke = _failure_command_result(stage="load_contract", error=exc)
-            results.append(
-                ModelMarketSkillResult(
-                    skill_name=spec.skill_name,
-                    contract=contract,
-                    input_drift=input_drift,
-                    cli_smoke=cli_smoke,
-                    pytest=None,
-                    overall_status="failing",
-                )
-            )
-            continue
+        yield capture_market_skill_result(spec, run_pytest=run_pytest)
 
-        try:
-            input_drift = _compute_input_drift(contract, spec)
-        except Exception as exc:
-            input_drift = ModelInputDrift(
-                matches=False,
-                contract_only_fields=[],
-                model_only_fields=[],
-            )
-            cli_smoke = _failure_command_result(stage="compute_input_drift", error=exc)
-            results.append(
-                ModelMarketSkillResult(
-                    skill_name=spec.skill_name,
-                    contract=contract,
-                    input_drift=input_drift,
-                    cli_smoke=cli_smoke,
-                    pytest=None,
-                    overall_status="failing",
-                )
-            )
-            continue
 
-        try:
-            cli_smoke = run_cli_smoke(spec)
-        except Exception as exc:
-            cli_smoke = _failure_command_result(stage="cli_smoke", error=exc)
+def build_market_skill_baseline_report(
+    results: list[ModelMarketSkillResult],
+) -> ModelMarketSkillBaselineReport:
+    """Build a baseline report from already-captured skill results."""
 
-        pytest_result = None
-        if run_pytest:
-            try:
-                pytest_result = run_pytest_targets(spec)
-            except Exception as exc:
-                pytest_result = _failure_command_result(stage="pytest", error=exc)
-        results.append(
-            ModelMarketSkillResult(
-                skill_name=spec.skill_name,
-                contract=contract,
-                input_drift=input_drift,
-                cli_smoke=cli_smoke,
-                pytest=pytest_result,
-                overall_status=_overall_status(
-                    input_drift=input_drift,
-                    cli_smoke=cli_smoke,
-                    pytest_result=pytest_result,
-                ),
-            )
-        )
     return ModelMarketSkillBaselineReport(
         captured_at=datetime.now(tz=UTC),
         repo_root=REPO_ROOT_LABEL,
@@ -885,16 +990,31 @@ def capture_market_skill_baseline(
     )
 
 
+def capture_market_skill_baseline(
+    *,
+    run_pytest: bool = True,
+    skill_names: set[str] | None = None,
+) -> ModelMarketSkillBaselineReport:
+    """Capture the current market-only baseline."""
+
+    return build_market_skill_baseline_report(
+        list(
+            iter_market_skill_baseline_results(
+                run_pytest=run_pytest,
+                skill_names=skill_names,
+            )
+        )
+    )
+
+
 def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
     """Render a compact markdown baseline report."""
 
-    cohort_date = report.captured_at.date().isoformat()
     lines = [
         "# Market Skill Baseline",
         "",
-        f"Captured at: `{report.captured_at.isoformat()}`",
-        f"Baseline window: `{cohort_date}` capture cohort; captured_at is the exact regeneration time.",
-        f"Repo root: `{report.repo_root}`",
+        "Stable reference for the market-owned skill baseline. Detailed execution "
+        "transcripts are produced by `scripts/run_market_skill_baseline.py --stream`.",
         "",
         "## Summary",
         "",
@@ -956,11 +1076,5 @@ def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
             )
             targets = cast(list[str], item.pytest.summary["targets"])
             lines.append(f"- Focused test targets: `{', '.join(targets)}`")
-            if item.pytest.notes:
-                lines.append(
-                    f"- Focused test output: `{' | '.join(item.pytest.notes)}`"
-                )
-            if item.pytest.stderr:
-                lines.append(f"- Focused test stderr: `{item.pytest.stderr}`")
         lines.append("")
     return "\n".join(lines).rstrip()

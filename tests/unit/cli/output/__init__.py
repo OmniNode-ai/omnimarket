@@ -1,0 +1,1 @@
+"""CLI output unit tests."""
