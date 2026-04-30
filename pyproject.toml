@@ -187,6 +187,7 @@ node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_polish_task_classifier = "omnimarket.nodes.node_polish_task_classifier"
 node_fixer_dispatcher = "omnimarket.nodes.node_fixer_dispatcher"
 node_verification_receipt_generator = "omnimarket.nodes.node_verification_receipt_generator"
+node_pattern_b_broker = "omnimarket.nodes.node_pattern_b_broker"
 
 node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
 node_audit_trail_compactor = "omnimarket.nodes.node_audit_trail_compactor"

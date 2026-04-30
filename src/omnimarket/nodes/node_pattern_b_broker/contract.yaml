@@ -1,0 +1,119 @@
+---
+name: pattern_b_broker
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Contract boundary for the Pattern B cross-CLI broker. The broker accepts
+  contract-validated delegation requests, publishes them to the destination CLI
+  bridge, and consumes terminal delegation events for synchronous waiters.
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  runtime_profiles:
+    - effects
+  idempotent: false
+  timeout_ms: 300000
+
+inputs:
+  correlation_id:
+    type: uuid
+    required: true
+  request_id:
+    type: uuid
+    required: false
+  event_type:
+    type: enum
+    required: true
+    enum:
+      - dispatch_requested
+  state:
+    type: enum
+    required: false
+    default: accepted
+    enum:
+      - accepted
+      - denied
+  originator:
+    type: enum
+    required: true
+    enum:
+      - omnimarket
+      - omnicodex
+      - omniclaude
+      - opencode
+  recipient:
+    type: enum
+    required: true
+    enum:
+      - omnicodex
+      - omniclaude
+      - opencode
+  skill_name:
+    type: str
+    required: true
+  payload:
+    type: object
+    required: false
+    default: {}
+  wait_policy:
+    type: object
+    required: false
+
+outputs:
+  request_id:
+    type: uuid
+  correlation_id:
+    type: uuid
+  event_type:
+    type: enum
+    enum:
+      - dispatch_published
+      - terminal_completed
+      - terminal_failed
+      - terminal_timed_out
+  state:
+    type: enum
+    enum:
+      - published
+      - completed
+      - failed
+      - timed_out
+      - denied
+  status:
+    type: enum
+    enum:
+      - completed
+      - failed
+      - timed_out
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniclaude.delegate-task.v1
+  publish_topics:
+    - onex.evt.omniclaude.delegation-completed.v1
+    - onex.evt.omniclaude.delegation-failed.v1
+
+terminal_event: onex.evt.omniclaude.delegation-completed.v1
+
+broker:
+  consumer_group: omnimarket-pattern-b-broker
+  wait_for_terminal_event: true
+  default_timeout_seconds: 300
+  allowed_originators:
+    - omnimarket
+    - omnicodex
+    - omniclaude
+    - opencode
+  allowed_recipients:
+    - omnicodex
+    - omniclaude
+    - opencode
+
+dod_evidence:
+  unit:
+    description: Typed Pattern B broker contract/model tests pass locally.
+    command: uv run pytest tests/unit/nodes/node_pattern_b_broker -q
+    pass_criteria: Models require enum-backed event/state values and load topics from the node contract.
