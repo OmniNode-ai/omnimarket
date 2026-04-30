@@ -22,6 +22,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
 )
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage import (
     HandlerTriageOrchestrator,
+    _run_id_from_details_url,
 )
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
     ModelAutoMergeArmCommand,
@@ -221,6 +222,41 @@ async def test_rule_6_b_polish_blocked_emits_ci_rerun() -> None:
     assert isinstance(cmd, ModelCiRerunCommand)
     assert cmd.pr_number == 600
     assert cmd.run_id_github == "99887766"
+
+
+@pytest.mark.asyncio
+async def test_rule_6_extracts_run_id_not_job_id_from_check_url() -> None:
+    """GitHub check URLs include /job/<id>; rerun needs the workflow run id."""
+    pr = _pr(600, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = _make_request(classified)
+
+    mock_proc = _mock_proc(
+        {
+            "statusCheckRollup": [
+                {
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/25172819068/job/73796685277",
+                }
+            ]
+        }
+    )
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    cmd = output.events[0]
+    assert isinstance(cmd, ModelCiRerunCommand)
+    assert cmd.run_id_github == "25172819068"
+
+
+def test_run_id_from_details_url_ignores_job_segment() -> None:
+    assert (
+        _run_id_from_details_url(
+            "https://github.com/o/r/actions/runs/25172819068/job/73796685277"
+        )
+        == "25172819068"
+    )
 
 
 @pytest.mark.asyncio

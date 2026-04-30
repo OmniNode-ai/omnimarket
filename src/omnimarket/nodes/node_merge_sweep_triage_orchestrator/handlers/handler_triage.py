@@ -541,9 +541,7 @@ class HandlerTriageOrchestrator:
             for check in checks:
                 if check.get("conclusion") == "FAILURE":
                     details_url: str = str(check.get("detailsUrl") or "")
-                    run_id = (
-                        details_url.rstrip("/").split("/")[-1] if details_url else None
-                    )
+                    run_id = _run_id_from_details_url(details_url)
                     if run_id:
                         return run_id
             return None
@@ -699,3 +697,12 @@ class HandlerTriageOrchestrator:
         except (json.JSONDecodeError, AttributeError, KeyError) as exc:
             _log.warning("Failed to parse files for %s#%s: %s", repo, pr_number, exc)
             return []
+
+
+def _run_id_from_details_url(details_url: str) -> str | None:
+    """Extract the workflow run id from a GitHub Actions check URL."""
+    if not details_url or "/actions/runs/" not in details_url:
+        return None
+    tail = details_url.split("/actions/runs/", 1)[1]
+    run_id = tail.split("/", 1)[0].split("?", 1)[0]
+    return run_id or None

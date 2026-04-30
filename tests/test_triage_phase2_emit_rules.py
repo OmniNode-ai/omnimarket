@@ -513,7 +513,7 @@ async def test_phase1_rule_6_still_works() -> None:
             "statusCheckRollup": [
                 {
                     "conclusion": "FAILURE",
-                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887766",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887766/job/123",
                 }
             ]
         }
