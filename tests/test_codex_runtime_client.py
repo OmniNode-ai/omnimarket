@@ -29,6 +29,20 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
 )
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+    HandlerPrLifecycleOrchestrator,
+    ModelPrLifecycleStartCommand,
+)
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
+    EnumPrCategory,
+    EnumReducerIntent,
+    InventoryResult,
+    PrRecord,
+    PrTriageResult,
+    ReducerIntent,
+    ReducerResult,
+    TriageRecord,
+)
 from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
     HandlerSessionBootstrap,
     ModelBootstrapCommand,
@@ -157,6 +171,140 @@ async def _install_aislop_sweep_broker_worker(
     await bus.subscribe(
         command_topic,
         group_id=f"aislop-sweep-broker-{uuid4()}",
+        on_message=on_command,
+    )
+
+
+class _PatternBInventoryHandler:
+    def handle(self, input_model: object) -> InventoryResult:
+        repo = str(getattr(input_model, "repo", "OmniNode-ai/omnimarket"))
+        return InventoryResult(
+            prs=(
+                PrRecord(
+                    pr_number=101,
+                    repo=repo,
+                    title="Ready PR",
+                    branch="ready-pr",
+                    checks_status="success",
+                    review_status="approved",
+                ),
+                PrRecord(
+                    pr_number=102,
+                    repo=repo,
+                    title="Needs polish",
+                    branch="needs-polish",
+                    checks_status="failure",
+                    review_status="approved",
+                ),
+            ),
+            total_collected=2,
+        )
+
+
+class _PatternBTriageHandler:
+    async def handle(
+        self,
+        correlation_id: object,
+        prs: tuple[object, ...],
+    ) -> PrTriageResult:
+        assert correlation_id
+        assert len(prs) == 2
+        return PrTriageResult(
+            classified=(
+                TriageRecord(
+                    pr_number=101,
+                    repo="OmniNode-ai/omnimarket",
+                    category=EnumPrCategory.GREEN,
+                ),
+                TriageRecord(
+                    pr_number=102,
+                    repo="OmniNode-ai/omnimarket",
+                    category=EnumPrCategory.RED,
+                    block_reason="ci_failure",
+                ),
+            ),
+            green_count=1,
+            non_green_count=1,
+        )
+
+
+class _PatternBReducerHandler:
+    async def handle(self, *args: object, **kwargs: object) -> ReducerResult:
+        assert kwargs["dry_run"] is True
+        return ReducerResult(
+            intents=(
+                ReducerIntent(
+                    pr_number=101,
+                    repo="OmniNode-ai/omnimarket",
+                    intent=EnumReducerIntent.MERGE,
+                    reason="merge-ready",
+                ),
+                ReducerIntent(
+                    pr_number=102,
+                    repo="OmniNode-ai/omnimarket",
+                    intent=EnumReducerIntent.FIX,
+                    reason="needs-polish",
+                ),
+            ),
+            merge_count=1,
+            fix_count=1,
+        )
+
+
+class _PatternBPrLifecycleOrchestrator(HandlerPrLifecycleOrchestrator):
+    def _enumerate_open_pr_numbers(self, repo: str) -> tuple[int, ...]:
+        assert repo == "OmniNode-ai/omnimarket"
+        return (101, 102)
+
+
+async def _install_pr_lifecycle_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = ModelPrLifecycleStartCommand.model_validate(
+                envelope.payload.payload
+            )
+            node_result = await _PatternBPrLifecycleOrchestrator(
+                inventory=_PatternBInventoryHandler(),
+                triage=_PatternBTriageHandler(),
+                reducer=_PatternBReducerHandler(),
+            ).handle(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-pr-lifecycle-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"pr-lifecycle-broker-{uuid4()}",
         on_message=on_command,
     )
 
@@ -442,6 +590,83 @@ async def test_aislop_sweep_pattern_b_runs_node_end_to_end(tmp_path: Path) -> No
     assert "CRITICAL" in severities
     assert len(received_commands) == 1
     assert received_commands[0].command_name == "aislop_sweep"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
+    )
+
+
+@pytest.mark.asyncio
+async def test_merge_sweep_pattern_b_runs_pr_lifecycle_end_to_end(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "merge-sweep-pattern-b"
+    state_dir = tmp_path / "state"
+    correlation_id = uuid4()
+    response_topic = "onex.evt.omnibase-infra.pattern-b-merge-sweep-e2e.v1"
+    monkeypatch.setenv("ONEX_STATE_DIR", str(state_dir))
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-merge-sweep-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_pr_lifecycle_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="pr_lifecycle_orchestrator",
+            payload={
+                "correlation_id": str(correlation_id),
+                "run_id": run_id,
+                "repos": "OmniNode-ai/omnimarket",
+                "dry_run": True,
+                "inventory_only": False,
+                "fix_only": False,
+                "merge_only": False,
+                "enable_auto_rebase": True,
+                "verify": False,
+                "verify_timeout_seconds": 30,
+            },
+            timeout_ms=300_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "pr_lifecycle_orchestrator"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    payload = result.output_payloads[0]
+    assert payload["correlation_id"] == str(correlation_id)
+    assert payload["final_state"] == "COMPLETE"
+    assert payload["prs_inventoried"] == 2
+    assert payload["prs_skipped"] == 2
+    assert payload["prs_merged"] == 0
+    assert payload["prs_fixed"] == 0
+    result_path = state_dir / "merge-sweep" / run_id / "result.json"
+    assert result_path.exists()
+    persisted = json.loads(result_path.read_text(encoding="utf-8"))
+    assert persisted["skill_name"] == "merge-sweep"
+    assert persisted["status"] == "success"
+    assert persisted["run_id"] == run_id
+    assert persisted["prs_inventoried"] == 2
+    assert persisted["prs_skipped"] == 2
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "pr_lifecycle_orchestrator"
     assert received_commands[0].response_topic == response_topic
     assert (
         received_commands[0].target_runtime_address

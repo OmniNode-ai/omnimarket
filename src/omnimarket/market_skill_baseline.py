@@ -151,6 +151,7 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         pytest_targets=(
             "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py",
             "tests/test_golden_chain_pr_lifecycle_orchestrator.py",
+            "tests/test_codex_runtime_client.py::test_merge_sweep_pattern_b_runs_pr_lifecycle_end_to_end",
         ),
         smoke_kind="pr_lifecycle_orchestrator",
     ),
