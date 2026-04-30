@@ -47,6 +47,7 @@ def test_codex_skills_have_required_frontmatter() -> None:
     skill_paths = sorted((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
     assert {path.parent.name for path in skill_paths} == {
         "aislop-sweep",
+        "local-review",
         "merge-sweep",
         "pr-polish",
         "session-bootstrap",
@@ -100,6 +101,11 @@ def test_codex_shims_remain_dispatch_only() -> None:
             assert "--timeout-ms 300000" in text
             assert "required_clean_runs" in text
             assert "no_automerge" in text
+        elif path.parent.name == "local-review":
+            assert '--command-name "local_review"' in text
+            assert "--timeout-ms 300000" in text
+            assert "correlation_id" in text
+            assert "requested_at" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
@@ -116,6 +122,7 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
     )
     assert {path.parent.name for path in source_skill_paths} == {
         "aislop-sweep",
+        "local-review",
         "merge-sweep",
         "pr-polish",
         "session-bootstrap",
@@ -153,6 +160,11 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             assert "--timeout-ms 300000" in text
             assert "required_clean_runs" in text
             assert "no_automerge" in text
+        elif path.parent.name == "local-review":
+            assert '--command-name "local_review"' in text
+            assert "--timeout-ms 300000" in text
+            assert "correlation_id" in text
+            assert "requested_at" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
