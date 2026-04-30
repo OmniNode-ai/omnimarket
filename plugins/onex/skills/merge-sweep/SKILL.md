@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_pr_lifecycle_orchestrator. Use for o
 
 # Merge Sweep
 
-This skill is a thin Pattern B broker shim over the OmniMarket
+This skill is a thin Codex runtime request adapter shim over the OmniMarket
 `node_pr_lifecycle_orchestrator` node. The node owns PR inventory, triage,
 verification, merge, and fix dispatch behavior. Do not add GitHub scripting,
 queue logic, or PR classification logic to this skill.
@@ -40,7 +40,7 @@ If the user supplies a `runtime://...` target, add
 `--target-runtime-address '<runtime-address>'` to the request command. If the
 argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
-For broker-free preflight, add `--compile-only`. This validates the payload,
+For event-bus-free preflight, add `--compile-only`. This validates the payload,
 command topic, response topic, correlation id, timeout, and target runtime
 address without publishing to Kafka or starting a runtime.
 

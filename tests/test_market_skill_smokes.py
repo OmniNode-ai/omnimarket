@@ -6,14 +6,20 @@ still run without relying on external wrapper surfaces.
 
 from __future__ import annotations
 
+import pytest
+
 from omnimarket import market_skill_baseline
 from omnimarket.market_skill_baseline import (
     ModelCommandResult,
+    ModelContractInventory,
+    ModelInputDrift,
+    ModelMarketSkillResult,
     capture_market_skill_baseline,
     iter_market_skill_specs,
     render_markdown,
     run_cli_smoke,
 )
+from scripts import run_market_skill_baseline
 
 
 def test_all_market_skill_cli_smokes_pass() -> None:
@@ -126,7 +132,74 @@ def test_session_orchestrator_summary_redacts_run_variant_values() -> None:
             "session_id": "sess-20260429-1559",
             "dry_run": True,
             "dispatch_queue": [],
+            "dispatch_receipts": ["{}"],
         }
     )
 
     assert summary["session_id"] == "sess-<redacted>"
+    assert summary["dispatch_receipt_count"] == 1
+
+
+def test_session_orchestrator_smoke_runs_phase2_and_phase3() -> None:
+    result = market_skill_baseline.run_cli_smoke(
+        next(
+            spec
+            for spec in market_skill_baseline.iter_market_skill_specs()
+            if spec.skill_name == "session_orchestrator"
+        )
+    )
+
+    assert result.passed
+    assert result.summary["dispatch_queue_count"] == 2
+    assert result.summary["dispatch_receipt_count"] == 2
+
+
+def test_streaming_baseline_prints_each_skill_result(
+    monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    item = ModelMarketSkillResult(
+        skill_name="ticket_pipeline",
+        contract=ModelContractInventory(
+            contract_name="ticket_pipeline",
+            node_name="node_ticket_pipeline",
+            node_type="compute",
+            timeout_ms=600_000,
+            terminal_event="onex.evt.omnimarket.ticket-pipeline-completed.v1",
+            inputs=["ticket_id"],
+        ),
+        input_drift=ModelInputDrift(matches=True),
+        cli_smoke=ModelCommandResult(
+            passed=True,
+            command=["python", "-m", "omnimarket.nodes.node_ticket_pipeline"],
+            returncode=0,
+            summary={"stop_reason": "not_implemented"},
+        ),
+        pytest=ModelCommandResult(
+            passed=True,
+            command=["python", "-m", "pytest"],
+            returncode=0,
+            summary={"targets": ["tests/test_codex_runtime_client.py"]},
+            notes=["1 passed"],
+        ),
+        overall_status="working",
+    )
+
+    monkeypatch.setattr(
+        run_market_skill_baseline,
+        "iter_market_skill_baseline_results",
+        lambda **_kwargs: iter([item]),
+    )
+
+    report = run_market_skill_baseline._capture_streaming(
+        run_pytest=True,
+        skill_names=None,
+    )
+
+    output = capsys.readouterr().out
+    assert report.working_count == 1
+    assert (
+        "[market-skill] ticket_pipeline node=node_ticket_pipeline status=working"
+        in output
+    )
+    assert "[market-skill] ticket_pipeline cli=pass rc=0" in output
+    assert "[market-skill] ticket_pipeline runtime_proof=pass rc=0" in output

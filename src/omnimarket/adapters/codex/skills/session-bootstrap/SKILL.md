@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_session_bootstrap. Use to initialize
 
 # Session Bootstrap
 
-This skill is a thin Pattern B broker shim over the OmniMarket
+This skill is a thin Codex runtime adapter shim over the OmniMarket
 `node_session_bootstrap` node. The node owns session contract validation,
 snapshot persistence, and scheduler-plan emission. Do not add timer setup
 logic or fallback scheduler logic to this skill.
@@ -41,7 +41,7 @@ If the user supplies a `runtime://...` target, add
 `--target-runtime-address '<runtime-address>'` to the request command. If the
 argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
-For broker-free preflight, add `--compile-only`. This validates the payload,
+For event-bus-free preflight, add `--compile-only`. This validates the payload,
 command topic, response topic, correlation id, timeout, and target runtime
 address without publishing to Kafka or starting a runtime.
 
@@ -88,7 +88,7 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 ## Contract
 
 - Backing node: `src/omnimarket/nodes/node_session_bootstrap/`
-- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Codex adapter request wrapper: `scripts/run_codex_runtime_request.py`
 - Command name: `session_bootstrap`
 - Runtime topic: `onex.cmd.omnimarket.session-bootstrap-start.v2`
 - Completion topic: `onex.evt.omnimarket.session-bootstrap-completed.v2`

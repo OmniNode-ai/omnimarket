@@ -4,7 +4,7 @@
 
 Codex adapters are thin `SKILL.md` shims packaged in a Codex plugin. Each
 skill describes how Codex should invoke one OmniMarket node through the
-runtime-owned Pattern B broker. No business logic lives in the skill.
+runtime-owned Codex request adapter path. No business logic lives in the skill.
 
 ## How it works
 
@@ -23,7 +23,7 @@ runtime-owned Pattern B broker. No business logic lives in the skill.
 |------|---------|
 | `template.md` | Generic Codex `SKILL.md` template |
 | `skills/<skill-slug>/SKILL.md` | Generated Codex skill shim |
-| `runtime_client.py` | Stdlib-friendly Pattern B broker client |
+| `runtime_client.py` | Stdlib-friendly Codex runtime request adapter |
 | `../../../../scripts/run_codex_runtime_request.py` | Repo-local request wrapper that bootstraps `src/` import resolution |
 | `../../../../plugins/onex/.codex-plugin/plugin.json` | Repo-local Codex plugin manifest |
 
@@ -77,11 +77,11 @@ uv run python scripts/install_codex_skills.py --source marketplace --force
    them to fields from `contract.yaml`.
 2. **Command options mapping** - Translate arguments into the structured JSON
    payload expected by the node.
-3. **Broker dispatch** - Run the backing node through the runtime-owned
-   Pattern B broker path instead of direct CLI execution or a second dispatch
+3. **Adapter dispatch** - Run the backing node through the runtime-owned
+   Codex request adapter path instead of direct CLI execution or a second dispatch
    implementation in the skill layer.
 4. **Runtime targeting** - Preserve an optional `runtime://...` address on the
-   broker command so the runtime layer can route work to a concrete runtime
+   adapter command so the runtime layer can route work to a concrete runtime
    without treating a lane such as stability-test as a special flag.
 5. **Response handling** - Prefer `output_payloads[0]` for the business result
    and fall back to `dispatch_result` when the handler did not emit a typed
@@ -89,7 +89,7 @@ uv run python scripts/install_codex_skills.py --source marketplace --force
 6. **Output formatting** - Transform the runtime response into a clear reply
    for the user.
 7. **Timeout and error handling** - Use the node's `descriptor.timeout_ms` as
-   the timeout budget and surface structured broker client errors directly.
+   the timeout budget and surface structured runtime adapter errors directly.
 
 ## Creating new skills
 

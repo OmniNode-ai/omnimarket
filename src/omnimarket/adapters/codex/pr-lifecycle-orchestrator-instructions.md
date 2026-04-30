@@ -47,8 +47,8 @@ Notes:
 - `scripts/run_codex_runtime_request.py` is the supported repo-local request wrapper.
 - `pr_lifecycle_orchestrator` resolves through the runtime ingress route table.
 - The command prints a JSON response object to stdout.
-- Use `--compile-only` for broker-free preflight. It validates and prints the
-  broker command envelope without publishing to Kafka or starting a runtime.
+- Use `--compile-only` for event-bus-free preflight. It validates and prints the
+  adapter command envelope without publishing to Kafka or starting a runtime.
 
 ### Step 3 — Interpret the response
 

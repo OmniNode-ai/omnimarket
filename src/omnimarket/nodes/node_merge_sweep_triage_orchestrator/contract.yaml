@@ -44,5 +44,6 @@ event_bus:
     - onex.cmd.omnimarket.pr-thread-reply.v1
     - onex.cmd.omnimarket.pr-conflict-hunk.v1
     - onex.cmd.omnimarket.pr-ci-fix.v1
+    - onex.cmd.omnimarket.pr-polish-start.v1
   dlq_topics:
     - onex.dlq.omnimarket.merge-sweep-triage.v1

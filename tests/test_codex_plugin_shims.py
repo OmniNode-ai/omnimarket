@@ -47,9 +47,13 @@ def test_codex_skills_have_required_frontmatter() -> None:
     skill_paths = sorted((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
     assert {path.parent.name for path in skill_paths} == {
         "aislop-sweep",
+        "coderabbit-triage",
+        "local-review",
         "merge-sweep",
+        "pr-polish",
         "session-bootstrap",
         "session-orchestrator",
+        "ticket-pipeline",
     }
 
     for path in skill_paths:
@@ -75,7 +79,7 @@ def test_codex_shims_remain_dispatch_only() -> None:
         assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
         assert "runtime://..." in text
         assert "--compile-only" in text
-        assert "broker-free preflight" in text
+        assert "event-bus-free preflight" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -94,6 +98,26 @@ def test_codex_shims_remain_dispatch_only() -> None:
         elif path.parent.name == "aislop-sweep":
             assert '--command-name "aislop_sweep"' in text
             assert "--timeout-ms 120000" in text
+        elif path.parent.name == "pr-polish":
+            assert '--command-name "pr_polish"' in text
+            assert "--timeout-ms 300000" in text
+            assert "required_clean_runs" in text
+            assert "no_automerge" in text
+        elif path.parent.name == "local-review":
+            assert '--command-name "local_review"' in text
+            assert "--timeout-ms 300000" in text
+            assert "correlation_id" in text
+            assert "requested_at" in text
+        elif path.parent.name == "coderabbit-triage":
+            assert '--command-name "coderabbit_triage"' in text
+            assert "--timeout-ms 120000" in text
+            assert "blocking_count" in text
+            assert "resolved_count" in text
+        elif path.parent.name == "ticket-pipeline":
+            assert '--command-name "ticket_pipeline"' in text
+            assert "--timeout-ms 600000" in text
+            assert "skip_test_iterate" in text
+            assert "not_implemented" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
@@ -110,9 +134,13 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
     )
     assert {path.parent.name for path in source_skill_paths} == {
         "aislop-sweep",
+        "coderabbit-triage",
+        "local-review",
         "merge-sweep",
+        "pr-polish",
         "session-bootstrap",
         "session-orchestrator",
+        "ticket-pipeline",
     }
 
     for path in source_skill_paths:
@@ -122,7 +150,7 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
         assert "runtime://..." in text
         assert "--compile-only" in text
-        assert "broker-free preflight" in text
+        assert "event-bus-free preflight" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -141,6 +169,26 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             assert "--timeout-ms 300000" in text
             assert "run_id" in text
             assert "filesystem-safe identifier" in text
+        elif path.parent.name == "pr-polish":
+            assert '--command-name "pr_polish"' in text
+            assert "--timeout-ms 300000" in text
+            assert "required_clean_runs" in text
+            assert "no_automerge" in text
+        elif path.parent.name == "local-review":
+            assert '--command-name "local_review"' in text
+            assert "--timeout-ms 300000" in text
+            assert "correlation_id" in text
+            assert "requested_at" in text
+        elif path.parent.name == "coderabbit-triage":
+            assert '--command-name "coderabbit_triage"' in text
+            assert "--timeout-ms 120000" in text
+            assert "blocking_count" in text
+            assert "resolved_count" in text
+        elif path.parent.name == "ticket-pipeline":
+            assert '--command-name "ticket_pipeline"' in text
+            assert "--timeout-ms 600000" in text
+            assert "skip_test_iterate" in text
+            assert "not_implemented" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text

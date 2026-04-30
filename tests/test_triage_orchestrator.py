@@ -22,12 +22,16 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
 )
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage import (
     HandlerTriageOrchestrator,
+    _run_id_from_details_url,
 )
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
     ModelAutoMergeArmCommand,
     ModelCiRerunCommand,
     ModelRebaseCommand,
     ModelTriageRequest,
+)
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
+    ModelPrPolishStartCommand,
 )
 
 _RUN_ID = UUID("00000000-0000-4000-a000-000000000001")
@@ -75,6 +79,7 @@ def _make_request(classified: list[ModelClassifiedPR]) -> ModelTriageRequest:
         classification=ModelMergeSweepResult(classified=classified),
         run_id=_RUN_ID,
         correlation_id=_CORR_ID,
+        emit_pr_polish_commands=False,
     )
 
 
@@ -97,6 +102,26 @@ async def test_rule_2_clean_approved_emits_auto_merge_arm() -> None:
     assert cmd.pr_node_id == "PR_kwXXXXXX"
     assert cmd.head_ref_name == "feat/test"
     assert cmd.total_prs == 1
+
+
+@pytest.mark.asyncio
+async def test_track_a_clean_merge_ready_emits_auto_merge_arm() -> None:
+    """Merge-sweep compute emits CLEAN merge-ready PRs as Track A."""
+    pr = _pr(101, merge_state_status="CLEAN", review_decision=None)
+    classified = [_classified(pr, EnumPRTrack.A_MERGE)]
+    request = _make_request(classified)
+
+    mock_proc = _mock_proc({"id": "PR_kwMERGE", "headRefName": "feat/merge-ready"})
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert len(output.events) == 1
+    cmd = output.events[0]
+    assert isinstance(cmd, ModelAutoMergeArmCommand)
+    assert cmd.pr_number == 101
+    assert cmd.pr_node_id == "PR_kwMERGE"
+    assert cmd.head_ref_name == "feat/merge-ready"
 
 
 @pytest.mark.asyncio
@@ -197,6 +222,136 @@ async def test_rule_6_b_polish_blocked_emits_ci_rerun() -> None:
     assert isinstance(cmd, ModelCiRerunCommand)
     assert cmd.pr_number == 600
     assert cmd.run_id_github == "99887766"
+
+
+@pytest.mark.asyncio
+async def test_rule_6_extracts_run_id_not_job_id_from_check_url() -> None:
+    """GitHub check URLs include /job/<id>; rerun needs the workflow run id."""
+    pr = _pr(600, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = _make_request(classified)
+
+    mock_proc = _mock_proc(
+        {
+            "statusCheckRollup": [
+                {
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/25172819068/job/73796685277",
+                }
+            ]
+        }
+    )
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    cmd = output.events[0]
+    assert isinstance(cmd, ModelCiRerunCommand)
+    assert cmd.run_id_github == "25172819068"
+
+
+def test_run_id_from_details_url_ignores_job_segment() -> None:
+    assert (
+        _run_id_from_details_url(
+            "https://github.com/o/r/actions/runs/25172819068/job/73796685277"
+        )
+        == "25172819068"
+    )
+
+
+@pytest.mark.asyncio
+async def test_track_b_default_also_emits_pr_polish_start() -> None:
+    """Every Track B PR is sent to pr_polish by default."""
+    pr = _pr(601, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = ModelTriageRequest(
+        classification=ModelMergeSweepResult(classified=classified),
+        run_id=_RUN_ID,
+        correlation_id=_CORR_ID,
+    )
+
+    mock_proc = _mock_proc(
+        {
+            "statusCheckRollup": [
+                {
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887767",
+                }
+            ]
+        }
+    )
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert any(isinstance(event, ModelPrPolishStartCommand) for event in output.events)
+    polish_cmd = next(
+        event for event in output.events if isinstance(event, ModelPrPolishStartCommand)
+    )
+    assert polish_cmd.repo == "OmniNode-ai/omni_home"
+    assert polish_cmd.pr_number == 601
+    assert polish_cmd.dry_run is True
+    assert polish_cmd.no_push is True
+    assert polish_cmd.no_automerge is True
+    assert any(isinstance(event, ModelCiRerunCommand) for event in output.events)
+
+
+@pytest.mark.asyncio
+async def test_track_b_non_dry_run_emits_live_pr_polish_start() -> None:
+    """Non-dry-run triage emits a live pr_polish command."""
+    pr = _pr(602, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = ModelTriageRequest(
+        classification=ModelMergeSweepResult(classified=classified),
+        run_id=_RUN_ID,
+        correlation_id=_CORR_ID,
+        dry_run=False,
+    )
+
+    mock_proc = _mock_proc(
+        {
+            "statusCheckRollup": [
+                {
+                    "conclusion": "FAILURE",
+                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887768",
+                }
+            ]
+        }
+    )
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    polish_cmd = next(
+        event for event in output.events if isinstance(event, ModelPrPolishStartCommand)
+    )
+    assert polish_cmd.dry_run is False
+    assert polish_cmd.no_push is False
+    assert polish_cmd.no_automerge is False
+
+
+@pytest.mark.asyncio
+async def test_track_b_without_failing_run_does_not_emit_pr_polish_start() -> None:
+    """Queued/pending checks without a failing run must not trigger live polish."""
+    pr = _pr(603, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = ModelTriageRequest(
+        classification=ModelMergeSweepResult(classified=classified),
+        run_id=_RUN_ID,
+        correlation_id=_CORR_ID,
+        emit_pr_polish_commands=True,
+        dry_run=False,
+    )
+
+    mock_proc = _mock_proc({"statusCheckRollup": []})
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert not any(
+        isinstance(event, ModelPrPolishStartCommand) for event in output.events
+    )
+    assert len(output.events) == 0
 
 
 @pytest.mark.asyncio

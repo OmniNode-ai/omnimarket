@@ -3,7 +3,8 @@
 """Models for node_sweep_outcome_classify [OMN-8963, OMN-8996].
 
 EnumSweepOutcome: 9-value outcome classification (Phase 1 + Phase 2).
-ModelSweepOutcomeInput: union input (one of the 6 completion event types).
+EnumSweepOutcomeEventType: typed completion event discriminator.
+ModelSweepOutcomeInput: union input (one of the typed completion event types).
 ModelSweepOutcomeClassified: output with canonical outcome + metadata.
 """
 
@@ -32,6 +33,19 @@ class EnumSweepOutcome(StrEnum):
     NOOP = "noop"  # Phase 2 effect determined no action was needed (is_noop=True)
 
 
+class EnumSweepOutcomeEventType(StrEnum):
+    """Completion event types accepted by node_sweep_outcome_classify."""
+
+    ARMED = "armed"
+    REBASE_COMPLETED = "rebase_completed"
+    CI_RERUN_TRIGGERED = "ci_rerun_triggered"
+    MERGED = "merged"
+    THREAD_REPLIED = "thread_replied"
+    CONFLICT_RESOLVED = "conflict_resolved"
+    CI_FIX_ATTEMPTED = "ci_fix_attempted"
+    PR_POLISH_COMPLETED = "pr_polish_completed"
+
+
 class ModelSweepOutcomeInput(BaseModel):
     """Input to classify: one completion event from any of the 3 effect topics.
 
@@ -42,7 +56,7 @@ class ModelSweepOutcomeInput(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="allow")
 
-    event_type: str  # "armed" | "rebase_completed" | "ci_rerun_triggered" | "thread_replied" | "conflict_resolved" | "ci_fix_attempted"
+    event_type: EnumSweepOutcomeEventType
     pr_number: int
     repo: str
     correlation_id: UUID
@@ -84,6 +98,6 @@ class ModelSweepOutcomeClassified(BaseModel):
     run_id: UUID
     total_prs: int
     outcome: EnumSweepOutcome
-    source_event_type: str  # original event_type from input
+    source_event_type: EnumSweepOutcomeEventType  # original event_type from input
     error: str | None = None
     conflict_files: list[str] = Field(default_factory=list)

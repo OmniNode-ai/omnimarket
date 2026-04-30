@@ -1047,6 +1047,25 @@ class HandlerSessionOrchestrator:
     ) -> list[str]:
         """Query Linear for active tickets, score with RSD formula, return ordered IDs."""
         logger.info("Phase 2: running RSD scoring for session %s", session_id)
+        fixture_path = os.environ.get("ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE", "")
+        if fixture_path:
+            tickets = self._load_linear_fixture(fixture_path)
+            if not tickets:
+                raise SessionLinearFetchError(
+                    "ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE produced no tickets: "
+                    f"{fixture_path}"
+                )
+            standing_orders = self._load_standing_orders(command.standing_orders_path)
+            scored = self._score_tickets(tickets, standing_orders)
+            scored.sort(key=lambda x: -x.rsd_score)
+            if not command.dry_run:
+                self._write_rsd_snapshot(session_id, scored, command.state_dir)
+            ids = [item.ticket_id for item in scored]
+            logger.info(
+                "Phase 2: scored %d fixture tickets, top 5: %s", len(ids), ids[:5]
+            )
+            return ids
+
         linear_key = os.environ.get("LINEAR_API_KEY", "")
         if not linear_key:
             logger.warning("Phase 2: LINEAR_API_KEY not set — returning empty queue")
@@ -1121,6 +1140,48 @@ class HandlerSessionOrchestrator:
             if isinstance(exc, SessionLinearFetchError):
                 raise
             raise SessionLinearFetchError(str(exc)) from exc
+
+    def _load_linear_fixture(self, path: str) -> list[dict[str, Any]]:
+        """Load deterministic Linear issue nodes for local/CI proof runs."""
+        try:
+            with open(os.path.abspath(path), encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except Exception as exc:
+            raise SessionLinearFetchError(f"Linear fixture load failed: {exc}") from exc
+
+        if isinstance(payload, list):
+            nodes = payload
+        elif isinstance(payload, dict):
+            maybe_nodes = payload.get("nodes")
+            if maybe_nodes is None:
+                maybe_nodes = payload.get("data", {}).get("issues", {}).get("nodes", [])
+            nodes = maybe_nodes
+        else:
+            nodes = []
+
+        if not isinstance(nodes, list):
+            raise SessionLinearFetchError("Linear fixture must contain a list of nodes")
+        return [self._normalize_linear_fixture_node(node) for node in nodes]
+
+    def _normalize_linear_fixture_node(self, node: Any) -> dict[str, Any]:
+        """Validate and normalize a Linear fixture node before scoring."""
+        if not isinstance(node, dict):
+            raise SessionLinearFetchError("Linear fixture nodes must be objects")
+
+        normalized = dict(node)
+        for field in ("labels", "children"):
+            value = normalized.get(field)
+            if isinstance(value, list):
+                normalized[field] = {"nodes": value}
+                continue
+            if not isinstance(value, dict) or not isinstance(value.get("nodes"), list):
+                identifier = (
+                    normalized.get("identifier") or normalized.get("id") or "<unknown>"
+                )
+                raise SessionLinearFetchError(
+                    f"Linear fixture node {identifier} has invalid {field}.nodes"
+                )
+        return normalized
 
     def _load_standing_orders(self, path: str) -> dict[str, float]:
         """Load standing orders priority boosts. Returns {ticket_id: boost}."""
@@ -1337,6 +1398,7 @@ class HandlerSessionOrchestrator:
                 dispatch_id=dispatch_id,
                 correlation_chain=correlation_chain,
                 session_id=session_id,
+                state_dir=state_dir,
             )
             if compiled.rejected_reason:
                 status = f"rejected:{compiled.rejected_reason}"
@@ -1374,6 +1436,7 @@ class HandlerSessionOrchestrator:
         dispatch_id: str,
         correlation_chain: str,
         session_id: str,
+        state_dir: str,
     ) -> ModelDispatchWorkerResult:
         worker_name = f"session-{dispatch_id}-{ticket_id.lower()}".replace("_", "-")
         command = ModelDispatchWorkerCommand(
@@ -1390,7 +1453,11 @@ class HandlerSessionOrchestrator:
             model="sonnet",
             replace=False,
         )
-        return NodeDispatchWorker().handle(command)
+        return NodeDispatchWorker().handle(
+            command,
+            state_dir=os.path.abspath(state_dir),
+            parent_session_id=session_id,
+        )
 
     def _write_dispatch_artifact(
         self,

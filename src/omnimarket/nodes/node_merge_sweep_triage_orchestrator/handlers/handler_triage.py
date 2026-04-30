@@ -29,6 +29,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -47,6 +48,9 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
     ModelThreadReplyCommand,
     ModelTriageRequest,
 )
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
+    ModelPrPolishStartCommand,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -63,6 +67,16 @@ TOPIC_CI_FIX = (
 )
 
 _PROTECTED_BASES = {"main", "master", "develop"}
+
+FAILED_CHECK_CONCLUSIONS = {
+    "ACTION_REQUIRED",
+    "CANCELLED",
+    "FAILURE",
+    "FAILED",
+    "STARTUP_FAILURE",
+    "STALE",
+    "TIMED_OUT",
+}
 
 # Default routing policy for Phase 2 LLM commands — callers may override via classified.routing_hints
 _DEFAULT_ROUTING_POLICY: dict[str, Any] = {"model": "qwen3-coder", "temperature": 0.0}
@@ -91,6 +105,13 @@ def _approval_gate_cleared(
     return required_approving_review_count in (0, None)
 
 
+def _has_terminal_check_failure(pr: ModelClassifiedPR) -> bool:
+    info = pr.pr
+    return info.required_checks_failed or (
+        not info.required_checks_pass and not info.required_checks_pending
+    )
+
+
 class HandlerTriageOrchestrator:
     """ORCHESTRATOR — fans out N typed command events per 14-row decision table.
 
@@ -104,7 +125,10 @@ class HandlerTriageOrchestrator:
         """Classify each PR and emit the appropriate command event."""
         raw_cmds: list[Any] = []
 
-        # First pass: collect actionable commands with placeholder total_prs=0
+        # First pass: collect actionable commands with placeholder total_prs=0.
+        # Track B polish is emitted only when the decision table finds an
+        # actionable remediation. A PR that is merely waiting on queued checks
+        # must not fan out to live polish.
         for classified_pr in request.classification.classified:
             cmd = await self._classify_to_command(
                 classified_pr,
@@ -113,18 +137,38 @@ class HandlerTriageOrchestrator:
                 0,  # placeholder; replaced below
             )
             if cmd is not None:
+                if (
+                    request.emit_pr_polish_commands
+                    and classified_pr.track == EnumPRTrack.B_POLISH
+                ):
+                    raw_cmds.append(
+                        ModelPrPolishStartCommand(
+                            correlation_id=request.correlation_id,
+                            repo=classified_pr.pr.repo,
+                            pr_number=classified_pr.pr.number,
+                            no_push=request.dry_run,
+                            no_automerge=request.dry_run,
+                            dry_run=request.dry_run,
+                            requested_at=datetime.now(UTC),
+                        )
+                    )
                 raw_cmds.append(cmd)
 
-        # total_prs = actionable count only; skipped PRs never emit outcomes
-        total_prs = len(raw_cmds)
+        # total_prs = actionable PR count only. A Track B PR may fan out to both
+        # polish and specialized remediation commands, but it is still one PR in
+        # the reducer terminal count.
+        total_prs = len({(cmd.repo, cmd.pr_number) for cmd in raw_cmds})
         # Phase 2 models use run_id: str, not UUID — model_copy handles both
         events: list[Any] = []
         for cmd in raw_cmds:
             if isinstance(
                 cmd,
-                ModelThreadReplyCommand | ModelConflictHunkCommand | ModelCiFixCommand,
+                ModelThreadReplyCommand
+                | ModelConflictHunkCommand
+                | ModelCiFixCommand
+                | ModelPrPolishStartCommand,
             ):
-                # Phase 2 models don't carry total_prs — emit as-is
+                # Phase 2 and pr_polish commands don't carry total_prs — emit as-is
                 events.append(cmd)
             else:
                 events.append(cmd.model_copy(update={"total_prs": total_prs}))
@@ -207,8 +251,9 @@ class HandlerTriageOrchestrator:
             _log.debug("PR %s/%s: SKIP (SKIP track)", pr.repo, pr.number)
             return None
 
-        # Track A_UPDATE rules
-        if track == EnumPRTrack.A_UPDATE:
+        # Track A/A_UPDATE rules. Compute emits CLEAN merge-ready PRs as Track A;
+        # older orchestrator fixtures use A_UPDATE for the same auto-merge arm path.
+        if track in {EnumPRTrack.A_MERGE, EnumPRTrack.A_UPDATE}:
             approval_cleared = _approval_gate_cleared(
                 pr.review_decision, pr.required_approving_review_count
             )
@@ -328,7 +373,7 @@ class HandlerTriageOrchestrator:
             if (
                 pr.mergeable == "MERGEABLE"
                 and pr.merge_state_status == "BLOCKED"
-                and not pr.required_checks_pass
+                and _has_terminal_check_failure(classified)
             ):
                 run_id_github = await self._resolve_failing_run_id(pr.repo, pr.number)
                 if run_id_github is None:
@@ -351,7 +396,7 @@ class HandlerTriageOrchestrator:
             if (
                 pr.mergeable == "MERGEABLE"
                 and pr.merge_state_status == "BEHIND"
-                and not pr.required_checks_pass
+                and _has_terminal_check_failure(classified)
             ):
                 refs = await self._resolve_pr_refs(pr.repo, pr.number)
                 if refs is None:
@@ -514,11 +559,10 @@ class HandlerTriageOrchestrator:
             data: dict[str, Any] = json.loads(stdout)
             checks = data.get("statusCheckRollup") or []
             for check in checks:
-                if check.get("conclusion") == "FAILURE":
+                conclusion = str(check.get("conclusion") or "").upper()
+                if conclusion in FAILED_CHECK_CONCLUSIONS:
                     details_url: str = str(check.get("detailsUrl") or "")
-                    run_id = (
-                        details_url.rstrip("/").split("/")[-1] if details_url else None
-                    )
+                    run_id = _run_id_from_details_url(details_url)
                     if run_id:
                         return run_id
             return None
@@ -568,7 +612,8 @@ class HandlerTriageOrchestrator:
             data: dict[str, Any] = json.loads(stdout)
             checks = data.get("statusCheckRollup") or []
             for check in checks:
-                if check.get("conclusion") == "FAILURE":
+                conclusion = str(check.get("conclusion") or "").upper()
+                if conclusion in FAILED_CHECK_CONCLUSIONS:
                     name: str | None = check.get("name") or check.get("context")
                     return name
             return None
@@ -674,3 +719,12 @@ class HandlerTriageOrchestrator:
         except (json.JSONDecodeError, AttributeError, KeyError) as exc:
             _log.warning("Failed to parse files for %s#%s: %s", repo, pr_number, exc)
             return []
+
+
+def _run_id_from_details_url(details_url: str) -> str | None:
+    """Extract the workflow run id from a GitHub Actions check URL."""
+    if not details_url or "/actions/runs/" not in details_url:
+        return None
+    tail = details_url.split("/actions/runs/", 1)[1]
+    run_id = tail.split("/", 1)[0].split("?", 1)[0]
+    return run_id or None

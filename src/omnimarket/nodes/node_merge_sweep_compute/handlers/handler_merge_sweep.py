@@ -74,6 +74,20 @@ class ModelPRInfo(BaseModel):
     is_draft: bool = False
     review_decision: str | None = None  # APPROVED | CHANGES_REQUESTED | None
     required_checks_pass: bool = True
+    required_checks_failed: bool = Field(
+        default=False,
+        description=(
+            "At least one required status context has a terminal failure conclusion. "
+            "Pending or queued checks are not failures."
+        ),
+    )
+    required_checks_pending: bool = Field(
+        default=False,
+        description=(
+            "At least one required status context is queued, pending, in progress, "
+            "or otherwise missing a terminal conclusion."
+        ),
+    )
     labels: list[str] = Field(default_factory=list)
     review_bot_gate_passed: bool | None = Field(
         default=None,
@@ -423,14 +437,21 @@ class NodeMergeSweep:
             _call_merge_fanout increments prs_failed but doesn't raise.
             """
 
+            def __init__(self) -> None:
+                self.merge_prs: list[tuple[str, int]] = []
+
             async def handle(self, command: object) -> MergeResult:
+                repo = getattr(command, "repo", "")
+                pr_number = getattr(command, "pr_number", 0)
+                self.merge_prs.append((repo, pr_number))
                 return MergeResult(prs_merged=0, prs_failed=0)
 
+        noop_merge = _NoopMerge()
         try:
             orch = HandlerPrLifecycleOrchestrator(
                 inventory=_PrebuiltInventory(),
                 triage=_PrebuiltTriage(),
-                merge=_NoopMerge(),
+                merge=noop_merge,
             )
             # merge_only=True, dry_run=False: reducer emits MERGE intents in priority order;
             # _NoopMerge absorbs the calls without touching GitHub.
@@ -449,21 +470,15 @@ class NodeMergeSweep:
             return track_a
 
         # Rebuild the ordered Track A list by following the reducer's MERGE intent order.
-        # The orchestrator passes merge_prs to _NoopMerge in reducer intent order, which
-        # preserves the dependency-optimal sequence computed by the reducer.
-        #
-        # Since _NoopMerge records nothing, we use the triage_result order as a proxy:
-        # the reducer emits intents in the same sequence as triage_records (GREEN-first,
-        # stable within each repo group).  For the current reducer implementation this
-        # is equivalent to the reducer output ordering.
+        # The orchestrator passes merge commands to _NoopMerge in reducer intent order,
+        # preserving the dependency-optimal sequence without touching GitHub.
         pr_lookup: dict[tuple[str, int], ModelClassifiedPR] = {
             (c.pr.repo, c.pr.number): c for c in track_a
         }
 
         ordered: list[ModelClassifiedPR] = []
         seen: set[tuple[str, int]] = set()
-        for tr in triage_records:
-            key = (tr.repo, tr.pr_number)
+        for key in noop_merge.merge_prs:
             if key in pr_lookup and key not in seen:
                 ordered.append(pr_lookup[key])
                 seen.add(key)
@@ -516,7 +531,7 @@ class NodeMergeSweep:
             if pr.mergeable == "CONFLICTING":
                 reason_parts.append("conflicts")
                 categories.append(EnumFailureCategory.CONFLICT.value)
-            if not pr.required_checks_pass:
+            if self._checks_failed(pr):
                 reason_parts.append("CI failing")
                 categories.append(EnumFailureCategory.CI_TEST.value)
             if require_approval and pr.review_decision == "CHANGES_REQUESTED":
@@ -529,6 +544,10 @@ class NodeMergeSweep:
             )
 
         return EnumPRTrack.SKIP, "No actionable state", []
+
+    def _checks_failed(self, pr: ModelPRInfo) -> bool:
+        """Return True only for terminal required-check failures."""
+        return pr.required_checks_failed
 
     def _needs_branch_update(self, pr: ModelPRInfo) -> bool:
         if pr.mergeable == "MERGEABLE":
@@ -587,7 +606,7 @@ class NodeMergeSweep:
             return False
         if pr.mergeable == "CONFLICTING":
             return True
-        if not pr.required_checks_pass:
+        if self._checks_failed(pr):
             return True
         if require_approval and pr.review_decision == "CHANGES_REQUESTED":
             return True
