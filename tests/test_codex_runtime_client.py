@@ -65,6 +65,12 @@ from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchest
     HandlerSessionOrchestrator,
     ModelSessionOrchestratorCommand,
 )
+from omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline import (
+    HandlerTicketPipeline,
+)
+from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command import (
+    ModelPipelineStartCommand,
+)
 
 
 class _BrokerTestTransport:
@@ -503,6 +509,52 @@ async def _install_coderabbit_triage_broker_worker(
     await bus.subscribe(
         command_topic,
         group_id=f"coderabbit-triage-broker-{uuid4()}",
+        on_message=on_command,
+    )
+
+
+async def _install_ticket_pipeline_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = ModelPipelineStartCommand.model_validate(envelope.payload.payload)
+            node_result = HandlerTicketPipeline().run_executable_pipeline(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-ticket-pipeline-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"ticket-pipeline-broker-{uuid4()}",
         on_message=on_command,
     )
 
@@ -1046,6 +1098,82 @@ async def test_coderabbit_triage_pattern_b_runs_node_end_to_end() -> None:
     }
     assert len(received_commands) == 1
     assert received_commands[0].command_name == "coderabbit_triage"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ticket_pipeline_pattern_b_runs_node_end_to_end() -> None:
+    correlation_id = uuid4()
+    requested_at = datetime.now(UTC)
+    response_topic = "onex.evt.omnibase-infra.pattern-b-ticket-pipeline-e2e.v1"
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-ticket-pipeline-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_ticket_pipeline_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="ticket_pipeline",
+            payload={
+                "correlation_id": str(correlation_id),
+                "ticket_id": "OMN-10400",
+                "skip_test_iterate": False,
+                "dry_run": True,
+                "requested_at": requested_at.isoformat(),
+            },
+            timeout_ms=600_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "ticket_pipeline"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    payload = result.output_payloads[0]
+    assert payload["stop_reason"] == "not_implemented"
+    assert payload["ran_phase"] == "local_review"
+    completed = payload["completed"]
+    assert isinstance(completed, dict)
+    assert completed["correlation_id"] == str(correlation_id)
+    assert completed["ticket_id"] == "OMN-10400"
+    assert completed["final_phase"] == "blocked"
+    phase_results = payload["phase_results"]
+    assert isinstance(phase_results, list)
+    assert [str(item["phase"]) for item in phase_results] == [
+        "pre_flight",
+        "implement",
+        "local_review",
+    ]
+    assert [str(item["status"]) for item in phase_results] == [
+        "succeeded",
+        "succeeded",
+        "not_implemented",
+    ]
+    implement_details = phase_results[1]["details"]
+    assert isinstance(implement_details, dict)
+    assert implement_details["execution_mode"] == "compile_only"
+    assert "dispatch_worker_result" in implement_details
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "ticket_pipeline"
     assert received_commands[0].response_topic == response_topic
     assert (
         received_commands[0].target_runtime_address

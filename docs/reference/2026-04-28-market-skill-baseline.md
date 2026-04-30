@@ -1,6 +1,6 @@
 # Market Skill Baseline
 
-Captured at: `2026-04-30T16:46:26.628351+00:00`
+Captured at: `2026-04-30T16:49:31.241546+00:00`
 Baseline window: `2026-04-30` capture cohort; captured_at is the exact regeneration time.
 Repo root: `<omnimarket>`
 
@@ -48,7 +48,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-14 passed, 2 warnings in 0.10s`
+14 passed, 2 warnings in 0.11s`
 
 ### pr_lifecycle_orchestrator
 
@@ -72,7 +72,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-32 passed, 2 warnings in 1.36s`
+32 passed, 2 warnings in 1.30s`
 
 ### pr_polish
 
@@ -96,7 +96,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-10 passed, 2 warnings in 0.07s`
+10 passed, 2 warnings in 0.08s`
 
 ### local_review
 
@@ -144,7 +144,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-29 passed, 2 warnings in 1.18s`
+29 passed, 2 warnings in 1.21s`
 
 ### session_bootstrap
 
@@ -168,7 +168,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-25 passed, 2 warnings in 0.08s`
+25 passed, 2 warnings in 0.09s`
 
 ### session_orchestrator
 
@@ -194,7 +194,7 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-36 passed, 2 warnings in 10.71s`
+36 passed, 2 warnings in 10.57s`
 
 ### ticket_pipeline
 
@@ -209,8 +209,8 @@ Repo root: `<omnimarket>`
 - CLI smoke summary: `{"compiled_dispatch": true, "phase_results_count": 3, "ran_phase": "local_review", "stop_reason": "not_implemented", "stopped_at": "blocked"}`
 - CLI smoke notes: `bounded slice wires PRE_FLIGHT plus compile-only IMPLEMENT; LOCAL_REVIEW should block as not_implemented; stopped_at=blocked is a stop state`
 - Focused tests: `pass`
-- Focused test targets: `tests/test_golden_chain_ticket_pipeline.py`
-- Focused test output: `..................                                                       [100%]
+- Focused test targets: `tests/test_golden_chain_ticket_pipeline.py, tests/test_codex_runtime_client.py::test_ticket_pipeline_pattern_b_runs_node_end_to_end`
+- Focused test output: `...................                                                      [100%]
 =============================== warnings summary ===============================
 <frozen importlib._bootstrap>:488
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.MessageMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
@@ -219,4 +219,4 @@ Repo root: `<omnimarket>`
   <frozen importlib._bootstrap>:488: DeprecationWarning: Type google._upb._message.ScalarMapContainer uses PyType_Spec with a metaclass that has custom tp_new. This is deprecated and will no longer be allowed in Python 3.14.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-18 passed, 2 warnings in 0.95s`
+19 passed, 2 warnings in 1.15s`

@@ -216,7 +216,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_ticket_pipeline",
         module="omnimarket.nodes.node_ticket_pipeline",
         contract_path="src/omnimarket/nodes/node_ticket_pipeline/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_ticket_pipeline.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_ticket_pipeline.py",
+            "tests/test_codex_runtime_client.py::test_ticket_pipeline_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="ticket_pipeline",
     ),
 )
