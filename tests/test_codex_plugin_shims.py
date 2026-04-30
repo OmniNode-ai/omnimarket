@@ -53,6 +53,7 @@ def test_codex_skills_have_required_frontmatter() -> None:
         "pr-polish",
         "session-bootstrap",
         "session-orchestrator",
+        "ticket-pipeline",
     }
 
     for path in skill_paths:
@@ -112,6 +113,11 @@ def test_codex_shims_remain_dispatch_only() -> None:
             assert "--timeout-ms 120000" in text
             assert "blocking_count" in text
             assert "resolved_count" in text
+        elif path.parent.name == "ticket-pipeline":
+            assert '--command-name "ticket_pipeline"' in text
+            assert "--timeout-ms 600000" in text
+            assert "skip_test_iterate" in text
+            assert "not_implemented" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
@@ -134,6 +140,7 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         "pr-polish",
         "session-bootstrap",
         "session-orchestrator",
+        "ticket-pipeline",
     }
 
     for path in source_skill_paths:
@@ -177,6 +184,11 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             assert "--timeout-ms 120000" in text
             assert "blocking_count" in text
             assert "resolved_count" in text
+        elif path.parent.name == "ticket-pipeline":
+            assert '--command-name "ticket_pipeline"' in text
+            assert "--timeout-ms 600000" in text
+            assert "skip_test_iterate" in text
+            assert "not_implemented" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
