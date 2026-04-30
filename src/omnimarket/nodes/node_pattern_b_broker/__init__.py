@@ -1,6 +1,11 @@
 """Pattern B broker contract boundary for cross-CLI delegation."""
 
-from omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_contract_config import (
+from omnimarket.nodes.node_pattern_b_broker.handlers import (
+    AdapterPatternBBrokerPublish,
+    AdapterPatternBBrokerTerminalConsumer,
+    ProtocolPatternBBrokerEventMessage,
+    ProtocolPatternBBrokerEventPublisher,
+    ProtocolPatternBBrokerEventSubscriber,
     load_pattern_b_broker_config,
 )
 from omnimarket.nodes.node_pattern_b_broker.models import (
@@ -21,6 +26,8 @@ from omnimarket.nodes.node_pattern_b_broker.models import (
 )
 
 __all__ = [
+    "AdapterPatternBBrokerPublish",
+    "AdapterPatternBBrokerTerminalConsumer",
     "EnumPatternBBrokerAclDecision",
     "EnumPatternBBrokerEventType",
     "EnumPatternBBrokerOriginator",
@@ -35,5 +42,8 @@ __all__ = [
     "ModelPatternBBrokerTerminalEvent",
     "ModelPatternBBrokerTopicBindings",
     "ModelPatternBBrokerWaitPolicy",
+    "ProtocolPatternBBrokerEventMessage",
+    "ProtocolPatternBBrokerEventPublisher",
+    "ProtocolPatternBBrokerEventSubscriber",
     "load_pattern_b_broker_config",
 ]
