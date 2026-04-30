@@ -47,3 +47,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "ONEX_STATE_DIR=/tmp/omn-10404-onex-state uv run pytest tests/ -q"
+  - id: "dod-006"
+    description: "No deploy required; this proof changes local CLI rendering and tests only, with no runtime container or topic mutation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'no deploy required for OMN-10404 - local CLI rendering proof only'"
