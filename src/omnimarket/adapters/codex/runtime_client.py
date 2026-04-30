@@ -52,6 +52,7 @@ class ModelDispatchBusCommand(BaseModel):
     correlation_id: UUID
     response_topic: str
     timeout_seconds: float
+    target_runtime_address: str | None = None
 
 
 class ModelDispatchBusTerminalResult(BaseModel):
@@ -78,6 +79,14 @@ def default_response_topic() -> str:
 def default_requester() -> str:
     """Resolve the requester label attached to broker commands."""
     return str(os.environ.get("ONEX_PATTERN_B_REQUESTER", _DEFAULT_REQUESTER))
+
+
+def default_target_runtime_address() -> str | None:
+    """Resolve the optional runtime address selector for broker commands."""
+    value = os.environ.get("ONEX_TARGET_RUNTIME_ADDRESS")
+    if value is None or not value.strip():
+        return None
+    return value.strip()
 
 
 class _ProtocolLifecycleTransport(Protocol):
@@ -189,6 +198,9 @@ class ModelPatternBBrokerClientRequest(BaseModel):
     correlation_id: UUID | None = None
     timeout_ms: int = Field(default=300_000, gt=0, le=900_000)
     response_topic: str = Field(default_factory=default_response_topic, min_length=1)
+    target_runtime_address: str | None = Field(
+        default_factory=default_target_runtime_address
+    )
 
     @field_validator("command_name")
     @classmethod
@@ -204,6 +216,18 @@ class ModelPatternBBrokerClientRequest(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("response_topic must be a non-empty string")
+        return normalized
+
+    @field_validator("target_runtime_address")
+    @classmethod
+    def _validate_target_runtime_address(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if not normalized.startswith("runtime://"):
+            raise ValueError("target_runtime_address must use runtime:// addressing")
         return normalized
 
 
@@ -280,6 +304,7 @@ class PatternBBrokerClient:
         correlation_id: UUID | str | None = None,
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
+        target_runtime_address: str | None = None,
     ) -> ModelPatternBBrokerClientResponse:
         request = ModelPatternBBrokerClientRequest.model_validate(
             {
@@ -288,6 +313,11 @@ class PatternBBrokerClient:
                 "correlation_id": correlation_id,
                 "timeout_ms": timeout_ms,
                 "response_topic": response_topic or default_response_topic(),
+                "target_runtime_address": (
+                    target_runtime_address
+                    if target_runtime_address is not None
+                    else default_target_runtime_address()
+                ),
             }
         )
 
@@ -307,6 +337,7 @@ class PatternBBrokerClient:
                 correlation_id=request.correlation_id or uuid4(),
                 response_topic=request.response_topic,
                 timeout_seconds=max(1.0, min(900.0, request.timeout_ms / 1000)),
+                target_runtime_address=request.target_runtime_address,
             )
             unsubscribe, result_queue = await broker_client.wait_for_result(
                 route,
@@ -363,6 +394,7 @@ class PatternBBrokerClient:
         correlation_id: UUID | str | None = None,
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
+        target_runtime_address: str | None = None,
     ) -> ModelPatternBBrokerClientResponse:
         return asyncio.run(
             self.dispatch_async(
@@ -371,6 +403,7 @@ class PatternBBrokerClient:
                 correlation_id=correlation_id,
                 timeout_ms=timeout_ms,
                 response_topic=response_topic,
+                target_runtime_address=target_runtime_address,
             )
         )
 
@@ -434,6 +467,11 @@ def main(argv: list[str] | None = None) -> int:
         "--correlation-id",
         help="Optional correlation UUID",
     )
+    parser.add_argument(
+        "--target-runtime-address",
+        default=default_target_runtime_address(),
+        help="Optional runtime:// address to target for this broker request",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -463,6 +501,7 @@ def main(argv: list[str] | None = None) -> int:
             correlation_id=args.correlation_id,
             timeout_ms=args.timeout_ms,
             response_topic=args.response_topic,
+            target_runtime_address=args.target_runtime_address,
         )
     except ValidationError as exc:
         response = _build_cli_error_response(
@@ -495,5 +534,6 @@ __all__ = [
     "default_command_topic",
     "default_requester",
     "default_response_topic",
+    "default_target_runtime_address",
     "main",
 ]
