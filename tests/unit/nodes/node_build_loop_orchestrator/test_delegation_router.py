@@ -4,10 +4,14 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import (
     EnumModelTier,
+    ModelDelegationHarnessSample,
     route_ticket_to_tier,
 )
 
@@ -83,4 +87,77 @@ class TestRouteTicketToTier:
             "do something interesting",
             available_tiers=_LOCAL_ONLY,
         )
+        assert tier == EnumModelTier.LOCAL_CODER
+
+    def test_mature_harness_samples_override_primary_routing(self) -> None:
+        """Once >=20 samples exist, router should use harness quality evidence."""
+        samples = [
+            ModelDelegationHarnessSample(
+                model_key=EnumModelTier.FRONTIER_GLM.value,
+                task_type="code_generation",
+                score=0.30,
+            )
+            for _ in range(20)
+        ] + [
+            ModelDelegationHarnessSample(
+                model_key=EnumModelTier.LOCAL_CODER.value,
+                task_type="code_generation",
+                score=0.91,
+            )
+            for _ in range(20)
+        ]
+
+        tier = route_ticket_to_tier(
+            "add unit tests for handler",
+            "write comprehensive tests",
+            harness_samples=samples,
+        )
+
+        assert tier == EnumModelTier.LOCAL_CODER
+
+    def test_immature_harness_samples_do_not_override_primary_routing(self) -> None:
+        samples = [
+            ModelDelegationHarnessSample(
+                model_key=EnumModelTier.LOCAL_CODER.value,
+                task_type="code_generation",
+                score=0.99,
+            )
+            for _ in range(19)
+        ]
+
+        tier = route_ticket_to_tier(
+            "add unit tests for handler",
+            "write comprehensive tests",
+            harness_samples=samples,
+        )
+
+        assert tier == EnumModelTier.FRONTIER_GLM
+
+    def test_reads_harness_result_json_for_mature_samples(self, tmp_path: Path) -> None:
+        harness_result = tmp_path / "llm_eval_results.json"
+        samples = [
+            {
+                "model_key": EnumModelTier.FRONTIER_GLM.value,
+                "task_id": f"glm-{index}",
+                "task_type": "code_generation",
+                "score": 0.30,
+            }
+            for index in range(20)
+        ] + [
+            {
+                "model_key": EnumModelTier.LOCAL_CODER.value,
+                "task_id": f"coder-{index}",
+                "task_type": "code_generation",
+                "score": 0.91,
+            }
+            for index in range(20)
+        ]
+        harness_result.write_text(json.dumps({"samples": samples}))
+
+        tier = route_ticket_to_tier(
+            "add unit tests for handler",
+            "write comprehensive tests",
+            harness_result_path=harness_result,
+        )
+
         assert tier == EnumModelTier.LOCAL_CODER
