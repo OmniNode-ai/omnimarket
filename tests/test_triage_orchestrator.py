@@ -100,6 +100,26 @@ async def test_rule_2_clean_approved_emits_auto_merge_arm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_track_a_clean_merge_ready_emits_auto_merge_arm() -> None:
+    """Merge-sweep compute emits CLEAN merge-ready PRs as Track A."""
+    pr = _pr(101, merge_state_status="CLEAN", review_decision=None)
+    classified = [_classified(pr, EnumPRTrack.A_MERGE)]
+    request = _make_request(classified)
+
+    mock_proc = _mock_proc({"id": "PR_kwMERGE", "headRefName": "feat/merge-ready"})
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert len(output.events) == 1
+    cmd = output.events[0]
+    assert isinstance(cmd, ModelAutoMergeArmCommand)
+    assert cmd.pr_number == 101
+    assert cmd.pr_node_id == "PR_kwMERGE"
+    assert cmd.head_ref_name == "feat/merge-ready"
+
+
+@pytest.mark.asyncio
 async def test_rule_3_behind_approved_emits_rebase() -> None:
     """Rule 3: A_UPDATE + BEHIND + APPROVED → Rebase."""
     pr = _pr(200, merge_state_status="BEHIND", review_decision="APPROVED")

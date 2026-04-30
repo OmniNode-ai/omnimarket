@@ -207,8 +207,9 @@ class HandlerTriageOrchestrator:
             _log.debug("PR %s/%s: SKIP (SKIP track)", pr.repo, pr.number)
             return None
 
-        # Track A_UPDATE rules
-        if track == EnumPRTrack.A_UPDATE:
+        # Track A/A_UPDATE rules. Compute emits CLEAN merge-ready PRs as Track A;
+        # older orchestrator fixtures use A_UPDATE for the same auto-merge arm path.
+        if track in {EnumPRTrack.A_MERGE, EnumPRTrack.A_UPDATE}:
             approval_cleared = _approval_gate_cleared(
                 pr.review_decision, pr.required_approving_review_count
             )
