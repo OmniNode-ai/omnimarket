@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from collections.abc import Sequence
 
 from omnimarket.models.cli_report import (
     EnumMarketCliOutputFormat,
@@ -38,3 +40,9 @@ def resolve_output_config(ns: argparse.Namespace) -> ModelMarketCliOutputConfig:
         format=EnumMarketCliOutputFormat(ns.output),
         verbosity=verbosity,
     )
+
+
+def report_output_requested(argv: Sequence[str] | None = None) -> bool:
+    """Return True when the caller explicitly requested typed report output."""
+    args = sys.argv[1:] if argv is None else list(argv)
+    return any(arg == "--output" or arg.startswith("--output=") for arg in args)

@@ -4,6 +4,7 @@ import pytest
 
 from omnimarket.cli.args import (
     add_output_args,
+    report_output_requested,
     resolve_output_config,
 )
 from omnimarket.models.cli_report import (
@@ -35,3 +36,9 @@ def test_unknown_format_rejected_by_argparse() -> None:
     add_output_args(parser)
     with pytest.raises(SystemExit):
         parser.parse_args(["--output", "xml"])
+
+
+def test_report_output_requested_only_for_explicit_flag() -> None:
+    assert report_output_requested(["--output", "json"])
+    assert report_output_requested(["--output=text"])
+    assert not report_output_requested([])
