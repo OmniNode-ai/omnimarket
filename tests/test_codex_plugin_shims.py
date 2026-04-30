@@ -48,6 +48,7 @@ def test_codex_skills_have_required_frontmatter() -> None:
     assert {path.parent.name for path in skill_paths} == {
         "aislop-sweep",
         "merge-sweep",
+        "pr-polish",
         "session-bootstrap",
         "session-orchestrator",
     }
@@ -94,6 +95,11 @@ def test_codex_shims_remain_dispatch_only() -> None:
         elif path.parent.name == "aislop-sweep":
             assert '--command-name "aislop_sweep"' in text
             assert "--timeout-ms 120000" in text
+        elif path.parent.name == "pr-polish":
+            assert '--command-name "pr_polish"' in text
+            assert "--timeout-ms 300000" in text
+            assert "required_clean_runs" in text
+            assert "no_automerge" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
@@ -111,6 +117,7 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
     assert {path.parent.name for path in source_skill_paths} == {
         "aislop-sweep",
         "merge-sweep",
+        "pr-polish",
         "session-bootstrap",
         "session-orchestrator",
     }
@@ -141,6 +148,11 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             assert "--timeout-ms 300000" in text
             assert "run_id" in text
             assert "filesystem-safe identifier" in text
+        elif path.parent.name == "pr-polish":
+            assert '--command-name "pr_polish"' in text
+            assert "--timeout-ms 300000" in text
+            assert "required_clean_runs" in text
+            assert "no_automerge" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
