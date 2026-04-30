@@ -97,10 +97,12 @@ def _required_check_state(pr: dict[str, Any]) -> tuple[bool, bool, bool]:
     }
     failed = False
     pending = False
+    pass_conclusions = {"SUCCESS", "NEUTRAL", "SKIPPED"}
+    pass_statuses = {"SUCCESS"}
     for check in required:
         conclusion = str(check.get("conclusion") or "").upper()
         status = str(check.get("status") or check.get("state") or "").upper()
-        if conclusion == "SUCCESS":
+        if conclusion in pass_conclusions or status in pass_statuses:
             continue
         if conclusion in failed_conclusions:
             failed = True

@@ -39,7 +39,11 @@ logger = logging.getLogger(__name__)
 
 
 def _persist_dispatch_record(
-    spec: ModelDispatchWorkerCommand, validated_prompt: str
+    spec: ModelDispatchWorkerCommand,
+    validated_prompt: str,
+    *,
+    state_dir: Path | str | None = None,
+    parent_session_id: str | None = None,
 ) -> None:
     """Persist a dispatch record snapshot for the worker about to be spawned.
 
@@ -49,7 +53,14 @@ def _persist_dispatch_record(
     must persist a real audit record; silent skip is not acceptable when
     persistence was requested.
     """
-    if not os.environ.get("ONEX_STATE_DIR"):
+    resolved_state_dir = (
+        Path(state_dir)
+        if state_dir is not None
+        else Path(os.environ["ONEX_STATE_DIR"])
+        if os.environ.get("ONEX_STATE_DIR")
+        else None
+    )
+    if resolved_state_dir is None:
         return
 
     ticket = next(
@@ -64,9 +75,10 @@ def _persist_dispatch_record(
         ticket=ticket or spec.name,
         allowed_tools=[],
         prompt_digest=digest,
-        parent_session_id=os.environ.get("ONEX_PARENT_SESSION_ID", "unknown"),
+        parent_session_id=parent_session_id
+        or os.environ.get("ONEX_PARENT_SESSION_ID", "unknown"),
     )
-    write_dispatch_record(record)
+    write_dispatch_record(record, state_dir=resolved_state_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +451,8 @@ class HandlerDispatchWorker:
         *,
         tasks_dir: Path | None = None,
         existing_task_subjects: list[str] | None = None,
+        state_dir: Path | str | None = None,
+        parent_session_id: str | None = None,
     ) -> ModelDispatchWorkerResult:
         """Compile the dispatch spec.
 
@@ -446,6 +460,8 @@ class HandlerDispatchWorker:
             command: Validated dispatch spec.
             tasks_dir: Override for task directory (used in tests).
             existing_task_subjects: Override list of existing task subjects (used in tests).
+            state_dir: Explicit dispatch-record state directory.
+            parent_session_id: Explicit parent session for dispatch-record provenance.
         """
         # --- deduplication check ---
         if existing_task_subjects is not None:
@@ -478,7 +494,12 @@ class HandlerDispatchWorker:
         task_desc = f"[{command.role}] {command.name}: {command.scope}"
 
         # --- persist dispatch record (audit trail) ---
-        _persist_dispatch_record(command, prompt)
+        _persist_dispatch_record(
+            command,
+            prompt,
+            state_dir=state_dir,
+            parent_session_id=parent_session_id,
+        )
 
         return ModelDispatchWorkerResult(
             validated_task_description=task_desc,

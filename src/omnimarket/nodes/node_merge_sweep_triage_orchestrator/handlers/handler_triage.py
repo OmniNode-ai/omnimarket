@@ -68,6 +68,16 @@ TOPIC_CI_FIX = (
 
 _PROTECTED_BASES = {"main", "master", "develop"}
 
+FAILED_CHECK_CONCLUSIONS = {
+    "ACTION_REQUIRED",
+    "CANCELLED",
+    "FAILURE",
+    "FAILED",
+    "STARTUP_FAILURE",
+    "STALE",
+    "TIMED_OUT",
+}
+
 # Default routing policy for Phase 2 LLM commands — callers may override via classified.routing_hints
 _DEFAULT_ROUTING_POLICY: dict[str, Any] = {"model": "qwen3-coder", "temperature": 0.0}
 
@@ -93,6 +103,13 @@ def _approval_gate_cleared(
     if review_decision == "APPROVED":
         return True
     return required_approving_review_count in (0, None)
+
+
+def _has_terminal_check_failure(pr: ModelClassifiedPR) -> bool:
+    info = pr.pr
+    return info.required_checks_failed or (
+        not info.required_checks_pass and not info.required_checks_pending
+    )
 
 
 class HandlerTriageOrchestrator:
@@ -356,7 +373,7 @@ class HandlerTriageOrchestrator:
             if (
                 pr.mergeable == "MERGEABLE"
                 and pr.merge_state_status == "BLOCKED"
-                and not pr.required_checks_pass
+                and _has_terminal_check_failure(classified)
             ):
                 run_id_github = await self._resolve_failing_run_id(pr.repo, pr.number)
                 if run_id_github is None:
@@ -379,7 +396,7 @@ class HandlerTriageOrchestrator:
             if (
                 pr.mergeable == "MERGEABLE"
                 and pr.merge_state_status == "BEHIND"
-                and not pr.required_checks_pass
+                and _has_terminal_check_failure(classified)
             ):
                 refs = await self._resolve_pr_refs(pr.repo, pr.number)
                 if refs is None:
@@ -542,7 +559,8 @@ class HandlerTriageOrchestrator:
             data: dict[str, Any] = json.loads(stdout)
             checks = data.get("statusCheckRollup") or []
             for check in checks:
-                if check.get("conclusion") == "FAILURE":
+                conclusion = str(check.get("conclusion") or "").upper()
+                if conclusion in FAILED_CHECK_CONCLUSIONS:
                     details_url: str = str(check.get("detailsUrl") or "")
                     run_id = _run_id_from_details_url(details_url)
                     if run_id:
@@ -594,7 +612,8 @@ class HandlerTriageOrchestrator:
             data: dict[str, Any] = json.loads(stdout)
             checks = data.get("statusCheckRollup") or []
             for check in checks:
-                if check.get("conclusion") == "FAILURE":
+                conclusion = str(check.get("conclusion") or "").upper()
+                if conclusion in FAILED_CHECK_CONCLUSIONS:
                     name: str | None = check.get("name") or check.get("context")
                     return name
             return None

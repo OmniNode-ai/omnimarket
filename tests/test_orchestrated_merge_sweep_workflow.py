@@ -16,9 +16,6 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_state import (
     EnumPrPolishPhase,
 )
-from omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome import (
-    EnumSweepOutcome,
-)
 
 _CORR_ID = UUID("00000000-0000-4000-a000-000000000002")
 _RUN_ID = UUID("00000000-0000-4000-a000-000000000003")
@@ -93,8 +90,14 @@ def test_prepare_polish_worktree_ignores_dirty_branch_candidate(
     assert worktree == tmp_path / "tmp" / "worktree"
     assert created_by_script is True
     assert created_branch is None
-    assert calls[0][:3] == ["git", "fetch", "origin"]
-    assert calls[1][:4] == ["git", "worktree", "add", "--detach"]
+    assert calls[0][:5] == ["git", "-C", str(workflow.REPO_ROOT), "fetch", "origin"]
+    assert calls[1][:5] == [
+        "git",
+        "-C",
+        str(workflow.REPO_ROOT),
+        "worktree",
+        "add",
+    ]
 
 
 def test_prepare_polish_worktree_fast_forwards_clean_branch_candidate(
@@ -173,13 +176,22 @@ def test_prepare_polish_worktree_uses_detached_temp_when_branch_candidate_stale(
     assert created_by_script is True
     assert created_branch is None
     assert calls == [
-        ["git", "fetch", "origin", "pull/465/head"],
-        ["git", "worktree", "add", "--detach", str(worktree), "new-sha"],
+        ["git", "-C", str(workflow.REPO_ROOT), "fetch", "origin", "pull/465/head"],
+        [
+            "git",
+            "-C",
+            str(workflow.REPO_ROOT),
+            "worktree",
+            "add",
+            "--detach",
+            str(worktree),
+            "new-sha",
+        ],
     ]
 
 
 @pytest.mark.asyncio
-async def test_pr_polish_completion_is_returned_for_reducer(
+async def test_pr_polish_completion_is_classified_but_not_returned_for_reducer(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     command = ModelPrPolishStartCommand(
@@ -214,7 +226,4 @@ async def test_pr_polish_completion_is_returned_for_reducer(
         keep_worktrees=False,
     )
 
-    assert len(outcomes) == 1
-    assert outcomes[0].repo == "OmniNode-ai/omnimarket"
-    assert outcomes[0].pr_number == 465
-    assert outcomes[0].outcome == EnumSweepOutcome.SUCCESS
+    assert outcomes == []

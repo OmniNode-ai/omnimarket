@@ -1010,13 +1010,11 @@ def capture_market_skill_baseline(
 def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
     """Render a compact markdown baseline report."""
 
-    cohort_date = report.captured_at.date().isoformat()
     lines = [
         "# Market Skill Baseline",
         "",
-        f"Captured at: `{report.captured_at.isoformat()}`",
-        f"Baseline window: `{cohort_date}` capture cohort; captured_at is the exact regeneration time.",
-        f"Repo root: `{report.repo_root}`",
+        "Stable reference for the market-owned skill baseline. Detailed execution "
+        "transcripts are produced by `scripts/run_market_skill_baseline.py --stream`.",
         "",
         "## Summary",
         "",
@@ -1078,11 +1076,5 @@ def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
             )
             targets = cast(list[str], item.pytest.summary["targets"])
             lines.append(f"- Focused test targets: `{', '.join(targets)}`")
-            if item.pytest.notes:
-                lines.append(
-                    f"- Focused test output: `{' | '.join(item.pytest.notes)}`"
-                )
-            if item.pytest.stderr:
-                lines.append(f"- Focused test stderr: `{item.pytest.stderr}`")
         lines.append("")
     return "\n".join(lines).rstrip()

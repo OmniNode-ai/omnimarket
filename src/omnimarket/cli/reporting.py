@@ -134,7 +134,17 @@ def build_report_from_merge_sweep_result(
             EnumPRTrack.B_POLISH,
         )
     )
-    status = EnumMarketCliStatus.SUCCESS
+    result_status = str(result.status).lower()
+    if result_status in {"error"}:
+        status = EnumMarketCliStatus.ERROR
+    elif result_status in {"failed", "failure"}:
+        status = EnumMarketCliStatus.FAILED
+    elif result_status in {"warning", "partial"}:
+        status = EnumMarketCliStatus.PARTIAL
+    elif result_status in {"blocked"}:
+        status = EnumMarketCliStatus.BLOCKED
+    else:
+        status = EnumMarketCliStatus.SUCCESS
 
     return ModelMarketCliReport(
         skill_name=skill_name,

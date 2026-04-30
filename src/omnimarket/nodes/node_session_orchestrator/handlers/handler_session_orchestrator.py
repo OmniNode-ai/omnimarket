@@ -1051,8 +1051,10 @@ class HandlerSessionOrchestrator:
         if fixture_path:
             tickets = self._load_linear_fixture(fixture_path)
             if not tickets:
-                logger.info("Phase 2: Linear fixture contained no tickets")
-                return []
+                raise SessionLinearFetchError(
+                    "ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE produced no tickets: "
+                    f"{fixture_path}"
+                )
             standing_orders = self._load_standing_orders(command.standing_orders_path)
             scored = self._score_tickets(tickets, standing_orders)
             scored.sort(key=lambda x: -x.rsd_score)
@@ -1159,7 +1161,27 @@ class HandlerSessionOrchestrator:
 
         if not isinstance(nodes, list):
             raise SessionLinearFetchError("Linear fixture must contain a list of nodes")
-        return [node for node in nodes if isinstance(node, dict)]
+        return [self._normalize_linear_fixture_node(node) for node in nodes]
+
+    def _normalize_linear_fixture_node(self, node: Any) -> dict[str, Any]:
+        """Validate and normalize a Linear fixture node before scoring."""
+        if not isinstance(node, dict):
+            raise SessionLinearFetchError("Linear fixture nodes must be objects")
+
+        normalized = dict(node)
+        for field in ("labels", "children"):
+            value = normalized.get(field)
+            if isinstance(value, list):
+                normalized[field] = {"nodes": value}
+                continue
+            if not isinstance(value, dict) or not isinstance(value.get("nodes"), list):
+                identifier = (
+                    normalized.get("identifier") or normalized.get("id") or "<unknown>"
+                )
+                raise SessionLinearFetchError(
+                    f"Linear fixture node {identifier} has invalid {field}.nodes"
+                )
+        return normalized
 
     def _load_standing_orders(self, path: str) -> dict[str, float]:
         """Load standing orders priority boosts. Returns {ticket_id: boost}."""
@@ -1431,21 +1453,11 @@ class HandlerSessionOrchestrator:
             model="sonnet",
             replace=False,
         )
-        old_state_dir = os.environ.get("ONEX_STATE_DIR")
-        old_parent_session_id = os.environ.get("ONEX_PARENT_SESSION_ID")
-        try:
-            os.environ["ONEX_STATE_DIR"] = os.path.abspath(state_dir)
-            os.environ["ONEX_PARENT_SESSION_ID"] = session_id
-            return NodeDispatchWorker().handle(command)
-        finally:
-            if old_state_dir is None:
-                os.environ.pop("ONEX_STATE_DIR", None)
-            else:
-                os.environ["ONEX_STATE_DIR"] = old_state_dir
-            if old_parent_session_id is None:
-                os.environ.pop("ONEX_PARENT_SESSION_ID", None)
-            else:
-                os.environ["ONEX_PARENT_SESSION_ID"] = old_parent_session_id
+        return NodeDispatchWorker().handle(
+            command,
+            state_dir=os.path.abspath(state_dir),
+            parent_session_id=session_id,
+        )
 
     def _write_dispatch_artifact(
         self,

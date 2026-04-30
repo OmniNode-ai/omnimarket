@@ -201,6 +201,7 @@ def _pr_head(repo: str, pr_number: int) -> tuple[str, str]:
 def _worktrees_for_branch(branch: str) -> list[Path]:
     raw = _run(["git", "worktree", "list", "--porcelain"], timeout=15)
     paths: list[Path] = []
+    expected_ref = f"refs/heads/{branch}"
     for block in raw.split("\n\n"):
         raw_path = ""
         raw_branch = ""
@@ -209,7 +210,7 @@ def _worktrees_for_branch(branch: str) -> list[Path]:
                 raw_path = line[9:].strip()
             elif line.startswith("branch "):
                 raw_branch = line[7:].strip()
-        if raw_path and raw_branch.endswith(f"/{branch}"):
+        if raw_path and raw_branch == expected_ref:
             paths.append(Path(raw_path))
     return paths
 
@@ -244,6 +245,11 @@ def _fast_forward_worktree_to_pr_head(
 def _prepare_polish_worktree(
     repo: str, pr_number: int
 ) -> tuple[Path, bool, str | None]:
+    if repo not in {"omnimarket", "OmniNode-ai/omnimarket"}:
+        raise RuntimeError(
+            "PR polish worktree preparation currently supports only the local "
+            f"omnimarket checkout; got {repo!r}"
+        )
     branch, head_sha = _pr_head(repo, pr_number)
 
     current_sha = _worktree_head_sha(REPO_ROOT)
@@ -273,8 +279,23 @@ def _prepare_polish_worktree(
 
     tmp_root = Path(tempfile.mkdtemp(prefix=f"omni-pr-{pr_number}-"))
     worktree = tmp_root / "worktree"
-    _run(["git", "fetch", "origin", f"pull/{pr_number}/head"], timeout=120)
-    _run(["git", "worktree", "add", "--detach", str(worktree), head_sha], timeout=120)
+    _run(
+        ["git", "-C", str(REPO_ROOT), "fetch", "origin", f"pull/{pr_number}/head"],
+        timeout=120,
+    )
+    _run(
+        [
+            "git",
+            "-C",
+            str(REPO_ROOT),
+            "worktree",
+            "add",
+            "--detach",
+            str(worktree),
+            head_sha,
+        ],
+        timeout=120,
+    )
     return worktree, True, None
 
 
@@ -294,9 +315,12 @@ def _cleanup_polish_worktree(
             f"retained_dirty_worktree path={worktree} status={status!r}",
         )
         return
-    _run(["git", "worktree", "remove", "--force", str(worktree)], timeout=120)
+    _run(
+        ["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(worktree)],
+        timeout=120,
+    )
     if created_branch:
-        _run(["git", "branch", "-D", created_branch], timeout=30)
+        _run(["git", "-C", str(REPO_ROOT), "branch", "-D", created_branch], timeout=30)
     with contextlib.suppress(OSError):
         worktree.parent.rmdir()
 
@@ -384,6 +408,10 @@ async def _execute_command(
     keep_worktrees: bool,
 ) -> list[ModelSweepOutcomeClassified]:
     if isinstance(command, ModelPrPolishStartCommand):
+        if not execute:
+            _log(type(command).__name__, f"planned {_dump_model(command)}")
+            return []
+
         worktree, created_by_script, created_branch = _prepare_polish_worktree(
             command.repo or "", command.pr_number or 0
         )
@@ -409,12 +437,12 @@ async def _execute_command(
         _log("node_pr_polish", _dump_model(completed))
         # PR polish is verification evidence for Track B. The Phase 1 reducer
         # still needs the merge-sweep effect outcome for the PR, such as CI rerun.
-        outcome = _classify_outcome(
+        _classify_outcome(
             _polish_completed_to_input(
                 command, completed, run_id=run_id, total_prs=total_prs
             )
         )
-        return [outcome]
+        return []
 
     if not execute:
         _log(type(command).__name__, f"planned {_dump_model(command)}")

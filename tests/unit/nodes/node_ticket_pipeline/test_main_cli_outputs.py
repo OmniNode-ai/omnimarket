@@ -20,19 +20,23 @@ def _ticket_pipeline_terminal_event() -> str:
 
 
 def _run(*extra: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "omnimarket.nodes.node_ticket_pipeline",
-            "OMN-9530",
-            "--dry-run",
-            *extra,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "omnimarket.nodes.node_ticket_pipeline",
+                "OMN-9530",
+                "--dry-run",
+                *extra,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError("ticket_pipeline CLI timed out after 30 seconds") from exc
 
 
 def test_dry_run_text() -> None:
