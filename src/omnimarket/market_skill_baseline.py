@@ -418,11 +418,14 @@ def _summarize_session_orchestrator(payload: dict[str, object]) -> dict[str, obj
 
 
 def _summarize_ticket_pipeline(payload: dict[str, object]) -> dict[str, object]:
-    results = payload.get("phase_results", [])
+    result_summary = payload.get("result_summary")
+    if not isinstance(result_summary, dict):
+        result_summary = {}
+    results = payload.get("steps", payload.get("phase_results", []))
     return {
-        "stopped_at": payload.get("stopped_at"),
-        "stop_reason": payload.get("stop_reason"),
-        "ran_phase": payload.get("ran_phase"),
+        "stopped_at": result_summary.get("stopped_at", payload.get("stopped_at")),
+        "stop_reason": result_summary.get("stop_reason", payload.get("stop_reason")),
+        "ran_phase": result_summary.get("ran_phase", payload.get("ran_phase")),
         "phase_results_count": len(results) if isinstance(results, list) else 0,
         "compiled_dispatch": _ticket_pipeline_compiled_dispatch(results),
     }
@@ -436,7 +439,7 @@ def _ticket_pipeline_compiled_dispatch(results: object) -> bool:
             continue
         details = item.get("details")
         if (
-            item.get("phase") == "implement"
+            item.get("phase", item.get("name")) == "implement"
             and item.get("status") == "succeeded"
             and isinstance(details, dict)
             and details.get("execution_mode") == "compile_only"
@@ -714,11 +717,17 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
     ]
     completed = _run_command(command=command)
     payload = _parse_json(completed.stdout)
+    result_summary = payload.get("result_summary")
+    if not isinstance(result_summary, dict):
+        result_summary = {}
     passed = (
         completed.returncode == 0
-        and payload.get("stopped_at") == "blocked"
-        and payload.get("stop_reason") == "not_implemented"
-        and _ticket_pipeline_compiled_dispatch(payload.get("phase_results"))
+        and result_summary.get("stopped_at", payload.get("stopped_at")) == "blocked"
+        and result_summary.get("stop_reason", payload.get("stop_reason"))
+        == "not_implemented"
+        and _ticket_pipeline_compiled_dispatch(
+            payload.get("steps", payload.get("phase_results"))
+        )
     )
     return ModelCommandResult(
         passed=passed,

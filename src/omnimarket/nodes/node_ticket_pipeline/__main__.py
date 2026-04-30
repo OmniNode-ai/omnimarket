@@ -20,8 +20,14 @@ import argparse
 import logging
 import sys
 from datetime import UTC, datetime
+from importlib import resources
 from uuid import uuid4
 
+import yaml
+
+from omnimarket.cli.args import add_output_args, resolve_output_config
+from omnimarket.cli.output.registry import resolve_handler
+from omnimarket.cli.reporting import build_report_from_pipeline_result
 from omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline import (
     HandlerTicketPipeline,
 )
@@ -35,7 +41,17 @@ from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_state import (
 _log = logging.getLogger(__name__)
 
 
-def main() -> None:
+def _contract_metadata() -> tuple[str, str, str]:
+    contract_path = resources.files("omnimarket.nodes.node_ticket_pipeline").joinpath(
+        "contract.yaml"
+    )
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    version = raw["contract_version"]
+    contract_version = f"{version['major']}.{version['minor']}.{version['patch']}"
+    return str(raw["name"]), contract_version, str(raw["terminal_event"])
+
+
+def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
@@ -66,8 +82,11 @@ def main() -> None:
         default=False,
         help="Log phase decisions without side effects",
     )
+    add_output_args(parser)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    output_config = resolve_output_config(args)
+    logging.getLogger().setLevel(args.log_level.upper())
 
     command = ModelPipelineStartCommand(
         correlation_id=uuid4(),
@@ -80,12 +99,33 @@ def main() -> None:
 
     handler = HandlerTicketPipeline()
     report = handler.run_executable_pipeline(command)
+    contract_name, contract_version, terminal_event = _contract_metadata()
+    cli_report = build_report_from_pipeline_result(
+        report,
+        skill_name="ticket_pipeline",
+        node_name="node_ticket_pipeline",
+        terminal_event=terminal_event,
+        contract_name=contract_name,
+        contract_version=contract_version,
+        mode="dry_run" if args.dry_run else "execute",
+        input_summary={
+            "ticket_id": args.ticket_id,
+            "skip_to": args.skip_to,
+            "skip_test_iterate": args.skip_test_iterate,
+            "dry_run": args.dry_run,
+        },
+        output_config=output_config,
+    )
 
-    sys.stdout.write(report.model_dump_json(indent=2) + "\n")
+    rendered = resolve_handler(output_config.format).render(cli_report)
+    sys.stdout.write(rendered)
+    if not rendered.endswith("\n"):
+        sys.stdout.write("\n")
 
     if report.stop_reason == "failed":
-        sys.exit(1)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
