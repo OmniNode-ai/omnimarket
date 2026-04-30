@@ -19,6 +19,9 @@ evidence_requirements:
   - kind: "manual"
     description: "Gap compute CLI emits JSON and exits zero"
     command: "uv run python -m omnimarket.nodes.node_gap_compute detect --dry-run --skip-infra-probes"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports the gap compute CLI in the runtime container"
+    command: "docker exec omninode-runtime python -m omnimarket.nodes.node_gap_compute --help"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -42,3 +45,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run python -m omnimarket.nodes.node_gap_compute detect --dry-run --skip-infra-probes"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke imports the gap compute CLI in the runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec omninode-runtime python -m omnimarket.nodes.node_gap_compute --help"
