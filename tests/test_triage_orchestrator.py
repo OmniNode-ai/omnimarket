@@ -331,6 +331,30 @@ async def test_track_b_non_dry_run_emits_live_pr_polish_start() -> None:
 
 
 @pytest.mark.asyncio
+async def test_track_b_without_failing_run_does_not_emit_pr_polish_start() -> None:
+    """Queued/pending checks without a failing run must not trigger live polish."""
+    pr = _pr(603, merge_state_status="BLOCKED", required_checks_pass=False)
+    classified = [_classified(pr, EnumPRTrack.B_POLISH)]
+    request = ModelTriageRequest(
+        classification=ModelMergeSweepResult(classified=classified),
+        run_id=_RUN_ID,
+        correlation_id=_CORR_ID,
+        emit_pr_polish_commands=True,
+        dry_run=False,
+    )
+
+    mock_proc = _mock_proc({"statusCheckRollup": []})
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        handler = HandlerTriageOrchestrator()
+        output = await handler.handle(request)
+
+    assert not any(
+        isinstance(event, ModelPrPolishStartCommand) for event in output.events
+    )
+    assert len(output.events) == 0
+
+
+@pytest.mark.asyncio
 async def test_rule_13_changes_requested_skip() -> None:
     """Rule 13: CHANGES_REQUESTED → SKIP."""
     pr = _pr(700, review_decision="CHANGES_REQUESTED")

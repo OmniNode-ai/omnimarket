@@ -75,10 +75,28 @@ class TestMergeSweepClassification:
     def test_ci_failing_goes_to_b_polish(self) -> None:
         handler = NodeMergeSweep()
         result = handler.handle(
-            ModelMergeSweepRequest(prs=[_pr(required_checks_pass=False)])
+            ModelMergeSweepRequest(
+                prs=[_pr(required_checks_pass=False, required_checks_failed=True)]
+            )
         )
         assert result.classified[0].track == EnumPRTrack.B_POLISH
         assert "CI" in result.classified[0].reason
+
+    def test_pending_checks_do_not_go_to_b_polish(self) -> None:
+        handler = NodeMergeSweep()
+        result = handler.handle(
+            ModelMergeSweepRequest(
+                prs=[
+                    _pr(
+                        required_checks_pass=False,
+                        required_checks_failed=False,
+                        required_checks_pending=True,
+                    )
+                ]
+            )
+        )
+        assert result.classified[0].track == EnumPRTrack.SKIP
+        assert "CI failing" not in result.classified[0].reason
 
     def test_changes_requested_goes_to_b_polish(self) -> None:
         handler = NodeMergeSweep()

@@ -4,7 +4,10 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_merge_sweep_compute.__main__ import main
+from omnimarket.nodes.node_merge_sweep_compute.__main__ import (
+    _required_check_state,
+    main,
+)
 
 
 class _FakeGitHub:
@@ -113,3 +116,16 @@ def test_dry_run_markdown(capsys) -> None:
     assert "# Skill: merge_sweep" in out
     assert "## Execution" in out
     assert "OmniNode-ai/omnimarket#462" in out
+
+
+def test_required_check_state_distinguishes_pending_from_failed() -> None:
+    assert _required_check_state(
+        {
+            "statusCheckRollup": [
+                {"isRequired": True, "status": "IN_PROGRESS", "conclusion": None}
+            ]
+        }
+    ) == (False, False, True)
+    assert _required_check_state(
+        {"statusCheckRollup": [{"isRequired": True, "conclusion": "FAILURE"}]}
+    ) == (False, True, False)

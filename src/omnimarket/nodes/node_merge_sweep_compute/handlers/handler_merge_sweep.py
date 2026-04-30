@@ -74,6 +74,20 @@ class ModelPRInfo(BaseModel):
     is_draft: bool = False
     review_decision: str | None = None  # APPROVED | CHANGES_REQUESTED | None
     required_checks_pass: bool = True
+    required_checks_failed: bool = Field(
+        default=False,
+        description=(
+            "At least one required status context has a terminal failure conclusion. "
+            "Pending or queued checks are not failures."
+        ),
+    )
+    required_checks_pending: bool = Field(
+        default=False,
+        description=(
+            "At least one required status context is queued, pending, in progress, "
+            "or otherwise missing a terminal conclusion."
+        ),
+    )
     labels: list[str] = Field(default_factory=list)
     review_bot_gate_passed: bool | None = Field(
         default=None,
@@ -516,7 +530,7 @@ class NodeMergeSweep:
             if pr.mergeable == "CONFLICTING":
                 reason_parts.append("conflicts")
                 categories.append(EnumFailureCategory.CONFLICT.value)
-            if not pr.required_checks_pass:
+            if self._checks_failed(pr):
                 reason_parts.append("CI failing")
                 categories.append(EnumFailureCategory.CI_TEST.value)
             if require_approval and pr.review_decision == "CHANGES_REQUESTED":
@@ -529,6 +543,12 @@ class NodeMergeSweep:
             )
 
         return EnumPRTrack.SKIP, "No actionable state", []
+
+    def _checks_failed(self, pr: ModelPRInfo) -> bool:
+        """Return True only for terminal required-check failures."""
+        return pr.required_checks_failed or (
+            not pr.required_checks_pass and not pr.required_checks_pending
+        )
 
     def _needs_branch_update(self, pr: ModelPRInfo) -> bool:
         if pr.mergeable == "MERGEABLE":
@@ -587,7 +607,7 @@ class NodeMergeSweep:
             return False
         if pr.mergeable == "CONFLICTING":
             return True
-        if not pr.required_checks_pass:
+        if self._checks_failed(pr):
             return True
         if require_approval and pr.review_decision == "CHANGES_REQUESTED":
             return True

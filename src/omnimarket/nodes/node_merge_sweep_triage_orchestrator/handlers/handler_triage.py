@@ -108,23 +108,11 @@ class HandlerTriageOrchestrator:
         """Classify each PR and emit the appropriate command event."""
         raw_cmds: list[Any] = []
 
-        # First pass: collect actionable commands with placeholder total_prs=0
+        # First pass: collect actionable commands with placeholder total_prs=0.
+        # Track B polish is emitted only when the decision table finds an
+        # actionable remediation. A PR that is merely waiting on queued checks
+        # must not fan out to live polish.
         for classified_pr in request.classification.classified:
-            if (
-                request.emit_pr_polish_commands
-                and classified_pr.track == EnumPRTrack.B_POLISH
-            ):
-                raw_cmds.append(
-                    ModelPrPolishStartCommand(
-                        correlation_id=request.correlation_id,
-                        repo=classified_pr.pr.repo,
-                        pr_number=classified_pr.pr.number,
-                        no_push=request.dry_run,
-                        no_automerge=request.dry_run,
-                        dry_run=request.dry_run,
-                        requested_at=datetime.now(UTC),
-                    )
-                )
             cmd = await self._classify_to_command(
                 classified_pr,
                 request.run_id,
@@ -132,6 +120,21 @@ class HandlerTriageOrchestrator:
                 0,  # placeholder; replaced below
             )
             if cmd is not None:
+                if (
+                    request.emit_pr_polish_commands
+                    and classified_pr.track == EnumPRTrack.B_POLISH
+                ):
+                    raw_cmds.append(
+                        ModelPrPolishStartCommand(
+                            correlation_id=request.correlation_id,
+                            repo=classified_pr.pr.repo,
+                            pr_number=classified_pr.pr.number,
+                            no_push=request.dry_run,
+                            no_automerge=request.dry_run,
+                            dry_run=request.dry_run,
+                            requested_at=datetime.now(UTC),
+                        )
+                    )
                 raw_cmds.append(cmd)
 
         # total_prs = actionable PR count only. A Track B PR may fan out to both

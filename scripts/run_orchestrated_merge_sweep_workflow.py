@@ -174,7 +174,7 @@ async def _triage(
     return tuple(output.events)
 
 
-def _pr_head_branch(repo: str, pr_number: int) -> str:
+def _pr_head(repo: str, pr_number: int) -> tuple[str, str]:
     raw = _run(
         [
             "gh",
@@ -184,18 +184,23 @@ def _pr_head_branch(repo: str, pr_number: int) -> str:
             "--repo",
             repo,
             "--json",
-            "headRefName",
+            "headRefName,headRefOid",
         ],
         timeout=30,
     )
-    branch = str(json.loads(raw).get("headRefName") or "").strip()
+    payload = json.loads(raw)
+    branch = str(payload.get("headRefName") or "").strip()
+    sha = str(payload.get("headRefOid") or "").strip()
     if not branch:
         raise RuntimeError(f"empty headRefName for {repo}#{pr_number}")
-    return branch
+    if not sha:
+        raise RuntimeError(f"empty headRefOid for {repo}#{pr_number}")
+    return branch, sha
 
 
-def _worktree_for_branch(branch: str) -> Path | None:
+def _worktrees_for_branch(branch: str) -> list[Path]:
     raw = _run(["git", "worktree", "list", "--porcelain"], timeout=15)
+    paths: list[Path] = []
     for block in raw.split("\n\n"):
         raw_path = ""
         raw_branch = ""
@@ -205,35 +210,56 @@ def _worktree_for_branch(branch: str) -> Path | None:
             elif line.startswith("branch "):
                 raw_branch = line[7:].strip()
         if raw_path and raw_branch.endswith(f"/{branch}"):
-            return Path(raw_path)
-    return None
+            paths.append(Path(raw_path))
+    return paths
+
+
+def _worktree_head_sha(worktree: Path) -> str | None:
+    try:
+        return _run(["git", "-C", str(worktree), "rev-parse", "HEAD"], timeout=15)
+    except RuntimeError:
+        return None
+
+
+def _is_clean_worktree(worktree: Path) -> bool:
+    status = _run(["git", "-C", str(worktree), "status", "--short"], timeout=30)
+    return not status
 
 
 def _prepare_polish_worktree(
     repo: str, pr_number: int
 ) -> tuple[Path, bool, str | None]:
-    branch = _pr_head_branch(repo, pr_number)
-    existing = _worktree_for_branch(branch)
-    if existing is not None:
-        return existing, False, None
+    branch, head_sha = _pr_head(repo, pr_number)
+
+    current_sha = _worktree_head_sha(REPO_ROOT)
+    if current_sha == head_sha:
+        if not _is_clean_worktree(REPO_ROOT):
+            raise RuntimeError(
+                f"refusing to polish {repo}#{pr_number}: current PR-head worktree "
+                f"is dirty ({REPO_ROOT})"
+            )
+        return REPO_ROOT, False, None
+
+    dirty_candidates: list[Path] = []
+    for existing in _worktrees_for_branch(branch):
+        if _is_clean_worktree(existing):
+            return existing, False, None
+        dirty_candidates.append(existing)
+    if dirty_candidates:
+        _log(
+            "node_pr_polish",
+            "ignoring_dirty_branch_worktrees "
+            + ",".join(str(path) for path in dirty_candidates),
+        )
 
     tmp_root = Path(tempfile.mkdtemp(prefix=f"omni-pr-{pr_number}-"))
     worktree = tmp_root / "worktree"
-    created_branch: str | None = None
-    branch_exists = (
-        subprocess.run(
-            ["git", "rev-parse", "--verify", f"refs/heads/{branch}"],
-            cwd=str(REPO_ROOT),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        ).returncode
-        == 0
+    created_branch = f"omni-pr-{pr_number}-{uuid4().hex[:8]}"
+    _run(
+        ["git", "fetch", "origin", f"pull/{pr_number}/head:{created_branch}"],
+        timeout=120,
     )
-    if not branch_exists:
-        _run(["git", "fetch", "origin", f"pull/{pr_number}/head:{branch}"], timeout=120)
-        created_branch = branch
-    _run(["git", "worktree", "add", str(worktree), branch], timeout=120)
+    _run(["git", "worktree", "add", str(worktree), created_branch], timeout=120)
     return worktree, True, created_branch
 
 
@@ -364,16 +390,16 @@ async def _execute_command(
                 created_by_script=created_by_script,
                 created_branch=created_branch,
                 keep_worktrees=keep_worktrees,
-        )
+            )
         _log("node_pr_polish", _dump_model(completed))
         # PR polish is verification evidence for Track B. The Phase 1 reducer
         # still needs the merge-sweep effect outcome for the PR, such as CI rerun.
-        _classify_outcome(
+        outcome = _classify_outcome(
             _polish_completed_to_input(
                 command, completed, run_id=run_id, total_prs=total_prs
             )
         )
-        return []
+        return [outcome]
 
     if not execute:
         _log(type(command).__name__, f"planned {_dump_model(command)}")
