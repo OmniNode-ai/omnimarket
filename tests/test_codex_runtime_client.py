@@ -272,6 +272,105 @@ async def test_market_plugin_commands_can_target_addressed_runtime(
     )
 
 
+@pytest.mark.parametrize(
+    "command_name",
+    [
+        "aislop_sweep",
+        "pr_lifecycle_orchestrator",
+        "session_bootstrap",
+        "session_orchestrator",
+    ],
+)
+def test_market_plugin_commands_compile_without_broker(
+    command_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_event_bus_factory() -> _BrokerTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+    client = PatternBBrokerClient(requester="codex-test")
+
+    result = client.compile_request(
+        command_name=command_name,
+        payload={"dry_run": True},
+        timeout_ms=1234,
+        response_topic=(
+            "onex.evt.omnibase-infra.pattern-b-compile-"
+            f"{command_name.replace('_', '-')}.v1"
+        ),
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert result.ok is True
+    assert result.command_name == command_name
+    assert result.dispatch_result is not None
+    assert result.dispatch_result["status"] == "compiled"
+    command = result.dispatch_result["command"]
+    assert isinstance(command, dict)
+    assert command["command_name"] == command_name
+    assert command["payload"] == {"dry_run": True}
+    assert command["requester"] == "codex-test"
+    assert command["timeout_seconds"] == 1.234
+    assert command["target_runtime_address"] == (
+        "runtime://omninode-pc/stability-test/main"
+    )
+
+
+def test_main_compile_only_outputs_command_without_broker(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_event_bus_factory() -> _BrokerTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+
+    rc = main(
+        [
+            "--command-name",
+            "pr_lifecycle_orchestrator",
+            "--payload",
+            '{"inventory_only":true,"dry_run":true}',
+            "--response-topic",
+            "onex.evt.omnibase-infra.pattern-b-compile-main.v1",
+            "--target-runtime-address",
+            "runtime://omninode-pc/stability-test/main",
+            "--compile-only",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert '"status": "compiled"' in captured.out
+    assert '"command_name": "pr_lifecycle_orchestrator"' in captured.out
+    assert '"inventory_only": true' in captured.out
+    assert (
+        '"target_runtime_address": "runtime://omninode-pc/stability-test/main"'
+        in captured.out
+    )
+
+
+def test_compile_only_rejects_explicit_empty_response_topic() -> None:
+    client = PatternBBrokerClient(requester="codex-test")
+
+    with pytest.raises(ValueError, match="response_topic"):
+        client.compile_request(
+            command_name="pr_lifecycle_orchestrator",
+            payload={"inventory_only": True, "dry_run": True},
+            response_topic="",
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+
+
 def test_main_returns_zero_for_ok_response(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
