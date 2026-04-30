@@ -160,7 +160,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_pr_polish",
         module="omnimarket.nodes.node_pr_polish",
         contract_path="src/omnimarket/nodes/node_pr_polish/contract.yaml",
-        pytest_targets=("tests/test_golden_chain_pr_polish.py",),
+        pytest_targets=(
+            "tests/test_golden_chain_pr_polish.py",
+            "tests/test_codex_runtime_client.py::test_pr_polish_pattern_b_runs_node_end_to_end",
+        ),
         smoke_kind="pr_polish",
     ),
     ModelMarketSkillSpec(

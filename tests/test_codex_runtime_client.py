@@ -43,6 +43,10 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ReducerResult,
     TriageRecord,
 )
+from omnimarket.nodes.node_pr_polish.handlers.handler_pr_polish import HandlerPrPolish
+from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
+    ModelPrPolishStartCommand,
+)
 from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
     HandlerSessionBootstrap,
     ModelBootstrapCommand,
@@ -305,6 +309,52 @@ async def _install_pr_lifecycle_broker_worker(
     await bus.subscribe(
         command_topic,
         group_id=f"pr-lifecycle-broker-{uuid4()}",
+        on_message=on_command,
+    )
+
+
+async def _install_pr_polish_broker_worker(
+    bus: EventBusInmemory,
+    *,
+    command_topic: str,
+    received_commands: list[ModelDispatchBusCommand],
+) -> None:
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        received_commands.append(envelope.payload)
+        try:
+            command = ModelPrPolishStartCommand.model_validate(envelope.payload.payload)
+            node_result = HandlerPrPolish().handle(command)
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="completed",
+                payload=node_result.model_dump(mode="json"),
+            )
+        except Exception as exc:  # pragma: no cover - asserted via broker result
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=envelope.payload.correlation_id,
+                status="failed",
+                error_message=str(exc),
+            )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="pattern-b-pr-polish-worker",
+        )
+        await bus.publish(
+            envelope.payload.response_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    await bus.subscribe(
+        command_topic,
+        group_id=f"pr-polish-broker-{uuid4()}",
         on_message=on_command,
     )
 
@@ -667,6 +717,65 @@ async def test_merge_sweep_pattern_b_runs_pr_lifecycle_end_to_end(
     assert persisted["prs_skipped"] == 2
     assert len(received_commands) == 1
     assert received_commands[0].command_name == "pr_lifecycle_orchestrator"
+    assert received_commands[0].response_topic == response_topic
+    assert (
+        received_commands[0].target_runtime_address
+        == "runtime://omninode-pc/stability-test/main"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pr_polish_pattern_b_runs_node_end_to_end() -> None:
+    correlation_id = uuid4()
+    requested_at = datetime.now(UTC)
+    response_topic = "onex.evt.omnibase-infra.pattern-b-pr-polish-e2e.v1"
+
+    bus = EventBusInmemory(
+        environment="test",
+        group="codex-pattern-b-pr-polish-e2e",
+    )
+    received_commands: list[ModelDispatchBusCommand] = []
+    await bus.start()
+    try:
+        await _install_pr_polish_broker_worker(
+            bus,
+            command_topic=default_command_topic(),
+            received_commands=received_commands,
+        )
+
+        client = PatternBBrokerClient(
+            event_bus_factory=lambda: _BrokerTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="pr_polish",
+            payload={
+                "correlation_id": str(correlation_id),
+                "repo": "OmniNode-ai/omnimarket",
+                "pr_number": 464,
+                "ticket_id": "OMN-10382",
+                "skip_conflicts": True,
+                "dry_run": True,
+                "requested_at": requested_at.isoformat(),
+            },
+            timeout_ms=300_000,
+            response_topic=response_topic,
+            target_runtime_address="runtime://omninode-pc/stability-test/main",
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is True
+    assert result.command_name == "pr_polish"
+    assert result.output_payloads is not None
+    assert len(result.output_payloads) == 1
+    payload = result.output_payloads[0]
+    assert payload["correlation_id"] == str(correlation_id)
+    assert payload["final_phase"] == "done"
+    assert payload["pr_number"] == 464
+    assert payload["error_message"] is None
+    assert len(received_commands) == 1
+    assert received_commands[0].command_name == "pr_polish"
     assert received_commands[0].response_topic == response_topic
     assert (
         received_commands[0].target_runtime_address
