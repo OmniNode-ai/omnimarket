@@ -25,9 +25,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from omnibase_core.enums.cost import EnumUsageSource
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "llm_cost_aggregates"

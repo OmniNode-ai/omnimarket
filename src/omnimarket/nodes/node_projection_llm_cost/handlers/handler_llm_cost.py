@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from omnibase_core.enums.cost import EnumUsageSource
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,

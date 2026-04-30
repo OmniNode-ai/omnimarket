@@ -36,11 +36,11 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import httpx
-from omnibase_core.enums.cost import EnumUsageSource
 from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
 
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
 )

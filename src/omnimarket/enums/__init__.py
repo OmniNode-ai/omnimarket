@@ -3,5 +3,6 @@
 """Enums for omnimarket."""
 
 from omnimarket.enums.enum_node_role import EnumNodeRole
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 
-__all__ = ["EnumNodeRole"]
+__all__ = ["EnumNodeRole", "EnumUsageSource"]
