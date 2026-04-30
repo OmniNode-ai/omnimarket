@@ -3,10 +3,8 @@ name: node_integration_sweep_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
 description: >
-  Orchestrates integration sweep across nodes and services. STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  Writes deterministic integration sweep artifacts for explicit ticket scopes.
 
 handler:
   module: omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integration_sweep_orchestrator
@@ -18,3 +16,4 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 30000
+terminal_event: onex.evt.omnimarket.integration-sweep-completed.v1
