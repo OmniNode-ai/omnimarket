@@ -26,8 +26,14 @@ import logging
 import os
 import pathlib
 import sys
+from importlib import resources
 from typing import Any
 
+import yaml
+
+from omnimarket.cli.args import add_output_args, resolve_output_config
+from omnimarket.cli.output.registry import resolve_handler
+from omnimarket.cli.reporting import build_report_from_merge_sweep_result
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
     GitHubHttpClient,
 )
@@ -40,6 +46,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
     ModelPRInfo,
     NodeMergeSweep,
 )
+from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubPrFetchProtocol
 
 _log = logging.getLogger(__name__)
 
@@ -57,6 +64,16 @@ _DEFAULT_REPOS = [
     "OmniNode-ai/omnibase_compat",
     "OmniNode-ai/omniweb",
 ]
+
+
+def _contract_metadata() -> tuple[str, str, str]:
+    contract_path = resources.files(
+        "omnimarket.nodes.node_merge_sweep_compute"
+    ).joinpath("contract.yaml")
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    version = raw["contract_version"]
+    contract_version = f"{version['major']}.{version['minor']}.{version['patch']}"
+    return str(raw["name"]), contract_version, str(raw["terminal_event"])
 
 
 def _is_green(pr: dict[str, Any]) -> bool:
@@ -106,7 +123,9 @@ def _load_failure_history(state_dir: str) -> dict[str, ModelFailureHistoryEntry]
         return {}
 
 
-def main() -> None:
+def main(
+    argv: list[str] | None = None, github: GitHubPrFetchProtocol | None = None
+) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     onex_state_dir = os.environ.get(
         "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
@@ -157,12 +176,15 @@ def main() -> None:
             "for dependency-optimal merge order (default: flat listing order)"
         ),
     )
+    add_output_args(parser)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    output_config = resolve_output_config(args)
+    logging.getLogger().setLevel(args.log_level.upper())
     repos = [r.strip() for r in args.repos.split(",") if r.strip()] or _DEFAULT_REPOS
 
     # Fail-fast: GH_PAT must be present
-    github = GitHubHttpClient()
+    github = github or GitHubHttpClient()
 
     all_prs: list[ModelPRInfo] = []
     protection = BranchProtectionCache(github)
@@ -185,12 +207,36 @@ def main() -> None:
 
     handler = NodeMergeSweep()
     result = handler.handle(request)
+    contract_name, contract_version, terminal_event = _contract_metadata()
+    cli_report = build_report_from_merge_sweep_result(
+        result,
+        skill_name="merge_sweep",
+        node_name="node_merge_sweep_compute",
+        terminal_event=terminal_event,
+        contract_name=contract_name,
+        contract_version=contract_version,
+        mode="dry_run" if args.dry_run else "execute",
+        input_summary={
+            "repos": repos,
+            "require_approval": args.require_approval,
+            "merge_method": args.merge_method,
+            "max_total_merges": args.max_total_merges,
+            "skip_polish": args.skip_polish,
+            "dry_run": args.dry_run,
+            "use_lifecycle_ordering": args.use_lifecycle_ordering,
+        },
+        output_config=output_config,
+    )
 
-    sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    rendered = resolve_handler(output_config.format).render(cli_report)
+    sys.stdout.write(rendered)
+    if not rendered.endswith("\n"):
+        sys.stdout.write("\n")
 
     if result.status in ("error",):
-        sys.exit(1)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
