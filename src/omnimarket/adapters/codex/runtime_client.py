@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Pattern B broker client for Codex-facing OmniMarket skills."""
+"""Codex runtime request adapter for Codex-facing OmniMarket skills."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ _DEFAULT_REQUESTER = "codex"
 
 
 class ModelDispatchBusRoute(BaseModel):
-    """Wire shape for a Pattern B broker routing key."""
+    """Wire shape for the Codex adapter dispatch route."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -42,7 +42,7 @@ class ModelDispatchBusRoute(BaseModel):
 
 
 class ModelDispatchBusCommand(BaseModel):
-    """Envelope for a Pattern B broker dispatch command."""
+    """Envelope emitted by the Codex adapter to the runtime dispatch bus."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -56,7 +56,7 @@ class ModelDispatchBusCommand(BaseModel):
 
 
 class ModelDispatchBusTerminalResult(BaseModel):
-    """Terminal result returned by the Pattern B broker."""
+    """Terminal result returned by the runtime dispatch bus."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -67,22 +67,22 @@ class ModelDispatchBusTerminalResult(BaseModel):
 
 
 def default_command_topic() -> str:
-    """Resolve the Pattern B broker command topic."""
+    """Resolve the Codex adapter command topic."""
     return str(os.environ.get("ONEX_PATTERN_B_COMMAND_TOPIC", _DEFAULT_COMMAND_TOPIC))
 
 
 def default_response_topic() -> str:
-    """Resolve the Pattern B broker response topic."""
+    """Resolve the Codex adapter response topic."""
     return str(os.environ.get("ONEX_PATTERN_B_RESPONSE_TOPIC", _DEFAULT_RESPONSE_TOPIC))
 
 
 def default_requester() -> str:
-    """Resolve the requester label attached to broker commands."""
+    """Resolve the requester label attached to adapter commands."""
     return str(os.environ.get("ONEX_PATTERN_B_REQUESTER", _DEFAULT_REQUESTER))
 
 
 def default_target_runtime_address() -> str | None:
-    """Resolve the optional runtime address selector for broker commands."""
+    """Resolve the optional runtime address selector for adapter commands."""
     value = os.environ.get("ONEX_TARGET_RUNTIME_ADDRESS")
     if value is None or not value.strip():
         return None
@@ -107,8 +107,8 @@ class _ProtocolLifecycleTransport(Protocol):
     ) -> object: ...
 
 
-class _DispatchBusClient:
-    """Minimal Pattern B broker client over an event bus transport."""
+class _CodexDispatchBusAdapter:
+    """Minimal Codex runtime request adapter over an event bus transport."""
 
     def __init__(self, transport: _ProtocolLifecycleTransport, *, source: str) -> None:
         self._transport = transport
@@ -140,7 +140,7 @@ class _DispatchBusClient:
             route.terminal_topic,
             None,
             on_message,
-            group_id=f"codex-broker-{correlation_id}",
+            group_id=f"codex-adapter-{correlation_id}",
         )
 
         async def _unsubscribe() -> None:
@@ -174,11 +174,11 @@ class _DispatchBusClient:
         )
 
 
-DispatchBusClient = _DispatchBusClient
+CodexDispatchBusAdapter = _CodexDispatchBusAdapter
 
 
-class ModelPatternBBrokerClientError(BaseModel):
-    """Structured error returned by the broker client."""
+class ModelCodexRuntimeRequestAdapterError(BaseModel):
+    """Structured error returned by the Codex runtime request adapter."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -188,8 +188,8 @@ class ModelPatternBBrokerClientError(BaseModel):
     retryable: bool | None = None
 
 
-class ModelPatternBBrokerClientRequest(BaseModel):
-    """Request envelope for Codex skill dispatch over Pattern B."""
+class ModelCodexRuntimeRequestAdapterRequest(BaseModel):
+    """Request envelope for Codex skill dispatch through the runtime adapter."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -231,8 +231,8 @@ class ModelPatternBBrokerClientRequest(BaseModel):
         return normalized
 
 
-class ModelPatternBBrokerClientResponse(BaseModel):
-    """Structured response returned by the Pattern B broker."""
+class ModelCodexRuntimeRequestAdapterResponse(BaseModel):
+    """Structured response returned by the Codex runtime request adapter."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -243,7 +243,7 @@ class ModelPatternBBrokerClientResponse(BaseModel):
     correlation_id: UUID | None = None
     dispatch_result: dict[str, object] | None = None
     output_payloads: list[dict[str, object]] | None = None
-    error: ModelPatternBBrokerClientError | None = None
+    error: ModelCodexRuntimeRequestAdapterError | None = None
 
 
 def _build_client_request(
@@ -254,8 +254,8 @@ def _build_client_request(
     timeout_ms: int = 300_000,
     response_topic: str | None = None,
     target_runtime_address: str | None = None,
-) -> ModelPatternBBrokerClientRequest:
-    return ModelPatternBBrokerClientRequest.model_validate(
+) -> ModelCodexRuntimeRequestAdapterRequest:
+    return ModelCodexRuntimeRequestAdapterRequest.model_validate(
         {
             "command_name": command_name,
             "payload": payload or {},
@@ -312,7 +312,7 @@ def _dispatch_result(
 
 
 def _build_dispatch_command(
-    request: ModelPatternBBrokerClientRequest,
+    request: ModelCodexRuntimeRequestAdapterRequest,
     *,
     requester: str,
 ) -> ModelDispatchBusCommand:
@@ -327,8 +327,8 @@ def _build_dispatch_command(
     )
 
 
-class PatternBBrokerClient:
-    """Async client for broker-backed skill dispatch."""
+class CodexRuntimeRequestAdapter:
+    """Codex-side adapter for runtime-dispatched OmniMarket skill requests."""
 
     def __init__(
         self,
@@ -350,8 +350,8 @@ class PatternBBrokerClient:
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
         target_runtime_address: str | None = None,
-    ) -> ModelPatternBBrokerClientResponse:
-        """Compile the broker command envelope without touching the event bus."""
+    ) -> ModelCodexRuntimeRequestAdapterResponse:
+        """Compile the adapter command envelope without touching the event bus."""
         request = _build_client_request(
             command_name=command_name,
             payload=payload,
@@ -362,7 +362,7 @@ class PatternBBrokerClient:
         )
         command = _build_dispatch_command(request, requester=self._requester)
         compiled_command = command.model_dump(mode="json", exclude_none=True)
-        return ModelPatternBBrokerClientResponse(
+        return ModelCodexRuntimeRequestAdapterResponse(
             ok=True,
             command_name=request.command_name,
             command_topic=self._command_topic,
@@ -393,7 +393,7 @@ class PatternBBrokerClient:
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
         target_runtime_address: str | None = None,
-    ) -> ModelPatternBBrokerClientResponse:
+    ) -> ModelCodexRuntimeRequestAdapterResponse:
         request = _build_client_request(
             command_name=command_name,
             payload=payload,
@@ -406,19 +406,21 @@ class PatternBBrokerClient:
         transport = self._event_bus_factory()
         await transport.start()
         try:
-            broker_client = DispatchBusClient(transport, source=self._requester)
+            dispatch_adapter = CodexDispatchBusAdapter(
+                transport, source=self._requester
+            )
             route = ModelDispatchBusRoute(
-                contract_path=Path("pattern-b-broker"),
+                contract_path=Path("codex-runtime-request-adapter"),
                 command_topic=self._command_topic,
                 terminal_topic=request.response_topic,
             )
             command = _build_dispatch_command(request, requester=self._requester)
-            unsubscribe, result_queue = await broker_client.wait_for_result(
+            unsubscribe, result_queue = await dispatch_adapter.wait_for_result(
                 route,
                 correlation_id=str(command.correlation_id),
             )
             try:
-                await broker_client.publish_command(route, command)
+                await dispatch_adapter.publish_command(route, command)
                 terminal_result = await asyncio.wait_for(
                     result_queue.get(),
                     timeout=command.timeout_seconds,
@@ -427,7 +429,7 @@ class PatternBBrokerClient:
                 terminal_result = ModelDispatchBusTerminalResult(
                     correlation_id=command.correlation_id,
                     status="timeout",
-                    error_message="Timed out waiting for Pattern B broker terminal result.",
+                    error_message="Timed out waiting for Codex runtime adapter terminal result.",
                 )
             finally:
                 await unsubscribe()
@@ -436,7 +438,7 @@ class PatternBBrokerClient:
 
         ok = terminal_result.status == "completed"
         if ok:
-            return ModelPatternBBrokerClientResponse(
+            return ModelCodexRuntimeRequestAdapterResponse(
                 ok=True,
                 command_name=request.command_name,
                 command_topic=self._command_topic,
@@ -445,17 +447,17 @@ class PatternBBrokerClient:
                 dispatch_result=_dispatch_result(terminal_result),
                 output_payloads=_output_payloads(terminal_result.payload),
             )
-        return ModelPatternBBrokerClientResponse(
+        return ModelCodexRuntimeRequestAdapterResponse(
             ok=False,
             command_name=request.command_name,
             command_topic=self._command_topic,
             response_topic=request.response_topic,
             correlation_id=terminal_result.correlation_id,
             dispatch_result=_dispatch_result(terminal_result),
-            error=ModelPatternBBrokerClientError(
-                code=f"broker_{terminal_result.status}",
+            error=ModelCodexRuntimeRequestAdapterError(
+                code=f"runtime_{terminal_result.status}",
                 message=terminal_result.error_message
-                or "Pattern B broker request did not complete successfully.",
+                or "Codex runtime adapter request did not complete successfully.",
                 retryable=terminal_result.status == "timeout",
             ),
         )
@@ -469,7 +471,7 @@ class PatternBBrokerClient:
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
         target_runtime_address: str | None = None,
-    ) -> ModelPatternBBrokerClientResponse:
+    ) -> ModelCodexRuntimeRequestAdapterResponse:
         return asyncio.run(
             self.dispatch_async(
                 command_name=command_name,
@@ -482,10 +484,10 @@ class PatternBBrokerClient:
         )
 
 
-LocalRuntimeIngressClient = PatternBBrokerClient
+LocalRuntimeIngressClient = CodexRuntimeRequestAdapter
 
 
-def _response_to_exit_code(response: ModelPatternBBrokerClientResponse) -> int:
+def _response_to_exit_code(response: ModelCodexRuntimeRequestAdapterResponse) -> int:
     return 0 if response.ok else 1
 
 
@@ -495,13 +497,13 @@ def _build_cli_error_response(
     code: str,
     message: str,
     details: dict[str, object] | None = None,
-) -> ModelPatternBBrokerClientResponse:
-    return ModelPatternBBrokerClientResponse(
+) -> ModelCodexRuntimeRequestAdapterResponse:
+    return ModelCodexRuntimeRequestAdapterResponse(
         ok=False,
         command_name=command_name,
         command_topic=default_command_topic(),
         response_topic=default_response_topic(),
-        error=ModelPatternBBrokerClientError(
+        error=ModelCodexRuntimeRequestAdapterError(
             code=code,
             message=message,
             details=details,
@@ -516,11 +518,11 @@ def main(argv: list[str] | None = None) -> int:
         "--node-alias",
         dest="command_name",
         required=True,
-        help="Logical Pattern B command name",
+        help="Logical OmniMarket command name",
     )
     parser.add_argument(
         "--payload",
-        help="Inline JSON object payload forwarded to the Pattern B broker",
+        help="Inline JSON object payload forwarded through the Codex runtime adapter",
     )
     parser.add_argument(
         "--payload-file",
@@ -530,12 +532,12 @@ def main(argv: list[str] | None = None) -> int:
         "--timeout-ms",
         type=int,
         default=300_000,
-        help="Dispatch timeout passed to the Pattern B broker",
+        help="Dispatch timeout passed to the Codex runtime adapter",
     )
     parser.add_argument(
         "--response-topic",
         default=default_response_topic(),
-        help="Broker response topic used for correlated terminal results",
+        help="Adapter response topic used for correlated terminal results",
     )
     parser.add_argument(
         "--correlation-id",
@@ -544,13 +546,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--target-runtime-address",
         default=default_target_runtime_address(),
-        help="Optional runtime:// address to target for this broker request",
+        help="Optional runtime:// address to target for this adapter request",
     )
     parser.add_argument(
         "--compile-only",
         action="store_true",
         help=(
-            "Validate and print the broker command envelope without publishing "
+            "Validate and print the adapter command envelope without publishing "
             "to the event bus"
         ),
     )
@@ -576,7 +578,7 @@ def main(argv: list[str] | None = None) -> int:
         return _response_to_exit_code(response)
 
     try:
-        client = PatternBBrokerClient()
+        client = CodexRuntimeRequestAdapter()
         if args.compile_only:
             response = client.compile_request(
                 command_name=args.command_name,
@@ -599,13 +601,13 @@ def main(argv: list[str] | None = None) -> int:
         response = _build_cli_error_response(
             command_name=args.command_name,
             code="payload_invalid",
-            message="Invalid Pattern B broker client request",
+            message="Invalid Codex runtime request adapter request",
             details={"errors": json.loads(exc.json(include_url=False))},
         )
     except (OSError, ValueError, RuntimeError) as exc:
         response = _build_cli_error_response(
             command_name=args.command_name,
-            code="broker_client_error",
+            code="runtime_adapter_error",
             message=str(exc),
         )
 
@@ -618,11 +620,11 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "CodexRuntimeRequestAdapter",
     "LocalRuntimeIngressClient",
-    "ModelPatternBBrokerClientError",
-    "ModelPatternBBrokerClientRequest",
-    "ModelPatternBBrokerClientResponse",
-    "PatternBBrokerClient",
+    "ModelCodexRuntimeRequestAdapterError",
+    "ModelCodexRuntimeRequestAdapterRequest",
+    "ModelCodexRuntimeRequestAdapterResponse",
     "default_command_topic",
     "default_requester",
     "default_response_topic",

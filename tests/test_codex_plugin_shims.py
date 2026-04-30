@@ -75,7 +75,7 @@ def test_codex_shims_remain_dispatch_only() -> None:
         assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
         assert "runtime://..." in text
         assert "--compile-only" in text
-        assert "broker-free preflight" in text
+        assert "event-bus-free preflight" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text
@@ -122,7 +122,7 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
         assert "ONEX_TARGET_RUNTIME_ADDRESS" in text
         assert "runtime://..." in text
         assert "--compile-only" in text
-        assert "broker-free preflight" in text
+        assert "event-bus-free preflight" in text
         assert "output_payloads[0]" in text
         if path.parent.name == "session-bootstrap":
             assert '--command-name "session_bootstrap"' in text

@@ -5,7 +5,7 @@ description: Thin Codex skill shim for node_session_orchestrator. Use to run the
 
 # Session Orchestrator
 
-This skill is a thin Pattern B broker shim over the OmniMarket
+This skill is a thin Codex runtime adapter shim over the OmniMarket
 `node_session_orchestrator` node. The node owns health gating, queue scoring,
 and dispatch planning. Do not add local health probes, dispatch compilation, or
 ticket triage logic to this skill.
@@ -39,7 +39,7 @@ If the user supplies a `runtime://...` target, add
 `--target-runtime-address '<runtime-address>'` to the request command. If the
 argument is omitted, the wrapper uses `ONEX_TARGET_RUNTIME_ADDRESS` when set.
 
-For broker-free preflight, add `--compile-only`. This validates the payload,
+For event-bus-free preflight, add `--compile-only`. This validates the payload,
 command topic, response topic, correlation id, timeout, and target runtime
 address without publishing to Kafka or starting a runtime.
 
@@ -65,7 +65,7 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 ## Contract
 
 - Backing node: `src/omnimarket/nodes/node_session_orchestrator/`
-- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Codex adapter request wrapper: `scripts/run_codex_runtime_request.py`
 - Command name: `session_orchestrator`
 - Runtime topic: `onex.cmd.omnimarket.session-orchestrator-start.v1`
 - Completion topic: `onex.evt.omnimarket.session-orchestrator-completed.v1`

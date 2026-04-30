@@ -1,4 +1,4 @@
-"""Focused tests for the Codex Pattern B broker client."""
+"""Focused tests for the Codex runtime request adapter."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from omnibase_infra.event_bus.models.model_event_message import ModelEventMessag
 
 from omnimarket.adapters.codex import runtime_client
 from omnimarket.adapters.codex.runtime_client import (
+    CodexRuntimeRequestAdapter,
     ModelDispatchBusCommand,
     ModelDispatchBusTerminalResult,
-    PatternBBrokerClient,
     default_command_topic,
     default_requester,
     default_response_topic,
@@ -73,7 +73,7 @@ from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command i
 )
 
 
-class _BrokerTestTransport:
+class _AdapterTestTransport:
     def __init__(self, bus: EventBusInmemory) -> None:
         self._bus = bus
 
@@ -101,7 +101,7 @@ class _BrokerTestTransport:
     ) -> object:
         from uuid import uuid4
 
-        group_id = str(kwargs.get("group_id", f"test-broker-{uuid4()}"))
+        group_id = str(kwargs.get("group_id", f"test-adapter-{uuid4()}"))
         return await self._bus.subscribe(
             topic,
             on_message=on_message,
@@ -109,7 +109,7 @@ class _BrokerTestTransport:
         )
 
 
-async def _install_broker_worker(
+async def _install_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -135,7 +135,7 @@ async def _install_broker_worker(
             correlation_id=terminal.correlation_id,
             envelope_timestamp=datetime.now(UTC),
             event_type=envelope.payload.response_topic,
-            source_tool="pattern-b-broker",
+            source_tool="pattern-b-adapter",
         )
         await bus.publish(
             envelope.payload.response_topic,
@@ -145,11 +145,11 @@ async def _install_broker_worker(
         )
 
     await bus.subscribe(
-        command_topic, group_id=f"broker-{uuid4()}", on_message=on_command
+        command_topic, group_id=f"adapter-{uuid4()}", on_message=on_command
     )
 
 
-async def _install_aislop_sweep_broker_worker(
+async def _install_aislop_sweep_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -168,7 +168,7 @@ async def _install_aislop_sweep_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -190,7 +190,7 @@ async def _install_aislop_sweep_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"aislop-sweep-broker-{uuid4()}",
+        group_id=f"aislop-sweep-adapter-{uuid4()}",
         on_message=on_command,
     )
 
@@ -277,7 +277,7 @@ class _PatternBPrLifecycleOrchestrator(HandlerPrLifecycleOrchestrator):
         return (101, 102)
 
 
-async def _install_pr_lifecycle_broker_worker(
+async def _install_pr_lifecycle_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -302,7 +302,7 @@ async def _install_pr_lifecycle_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -324,12 +324,12 @@ async def _install_pr_lifecycle_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"pr-lifecycle-broker-{uuid4()}",
+        group_id=f"pr-lifecycle-adapter-{uuid4()}",
         on_message=on_command,
     )
 
 
-async def _install_pr_polish_broker_worker(
+async def _install_pr_polish_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -348,7 +348,7 @@ async def _install_pr_polish_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -370,12 +370,12 @@ async def _install_pr_polish_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"pr-polish-broker-{uuid4()}",
+        group_id=f"pr-polish-adapter-{uuid4()}",
         on_message=on_command,
     )
 
 
-async def _install_local_review_broker_worker(
+async def _install_local_review_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -396,7 +396,7 @@ async def _install_local_review_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -418,7 +418,7 @@ async def _install_local_review_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"local-review-broker-{uuid4()}",
+        group_id=f"local-review-adapter-{uuid4()}",
         on_message=on_command,
     )
 
@@ -465,7 +465,7 @@ class _PatternBCoderabbitTriageHandler(HandlerCoderabbitTriage):
         ]
 
 
-async def _install_coderabbit_triage_broker_worker(
+async def _install_coderabbit_triage_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -486,7 +486,7 @@ async def _install_coderabbit_triage_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -508,12 +508,12 @@ async def _install_coderabbit_triage_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"coderabbit-triage-broker-{uuid4()}",
+        group_id=f"coderabbit-triage-adapter-{uuid4()}",
         on_message=on_command,
     )
 
 
-async def _install_ticket_pipeline_broker_worker(
+async def _install_ticket_pipeline_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -532,7 +532,7 @@ async def _install_ticket_pipeline_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -554,12 +554,12 @@ async def _install_ticket_pipeline_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"ticket-pipeline-broker-{uuid4()}",
+        group_id=f"ticket-pipeline-adapter-{uuid4()}",
         on_message=on_command,
     )
 
 
-async def _install_session_orchestrator_broker_worker(
+async def _install_session_orchestrator_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -580,7 +580,7 @@ async def _install_session_orchestrator_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -602,12 +602,12 @@ async def _install_session_orchestrator_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"session-orchestrator-broker-{uuid4()}",
+        group_id=f"session-orchestrator-adapter-{uuid4()}",
         on_message=on_command,
     )
 
 
-async def _install_session_bootstrap_broker_worker(
+async def _install_session_bootstrap_adapter_worker(
     bus: EventBusInmemory,
     *,
     command_topic: str,
@@ -638,7 +638,7 @@ async def _install_session_bootstrap_broker_worker(
                 status="completed",
                 payload=node_result.model_dump(mode="json"),
             )
-        except Exception as exc:  # pragma: no cover - asserted via broker result
+        except Exception as exc:  # pragma: no cover - asserted via adapter result
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="failed",
@@ -660,7 +660,7 @@ async def _install_session_bootstrap_broker_worker(
 
     await bus.subscribe(
         command_topic,
-        group_id=f"session-bootstrap-broker-{uuid4()}",
+        group_id=f"session-bootstrap-adapter-{uuid4()}",
         on_message=on_command,
     )
 
@@ -708,15 +708,15 @@ async def test_dispatch_async_round_trip() -> None:
     bus = EventBusInmemory(environment="test", group="codex-pattern-b")
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
-    await _install_broker_worker(
+    await _install_adapter_worker(
         bus,
         command_topic=default_command_topic(),
         result_payload={"status": "complete", "dispatch_queue": []},
         received_commands=received_commands,
     )
 
-    client = PatternBBrokerClient(
-        event_bus_factory=lambda: _BrokerTestTransport(bus),
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: _AdapterTestTransport(bus),
         requester="codex-test",
     )
     result = await client.dispatch_async(
@@ -753,15 +753,15 @@ async def test_dispatch_async_uses_env_target_runtime_address(
     bus = EventBusInmemory(environment="test", group="codex-pattern-b-env-target")
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
-    await _install_broker_worker(
+    await _install_adapter_worker(
         bus,
         command_topic=default_command_topic(),
         result_payload={"status": "complete"},
         received_commands=received_commands,
     )
 
-    client = PatternBBrokerClient(
-        event_bus_factory=lambda: _BrokerTestTransport(bus),
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: _AdapterTestTransport(bus),
         requester="codex-test",
     )
     result = await client.dispatch_async(
@@ -798,14 +798,14 @@ async def test_aislop_sweep_pattern_b_runs_node_end_to_end(tmp_path: Path) -> No
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_aislop_sweep_broker_worker(
+        await _install_aislop_sweep_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -865,14 +865,14 @@ async def test_merge_sweep_pattern_b_runs_pr_lifecycle_end_to_end(
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_pr_lifecycle_broker_worker(
+        await _install_pr_lifecycle_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -937,14 +937,14 @@ async def test_pr_polish_pattern_b_runs_node_end_to_end() -> None:
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_pr_polish_broker_worker(
+        await _install_pr_polish_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -996,14 +996,14 @@ async def test_local_review_pattern_b_runs_node_end_to_end() -> None:
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_local_review_broker_worker(
+        await _install_local_review_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -1052,14 +1052,14 @@ async def test_coderabbit_triage_pattern_b_runs_node_end_to_end() -> None:
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_coderabbit_triage_broker_worker(
+        await _install_coderabbit_triage_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -1118,14 +1118,14 @@ async def test_ticket_pipeline_pattern_b_runs_node_end_to_end() -> None:
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_ticket_pipeline_broker_worker(
+        await _install_ticket_pipeline_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -1221,14 +1221,14 @@ async def test_session_bootstrap_pattern_b_runs_node_end_to_end(
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_session_bootstrap_broker_worker(
+        await _install_session_bootstrap_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -1319,14 +1319,14 @@ async def test_session_orchestrator_pattern_b_runs_node_end_to_end(
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
     try:
-        await _install_session_orchestrator_broker_worker(
+        await _install_session_orchestrator_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             received_commands=received_commands,
         )
 
-        client = PatternBBrokerClient(
-            event_bus_factory=lambda: _BrokerTestTransport(bus),
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
             requester="codex-test",
         )
         result = await client.dispatch_async(
@@ -1401,15 +1401,15 @@ async def test_market_plugin_commands_can_target_addressed_runtime(
     )
     received_commands: list[ModelDispatchBusCommand] = []
     await bus.start()
-    await _install_broker_worker(
+    await _install_adapter_worker(
         bus,
         command_topic=default_command_topic(),
         result_payload={"status": "accepted", "command_name": command_name},
         received_commands=received_commands,
     )
 
-    client = PatternBBrokerClient(
-        event_bus_factory=lambda: _BrokerTestTransport(bus),
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: _AdapterTestTransport(bus),
         requester="codex-test",
     )
     result = await client.dispatch_async(
@@ -1447,11 +1447,11 @@ async def test_market_plugin_commands_can_target_addressed_runtime(
         "session_orchestrator",
     ],
 )
-def test_market_plugin_commands_compile_without_broker(
+def test_market_plugin_commands_compile_without_event_bus(
     command_name: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail_event_bus_factory() -> _BrokerTestTransport:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
         raise AssertionError("compile-only preflight must not start the event bus")
 
     monkeypatch.setattr(
@@ -1459,7 +1459,7 @@ def test_market_plugin_commands_compile_without_broker(
         "_default_event_bus_factory",
         fail_event_bus_factory,
     )
-    client = PatternBBrokerClient(requester="codex-test")
+    client = CodexRuntimeRequestAdapter(requester="codex-test")
 
     result = client.compile_request(
         command_name=command_name,
@@ -1487,11 +1487,11 @@ def test_market_plugin_commands_compile_without_broker(
     )
 
 
-def test_main_compile_only_outputs_command_without_broker(
+def test_main_compile_only_outputs_command_without_event_bus(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def fail_event_bus_factory() -> _BrokerTestTransport:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
         raise AssertionError("compile-only preflight must not start the event bus")
 
     monkeypatch.setattr(
@@ -1526,7 +1526,7 @@ def test_main_compile_only_outputs_command_without_broker(
 
 
 def test_compile_only_rejects_explicit_empty_response_topic() -> None:
-    client = PatternBBrokerClient(requester="codex-test")
+    client = CodexRuntimeRequestAdapter(requester="codex-test")
 
     with pytest.raises(ValueError, match="response_topic"):
         client.compile_request(
@@ -1549,7 +1549,7 @@ def test_main_returns_zero_for_ok_response(
     received_commands: list[ModelDispatchBusCommand] = []
     asyncio.run(bus.start())
     asyncio.run(
-        _install_broker_worker(
+        _install_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             result_payload={"final_state": "COMPLETE"},
@@ -1559,7 +1559,7 @@ def test_main_returns_zero_for_ok_response(
     monkeypatch.setattr(
         runtime_client,
         "_default_event_bus_factory",
-        lambda: _BrokerTestTransport(bus),
+        lambda: _AdapterTestTransport(bus),
     )
 
     rc = main(
@@ -1594,7 +1594,7 @@ def test_main_returns_one_for_failed_response(
     bus = EventBusInmemory(environment="test", group="codex-pattern-b-main-error")
     asyncio.run(bus.start())
     asyncio.run(
-        _install_broker_worker(
+        _install_adapter_worker(
             bus,
             command_topic=default_command_topic(),
             result_status="failed",
@@ -1604,7 +1604,7 @@ def test_main_returns_one_for_failed_response(
     monkeypatch.setattr(
         runtime_client,
         "_default_event_bus_factory",
-        lambda: _BrokerTestTransport(bus),
+        lambda: _AdapterTestTransport(bus),
     )
 
     rc = main(
@@ -1622,5 +1622,5 @@ def test_main_returns_one_for_failed_response(
 
     assert rc == 1
     captured = capsys.readouterr()
-    assert '"code": "broker_failed"' in captured.out
+    assert '"code": "runtime_failed"' in captured.out
     assert '"runtime is draining"' in captured.out

@@ -5,8 +5,8 @@ description: Thin Codex skill shim for the OmniMarket {{NODE_NAME}} node. Use wh
 
 # {{SKILL_DISPLAY_NAME}}
 
-You have access to the OmniMarket `{{NODE_NAME}}` node through the Pattern B
-broker client. When the user asks you to {{TRIGGER_DESCRIPTION}}, use this
+You have access to the OmniMarket `{{NODE_NAME}}` node through the Codex
+runtime request adapter. When the user asks you to {{TRIGGER_DESCRIPTION}}, use this
 procedure. Do not implement the node logic yourself.
 
 ## Supported arguments
@@ -29,7 +29,7 @@ Use this dispatch shape:
 {{PAYLOAD_TEMPLATE}}
 ```
 
-### Step 2 - Dispatch through the Pattern B broker client
+### Step 2 - Dispatch through the Codex runtime request adapter
 
 Run from the `omnimarket` repo or an `omnimarket` worktree:
 
@@ -62,12 +62,12 @@ On success: prefer `output_payloads[0]`; if it is absent, render the runtime
 
 On timeout: report that the operation timed out.
 
-On error: surface the broker client error code and message.
+On error: surface the runtime adapter error code and message.
 
 ## Contract
 
 - Backing node: `omnimarket/nodes/{{NODE_DIR}}/`
-- Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
+- Codex adapter request wrapper: `scripts/run_codex_runtime_request.py`
 - Command name: `{{NODE_ALIAS}}`
 - Command topic: `{{COMMAND_TOPIC}}`
 - Completion topic: `{{COMPLETION_TOPIC}}`
