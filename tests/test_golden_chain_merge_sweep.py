@@ -98,6 +98,16 @@ class TestMergeSweepClassification:
         assert result.classified[0].track == EnumPRTrack.SKIP
         assert "CI failing" not in result.classified[0].reason
 
+    def test_missing_check_tri_state_does_not_infer_ci_failure(self) -> None:
+        handler = NodeMergeSweep()
+        result = handler.handle(
+            ModelMergeSweepRequest(
+                prs=[_pr(required_checks_pass=False, required_checks_failed=False)]
+            )
+        )
+        assert result.classified[0].track == EnumPRTrack.SKIP
+        assert "CI failing" not in result.classified[0].reason
+
     def test_changes_requested_goes_to_b_polish(self) -> None:
         handler = NodeMergeSweep()
         result = handler.handle(

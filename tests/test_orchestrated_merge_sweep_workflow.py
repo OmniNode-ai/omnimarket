@@ -92,9 +92,90 @@ def test_prepare_polish_worktree_ignores_dirty_branch_candidate(
 
     assert worktree == tmp_path / "tmp" / "worktree"
     assert created_by_script is True
-    assert created_branch is not None
+    assert created_branch is None
     assert calls[0][:3] == ["git", "fetch", "origin"]
-    assert calls[1][:3] == ["git", "worktree", "add"]
+    assert calls[1][:4] == ["git", "worktree", "add", "--detach"]
+
+
+def test_prepare_polish_worktree_fast_forwards_clean_branch_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    calls: list[tuple[Path, str, str]] = []
+    heads = {existing: "old-sha"}
+
+    monkeypatch.setattr(
+        workflow,
+        "_pr_head",
+        lambda _repo, _pr_number: ("jonah/omn-10400-test", "new-sha"),
+    )
+    monkeypatch.setattr(
+        workflow, "_worktree_head_sha", lambda worktree: heads.get(worktree, "base-sha")
+    )
+    monkeypatch.setattr(workflow, "_worktrees_for_branch", lambda _branch: [existing])
+    monkeypatch.setattr(workflow, "_is_clean_worktree", lambda _worktree: True)
+
+    def fake_fast_forward(worktree: Path, branch: str, head_sha: str) -> bool:
+        calls.append((worktree, branch, head_sha))
+        heads[worktree] = head_sha
+        return True
+
+    monkeypatch.setattr(
+        workflow, "_fast_forward_worktree_to_pr_head", fake_fast_forward
+    )
+
+    worktree, created_by_script, created_branch = workflow._prepare_polish_worktree(
+        "OmniNode-ai/omnimarket", 465
+    )
+
+    assert worktree == existing
+    assert created_by_script is False
+    assert created_branch is None
+    assert calls == [(existing, "jonah/omn-10400-test", "new-sha")]
+
+
+def test_prepare_polish_worktree_uses_detached_temp_when_branch_candidate_stale(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(
+        workflow,
+        "_pr_head",
+        lambda _repo, _pr_number: ("jonah/omn-10400-test", "new-sha"),
+    )
+    monkeypatch.setattr(workflow, "_worktree_head_sha", lambda _worktree: "old-sha")
+    monkeypatch.setattr(workflow, "_worktrees_for_branch", lambda _branch: [existing])
+    monkeypatch.setattr(workflow, "_is_clean_worktree", lambda _worktree: True)
+    monkeypatch.setattr(
+        workflow,
+        "_fast_forward_worktree_to_pr_head",
+        lambda _worktree, _branch, _head_sha: False,
+    )
+    monkeypatch.setattr(
+        workflow.tempfile, "mkdtemp", lambda **_kwargs: str(tmp_path / "tmp")
+    )
+
+    def fake_run(argv: list[str], **kwargs: object) -> str:
+        calls.append(argv)
+        return ""
+
+    monkeypatch.setattr(workflow, "_run", fake_run)
+
+    worktree, created_by_script, created_branch = workflow._prepare_polish_worktree(
+        "OmniNode-ai/omnimarket", 465
+    )
+
+    assert worktree == tmp_path / "tmp" / "worktree"
+    assert created_by_script is True
+    assert created_branch is None
+    assert calls == [
+        ["git", "fetch", "origin", "pull/465/head"],
+        ["git", "worktree", "add", "--detach", str(worktree), "new-sha"],
+    ]
 
 
 @pytest.mark.asyncio

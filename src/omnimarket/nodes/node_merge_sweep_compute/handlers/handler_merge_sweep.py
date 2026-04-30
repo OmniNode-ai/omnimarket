@@ -546,9 +546,7 @@ class NodeMergeSweep:
 
     def _checks_failed(self, pr: ModelPRInfo) -> bool:
         """Return True only for terminal required-check failures."""
-        return pr.required_checks_failed or (
-            not pr.required_checks_pass and not pr.required_checks_pending
-        )
+        return pr.required_checks_failed
 
     def _needs_branch_update(self, pr: ModelPRInfo) -> bool:
         if pr.mergeable == "MERGEABLE":

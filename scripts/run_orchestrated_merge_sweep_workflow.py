@@ -226,6 +226,21 @@ def _is_clean_worktree(worktree: Path) -> bool:
     return not status
 
 
+def _fast_forward_worktree_to_pr_head(
+    worktree: Path, branch: str, head_sha: str
+) -> bool:
+    try:
+        _run(["git", "-C", str(worktree), "fetch", "origin", branch], timeout=120)
+        _run(["git", "-C", str(worktree), "merge", "--ff-only", head_sha], timeout=120)
+    except RuntimeError as exc:
+        _log(
+            "node_pr_polish",
+            f"could_not_fast_forward_worktree path={worktree} head={head_sha}: {exc}",
+        )
+        return False
+    return _worktree_head_sha(worktree) == head_sha
+
+
 def _prepare_polish_worktree(
     repo: str, pr_number: int
 ) -> tuple[Path, bool, str | None]:
@@ -242,9 +257,13 @@ def _prepare_polish_worktree(
 
     dirty_candidates: list[Path] = []
     for existing in _worktrees_for_branch(branch):
-        if _is_clean_worktree(existing):
+        if not _is_clean_worktree(existing):
+            dirty_candidates.append(existing)
+            continue
+        if _worktree_head_sha(existing) == head_sha:
             return existing, False, None
-        dirty_candidates.append(existing)
+        if _fast_forward_worktree_to_pr_head(existing, branch, head_sha):
+            return existing, False, None
     if dirty_candidates:
         _log(
             "node_pr_polish",
@@ -254,13 +273,9 @@ def _prepare_polish_worktree(
 
     tmp_root = Path(tempfile.mkdtemp(prefix=f"omni-pr-{pr_number}-"))
     worktree = tmp_root / "worktree"
-    created_branch = f"omni-pr-{pr_number}-{uuid4().hex[:8]}"
-    _run(
-        ["git", "fetch", "origin", f"pull/{pr_number}/head:{created_branch}"],
-        timeout=120,
-    )
-    _run(["git", "worktree", "add", str(worktree), created_branch], timeout=120)
-    return worktree, True, created_branch
+    _run(["git", "fetch", "origin", f"pull/{pr_number}/head"], timeout=120)
+    _run(["git", "worktree", "add", "--detach", str(worktree), head_sha], timeout=120)
+    return worktree, True, None
 
 
 def _cleanup_polish_worktree(
