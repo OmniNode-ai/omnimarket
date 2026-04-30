@@ -282,6 +282,44 @@ class ModelPatternBBrokerTerminalEvent(BaseModel):
         return self
 
 
+class ModelPatternBBrokerPublishReceipt(BaseModel):
+    """Receipt returned after a Pattern B dispatch request is published."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_id: UUID
+    correlation_id: UUID
+    event_type: EnumPatternBBrokerEventType = (
+        EnumPatternBBrokerEventType.dispatch_published
+    )
+    state: EnumPatternBBrokerState = EnumPatternBBrokerState.published
+    topic: str
+    key: str
+    payload_size_bytes: int = Field(ge=1)
+    wait_policy: ModelPatternBBrokerWaitPolicy
+    published_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
+
+    @field_validator("event_type")
+    @classmethod
+    def validate_publish_event_type(
+        cls,
+        value: EnumPatternBBrokerEventType,
+    ) -> EnumPatternBBrokerEventType:
+        if value is not EnumPatternBBrokerEventType.dispatch_published:
+            raise ValueError("publish receipt event_type must be dispatch_published")
+        return value
+
+    @field_validator("state")
+    @classmethod
+    def validate_publish_state(
+        cls,
+        value: EnumPatternBBrokerState,
+    ) -> EnumPatternBBrokerState:
+        if value is not EnumPatternBBrokerState.published:
+            raise ValueError("publish receipt state must be published")
+        return value
+
+
 __all__ = [
     "EnumPatternBBrokerAclDecision",
     "EnumPatternBBrokerEventType",
@@ -292,6 +330,7 @@ __all__ = [
     "ModelPatternBBrokerAclInput",
     "ModelPatternBBrokerAclResult",
     "ModelPatternBBrokerDispatchRequest",
+    "ModelPatternBBrokerPublishReceipt",
     "ModelPatternBBrokerRuntimeConfig",
     "ModelPatternBBrokerTerminalEvent",
     "ModelPatternBBrokerTopicBindings",
