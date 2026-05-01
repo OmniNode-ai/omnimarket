@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9870
+title: "Stabilize merge-sweep CI-fix runtime effect path"
+summary: "Make node_ci_fix_effect use contract-owned model endpoints and patch allowlists, fetch CI logs through GitHub API surfaces, preflight patches before mutation, and emit phase-level diagnostics."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "CI-fix, triage, and merge-sweep focused tests pass"
+    command: "uv run pytest tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py tests/test_triage_phase2_emit_rules.py tests/test_triage_orchestrator.py tests/test_golden_chain_fixer_dispatcher.py tests/test_merge_sweep_executor_safety.py tests/test_golden_chain_merge_sweep_executor.py tests/test_merge_sweep_state_reducer_phase2.py -q"
+  - kind: "manual"
+    description: "Touched CI-fix and triage files pass ruff"
+    command: "uv run ruff check src/omnimarket/github_api.py src/omnimarket/nodes/node_ci_fix_effect/handlers/handler_ci_fix.py src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage.py tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py tests/test_triage_phase2_emit_rules.py"
+  - kind: "manual"
+    description: "Post-merge runtime proof plan only; live mutation requires explicit operator approval"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_ci_fix_effect --help"
+  - kind: "manual"
+    description: "Read-only GitHub API proof fetches real CI log for recorded live proof target"
+    command: "uv run python - <<'PY'\nimport asyncio\nfrom omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix import _fetch_ci_log\nasync def main():\n    log = await _fetch_ci_log('OmniNode-ai/omnibase_infra', '24898255405', 'CI Tests Gate')\n    print({'chars': len(log), 'contains_ci_tests_gate': 'CI Tests Gate' in log})\nasyncio.run(main())\nPY"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "CI-fix, triage, and merge-sweep focused tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py tests/test_triage_phase2_emit_rules.py tests/test_triage_orchestrator.py tests/test_golden_chain_fixer_dispatcher.py tests/test_merge_sweep_executor_safety.py tests/test_golden_chain_merge_sweep_executor.py tests/test_merge_sweep_state_reducer_phase2.py -q"
+  - id: "dod-ruff"
+    description: "Touched CI-fix and triage files pass ruff"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/github_api.py src/omnimarket/nodes/node_ci_fix_effect/handlers/handler_ci_fix.py src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage.py tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py tests/test_triage_phase2_emit_rules.py"
+  - id: "dod-runtime-proof-plan"
+    description: "Compile-only runtime request proof plan; no PR worktree mutation, live deploy, or runtime restart performed"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_ci_fix_effect --help"
+  - id: "dod-github-log-fetch"
+    description: "Read-only GitHub API proof fetches real CI log for recorded live proof target"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport asyncio\nfrom omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix import _fetch_ci_log\nasync def main():\n    log = await _fetch_ci_log('OmniNode-ai/omnibase_infra', '24898255405', 'CI Tests Gate')\n    print({'chars': len(log), 'contains_ci_tests_gate': 'CI Tests Gate' in log})\nasyncio.run(main())\nPY"
