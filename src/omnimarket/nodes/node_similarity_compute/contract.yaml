@@ -24,6 +24,10 @@ output_model:
   name: "ModelSimilarityComputeResponse"
   module: "omnimarket.nodes.node_similarity_compute.models.model_similarity_compute_response"
   description: "Distance, similarity, and optional is_match flag."
+handler:
+  module: "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute"
+  class: "HandlerSimilarityCompute"
+  input_model: "omnimarket.nodes.node_similarity_compute.models.model_similarity_compute_request.ModelSimilarityComputeRequest"
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
