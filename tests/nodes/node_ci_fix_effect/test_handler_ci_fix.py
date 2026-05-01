@@ -8,6 +8,7 @@ invalid patch rejection, routing_policy resolution, dep-change guard, file allow
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,10 +21,14 @@ from omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix import (
     ModelCiFixEndpointConfig,
     _apply_patch,
     _build_llm_request,
+    _build_source_context,
     _count_net_changed_lines,
+    _extract_candidate_context_paths,
     _extract_patch_files,
+    _extract_patch_from_llm_response,
     _patch_within_allowlist,
     _resolve_routing_policy,
+    _validate_git_style_unified_diff,
 )
 from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_command import (
     ModelCiFixCommand,
@@ -42,6 +47,7 @@ _ROUTING_POLICY: dict[str, Any] = {
 }
 
 _VALID_PATCH = """\
+diff --git a/src/omnimarket/foo.py b/src/omnimarket/foo.py
 --- a/src/omnimarket/foo.py
 +++ b/src/omnimarket/foo.py
 @@ -1,3 +1,3 @@
@@ -199,6 +205,49 @@ diff --git a/.github/workflows/ci_tests_gate.yml b/.github/workflows/ci_tests_ga
     @pytest.mark.unit
     def test_patch_no_files(self) -> None:
         assert _patch_within_allowlist("no diff files here") is False
+
+    @pytest.mark.unit
+    def test_extract_candidate_context_paths_from_ci_log(self) -> None:
+        paths = _extract_candidate_context_paths(
+            "FAILED tests/test_foo.py:12 and src/omnimarket/foo.py:9 "
+            "plus pyproject.toml",
+            (re.compile(r"^src/"), re.compile(r"^tests/")),
+        )
+        assert paths == ["tests/test_foo.py", "src/omnimarket/foo.py"]
+
+    @pytest.mark.unit
+    def test_strict_diff_validation_requires_diff_git_header(self) -> None:
+        errors = _validate_git_style_unified_diff(
+            "--- a/src/foo.py\n+++ b/src/foo.py\n@@ -1 +1 @@\n-old\n+new"
+        )
+        assert any("diff --git" in err for err in errors)
+
+    @pytest.mark.unit
+    def test_extract_patch_from_llm_response_validates_strict_shape(self) -> None:
+        text = f"```diff\n{_VALID_PATCH}\n```"
+        assert _extract_patch_from_llm_response(text) == _VALID_PATCH.strip()
+
+
+class TestSourceContext:
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_build_source_context_reads_worktree_file(
+        self, tmp_path: Any
+    ) -> None:
+        source = tmp_path / "src" / "omnimarket" / "foo.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("def bar():\n    return 42\n", encoding="utf-8")
+
+        context = await _build_source_context(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=333,
+            ci_log="FAILED src/omnimarket/foo.py:12",
+            worktree_path=str(tmp_path),
+            allowlist_patterns=(re.compile(r"^src/"),),
+        )
+
+        assert "--- src/omnimarket/foo.py (worktree, current contents) ---" in context
+        assert "return 42" in context
 
 
 class TestApplyPatch:
@@ -463,6 +512,72 @@ class TestHandlerLlmFailure:
         assert evt.patch_applied is False
         assert "diff block" in (evt.error or "")
 
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_malformed_patch_retried_with_validation_failure_and_context(
+        self, handler: HandlerCiFixEffect
+    ) -> None:
+        """Malformed first patch triggers a retry prompt with validation diagnostics and file context."""
+        bad_resp = MagicMock()
+        bad_resp.generated_text = (
+            "```diff\n--- a/src/foo.py\n+++ b/src/foo.py\nno hunk\n```"
+        )
+        good_resp = _make_llm_response(_VALID_PATCH)
+
+        with (
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._fetch_ci_log",
+                new=AsyncMock(return_value="FAILED src/omnimarket/foo.py:12\n"),
+            ),
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._resolve_pr_worktree",
+                new=AsyncMock(return_value="/tmp/fake_worktree"),
+            ),
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._build_source_context",
+                new=AsyncMock(
+                    return_value=(
+                        "SOURCE CONTEXT:\n"
+                        "--- src/omnimarket/foo.py (worktree, current contents) ---\n"
+                        "def bar():\n    return None\n"
+                    )
+                ),
+            ),
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._resolve_llm_provider",
+            ) as mock_provider_cls,
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._apply_patch",
+                new=AsyncMock(),
+            ),
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._git_diff_changed_files",
+                new=AsyncMock(return_value=["src/omnimarket/foo.py"]),
+            ),
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._run_tests",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._git_commit",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            mock_provider = MagicMock()
+            mock_provider.generate_async = AsyncMock(side_effect=[bad_resp, good_resp])
+            mock_provider_cls.return_value = _provider_resolution(mock_provider)
+
+            output = await handler.handle(_cmd())
+
+        evt = output.events[0]
+        assert isinstance(evt, CiFixResult)
+        assert evt.patch_applied is True
+        assert mock_provider.generate_async.await_count == 2
+        second_prompt = mock_provider.generate_async.await_args_list[1].args[0].prompt
+        assert "SOURCE CONTEXT" in second_prompt
+        assert "Previous patch validation failed" in second_prompt
+        assert "diff --git" in second_prompt
+
 
 class TestHandlerInvalidPatchRejection:
     @pytest.mark.asyncio
@@ -501,6 +616,7 @@ class TestHandlerInvalidPatchRejection:
         # Construct a patch with 101 additions
         big_lines = "\n".join(f"+    line_{i} = {i}" for i in range(101))
         big_patch = (
+            "diff --git a/src/omnimarket/foo.py b/src/omnimarket/foo.py\n"
             "--- a/src/omnimarket/foo.py\n"
             "+++ b/src/omnimarket/foo.py\n"
             "@@ -1,1 +1,101 @@\n"
@@ -535,6 +651,7 @@ class TestHandlerInvalidPatchRejection:
     ) -> None:
         """Patch touching files outside src/ or tests/ → is_noop=True, patch not applied."""
         bad_patch = (
+            "diff --git a/pyproject.toml b/pyproject.toml\n"
             "--- a/pyproject.toml\n"
             "+++ b/pyproject.toml\n"
             "@@ -1,1 +1,1 @@\n"

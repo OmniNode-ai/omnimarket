@@ -10,12 +10,15 @@ Model routing: primary=deepseek-r1-14b, fallback=qwen3-coder-30b per contract.ya
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextlib
 import logging
 import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from functools import lru_cache
 from pathlib import Path
@@ -45,8 +48,14 @@ from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_result import CiFix
 _log = logging.getLogger(__name__)
 
 _CI_LOG_MAX_CHARS = 20_000
+_SOURCE_CONTEXT_MAX_FILES = 6
+_SOURCE_CONTEXT_MAX_CHARS_PER_FILE = 6_000
 _PATCH_MAX_NET_LINES = 100
 _DEP_CHANGE_PATTERNS = ("pyproject.toml", "uv.lock", "requirements", "package.json")
+_PATH_CANDIDATE_RE = re.compile(
+    r"(?:^|[\s\"'`(])((?:src|tests|\.github/workflows)/[A-Za-z0-9_./:-]+)",
+    re.MULTILINE,
+)
 _DIFF_BLOCK_RE = re.compile(
     r"```(?:diff|patch)?\n(.*?)\n```",
     re.DOTALL | re.IGNORECASE,
@@ -237,6 +246,240 @@ def _patch_disallowed_files(
     allowlist = patterns or _load_patch_allowlist_patterns()
     files = _extract_patch_files(patch)
     return [f for f in files if not any(p.match(f) for p in allowlist)]
+
+
+def _strip_path_location_suffix(path: str) -> str:
+    return re.sub(r":\d+(?::\d+)?$", "", path)
+
+
+def _extract_candidate_context_paths(
+    ci_log: str,
+    patterns: tuple[re.Pattern[str], ...] | None = None,
+    *,
+    max_paths: int = _SOURCE_CONTEXT_MAX_FILES,
+) -> list[str]:
+    """Extract bounded, allowlisted repo-relative paths mentioned by a CI log."""
+    allowlist = patterns or _load_patch_allowlist_patterns()
+    candidates: list[str] = []
+    for match in _PATH_CANDIDATE_RE.finditer(ci_log):
+        path = match.group(1).strip().strip("),.;]'\"`")
+        path = _normalize_patch_path(_strip_path_location_suffix(path))
+        if not path or path.endswith("/"):
+            continue
+        if not any(pattern.match(path) for pattern in allowlist):
+            continue
+        if path not in candidates:
+            candidates.append(path)
+        if len(candidates) >= max_paths:
+            break
+    return candidates
+
+
+def _validate_git_style_unified_diff(patch: str) -> list[str]:
+    """Return validation errors for the strict patch shape accepted by the effect."""
+    errors: list[str] = []
+    lines = patch.splitlines()
+    non_empty_indices = [idx for idx, line in enumerate(lines) if line.strip()]
+    if not non_empty_indices:
+        return ["patch is empty"]
+
+    diff_indices = [
+        idx for idx, line in enumerate(lines) if line.startswith("diff --git ")
+    ]
+    if not diff_indices:
+        errors.append(
+            "patch must contain at least one 'diff --git a/<path> b/<path>' header"
+        )
+        return errors
+    if diff_indices[0] != non_empty_indices[0]:
+        errors.append("patch must start with a diff --git header")
+
+    block_starts = [*diff_indices, len(lines)]
+    for block_number, start in enumerate(diff_indices, start=1):
+        end = block_starts[block_number]
+        block = lines[start:end]
+        header_parts = block[0].split()
+        if len(header_parts) < 4:
+            errors.append(f"diff block {block_number} has malformed diff --git header")
+            continue
+        old_path = _normalize_patch_path(header_parts[2])
+        new_path = _normalize_patch_path(header_parts[3])
+        minus_indices = [
+            idx for idx, line in enumerate(block) if line.startswith("--- ")
+        ]
+        plus_indices = [
+            idx for idx, line in enumerate(block) if line.startswith("+++ ")
+        ]
+        hunk_indices = [
+            idx for idx, line in enumerate(block) if _HUNK_HEADER_RE.match(line)
+        ]
+        if not minus_indices:
+            errors.append(f"diff block {block_number} missing '--- a/<path>' line")
+        if not plus_indices:
+            errors.append(f"diff block {block_number} missing '+++ b/<path>' line")
+        if not hunk_indices:
+            errors.append(f"diff block {block_number} missing '@@' hunk header")
+        if minus_indices and plus_indices and hunk_indices:
+            if not (minus_indices[0] < plus_indices[0] < hunk_indices[0]):
+                errors.append(
+                    f"diff block {block_number} must order ---, +++, then @@ hunk headers"
+                )
+            declared_old = _normalize_patch_path(block[minus_indices[0]][4:].strip())
+            declared_new = _normalize_patch_path(block[plus_indices[0]][4:].strip())
+            if declared_old not in {old_path, "/dev/null"}:
+                errors.append(
+                    f"diff block {block_number} --- path {declared_old!r} "
+                    f"does not match header path {old_path!r}"
+                )
+            if declared_new not in {new_path, "/dev/null"}:
+                errors.append(
+                    f"diff block {block_number} +++ path {declared_new!r} "
+                    f"does not match header path {new_path!r}"
+                )
+    return errors
+
+
+def _extract_patch_from_llm_response(llm_text: str) -> str:
+    m = _DIFF_BLOCK_RE.search(llm_text)
+    if not m:
+        raise ValueError(
+            "LLM response did not contain a valid ```diff block. "
+            f"Response preview: {llm_text[:300]}"
+        )
+    patch = m.group(1).strip()
+    errors = _validate_git_style_unified_diff(patch)
+    if errors:
+        raise ValueError(
+            "LLM response patch failed strict unified diff validation: "
+            + "; ".join(errors)
+        )
+    return patch
+
+
+async def _read_context_file_from_github(
+    repo: str, pr_number: int, path: str
+) -> str | None:
+    owner, repo_name = split_repo(repo)
+    try:
+        pr_data = await asyncio.to_thread(
+            rest_json,
+            "GET",
+            f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
+        )
+        head = pr_data.get("head")
+        sha = str(head.get("sha", "")) if isinstance(head, dict) else ""
+        if not sha:
+            return None
+        encoded_path = urllib.parse.quote(path, safe="/")
+        data = await asyncio.to_thread(
+            rest_json,
+            "GET",
+            f"/repos/{owner}/{repo_name}/contents/{encoded_path}?ref={sha}",
+        )
+    except GitHubApiError:
+        return None
+    if not isinstance(data, dict) or data.get("encoding") != "base64":
+        return None
+    content = str(data.get("content", ""))
+    try:
+        raw = base64.b64decode(content, validate=False)
+    except (binascii.Error, ValueError):
+        return None
+    return raw.decode("utf-8", errors="replace")
+
+
+async def _build_source_context(
+    *,
+    repo: str,
+    pr_number: int,
+    ci_log: str,
+    worktree_path: str | None,
+    allowlist_patterns: tuple[re.Pattern[str], ...],
+) -> str:
+    paths = _extract_candidate_context_paths(ci_log, allowlist_patterns)
+    if not paths:
+        return (
+            "SOURCE CONTEXT:\n"
+            "No allowlisted repo-relative source paths were detected in the CI log. "
+            "Do not guess file paths; return a no-op explanation if the fix target is unclear."
+        )
+
+    sections: list[str] = ["SOURCE CONTEXT:"]
+    for path in paths:
+        content: str | None = None
+        source = "github"
+        if worktree_path:
+            candidate = (Path(worktree_path) / path).resolve()
+            worktree_root = Path(worktree_path).resolve()
+            try:
+                candidate.relative_to(worktree_root)
+            except ValueError:
+                candidate = worktree_root / "__outside_worktree__"
+            if candidate.is_file():
+                source = "worktree"
+                try:
+                    content = candidate.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    content = None
+        if content is None:
+            content = await _read_context_file_from_github(repo, pr_number, path)
+        if content is None:
+            sections.append(f"\n--- {path} (unavailable) ---\n<file not found>")
+            continue
+        truncated = content[:_SOURCE_CONTEXT_MAX_CHARS_PER_FILE]
+        suffix = "\n<file truncated>" if len(content) > len(truncated) else ""
+        sections.append(
+            f"\n--- {path} ({source}, current contents) ---\n{truncated}{suffix}"
+        )
+    return "\n".join(sections)
+
+
+async def _generate_validated_patch(
+    *,
+    provider: AdapterLlmProviderOpenai,
+    endpoint: ModelCiFixEndpointConfig,
+    policy: ModelRoutingPolicy,
+    routing_config: ModelCiFixRoutingConfig,
+    user_prompt: str,
+    source_context: str,
+    max_attempts: int = 2,
+) -> str:
+    validation_failure: str | None = None
+    for attempt in range(1, max_attempts + 1):
+        retry_context = ""
+        if validation_failure:
+            retry_context = (
+                "\n\nPrevious patch validation failed. Return a corrected git-style "
+                f"unified diff only. Validation failure: {validation_failure}"
+            )
+        prompt = (
+            f"{_build_llm_system_prompt(routing_config.patch_allowlist_patterns)}"
+            f"\n\n{source_context}"
+            f"\n\n{user_prompt}"
+            f"{retry_context}"
+        )
+        llm_request = _build_llm_request(
+            prompt=prompt,
+            model_name=endpoint.model_id,
+            max_tokens=policy.max_tokens,
+            temperature=policy.temperature,
+            timeout_seconds=endpoint.timeout_seconds,
+        )
+        response = await provider.generate_async(llm_request)
+        llm_text = response.generated_text
+        try:
+            return _extract_patch_from_llm_response(llm_text)
+        except ValueError as exc:
+            validation_failure = str(exc)
+            _log.warning(
+                "CI fix LLM patch validation failed attempt=%d/%d: %s",
+                attempt,
+                max_attempts,
+                validation_failure,
+            )
+            if attempt == max_attempts:
+                raise
+    raise ValueError("unreachable patch generation failure")
 
 
 async def _run_subprocess(
@@ -561,6 +804,43 @@ class HandlerCiFixEffect:
             routing_config = _load_contract_routing_config()
             allowlist_patterns = _load_patch_allowlist_patterns()
             _log.info(
+                "CI fix phase=resolve_pr_worktree start repo=%s pr=%s",
+                request.repo,
+                request.pr_number,
+            )
+            phase_t0 = time.monotonic()
+            worktree_path = await _resolve_pr_worktree(request.repo, request.pr_number)
+            _log.info(
+                "CI fix phase=resolve_pr_worktree done repo=%s pr=%s "
+                "elapsed_ms=%d path=%s",
+                request.repo,
+                request.pr_number,
+                int((time.monotonic() - phase_t0) * 1000),
+                worktree_path,
+            )
+
+            _log.info(
+                "CI fix phase=source_context start repo=%s pr=%s",
+                request.repo,
+                request.pr_number,
+            )
+            phase_t0 = time.monotonic()
+            source_context = await _build_source_context(
+                repo=request.repo,
+                pr_number=request.pr_number,
+                ci_log=ci_log,
+                worktree_path=worktree_path,
+                allowlist_patterns=allowlist_patterns,
+            )
+            _log.info(
+                "CI fix phase=source_context done repo=%s pr=%s elapsed_ms=%d chars=%d",
+                request.repo,
+                request.pr_number,
+                int((time.monotonic() - phase_t0) * 1000),
+                len(source_context),
+            )
+
+            _log.info(
                 "CI fix phase=llm_generate start repo=%s pr=%s primary=%s "
                 "endpoint=%s model_id=%s max_tokens=%s timeout_seconds=%s "
                 "patch_allowlist=%s",
@@ -578,38 +858,22 @@ class HandlerCiFixEffect:
                 f"Repository: {request.repo}\n\n"
                 f"CI LOG:\n{ci_log[:_CI_LOG_MAX_CHARS]}"
             )
-            llm_request = _build_llm_request(
-                prompt=(
-                    f"{_build_llm_system_prompt(routing_config.patch_allowlist_patterns)}"
-                    f"\n\n{user_prompt}"
-                ),
-                model_name=endpoint.model_id,
-                max_tokens=policy.max_tokens,
-                temperature=policy.temperature,
-                timeout_seconds=endpoint.timeout_seconds,
-            )
             phase_t0 = time.monotonic()
-            response = await provider.generate_async(llm_request)
-            llm_text = response.generated_text
+            patch = await _generate_validated_patch(
+                provider=provider,
+                endpoint=endpoint,
+                policy=policy,
+                routing_config=routing_config,
+                user_prompt=user_prompt,
+                source_context=source_context,
+            )
             _log.info(
                 "CI fix phase=llm_generate done repo=%s pr=%s elapsed_ms=%d chars=%d",
                 request.repo,
                 request.pr_number,
                 int((time.monotonic() - phase_t0) * 1000),
-                len(llm_text),
+                len(patch),
             )
-
-            m = _DIFF_BLOCK_RE.search(llm_text)
-            if not m:
-                raise ValueError(
-                    "LLM response did not contain a valid ```diff block. "
-                    f"Response preview: {llm_text[:300]}"
-                )
-            patch = m.group(1).strip()
-            if not _HUNK_HEADER_RE.search(patch):
-                raise ValueError(
-                    "Extracted block does not look like a unified diff (no @@ hunk headers)."
-                )
 
             net_lines = _count_net_changed_lines(patch)
             patch_files = _extract_patch_files(patch)
@@ -639,23 +903,6 @@ class HandlerCiFixEffect:
                 )
                 is_noop = True
             else:
-                _log.info(
-                    "CI fix phase=resolve_pr_worktree start repo=%s pr=%s",
-                    request.repo,
-                    request.pr_number,
-                )
-                phase_t0 = time.monotonic()
-                worktree_path = await _resolve_pr_worktree(
-                    request.repo, request.pr_number
-                )
-                _log.info(
-                    "CI fix phase=resolve_pr_worktree done repo=%s pr=%s "
-                    "elapsed_ms=%d path=%s",
-                    request.repo,
-                    request.pr_number,
-                    int((time.monotonic() - phase_t0) * 1000),
-                    worktree_path,
-                )
                 if worktree_path is None:
                     _log.warning(
                         "No worktree found for %s#%s — cannot apply patch",
