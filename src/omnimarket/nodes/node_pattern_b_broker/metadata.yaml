@@ -1,0 +1,23 @@
+name: node_pattern_b_broker
+version: "1.0.0"
+description: "Pattern B cross-CLI broker for validated delegation dispatch and terminal event waits"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pattern_b_broker: "omnimarket.nodes.node_pattern_b_broker"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["broker", "delegation", "pattern-b", "orchestrator"]
+pack: "delegation"
+display_name: "Pattern B Broker"
+node_role: "orchestrator"
