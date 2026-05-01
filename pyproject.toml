@@ -50,6 +50,7 @@ dependencies = [
     "pytest>=8.4.0",
     "pytest-asyncio>=1.3.0",
     "docker>=7.0.0",
+    "rich>=13.0.0",
 ]
 
 [project.urls]
@@ -210,6 +211,7 @@ node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
+ab-compare = "omnimarket.cli.cli_ab_compare:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
