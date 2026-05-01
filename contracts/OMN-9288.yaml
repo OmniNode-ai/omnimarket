@@ -6,8 +6,7 @@ summary: "Detect PRs stuck in merge queue AWAITING_CHECKS with no merge_group wo
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
-  - "node_contract"
-  - "github_effect"
+  - "public_api"
 evidence_requirements:
   - kind: "manual"
     description: "Focused PR lifecycle inventory, merge queue adapter, and orchestrator tests pass"
