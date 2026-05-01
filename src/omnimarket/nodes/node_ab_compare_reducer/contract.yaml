@@ -1,0 +1,26 @@
+---
+name: ab_compare_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Collects inference results for a correlation_id, calculates costs
+  from registry pricing, and emits the completed comparison.
+
+handler:
+  module: omnimarket.nodes.node_ab_compare_reducer.handlers.handler_ab_compare_reducer
+  class: HandlerAbCompareReducer
+  input_model: omnimarket.nodes.node_ab_compare_reducer.models.model_ab_compare_state.ModelAbCompareState
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.ab-inference-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.ab-compare-completed.v1
