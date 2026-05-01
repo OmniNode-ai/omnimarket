@@ -15,17 +15,32 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+
+# Import the topic constant directly from its module file to avoid triggering
+# the omnimarket package __init__.py chain (which requires the full dep tree).
+# The canonical source of truth is src/omnimarket/events/topics.py.
+import importlib.util as _ilu
 import json
 import logging
 import os
 import sys
+import sys as _sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 from aiokafka import AIOKafkaProducer
 
-from omnimarket.events.topics import TOPIC_LLM_CALL_COMPLETED as TOPIC
+_topics_path = (
+    Path(__file__).parent.parent / "src" / "omnimarket" / "events" / "topics.py"
+)
+_spec = _ilu.spec_from_file_location("omnimarket.events.topics", _topics_path)
+assert _spec is not None
+assert _spec.loader is not None
+_topics_mod = _ilu.module_from_spec(_spec)
+_sys.modules.setdefault("omnimarket.events.topics", _topics_mod)
+_spec.loader.exec_module(_topics_mod)  # type: ignore[union-attr]
+TOPIC: str = _topics_mod.TOPIC_LLM_CALL_COMPLETED  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 
@@ -162,23 +177,27 @@ class CostEventPublisher:
 
         # Publish with retry
         producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap_servers)
+        await producer.start()
         last_exc: Exception | None = None
-        for attempt in range(1, self._max_retries + 1):
-            try:
-                await producer.send_and_wait(TOPIC, value=value, key=key)
-                last_exc = None
-                break
-            except Exception as exc:
-                last_exc = exc
-                logger.warning(
-                    "Kafka publish attempt %d/%d failed for %s: %s",
-                    attempt,
-                    self._max_retries,
-                    file.name,
-                    exc,
-                )
-                if attempt < self._max_retries and self._retry_backoff_seconds > 0:
-                    await asyncio.sleep(self._retry_backoff_seconds)
+        try:
+            for attempt in range(1, self._max_retries + 1):
+                try:
+                    await producer.send_and_wait(TOPIC, value=value, key=key)
+                    last_exc = None
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    logger.warning(
+                        "Kafka publish attempt %d/%d failed for %s: %s",
+                        attempt,
+                        self._max_retries,
+                        file.name,
+                        exc,
+                    )
+                    if attempt < self._max_retries and self._retry_backoff_seconds > 0:
+                        await asyncio.sleep(self._retry_backoff_seconds)
+        finally:
+            await producer.stop()
 
         if last_exc is not None:
             self._quarantine(
