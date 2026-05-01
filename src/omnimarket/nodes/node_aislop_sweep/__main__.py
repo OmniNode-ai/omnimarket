@@ -19,6 +19,16 @@ import os
 import sys
 from pathlib import Path
 
+from omnimarket.cli.args import (
+    add_output_args,
+    report_output_requested,
+    resolve_output_config,
+)
+from omnimarket.cli.output.registry import resolve_handler
+from omnimarket.cli.reporting import (
+    build_report_from_model_result,
+    load_contract_metadata,
+)
 from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
@@ -85,8 +95,11 @@ def main() -> None:
         choices=["WARNING", "ERROR", "CRITICAL"],
         help="Minimum severity to act on (default: WARNING)",
     )
+    add_output_args(parser)
 
     args = parser.parse_args()
+    output_config = resolve_output_config(args)
+    logging.getLogger().setLevel(args.log_level.upper())
 
     repos = [r.strip() for r in args.repos.split(",") if r.strip()] or _DEFAULT_REPOS
     checks = [c.strip() for c in args.checks.split(",") if c.strip()] or None
@@ -105,8 +118,35 @@ def main() -> None:
 
     handler = NodeAislopSweep()
     result = handler.handle(request)
+    if not report_output_requested():
+        sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+        if result.status not in ("clean",):
+            sys.exit(1)
+        return
 
-    sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    contract_name, contract_version, terminal_event = load_contract_metadata(
+        "omnimarket.nodes.node_aislop_sweep"
+    )
+    cli_report = build_report_from_model_result(
+        result,
+        skill_name="aislop_sweep",
+        node_name="node_aislop_sweep",
+        terminal_event=terminal_event,
+        contract_name=contract_name,
+        contract_version=contract_version,
+        mode="dry_run" if args.dry_run else "execute",
+        input_summary={
+            "repos": repos,
+            "checks": checks,
+            "dry_run": args.dry_run,
+            "severity_threshold": args.severity_threshold,
+        },
+        output_config=output_config,
+    )
+    rendered = resolve_handler(output_config.format).render(cli_report)
+    sys.stdout.write(rendered)
+    if not rendered.endswith("\n"):
+        sys.stdout.write("\n")
 
     # Exit non-zero when findings exist
     if result.status not in ("clean",):

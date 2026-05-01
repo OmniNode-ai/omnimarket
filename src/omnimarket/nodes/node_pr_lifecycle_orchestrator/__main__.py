@@ -11,6 +11,16 @@ import sys
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
+from omnimarket.cli.args import (
+    add_output_args,
+    report_output_requested,
+    resolve_output_config,
+)
+from omnimarket.cli.output.registry import resolve_handler
+from omnimarket.cli.reporting import (
+    build_report_from_model_result,
+    load_contract_metadata,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleResult,
@@ -53,15 +63,45 @@ def main() -> None:
             f"{EVENT_TYPE_PR_LIFECYCLE_START!r}."
         ),
     )
+    add_output_args(parser)
 
     args = parser.parse_args()
+    output_config = resolve_output_config(args)
+    logging.getLogger().setLevel(args.log_level.upper())
     try:
         command = _parse_command(args.input)
     except Exception as exc:
         parser.error(str(exc))
 
     result = asyncio.run(_run(command))
-    sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    if not report_output_requested():
+        sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+        if result.final_state == "FAILED":
+            sys.exit(1)
+        return
+
+    contract_name, contract_version, terminal_event = load_contract_metadata(
+        "omnimarket.nodes.node_pr_lifecycle_orchestrator"
+    )
+    cli_report = build_report_from_model_result(
+        result,
+        skill_name="pr_lifecycle_orchestrator",
+        node_name="node_pr_lifecycle_orchestrator",
+        terminal_event=terminal_event,
+        contract_name=contract_name,
+        contract_version=contract_version,
+        mode="dry_run" if command.dry_run else "execute",
+        input_summary={
+            "run_id": command.run_id,
+            "dry_run": command.dry_run,
+            "inventory_only": command.inventory_only,
+        },
+        output_config=output_config,
+    )
+    rendered = resolve_handler(output_config.format).render(cli_report)
+    sys.stdout.write(rendered)
+    if not rendered.endswith("\n"):
+        sys.stdout.write("\n")
     if result.final_state == "FAILED":
         sys.exit(1)
 

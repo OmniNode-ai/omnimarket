@@ -368,9 +368,20 @@ def _parse_json(stdout: str) -> dict[str, object]:
     return parsed
 
 
+def _unwrap_cli_report_payload(payload: dict[str, object]) -> dict[str, object]:
+    """Return node result fields from either raw node JSON or CLI report JSON."""
+    result_summary = payload.get("result_summary")
+    if isinstance(result_summary, dict) and "terminal_event" in payload:
+        return result_summary
+    return payload
+
+
 def _summarize_aislop(payload: dict[str, object]) -> dict[str, object]:
+    payload = _unwrap_cli_report_payload(payload)
     findings = payload.get("findings")
-    count = len(findings) if isinstance(findings, list) else 0
+    count = payload.get("findings_count")
+    if not isinstance(count, int):
+        count = len(findings) if isinstance(findings, list) else 0
     return {
         "status": payload.get("status"),
         "repos_scanned": payload.get("repos_scanned"),
@@ -380,6 +391,7 @@ def _summarize_aislop(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _summarize_pr_lifecycle(payload: dict[str, object]) -> dict[str, object]:
+    payload = _unwrap_cli_report_payload(payload)
     return {
         "final_state": payload.get("final_state"),
         "prs_inventoried": payload.get("prs_inventoried"),
@@ -390,6 +402,7 @@ def _summarize_pr_lifecycle(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _summarize_pr_polish(payload: dict[str, object]) -> dict[str, object]:
+    payload = _unwrap_cli_report_payload(payload)
     return {
         "final_phase": payload.get("final_phase"),
         "pr_number": payload.get("pr_number"),
@@ -398,6 +411,7 @@ def _summarize_pr_polish(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _summarize_local_review(payload: dict[str, object]) -> dict[str, object]:
+    payload = _unwrap_cli_report_payload(payload)
     return {
         "current_phase": payload.get("current_phase"),
         "max_iterations": payload.get("max_iterations"),
@@ -407,6 +421,7 @@ def _summarize_local_review(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _summarize_coderabbit(payload: dict[str, object]) -> dict[str, object]:
+    payload = _unwrap_cli_report_payload(payload)
     return {
         "total_threads": payload.get("total_threads"),
         "blocking_count": payload.get("blocking_count"),
@@ -417,10 +432,14 @@ def _summarize_coderabbit(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _summarize_session_bootstrap(payload: dict[str, object]) -> dict[str, object]:
+    payload = _unwrap_cli_report_payload(payload)
     crons = payload.get("crons_registered")
+    cron_count = payload.get("crons_registered_count")
+    if not isinstance(cron_count, int):
+        cron_count = len(crons) if isinstance(crons, list) else 0
     return {
         "status": payload.get("status"),
-        "crons_registered_count": len(crons) if isinstance(crons, list) else 0,
+        "crons_registered_count": cron_count,
         "dry_run": payload.get("dry_run"),
     }
 
@@ -500,14 +519,19 @@ def _smoke_aislop_sweep() -> ModelCommandResult:
     ]
     completed = _run_command(command=command, env={"OMNI_HOME": str(OMNI_HOME)})
     payload = _parse_json(completed.stdout)
+    observed = _unwrap_cli_report_payload(payload)
     status = str(payload.get("status", ""))
+    observed_status = str(observed.get("status", status))
     passed = completed.returncode in (0, 1) and status in {
         "clean",
         "findings",
         "partial",
+        "success",
     }
+    if not passed and completed.returncode in (0, 1):
+        passed = observed_status in {"clean", "findings", "partial", "success"}
     notes: list[str] = []
-    if completed.returncode == 1 and status == "findings":
+    if completed.returncode == 1 and observed_status == "findings":
         notes.append(
             "findings are expected to exit non-zero; this still proves the node ran"
         )
@@ -541,7 +565,8 @@ def _smoke_pr_lifecycle_orchestrator() -> ModelCommandResult:
             },
         )
     payload = _parse_json(completed.stdout)
-    passed = completed.returncode == 0 and payload.get("final_state") == "COMPLETE"
+    observed = _unwrap_cli_report_payload(payload)
+    passed = completed.returncode == 0 and observed.get("final_state") == "COMPLETE"
     return ModelCommandResult(
         passed=passed,
         command=_sanitize_command(command),
@@ -615,7 +640,8 @@ exit 1
                 },
             )
     payload = _parse_json(completed.stdout)
-    passed = completed.returncode == 0 and payload.get("final_phase") == "done"
+    observed = _unwrap_cli_report_payload(payload)
+    passed = completed.returncode == 0 and observed.get("final_phase") == "done"
     return ModelCommandResult(
         passed=passed,
         command=_sanitize_command(command),
@@ -629,7 +655,8 @@ def _smoke_local_review() -> ModelCommandResult:
     command = [sys.executable, "-m", "omnimarket.nodes.node_local_review", "--dry-run"]
     completed = _run_command(command=command)
     payload = _parse_json(completed.stdout)
-    passed = completed.returncode == 0 and payload.get("current_phase") == "init"
+    observed = _unwrap_cli_report_payload(payload)
+    passed = completed.returncode == 0 and observed.get("current_phase") == "init"
     return ModelCommandResult(
         passed=passed,
         command=_sanitize_command(command),
@@ -665,10 +692,11 @@ exit 1
             env={"PATH": f"{gh_path.parent}{os.pathsep}{os.environ.get('PATH', '')}"},
         )
     payload = _parse_json(completed.stdout)
+    observed = _unwrap_cli_report_payload(payload)
     passed = (
         completed.returncode == 0
-        and payload.get("total_threads") == 1
-        and payload.get("suggestion_count") == 1
+        and observed.get("total_threads") == 1
+        and observed.get("suggestion_count") == 1
     )
     return ModelCommandResult(
         passed=passed,
@@ -691,7 +719,8 @@ def _smoke_session_bootstrap() -> ModelCommandResult:
         ]
         completed = _run_command(command=command)
     payload = _parse_json(completed.stdout)
-    passed = completed.returncode == 0 and payload.get("status") == "ready"
+    observed = _unwrap_cli_report_payload(payload)
+    passed = completed.returncode == 0 and observed.get("status") == "ready"
     return ModelCommandResult(
         passed=passed,
         command=_sanitize_command(command),
