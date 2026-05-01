@@ -12,8 +12,15 @@ Ticket: OMN-2034
 """
 
 from omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent import (
+    HandlerReceiveIntent,
+    HandlerReceiveIntents,
     handle_receive_intent,
     handle_receive_intents,
 )
 
-__all__ = ["handle_receive_intent", "handle_receive_intents"]
+__all__ = [
+    "HandlerReceiveIntent",
+    "HandlerReceiveIntents",
+    "handle_receive_intent",
+    "handle_receive_intents",
+]

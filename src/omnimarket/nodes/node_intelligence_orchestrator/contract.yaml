@@ -110,15 +110,20 @@ handler_routing:
   handlers:
     - operation: "receive_intent"
       handler:
-        function: "handle_receive_intent"
+        name: "HandlerReceiveIntent"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
-        type: "sync"
+      event_model:
+        name: "ModelIntent"
+        module: "omnibase_core.models.reducer.model_intent"
+      event_type: "omnimarket.intent-received"
+      message_category: "COMMAND"
       description: "Receive and log a single intent from the reducer"
     - operation: "receive_intents"
       handler:
-        function: "handle_receive_intents"
+        name: "HandlerReceiveIntents"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
-        type: "sync"
+      event_type: "omnimarket.intent-received-batch"
+      message_category: "COMMAND"
       description: "Receive and log a batch of intents from reducer output"
 # Intent Reception Configuration (OMN-2034)
 # ==========================================
@@ -251,6 +256,9 @@ event_bus:
     "onex.cmd.omnimarket.pattern-learning.v1":
       schema_ref: "omnimarket.nodes.node_intelligence_orchestrator.models.ModelOrchestratorInput"
       description: "Pattern learning operation requests"
+    "onex.cmd.omnimarket.intent-received.v1":
+      schema_ref: "omnibase_core.models.reducer.model_intent.ModelIntent"
+      description: "Reducer intent received by the intelligence orchestrator"
     "onex.evt.omnimarket.intent-drift-detected.v1":
       schema_ref: "omnimarket.intelligence.events.ModelIntentDriftDetectedEnvelope"
       description: "Intent drift signal from node_intent_drift_detect_compute. Orchestrator routes alerts

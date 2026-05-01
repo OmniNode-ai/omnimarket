@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
 import yaml
+from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRoutingEntry
 
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -60,3 +62,31 @@ def test_intelligence_orchestrator_contract_uses_omnimarket_modules() -> None:
     assert drift_meta["schema_ref"] == (
         "omnimarket.intelligence.events.ModelIntentDriftDetectedEnvelope"
     )
+
+
+def test_intelligence_orchestrator_handler_routing_is_runtime_importable() -> None:
+    data = yaml.safe_load(CONTRACT_PATH.read_text())
+    handlers = data["handler_routing"]["handlers"]
+
+    assert handlers
+    for entry in handlers:
+        handler = entry["handler"]
+        runtime_entry = {
+            key: entry[key]
+            for key in (
+                "handler",
+                "event_model",
+                "operation",
+                "event_type",
+                "message_category",
+            )
+            if key in entry
+        }
+        ModelHandlerRoutingEntry.model_validate(runtime_entry)
+        assert handler.get("name"), f"handler entry is missing name: {entry!r}"
+        assert "function" not in handler
+
+        module = importlib.import_module(handler["module"])
+        handler_type = getattr(module, handler["name"])
+        assert callable(handler_type)
+        assert hasattr(handler_type(), "handle")

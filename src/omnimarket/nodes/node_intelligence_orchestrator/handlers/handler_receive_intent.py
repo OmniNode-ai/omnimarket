@@ -33,6 +33,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.reducer.model_intent import ModelIntent
 
 from omnimarket.nodes.node_intelligence_orchestrator.models.model_intent_receipt import (
@@ -40,6 +41,67 @@ from omnimarket.nodes.node_intelligence_orchestrator.models.model_intent_receipt
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_payload(envelope: object) -> object:
+    if isinstance(envelope, ModelIntent):
+        return envelope
+    if isinstance(envelope, ModelEventEnvelope):
+        return envelope.payload
+    if isinstance(envelope, dict):
+        return envelope.get("payload", envelope)
+    return getattr(envelope, "payload", envelope)
+
+
+def _extract_correlation_id(envelope: object, payload: object) -> UUID | None:
+    candidate = getattr(envelope, "correlation_id", None)
+    if candidate is None and isinstance(envelope, dict):
+        candidate = envelope.get("correlation_id")
+    if candidate is None and isinstance(payload, dict):
+        candidate = payload.get("correlation_id")
+    if isinstance(candidate, UUID):
+        return candidate
+    if isinstance(candidate, str) and candidate:
+        return UUID(candidate)
+    return None
+
+
+class HandlerReceiveIntent:
+    """Runtime auto-wiring adapter for a single reducer intent."""
+
+    async def handle(self, envelope: object) -> ModelIntentReceipt:
+        payload = _extract_payload(envelope)
+        intent = (
+            payload
+            if isinstance(payload, ModelIntent)
+            else ModelIntent.model_validate(payload)
+        )
+        return handle_receive_intent(
+            intent,
+            correlation_id=_extract_correlation_id(envelope, payload),
+        )
+
+
+class HandlerReceiveIntents:
+    """Runtime auto-wiring adapter for a batch of reducer intents."""
+
+    async def handle(self, envelope: object) -> list[ModelIntentReceipt]:
+        payload = _extract_payload(envelope)
+        raw_intents: object
+        if isinstance(payload, dict) and "intents" in payload:
+            raw_intents = payload["intents"]
+        else:
+            raw_intents = payload
+        if not isinstance(raw_intents, list | tuple):
+            raw_intents = [raw_intents]
+        intents = tuple(
+            item if isinstance(item, ModelIntent) else ModelIntent.model_validate(item)
+            for item in raw_intents
+        )
+        return handle_receive_intents(
+            intents,
+            correlation_id=_extract_correlation_id(envelope, payload),
+        )
 
 
 def handle_receive_intent(
@@ -167,4 +229,9 @@ def handle_receive_intents(
     return receipts
 
 
-__all__ = ["handle_receive_intent", "handle_receive_intents"]
+__all__ = [
+    "HandlerReceiveIntent",
+    "HandlerReceiveIntents",
+    "handle_receive_intent",
+    "handle_receive_intents",
+]
