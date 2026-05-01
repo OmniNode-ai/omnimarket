@@ -223,6 +223,8 @@ class TestCodexTemplate:
         ).read_text()
         assert "scripts/run_codex_runtime_request.py" in content
         assert '--command-name "test_orchestrator"' in content
+        assert "omnimarket.adapters.wrapper_base" in content
+        assert "check_environment" in content
 
     def test_codex_template_uses_contract_input_table(
         self, node_dir: Path, output_dir: Path
@@ -233,6 +235,17 @@ class TestCodexTemplate:
         ).read_text()
         assert "| dry_run | Report only, no side effects | False |" in content
         assert "| repos | Target repositories | all |" in content
+
+
+class TestCursorTemplate:
+    def test_cursor_template_uses_wrapper_base_helpers(
+        self, node_dir: Path, output_dir: Path
+    ) -> None:
+        generate_adapter.generate_adapters(node_dir, output_dir, formats=("cursor",))
+        content = (output_dir / "cursor" / "test-orchestrator.mdc").read_text()
+        assert "from omnimarket.adapters.wrapper_base import" in content
+        assert "collect_args" in content
+        assert "check_environment" in content
 
 
 class TestGenerateAdaptersGemini:

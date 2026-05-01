@@ -210,7 +210,18 @@ executes in the node handler.
 
 ### Step 1 — Assemble payload
 
-Collect arguments from the user invocation and build the command payload:
+Collect arguments from the user invocation with the shared wrapper helpers:
+
+```python
+from omnimarket.adapters.wrapper_base import (
+    collect_args,
+    generate_correlation_id,
+    map_args_to_payload,
+    validate_args,
+)
+```
+
+Build the command payload:
 
 ```json
 {{
@@ -286,6 +297,15 @@ When the user asks to run {slug} or invoke the {display_name}, follow this proce
 
 Collect any user-specified options and build the command payload:
 
+```python
+from omnimarket.adapters.wrapper_base import (
+    collect_args,
+    generate_correlation_id,
+    map_args_to_payload,
+    validate_args,
+)
+```
+
 ```json
 {{
   "correlation_id": "<generate a UUID v4>",
@@ -317,6 +337,9 @@ Source: `contract.yaml → terminal_event` or `event_bus.publish_topics[-1]`
 On success, render the completion payload in a clear markdown format.
 On timeout: report that the operation timed out.
 On error: surface the error message from the completion event payload.
+Use `format_output`, `handle_timeout`, `handle_error`, `stream_progress`, and
+`check_environment` from `omnimarket.adapters.wrapper_base` for wrapper-owned
+formatting, progress, error, timeout, and environment diagnostics.
 
 ## Important
 
@@ -363,7 +386,10 @@ use this procedure. Do not implement the node logic yourself.
 
 Map user-provided arguments into a JSON object that matches the backing node's
 input model. Omit fields the user did not specify so the node can apply its
-own defaults.
+own defaults. Adapter wrappers share `collect_args`, `validate_args`,
+`map_args_to_payload`, `generate_correlation_id`, `format_output`,
+`handle_timeout`, `handle_error`, `stream_progress`, and `check_environment`
+from `omnimarket.adapters.wrapper_base`.
 
 Use this dispatch shape:
 
