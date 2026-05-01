@@ -151,3 +151,12 @@ def test_acl_models_use_enums_for_decision_boundary() -> None:
     assert acl_input.originator is EnumPatternBBrokerOriginator.omnimarket
     assert acl_input.recipient is EnumPatternBBrokerRecipient.omniclaude
     assert acl_result.decision is EnumPatternBBrokerAclDecision.allow
+
+
+@pytest.mark.unit
+def test_acl_result_rejects_blank_reason() -> None:
+    with pytest.raises(ValidationError, match="reason must be a non-empty string"):
+        ModelPatternBBrokerAclResult(
+            decision=EnumPatternBBrokerAclDecision.deny,
+            reason="   ",
+        )

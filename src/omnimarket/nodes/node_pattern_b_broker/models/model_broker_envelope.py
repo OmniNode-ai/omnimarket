@@ -164,6 +164,14 @@ class ModelPatternBBrokerAclResult(BaseModel):
     reason: str = Field(min_length=1, max_length=512)
     matched_rule: str | None = Field(default=None, max_length=128)
 
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("reason must be a non-empty string")
+        return normalized
+
 
 class ModelPatternBBrokerDispatchRequest(BaseModel):
     """Dispatch request accepted by the Pattern B broker publish adapter."""

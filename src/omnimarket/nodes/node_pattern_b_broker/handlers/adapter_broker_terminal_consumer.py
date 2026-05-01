@@ -82,7 +82,7 @@ class AdapterPatternBBrokerTerminalConsumer:
                 return
             future.set_result(event)
 
-        group_id = f"{self._config.consumer_group}-{request.request_id.hex[:8]}"
+        group_id = f"{self._config.consumer_group}-{request.request_id.hex}"
         unsubscribers: list[Callable[[], Awaitable[None]]] = []
 
         try:
