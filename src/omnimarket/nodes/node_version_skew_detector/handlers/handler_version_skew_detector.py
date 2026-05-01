@@ -33,7 +33,13 @@ def _load_publish_topics() -> list[str]:
     contract_path = Path(__file__).parent.parent / "contract.yaml"
     with open(contract_path) as f:
         data: dict[str, Any] = yaml.safe_load(f)
-    return data.get("event_bus", {}).get("publish_topics", [])
+    event_bus = data.get("event_bus", {})
+    if not isinstance(event_bus, dict):
+        return []
+    publish_topics = event_bus.get("publish_topics", [])
+    if not isinstance(publish_topics, list):
+        return []
+    return [str(topic) for topic in publish_topics]
 
 
 class NodeVersionInfo(BaseModel):

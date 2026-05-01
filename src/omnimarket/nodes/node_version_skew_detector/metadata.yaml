@@ -21,4 +21,4 @@ license: "MIT"
 tags: ["monitoring", "versioning", "compatibility", "alert"]
 pack: "monitoring"
 display_name: "Version Skew Detector"
-node_role: "monitoring"
+node_role: "probe"
