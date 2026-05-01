@@ -153,6 +153,32 @@ async def test_wait_returns_typed_timeout_event() -> None:
         await bus.close()
 
 
+@pytest.mark.asyncio
+async def test_wait_cleans_first_subscription_when_second_subscribe_fails() -> None:
+    config = load_pattern_b_broker_config(_BROKER_CONTRACT)
+    bus = _FailingSecondSubscribeBus()
+    adapter = AdapterPatternBBrokerTerminalConsumer(event_bus=bus, config=config)
+
+    with pytest.raises(RuntimeError, match="second subscribe failed"):
+        await adapter.wait_for_terminal_event(_make_request(), timeout_seconds=0.01)
+
+    assert bus.unsubscribe_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_wait_attempts_all_unsubscribers_when_cleanup_raises() -> None:
+    config = load_pattern_b_broker_config(_BROKER_CONTRACT)
+    bus = _RaisingFirstUnsubscribeBus()
+    adapter = AdapterPatternBBrokerTerminalConsumer(event_bus=bus, config=config)
+
+    result = await adapter.wait_for_terminal_event(
+        _make_request(), timeout_seconds=0.01
+    )
+
+    assert result.event_type is EnumPatternBBrokerEventType.terminal_timed_out
+    assert bus.unsubscribe_calls == 2
+
+
 @pytest.mark.unit
 def test_terminal_consumer_does_not_own_topic_literals_or_client_names() -> None:
     source = _TERMINAL_CONSUMER.read_text(encoding="utf-8")
@@ -169,3 +195,34 @@ def _make_request() -> ModelPatternBBrokerDispatchRequest:
         recipient="omniclaude",
         skill_name="session-orchestrator",
     )
+
+
+class _FailingSecondSubscribeBus:
+    def __init__(self) -> None:
+        self.subscribe_calls = 0
+        self.unsubscribe_calls = 0
+
+    async def subscribe(self, *args: object, **kwargs: object):
+        self.subscribe_calls += 1
+        if self.subscribe_calls == 2:
+            raise RuntimeError("second subscribe failed")
+
+        async def unsubscribe() -> None:
+            self.unsubscribe_calls += 1
+
+        return unsubscribe
+
+
+class _RaisingFirstUnsubscribeBus:
+    def __init__(self) -> None:
+        self.unsubscribe_calls = 0
+
+    async def subscribe(self, *args: object, **kwargs: object):
+        call_number = self.unsubscribe_calls
+
+        async def unsubscribe() -> None:
+            self.unsubscribe_calls += 1
+            if call_number == 0:
+                raise RuntimeError("first unsubscribe failed")
+
+        return unsubscribe

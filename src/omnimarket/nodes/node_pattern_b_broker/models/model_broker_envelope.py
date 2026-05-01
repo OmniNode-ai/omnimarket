@@ -293,8 +293,8 @@ class ModelPatternBBrokerPublishReceipt(BaseModel):
         EnumPatternBBrokerEventType.dispatch_published
     )
     state: EnumPatternBBrokerState = EnumPatternBBrokerState.published
-    topic: str
-    key: str
+    topic: str = Field(min_length=1, max_length=512)
+    key: str = Field(min_length=1, max_length=256)
     payload_size_bytes: int = Field(ge=1)
     wait_policy: ModelPatternBBrokerWaitPolicy
     published_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
@@ -318,6 +318,14 @@ class ModelPatternBBrokerPublishReceipt(BaseModel):
         if value is not EnumPatternBBrokerState.published:
             raise ValueError("publish receipt state must be published")
         return value
+
+    @field_validator("topic", "key")
+    @classmethod
+    def validate_publish_metadata(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("publish metadata must be a non-empty string")
+        return normalized
 
 
 __all__ = [

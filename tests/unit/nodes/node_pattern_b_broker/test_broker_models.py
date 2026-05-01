@@ -53,6 +53,21 @@ def test_dispatch_request_rejects_non_dispatch_event_type() -> None:
 
 
 @pytest.mark.unit
+def test_dispatch_request_allows_denied_state() -> None:
+    request = ModelPatternBBrokerDispatchRequest(
+        correlation_id=uuid4(),
+        event_type=EnumPatternBBrokerEventType.dispatch_requested,
+        state=EnumPatternBBrokerState.denied,
+        originator=EnumPatternBBrokerOriginator.omnimarket,
+        recipient=EnumPatternBBrokerRecipient.omniclaude,
+        skill_name="session-orchestrator",
+    )
+
+    assert request.event_type is EnumPatternBBrokerEventType.dispatch_requested
+    assert request.state is EnumPatternBBrokerState.denied
+
+
+@pytest.mark.unit
 def test_terminal_event_requires_terminal_enum_values() -> None:
     terminal = ModelPatternBBrokerTerminalEvent(
         request_id=uuid4(),
@@ -66,6 +81,21 @@ def test_terminal_event_requires_terminal_enum_values() -> None:
     assert terminal.event_type is EnumPatternBBrokerEventType.terminal_completed
     assert terminal.state is EnumPatternBBrokerState.completed
     assert terminal.status is EnumPatternBBrokerTerminalStatus.completed
+
+
+@pytest.mark.unit
+def test_terminal_event_accepts_timed_out_outcome() -> None:
+    terminal = ModelPatternBBrokerTerminalEvent(
+        request_id=uuid4(),
+        correlation_id=uuid4(),
+        event_type=EnumPatternBBrokerEventType.terminal_timed_out,
+        state=EnumPatternBBrokerState.timed_out,
+        status=EnumPatternBBrokerTerminalStatus.timed_out,
+    )
+
+    assert terminal.event_type is EnumPatternBBrokerEventType.terminal_timed_out
+    assert terminal.state is EnumPatternBBrokerState.timed_out
+    assert terminal.status is EnumPatternBBrokerTerminalStatus.timed_out
 
 
 @pytest.mark.unit

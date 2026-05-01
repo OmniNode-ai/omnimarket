@@ -60,6 +60,28 @@ def test_broker_config_uses_enum_backed_allowlists() -> None:
 
 
 @pytest.mark.unit
+def test_broker_config_rejects_string_wait_policy_fields(tmp_path: Path) -> None:
+    raw = yaml.safe_load(_BROKER_CONTRACT.read_text(encoding="utf-8"))
+    raw["broker"]["wait_for_terminal_event"] = "false"
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="wait_for_terminal_event"):
+        load_pattern_b_broker_config(contract_path)
+
+
+@pytest.mark.unit
+def test_broker_config_rejects_bool_timeout_field(tmp_path: Path) -> None:
+    raw = yaml.safe_load(_BROKER_CONTRACT.read_text(encoding="utf-8"))
+    raw["broker"]["default_timeout_seconds"] = False
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="default_timeout_seconds"):
+        load_pattern_b_broker_config(contract_path)
+
+
+@pytest.mark.unit
 def test_config_adapter_does_not_own_topic_literals() -> None:
     source = _CONFIG_ADAPTER.read_text(encoding="utf-8")
 

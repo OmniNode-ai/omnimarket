@@ -8,6 +8,7 @@ from omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_contract_con
     load_pattern_b_broker_config,
 )
 from omnimarket.nodes.node_pattern_b_broker.models import (
+    EnumPatternBBrokerEventType,
     EnumPatternBBrokerState,
     ModelPatternBBrokerDispatchRequest,
     ModelPatternBBrokerPublishReceipt,
@@ -71,6 +72,10 @@ class AdapterPatternBBrokerPublish:
     def _validate_publishable(
         self, request: ModelPatternBBrokerDispatchRequest
     ) -> None:
+        if request.event_type is not EnumPatternBBrokerEventType.dispatch_requested:
+            raise ValueError(
+                "only dispatch_requested Pattern B events can be published"
+            )
         if request.originator not in self._config.allowed_originators:
             raise PermissionError(
                 f"originator {request.originator.value!r} is not allowed by broker contract"

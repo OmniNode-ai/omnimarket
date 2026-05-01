@@ -120,6 +120,62 @@ async def test_publish_adapter_rejects_originators_not_allowed_by_config() -> No
 
 
 @pytest.mark.asyncio
+async def test_publish_adapter_rejects_non_dispatch_event_type() -> None:
+    bus = EventBusInmemory()
+    await bus.start()
+    try:
+        config = load_pattern_b_broker_config(_BROKER_CONTRACT)
+        adapter = AdapterPatternBBrokerPublish(event_bus=bus, config=config)
+        request = ModelPatternBBrokerDispatchRequest.model_construct(
+            request_id=uuid4(),
+            correlation_id=uuid4(),
+            event_type=EnumPatternBBrokerEventType.terminal_completed,
+            state=EnumPatternBBrokerState.accepted,
+            originator=EnumPatternBBrokerOriginator.omnimarket,
+            recipient=EnumPatternBBrokerRecipient.omniclaude,
+            skill_name="session-orchestrator",
+            payload={},
+            wait_policy=config.default_wait_policy,
+        )
+
+        with pytest.raises(ValueError, match="dispatch_requested"):
+            await adapter.publish(request)
+
+        history = await bus.get_event_history(
+            topic=config.topics.dispatch_request_topic
+        )
+        assert history == []
+    finally:
+        await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_publish_adapter_rejects_denied_state() -> None:
+    bus = EventBusInmemory()
+    await bus.start()
+    try:
+        config = load_pattern_b_broker_config(_BROKER_CONTRACT)
+        adapter = AdapterPatternBBrokerPublish(event_bus=bus, config=config)
+        request = ModelPatternBBrokerDispatchRequest(
+            correlation_id=uuid4(),
+            state=EnumPatternBBrokerState.denied,
+            originator=EnumPatternBBrokerOriginator.omnimarket,
+            recipient=EnumPatternBBrokerRecipient.omniclaude,
+            skill_name="session-orchestrator",
+        )
+
+        with pytest.raises(ValueError, match="accepted"):
+            await adapter.publish(request)
+
+        history = await bus.get_event_history(
+            topic=config.topics.dispatch_request_topic
+        )
+        assert history == []
+    finally:
+        await bus.close()
+
+
+@pytest.mark.asyncio
 async def test_publish_adapter_uses_injected_contract_topics() -> None:
     bus = EventBusInmemory()
     await bus.start()
@@ -169,6 +225,31 @@ def test_publish_receipt_requires_published_event_and_state() -> None:
             wait_policy=load_pattern_b_broker_config(
                 _BROKER_CONTRACT
             ).default_wait_policy,
+        )
+
+
+@pytest.mark.unit
+def test_publish_receipt_requires_non_empty_topic_and_key() -> None:
+    wait_policy = load_pattern_b_broker_config(_BROKER_CONTRACT).default_wait_policy
+
+    with pytest.raises(ValidationError, match="non-empty"):
+        ModelPatternBBrokerPublishReceipt(
+            request_id=uuid4(),
+            correlation_id=uuid4(),
+            topic=" ",
+            key=str(uuid4()),
+            payload_size_bytes=1,
+            wait_policy=wait_policy,
+        )
+
+    with pytest.raises(ValidationError, match="non-empty"):
+        ModelPatternBBrokerPublishReceipt(
+            request_id=uuid4(),
+            correlation_id=uuid4(),
+            topic="unit.fixture.delegate-task",
+            key=" ",
+            payload_size_bytes=1,
+            wait_policy=wait_policy,
         )
 
 

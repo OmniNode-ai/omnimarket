@@ -36,8 +36,18 @@ def load_pattern_b_broker_config(
         topics=_load_topic_bindings(contract_path),
         consumer_group=_required_str(broker, "consumer_group", contract_path),
         default_wait_policy=ModelPatternBBrokerWaitPolicy(
-            wait_for_terminal_event=bool(broker.get("wait_for_terminal_event", True)),
-            timeout_seconds=int(broker.get("default_timeout_seconds", 300)),
+            wait_for_terminal_event=_optional_bool(
+                broker,
+                "wait_for_terminal_event",
+                contract_path,
+                default=True,
+            ),
+            timeout_seconds=_optional_int(
+                broker,
+                "default_timeout_seconds",
+                contract_path,
+                default=300,
+            ),
         ),
         allowed_originators=tuple(_required_str_list(broker, "allowed_originators")),
         allowed_recipients=tuple(_required_str_list(broker, "allowed_recipients")),
@@ -80,6 +90,32 @@ def _required_str(mapping: dict[Any, Any], key: str, contract_path: Path) -> str
     value = mapping.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{contract_path} broker.{key} must be a non-empty string")
+    return value
+
+
+def _optional_bool(
+    mapping: dict[Any, Any],
+    key: str,
+    contract_path: Path,
+    *,
+    default: bool,
+) -> bool:
+    value = mapping.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{contract_path} broker.{key} must be a boolean")
+    return value
+
+
+def _optional_int(
+    mapping: dict[Any, Any],
+    key: str,
+    contract_path: Path,
+    *,
+    default: int,
+) -> int:
+    value = mapping.get(key, default)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{contract_path} broker.{key} must be an integer")
     return value
 
 

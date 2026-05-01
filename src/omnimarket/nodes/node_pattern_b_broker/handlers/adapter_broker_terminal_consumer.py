@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import suppress
 from typing import Any, Protocol
 
 from omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_contract_config import (
@@ -82,18 +83,23 @@ class AdapterPatternBBrokerTerminalConsumer:
             future.set_result(event)
 
         group_id = f"{self._config.consumer_group}-{request.request_id.hex[:8]}"
-        unsubscribe_completed = await self._event_bus.subscribe(
-            self._config.topics.terminal_completed_topic,
-            on_message=on_message,
-            group_id=group_id,
-        )
-        unsubscribe_failed = await self._event_bus.subscribe(
-            self._config.topics.terminal_failed_topic,
-            on_message=on_message,
-            group_id=group_id,
-        )
+        unsubscribers: list[Callable[[], Awaitable[None]]] = []
 
         try:
+            unsubscribers.append(
+                await self._event_bus.subscribe(
+                    self._config.topics.terminal_completed_topic,
+                    on_message=on_message,
+                    group_id=group_id,
+                )
+            )
+            unsubscribers.append(
+                await self._event_bus.subscribe(
+                    self._config.topics.terminal_failed_topic,
+                    on_message=on_message,
+                    group_id=group_id,
+                )
+            )
             return await asyncio.wait_for(future, timeout=timeout)
         except TimeoutError:
             return ModelPatternBBrokerTerminalEvent(
@@ -105,8 +111,7 @@ class AdapterPatternBBrokerTerminalConsumer:
                 error_message=f"timed out after {timeout:g}s waiting for terminal event",
             )
         finally:
-            await unsubscribe_completed()
-            await unsubscribe_failed()
+            await _cleanup_unsubscribers(unsubscribers)
 
 
 def _parse_terminal_event(
@@ -125,6 +130,14 @@ def _parse_terminal_event(
         return ModelPatternBBrokerTerminalEvent.model_validate(payload)
     except (TypeError, ValueError):
         return None
+
+
+async def _cleanup_unsubscribers(
+    unsubscribers: list[Callable[[], Awaitable[None]]],
+) -> None:
+    for unsubscribe in unsubscribers:
+        with suppress(Exception):
+            await unsubscribe()
 
 
 __all__ = [
