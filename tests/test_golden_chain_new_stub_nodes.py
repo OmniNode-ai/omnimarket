@@ -31,15 +31,6 @@ class StubNodeCase:
 
 STUB_NODE_CASES: tuple[StubNodeCase, ...] = (
     StubNodeCase(
-        node_name="node_dod_sweep_orchestrator",
-        handler_module="omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator",
-        handler_class="HandlerDodSweepOrchestrator",
-        request_module="omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request",
-        request_class="ModelDodSweepOrchestratorRequest",
-        result_module="omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_result",
-        result_class="ModelDodSweepOrchestratorResult",
-    ),
-    StubNodeCase(
         node_name="node_env_parity_compute",
         handler_module="omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute",
         handler_class="HandlerEnvParityCompute",
