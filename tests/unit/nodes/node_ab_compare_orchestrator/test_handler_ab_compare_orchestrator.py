@@ -262,16 +262,19 @@ async def test_openai_compat_empty_choices_returns_empty_output() -> None:
 
     monkeypatch_target = handler_module.httpx
     with patch.object(monkeypatch_target, "AsyncClient", FakeAsyncClient):
-        raw_output, prompt_tokens, completion_tokens, _latency_ms = (
-            await handler_module._DefaultHttpLlmClient()._call_openai_compat(
-                endpoint_url="http://local:8000/v1/chat/completions",
-                model_id="model-a",
-                system_prompt="system",
-                user_prompt="user",
-                timeout_seconds=120.0,
-                api_key=None,
-                start=0.0,
-            )
+        (
+            raw_output,
+            prompt_tokens,
+            completion_tokens,
+            _latency_ms,
+        ) = await handler_module._DefaultHttpLlmClient()._call_openai_compat(
+            endpoint_url="http://local:8000/v1/chat/completions",
+            model_id="model-a",
+            system_prompt="system",
+            user_prompt="user",
+            timeout_seconds=120.0,
+            api_key=None,
+            start=0.0,
         )
 
     assert raw_output == ""
@@ -319,9 +322,10 @@ def test_calculate_cost_local_is_zero() -> None:
         context_window=8192,
     )
 
-    assert handler_module._calculate_cost(
-        model, prompt_tokens=1000, completion_tokens=500
-    ) == 0.0
+    assert (
+        handler_module._calculate_cost(model, prompt_tokens=1000, completion_tokens=500)
+        == 0.0
+    )
 
 
 @pytest.mark.unit
