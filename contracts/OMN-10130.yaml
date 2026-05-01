@@ -1,0 +1,59 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10130
+title: "Add DaemonHealthCheckTarget"
+summary: "Add a process watchdog target that converts daemon health probe results into typed watchdog check results."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Daemon health check target unit tests pass"
+    command: "uv run pytest tests/unit/nodes/node_process_watchdog/test_check_daemon_health.py -q"
+  - kind: "manual"
+    description: "Touched daemon health watchdog paths pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_process_watchdog/handlers/check_daemon_health.py tests/unit/nodes/node_process_watchdog/test_check_daemon_health.py"
+  - kind: "manual"
+    description: "Touched daemon health watchdog paths are formatted"
+    command: "uv run ruff format --check src/omnimarket/nodes/node_process_watchdog/handlers/check_daemon_health.py tests/unit/nodes/node_process_watchdog/test_check_daemon_health.py"
+  - kind: "manual"
+    description: "Repo-local contract YAML parses"
+    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10130.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan for daemon health watchdog target imports; no live deploy or runtime restart performed in this PR"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health import DaemonHealthCheckTarget; print('deploy smoke ok', DaemonHealthCheckTarget.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-daemon-health-target-tests"
+    description: "Daemon health check target unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_process_watchdog/test_check_daemon_health.py -q"
+  - id: "dod-lint"
+    description: "Touched daemon health watchdog paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_process_watchdog/handlers/check_daemon_health.py tests/unit/nodes/node_process_watchdog/test_check_daemon_health.py"
+  - id: "dod-format"
+    description: "Touched daemon health watchdog paths are formatted"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff format --check src/omnimarket/nodes/node_process_watchdog/handlers/check_daemon_health.py tests/unit/nodes/node_process_watchdog/test_check_daemon_health.py"
+  - id: "dod-contract-parse"
+    description: "Repo-local contract YAML parses"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10130.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - id: "dod-deploy-smoke"
+    description: "Post-merge deploy smoke plan for daemon health watchdog target imports; no live deploy or runtime restart performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health import DaemonHealthCheckTarget; print('deploy smoke ok', DaemonHealthCheckTarget.__name__)\""
