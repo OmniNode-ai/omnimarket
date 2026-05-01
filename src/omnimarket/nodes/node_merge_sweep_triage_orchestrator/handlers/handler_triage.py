@@ -78,8 +78,17 @@ FAILED_CHECK_CONCLUSIONS = {
     "TIMED_OUT",
 }
 
-# Default routing policy for Phase 2 LLM commands — callers may override via classified.routing_hints
-_DEFAULT_ROUTING_POLICY: dict[str, Any] = {"model": "qwen3-coder", "temperature": 0.0}
+# Default routing policy for Phase 2 LLM commands. It must match
+# omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy because effect
+# handlers fail-loud on malformed command routing.
+_DEFAULT_ROUTING_POLICY: dict[str, Any] = {
+    "primary": "deepseek-r1-14b",
+    "fallback": "qwen3-coder-30b",
+    "fallback_allowed_roles": ["ci_fixer", "thread_reply", "conflict_hunk"],
+    "max_tokens": 2048,
+    "temperature": 0.0,
+    "ci_override": {"primary": "deepseek-r1-14b"},
+}
 
 
 def _approval_gate_cleared(
