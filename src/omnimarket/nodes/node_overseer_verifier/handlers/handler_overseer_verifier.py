@@ -57,7 +57,7 @@ _GH_CHECKS_TIMEOUT_SECONDS: int = 30
 _MAX_CLAIMED_PRS: int = 20
 
 # JSON fields requested from `gh pr checks` for live verification.
-_GH_PR_CHECKS_FIELDS: str = "bucket,state,conclusion,name,completedAt"
+_GH_PR_CHECKS_FIELDS: str = "bucket,state,name,link,workflow,startedAt,completedAt"
 
 # Actions explicitly allowed for any domain.
 _GLOBAL_ALLOWED_ACTIONS: frozenset[str] = frozenset(
@@ -418,8 +418,7 @@ def _verify_claimed_pr(claim: ModelClaimedPr) -> str | None:
       - subprocess timeout
       - gh non-zero exit
       - malformed JSON
-      - any reported check with ``bucket != "pass"`` or
-        ``conclusion not in ("success", "neutral", "skipped")``
+      - any reported check whose ``bucket`` is not ``pass``
     """
     cmd = [
         "gh",
@@ -494,13 +493,12 @@ def _verify_claimed_pr(claim: ModelClaimedPr) -> str | None:
 
 
 def _check_row_passes(item: dict[str, Any]) -> bool:
-    """A single `gh pr checks` JSON row is considered passing when both
-    ``bucket == 'pass'`` and ``conclusion`` is success-adjacent."""
+    """A single `gh pr checks` JSON row is passing when gh buckets it as pass."""
     bucket = str(item.get("bucket", "")).lower()
-    conclusion = str(item.get("conclusion", "")).lower()
     if bucket != "pass":
         return False
-    if conclusion and conclusion not in {"success", "neutral", "skipped", ""}:
+    state = str(item.get("state", "")).upper()
+    if state and state not in {"SUCCESS", "SKIPPED", "NEUTRAL"}:
         return False
     return True
 

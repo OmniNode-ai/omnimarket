@@ -31,6 +31,9 @@ import sys
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
     HandlerOverseerVerifier,
 )
+from omnimarket.nodes.node_overseer_verifier.models.model_claimed_pr import (
+    ModelClaimedPr,
+)
 from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
     ModelVerifierRequest,
 )
@@ -48,6 +51,13 @@ def _parse_pr(pr_arg: str) -> tuple[str, str]:
         msg = f"--pr must be in '<repo>#<num>' format, got: {pr_arg!r}"
         raise argparse.ArgumentTypeError(msg)
     return repo, num
+
+
+def _gh_repo(repo: str) -> str:
+    """Return an owner/name repo suitable for gh --repo."""
+    if "/" in repo:
+        return repo
+    return f"OmniNode-ai/{repo}"
 
 
 def main() -> None:
@@ -115,11 +125,15 @@ def main() -> None:
         task_id = args.ticket
         domain = "ticket_pipeline"
         node_id = "node_ticket_pipeline"
+        claimed_prs: list[ModelClaimedPr] = []
     else:
         repo, num = _parse_pr(args.pr)
         task_id = f"{repo}#{num}"
         domain = "build_loop"
         node_id = "node_build_loop_orchestrator"
+        claimed_prs = [
+            ModelClaimedPr(pr_number=int(num), repo=_gh_repo(repo)),
+        ]
 
     if args.dry_run:
         sys.stdout.write(
@@ -145,6 +159,7 @@ def main() -> None:
         runner_id=args.runner_id,
         attempt=args.attempt,
         confidence=args.confidence,
+        claimed_prs=claimed_prs,
     )
 
     handler = HandlerOverseerVerifier()

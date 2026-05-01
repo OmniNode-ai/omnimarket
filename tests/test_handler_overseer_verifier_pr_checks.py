@@ -73,15 +73,19 @@ def _green_rows() -> list[dict[str, Any]]:
         {
             "bucket": "pass",
             "state": "SUCCESS",
-            "conclusion": "success",
             "name": "test",
+            "link": "https://github.com/OmniNode-ai/omnimarket/actions/runs/1",
+            "workflow": "ci",
+            "startedAt": "2026-04-19T11:59:00Z",
             "completedAt": "2026-04-19T12:00:00Z",
         },
         {
             "bucket": "pass",
             "state": "SUCCESS",
-            "conclusion": "success",
             "name": "lint",
+            "link": "https://github.com/OmniNode-ai/omnimarket/actions/runs/2",
+            "workflow": "ci",
+            "startedAt": "2026-04-19T12:00:00Z",
             "completedAt": "2026-04-19T12:01:00Z",
         },
     ]
@@ -92,15 +96,19 @@ def _red_rows() -> list[dict[str, Any]]:
         {
             "bucket": "pass",
             "state": "SUCCESS",
-            "conclusion": "success",
             "name": "lint",
+            "link": "https://github.com/OmniNode-ai/omnimarket/actions/runs/2",
+            "workflow": "ci",
+            "startedAt": "2026-04-19T12:00:00Z",
             "completedAt": "2026-04-19T12:01:00Z",
         },
         {
             "bucket": "fail",
             "state": "COMPLETED",
-            "conclusion": "failure",
             "name": "test",
+            "link": "https://github.com/OmniNode-ai/omnimarket/actions/runs/3",
+            "workflow": "ci",
+            "startedAt": "2026-04-19T12:02:00Z",
             "completedAt": "2026-04-19T12:05:00Z",
         },
     ]
@@ -143,7 +151,8 @@ def test_pr_checks_live_passes_when_all_prs_green() -> None:
     first_cmd = mock_run.call_args_list[0].args[0]
     assert first_cmd[:3] == ["gh", "pr", "checks"]
     assert "--json" in first_cmd
-    assert "bucket,state,conclusion,name,completedAt" in first_cmd
+    assert "bucket,state,name,link,workflow,startedAt,completedAt" in first_cmd
+    assert "conclusion" not in first_cmd
 
     assert result["verdict"] == "PASS"
     checks = {c["name"]: c for c in result["checks"]}  # type: ignore[union-attr]
