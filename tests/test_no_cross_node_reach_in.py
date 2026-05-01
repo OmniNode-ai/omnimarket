@@ -67,10 +67,10 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket/nodes/node_ledger_append_effect/handlers/handler_ledger_append.py:25",
         # node_pr_lifecycle_orchestrator reach-ins (OMN-9806 keeps these as
         # temporary exceptions until shared lifecycle models move to events.*)
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:899",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1006",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1075",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1138",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:902",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1009",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1078",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1141",
         # node_overnight → node_build_loop
         "omnimarket/nodes/node_overnight/handlers/handler_overnight.py:1071",
         # node_pipeline_fill → node_rsd_fill_compute
