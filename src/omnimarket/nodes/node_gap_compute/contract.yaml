@@ -1,12 +1,12 @@
 ---
 name: node_gap_compute
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_version: {major: 1, minor: 1, patch: 0}
 description: >
-  Computes gaps in pipeline coverage and node wiring. STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  Computes deterministic integration gaps from repo-local contracts and typed
+  report artifacts. Live service probes and destructive fixes are explicit
+  follow-on effect surfaces, not silent fallbacks.
 
 handler:
   module: omnimarket.nodes.node_gap_compute.handlers.handler_gap_compute
@@ -18,3 +18,70 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 30000
+
+inputs:
+  subcommand:
+    type: str
+    enum: [detect, fix, cycle, reconcile]
+    required: false
+    default: detect
+  scope:
+    type: str
+    required: false
+    default: local
+  epic:
+    type: str
+    required: false
+  report:
+    type: str
+    required: false
+  repo:
+    type: str
+    required: false
+  repo_roots:
+    type: list
+    required: false
+  dry_run:
+    type: bool
+    required: false
+    default: false
+
+outputs:
+  status:
+    type: str
+    enum: [clean, findings, blocked, error]
+  run_id:
+    type: str
+  message:
+    type: str
+  subcommand:
+    type: str
+    enum: [detect, fix, cycle, reconcile]
+  scope:
+    type: str
+  dry_run:
+    type: bool
+  repos_in_scope:
+    type: list
+  contracts_checked:
+    type: int
+  findings:
+    type: list
+  best_effort_findings:
+    type: list
+  skipped_probes:
+    type: list
+  report_path:
+    type: str
+    required: false
+    nullable: true
+  dispatch_class_counts:
+    type: map
+
+terminal_event: onex.evt.omnimarket.gap-compute-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.gap-compute-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.gap-compute-completed.v1

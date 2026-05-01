@@ -1,12 +1,12 @@
 name: node_gap_compute
 version: "1.0.0"
-description: "Computes gaps in pipeline coverage and node wiring (STUB)"
+description: "Computes deterministic integration gaps from contracts and reports"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_gap_compute: "omnimarket.nodes.node_gap_compute"
 capabilities:
-  standalone: false
+  standalone: true
   full_runtime: false
   requires_network: false
 dependencies:

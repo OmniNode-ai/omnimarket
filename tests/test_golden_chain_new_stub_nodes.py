@@ -49,15 +49,6 @@ STUB_NODE_CASES: tuple[StubNodeCase, ...] = (
         result_class="ModelEnvParityComputeResult",
     ),
     StubNodeCase(
-        node_name="node_gap_compute",
-        handler_module="omnimarket.nodes.node_gap_compute.handlers.handler_gap_compute",
-        handler_class="HandlerGapCompute",
-        request_module="omnimarket.nodes.node_gap_compute.models.model_gap_compute_request",
-        request_class="ModelGapComputeRequest",
-        result_module="omnimarket.nodes.node_gap_compute.models.model_gap_compute_result",
-        result_class="ModelGapComputeResult",
-    ),
-    StubNodeCase(
         node_name="node_pr_watch_orchestrator",
         handler_module="omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator",
         handler_class="HandlerPrWatchOrchestrator",
