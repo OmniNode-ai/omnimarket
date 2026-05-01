@@ -1,0 +1,24 @@
+name: node_version_skew_detector
+version: "1.0.0"
+description: "Detects plugin/runtime version incompatibility and emits Kafka alert events"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_version_skew_detector: "omnimarket.nodes.node_version_skew_detector"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "packaging>=24.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["monitoring", "versioning", "compatibility", "alert"]
+pack: "monitoring"
+display_name: "Version Skew Detector"
+node_role: "monitoring"
