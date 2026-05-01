@@ -1,0 +1,7 @@
+# Known pre-existing event-registry drift.
+# Format: source_only|registry_only <topic>
+source_only onex.cmd.omniclaude.delegate-task.v1
+source_only onex.evt.omniclaude.agent-actions.v1
+source_only onex.evt.omniintelligence.llm-call-completed.v1
+registry_only onex.cmd.omnibase-infra.delegation-request.v1
+registry_only onex.evt.diagnostic.daemon-health.v1
