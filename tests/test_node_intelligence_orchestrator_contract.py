@@ -5,8 +5,18 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from uuid import uuid4
 
 import yaml
+from omnibase_core.models.reducer.model_intent import ModelIntent
+from omnibase_core.models.reducer.payloads.model_extension_payloads import (
+    ModelPayloadExtension,
+)
+
+from omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent import (
+    HandlerReceiveIntent,
+    handle_receive_intent,
+)
 
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -49,6 +59,14 @@ def test_intelligence_orchestrator_contract_declares_runtime_topics() -> None:
         "onex.cmd.omnimarket.intent-received.v1",
         "onex.evt.omnimarket.intent-drift-detected.v1",
     ]
+
+    consumed_topics = {entry["topic"]: entry for entry in data["consumed_events"]}
+    assert consumed_topics["onex.cmd.omnimarket.intent-received.v1"] == {
+        "topic": "onex.cmd.omnimarket.intent-received.v1",
+        "event_type": "IntentReceived",
+        "schema_ref": "omnibase_core.models.reducer.model_intent.ModelIntent",
+        "description": "Reducer intent received by the intelligence orchestrator",
+    }
 
 
 def test_intelligence_orchestrator_contract_uses_omnimarket_modules() -> None:
@@ -98,3 +116,55 @@ def test_intelligence_orchestrator_handler_routing_is_runtime_importable() -> No
         handler_type = getattr(module, handler["name"])
         assert callable(handler_type)
         assert hasattr(handler_type(), "handle")
+
+
+def _make_intent(payload_data: dict[str, object]) -> ModelIntent:
+    return ModelIntent(
+        intent_type="extension",
+        target="postgres://patterns/test-pattern",
+        payload=ModelPayloadExtension(
+            extension_type="omnimarket.pattern_lifecycle_update",
+            plugin_name="omnimarket",
+            data=payload_data,
+        ),
+    )
+
+
+async def test_receive_intent_ignores_malformed_envelope_correlation_id() -> None:
+    intent = _make_intent({"intent_type": "extension"})
+
+    receipt = await HandlerReceiveIntent().handle(
+        {
+            "correlation_id": "not-a-uuid",
+            "payload": intent,
+        }
+    )
+
+    assert receipt.correlation_id is None
+
+
+def test_receive_intent_ignores_malformed_payload_correlation_id() -> None:
+    intent = _make_intent(
+        {
+            "intent_type": "extension",
+            "correlation_id": "not-a-uuid",
+        }
+    )
+
+    receipt = handle_receive_intent(intent)
+
+    assert receipt.correlation_id is None
+
+
+def test_receive_intent_preserves_valid_payload_correlation_id() -> None:
+    correlation_id = uuid4()
+    intent = _make_intent(
+        {
+            "intent_type": "extension",
+            "correlation_id": str(correlation_id),
+        }
+    )
+
+    receipt = handle_receive_intent(intent)
+
+    assert receipt.correlation_id == correlation_id

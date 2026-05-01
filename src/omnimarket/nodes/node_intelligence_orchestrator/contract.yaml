@@ -147,6 +147,10 @@ consumed_events:
     event_type: "DocumentIngestionRequested"
   - topic: "onex.cmd.omnimarket.pattern-learning.v1"
     event_type: "PatternLearningRequested"
+  - topic: "onex.cmd.omnimarket.intent-received.v1"
+    event_type: "IntentReceived"
+    schema_ref: "omnibase_core.models.reducer.model_intent.ModelIntent"
+    description: "Reducer intent received by the intelligence orchestrator"
   - topic: "onex.evt.omnimarket.intent-drift-detected.v1"
     event_type: "IntentDriftDetected"
 # Published Events

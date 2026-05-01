@@ -53,17 +53,24 @@ def _extract_payload(envelope: object) -> object:
     return getattr(envelope, "payload", envelope)
 
 
+def _safe_parse_uuid(value: object) -> UUID | None:
+    if isinstance(value, UUID):
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return UUID(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _extract_correlation_id(envelope: object, payload: object) -> UUID | None:
     candidate = getattr(envelope, "correlation_id", None)
     if candidate is None and isinstance(envelope, dict):
         candidate = envelope.get("correlation_id")
     if candidate is None and isinstance(payload, dict):
         candidate = payload.get("correlation_id")
-    if isinstance(candidate, UUID):
-        return candidate
-    if isinstance(candidate, str) and candidate:
-        return UUID(candidate)
-    return None
+    return _safe_parse_uuid(candidate)
 
 
 class HandlerReceiveIntent:
@@ -144,7 +151,7 @@ def handle_receive_intent(
 
         raw_correlation_id = payload_data.get("correlation_id")
         if raw_correlation_id is not None:
-            derived_correlation_id = UUID(str(raw_correlation_id))
+            derived_correlation_id = _safe_parse_uuid(raw_correlation_id)
 
     effective_correlation_id = correlation_id or derived_correlation_id
     effective_intent_type = payload_intent_type or intent.intent_type
