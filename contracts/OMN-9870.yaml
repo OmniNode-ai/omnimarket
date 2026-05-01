@@ -16,7 +16,7 @@ evidence_requirements:
     command: "uv run ruff check src/omnimarket/github_api.py src/omnimarket/nodes/node_ci_fix_effect/handlers/handler_ci_fix.py src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage.py tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py tests/test_triage_phase2_emit_rules.py"
   - kind: "manual"
     description: "Post-merge runtime proof plan only; live mutation requires explicit operator approval"
-    command: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_lifecycle_orchestrator --payload '{\"repos\":[\"OmniNode-ai/omnimarket\"],\"dry_run\":true,\"fix_only\":true,\"verify\":false}' --timeout-ms 300000 --compile-only"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_ci_fix_effect --help"
   - kind: "manual"
     description: "Read-only GitHub API proof fetches real CI log for recorded live proof target"
     command: "uv run python - <<'PY'\nimport asyncio\nfrom omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix import _fetch_ci_log\nasync def main():\n    log = await _fetch_ci_log('OmniNode-ai/omnibase_infra', '24898255405', 'CI Tests Gate')\n    print({'chars': len(log), 'contains_ci_tests_gate': 'CI Tests Gate' in log})\nasyncio.run(main())\nPY"
@@ -42,7 +42,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_lifecycle_orchestrator --payload '{\"repos\":[\"OmniNode-ai/omnimarket\"],\"dry_run\":true,\"fix_only\":true,\"verify\":false}' --timeout-ms 300000 --compile-only"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_ci_fix_effect --help"
   - id: "dod-github-log-fetch"
     description: "Read-only GitHub API proof fetches real CI log for recorded live proof target"
     source: "manual"
