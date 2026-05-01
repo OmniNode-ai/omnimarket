@@ -96,6 +96,7 @@ class InmemoryCheckTarget:
 
 
 AlertEmitter = Callable[[ModelWatchdogCheckResult], None]
+FailureStreakKey = tuple[EnumCheckTarget, str]
 
 
 class ConsecutiveFailurePolicy:
@@ -110,7 +111,7 @@ class ConsecutiveFailurePolicy:
             raise ValueError("threshold must be >= 1")
         self._threshold = threshold
         self._emit_alert = emit_alert
-        self._fail_streaks: dict[str, int] = {}
+        self._fail_streaks: dict[FailureStreakKey, int] = {}
 
     @property
     def threshold(self) -> int:
@@ -127,15 +128,16 @@ class ConsecutiveFailurePolicy:
         if dry_run:
             return False
 
+        streak_key = (result.category, result.target)
         if result.status == EnumCheckStatus.DOWN:
-            fail_streak = self._fail_streaks.get(result.target, 0) + 1
-            self._fail_streaks[result.target] = fail_streak
+            fail_streak = self._fail_streaks.get(streak_key, 0) + 1
+            self._fail_streaks[streak_key] = fail_streak
             if fail_streak == self._threshold:
                 self._emit(result)
                 return True
             return False
 
-        self._fail_streaks.pop(result.target, None)
+        self._fail_streaks.pop(streak_key, None)
         if result.status == EnumCheckStatus.DEGRADED and alert_on_degraded:
             self._emit(result)
             return True

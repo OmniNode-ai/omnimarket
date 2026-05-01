@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_emit_daemon.health_probe import (
     HEALTH_PROBE_EVENT_TYPE,
+    _decode_record_payload,
     main,
     probe,
 )
@@ -162,6 +163,10 @@ def test_probe_times_out_when_no_matching_correlation(tmp_path: Path) -> None:
     assert result.success is False
     assert result.reason == "timed out waiting for correlated Kafka event: corr-timeout"
     assert result.event_id == "evt-health-1"
+
+
+def test_decode_record_payload_skips_invalid_utf8_bytes() -> None:
+    assert _decode_record_payload({"value": b"\xff\xfe", "offset": 1}) is None
 
 
 def test_probe_requires_positive_timeout(tmp_path: Path) -> None:

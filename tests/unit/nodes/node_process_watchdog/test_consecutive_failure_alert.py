@@ -36,10 +36,14 @@ def _command(**overrides: object) -> ModelWatchdogStartCommand:
     return ModelWatchdogStartCommand(**defaults)
 
 
-def _target(name: str, status: EnumCheckStatus) -> InmemoryCheckTarget:
+def _target(
+    name: str,
+    status: EnumCheckStatus,
+    category: EnumCheckTarget = EnumCheckTarget.EMIT_DAEMON,
+) -> InmemoryCheckTarget:
     return InmemoryCheckTarget(
         name=name,
-        category=EnumCheckTarget.EMIT_DAEMON,
+        category=category,
         status=status,
         message=status.value,
     )
@@ -103,6 +107,70 @@ def test_per_target_streak_isolation() -> None:
     assert report_a2.alerts_emitted == 1
     assert report_b2.alerts_emitted == 1
     assert emitted == ["target-a", "target-b"]
+
+
+@pytest.mark.unit
+def test_same_target_name_isolated_by_category() -> None:
+    emitted: list[tuple[EnumCheckTarget, str]] = []
+    policy = ConsecutiveFailurePolicy(
+        threshold=2,
+        emit_alert=lambda result: emitted.append((result.category, result.target)),
+    )
+    handler = HandlerProcessWatchdog(alert_policy=policy)
+    command = _command(
+        dry_run=False,
+        check_targets=[EnumCheckTarget.EMIT_DAEMON, EnumCheckTarget.UNIX_SOCKET],
+    )
+
+    daemon_1 = handler.run_checks(
+        command,
+        [
+            _target(
+                "emit_daemon",
+                EnumCheckStatus.DOWN,
+                category=EnumCheckTarget.EMIT_DAEMON,
+            )
+        ],
+    )
+    socket_1 = handler.run_checks(
+        command,
+        [
+            _target(
+                "emit_daemon",
+                EnumCheckStatus.DOWN,
+                category=EnumCheckTarget.UNIX_SOCKET,
+            )
+        ],
+    )
+    daemon_2 = handler.run_checks(
+        command,
+        [
+            _target(
+                "emit_daemon",
+                EnumCheckStatus.DOWN,
+                category=EnumCheckTarget.EMIT_DAEMON,
+            )
+        ],
+    )
+    socket_2 = handler.run_checks(
+        command,
+        [
+            _target(
+                "emit_daemon",
+                EnumCheckStatus.DOWN,
+                category=EnumCheckTarget.UNIX_SOCKET,
+            )
+        ],
+    )
+
+    assert daemon_1.alerts_emitted == 0
+    assert socket_1.alerts_emitted == 0
+    assert daemon_2.alerts_emitted == 1
+    assert socket_2.alerts_emitted == 1
+    assert emitted == [
+        (EnumCheckTarget.EMIT_DAEMON, "emit_daemon"),
+        (EnumCheckTarget.UNIX_SOCKET, "emit_daemon"),
+    ]
 
 
 @pytest.mark.unit

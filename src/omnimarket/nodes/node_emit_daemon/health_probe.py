@@ -115,7 +115,10 @@ def _record_error(record: object) -> object | None:
 def _decode_record_payload(record: object) -> dict[str, object] | None:
     raw_value = _record_value(record)
     if isinstance(raw_value, bytes):
-        decoded = raw_value.decode("utf-8")
+        try:
+            decoded = raw_value.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
     elif isinstance(raw_value, str):
         decoded = raw_value
     elif isinstance(raw_value, dict):
