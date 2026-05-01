@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10477"
+title: "AB compare contract YAML and models registry"
+summary: "Add contract-driven A/B compare workflow YAML, model registry YAML, node metadata, and pyproject node registration."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "public_api"
+evidence_requirements:
+  - kind: "tests"
+    description: "A/B compare contract and registry schema tests pass"
+    command: "uv run python -m pytest tests/unit/nodes/node_ab_compare_orchestrator/test_contract_schema.py -v -m unit"
+  - kind: "ci"
+    description: "Ruff lint and format checks pass"
+    command: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/"
+  - kind: "ci"
+    description: "Node metadata and drift gates pass for changed node"
+    command: "uv run python scripts/ci/check_node_metadata_dependencies.py && uv run python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - kind: "manual"
+    description: "Post-merge deploy smoke validates the contract package in the runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"import pathlib; p=pathlib.Path('/app/src/omnimarket/nodes/node_ab_compare_orchestrator/contract.yaml'); print(p.exists())\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-tests"
+    description: "A/B compare contract and registry schema tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m pytest tests/unit/nodes/node_ab_compare_orchestrator/test_contract_schema.py -v -m unit"
+  - id: "dod-lint"
+    description: "Ruff lint and format checks pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/"
+  - id: "dod-node-gates"
+    description: "Node metadata and drift gates pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_node_metadata_dependencies.py && uv run python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke plan only; this PR has not deployed, restarted runtime, or mutated .201"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"import pathlib; p=pathlib.Path('/app/src/omnimarket/nodes/node_ab_compare_orchestrator/contract.yaml'); print(p.exists())\"'"
