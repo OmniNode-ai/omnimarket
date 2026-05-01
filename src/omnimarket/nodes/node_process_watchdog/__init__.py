@@ -2,6 +2,7 @@
 
 from omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog import (
     CheckTarget,
+    ConsecutiveFailurePolicy,
     HandlerProcessWatchdog,
     InmemoryCheckTarget,
 )
@@ -20,6 +21,7 @@ from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
 
 __all__ = [
     "CheckTarget",
+    "ConsecutiveFailurePolicy",
     "EnumCheckStatus",
     "EnumCheckTarget",
     "HandlerProcessWatchdog",
