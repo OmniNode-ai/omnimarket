@@ -1,0 +1,83 @@
+---
+# models_registry.yaml — A/B compare model registry.
+#
+# All endpoints resolved from env vars at runtime. Models with unset env vars
+# or unreachable health endpoints are skipped (not errored). Cloud models with
+# missing requires_key are also skipped.
+
+schema_version: "1.0.0"
+models:
+  - id: qwen3-coder-30b
+    display_name: "Qwen3-Coder-30B"
+    endpoint_env: LLM_CODER_URL
+    endpoint_path: "/v1/chat/completions"
+    health_path: "/health"
+    protocol: openai_compatible
+    model_id_env: LLM_CODER_MODEL_NAME
+    model_id_default: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    location: local
+    context_window: 112000
+
+  - id: deepseek-r1-14b
+    display_name: "DeepSeek-R1-14B"
+    endpoint_env: LLM_CODER_FAST_URL
+    endpoint_path: "/v1/chat/completions"
+    health_path: "/health"
+    protocol: openai_compatible
+    model_id_env: LLM_CODER_FAST_MODEL_NAME
+    model_id_default: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    location: local
+    context_window: 24000
+
+  - id: deepseek-r1-32b
+    display_name: "DeepSeek-R1-32B"
+    endpoint_env: LLM_DEEPSEEK_R1_URL
+    endpoint_path: "/v1/chat/completions"
+    health_path: "/health"
+    protocol: openai_compatible
+    model_id_env: LLM_DEEPSEEK_R1_MODEL_NAME
+    model_id_default: "mlx-community/DeepSeek-R1-Distill-Qwen-32B-bf16"
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    location: local
+    context_window: 8192
+
+  - id: qwen3-next-80b
+    display_name: "Qwen3-Next-80B"
+    endpoint_env: LLM_QWEN3_NEXT_URL
+    endpoint_path: "/v1/chat/completions"
+    health_path: "/health"
+    protocol: openai_compatible
+    model_id_env: LLM_QWEN3_NEXT_MODEL_NAME
+    model_id_default: "mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit"
+    cost_per_1k_input: 0.0
+    cost_per_1k_output: 0.0
+    location: local
+    context_window: 8192
+
+  - id: claude-sonnet
+    display_name: "Claude Sonnet"
+    endpoint: anthropic_sdk
+    protocol: anthropic
+    model_id_default: "claude-sonnet-4-20250514"
+    cost_per_1k_input: 0.003
+    cost_per_1k_output: 0.015
+    location: cloud
+    requires_key: ANTHROPIC_API_KEY
+    context_window: 200000
+
+  - id: gemini-flash
+    display_name: "Gemini Flash"
+    endpoint_env: LLM_GLM_URL
+    endpoint_path: "/v1/chat/completions"
+    protocol: openai_compatible
+    model_id_default: "gemini-2.0-flash"
+    cost_per_1k_input: 0.0001
+    cost_per_1k_output: 0.0004
+    location: cloud
+    requires_key: LLM_GLM_API_KEY
+    context_window: 1000000
