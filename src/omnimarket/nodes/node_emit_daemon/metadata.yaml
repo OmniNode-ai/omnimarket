@@ -14,6 +14,7 @@ capabilities:
   requires_docker: false
   side_effect_class: network_io
 dependencies:
+  - "confluent-kafka"
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
