@@ -1,0 +1,50 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10053
+title: "Add platform readiness module runner"
+summary: "Add a Kafka-free `python -m omnimarket.nodes.node_platform_readiness` runner with JSON/markdown output, dimension filtering, and deterministic dry-run evidence for skill dispatch and local readiness checks."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused platform readiness tests pass"
+    command: "uv run pytest tests/test_golden_chain_platform_readiness.py -q"
+  - kind: "manual"
+    description: "Touched platform readiness runner paths pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_platform_readiness/__main__.py tests/test_golden_chain_platform_readiness.py"
+  - kind: "manual"
+    description: "Dry-run module runner emits deterministic PASS JSON without Kafka"
+    command: "uv run python -m omnimarket.nodes.node_platform_readiness --dry-run --output-format json"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan for the platform readiness module runner"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_platform_readiness --output-format json"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Focused platform readiness runner tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_platform_readiness.py -q"
+  - id: "dod-lint"
+    description: "Touched platform readiness runner paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_platform_readiness/__main__.py tests/test_golden_chain_platform_readiness.py"
+  - id: "dod-dry-run"
+    description: "Dry-run module runner emits deterministic PASS JSON without Kafka"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_platform_readiness --dry-run --output-format json"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke plan for the platform readiness module runner; no live deploy or runtime restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_platform_readiness --output-format json'"
