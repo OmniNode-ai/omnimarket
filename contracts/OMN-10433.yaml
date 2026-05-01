@@ -1,0 +1,50 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10433
+title: "Dispatch queue drainer dry-run compatibility"
+summary: "Accept the documented `--dry-run` flag on node_dispatch_queue_drainer so the merged omniclaude dispatch_queue_drainer skill can invoke the backing compile-only node without a CLI argument failure."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused dispatch queue drainer tests pass"
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_dispatch_queue_drainer -q"
+  - kind: "manual"
+    description: "Touched dispatch queue drainer paths pass lint"
+    command: "env -u PYTHONPATH uv run ruff check src/omnimarket/nodes/node_dispatch_queue_drainer tests/unit/nodes/node_dispatch_queue_drainer"
+  - kind: "manual"
+    description: "Isolated temp dogfood with --dry-run returns status=compiled and writes only temp artifacts"
+    command: "env -u PYTHONPATH uv run python -m omnimarket.nodes.node_dispatch_queue_drainer --queue-item-path <temp-item.yaml> --state-dir <temp-state> --tasks-dir <temp-tasks> --omni-home <temp-omni-home> --dry-run"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan for the compile-only dispatch queue drainer CLI"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_dispatch_queue_drainer --help"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Focused dispatch queue drainer tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_dispatch_queue_drainer -q"
+  - id: "dod-lint"
+    description: "Touched dispatch queue drainer paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run ruff check src/omnimarket/nodes/node_dispatch_queue_drainer tests/unit/nodes/node_dispatch_queue_drainer"
+  - id: "dod-dogfood"
+    description: "Isolated temp dogfood with --dry-run returns status=compiled and writes only temp artifacts"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run python -m omnimarket.nodes.node_dispatch_queue_drainer --queue-item-path <temp-item.yaml> --state-dir <temp-state> --tasks-dir <temp-tasks> --omni-home <temp-omni-home> --dry-run"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke plan for the compile-only dispatch queue drainer CLI; no live deploy or runtime restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_dispatch_queue_drainer --help'"
