@@ -1,12 +1,12 @@
 name: node_dod_sweep_orchestrator
 version: "1.0.0"
-description: "Orchestrates DoD (Definition of Done) sweep across tickets (STUB)"
+description: "Orchestrates targeted DoD receipt generation across tickets"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_dod_sweep_orchestrator: "omnimarket.nodes.node_dod_sweep_orchestrator"
 capabilities:
-  standalone: false
+  standalone: true
   full_runtime: false
   requires_network: false
 dependencies:
