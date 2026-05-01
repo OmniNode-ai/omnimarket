@@ -12,6 +12,10 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
+import re
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +31,18 @@ _ENQUEUE_MUTATION = (
     "{ mergeQueueEntry { position } } }"
 )
 
+_DEQUEUE_MUTATION = (
+    "mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) "
+    "{ pullRequest { number } } }"
+)
+
 _NO_MERGE_QUEUE_MARKERS = (
     "does not have a merge queue",
     "merge queue is not enabled",
     "merge_queue_not_enabled",
 )
+
+_MAX_QUEUE_STALL_ATTEMPTS_PER_HOUR = 2
 
 
 class GitHubMergeQueueAdapter:
@@ -41,6 +52,9 @@ class GitHubMergeQueueAdapter:
     showed a CLEAN auto-merge-enabled PR can remain outside the merge queue
     until `enqueuePullRequest` is called explicitly.
     """
+
+    def __init__(self, *, state_dir: Path | None = None) -> None:
+        self._state_dir = state_dir
 
     async def merge_pr(
         self,
@@ -72,6 +86,42 @@ class GitHubMergeQueueAdapter:
         await self._run(
             ["gh", "pr", "comment", str(pr_number), "--repo", repo, "--body", body],
             context=f"comment {repo}#{pr_number}",
+        )
+
+    async def remediate_queue_stall(self, repo: str, pr_number: int) -> str:
+        """Recover an AWAITING_CHECKS queue stall by dequeueing and requeueing."""
+        attempts = self._recent_queue_stall_attempts(repo, pr_number)
+        if len(attempts) >= _MAX_QUEUE_STALL_ATTEMPTS_PER_HOUR:
+            return (
+                f"queue stall remediation skipped for {repo}#{pr_number}: "
+                "2 attempts in the last hour"
+            )
+
+        attempt_number = len(attempts) + 1
+        self._record_queue_stall_attempt(repo, pr_number)
+        node_id = await self._fetch_pr_node_id(repo, pr_number)
+        try:
+            await self._dequeue_pr(node_id, repo, pr_number)
+            await self._enable_auto_merge(node_id, repo, pr_number)
+            enqueued, position, skipped_no_queue = await self._enqueue_pr(node_id)
+            if skipped_no_queue:
+                raise RuntimeError("repo has no merge queue")
+            if not enqueued:
+                raise RuntimeError(
+                    f"enqueuePullRequest did not requeue {repo}#{pr_number}"
+                )
+        except Exception:
+            if attempt_number >= _MAX_QUEUE_STALL_ATTEMPTS_PER_HOUR:
+                self._file_queue_stall_friction(repo, pr_number)
+                logger.critical(
+                    "PAGE_REQUIRED merge queue stall remediation failed twice: %s#%s",
+                    repo,
+                    pr_number,
+                )
+            raise
+        return (
+            f"queue stall remediated for {repo}#{pr_number}: "
+            f"dequeued, auto-merge enabled, requeued at position {position}"
         )
 
     async def _fetch_pr_node_id(self, repo: str, pr_number: int) -> str:
@@ -110,6 +160,20 @@ class GitHubMergeQueueAdapter:
                 f"query={_ENABLE_AUTO_MERGE_MUTATION}",
             ],
             context=f"enable auto-merge {repo}#{pr_number}",
+        )
+
+    async def _dequeue_pr(self, node_id: str, repo: str, pr_number: int) -> None:
+        await self._run(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-F",
+                f"id={node_id}",
+                "-f",
+                f"query={_DEQUEUE_MUTATION}",
+            ],
+            context=f"dequeue {repo}#{pr_number}",
         )
 
     async def _enqueue_pr(self, node_id: str) -> tuple[bool, int | None, bool]:
@@ -186,6 +250,89 @@ class GitHubMergeQueueAdapter:
                 f"{context} failed (exit {rc}): {detail[0] if detail else ''}"
             )
         return rc, stdout, stderr
+
+    def _queue_stall_state_file(self) -> Path:
+        base = self._state_dir
+        if base is None:
+            base = Path(os.environ.get("ONEX_STATE_DIR", ".onex_state"))
+        return base / "merge-sweep" / "queue-stall-remediation.json"
+
+    def _read_queue_stall_attempt_state(self) -> dict[str, list[str]]:
+        state_file = self._queue_stall_state_file()
+        try:
+            payload = json.loads(state_file.read_text())
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+
+        state: dict[str, list[str]] = {}
+        for key, value in payload.items():
+            if isinstance(key, str) and isinstance(value, list):
+                state[key] = [v for v in value if isinstance(v, str)]
+        return state
+
+    def _write_queue_stall_attempt_state(self, state: dict[str, list[str]]) -> None:
+        state_file = self._queue_stall_state_file()
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+
+    def _recent_queue_stall_attempts(self, repo: str, pr_number: int) -> list[str]:
+        cutoff = datetime.now(tz=UTC) - timedelta(hours=1)
+        attempts = self._read_queue_stall_attempt_state().get(
+            self._queue_stall_key(repo, pr_number), []
+        )
+        recent: list[str] = []
+        for raw in attempts:
+            try:
+                attempted_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if attempted_at > cutoff:
+                recent.append(raw)
+        return recent
+
+    def _record_queue_stall_attempt(self, repo: str, pr_number: int) -> None:
+        key = self._queue_stall_key(repo, pr_number)
+        state = self._read_queue_stall_attempt_state()
+        state[key] = [
+            *self._recent_queue_stall_attempts(repo, pr_number),
+            datetime.now(tz=UTC).isoformat(),
+        ]
+        self._write_queue_stall_attempt_state(state)
+
+    @staticmethod
+    def _queue_stall_key(repo: str, pr_number: int) -> str:
+        return f"{repo}#{pr_number}"
+
+    def _file_queue_stall_friction(self, repo: str, pr_number: int) -> None:
+        base = self._state_dir
+        if base is None:
+            base = Path(os.environ.get("ONEX_STATE_DIR", ".onex_state"))
+        friction_dir = base / "friction"
+        friction_dir.mkdir(parents=True, exist_ok=True)
+        slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", f"{repo}-{pr_number}").strip("-")
+        now = datetime.now(tz=UTC)
+        friction_file = (
+            friction_dir
+            / f"{now.date().isoformat()}-merge-queue-stall-remediation-{slug}.md"
+        )
+        friction_file.write_text(
+            "\n".join(
+                [
+                    f"# Merge Queue Stall Remediation: {repo}#{pr_number}",
+                    "",
+                    f"- repo: `{repo}`",
+                    f"- pr_number: `{pr_number}`",
+                    f"- recorded_at: `{now.isoformat()}`",
+                    "- friction_type: `merge_queue_check_suite_dispatch_stall`",
+                    "- escalation: `page_required`",
+                    "",
+                    "Two dequeue/requeue remediation attempts failed within one hour.",
+                    "",
+                ]
+            )
+        )
 
 
 __all__ = ["GitHubMergeQueueAdapter"]

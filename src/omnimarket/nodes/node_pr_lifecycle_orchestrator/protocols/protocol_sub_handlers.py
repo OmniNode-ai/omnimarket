@@ -114,6 +114,7 @@ class InventoryResult(BaseModel):
 
     prs: tuple[PrRecord, ...] = Field(default_factory=tuple)
     total_collected: int = Field(default=0, ge=0)
+    stuck_queue_prs: tuple[Any, ...] = Field(default_factory=tuple)
 
 
 class PrTriageResult(BaseModel):
