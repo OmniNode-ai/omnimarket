@@ -1,0 +1,40 @@
+packages:
+  - name: node_aislop_sweep
+    package: omnimarket
+    version: "1.0.0"
+    description: Deterministic AISLOP repository sweep node.
+    tags: ["aislop", "sweep", "quality", "market-skill"]
+    capabilities:
+      standalone: true
+      full_runtime: true
+      requires_network: false
+      requires_repo: true
+      requires_secrets: false
+      requires_docker: false
+      side_effect_class: read_only
+  - name: node_pr_lifecycle_orchestrator
+    package: omnimarket
+    version: "1.0.0"
+    description: Pull request lifecycle orchestration for inventory, triage, fixes, and merge decisions.
+    tags: ["pr", "merge-sweep", "orchestrator", "market-skill"]
+    capabilities:
+      standalone: true
+      full_runtime: true
+      requires_network: true
+      requires_repo: false
+      requires_secrets: true
+      requires_docker: false
+      side_effect_class: effectful
+  - name: node_ticket_pipeline
+    package: omnimarket
+    version: "1.0.0"
+    description: Per-ticket execution pipeline with deterministic phase planning and dispatch compilation.
+    tags: ["ticket", "pipeline", "workflow", "market-skill"]
+    capabilities:
+      standalone: true
+      full_runtime: true
+      requires_network: false
+      requires_repo: false
+      requires_secrets: false
+      requires_docker: false
+      side_effect_class: read_only

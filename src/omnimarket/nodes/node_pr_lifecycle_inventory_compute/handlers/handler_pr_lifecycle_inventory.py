@@ -27,6 +27,7 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecy
 )
 
 _STUCK_QUEUE_THRESHOLD_MINUTES = 30
+_QUEUE_STALL_THRESHOLD_MINUTES = 15
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +87,13 @@ class HandlerPrLifecycleInventory:
     def _detect_stuck_queue_prs(
         self, repo: str, pr_states: list[ModelPrState]
     ) -> list[ModelStuckQueueEntry]:
-        """Detect PRs that have been stuck in the merge queue past the threshold.
+        """Detect PRs that have been stuck in the merge queue past a threshold.
 
-        A PR is "stuck" if merge_state_status == "QUEUED" AND queue age > 30 minutes.
-        Wraps the mergeQueueEntry gh API call in try/except — repos without merge queue
-        support silently return an empty list.
+        Legacy stuck queue entries are PRs queued for more than 30 minutes.
+        Merge-group check-suite stalls are PRs with a mergeQueueEntry in
+        AWAITING_CHECKS for more than 15 minutes and zero merge_group runs for
+        the queue head SHA. Wraps gh API calls in try/except so repos without
+        merge queue support silently return an empty list.
 
         Args:
             repo: GitHub repo slug.
@@ -99,14 +102,14 @@ class HandlerPrLifecycleInventory:
         Returns:
             List of stuck queue entries (may be empty).
         """
-        queued_prs = [p for p in pr_states if p.merge_state_status == "QUEUED"]
-        if not queued_prs:
+        candidate_prs = [p for p in pr_states if p.state == "open"]
+        if not candidate_prs:
             return []
 
         stuck: list[ModelStuckQueueEntry] = []
         now = datetime.now(tz=UTC)
 
-        for pr in queued_prs:
+        for pr in candidate_prs:
             try:
                 result = subprocess.run(
                     [
@@ -132,11 +135,19 @@ class HandlerPrLifecycleInventory:
                 enqueued_at_raw = entry.get("enqueuedAt")
                 if not enqueued_at_raw:
                     continue
+                queue_state = str(entry.get("state") or "QUEUED")
                 enqueued_at = datetime.fromisoformat(
                     str(enqueued_at_raw).replace("Z", "+00:00")
                 )
                 age_minutes = (now - enqueued_at).total_seconds() / 60
-                if age_minutes > _STUCK_QUEUE_THRESHOLD_MINUTES:
+
+                if queue_state == "AWAITING_CHECKS":
+                    head_sha = self._extract_merge_queue_head_sha(entry)
+                    if not head_sha or age_minutes <= _QUEUE_STALL_THRESHOLD_MINUTES:
+                        continue
+                    merge_group_run_count = self._count_merge_group_runs(repo, head_sha)
+                    if merge_group_run_count != 0:
+                        continue
                     stuck.append(
                         ModelStuckQueueEntry(
                             pr_number=pr.pr_number,
@@ -144,6 +155,33 @@ class HandlerPrLifecycleInventory:
                             title=pr.title,
                             queue_entered_at=enqueued_at,
                             queue_age_minutes=age_minutes,
+                            queue_state=queue_state,
+                            head_sha=head_sha,
+                            merge_group_run_count=merge_group_run_count,
+                        )
+                    )
+                    logger.warning(
+                        "Merge queue check-suite dispatch stall detected: "
+                        "%s#%s head_sha=%s age=%.1f min merge_group_runs=0",
+                        repo,
+                        pr.pr_number,
+                        head_sha,
+                        age_minutes,
+                    )
+                    continue
+
+                if (
+                    pr.merge_state_status == "QUEUED"
+                    and age_minutes > _STUCK_QUEUE_THRESHOLD_MINUTES
+                ):
+                    stuck.append(
+                        ModelStuckQueueEntry(
+                            pr_number=pr.pr_number,
+                            repo=repo,
+                            title=pr.title,
+                            queue_entered_at=enqueued_at,
+                            queue_age_minutes=age_minutes,
+                            queue_state=queue_state,
                         )
                     )
                     logger.warning(
@@ -161,6 +199,53 @@ class HandlerPrLifecycleInventory:
                 )
 
         return stuck
+
+    @staticmethod
+    def _extract_merge_queue_head_sha(entry: dict[str, object]) -> str | None:
+        """Extract the queue head SHA from a gh mergeQueueEntry payload."""
+        for key in ("headSha", "headSHA", "headCommitOid", "headCommitOID"):
+            value = entry.get(key)
+            if isinstance(value, str) and value:
+                return value
+
+        head_commit = entry.get("headCommit")
+        if isinstance(head_commit, dict):
+            for key in ("oid", "id"):
+                value = head_commit.get(key)
+                if isinstance(value, str) and value:
+                    return value
+        return None
+
+    def _count_merge_group_runs(self, repo: str, head_sha: str) -> int | None:
+        """Count merge_group workflow runs for the queue head SHA."""
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/actions/runs?head_sha={head_sha}&event=merge_group",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.debug(
+                "Could not count merge_group runs for %s head_sha=%s: %s",
+                repo,
+                head_sha,
+                result.stderr.strip(),
+            )
+            return None
+        try:
+            payload = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            logger.debug(
+                "merge_group run count returned invalid JSON for %s head_sha=%s",
+                repo,
+                head_sha,
+            )
+            return None
+        total_count = payload.get("total_count", 0)
+        return total_count if isinstance(total_count, int) else None
 
     def _collect_pr_state(self, repo: str, pr_number: int) -> ModelPrState:
         """Collect state for a single PR via gh CLI.

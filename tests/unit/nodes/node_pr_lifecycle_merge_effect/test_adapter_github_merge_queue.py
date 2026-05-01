@@ -7,6 +7,8 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -143,3 +145,53 @@ class TestGitHubMergeQueueAdapter:
                 "body",
             ]
         ]
+
+    async def test_queue_stall_remediation_dequeues_and_requeues(
+        self,
+        subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]],
+        tmp_path: Path,
+    ) -> None:
+        calls = subprocess_recorder(
+            [
+                _FakeProc(stdout=json.dumps({"id": "PR_node_1"}).encode()),
+                _FakeProc(stdout=b'{"data":{"dequeuePullRequest":{}}}'),
+                _FakeProc(stdout=b'{"data":{"enablePullRequestAutoMerge":{}}}'),
+                _FakeProc(
+                    stdout=b'{"data":{"enqueuePullRequest":{"mergeQueueEntry":{"position":1}}}}'
+                ),
+            ]
+        )
+
+        adapter = GitHubMergeQueueAdapter(state_dir=tmp_path)
+        result = await adapter.remediate_queue_stall("OmniNode-ai/omnimarket", 42)
+
+        assert "queue stall remediated for OmniNode-ai/omnimarket#42" in result
+        assert calls[0][:4] == ["gh", "pr", "view", "42"]
+        assert any("dequeuePullRequest" in arg for arg in calls[1])
+        assert any("enablePullRequestAutoMerge" in arg for arg in calls[2])
+        assert any("enqueuePullRequest" in arg for arg in calls[3])
+
+    async def test_queue_stall_remediation_caps_two_attempts_per_hour(
+        self,
+        subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]],
+        tmp_path: Path,
+    ) -> None:
+        state_file = tmp_path / "merge-sweep" / "queue-stall-remediation.json"
+        state_file.parent.mkdir(parents=True)
+        state_file.write_text(
+            json.dumps(
+                {
+                    "OmniNode-ai/omnimarket#42": [
+                        datetime.now(tz=UTC).isoformat(),
+                        datetime.now(tz=UTC).isoformat(),
+                    ]
+                }
+            )
+        )
+        calls = subprocess_recorder([])
+
+        adapter = GitHubMergeQueueAdapter(state_dir=tmp_path)
+        result = await adapter.remediate_queue_stall("OmniNode-ai/omnimarket", 42)
+
+        assert result.endswith("2 attempts in the last hour")
+        assert calls == []
