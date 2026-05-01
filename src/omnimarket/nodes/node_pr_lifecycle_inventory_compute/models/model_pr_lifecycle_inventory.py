@@ -73,6 +73,9 @@ class ModelStuckQueueEntry(BaseModel):
     title: str
     queue_entered_at: datetime
     queue_age_minutes: float
+    queue_state: str = "QUEUED"
+    head_sha: str | None = None
+    merge_group_run_count: int | None = None
 
 
 class ModelPrInventoryOutput(BaseModel):
@@ -90,5 +93,8 @@ class ModelPrInventoryOutput(BaseModel):
     )
     stuck_queue_prs: list[ModelStuckQueueEntry] = Field(
         default_factory=list,
-        description="PRs that have been queued past the stuck threshold (default 30 min).",
+        description=(
+            "PRs queued past a stuck threshold or AWAITING_CHECKS without "
+            "merge_group runs past the dispatch-stall threshold."
+        ),
     )
