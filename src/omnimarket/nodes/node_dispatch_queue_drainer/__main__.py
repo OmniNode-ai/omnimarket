@@ -56,6 +56,14 @@ def main() -> None:
         default=None,
         help="Override OMNI_HOME repo root used for missing-repo checks.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Compatibility flag for skill dispatch. The drainer is already "
+            "compile-only and never spawns agents or moves queue files."
+        ),
+    )
 
     args = parser.parse_args()
     result = HandlerDispatchQueueDrainer().handle(

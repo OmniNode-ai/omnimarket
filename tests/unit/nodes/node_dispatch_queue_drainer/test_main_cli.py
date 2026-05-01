@@ -121,3 +121,46 @@ def test_cli_scans_limit_one(tmp_path: Path) -> None:
     payload = json.loads(completed.stdout)
     assert payload["status"] == "compiled"
     assert payload["queue_item_path"] == str(queue_item)
+
+
+@pytest.mark.unit
+def test_cli_accepts_documented_dry_run_flag(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    queue_dir = state_dir / "dispatch_queue"
+    queue_dir.mkdir(parents=True)
+    queue_item = queue_dir / "dry-run.yaml"
+    _write_queue_item(queue_item)
+    tasks_dir = tmp_path / "tasks"
+    (tasks_dir / "Omninode").mkdir(parents=True)
+    omni_home = tmp_path / "omni_home"
+    (omni_home / "omnimarket").mkdir(parents=True)
+
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_dispatch_queue_drainer",
+            "--queue-item-path",
+            str(queue_item),
+            "--state-dir",
+            str(state_dir),
+            "--tasks-dir",
+            str(tasks_dir),
+            "--omni-home",
+            str(omni_home),
+            "--dry-run",
+        ],
+        capture_output=True,
+        check=False,
+        cwd=_REPO_ROOT,
+        env=env,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "compiled"
+    assert payload["queue_item_path"] == str(queue_item)
