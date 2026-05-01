@@ -70,6 +70,16 @@ STATUS_VALIDATION_ERROR: Final[str] = "validation_error"
 STATUS_COMPUTE_ERROR: Final[str] = "compute_error"
 
 
+class HandlerQualityScoringCompute:
+    """Runtime auto-wiring adapter for quality scoring requests."""
+
+    def handle(
+        self,
+        input_data: ModelQualityScoringInput,
+    ) -> ModelQualityScoringOutput:
+        return handle_quality_scoring_compute(input_data)
+
+
 def handle_quality_scoring_compute(
     input_data: ModelQualityScoringInput,
 ) -> ModelQualityScoringOutput:
@@ -363,4 +373,4 @@ def _create_safe_error_output(
             )
 
 
-__all__ = ["handle_quality_scoring_compute"]
+__all__ = ["HandlerQualityScoringCompute", "handle_quality_scoring_compute"]

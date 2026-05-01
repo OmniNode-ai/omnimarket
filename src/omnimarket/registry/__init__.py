@@ -1,0 +1,1 @@
+"""Packaged OmniMarket registry index."""

@@ -12,6 +12,8 @@ node_version:
   patch: 0
 name: "node_quality_scoring_compute"
 node_type: "COMPUTE_GENERIC"
+runtime_profiles:
+  - intelligence
 description: >-
   Compute node for scoring code quality across multiple dimensions. Calculates maintainability, complexity,
   documentation, and ONEX compliance scores.
@@ -73,9 +75,11 @@ handler_routing:
   handlers:
     - operation: "score_quality"
       handler:
-        function: "handle_quality_scoring_compute"
-        module: "omnimarket.nodes.node_quality_scoring_compute.handlers"
-        type: "sync"
+        name: "HandlerQualityScoringCompute"
+        module: "omnimarket.nodes.node_quality_scoring_compute.handlers.handler_compute"
+      event_model:
+        name: "ModelQualityScoringInput"
+        module: "omnimarket.nodes.node_quality_scoring_compute.models"
 dependencies: []
 # Future dependency (when #13 is implemented):
 # - name: "quality_analyzer"
