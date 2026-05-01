@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
@@ -94,6 +95,57 @@ class InmemoryCheckTarget:
         return self._restart_result
 
 
+AlertEmitter = Callable[[ModelWatchdogCheckResult], None]
+
+
+class ConsecutiveFailurePolicy:
+    """Emit DOWN alerts only after a per-target consecutive failure threshold."""
+
+    def __init__(
+        self,
+        threshold: int = 2,
+        emit_alert: AlertEmitter | None = None,
+    ) -> None:
+        if threshold < 1:
+            raise ValueError("threshold must be >= 1")
+        self._threshold = threshold
+        self._emit_alert = emit_alert
+        self._fail_streaks: dict[str, int] = {}
+
+    @property
+    def threshold(self) -> int:
+        return self._threshold
+
+    def evaluate(
+        self,
+        result: ModelWatchdogCheckResult,
+        *,
+        alert_on_degraded: bool,
+        dry_run: bool,
+    ) -> bool:
+        """Update target streak state and return whether an alert was emitted."""
+        if dry_run:
+            return False
+
+        if result.status == EnumCheckStatus.DOWN:
+            fail_streak = self._fail_streaks.get(result.target, 0) + 1
+            self._fail_streaks[result.target] = fail_streak
+            if fail_streak == self._threshold:
+                self._emit(result)
+                return True
+            return False
+
+        self._fail_streaks.pop(result.target, None)
+        if result.status == EnumCheckStatus.DEGRADED and alert_on_degraded:
+            self._emit(result)
+            return True
+        return False
+
+    def _emit(self, result: ModelWatchdogCheckResult) -> None:
+        if self._emit_alert is not None:
+            self._emit_alert(result)
+
+
 def _worst_status(statuses: list[EnumCheckStatus]) -> EnumCheckStatus:
     """Return the worst (highest severity) status from a list."""
     if not statuses:
@@ -106,6 +158,12 @@ class HandlerProcessWatchdog:
 
     Pure logic with injectable check targets for testability.
     """
+
+    def __init__(
+        self,
+        alert_policy: ConsecutiveFailurePolicy | None = None,
+    ) -> None:
+        self._alert_policy = alert_policy or ConsecutiveFailurePolicy()
 
     def run_checks(
         self,
@@ -140,9 +198,10 @@ class HandlerProcessWatchdog:
                     restart_succeeded=restart_ok,
                 )
 
-            # Count alerts for DOWN and optionally DEGRADED
-            if result.status == EnumCheckStatus.DOWN or (
-                result.status == EnumCheckStatus.DEGRADED and command.alert_on_degraded
+            if self._alert_policy.evaluate(
+                result,
+                alert_on_degraded=command.alert_on_degraded,
+                dry_run=command.dry_run,
             ):
                 alerts_emitted += 1
 
@@ -219,6 +278,7 @@ class HandlerProcessWatchdog:
 
 __all__: list[str] = [
     "CheckTarget",
+    "ConsecutiveFailurePolicy",
     "HandlerProcessWatchdog",
     "InmemoryCheckTarget",
 ]
