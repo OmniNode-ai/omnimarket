@@ -50,6 +50,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: event-registry-drift
+        name: Event registry drift validator
+        language: system
+        entry: uv run python -m omnimarket.validators.event_registry_drift
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_emit_daemon/(event_registry\.py|registries/topics\.yaml|models/.*\.py)|src/omnimarket/validators/event_registry_drift\.py|scripts/validation/event_registry_drift_baseline\.txt)$
+        stages: [pre-commit]
+
       # OMN-8611: entry-point format check (fast, triggers on pyproject.toml changes)
       # Validates that all [project.entry-points."onex.nodes"] entries are valid
       # dotted module paths. Does not verify filesystem — CI runtime_sweep does that.

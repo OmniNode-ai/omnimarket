@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10127
+title: "Add event registry drift validator"
+summary: "Add a blocking validator that compares omniclaude hook event TopicBase fan-out topics with the omnimarket emit daemon registry."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - topics
+  - events
+evidence_requirements:
+  - kind: tests
+    description: "Validator unit tests prove both drift directions are detected"
+    command: "uv run pytest tests/validators/test_event_registry_drift.py -q"
+  - kind: manual
+    description: "Validator passes against local omniclaude and omnimarket with checked-in baseline"
+    command: "uv run python -m omnimarket.validators.event_registry_drift"
+  - kind: manual
+    description: "Changed validator files pass ruff and mypy strict"
+    command: "uv run ruff check src/omnimarket/validators tests/validators/test_event_registry_drift.py && uv run ruff format --check src/omnimarket/validators tests/validators/test_event_registry_drift.py && uv run mypy src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py --strict --show-error-codes"
+  - kind: manual
+    description: "Pre-commit hook set passes on touched files with OMNIBASE_INFRA_PATH"
+    command: "OMNIBASE_INFRA_PATH=/Users/jonah/Code/omni_home/omnibase_infra pre-commit run --files .github/workflows/ci.yml .pre-commit-config.yaml scripts/validation/event_registry_drift_baseline.txt src/omnimarket/validators/__init__.py src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-validator-tests
+    description: "Validator unit tests prove both drift directions are detected"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/validators/test_event_registry_drift.py -q"
+  - id: dod-validator-local-run
+    description: "Validator passes against local omniclaude and omnimarket with checked-in baseline"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run python -m omnimarket.validators.event_registry_drift"
+  - id: dod-validator-lint-type
+    description: "Changed validator files pass ruff and mypy strict"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run ruff check src/omnimarket/validators tests/validators/test_event_registry_drift.py && uv run ruff format --check src/omnimarket/validators tests/validators/test_event_registry_drift.py && uv run mypy src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py --strict --show-error-codes"
+  - id: dod-validator-precommit
+    description: "Pre-commit hook set passes on touched files with OMNIBASE_INFRA_PATH"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "OMNIBASE_INFRA_PATH=/Users/jonah/Code/omni_home/omnibase_infra pre-commit run --files .github/workflows/ci.yml .pre-commit-config.yaml scripts/validation/event_registry_drift_baseline.txt src/omnimarket/validators/__init__.py src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py"
