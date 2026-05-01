@@ -58,3 +58,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_lifecycle_orchestrator --payload '{\"correlation_id\":\"11111111-1111-4111-8111-111111111111\",\"run_id\":\"merge-sweep-omn-9288-proof\",\"dry_run\":true,\"inventory_only\":true,\"repos\":\"OmniNode-ai/omnimarket\"}' --timeout-ms 30000 --compile-only"
+  - id: "dod-deploy-gate"
+    description: "Runtime-impacting PR lifecycle changes are deploy-gated; no live deploy or restart performed for this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy gate evidence: no live deploy/restart performed; post-merge validation is compile-only pr_lifecycle_orchestrator dry-run inventory request"
