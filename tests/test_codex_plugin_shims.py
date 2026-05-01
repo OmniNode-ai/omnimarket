@@ -9,6 +9,18 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "onex"
+EXPECTED_CODEX_SKILLS = {
+    "aislop-sweep",
+    "bus-audit",
+    "coderabbit-triage",
+    "gap",
+    "local-review",
+    "merge-sweep",
+    "pr-polish",
+    "session-bootstrap",
+    "session-orchestrator",
+    "ticket-pipeline",
+}
 
 
 def _frontmatter(path: Path) -> dict[str, str]:
@@ -45,16 +57,7 @@ def test_codex_plugin_manifest_points_to_skills() -> None:
 
 def test_codex_skills_have_required_frontmatter() -> None:
     skill_paths = sorted((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
-    assert {path.parent.name for path in skill_paths} == {
-        "aislop-sweep",
-        "coderabbit-triage",
-        "local-review",
-        "merge-sweep",
-        "pr-polish",
-        "session-bootstrap",
-        "session-orchestrator",
-        "ticket-pipeline",
-    }
+    assert {path.parent.name for path in skill_paths} == EXPECTED_CODEX_SKILLS
 
     for path in skill_paths:
         data = _frontmatter(path)
@@ -98,6 +101,16 @@ def test_codex_shims_remain_dispatch_only() -> None:
         elif path.parent.name == "aislop-sweep":
             assert '--command-name "aislop_sweep"' in text
             assert "--timeout-ms 120000" in text
+        elif path.parent.name == "bus-audit":
+            assert '--command-name "bus_audit_compute"' in text
+            assert "--timeout-ms 30000" in text
+            assert "registry_path" in text
+            assert "contract_roots" in text
+        elif path.parent.name == "gap":
+            assert '--command-name "gap_compute"' in text
+            assert "--timeout-ms 30000" in text
+            assert "subcommand" in text
+            assert "repo_roots" in text
         elif path.parent.name == "pr-polish":
             assert '--command-name "pr_polish"' in text
             assert "--timeout-ms 300000" in text
@@ -132,16 +145,7 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             "*/SKILL.md"
         )
     )
-    assert {path.parent.name for path in source_skill_paths} == {
-        "aislop-sweep",
-        "coderabbit-triage",
-        "local-review",
-        "merge-sweep",
-        "pr-polish",
-        "session-bootstrap",
-        "session-orchestrator",
-        "ticket-pipeline",
-    }
+    assert {path.parent.name for path in source_skill_paths} == EXPECTED_CODEX_SKILLS
 
     for path in source_skill_paths:
         text = path.read_text()
@@ -169,6 +173,16 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             assert "--timeout-ms 300000" in text
             assert "run_id" in text
             assert "filesystem-safe identifier" in text
+        elif path.parent.name == "bus-audit":
+            assert '--command-name "bus_audit_compute"' in text
+            assert "--timeout-ms 30000" in text
+            assert "registry_path" in text
+            assert "contract_roots" in text
+        elif path.parent.name == "gap":
+            assert '--command-name "gap_compute"' in text
+            assert "--timeout-ms 30000" in text
+            assert "subcommand" in text
+            assert "repo_roots" in text
         elif path.parent.name == "pr-polish":
             assert '--command-name "pr_polish"' in text
             assert "--timeout-ms 300000" in text

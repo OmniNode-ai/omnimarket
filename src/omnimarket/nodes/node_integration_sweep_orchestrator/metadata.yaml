@@ -1,12 +1,12 @@
 name: node_integration_sweep_orchestrator
 version: "1.0.0"
-description: "Orchestrates integration sweep across nodes and services (STUB)"
+description: "Writes deterministic integration sweep artifacts"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_integration_sweep_orchestrator: "omnimarket.nodes.node_integration_sweep_orchestrator"
 capabilities:
-  standalone: false
+  standalone: true
   full_runtime: false
   requires_network: false
 dependencies:

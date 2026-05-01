@@ -40,15 +40,6 @@ STUB_NODE_CASES: tuple[StubNodeCase, ...] = (
         result_class="ModelBusAuditComputeResult",
     ),
     StubNodeCase(
-        node_name="node_dod_sweep_orchestrator",
-        handler_module="omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator",
-        handler_class="HandlerDodSweepOrchestrator",
-        request_module="omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request",
-        request_class="ModelDodSweepOrchestratorRequest",
-        result_module="omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_result",
-        result_class="ModelDodSweepOrchestratorResult",
-    ),
-    StubNodeCase(
         node_name="node_env_parity_compute",
         handler_module="omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute",
         handler_class="HandlerEnvParityCompute",
@@ -56,15 +47,6 @@ STUB_NODE_CASES: tuple[StubNodeCase, ...] = (
         request_class="ModelEnvParityComputeRequest",
         result_module="omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_result",
         result_class="ModelEnvParityComputeResult",
-    ),
-    StubNodeCase(
-        node_name="node_integration_sweep_orchestrator",
-        handler_module="omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integration_sweep_orchestrator",
-        handler_class="HandlerIntegrationSweepOrchestrator",
-        request_module="omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request",
-        request_class="ModelIntegrationSweepOrchestratorRequest",
-        result_module="omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_result",
-        result_class="ModelIntegrationSweepOrchestratorResult",
     ),
     StubNodeCase(
         node_name="node_pr_watch_orchestrator",
