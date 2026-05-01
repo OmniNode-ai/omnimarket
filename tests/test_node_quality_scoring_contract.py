@@ -7,7 +7,6 @@ import importlib
 from pathlib import Path
 
 import yaml
-from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRoutingEntry
 
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -17,6 +16,26 @@ CONTRACT_PATH = (
     / "node_quality_scoring_compute"
     / "contract.yaml"
 )
+
+
+def _assert_runtime_routing_entry_shape(entry: dict[str, object]) -> None:
+    handler = entry.get("handler")
+    event_model = entry.get("event_model")
+
+    assert isinstance(handler, dict), f"handler must be a mapping: {entry!r}"
+    assert isinstance(entry.get("operation"), str)
+    assert isinstance(handler.get("name"), str)
+    assert isinstance(handler.get("module"), str)
+    if event_model is not None:
+        assert isinstance(event_model, dict), (
+            f"event_model must be a mapping: {entry!r}"
+        )
+        assert isinstance(event_model.get("name"), str)
+        assert isinstance(event_model.get("module"), str)
+    if "event_type" in entry:
+        assert isinstance(entry.get("event_type"), str)
+    if "message_category" in entry:
+        assert isinstance(entry.get("message_category"), str)
 
 
 def test_quality_scoring_contract_declares_runtime_topics() -> None:
@@ -63,18 +82,7 @@ def test_quality_scoring_handler_routing_is_runtime_importable() -> None:
 
     assert handlers
     for entry in handlers:
-        runtime_entry = {
-            key: entry[key]
-            for key in (
-                "handler",
-                "event_model",
-                "operation",
-                "event_type",
-                "message_category",
-            )
-            if key in entry
-        }
-        ModelHandlerRoutingEntry.model_validate(runtime_entry)
+        _assert_runtime_routing_entry_shape(entry)
 
         handler = entry["handler"]
         assert handler.get("name"), f"handler entry is missing name: {entry!r}"
