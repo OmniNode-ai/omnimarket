@@ -1,0 +1,26 @@
+---
+name: ab_inference_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Calls an LLM endpoint and returns measured token usage + response.
+  Supports openai_compatible and anthropic protocols.
+
+handler:
+  module: omnimarket.nodes.node_ab_inference_effect.handlers.handler_ab_inference_effect
+  class: HandlerAbInferenceEffect
+  input_model: omnimarket.nodes.node_ab_inference_effect.models.model_inference_request.ModelInferenceRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ab-inference-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ab-inference-completed.v1

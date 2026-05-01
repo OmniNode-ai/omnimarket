@@ -1,0 +1,24 @@
+name: node_ab_inference_effect
+version: "1.0.0"
+description: "AB compare inference effect node -- calls an LLM endpoint and returns measured token usage"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ab_inference_effect: "omnimarket.nodes.node_ab_inference_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "ab-compare", "inference", "llm", "tokens"]
+pack: "workflow"
+display_name: "AB Inference Effect"
+node_role: "effect"
