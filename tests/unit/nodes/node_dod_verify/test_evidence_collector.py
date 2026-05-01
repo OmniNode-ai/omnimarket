@@ -987,6 +987,208 @@ class TestEvidenceCollectorCwd:
 
 
 @pytest.mark.unit
+class TestPlaceholderSubstitution:
+    """OMN-10476: check_value placeholder substitution before probe execution."""
+
+    def test_ticket_id_shell_style_substituted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """${TICKET_ID} in check_value is substituted with the active ticket id."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "TICKET_ID substitution",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": "echo ${TICKET_ID}",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert "OMN-TEST" in (results[0].message or "")
+
+    def test_pr_and_repo_python_style_substituted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """{pr} and {repo} placeholders are substituted from env vars."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        monkeypatch.setenv("PR_NUMBER", "42")
+        monkeypatch.setenv("REPO", "OmniNode-ai/omnibase_core")
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "pr and repo substitution",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": "echo {pr} {repo}",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        msg = results[0].message or ""
+        assert "42" in msg
+        assert "omnibase_core" in msg
+
+    def test_pr_shell_style_substituted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """${PR_NUMBER} and ${REPO} shell-style placeholders are substituted."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        monkeypatch.setenv("PR_NUMBER", "99")
+        monkeypatch.setenv("REPO", "OmniNode-ai/omnimarket")
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "shell-style PR and REPO",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": "echo ${PR_NUMBER} ${REPO}",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        msg = results[0].message or ""
+        assert "99" in msg
+        assert "omnimarket" in msg
+
+    def test_missing_pr_number_errors_gracefully(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When {pr} is in command but PR_NUMBER is unset and gh finds nothing, FAIL with clear message."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        monkeypatch.delenv("PR_NUMBER", raising=False)
+        monkeypatch.delenv("REPO", raising=False)
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "unresolvable pr placeholder",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            # Use a ticket id that won't have a real merged PR in any local gh context
+                            "check_value": "gh pr view {pr} --repo OmniNode-ai/omnimarket --json state",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+
+        # Patch _lookup_pr_for_ticket to return empty (simulates no merged PR found)
+        def _no_pr(ticket_id: str) -> str:
+            return ""
+
+        collector._lookup_pr_for_ticket = _no_pr  # type: ignore[method-assign]
+
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        msg = (results[0].message or "").lower()
+        assert "pr number" in msg or "cannot resolve" in msg
+
+    def test_occ_contract_injects_occ_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Commands from OCC contracts run with cwd set to onex_change_control repo."""
+        occ_dir = tmp_path / "onex_change_control"
+        occ_dir.mkdir()
+        contracts_dir = occ_dir / "contracts"
+        contracts_dir.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        # Write contract inside OCC contracts dir
+        contract = {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-TEST",
+            "dod_evidence": [
+                {
+                    "id": "dod-001",
+                    "description": "pwd reflects OCC dir",
+                    "checks": [{"check_type": "command", "command": "pwd"}],
+                }
+            ],
+        }
+        contract_path = contracts_dir / "OMN-TEST.yaml"
+        import yaml
+
+        contract_path.write_text(yaml.dump(contract), encoding="utf-8")
+
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(contract_path),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        expected_cwd = str(Path(occ_dir).resolve())
+        assert expected_cwd in (results[0].message or "")
+
+    def test_non_occ_contract_does_not_inject_occ_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Commands from non-OCC contracts do NOT get occ cwd injection."""
+        # Set up an OCC dir to prove cwd injection is NOT used when contract is elsewhere
+        occ_dir = tmp_path / "onex_change_control"
+        occ_dir.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        # Contract lives outside onex_change_control
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "pwd does not point to OCC",
+                    "checks": [{"check_type": "command", "command": "pwd"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        # cwd should NOT be occ_dir
+        occ_cwd = str(Path(occ_dir).resolve())
+        assert occ_cwd not in (results[0].message or "")
+
+
+@pytest.mark.unit
 class TestHandlerWithCollector:
     """Integration tests: handler auto-collects evidence when not provided."""
 
