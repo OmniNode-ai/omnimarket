@@ -13,6 +13,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_platform_readiness.__main__ import (
+    main as readiness_cli_main,
+)
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
     DimensionInput,
     NodePlatformReadiness,
@@ -22,6 +25,7 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
 
 CMD_TOPIC = "onex.cmd.omnimarket.platform-readiness-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.platform-readiness-completed.v1"
+DRY_RUN_TIMESTAMP = "2025-01-01T00:00:00Z"
 
 
 @pytest.mark.unit
@@ -220,6 +224,50 @@ class TestPlatformReadinessGoldenChain:
         assert payload["overall"] == "PASS"
         assert len(payload["dimensions"]) == 7
         assert payload["blockers"] == []
+        assert payload["timestamp"] == DRY_RUN_TIMESTAMP
+
+    def test_module_cli_dry_run_output_is_deterministic(self) -> None:
+        """Dry-run output should be stable enough for receipt evidence."""
+        command = [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_platform_readiness",
+            "--dry-run",
+            "--output-format",
+            "json",
+        ]
+
+        first = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        second = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        assert first.stdout == second.stdout
+
+    def test_cli_runtime_value_error_is_not_reported_as_bad_dimension(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only dimension validation ValueErrors should become CLI usage errors."""
+
+        def raise_runtime_value_error(_self: object, _request: object) -> object:
+            raise ValueError("handler failure")
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_platform_readiness.__main__."
+            "NodePlatformReadiness.handle",
+            raise_runtime_value_error,
+        )
+
+        with pytest.raises(ValueError, match="handler failure"):
+            readiness_cli_main(["--dry-run", "--dimension", "plugin_version"])
 
     def test_module_cli_filters_dimension(self) -> None:
         """The module runner can narrow the readiness report to one dimension."""

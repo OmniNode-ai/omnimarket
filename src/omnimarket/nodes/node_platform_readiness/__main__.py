@@ -17,6 +17,8 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
     ReadinessStatus,
 )
 
+DRY_RUN_NOW = datetime(2025, 1, 1, tzinfo=UTC)
+
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="node_platform_readiness")
@@ -175,17 +177,15 @@ def _render_markdown(result: PlatformReadinessResult) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    now = datetime.now(UTC)
+    now = DRY_RUN_NOW if args.dry_run else datetime.now(UTC)
     request = PlatformReadinessRequest(
         dimensions=_dry_run_dimensions(now) if args.dry_run else [],
         now=now,
     )
 
+    raw_result = NodePlatformReadiness().handle(request)
     try:
-        result = _filter_result(
-            NodePlatformReadiness().handle(request),
-            _selected_dimensions(args),
-        )
+        result = _filter_result(raw_result, _selected_dimensions(args))
     except ValueError as exc:
         print(str(exc), file=sys.stderr)  # noqa: T201
         return 2
