@@ -1,0 +1,77 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10131
+title: "Add consecutive-failure alerting policy to watchdog scheduler"
+summary: "Add a stateful consecutive failure policy so process watchdog DOWN alerts emit only after per-target threshold crossings."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Consecutive failure alert policy unit tests pass"
+    command: "uv run pytest tests/unit/nodes/node_process_watchdog/test_consecutive_failure_alert.py -q"
+  - kind: "manual"
+    description: "Full node_process_watchdog unit suite passes"
+    command: "uv run pytest tests/unit/nodes/node_process_watchdog -q"
+  - kind: "manual"
+    description: "Process watchdog golden-chain tests pass"
+    command: "uv run pytest tests/test_golden_chain_process_watchdog.py -q"
+  - kind: "manual"
+    description: "Touched watchdog alerting paths pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_process_watchdog/handlers/handler_process_watchdog.py tests/unit/nodes/node_process_watchdog/test_consecutive_failure_alert.py tests/test_golden_chain_process_watchdog.py"
+  - kind: "manual"
+    description: "Touched watchdog alerting paths are formatted"
+    command: "uv run ruff format --check src/omnimarket/nodes/node_process_watchdog/handlers/handler_process_watchdog.py tests/unit/nodes/node_process_watchdog/test_consecutive_failure_alert.py tests/test_golden_chain_process_watchdog.py"
+  - kind: "manual"
+    description: "Repo-local contract YAML parses"
+    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10131.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan for watchdog consecutive failure policy imports; no live deploy or runtime restart performed in this PR"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog import ConsecutiveFailurePolicy; print('deploy smoke ok', ConsecutiveFailurePolicy.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-consecutive-failure-tests"
+    description: "Consecutive failure alert policy unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_process_watchdog/test_consecutive_failure_alert.py -q"
+  - id: "dod-watchdog-tests"
+    description: "Full node_process_watchdog unit suite passes"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_process_watchdog -q"
+  - id: "dod-golden-chain-tests"
+    description: "Process watchdog golden-chain tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_process_watchdog.py -q"
+  - id: "dod-lint"
+    description: "Touched watchdog alerting paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_process_watchdog/handlers/handler_process_watchdog.py tests/unit/nodes/node_process_watchdog/test_consecutive_failure_alert.py tests/test_golden_chain_process_watchdog.py"
+  - id: "dod-format"
+    description: "Touched watchdog alerting paths are formatted"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff format --check src/omnimarket/nodes/node_process_watchdog/handlers/handler_process_watchdog.py tests/unit/nodes/node_process_watchdog/test_consecutive_failure_alert.py tests/test_golden_chain_process_watchdog.py"
+  - id: "dod-contract-parse"
+    description: "Repo-local contract YAML parses"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10131.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - id: "dod-deploy-smoke"
+    description: "Post-merge deploy smoke plan for watchdog consecutive failure policy imports; no live deploy or runtime restart performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog import ConsecutiveFailurePolicy; print('deploy smoke ok', ConsecutiveFailurePolicy.__name__)\""
