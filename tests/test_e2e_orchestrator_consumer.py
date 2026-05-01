@@ -76,11 +76,12 @@ class TestWriteEvidence:
 class TestCheckPrCi:
     """_check_pr_ci parses gh pr checks output correctly."""
 
-    def test_unparseable_pr_ref_returns_green(self) -> None:
+    def test_unparseable_pr_ref_fails_closed(self) -> None:
         all_green, any_failed, summary = _check_pr_ci("not-a-valid-ref")
-        assert all_green is True
+        assert all_green is False
         assert any_failed is False
         assert summary["status"] == "unparseable"
+        assert summary["error"] == "invalid pr_ref format"
 
     def test_all_success_checks_returns_green(self) -> None:
         checks_json = json.dumps(

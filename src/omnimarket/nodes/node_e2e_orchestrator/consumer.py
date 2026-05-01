@@ -75,8 +75,16 @@ def _check_pr_ci(pr_ref: str) -> tuple[bool, bool, dict[str, Any]]:
     """
     parts = pr_ref.split("#")
     if len(parts) != 2:
-        logger.warning("unparseable pr_ref %r, skipping", pr_ref)
-        return True, False, {"pr_ref": pr_ref, "status": "unparseable"}
+        logger.warning("unparseable pr_ref %r", pr_ref)
+        return (
+            False,
+            False,
+            {
+                "pr_ref": pr_ref,
+                "status": "unparseable",
+                "error": "invalid pr_ref format",
+            },
+        )
 
     repo, pr_num = parts[0].strip(), parts[1].strip()
     try:
@@ -140,8 +148,10 @@ async def _poll_ci_until_green(
         all_green = True
         any_failed = False
 
-        for pr_ref in pr_refs:
-            green, failed, summary = _check_pr_ci(pr_ref)
+        results = await asyncio.gather(
+            *(asyncio.to_thread(_check_pr_ci, pr_ref) for pr_ref in pr_refs)
+        )
+        for green, failed, summary in results:
             all_checks.append(summary)
             if failed:
                 any_failed = True
@@ -292,7 +302,7 @@ async def _run_consumer(
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
         auto_offset_reset="latest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
     )
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
@@ -334,8 +344,10 @@ async def _run_consumer(
                         ci_timeout=ci_timeout,
                         ci_interval=ci_interval,
                     )
+                    await consumer.commit()
                 elif topic == TOPIC_PR_LIFECYCLE_COMPLETED:
                     await _handle_merge_completed(raw)
+                    await consumer.commit()
                 else:
                     logger.warning("[E2E] unexpected topic %s", topic)
             except Exception as exc:

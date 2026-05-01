@@ -100,6 +100,16 @@ async def _invoke_pr_lifecycle(cmd: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_failure_payload(cmd: dict[str, Any], exc: Exception) -> dict[str, Any]:
+    return {
+        "correlation_id": str(cmd.get("correlation_id", "")),
+        "run_id": str(cmd.get("run_id", "")),
+        "phase": "pr_lifecycle",
+        "error": str(exc),
+        "failed_at": datetime.now(tz=UTC).isoformat(),
+    }
+
+
 async def _run_consumer(broker: str, group_id: str) -> None:
     try:
         from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -113,7 +123,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
         auto_offset_reset="latest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
     )
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
@@ -157,6 +167,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
             try:
                 payload = await _invoke_pr_lifecycle(cmd)
                 await producer.send_and_wait(TOPIC_PR_LIFECYCLE_COMPLETED, payload)
+                await consumer.commit()
                 logger.info(
                     "pr-lifecycle-completed emitted correlation_id=%s "
                     "prs_merged=%d prs_fixed=%d final_state=%s",
@@ -166,14 +177,9 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                     payload["final_state"],
                 )
             except Exception as exc:
-                failure: dict[str, Any] = {
-                    "correlation_id": correlation_id,
-                    "run_id": cmd.get("run_id", ""),
-                    "phase": "pr_lifecycle",
-                    "error": str(exc),
-                    "failed_at": datetime.now(tz=UTC).isoformat(),
-                }
+                failure = _build_failure_payload(cmd, exc)
                 await producer.send_and_wait(TOPIC_PR_LIFECYCLE_FAILED, failure)
+                await consumer.commit()
                 logger.error(
                     "pr-lifecycle failed correlation_id=%s: %s",
                     correlation_id,

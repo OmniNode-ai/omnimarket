@@ -10,6 +10,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.consumer import (
     TOPIC_PR_LIFECYCLE_COMPLETED,
     TOPIC_PR_LIFECYCLE_FAILED,
     TOPIC_PR_LIFECYCLE_START,
+    _build_failure_payload,
     _parse_command,
 )
 
@@ -100,15 +101,10 @@ class TestPrLifecycleParseCommand:
         assert cmd1["correlation_id"] != cmd2["correlation_id"]
 
     def test_failure_event_has_required_fields(self) -> None:
-        from datetime import UTC, datetime
-
-        failure = {
-            "correlation_id": "test-corr",
-            "run_id": "run-abc",
-            "phase": "pr_lifecycle",
-            "error": "handler raised",
-            "failed_at": datetime.now(tz=UTC).isoformat(),
-        }
+        failure = _build_failure_payload(
+            {"correlation_id": "test-corr", "run_id": "run-abc"},
+            RuntimeError("handler raised"),
+        )
         assert failure["correlation_id"] == "test-corr"
         assert "error" in failure
         assert "run_id" in failure

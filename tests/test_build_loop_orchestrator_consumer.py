@@ -10,6 +10,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.consumer import (
     TOPIC_BUILD_LOOP_COMPLETED,
     TOPIC_BUILD_LOOP_FAILED,
     TOPIC_BUILD_LOOP_START,
+    _build_failure_payload,
     _parse_command,
 )
 
@@ -79,16 +80,11 @@ class TestBuildLoopParseCommand:
         assert cmd["dry_run"] is True
 
     def test_failure_event_shape(self) -> None:
-        """Verify a failure payload dict would have the required fields."""
+        """Verify the consumer failure payload helper has the required fields."""
         correlation_id = "test-corr-456"
-        from datetime import UTC, datetime
 
-        failure = {
-            "correlation_id": correlation_id,
-            "phase": "build_loop",
-            "error": "something went wrong",
-            "failed_at": datetime.now(tz=UTC).isoformat(),
-        }
+        failure = _build_failure_payload(correlation_id, RuntimeError("boom"))
+
         assert failure["correlation_id"] == correlation_id
         assert "error" in failure
         assert "phase" in failure

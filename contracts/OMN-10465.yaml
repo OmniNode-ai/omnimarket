@@ -49,4 +49,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python - <<'PY'\nfrom omnimarket.nodes.node_build_loop_orchestrator.consumer import COMMAND_TOPIC as BUILD_LOOP_COMMAND_TOPIC\nfrom omnimarket.nodes.node_pr_lifecycle_orchestrator.consumer import COMMAND_TOPIC as PR_LIFECYCLE_COMMAND_TOPIC\nfrom omnimarket.nodes.node_e2e_orchestrator.consumer import BUILD_COMPLETED_TOPIC\nprint('deploy smoke ok', BUILD_LOOP_COMMAND_TOPIC, PR_LIFECYCLE_COMMAND_TOPIC, BUILD_COMPLETED_TOPIC)\nPY"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python - <<'PY'\nfrom omnimarket.nodes.node_build_loop_orchestrator.consumer import TOPIC_BUILD_LOOP_START\nfrom omnimarket.nodes.node_pr_lifecycle_orchestrator.consumer import TOPIC_PR_LIFECYCLE_START\nfrom omnimarket.nodes.node_e2e_orchestrator.consumer import TOPIC_BUILD_COMPLETED\nprint('deploy smoke ok', TOPIC_BUILD_LOOP_START, TOPIC_PR_LIFECYCLE_START, TOPIC_BUILD_COMPLETED)\nPY"

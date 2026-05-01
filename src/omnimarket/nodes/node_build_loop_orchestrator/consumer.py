@@ -111,6 +111,15 @@ async def _invoke_build_loop(cmd: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_failure_payload(correlation_id: str, exc: Exception) -> dict[str, Any]:
+    return {
+        "correlation_id": correlation_id,
+        "phase": "build_loop",
+        "error": str(exc),
+        "failed_at": datetime.now(tz=UTC).isoformat(),
+    }
+
+
 async def _run_consumer(broker: str, group_id: str) -> None:
     try:
         from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -124,7 +133,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
         auto_offset_reset="latest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
     )
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
@@ -169,6 +178,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
             try:
                 payload = await _invoke_build_loop(cmd)
                 await producer.send_and_wait(TOPIC_BUILD_LOOP_COMPLETED, payload)
+                await consumer.commit()
                 logger.info(
                     "build-loop-completed emitted correlation_id=%s "
                     "cycles_completed=%d total_dispatched=%d",
@@ -177,13 +187,9 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                     payload["total_tickets_dispatched"],
                 )
             except Exception as exc:
-                failure: dict[str, Any] = {
-                    "correlation_id": correlation_id,
-                    "phase": "build_loop",
-                    "error": str(exc),
-                    "failed_at": datetime.now(tz=UTC).isoformat(),
-                }
+                failure = _build_failure_payload(correlation_id, exc)
                 await producer.send_and_wait(TOPIC_BUILD_LOOP_FAILED, failure)
+                await consumer.commit()
                 logger.error(
                     "build-loop failed correlation_id=%s: %s",
                     correlation_id,
