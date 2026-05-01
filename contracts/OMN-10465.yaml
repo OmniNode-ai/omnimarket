@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10465
+title: "Wire build loop and merge sweep as event-bus-driven nodes"
+summary: "Add event-bus consumers for build-loop orchestration, PR lifecycle orchestration, and the E2E merge-sweep handoff while preserving durable evidence for CI and post-merge runtime validation."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused bus-driven orchestration consumer tests pass"
+    command: "uv run pytest tests/test_build_loop_orchestrator_consumer.py tests/test_pr_lifecycle_orchestrator_consumer.py tests/test_e2e_orchestrator_consumer.py -q"
+  - kind: "manual"
+    description: "Runtime sweep validates onex.nodes entry points and contract-declared handlers"
+    command: "uv run python scripts/ci/run_runtime_sweep.py"
+  - kind: "manual"
+    description: "Ticket contract validates"
+    command: "uv run validate-yaml contracts/OMN-10465.yaml"
+  - kind: "ci"
+    description: "omnimarket PR #493 checks pass, including deploy gate and receipt gate"
+    command: "gh pr checks 493 --repo OmniNode-ai/omnimarket --watch"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Focused bus-driven orchestration consumer tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_build_loop_orchestrator_consumer.py tests/test_pr_lifecycle_orchestrator_consumer.py tests/test_e2e_orchestrator_consumer.py -q"
+  - id: "dod-002"
+    description: "Runtime sweep validates onex.nodes entry points and contract-declared handlers"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"
+  - id: "dod-003"
+    description: "Ticket contract validates"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run validate-yaml contracts/OMN-10465.yaml"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke imports the new event-bus consumers and verifies their contract topic constants in the runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python - <<'PY'\nfrom omnimarket.nodes.node_build_loop_orchestrator.consumer import COMMAND_TOPIC as BUILD_LOOP_COMMAND_TOPIC\nfrom omnimarket.nodes.node_pr_lifecycle_orchestrator.consumer import COMMAND_TOPIC as PR_LIFECYCLE_COMMAND_TOPIC\nfrom omnimarket.nodes.node_e2e_orchestrator.consumer import BUILD_COMPLETED_TOPIC\nprint('deploy smoke ok', BUILD_LOOP_COMMAND_TOPIC, PR_LIFECYCLE_COMMAND_TOPIC, BUILD_COMPLETED_TOPIC)\nPY"
