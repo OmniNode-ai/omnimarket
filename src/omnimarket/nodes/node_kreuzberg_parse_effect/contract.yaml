@@ -10,6 +10,8 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "a4e72f19-3c8b-4d56-b0a1-7f9e2d45c830"
 node_type: EFFECT
+runtime_profiles:
+  - memory
 input_model: "ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent"
 output_model: "ModelKreuzbergParseResult"
 handler:
@@ -143,3 +145,11 @@ config_fields:
   KREUZBERG_INLINE_TEXT_MAX_CHARS:
     default: 4096
     description: "Maximum character length for inline text storage"
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "ModelKreuzbergParseConfig"
+    type: "config"
+    required: true
+    module: "omnimarket.nodes.node_kreuzberg_parse_effect.models.model_kreuzberg_parse_config"
+    description: "Typed parse-service configuration injected into HandlerKreuzbergParse."

@@ -110,8 +110,10 @@ handler_routing:
   handlers:
     - operation: "receive_intent"
       handler:
-        name: "HandlerReceiveIntent"
+        name: "handle_receive_intent"
+        function: "handle_receive_intent"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
+        type: "sync"
       event_model:
         name: "ModelIntent"
         module: "omnibase_core.models.reducer.model_intent"
@@ -120,8 +122,10 @@ handler_routing:
       description: "Receive and log a single intent from the reducer"
     - operation: "receive_intents"
       handler:
-        name: "HandlerReceiveIntents"
+        name: "handle_receive_intents"
+        function: "handle_receive_intents"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
+        type: "sync"
       event_type: "omnimarket.intent-received-batch"
       message_category: "COMMAND"
       description: "Receive and log a batch of intents from reducer output"

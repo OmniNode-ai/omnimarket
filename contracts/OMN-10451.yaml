@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10451
+title: "Fix runtime_profiles on omnimarket contracts that crash under main profile"
+summary: "Audit omnimarket contract handlers with required constructor dependencies, declare runtime profile ownership or dependency ownership, and add a validation test that keeps main-profile crashers excluded."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - public_api
+evidence_requirements:
+  - kind: "manual"
+    description: "Runtime profile ownership validation tests pass"
+    command: "uv run pytest tests/validation/test_runtime_profile_contract_ownership.py tests/validation -q"
+  - kind: "manual"
+    description: "Touched runtime profile validation test passes lint"
+    command: "uv run ruff check tests/validation/test_runtime_profile_contract_ownership.py"
+  - kind: "manual"
+    description: "All omnimarket node contracts parse as YAML mappings"
+    command: "uv run python - <<'PY'\nfrom pathlib import Path\nimport yaml\nfor path in sorted(Path('src/omnimarket/nodes').glob('*/contract.yaml')):\n    raw = yaml.safe_load(path.read_text(encoding='utf-8'))\n    if not isinstance(raw, dict):\n        raise SystemExit(f'{path}: contract did not parse to mapping')\nprint('all node contracts parsed')\nPY"
+  - kind: "manual"
+    description: "Post-merge deploy gate verifies stability image excludes non-main runtime-owned handlers"
+    command: "printf '%s\n' 'post-merge deploy smoke: RUNTIME_PROFILE=main runtime startup must skip node_intent_event_consumer_effect and node_intelligence_orchestrator'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-runtime-profile-tests"
+    description: "Runtime profile ownership validation tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contract_ownership.py tests/validation -q"
+  - id: "dod-lint"
+    description: "Touched runtime profile validation test passes lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check tests/validation/test_runtime_profile_contract_ownership.py"
+  - id: "dod-contract-parse"
+    description: "All omnimarket node contracts parse as YAML mappings"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nfrom pathlib import Path\nimport yaml\nfor path in sorted(Path('src/omnimarket/nodes').glob('*/contract.yaml')):\n    raw = yaml.safe_load(path.read_text(encoding='utf-8'))\n    if not isinstance(raw, dict):\n        raise SystemExit(f'{path}: contract did not parse to mapping')\nprint('all node contracts parsed')\nPY"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke plan for main-profile runtime startup; no live deploy or runtime restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: RUNTIME_PROFILE=main runtime startup must skip node_intent_event_consumer_effect and node_intelligence_orchestrator'"
