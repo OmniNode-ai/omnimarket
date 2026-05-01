@@ -1,0 +1,34 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10445"
+title: "Runtime Stability Reconciliation -- omnimarket wiring"
+summary: "Repair omnimarket intelligence and quality node runtime handler routing for the OMN-10445 runtime stability reconciliation."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+  - "topics"
+evidence_requirements:
+  - kind: "tests"
+    description: "Intelligence and quality node runtime contract tests pass"
+    command: "uv run pytest tests/test_node_intelligence_orchestrator_contract.py tests/test_node_quality_scoring_contract.py tests/nodes/node_intelligence_orchestrator/test_contract_runtime_readiness.py tests/test_intelligence_node_dependency_scope.py tests/nodes/node_intent_event_consumer_effect/test_golden_chain_intent_event_consumer_effect.py -q"
+  - kind: "manual"
+    description: "Post-merge deploy/readiness smoke command recorded; live deploy requires explicit approval"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnibase_infra.runtime.auto_wiring.discovery"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Focused runtime contract, readiness, dependency scope, and golden-chain tests pass"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_node_intelligence_orchestrator_contract.py tests/test_node_quality_scoring_contract.py tests/nodes/node_intelligence_orchestrator/test_contract_runtime_readiness.py tests/test_intelligence_node_dependency_scope.py tests/nodes/node_intent_event_consumer_effect/test_golden_chain_intent_event_consumer_effect.py -q"
+  - id: "dod-deploy"
+    description: "Post-merge deploy/readiness smoke plan only; this PR has not deployed, restarted runtime, or mutated .201"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnibase_infra.runtime.auto_wiring.discovery"
