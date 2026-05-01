@@ -31,6 +31,18 @@ descriptor:
   idempotent: false
   timeout_ms: 120000
 
+dependencies:
+  - name: "ModelRoutingPolicy"
+    type: "config"
+    required: true
+    module: "omnibase_compat.routing.model_routing_policy"
+    description: "Typed routing policy injected into HandlerModelRouter."
+  - name: "model_registry"
+    type: "config"
+    required: true
+    source: "model_registry.yaml"
+    description: "Contract-owned model endpoint registry injected as HandlerModelRouter registry."
+
 model_routing:
   primary: qwen3-coder-30b
   fallback: claude-sonnet

@@ -11,6 +11,8 @@
 #   - OMN-8771: Replace hardcoded mcp__linear-server__ in skill prompts
 name: "node_ticket_query"
 node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
 contract_version:
   major: 1
   minor: 0
@@ -38,6 +40,12 @@ handler_routing:
       handler:
         name: "HandlerTicketQuery"
         module: "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_query"
+dependencies:
+  - name: "ProtocolProjectTracker"
+    type: "protocol"
+    required: true
+    module: "omnibase_spi.protocols.services.protocol_project_tracker"
+    description: "Project tracker protocol injected into HandlerTicketQuery."
 golden_path:
   - step: "Publish onex.cmd.omnimarket.ticket-query.v1 with query='OMN-8771' and limit=10"
   - step: "HandlerTicketQuery resolves ProtocolProjectTracker from DI container"

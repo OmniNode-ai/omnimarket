@@ -39,6 +39,12 @@ handler_routing:
       handler:
         name: "HandlerSimilarityCompute"
         module: "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute"
+dependencies:
+  - name: "ModelONEXContainer"
+    type: "container"
+    required: true
+    module: "omnibase_core.container"
+    description: "Runtime DI container injected into HandlerSimilarityCompute."
 metadata:
   description: "Vector similarity compute node migrated from omnimemory"
   author: "OmniNode Team"
