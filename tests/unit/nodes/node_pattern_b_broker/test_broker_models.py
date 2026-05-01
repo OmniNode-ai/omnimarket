@@ -123,6 +123,13 @@ def test_terminal_event_rejects_mismatched_outcome_enums() -> None:
 
 
 @pytest.mark.unit
+def test_wait_policy_defaults_to_terminal_wait() -> None:
+    policy = ModelPatternBBrokerWaitPolicy()
+
+    assert policy.wait_for_terminal_event is True
+
+
+@pytest.mark.unit
 def test_wait_policy_requires_terminal_statuses() -> None:
     with pytest.raises(ValidationError, match="at least one status"):
         ModelPatternBBrokerWaitPolicy(terminal_statuses=())

@@ -57,7 +57,7 @@ class ModelPatternBBrokerWaitPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    wait_for_terminal_event: bool = False
+    wait_for_terminal_event: bool = True
     timeout_seconds: int = Field(default=300, ge=1, le=3600)
     terminal_statuses: tuple[EnumPatternBBrokerTerminalStatus, ...] = (
         EnumPatternBBrokerTerminalStatus.completed,
