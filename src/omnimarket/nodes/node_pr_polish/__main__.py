@@ -16,6 +16,16 @@ import sys
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from omnimarket.cli.args import (
+    add_output_args,
+    report_output_requested,
+    resolve_output_config,
+)
+from omnimarket.cli.output.registry import resolve_handler
+from omnimarket.cli.reporting import (
+    build_report_from_model_result,
+    load_contract_metadata,
+)
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import (
     ModelPrPolishStartCommand,
 )
@@ -114,8 +124,11 @@ def main() -> None:
         default=None,
         help="Explicit run directory for breadcrumb/result.json persistence.",
     )
+    add_output_args(parser)
 
     args = parser.parse_args()
+    output_config = resolve_output_config(args)
+    logging.getLogger().setLevel(args.log_level.upper())
 
     command = ModelPrPolishStartCommand(
         correlation_id=uuid4(),
@@ -137,7 +150,41 @@ def main() -> None:
     )
 
     completed = run_live_pr_polish(command)
-    sys.stdout.write(completed.model_dump_json(indent=2) + "\n")
+    if not report_output_requested():
+        sys.stdout.write(completed.model_dump_json(indent=2) + "\n")
+        if completed.final_phase.value == "failed":
+            sys.exit(1)
+        return
+
+    contract_name, contract_version, terminal_event = load_contract_metadata(
+        "omnimarket.nodes.node_pr_polish"
+    )
+    cli_report = build_report_from_model_result(
+        completed,
+        skill_name="pr_polish",
+        node_name="node_pr_polish",
+        terminal_event=terminal_event,
+        contract_name=contract_name,
+        contract_version=contract_version,
+        mode="dry_run" if args.dry_run else "execute",
+        input_summary={
+            "repo": args.repo,
+            "pr_number": args.pr_number,
+            "ticket_id": args.ticket,
+            "required_clean_runs": args.required_clean_runs,
+            "max_iterations": args.max_iterations,
+            "dry_run": args.dry_run,
+            "no_push": args.no_push,
+            "no_automerge": args.no_automerge,
+            "worktree_path": args.worktree_path,
+            "run_dir": args.run_dir,
+        },
+        output_config=output_config,
+    )
+    rendered = resolve_handler(output_config.format).render(cli_report)
+    sys.stdout.write(rendered)
+    if not rendered.endswith("\n"):
+        sys.stdout.write("\n")
     if completed.final_phase.value == "failed":
         sys.exit(1)
 

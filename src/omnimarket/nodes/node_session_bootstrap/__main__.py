@@ -16,6 +16,16 @@ import sys
 import uuid
 from datetime import UTC, datetime
 
+from omnimarket.cli.args import (
+    add_output_args,
+    report_output_requested,
+    resolve_output_config,
+)
+from omnimarket.cli.output.registry import resolve_handler
+from omnimarket.cli.reporting import (
+    build_report_from_model_result,
+    load_contract_metadata,
+)
 from omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap import (
     HandlerSessionBootstrap,
     ModelBootstrapCommand,
@@ -70,8 +80,10 @@ def main() -> None:
         default=False,
         help="Skip filesystem writes",
     )
+    add_output_args(parser)
 
     args = parser.parse_args()
+    output_config = resolve_output_config(args)
 
     phases = [p.strip() for p in args.phases_expected.split(",") if p.strip()]
 
@@ -93,8 +105,38 @@ def main() -> None:
 
     handler = HandlerSessionBootstrap()
     result = handler.handle(command)
+    if not report_output_requested():
+        sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+        if result.status == "failed":
+            sys.exit(1)
+        return
 
-    sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    contract_name, contract_version, terminal_event = load_contract_metadata(
+        "omnimarket.nodes.node_session_bootstrap"
+    )
+    cli_report = build_report_from_model_result(
+        result,
+        skill_name="session_bootstrap",
+        node_name="node_session_bootstrap",
+        terminal_event=terminal_event,
+        contract_name=contract_name,
+        contract_version=contract_version,
+        mode="dry_run" if args.dry_run else "execute",
+        input_summary={
+            "session_id": args.session_id,
+            "session_label": args.session_label,
+            "phases_expected": phases,
+            "max_cycles": args.max_cycles,
+            "cost_ceiling_usd": args.cost_ceiling,
+            "state_dir": os.path.abspath(args.state_dir),
+            "dry_run": args.dry_run,
+        },
+        output_config=output_config,
+    )
+    rendered = resolve_handler(output_config.format).render(cli_report)
+    sys.stdout.write(rendered)
+    if not rendered.endswith("\n"):
+        sys.stdout.write("\n")
 
     if result.status == "failed":
         sys.exit(1)

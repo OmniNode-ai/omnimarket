@@ -21,6 +21,16 @@ import json
 import logging
 import sys
 
+from omnimarket.cli.args import (
+    add_output_args,
+    report_output_requested,
+    resolve_output_config,
+)
+from omnimarket.cli.output.registry import resolve_handler
+from omnimarket.cli.reporting import (
+    build_report_from_model_result,
+    load_contract_metadata,
+)
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
     HandlerSessionOrchestrator,
     ModelSessionOrchestratorCommand,
@@ -42,6 +52,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--state-dir", default=".onex_state/session")
     parser.add_argument("--output-json", action="store_true")
     parser.add_argument("--session-id", default="")
+    add_output_args(parser)
     return parser.parse_args(argv)
 
 
@@ -51,6 +62,8 @@ def _emit(msg: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    output_config = resolve_output_config(args)
+    logging.getLogger().setLevel(args.log_level.upper())
     command = ModelSessionOrchestratorCommand(
         session_id=args.session_id,
         mode=args.mode,
@@ -64,6 +77,32 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.output_json:
         _emit(json.dumps(result.model_dump(mode="json"), indent=2))
+    elif report_output_requested(argv):
+        contract_name, contract_version, terminal_event = load_contract_metadata(
+            "omnimarket.nodes.node_session_orchestrator"
+        )
+        cli_report = build_report_from_model_result(
+            result,
+            skill_name="session_orchestrator",
+            node_name="node_session_orchestrator",
+            terminal_event=terminal_event,
+            contract_name=contract_name,
+            contract_version=contract_version,
+            mode="dry_run" if args.dry_run else "execute",
+            input_summary={
+                "session_id": args.session_id,
+                "mode": args.mode,
+                "phase": args.phase,
+                "dry_run": args.dry_run,
+                "skip_health": args.skip_health,
+                "state_dir": args.state_dir,
+            },
+            output_config=output_config,
+        )
+        rendered = resolve_handler(output_config.format).render(cli_report)
+        sys.stdout.write(rendered)
+        if not rendered.endswith("\n"):
+            sys.stdout.write("\n")
     else:
         _emit("\n=== node_session_orchestrator result ===")
         _emit(f"session_id  : {result.session_id}")
