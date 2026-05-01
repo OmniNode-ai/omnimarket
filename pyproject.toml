@@ -34,6 +34,7 @@ dependencies = [
     "omnibase-spi>=0.20.5",
     "omnibase-infra>=0.32.0",
     "onex-change-control>=0.5.0",
+    "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pyyaml>=6.0.2,<7.0.0",
     "packaging>=24.0",
@@ -204,6 +205,9 @@ node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
+
+[project.entry-points."onex.cli"]
+market = "omnimarket.cli.market:market"
 
 [project.entry-points."onex.node_package"]
 omnimarket = "omnimarket.nodes"
