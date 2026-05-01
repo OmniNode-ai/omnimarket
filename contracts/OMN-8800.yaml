@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-8800
+title: "Version skew detector node"
+summary: "Add a pure compute node that detects plugin/runtime version skew and emits healthy or skew-detected telemetry topics."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+  - "events"
+  - "topics"
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused version-skew detector tests and metadata schema tests pass"
+    command: "uv run pytest src/omnimarket/nodes/node_version_skew_detector/tests/test_version_skew_detector.py tests/test_metadata_schema.py -q"
+  - kind: "manual"
+    description: "Strict mypy passes across omnimarket after adding the node"
+    command: "uv run mypy src/omnimarket/ --strict"
+  - kind: "manual"
+    description: "Touched version-skew detector paths pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_version_skew_detector/handlers/handler_version_skew_detector.py src/omnimarket/nodes/node_version_skew_detector/tests/test_version_skew_detector.py pyproject.toml"
+  - kind: "manual"
+    description: "Repo-local contract YAML parses"
+    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8800.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan imports the version-skew detector node in the runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector import NodeVersionSkewDetector; print(NodeVersionSkewDetector.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Focused version-skew detector tests and metadata schema tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_version_skew_detector/tests/test_version_skew_detector.py tests/test_metadata_schema.py -q"
+  - id: "dod-typecheck"
+    description: "Strict mypy passes across omnimarket after adding the node"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-lint"
+    description: "Touched version-skew detector paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_version_skew_detector/handlers/handler_version_skew_detector.py src/omnimarket/nodes/node_version_skew_detector/tests/test_version_skew_detector.py pyproject.toml"
+  - id: "dod-contract-parse"
+    description: "Repo-local contract YAML parses"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8800.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - id: "dod-deploy-smoke"
+    description: "Post-merge deploy smoke imports the version-skew detector node in the runtime container; no live deploy or restart was performed for this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector import NodeVersionSkewDetector; print(NodeVersionSkewDetector.__name__)\"'"
