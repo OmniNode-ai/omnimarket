@@ -6,6 +6,9 @@
 from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_event import (
     ModelDaemonHealthEvent,
 )
+from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_probe_result import (
+    ModelDaemonHealthProbeResult,
+)
 from omnimarket.nodes.node_emit_daemon.models.model_daemon_state import (
     EnumEmitDaemonPhase,
     ModelEmitDaemonCommand,
@@ -41,6 +44,7 @@ __all__: list[str] = [
     "ModelDaemonEmitRequest",
     "ModelDaemonErrorResponse",
     "ModelDaemonHealthEvent",
+    "ModelDaemonHealthProbeResult",
     "ModelDaemonHealthRequest",
     "ModelDaemonPingRequest",
     "ModelDaemonPingResponse",

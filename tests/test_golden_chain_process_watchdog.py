@@ -96,7 +96,7 @@ class TestProcessWatchdogGoldenChain:
         assert completed.overall_status == EnumCheckStatus.HEALTHY
 
     async def test_one_target_down(self, event_bus: EventBusInmemory) -> None:
-        """One target DOWN -> overall DOWN, alert emitted, restart attempted."""
+        """One target DOWN -> overall DOWN; alert emits on second consecutive failure."""
         handler = HandlerProcessWatchdog()
         targets = [
             InmemoryCheckTarget(
@@ -116,12 +116,15 @@ class TestProcessWatchdogGoldenChain:
         command = _make_command()
 
         report, _completed = handler.run_watchdog(command, targets)
+        second_report, _second_completed = handler.run_watchdog(command, targets)
 
         assert report.overall_status == EnumCheckStatus.DOWN
         assert report.down_count == 1
         assert report.healthy_count == 1
-        assert report.alerts_emitted == 1
+        assert report.alerts_emitted == 0
+        assert second_report.alerts_emitted == 1
         assert report.restarts_attempted == 1
+        assert second_report.restarts_attempted == 1
         # Verify restart was called on the down target
         assert targets[0].restart_called is True
         assert targets[1].restart_called is False
@@ -191,8 +194,7 @@ class TestProcessWatchdogGoldenChain:
         assert report.restarts_attempted == 0
         assert report.dry_run is True
         assert targets[0].restart_called is False
-        # Alert still counted (alerting is informational)
-        assert report.alerts_emitted == 1
+        assert report.alerts_emitted == 0
 
     async def test_filter_by_category(self, event_bus: EventBusInmemory) -> None:
         """Only requested check_targets are executed."""
@@ -212,7 +214,7 @@ class TestProcessWatchdogGoldenChain:
         }
 
     async def test_multiple_down_targets(self, event_bus: EventBusInmemory) -> None:
-        """Multiple DOWN targets -> multiple alerts and restarts."""
+        """Multiple DOWN targets alert independently on second consecutive failure."""
         handler = HandlerProcessWatchdog()
         targets = [
             InmemoryCheckTarget(
@@ -239,12 +241,15 @@ class TestProcessWatchdogGoldenChain:
         command = _make_command()
 
         report, _completed = handler.run_watchdog(command, targets)
+        second_report, _second_completed = handler.run_watchdog(command, targets)
 
         assert report.overall_status == EnumCheckStatus.DOWN
         assert report.down_count == 2
         assert report.healthy_count == 1
-        assert report.alerts_emitted == 2
+        assert report.alerts_emitted == 0
+        assert second_report.alerts_emitted == 2
         assert report.restarts_attempted == 2
+        assert second_report.restarts_attempted == 2
         # First restart succeeded, second failed
         assert report.checks[0].restart_succeeded is True
         assert report.checks[1].restart_succeeded is False

@@ -33,6 +33,8 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 TABLE = "llm_cost_aggregates"
 CONFLICT_KEY = "id"
 
+TOPIC_LLM_CALL_COMPLETED: str = "onex.evt.omniintelligence.llm-call-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+
 
 class ModelLlmCallCompletedEvent(BaseModel):
     """Inbound event from onex.evt.omniintelligence.llm-call-completed.v1."""

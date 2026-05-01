@@ -143,7 +143,7 @@ class EvidenceCollector:
 
         results: list[ModelEvidenceCheckResult] = []
         for item in dod_items:
-            result = self._check_evidence_item(item, ticket_id)
+            result = self._check_evidence_item(item, ticket_id, path)
             results.append(result)
 
         return results
@@ -185,6 +185,7 @@ class EvidenceCollector:
         self,
         item: dict[str, Any],
         ticket_id: str,
+        contract_path: Path | None = None,
     ) -> ModelEvidenceCheckResult:
         """Run checks for a single dod_evidence item."""
         evidence_id = item.get("id", "unknown")
@@ -219,7 +220,7 @@ class EvidenceCollector:
                 # can declare intent (running tests) distinct from generic
                 # commands without forcing every shell-based check into the same
                 # bucket. Regression for OMN-10046.
-                ok, msg = self._run_command_check(check, ticket_id)
+                ok, msg = self._run_command_check(check, ticket_id, contract_path)
                 if not ok:
                     return ModelEvidenceCheckResult(
                         evidence_id=evidence_id,
@@ -325,10 +326,152 @@ class EvidenceCollector:
 
         return str(candidate), None
 
+    def _lookup_pr_for_ticket(self, ticket_id: str) -> str:
+        """Return the merged PR number string for ticket_id, or empty string.
+
+        Checks PR_NUMBER env var first. Falls back to ``gh pr list`` search.
+        Returns empty string when nothing can be resolved (caller must handle
+        unresolved placeholders gracefully).
+        """
+        env_val = os.environ.get("PR_NUMBER", "").strip()
+        if env_val:
+            return env_val
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--search",
+                    ticket_id,
+                    "--state",
+                    "merged",
+                    "--json",
+                    "number",
+                    "--jq",
+                    ".[0].number",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if result.returncode == 0:
+                num = result.stdout.strip()
+                if num and num != "null":
+                    return num
+        except Exception:
+            pass
+        return ""
+
+    def _lookup_repo_for_ticket(self, ticket_id: str) -> str:
+        """Return the ``owner/repo`` string for ticket_id, or empty string.
+
+        Checks REPO env var first. Falls back to ``gh pr list`` search
+        to discover which repo contains a merged PR for this ticket.
+        """
+        env_val = os.environ.get("REPO", "").strip()
+        if env_val:
+            return env_val
+        try:
+            # Search across all repos known to the gh CLI for the ticket in the PR title/body.
+            result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--search",
+                    ticket_id,
+                    "--state",
+                    "merged",
+                    "--json",
+                    "number,headRepository",
+                    "--jq",
+                    '.[0] | .headRepository.nameWithOwner // ""',
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if result.returncode == 0:
+                repo = result.stdout.strip()
+                if repo and repo != "null":
+                    return repo
+        except Exception:
+            pass
+        return ""
+
+    def _resolve_command_placeholders(
+        self,
+        cmd_str: str,
+        ticket_id: str,
+    ) -> tuple[str, str | None]:
+        """Substitute all placeholder forms in a command string.
+
+        Supported forms:
+          - ``{ticket_id}``, ``{pr}``, ``{repo}``  (Python format-style)
+          - ``${TICKET_ID}``, ``${PR_NUMBER}``, ``${REPO}``  (shell-style)
+
+        Returns ``(resolved_cmd, None)`` on success.
+        Returns ``(original_cmd, error_message)`` when a required placeholder
+        cannot be resolved (e.g. no merged PR found for ticket).
+        """
+        needs_pr = "{pr}" in cmd_str or "${PR_NUMBER}" in cmd_str
+        needs_repo = "{repo}" in cmd_str or "${REPO}" in cmd_str
+
+        pr_num = self._lookup_pr_for_ticket(ticket_id) if needs_pr else ""
+        repo = self._lookup_repo_for_ticket(ticket_id) if needs_repo else ""
+
+        if needs_pr and not pr_num:
+            return cmd_str, (
+                f"Cannot resolve PR number for {ticket_id}: "
+                "set PR_NUMBER env var or ensure a merged PR exists."
+            )
+        if needs_repo and not repo:
+            return cmd_str, (
+                f"Cannot resolve repo for {ticket_id}: "
+                "set REPO env var or ensure a merged PR exists."
+            )
+
+        # Apply shell-style substitutions first (${...} → value)
+        cmd_str = cmd_str.replace("${TICKET_ID}", shlex.quote(ticket_id))
+        if pr_num:
+            cmd_str = cmd_str.replace("${PR_NUMBER}", shlex.quote(pr_num))
+        if repo:
+            cmd_str = cmd_str.replace("${REPO}", shlex.quote(repo))
+
+        # Apply Python-format-style substitutions ({...} → value)
+        cmd_str = cmd_str.replace("{ticket_id}", shlex.quote(ticket_id))
+        if pr_num:
+            cmd_str = cmd_str.replace("{pr}", shlex.quote(pr_num))
+        if repo:
+            cmd_str = cmd_str.replace("{repo}", shlex.quote(repo))
+
+        return cmd_str, None
+
+    def _infer_occ_cwd(self, contract_path: Path | None) -> str | None:
+        """Return the onex_change_control repo path when contract is from OCC.
+
+        Detects OCC contracts by checking whether the contract path contains
+        ``onex_change_control`` as a path component. Returns None for all
+        other contracts (cwd stays inherited).
+        """
+        if contract_path is None:
+            return None
+        if "onex_change_control" not in contract_path.parts:
+            return None
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            return None
+        occ_path = Path(omni_home) / "onex_change_control"
+        if occ_path.is_dir():
+            return str(occ_path)
+        return None
+
     def _run_command_check(
         self,
         check: dict[str, Any],
         ticket_id: str,
+        contract_path: Path | None = None,
     ) -> tuple[bool, str]:
         """Execute a command-type check. Returns (success, message).
 
@@ -337,14 +480,22 @@ class EvidenceCollector:
         containment-checks the resolved path against ``OMNI_HOME``, and
         passes ``cwd=`` to ``subprocess.run``. When ``cwd`` is absent the
         runner inherits its caller's working directory (legacy behaviour).
+
+        OMN-10476: placeholder substitution is applied to the command string
+        for both ``{pr}/{repo}/{ticket_id}`` and ``${PR_NUMBER}/${REPO}/${TICKET_ID}``
+        forms before execution. OCC contracts get automatic cwd injection.
         """
         # Prefer explicit `command` field; fall back to `check_value`
         cmd_str = check.get("command") or check.get("check_value", "")
         if not cmd_str:
             return False, "Empty command in check definition."
 
-        # Template substitution for common placeholders (escaped to prevent shell injection)
-        cmd_str = cmd_str.replace("{ticket_id}", shlex.quote(ticket_id))
+        # OMN-10476: resolve all placeholder forms before execution
+        cmd_str, placeholder_err = self._resolve_command_placeholders(
+            cmd_str, ticket_id
+        )
+        if placeholder_err is not None:
+            return False, placeholder_err
 
         # OMN-10078: resolve optional cwd via template-substitution +
         # containment-check pipeline. None => inherit caller cwd.
@@ -357,6 +508,9 @@ class EvidenceCollector:
             if err is not None:
                 return False, err
             run_cwd = resolved
+        else:
+            # OMN-10476: auto-inject OCC cwd when no explicit cwd is declared
+            run_cwd = self._infer_occ_cwd(contract_path)
 
         logger.info(
             "Running command check (cwd=%s): %s", run_cwd or "<inherit>", cmd_str

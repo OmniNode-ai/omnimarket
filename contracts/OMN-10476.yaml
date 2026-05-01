@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10476"
+title: "Fix node_dod_verify template placeholder substitution in probe execution"
+summary: "Resolve PR/repo/ticket placeholders before evidence command execution and infer the OCC cwd for central contracts."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Evidence collector unit tests pass"
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -v -m unit"
+  - kind: "tests"
+    description: "node_dod_verify strict typecheck passes"
+    command: "uv run mypy src/omnimarket/nodes/node_dod_verify/ --strict"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports EvidenceCollector in the runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_dod_verify.services.evidence_collector import EvidenceCollector; print(EvidenceCollector.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "Evidence collector unit tests pass, including placeholder substitution and OCC cwd coverage"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -v -m unit"
+  - id: "dod-typecheck"
+    description: "node_dod_verify strict typecheck passes"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_dod_verify/ --strict"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke plan only; this PR has not deployed, restarted runtime, or mutated .201"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_dod_verify.services.evidence_collector import EvidenceCollector; print(EvidenceCollector.__name__)\"'"
