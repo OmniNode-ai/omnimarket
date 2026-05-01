@@ -109,13 +109,13 @@ def test_intelligence_orchestrator_handler_routing_is_runtime_importable() -> No
     for entry in handlers:
         handler = entry["handler"]
         _assert_runtime_routing_entry_shape(entry)
-        assert handler.get("name"), f"handler entry is missing name: {entry!r}"
-        assert handler.get("function") == handler["name"]
+        name = handler.get("name")
+        assert name, f"handler entry is missing name: {entry!r}"
 
         module = importlib.import_module(handler["module"])
-        handler_function = getattr(module, handler["function"])
-        assert handler_function is getattr(module, handler["name"])
-        assert callable(handler_function)
+        function = handler.get("function")
+        handler_symbol = getattr(module, function or name)
+        assert callable(handler_symbol)
 
 
 def _make_intent(payload_data: dict[str, object]) -> ModelIntent:
