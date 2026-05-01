@@ -6,6 +6,8 @@ Verifies the readiness gate logic with freshness-aware semantics.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -197,3 +199,48 @@ class TestPlatformReadinessGoldenChain:
         assert len(history) == 1
 
         await event_bus.close()
+
+    def test_module_cli_dry_run_outputs_valid_json(self) -> None:
+        """The local module runner returns readiness JSON without Kafka."""
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "omnimarket.nodes.node_platform_readiness",
+                "--dry-run",
+                "--output-format",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(completed.stdout)
+        assert payload["overall"] == "PASS"
+        assert len(payload["dimensions"]) == 7
+        assert payload["blockers"] == []
+
+    def test_module_cli_filters_dimension(self) -> None:
+        """The module runner can narrow the readiness report to one dimension."""
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "omnimarket.nodes.node_platform_readiness",
+                "--dry-run",
+                "--output-format",
+                "json",
+                "--dimension",
+                "kafka_topic_coverage",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(completed.stdout)
+        assert payload["overall"] == "PASS"
+        assert [dim["name"] for dim in payload["dimensions"]] == [
+            "kafka_topic_coverage"
+        ]
