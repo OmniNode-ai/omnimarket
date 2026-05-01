@@ -17,9 +17,10 @@ dependencies:
   - "omnibase_core>=0.39.0"
   - "anthropic>=0.75.0"
   - "httpx>=0.27.0"
+  - "pyyaml>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["ab-compare", "orchestrator", "llm", "cost", "OMN-10477"]
+tags: ["ab-compare", "orchestrator", "llm", "cost", "OMN-10477", "OMN-10478"]
 pack: "ab_compare"
 display_name: "A/B Compare Orchestrator"
 node_role: "orchestrator"

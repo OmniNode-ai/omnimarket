@@ -70,7 +70,7 @@ class _ResolvedModel(BaseModel):
     display_name: str
     endpoint_url: str
     endpoint_path: str
-    health_path: str
+    health_path: str = "/health"
     protocol: str
     model_id_resolved: str
     cost_per_1k_input: float
@@ -369,7 +369,10 @@ class _DefaultHttpLlmClient:
         usage = data.get("usage", {})
         prompt_tokens = int(usage.get("prompt_tokens", 0))
         completion_tokens = int(usage.get("completion_tokens", 0))
-        raw_output = str(data["choices"][0]["message"]["content"])
+        choices = data.get("choices", [])
+        message = choices[0].get("message", {}) if choices else {}
+        content = message.get("content", "")
+        raw_output = "" if content is None else str(content)
         return raw_output, prompt_tokens, completion_tokens, latency_ms
 
     async def _call_anthropic(
