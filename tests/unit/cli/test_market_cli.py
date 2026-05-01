@@ -82,6 +82,37 @@ def test_market_list_json(tmp_path: Path) -> None:
     assert payload["packages"][0]["capabilities"]["standalone"] is True
 
 
+def test_market_list_reports_invalid_registry_json(tmp_path: Path) -> None:
+    registry_path = tmp_path / "installed_nodes.json"
+    registry_path.write_text("{ invalid json", encoding="utf-8")
+
+    result = CliRunner().invoke(market, ["list", "--registry-path", str(registry_path)])
+
+    assert result.exit_code == 1
+    assert "Installed node registry is not valid JSON" in result.output
+    assert str(registry_path) in result.output
+    assert "Expecting property name enclosed in double quotes" in result.output
+
+
+def test_market_list_reports_invalid_metadata_yaml(tmp_path: Path) -> None:
+    package_path = tmp_path / "registry" / "node_ticket_pipeline"
+    package_path.mkdir(parents=True)
+    metadata_path = package_path / "metadata.yaml"
+    metadata_path.write_text("name: [unterminated", encoding="utf-8")
+    registry_path = tmp_path / "installed_nodes.json"
+    registry_path.write_text(
+        json.dumps({"node_ticket_pipeline": {"path": str(package_path)}}),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(market, ["list", "--registry-path", str(registry_path)])
+
+    assert result.exit_code == 1
+    assert "metadata.yaml is not valid YAML" in result.output
+    assert str(metadata_path) in result.output
+    assert "expected ',' or ']'" in result.output
+
+
 def test_market_search_reads_index_and_matches_tags(tmp_path: Path) -> None:
     index_path = tmp_path / "index.yaml"
     index_path.write_text(
@@ -108,6 +139,61 @@ def test_market_search_reads_index_and_matches_tags(tmp_path: Path) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["matches"][0]["name"] == "node_gap_compute"
+
+
+def test_market_search_rejects_non_mapping_index_entry(tmp_path: Path) -> None:
+    index_path = tmp_path / "index.yaml"
+    index_path.write_text(
+        yaml.safe_dump(
+            {
+                "packages": [
+                    {
+                        "name": "node_gap_compute",
+                        "package": "omnimarket",
+                        "version": "1.0.0",
+                        "description": "Gap analysis compute node",
+                    },
+                    "broken",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        market, ["search", "gap", "--index-path", str(index_path)]
+    )
+
+    assert result.exit_code == 1
+    assert "Market index entry must be a mapping" in result.output
+    assert str(index_path) in result.output
+    assert "'broken'" in result.output
+
+
+def test_market_search_reports_invalid_index_entry(tmp_path: Path) -> None:
+    index_path = tmp_path / "index.yaml"
+    index_path.write_text(
+        yaml.safe_dump(
+            {
+                "packages": [
+                    {
+                        "name": "node_gap_compute",
+                        "package": "omnimarket",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        market, ["search", "gap", "--index-path", str(index_path)]
+    )
+
+    assert result.exit_code == 1
+    assert "Market index entry is invalid" in result.output
+    assert str(index_path) in result.output
+    assert "Field required" in result.output
 
 
 def test_market_install_delegates_to_core_install(monkeypatch) -> None:

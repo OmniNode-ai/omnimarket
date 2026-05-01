@@ -52,7 +52,11 @@ def _installed_nodes_registry_path() -> Path:
 def _load_json_mapping(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        msg = f"Installed node registry is not valid JSON: {path}: {exc}"
+        raise click.ClickException(msg) from exc
     if not isinstance(raw, dict):
         msg = f"Installed node registry must be a JSON object: {path}"
         raise click.ClickException(msg)
@@ -65,7 +69,11 @@ def _load_node_metadata(path: Path | None) -> MetadataSchema | None:
     metadata_path = path / "metadata.yaml"
     if not metadata_path.exists():
         return None
-    raw = yaml.safe_load(metadata_path.read_text(encoding="utf-8")) or {}
+    try:
+        raw = yaml.safe_load(metadata_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        msg = f"metadata.yaml is not valid YAML: {metadata_path}: {exc}"
+        raise click.ClickException(msg) from exc
     if not isinstance(raw, dict):
         msg = f"metadata.yaml must be a mapping: {metadata_path}"
         raise click.ClickException(msg)
@@ -114,16 +122,26 @@ def _load_index(index_path: Path) -> list[ModelMarketIndexEntry]:
     if not index_path.exists():
         msg = f"Market index not found: {index_path}"
         raise click.ClickException(msg)
-    raw = yaml.safe_load(index_path.read_text(encoding="utf-8")) or {}
+    try:
+        raw = yaml.safe_load(index_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        msg = f"Market index is not valid YAML: {index_path}: {exc}"
+        raise click.ClickException(msg) from exc
     entries = raw.get("packages") if isinstance(raw, dict) else None
     if not isinstance(entries, list):
         msg = f"Market index must contain a packages list: {index_path}"
         raise click.ClickException(msg)
-    return [
-        ModelMarketIndexEntry.model_validate(entry)
-        for entry in entries
-        if isinstance(entry, dict)
-    ]
+    validated: list[ModelMarketIndexEntry] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            msg = f"Market index entry must be a mapping: {index_path}: {entry!r}"
+            raise click.ClickException(msg)
+        try:
+            validated.append(ModelMarketIndexEntry.model_validate(entry))
+        except Exception as exc:
+            msg = f"Market index entry is invalid: {index_path}: {entry!r}: {exc}"
+            raise click.ClickException(msg) from exc
+    return validated
 
 
 def _matches_query(entry: ModelMarketIndexEntry, query: str) -> bool:
