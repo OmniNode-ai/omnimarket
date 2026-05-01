@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9288
+title: "merge-sweep stalled merge queue check-suite remediation"
+summary: "Detect PRs stuck in merge queue AWAITING_CHECKS with no merge_group workflow run for the queue head SHA, then cap dequeue/requeue remediation at two attempts per PR per hour."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused PR lifecycle inventory, merge queue adapter, and orchestrator tests pass"
+    command: "uv run pytest tests/test_golden_chain_pr_lifecycle_inventory_compute.py tests/unit/nodes/node_pr_lifecycle_merge_effect/test_adapter_github_merge_queue.py tests/test_golden_chain_pr_lifecycle_orchestrator.py -q"
+  - kind: "manual"
+    description: "Touched PR lifecycle paths pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_pr_lifecycle_inventory_compute/handlers/handler_pr_lifecycle_inventory.py src/omnimarket/nodes/node_pr_lifecycle_inventory_compute/models/model_pr_lifecycle_inventory.py src/omnimarket/nodes/node_pr_lifecycle_merge_effect/handlers/adapter_github_merge_queue.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/protocols/protocol_sub_handlers.py tests/test_golden_chain_pr_lifecycle_inventory_compute.py tests/unit/nodes/node_pr_lifecycle_merge_effect/test_adapter_github_merge_queue.py tests/test_golden_chain_pr_lifecycle_orchestrator.py"
+  - kind: "manual"
+    description: "PR lifecycle upgrade suite remains compatible with legacy stuck queue detection"
+    command: "uv run pytest tests/test_golden_chain_pr_lifecycle_upgrade.py -q"
+  - kind: "manual"
+    description: "Repo-local contract YAML parses"
+    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-9288.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - kind: "manual"
+    description: "Codex merge-sweep runtime request compiles without broker publish"
+    command: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_lifecycle_orchestrator --payload '{\"correlation_id\":\"11111111-1111-4111-8111-111111111111\",\"run_id\":\"merge-sweep-omn-9288-proof\",\"dry_run\":true,\"inventory_only\":true,\"repos\":\"OmniNode-ai/omnimarket\"}' --timeout-ms 30000 --compile-only"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused PR lifecycle inventory, merge queue adapter, and orchestrator tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_pr_lifecycle_inventory_compute.py tests/unit/nodes/node_pr_lifecycle_merge_effect/test_adapter_github_merge_queue.py tests/test_golden_chain_pr_lifecycle_orchestrator.py -q"
+  - id: "dod-lint"
+    description: "Touched PR lifecycle paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_pr_lifecycle_inventory_compute/handlers/handler_pr_lifecycle_inventory.py src/omnimarket/nodes/node_pr_lifecycle_inventory_compute/models/model_pr_lifecycle_inventory.py src/omnimarket/nodes/node_pr_lifecycle_merge_effect/handlers/adapter_github_merge_queue.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/protocols/protocol_sub_handlers.py tests/test_golden_chain_pr_lifecycle_inventory_compute.py tests/unit/nodes/node_pr_lifecycle_merge_effect/test_adapter_github_merge_queue.py tests/test_golden_chain_pr_lifecycle_orchestrator.py"
+  - id: "dod-legacy-upgrade"
+    description: "PR lifecycle upgrade suite remains compatible with legacy stuck queue detection"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_pr_lifecycle_upgrade.py -q"
+  - id: "dod-contract-parse"
+    description: "Repo-local contract YAML parses"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-9288.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - id: "dod-compile-only"
+    description: "Codex merge-sweep runtime request compiles without broker publish"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_lifecycle_orchestrator --payload '{\"correlation_id\":\"11111111-1111-4111-8111-111111111111\",\"run_id\":\"merge-sweep-omn-9288-proof\",\"dry_run\":true,\"inventory_only\":true,\"repos\":\"OmniNode-ai/omnimarket\"}' --timeout-ms 30000 --compile-only"
+  - id: "dod-deploy-gate"
+    description: "Runtime-impacting PR lifecycle changes are deploy-gated; no live deploy or restart performed for this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy gate evidence: no live deploy/restart performed; post-merge validation is compile-only pr_lifecycle_orchestrator dry-run inventory request"

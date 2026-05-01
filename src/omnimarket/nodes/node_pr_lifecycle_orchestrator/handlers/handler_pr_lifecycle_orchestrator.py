@@ -606,6 +606,7 @@ class HandlerPrLifecycleOrchestrator:
                 "[PR-LIFECYCLE-ORCH] inventory completed: %d PRs",
                 inv_result.total_collected,
             )
+            await self._remediate_stalled_queue_prs(command, inv_result)
 
             if command.inventory_only:
                 state.fsm = EnumOrchestratorState.COMPLETE
@@ -906,6 +907,7 @@ class HandlerPrLifecycleOrchestrator:
             repos = self._enumerate_repos()
 
         all_prs: list[PrRecord] = []
+        stuck_queue_prs: list[Any] = []
         for repo in repos:
             pr_numbers = self._enumerate_open_pr_numbers(repo)
             if not pr_numbers:
@@ -916,6 +918,7 @@ class HandlerPrLifecycleOrchestrator:
             # Short-circuit: test stub returned InventoryResult directly.
             if isinstance(raw, InventoryResult):
                 return raw
+            stuck_queue_prs.extend(getattr(raw, "stuck_queue_prs", ()))
             # raw is ModelPrInventoryOutput; adapt to PrRecord sequence.
             for pr_state in getattr(raw, "pr_states", ()):
                 all_prs.append(
@@ -933,7 +936,59 @@ class HandlerPrLifecycleOrchestrator:
                     )
                 )
 
-        return InventoryResult(prs=tuple(all_prs), total_collected=len(all_prs))
+        return InventoryResult(
+            prs=tuple(all_prs),
+            total_collected=len(all_prs),
+            stuck_queue_prs=tuple(stuck_queue_prs),
+        )
+
+    def _make_merge_queue_adapter(self) -> Any:
+        from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
+            GitHubMergeQueueAdapter,
+        )
+
+        return GitHubMergeQueueAdapter()
+
+    async def _remediate_stalled_queue_prs(
+        self,
+        command: ModelPrLifecycleStartCommand,
+        inv_result: InventoryResult,
+    ) -> None:
+        if not inv_result.stuck_queue_prs:
+            return
+        if command.dry_run or command.inventory_only:
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] detected %d stalled queue PRs; "
+                "remediation skipped dry_run=%s inventory_only=%s",
+                len(inv_result.stuck_queue_prs),
+                command.dry_run,
+                command.inventory_only,
+            )
+            return
+
+        adapter = self._make_merge_queue_adapter()
+        for entry in inv_result.stuck_queue_prs:
+            queue_state = getattr(entry, "queue_state", "")
+            run_count = getattr(entry, "merge_group_run_count", None)
+            if queue_state != "AWAITING_CHECKS" or run_count != 0:
+                continue
+            repo = str(entry.repo)
+            pr_number = int(entry.pr_number)
+            try:
+                action = await adapter.remediate_queue_stall(repo, pr_number)
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] merge queue stall remediation: %s",
+                    action,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] merge queue stall remediation failed "
+                    "for %s#%s: %s",
+                    repo,
+                    pr_number,
+                    exc,
+                    exc_info=True,
+                )
 
     async def _call_triage(
         self,

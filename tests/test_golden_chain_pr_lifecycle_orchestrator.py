@@ -21,6 +21,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -62,8 +63,11 @@ class MockInventory:
     a pre-configured InventoryResult so the orchestrator can continue.
     """
 
-    def __init__(self, prs: tuple[PrRecord, ...] = ()) -> None:
+    def __init__(
+        self, prs: tuple[PrRecord, ...] = (), stuck_queue_prs: tuple[Any, ...] = ()
+    ) -> None:
         self._prs = prs
+        self._stuck_queue_prs = stuck_queue_prs
         self.call_count = 0
         self.last_input: Any = None
 
@@ -71,7 +75,11 @@ class MockInventory:
         """Sync signature matching HandlerPrLifecycleInventory.handle(input_model)."""
         self.call_count += 1
         self.last_input = input_model
-        return InventoryResult(prs=self._prs, total_collected=len(self._prs))
+        return InventoryResult(
+            prs=self._prs,
+            total_collected=len(self._prs),
+            stuck_queue_prs=self._stuck_queue_prs,
+        )
 
 
 class MockTriage:
@@ -198,6 +206,17 @@ class MockFix:
             self._in_flight -= 1
 
 
+class MockQueueStallAdapter:
+    """Mock matching GitHubMergeQueueAdapter.remediate_queue_stall()."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+
+    async def remediate_queue_stall(self, repo: str, pr_number: int) -> str:
+        self.calls.append((repo, pr_number))
+        return f"remediated {repo}#{pr_number}"
+
+
 # ---------------------------------------------------------------------------
 # Test data helpers
 # ---------------------------------------------------------------------------
@@ -254,6 +273,7 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     ) -> None:
         super().__init__(**kwargs)
         self._mock_prs = _mock_inventory_prs
+        self.queue_stall_adapter = MockQueueStallAdapter()
 
     def _enumerate_repos(self) -> tuple[str, ...]:
         """Return repos from the mock PR fixture, deduplicated."""
@@ -262,6 +282,9 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
     def _enumerate_open_pr_numbers(self, repo: str) -> tuple[int, ...]:
         """Return PR numbers for the given repo from the mock fixture."""
         return tuple(pr.pr_number for pr in self._mock_prs if pr.repo == repo)
+
+    def _make_merge_queue_adapter(self) -> MockQueueStallAdapter:
+        return self.queue_stall_adapter
 
 
 def _make_orchestrator(
@@ -381,6 +404,50 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert fix.call_count == 0
         # All intents are recorded as skipped
         assert result.prs_skipped == 2
+
+    async def test_dry_run_skips_queue_stall_remediation(self) -> None:
+        """dry_run=True records the stall but does not mutate GitHub queue state."""
+        stuck_entry = SimpleNamespace(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=101,
+            queue_state="AWAITING_CHECKS",
+            merge_group_run_count=0,
+        )
+        inventory = MockInventory(prs=(_PR_GREEN,), stuck_queue_prs=(stuck_entry,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+
+        orch = _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+        )
+        result = await orch.handle(_make_command(dry_run=True))
+
+        assert result.final_state == "COMPLETE"
+        assert orch.queue_stall_adapter.calls == []
+
+    async def test_live_sweep_remediates_queue_stall_before_triage(self) -> None:
+        """Live sweep invokes capped dequeue/requeue remediation for stalled entries."""
+        stuck_entry = SimpleNamespace(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=101,
+            queue_state="AWAITING_CHECKS",
+            merge_group_run_count=0,
+        )
+        inventory = MockInventory(prs=(_PR_GREEN,), stuck_queue_prs=(stuck_entry,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=())
+
+        orch = _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+        )
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert orch.queue_stall_adapter.calls == [("OmniNode-ai/omnimarket", 101)]
 
     async def test_merge_only_flag(self) -> None:
         """merge_only=True -> fix handler NOT called after merge."""

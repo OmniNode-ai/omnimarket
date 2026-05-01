@@ -12,6 +12,7 @@ Related:
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -267,6 +268,94 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         assert result.total_collected == 0
         assert len(result.pr_states) == 0
         assert len(result.collection_errors) == 0
+
+    def test_awaiting_checks_without_merge_group_run_is_stuck(self) -> None:
+        """AWAITING_CHECKS >15 min with zero merge_group runs is flagged."""
+        handler = HandlerPrLifecycleInventory()
+        head_sha = "abc123"
+        enqueued_at = datetime.now(tz=UTC) - timedelta(minutes=20)
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            joined = " ".join(cmd)
+            if "actions/runs" in joined:
+                return _make_subprocess_result(json.dumps({"total_count": 0}))
+            if "mergeQueueEntry" in cmd:
+                return _make_subprocess_result(
+                    json.dumps(
+                        {
+                            "mergeQueueEntry": {
+                                "state": "AWAITING_CHECKS",
+                                "enqueuedAt": enqueued_at.isoformat(),
+                                "headCommit": {"oid": head_sha},
+                            }
+                        }
+                    )
+                )
+            if "checks" in cmd:
+                return _make_subprocess_result("[]")
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            return _make_subprocess_result(
+                json.dumps(
+                    _fake_gh_pr_view(
+                        pr_number=42,
+                        merge_state_status="QUEUED",
+                    )
+                )
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=(42,))
+            )
+
+        assert len(result.stuck_queue_prs) == 1
+        stuck = result.stuck_queue_prs[0]
+        assert stuck.pr_number == 42
+        assert stuck.queue_state == "AWAITING_CHECKS"
+        assert stuck.head_sha == head_sha
+        assert stuck.merge_group_run_count == 0
+
+    def test_awaiting_checks_with_merge_group_run_is_not_stuck(self) -> None:
+        """AWAITING_CHECKS with a dispatched merge_group run is not remediated."""
+        handler = HandlerPrLifecycleInventory()
+        enqueued_at = datetime.now(tz=UTC) - timedelta(minutes=20)
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            joined = " ".join(cmd)
+            if "actions/runs" in joined:
+                return _make_subprocess_result(json.dumps({"total_count": 1}))
+            if "mergeQueueEntry" in cmd:
+                return _make_subprocess_result(
+                    json.dumps(
+                        {
+                            "mergeQueueEntry": {
+                                "state": "AWAITING_CHECKS",
+                                "enqueuedAt": enqueued_at.isoformat(),
+                                "headCommit": {"oid": "abc123"},
+                            }
+                        }
+                    )
+                )
+            if "checks" in cmd:
+                return _make_subprocess_result("[]")
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            return _make_subprocess_result(
+                json.dumps(
+                    _fake_gh_pr_view(
+                        pr_number=42,
+                        merge_state_status="QUEUED",
+                    )
+                )
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler.handle(
+                ModelPrInventoryInput(repo="OmniNode-ai/omnimarket", pr_numbers=(42,))
+            )
+
+        assert result.stuck_queue_prs == []
 
 
 @pytest.mark.unit

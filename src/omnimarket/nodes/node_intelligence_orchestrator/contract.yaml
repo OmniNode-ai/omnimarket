@@ -110,12 +110,14 @@ handler_routing:
   handlers:
     - operation: "receive_intent"
       handler:
+        name: "handle_receive_intent"
         function: "handle_receive_intent"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
         type: "sync"
       description: "Receive and log a single intent from the reducer"
     - operation: "receive_intents"
       handler:
+        name: "handle_receive_intents"
         function: "handle_receive_intents"
         module: "omnimarket.nodes.node_intelligence_orchestrator.handlers.handler_receive_intent"
         type: "sync"
