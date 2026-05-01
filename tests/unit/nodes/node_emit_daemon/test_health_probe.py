@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.events.daemon_health_probe import (
+    ModelDaemonHealthProbeResult,
+)
 from omnimarket.nodes.node_emit_daemon.health_probe import (
     HEALTH_PROBE_EVENT_TYPE,
     _decode_record_payload,
     main,
     probe,
-)
-from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_probe_result import (
-    ModelDaemonHealthProbeResult,
 )
 
 

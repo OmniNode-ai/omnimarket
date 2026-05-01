@@ -8,10 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from omnimarket.nodes.node_emit_daemon.health_probe import probe
-from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_probe_result import (
+from omnimarket.events.daemon_health_probe import (
     ModelDaemonHealthProbeResult,
 )
+from omnimarket.nodes.node_emit_daemon.health_probe import probe
 from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
     EnumCheckStatus,
     EnumCheckTarget,

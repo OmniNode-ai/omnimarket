@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_probe_result import (
+from omnimarket.events.daemon_health_probe import (
     ModelDaemonHealthProbeResult,
 )
 from omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health import (

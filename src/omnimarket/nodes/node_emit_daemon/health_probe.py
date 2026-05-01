@@ -15,11 +15,11 @@ from pathlib import Path
 from typing import Protocol, cast
 from uuid import uuid4
 
-from omnimarket.nodes.node_emit_daemon.client import EmitClient, default_socket_path
-from omnimarket.nodes.node_emit_daemon.event_registry import EventRegistry
-from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_probe_result import (
+from omnimarket.events.daemon_health_probe import (
     ModelDaemonHealthProbeResult,
 )
+from omnimarket.nodes.node_emit_daemon.client import EmitClient, default_socket_path
+from omnimarket.nodes.node_emit_daemon.event_registry import EventRegistry
 
 HEALTH_PROBE_EVENT_TYPE = "daemon.health.probe"
 _DEFAULT_TIMEOUT_S = 5.0
