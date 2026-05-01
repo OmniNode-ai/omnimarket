@@ -58,15 +58,6 @@ STUB_NODE_CASES: tuple[StubNodeCase, ...] = (
         result_class="ModelGapComputeResult",
     ),
     StubNodeCase(
-        node_name="node_integration_sweep_orchestrator",
-        handler_module="omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integration_sweep_orchestrator",
-        handler_class="HandlerIntegrationSweepOrchestrator",
-        request_module="omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request",
-        request_class="ModelIntegrationSweepOrchestratorRequest",
-        result_module="omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_result",
-        result_class="ModelIntegrationSweepOrchestratorResult",
-    ),
-    StubNodeCase(
         node_name="node_pr_watch_orchestrator",
         handler_module="omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator",
         handler_class="HandlerPrWatchOrchestrator",
