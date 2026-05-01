@@ -19,6 +19,9 @@ evidence_requirements:
   - kind: "manual"
     description: "Repo-local contract YAML parses"
     command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10130.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan for daemon health watchdog target imports; no live deploy or runtime restart performed in this PR"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health import DaemonHealthCheckTarget; print('deploy smoke ok', DaemonHealthCheckTarget.__name__)\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -48,3 +51,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10130.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - id: "dod-deploy-smoke"
+    description: "Post-merge deploy smoke plan for daemon health watchdog target imports; no live deploy or runtime restart performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health import DaemonHealthCheckTarget; print('deploy smoke ok', DaemonHealthCheckTarget.__name__)\""

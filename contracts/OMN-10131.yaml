@@ -25,6 +25,9 @@ evidence_requirements:
   - kind: "manual"
     description: "Repo-local contract YAML parses"
     command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10131.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan for watchdog consecutive failure policy imports; no live deploy or runtime restart performed in this PR"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog import ConsecutiveFailurePolicy; print('deploy smoke ok', ConsecutiveFailurePolicy.__name__)\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -66,3 +69,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10131.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - id: "dod-deploy-smoke"
+    description: "Post-merge deploy smoke plan for watchdog consecutive failure policy imports; no live deploy or runtime restart performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog import ConsecutiveFailurePolicy; print('deploy smoke ok', ConsecutiveFailurePolicy.__name__)\""
