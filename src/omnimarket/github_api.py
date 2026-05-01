@@ -6,7 +6,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, cast
 
 _GITHUB_REST = "https://api.github.com"
 _GITHUB_GRAPHQL = "https://api.github.com/graphql"
@@ -94,7 +94,7 @@ def rest_text(
     )
     try:
         with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            return resp.read().decode("utf-8", errors="replace")
+            return cast(bytes, resp.read()).decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
         raise GitHubApiError(detail or str(exc)) from exc

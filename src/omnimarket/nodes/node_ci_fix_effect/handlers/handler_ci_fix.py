@@ -22,6 +22,7 @@ import urllib.parse
 import urllib.request
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import yaml
@@ -513,7 +514,15 @@ async def _fetch_ci_log(
     owner, repo_name = split_repo(repo)
 
     class _NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
+        def redirect_request(
+            self,
+            req: urllib.request.Request,
+            fp: Any,
+            code: int,
+            msg: str,
+            headers: Any,
+            newurl: str,
+        ) -> urllib.request.Request | None:
             return None
 
     def _download_job_log(job_id: int) -> str:
@@ -529,7 +538,7 @@ async def _fetch_ci_log(
         opener = urllib.request.build_opener(_NoRedirect)
         try:
             with opener.open(req, timeout=60) as resp:
-                return resp.read().decode("utf-8", errors="replace")
+                return cast(bytes, resp.read()).decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             if exc.code not in {301, 302, 303, 307, 308}:
                 detail = exc.read().decode("utf-8", errors="replace").strip()
@@ -541,7 +550,7 @@ async def _fetch_ci_log(
                 ) from exc
             # GitHub returns a signed blob-storage URL; fetch it without GitHub auth headers.
             with urllib.request.urlopen(location, timeout=60) as resp:
-                return resp.read().decode("utf-8", errors="replace")
+                return cast(bytes, resp.read()).decode("utf-8", errors="replace")
 
     def _download_log() -> str:
         jobs_payload = rest_json(
