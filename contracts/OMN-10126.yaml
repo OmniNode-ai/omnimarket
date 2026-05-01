@@ -1,6 +1,7 @@
 ---
 schema_version: "1.0.0"
 ticket_id: OMN-10126
+title: "Register daemon health event model"
 summary: "Register diagnostic.daemon.health in omnimarket emit daemon registry with typed daemon health payload model"
 is_seam_ticket: true
 interface_change: true
@@ -31,3 +32,9 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: "uv run ruff check src/omnimarket/nodes/node_emit_daemon/event_registry.py src/omnimarket/nodes/node_emit_daemon/models tests/test_golden_chain_emit_daemon.py"
+  - id: dod-omnimarket-daemon-health-deploy-smoke
+    description: "Post-merge runtime smoke verifies daemon health event registry and payload model import in the deployed container"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_emit_daemon.event_registry import get_event_registry; from omnimarket.nodes.node_emit_daemon.models import ModelDaemonHealthEvent; registry = get_event_registry(); assert registry['diagnostic.daemon.health'].payload_model is ModelDaemonHealthEvent; print('deploy smoke ok', registry['diagnostic.daemon.health'].topic, ModelDaemonHealthEvent.__name__)\""
