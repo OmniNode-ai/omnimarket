@@ -204,6 +204,7 @@ node_bus_audit_compute = "omnimarket.nodes.node_bus_audit_compute"
 node_gap_compute = "omnimarket.nodes.node_gap_compute"
 node_pr_watch_orchestrator = "omnimarket.nodes.node_pr_watch_orchestrator"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
+node_version_skew_detector = "omnimarket.nodes.node_version_skew_detector"
 node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"
 
 [project.scripts]

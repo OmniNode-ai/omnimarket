@@ -1,0 +1,63 @@
+---
+name: version_skew_detector
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Detects plugin/runtime version incompatibility across the OmniNode platform.
+  Compares plugin version against runtime version and checks each installed
+  node's version against runtime compatibility range. Emits a version-skew-detected
+  event when incompatibility is found.
+
+handler:
+  module: omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector
+  class: NodeVersionSkewDetector
+  input_model: omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector.VersionSkewCheckRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  plugin_version:
+    type: str
+    description: "Current plugin version (semver)"
+    required: true
+  runtime_version:
+    type: str
+    description: "Current runtime version (semver)"
+    required: true
+  installed_nodes:
+    type: list[NodeVersionInfo]
+    description: "List of installed nodes with name and version"
+    required: true
+  runtime_compat_range:
+    type: str
+    description: "Semver range for runtime compatibility check"
+    required: false
+    default: ">=1.0.0,<2.0.0"
+
+outputs:
+  status:
+    type: str
+    enum: [healthy, skew_detected]
+  plugin_version:
+    type: str
+  runtime_version:
+    type: str
+  incompatible_nodes:
+    type: list[IncompatibleNode]
+  detected_at:
+    type: str
+
+terminal_event: onex.evt.omniclaude.version-skew-detected.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniclaude.version-skew-check.v1
+  publish_topics:
+    - onex.evt.omniclaude.version-skew-detected.v1
+    - onex.evt.omniclaude.version-skew-healthy.v1
