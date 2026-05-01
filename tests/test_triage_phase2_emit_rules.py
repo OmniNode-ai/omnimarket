@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
+from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,
@@ -26,6 +27,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
     ModelPRInfo,
 )
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage import (
+    _DEFAULT_ROUTING_POLICY,
     HandlerTriageOrchestrator,
 )
 from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request import (
@@ -84,6 +86,13 @@ def _make_request(classified: list[ModelClassifiedPR]) -> ModelTriageRequest:
         correlation_id=_CORR_ID,
         emit_pr_polish_commands=False,
     )
+
+
+def test_default_routing_policy_matches_current_model_schema() -> None:
+    policy = ModelRoutingPolicy.model_validate(_DEFAULT_ROUTING_POLICY)
+
+    assert policy.primary == "deepseek-r1-14b"
+    assert policy.fallback == "qwen3-coder-30b"
 
 
 # ---------------------------------------------------------------------------
