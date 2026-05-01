@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -104,6 +105,7 @@ def test_probe_ignores_wrong_correlation_id_then_matches(tmp_path: Path) -> None
         },
     ]
 
+    started_at = time.monotonic()
     result = probe(
         socket_path=_touch_socket_marker(tmp_path),
         bootstrap_servers="localhost:9092",
@@ -116,16 +118,13 @@ def test_probe_ignores_wrong_correlation_id_then_matches(tmp_path: Path) -> None
     assert result.success is True
     assert result.kafka_offset == 5
     assert result.event_id == "evt-health-1"
-    assert emitted == [
-        (
-            HEALTH_PROBE_EVENT_TYPE,
-            {
-                "correlation_id": "corr-match",
-                "probe": "daemon-health",
-                "sent_at_monotonic": pytest.approx(emitted[0][1]["sent_at_monotonic"]),
-            },
-        )
-    ]
+    assert len(emitted) == 1
+    event_type, payload = emitted[0]
+    assert event_type == HEALTH_PROBE_EVENT_TYPE
+    assert payload["correlation_id"] == "corr-match"
+    assert payload["probe"] == "daemon-health"
+    assert isinstance(payload["sent_at_monotonic"], int | float)
+    assert started_at <= payload["sent_at_monotonic"] <= time.monotonic()
 
 
 def test_probe_closes_consumer_when_daemon_emit_fails(tmp_path: Path) -> None:
