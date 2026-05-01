@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10128
+title: "Build daemon-health probe CLI"
+summary: "Add a typed emit-daemon health probe that verifies Unix socket enqueue through correlated Kafka diagnostic event consumption."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "events"
+  - "envelopes"
+evidence_requirements:
+  - kind: "manual"
+    description: "Daemon health probe unit and hermetic integration tests pass"
+    command: "uv run pytest tests/unit/nodes/node_emit_daemon/test_health_probe.py tests/integration/node_emit_daemon/test_health_probe_round_trip.py -q"
+  - kind: "manual"
+    description: "Touched daemon health probe paths pass lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_emit_daemon/health_probe.py src/omnimarket/nodes/node_emit_daemon/models/model_daemon_health_probe_result.py tests/unit/nodes/node_emit_daemon/test_health_probe.py tests/integration/node_emit_daemon/test_health_probe_round_trip.py"
+  - kind: "manual"
+    description: "Touched daemon health probe paths are formatted"
+    command: "uv run ruff format --check src/omnimarket/nodes/node_emit_daemon/health_probe.py src/omnimarket/nodes/node_emit_daemon/models/model_daemon_health_probe_result.py tests/unit/nodes/node_emit_daemon/test_health_probe.py tests/integration/node_emit_daemon/test_health_probe_round_trip.py"
+  - kind: "manual"
+    description: "Repo-local contract YAML parses"
+    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10128.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-health-probe-tests"
+    description: "Daemon health probe unit and hermetic integration tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_emit_daemon/test_health_probe.py tests/integration/node_emit_daemon/test_health_probe_round_trip.py -q"
+  - id: "dod-lint"
+    description: "Touched daemon health probe paths pass lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_emit_daemon/health_probe.py src/omnimarket/nodes/node_emit_daemon/models/model_daemon_health_probe_result.py tests/unit/nodes/node_emit_daemon/test_health_probe.py tests/integration/node_emit_daemon/test_health_probe_round_trip.py"
+  - id: "dod-format"
+    description: "Touched daemon health probe paths are formatted"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff format --check src/omnimarket/nodes/node_emit_daemon/health_probe.py src/omnimarket/nodes/node_emit_daemon/models/model_daemon_health_probe_result.py tests/unit/nodes/node_emit_daemon/test_health_probe.py tests/integration/node_emit_daemon/test_health_probe_round_trip.py"
+  - id: "dod-contract-parse"
+    description: "Repo-local contract YAML parses"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10128.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
