@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import stat
 from uuid import UUID
 
 import pytest
@@ -71,6 +72,12 @@ def test_map_args_to_payload_renames_fields_and_omits_none() -> None:
     ) == {"target_repo": "omnimarket", "dry_run": True}
 
 
+def test_map_args_to_payload_can_preserve_none_values() -> None:
+    assert map_args_to_payload({"explicit": None}, omit_none=False) == {
+        "explicit": None
+    }
+
+
 def test_generate_correlation_id_returns_uuid4() -> None:
     correlation_id = generate_correlation_id()
 
@@ -120,6 +127,13 @@ def test_handle_error_returns_structured_error() -> None:
     assert error.details == {"command": "merge_sweep"}
 
 
+def test_handle_error_uses_exception_class_when_message_is_empty() -> None:
+    error = handle_error(Exception(), code="runtime_adapter_error")
+
+    assert error.code == "runtime_adapter_error"
+    assert error.message == "Exception"
+
+
 def test_stream_progress_writes_json_event_to_sink() -> None:
     lines: list[str] = []
 
@@ -157,3 +171,22 @@ def test_check_environment_reports_missing_required_dependencies() -> None:
     assert by_name["ONEX_OPTIONAL"].present is True
     assert by_name["ONEX_OPTIONAL"].value is None
     assert by_name["definitely-not-an-omnimarket-command"].present is False
+
+
+def test_check_environment_resolves_commands_against_injected_path(
+    tmp_path,
+) -> None:
+    command_path = tmp_path / "omni-test-command"
+    command_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    command_path.chmod(command_path.stat().st_mode | stat.S_IXUSR)
+
+    result = check_environment(
+        required_commands=("omni-test-command",),
+        environ={"PATH": str(tmp_path)},
+        expose_values=True,
+    )
+
+    assert result.ok is True
+    assert result.missing_required == []
+    assert result.checks[0].present is True
+    assert result.checks[0].value == str(command_path)

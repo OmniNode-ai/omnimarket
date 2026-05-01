@@ -302,7 +302,7 @@ def _load_payload(
 
     if not isinstance(raw, dict):
         raise ValueError("Payload must decode to a JSON object")
-    return map_args_to_payload(raw)
+    return map_args_to_payload(raw, omit_none=False)
 
 
 def _output_payloads(payload: object) -> list[dict[str, object]] | None:
@@ -577,6 +577,14 @@ def main(argv: list[str] | None = None) -> int:
             payload=cast(str | None, parsed_args["payload"]),
             payload_file=cast(str | None, parsed_args["payload_file"]),
         )
+        correlation_id = cast(str | None, parsed_args["correlation_id"])
+        if correlation_id is None:
+            embedded_correlation_id = payload.get("correlation_id")
+            if (
+                isinstance(embedded_correlation_id, str)
+                and embedded_correlation_id.strip()
+            ):
+                correlation_id = embedded_correlation_id
     except FileNotFoundError as exc:
         response = _build_cli_error_response(
             command_name=args.command_name,
@@ -600,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
             response = client.compile_request(
                 command_name=args.command_name,
                 payload=payload,
-                correlation_id=args.correlation_id,
+                correlation_id=correlation_id,
                 timeout_ms=args.timeout_ms,
                 response_topic=args.response_topic,
                 target_runtime_address=args.target_runtime_address,
@@ -609,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
             response = client.dispatch_sync(
                 command_name=args.command_name,
                 payload=payload,
-                correlation_id=args.correlation_id,
+                correlation_id=correlation_id,
                 timeout_ms=args.timeout_ms,
                 response_topic=args.response_topic,
                 target_runtime_address=args.target_runtime_address,

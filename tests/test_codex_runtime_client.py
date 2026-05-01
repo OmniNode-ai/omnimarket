@@ -1525,6 +1525,44 @@ def test_main_compile_only_outputs_command_without_event_bus(
     )
 
 
+def test_main_compile_only_preserves_payload_null_and_embedded_correlation_id(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+
+    correlation_id = "11111111-1111-4111-8111-111111111111"
+    rc = main(
+        [
+            "--command-name",
+            "pr_lifecycle_orchestrator",
+            "--payload",
+            json.dumps(
+                {
+                    "correlation_id": correlation_id,
+                    "optional_value": None,
+                    "dry_run": True,
+                }
+            ),
+            "--response-topic",
+            "onex.evt.omnibase-infra.pattern-b-compile-main.v1",
+            "--compile-only",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert f'"correlation_id": "{correlation_id}"' in captured.out
+    assert '"optional_value": null' in captured.out
+
+
 def test_compile_only_rejects_explicit_empty_response_topic() -> None:
     client = CodexRuntimeRequestAdapter(requester="codex-test")
 

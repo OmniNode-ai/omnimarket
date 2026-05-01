@@ -176,9 +176,10 @@ def handle_error(
 ) -> ModelWrapperError:
     """Build a structured wrapper error from an exception."""
 
+    message = str(exc).strip() or exc.__class__.__name__
     return ModelWrapperError(
         code=code,
-        message=str(exc),
+        message=message,
         details=dict(details) if details is not None else None,
         retryable=retryable,
     )
@@ -215,6 +216,7 @@ def check_environment(
     """Check local wrapper environment dependencies without mutating state."""
 
     env = os.environ if environ is None else environ
+    custom_path = env.get("PATH") if environ is not None else None
     checks: list[ModelEnvironmentCheck] = []
     missing_required: list[str] = []
 
@@ -234,7 +236,7 @@ def check_environment(
         )
 
     def add_command(name: str, *, required: bool) -> None:
-        resolved = shutil.which(name)
+        resolved = shutil.which(name, path=custom_path)
         present = resolved is not None
         if required and not present:
             missing_required.append(name)
