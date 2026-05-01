@@ -81,13 +81,18 @@ def _load_installed_packages(registry_path: Path) -> list[ModelInstalledMarketPa
         package_path = raw_info.get("path")
         metadata = _load_node_metadata(Path(package_path)) if package_path else None
         package_name = str(raw_info.get("package") or registry_name)
+        raw_version = raw_info.get("version")
+        metadata_version = metadata.version if metadata else None
+        version = (
+            str(raw_version or metadata_version)
+            if raw_version or metadata_version
+            else None
+        )
         packages.append(
             ModelInstalledMarketPackage(
                 name=metadata.name if metadata else str(registry_name),
                 package=package_name,
-                version=str(raw_info.get("version") or metadata.version)
-                if raw_info.get("version") or metadata
-                else None,
+                version=version,
                 source=str(raw_info.get("source")) if raw_info.get("source") else None,
                 path=str(package_path) if package_path else None,
                 display_name=metadata.display_name if metadata else None,
