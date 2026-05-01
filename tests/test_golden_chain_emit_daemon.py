@@ -298,10 +298,90 @@ class TestEventRegistry:
         assert registry.get_registration("session.started") is not None
         assert registry.get_registration("prompt.submitted") is not None
 
+    def test_diagnostic_daemon_health_registration(self) -> None:
+        from omnimarket.nodes.node_emit_daemon.models import ModelDaemonHealthEvent
+
+        registry_path = (
+            Path(__file__).parent.parent
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_emit_daemon"
+            / "registries"
+            / "topics.yaml"
+        )
+        registry = EventRegistry.from_yaml(registry_path)
+
+        registration = registry.get_registration("diagnostic.daemon.health")
+        assert registration is not None
+        assert registration.partition_key_field == "daemon_id"
+        assert registration.required_fields == [
+            "daemon_id",
+            "pid",
+            "socket_path",
+            "kafka_offset",
+            "round_trip_ms",
+            "status",
+        ]
+        assert len(registration.fan_out) == 1
+        assert registration.fan_out[0].topic == "onex.evt.diagnostic.daemon-health.v1"
+        assert registry.get_payload_model("diagnostic.daemon.health") is (
+            ModelDaemonHealthEvent
+        )
+
+        payload: dict[str, object] = {
+            "daemon_id": "emit-daemon",
+            "pid": 12345,
+            "socket_path": "/tmp/emit.sock",
+            "kafka_offset": 42,
+            "round_trip_ms": 8.25,
+            "status": "PASS",
+        }
+        validated = registry.validate_payload_model("diagnostic.daemon.health", payload)
+        assert isinstance(validated, ModelDaemonHealthEvent)
+        assert validated.daemon_id == "emit-daemon"
+        assert registry.validate_payload("diagnostic.daemon.health", payload) == []
+        assert registry.validate_payload(
+            "diagnostic.daemon.health", {"daemon_id": "x"}
+        ) == [
+            "pid",
+            "socket_path",
+            "kafka_offset",
+            "round_trip_ms",
+            "status",
+        ]
+
     def test_list_event_types(self) -> None:
         reg = EventRegistration(event_type="a", fan_out=[])
         registry = EventRegistry.from_dict({"a": reg})
         assert registry.list_event_types() == ["a"]
+
+    def test_diagnostic_daemon_health_model_rejects_invalid_payload(self) -> None:
+        from pydantic import ValidationError
+
+        registry_path = (
+            Path(__file__).parent.parent
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_emit_daemon"
+            / "registries"
+            / "topics.yaml"
+        )
+        registry = EventRegistry.from_yaml(registry_path)
+
+        with pytest.raises(ValidationError):
+            registry.validate_payload_model(
+                "diagnostic.daemon.health",
+                {
+                    "daemon_id": "emit-daemon",
+                    "pid": 0,
+                    "socket_path": "/tmp/emit.sock",
+                    "kafka_offset": -1,
+                    "round_trip_ms": -0.1,
+                    "status": "UNKNOWN",
+                },
+            )
 
 
 # =============================================================================

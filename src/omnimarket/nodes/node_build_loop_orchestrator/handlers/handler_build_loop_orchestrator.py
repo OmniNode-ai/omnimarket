@@ -86,6 +86,9 @@ logger = logging.getLogger(__name__)
 TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_OVERSEER_VERIFICATION_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_BUILD_LOOP_START = "onex.cmd.omnimarket.build-loop-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_BUILD_LOOP_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_BUILD_LOOP_FAILED = "onex.evt.omnimarket.build-loop-failed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 _VERIFIER_TIMEOUT_SECONDS = 120
 
@@ -151,6 +154,8 @@ class HandlerBuildLoopOrchestrator:
         # Inter-phase state: carry results between fill -> classify -> build
         self._last_fill_result: tuple[ScoredTicket, ...] = ()
         self._last_classify_result: tuple[BuildTarget, ...] = ()
+        self._last_pr_refs: tuple[str, ...] = ()
+        self._last_cost_event_keys: tuple[str, ...] = ()
 
     def _ensure_sub_handlers(self) -> None:
         """Lazy-initialize sub-handlers from default implementations if not injected."""
@@ -283,6 +288,8 @@ class HandlerBuildLoopOrchestrator:
         # Reset inter-phase state
         self._last_fill_result = ()
         self._last_classify_result = ()
+        self._last_pr_refs = ()
+        self._last_cost_event_keys = ()
 
         # Initialize FSM state via the reducer
         state = self._fsm.start(command)
@@ -319,6 +326,8 @@ class HandlerBuildLoopOrchestrator:
             tickets_filled=state.tickets_filled,
             tickets_classified=state.tickets_classified,
             tickets_dispatched=state.tickets_dispatched,
+            pr_refs=self._last_pr_refs,
+            cost_event_keys=self._last_cost_event_keys,
             error_message=state.error_message,
         )
 
@@ -401,6 +410,27 @@ class HandlerBuildLoopOrchestrator:
                     targets=self._last_classify_result,
                     dry_run=dry_run,
                 )
+                pr_refs: list[str] = []
+                cost_event_keys: list[str] = []
+                for dp in dispatch_result.delegation_payloads:
+                    raw_pr_refs = dp.payload.get("pr_refs", ())
+                    if isinstance(raw_pr_refs, str):
+                        pr_refs.append(raw_pr_refs)
+                    elif isinstance(raw_pr_refs, list | tuple):
+                        pr_refs.extend(str(ref) for ref in raw_pr_refs)
+
+                    raw_cost_keys = dp.payload.get("cost_event_keys", ())
+                    if isinstance(raw_cost_keys, str):
+                        cost_event_keys.append(raw_cost_keys)
+                    elif isinstance(raw_cost_keys, list | tuple):
+                        cost_event_keys.extend(str(key) for key in raw_cost_keys)
+
+                    raw_cost_key = dp.payload.get("cost_event_key")
+                    if raw_cost_key is not None:
+                        cost_event_keys.append(str(raw_cost_key))
+
+                self._last_pr_refs = tuple(dict.fromkeys(pr_refs))
+                self._last_cost_event_keys = tuple(dict.fromkeys(cost_event_keys))
 
                 # Publish delegation payloads via event bus
                 if self._event_bus is not None:

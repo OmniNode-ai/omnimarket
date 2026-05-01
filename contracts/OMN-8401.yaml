@@ -1,0 +1,79 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-8401
+title: "Wrapper base and environment diagnostics helper"
+summary: "Add a shared OmniMarket adapter wrapper base for argument collection, validation, payload mapping, correlation IDs, output formatting, timeout/error handling, progress events, and local environment diagnostics; wire Codex/Cursor adapter templates and Codex runtime request client to reuse it."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+  - "protocols"
+evidence_requirements:
+  - kind: "manual"
+    description: "Shared wrapper base helpers and Codex runtime client tests pass"
+    command: "uv run pytest tests/test_wrapper_base.py tests/test_codex_runtime_client.py -q"
+  - kind: "manual"
+    description: "Codex plugin shim contract remains dispatch-only and compatible"
+    command: "uv run pytest tests/test_codex_plugin_shims.py -q"
+  - kind: "manual"
+    description: "Adapter generator tests confirm generated Codex/Cursor wrapper instructions"
+    command: "uv run pytest tests/unit/test_generate_adapters.py tests/test_generate_adapter.py -q"
+  - kind: "manual"
+    description: "Touched adapter wrapper code passes lint"
+    command: "uv run ruff check src/omnimarket/adapters/wrapper_base.py src/omnimarket/adapters/codex/runtime_client.py scripts/generate_adapters.py tests/test_wrapper_base.py"
+  - kind: "manual"
+    description: "Touched adapter wrapper code is formatted"
+    command: "uv run ruff format --check src/omnimarket/adapters/wrapper_base.py src/omnimarket/adapters/codex/runtime_client.py scripts/generate_adapters.py tests/test_wrapper_base.py"
+  - kind: "manual"
+    description: "Repo-local contract YAML parses"
+    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8401.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - kind: "manual"
+    description: "Codex runtime request compile-only path remains event-bus-free"
+    command: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_lifecycle_orchestrator --payload '{\"correlation_id\":\"11111111-1111-4111-8111-111111111111\",\"run_id\":\"omn-8401-proof\",\"dry_run\":true,\"inventory_only\":true,\"repos\":\"OmniNode-ai/omnimarket\"}' --timeout-ms 30000 --compile-only"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-wrapper-tests"
+    description: "Shared wrapper base helpers and Codex runtime client tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_wrapper_base.py tests/test_codex_runtime_client.py -q"
+  - id: "dod-codex-shim-tests"
+    description: "Codex plugin shim contract remains dispatch-only and compatible"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_codex_plugin_shims.py -q"
+  - id: "dod-generator-tests"
+    description: "Adapter generator tests confirm generated Codex/Cursor wrapper instructions"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/test_generate_adapters.py tests/test_generate_adapter.py -q"
+  - id: "dod-lint"
+    description: "Touched adapter wrapper code passes lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/adapters/wrapper_base.py src/omnimarket/adapters/codex/runtime_client.py scripts/generate_adapters.py tests/test_wrapper_base.py"
+  - id: "dod-format"
+    description: "Touched adapter wrapper code is formatted"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff format --check src/omnimarket/adapters/wrapper_base.py src/omnimarket/adapters/codex/runtime_client.py scripts/generate_adapters.py tests/test_wrapper_base.py"
+  - id: "dod-contract-parse"
+    description: "Repo-local contract YAML parses"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8401.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+  - id: "dod-compile-only"
+    description: "Codex runtime request compile-only path remains event-bus-free"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_lifecycle_orchestrator --payload '{\"correlation_id\":\"11111111-1111-4111-8111-111111111111\",\"run_id\":\"omn-8401-proof\",\"dry_run\":true,\"inventory_only\":true,\"repos\":\"OmniNode-ai/omnimarket\"}' --timeout-ms 30000 --compile-only"

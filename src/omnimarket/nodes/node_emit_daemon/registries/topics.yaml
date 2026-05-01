@@ -468,3 +468,14 @@ events:
         description: "Structured hook error event"
     partition_key_field: session_id
     required_fields: [hook_name, error_tier, error_category, session_id]
+
+  # =========================================================================
+  # Runtime Diagnostics
+  # =========================================================================
+  diagnostic.daemon.health:
+    fan_out:
+      - topic: "onex.evt.diagnostic.daemon-health.v1"
+        description: "Portable daemon health diagnostic event"
+    partition_key_field: daemon_id
+    required_fields: [daemon_id, pid, socket_path, kafka_offset, round_trip_ms, status]
+    payload_model: daemon_health
