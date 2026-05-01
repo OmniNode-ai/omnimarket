@@ -47,7 +47,7 @@ def _parse_pr(pr_arg: str) -> tuple[str, str]:
         msg = f"--pr must be in '<repo>#<num>' format, got: {pr_arg!r}"
         raise argparse.ArgumentTypeError(msg)
     repo, _, num = pr_arg.partition("#")
-    if not repo or not num.isdigit():
+    if not repo or not num.isdigit() or int(num) < 1:
         msg = f"--pr must be in '<repo>#<num>' format, got: {pr_arg!r}"
         raise argparse.ArgumentTypeError(msg)
     return repo, num

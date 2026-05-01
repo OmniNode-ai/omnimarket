@@ -53,3 +53,10 @@ def test_cli_pr_populates_claimed_prs_for_live_check(
 @pytest.mark.unit
 def test_cli_pr_preserves_owner_qualified_repo() -> None:
     assert cli._gh_repo("ExampleOrg/example") == "ExampleOrg/example"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("pr_arg", ["omnimarket#0", "omnimarket#-1"])
+def test_parse_pr_rejects_non_positive_pr_numbers(pr_arg: str) -> None:
+    with pytest.raises(Exception, match="--pr must be in"):
+        cli._parse_pr(pr_arg)
