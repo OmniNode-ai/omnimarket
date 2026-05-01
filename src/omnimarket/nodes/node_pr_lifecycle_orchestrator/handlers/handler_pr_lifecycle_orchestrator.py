@@ -68,6 +68,9 @@ logger = logging.getLogger(__name__)
 TOPIC_PHASE_TRANSITION = "onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_FIXER_DISPATCH_START = "onex.cmd.omnimarket.fixer-dispatch-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_PR_LIFECYCLE_START = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_PR_LIFECYCLE_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_PR_LIFECYCLE_FAILED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 
 # ---------------------------------------------------------------------------

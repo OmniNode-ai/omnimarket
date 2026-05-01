@@ -86,6 +86,9 @@ logger = logging.getLogger(__name__)
 TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_OVERSEER_VERIFICATION_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_BUILD_LOOP_START = "onex.cmd.omnimarket.build-loop-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_BUILD_LOOP_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_BUILD_LOOP_FAILED = "onex.evt.omnimarket.build-loop-failed.v1"  # onex-topic-allow: pending contract auto-wiring
 
 _VERIFIER_TIMEOUT_SECONDS = 120
 
