@@ -54,10 +54,29 @@ outputs:
     type: str
   message:
     type: str
+  subcommand:
+    type: str
+    enum: [detect, fix, cycle, reconcile]
+  scope:
+    type: str
+  dry_run:
+    type: bool
+  repos_in_scope:
+    type: list
+  contracts_checked:
+    type: int
   findings:
+    type: list
+  best_effort_findings:
     type: list
   skipped_probes:
     type: list
+  report_path:
+    type: str
+    required: false
+    nullable: true
+  dispatch_class_counts:
+    type: map
 
 terminal_event: onex.evt.omnimarket.gap-compute-completed.v1
 

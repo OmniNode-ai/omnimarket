@@ -69,6 +69,7 @@ class HandlerGapCompute:
 
         findings: list[ModelGapFinding] = []
         best_effort: list[ModelGapFinding] = []
+        skipped_probes = self._skipped_live_probes(request)
         contracts_checked = 0
         for repo_root in repo_roots:
             repo_name = repo_root.name
@@ -78,11 +79,22 @@ class HandlerGapCompute:
                     or "node_modules" in contract_path.parts
                 ):
                     continue
-                raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+                rel_path = _relative_to_repo(contract_path, repo_root)
+                try:
+                    raw = (
+                        yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+                    )
+                except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+                    skipped_probes.append(
+                        ModelSkippedGapProbe(
+                            probe="contract_parse",
+                            reason=f"{rel_path}: {type(exc).__name__}: {exc}",
+                        )
+                    )
+                    continue
                 if not isinstance(raw, dict):
                     continue
                 contracts_checked += 1
-                rel_path = _relative_to_repo(contract_path, repo_root)
                 node_name = str(raw.get("name") or contract_path.parent.name)
                 if raw.get("node_not_implemented") is True:
                     findings.append(
@@ -148,7 +160,7 @@ class HandlerGapCompute:
             contracts_checked=contracts_checked,
             findings=findings,
             best_effort_findings=best_effort,
-            skipped_probes=self._skipped_live_probes(request),
+            skipped_probes=skipped_probes,
         )
 
     def _classify_report(
@@ -215,13 +227,7 @@ class HandlerGapCompute:
         if request.repo_roots:
             roots = [Path(item) for item in request.repo_roots]
         else:
-            roots = [
-                path
-                for path in _OMNI_HOME.iterdir()
-                if path.is_dir()
-                and not path.name.startswith(".")
-                and (path / "src").exists()
-            ]
+            roots = [_REPO_ROOT]
         if request.repo:
             roots = [path for path in roots if path.name == request.repo]
         return sorted(path for path in roots if path.is_dir())
@@ -321,7 +327,7 @@ def _contract_topics(event_bus: dict[str, object], raw: dict[str, object]) -> li
     terminal_event = raw.get("terminal_event")
     if isinstance(terminal_event, str):
         topics.append(terminal_event)
-    return topics
+    return list(dict.fromkeys(topics))
 
 
 def _relative_to_repo(path: Path, repo_root: Path) -> str:

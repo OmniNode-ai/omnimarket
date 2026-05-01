@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-findings", type=int, default=200)
     parser.add_argument("--max-best-effort", type=int, default=50)
     parser.add_argument("--max-iterations", type=int, default=3)
-    parser.add_argument("--output", choices=["json", "md"], default="json")
+    parser.add_argument("--output", choices=["json"], default="json")
     parser.add_argument("--ticket")
     parser.add_argument("--latest", action="store_true")
     parser.add_argument("--mode", default="ticket-pipeline")

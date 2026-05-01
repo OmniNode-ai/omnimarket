@@ -2,6 +2,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_gap_compute.models.model_gap_compute_request import (
+    EnumGapSubcommand,
+)
+
 
 class EnumGapStatus(StrEnum):
     CLEAN = "clean"
@@ -59,7 +63,7 @@ class ModelGapComputeResult(BaseModel):
     status: EnumGapStatus = EnumGapStatus.CLEAN
     run_id: str = ""
     message: str = ""
-    subcommand: str = "detect"
+    subcommand: EnumGapSubcommand = EnumGapSubcommand.DETECT
     scope: str = "local"
     dry_run: bool = False
     repos_in_scope: list[str] = Field(default_factory=list)
