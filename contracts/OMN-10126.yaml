@@ -1,0 +1,40 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10126
+title: "Register daemon health event model"
+summary: "Register diagnostic.daemon.health in omnimarket emit daemon registry with typed daemon health payload model"
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - events
+  - public_api
+evidence_requirements:
+  - kind: tests
+    description: "Emit daemon registry tests prove diagnostic.daemon.health topic and payload model resolution"
+    command: "uv run pytest tests/test_golden_chain_emit_daemon.py -q"
+  - kind: manual
+    description: "Changed emit daemon files pass ruff"
+    command: "uv run ruff check src/omnimarket/nodes/node_emit_daemon/event_registry.py src/omnimarket/nodes/node_emit_daemon/models tests/test_golden_chain_emit_daemon.py"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omnimarket-daemon-health-registry
+    description: "diagnostic.daemon.health resolves to onex.evt.diagnostic.daemon-health.v1 and ModelDaemonHealthEvent"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_golden_chain_emit_daemon.py -q"
+  - id: dod-omnimarket-lint
+    description: "Changed omnimarket emit daemon registry and model files pass lint"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run ruff check src/omnimarket/nodes/node_emit_daemon/event_registry.py src/omnimarket/nodes/node_emit_daemon/models tests/test_golden_chain_emit_daemon.py"
+  - id: dod-omnimarket-daemon-health-deploy-smoke
+    description: "Post-merge runtime smoke verifies daemon health event registry and payload model import in the deployed container"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from pathlib import Path; from omnimarket.nodes.node_emit_daemon.event_registry import EventRegistry; from omnimarket.nodes.node_emit_daemon import event_registry as er; from omnimarket.nodes.node_emit_daemon.models import ModelDaemonHealthEvent; registry = EventRegistry.from_yaml(Path(er.__file__).with_name('registries').joinpath('topics.yaml')); registration = registry.get_registration('diagnostic.daemon.health'); expected_topic = '.'.join(('onex', 'evt', 'diagnostic', 'daemon-health', 'v1')); assert registration is not None; assert registration.payload_model is ModelDaemonHealthEvent; assert registration.fan_out and registration.fan_out[0].topic == expected_topic; print('deploy smoke ok', registration.fan_out[0].topic, ModelDaemonHealthEvent.__name__)\""

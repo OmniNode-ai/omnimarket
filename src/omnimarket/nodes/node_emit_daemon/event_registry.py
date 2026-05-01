@@ -21,11 +21,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel
+
+from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_event import (
+    ModelDaemonHealthEvent,
+)
 
 logger = logging.getLogger(__name__)
 
 # Type alias for payload transform functions
 PayloadTransform = Callable[[dict[str, object]], dict[str, object]]
+PayloadModel = type[BaseModel]
 
 
 # =============================================================================
@@ -83,6 +89,14 @@ TRANSFORM_REGISTRY: dict[str, PayloadTransform] = {
     "strip_body": transform_strip_body,
 }
 
+PAYLOAD_MODEL_REGISTRY: dict[str, PayloadModel] = {
+    "daemon_health": ModelDaemonHealthEvent,
+}
+
+EVENT_PAYLOAD_MODEL_REGISTRY: dict[str, PayloadModel] = {
+    "diagnostic.daemon.health": ModelDaemonHealthEvent,
+}
+
 
 # =============================================================================
 # Fan-Out Rule and Registration Models
@@ -125,6 +139,7 @@ class EventRegistration:
     fan_out: list[FanOutRule] = field(default_factory=list)
     partition_key_field: str | None = None
     required_fields: list[str] = field(default_factory=list)
+    payload_model: PayloadModel | None = None
 
 
 # =============================================================================
@@ -185,11 +200,21 @@ class EventRegistry:
                     )
                 )
 
+            payload_model_name = event_def.get("payload_model")
+            payload_model = EVENT_PAYLOAD_MODEL_REGISTRY.get(event_type)
+            if payload_model_name is not None:
+                payload_model = PAYLOAD_MODEL_REGISTRY.get(str(payload_model_name))
+                if payload_model is None:
+                    raise ValueError(
+                        f"Unknown payload_model '{payload_model_name}' for {event_type}"
+                    )
+
             registrations[event_type] = EventRegistration(
                 event_type=event_type,
                 fan_out=fan_out_rules,
                 partition_key_field=event_def.get("partition_key_field"),
                 required_fields=event_def.get("required_fields", []),
+                payload_model=payload_model,
             )
 
         return cls(registrations=registrations)
@@ -220,6 +245,22 @@ class EventRegistry:
             raise KeyError(f"Unknown event type: {event_type}")
         return [f for f in registration.required_fields if f not in payload]
 
+    def get_payload_model(self, event_type: str) -> PayloadModel | None:
+        """Return the typed payload model for an event type, if configured."""
+        registration = self._registrations.get(event_type)
+        if registration is None:
+            raise KeyError(f"Unknown event type: {event_type}")
+        return registration.payload_model
+
+    def validate_payload_model(
+        self, event_type: str, payload: dict[str, object]
+    ) -> BaseModel | None:
+        """Validate payload against the registered Pydantic model, if present."""
+        payload_model = self.get_payload_model(event_type)
+        if payload_model is None:
+            return None
+        return payload_model.model_validate(payload)
+
     def get_partition_key(
         self, event_type: str, payload: dict[str, object]
     ) -> str | None:
@@ -242,10 +283,13 @@ class EventRegistry:
 
 
 __all__: list[str] = [
+    "EVENT_PAYLOAD_MODEL_REGISTRY",
+    "PAYLOAD_MODEL_REGISTRY",
     "TRANSFORM_REGISTRY",
     "EventRegistration",
     "EventRegistry",
     "FanOutRule",
+    "PayloadModel",
     "PayloadTransform",
     "transform_passthrough",
     "transform_strip_body",

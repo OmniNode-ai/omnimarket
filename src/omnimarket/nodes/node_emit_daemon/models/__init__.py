@@ -3,6 +3,9 @@
 
 """Emit daemon models -- protocol, state, config, health, and event."""
 
+from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_event import (
+    ModelDaemonHealthEvent,
+)
 from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_probe_result import (
     ModelDaemonHealthProbeResult,
 )
@@ -40,6 +43,7 @@ __all__: list[str] = [
     "JsonType",
     "ModelDaemonEmitRequest",
     "ModelDaemonErrorResponse",
+    "ModelDaemonHealthEvent",
     "ModelDaemonHealthProbeResult",
     "ModelDaemonHealthRequest",
     "ModelDaemonPingRequest",
