@@ -30,6 +30,8 @@ class ModelLoopCycleSummary(BaseModel):
     tickets_filled: int = Field(default=0, ge=0)
     tickets_classified: int = Field(default=0, ge=0)
     tickets_dispatched: int = Field(default=0, ge=0)
+    pr_refs: tuple[str, ...] = Field(default_factory=tuple)
+    cost_event_keys: tuple[str, ...] = Field(default_factory=tuple)
     error_message: str | None = Field(default=None)
 
 

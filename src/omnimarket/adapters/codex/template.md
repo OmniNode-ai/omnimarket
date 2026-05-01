@@ -21,7 +21,10 @@ procedure. Do not implement the node logic yourself.
 
 Map user-provided arguments into a JSON object that matches the backing node's
 input model. Omit fields the user did not specify so the node can apply its
-own defaults.
+own defaults. Adapter wrappers share `collect_args`, `validate_args`,
+`map_args_to_payload`, `generate_correlation_id`, `format_output`,
+`handle_timeout`, `handle_error`, `stream_progress`, and `check_environment`
+from `omnimarket.adapters.wrapper_base`.
 
 Use this dispatch shape:
 

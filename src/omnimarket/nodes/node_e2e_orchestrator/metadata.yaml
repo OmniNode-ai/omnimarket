@@ -1,0 +1,24 @@
+name: node_e2e_orchestrator
+version: "1.0.0"
+description: "E2E orchestrator — bridges build-loop completion to merge sweep via CI poll"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: build
+node_role: orchestrator
+display_name: "E2E Orchestrator"
+entry_points:
+  onex.nodes:
+    node_e2e_orchestrator: "omnimarket.nodes.node_e2e_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "aiokafka>=0.10.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["e2e", "orchestrator", "ci-poll", "merge-sweep", "build-loop", "OMN-10465"]

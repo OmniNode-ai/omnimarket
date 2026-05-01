@@ -26,6 +26,7 @@ entry_flags:
   verify_timeout_seconds: "Hard per-PR verification timeout in seconds (default: 30)"
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["pr-lifecycle", "orchestrator", "fsm", "merge-sweep", "github", "OMN-8087"]

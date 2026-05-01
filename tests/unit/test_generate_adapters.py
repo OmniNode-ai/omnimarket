@@ -268,6 +268,13 @@ class TestRenderers:
         assert "onex.cmd.omnimarket.test-start.v1" in content
         assert "onex.evt.omnimarket.test-completed.v1" in content
 
+    def test_render_mdc_imports_wrapper_base_helpers(self) -> None:
+        content = _render_mdc(**self._mdc_kwargs())
+        assert "from omnimarket.adapters.wrapper_base import" in content
+        assert "collect_args" in content
+        assert "map_args_to_payload" in content
+        assert "check_environment" in content
+
     def test_render_mdc_deterministic(self) -> None:
         c1 = _render_mdc(**self._mdc_kwargs())
         c2 = _render_mdc(**self._mdc_kwargs())
@@ -281,6 +288,8 @@ class TestRenderers:
         assert "--payload '<json-payload>'" in content
         assert "--timeout-ms 60000" in content
         assert "output_payloads[0]" in content
+        assert "omnimarket.adapters.wrapper_base" in content
+        assert "stream_progress" in content
 
     def test_render_instructions_md_deterministic(self) -> None:
         c1 = _render_instructions_md(**self._instructions_kwargs())

@@ -15,6 +15,15 @@ implement the logic yourself** — delegate to the OmniMarket node via the event
 
 Collect any user-specified options and build the command payload:
 
+```python
+from omnimarket.adapters.wrapper_base import (
+    collect_args,
+    generate_correlation_id,
+    map_args_to_payload,
+    validate_args,
+)
+```
+
 ```json
 {
   "correlation_id": "<generate a UUID v4>",
@@ -51,6 +60,9 @@ Source: `contract.yaml → event_bus.publish_topics[0]` and `descriptor.timeout_
 On success, render the completion payload in a clear markdown format.
 On timeout: report that the operation timed out.
 On error: surface the error message from the completion event payload.
+Use `format_output`, `handle_timeout`, `handle_error`, `stream_progress`, and
+`check_environment` from `omnimarket.adapters.wrapper_base` for wrapper-owned
+formatting, progress, error, timeout, and environment diagnostics.
 
 ## Important
 

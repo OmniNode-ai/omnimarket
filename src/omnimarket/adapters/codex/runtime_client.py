@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
@@ -24,6 +24,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from omnimarket.adapters.codex.topics import (
     TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND,
     TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED,
+)
+from omnimarket.adapters.wrapper_base import (
+    collect_args,
+    format_output,
+    generate_correlation_id,
+    handle_error,
+    handle_timeout,
+    map_args_to_payload,
 )
 
 _DEFAULT_COMMAND_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND
@@ -294,7 +302,7 @@ def _load_payload(
 
     if not isinstance(raw, dict):
         raise ValueError("Payload must decode to a JSON object")
-    return raw
+    return map_args_to_payload(raw, omit_none=False)
 
 
 def _output_payloads(payload: object) -> list[dict[str, object]] | None:
@@ -320,7 +328,7 @@ def _build_dispatch_command(
         command_name=request.command_name,
         requester=requester,
         payload=request.payload,
-        correlation_id=request.correlation_id or uuid4(),
+        correlation_id=request.correlation_id or generate_correlation_id(),
         response_topic=request.response_topic,
         timeout_seconds=max(1.0, min(900.0, request.timeout_ms / 1000)),
         target_runtime_address=request.target_runtime_address,
@@ -426,10 +434,15 @@ class CodexRuntimeRequestAdapter:
                     timeout=command.timeout_seconds,
                 )
             except TimeoutError:
+                timeout_error = handle_timeout(
+                    operation="Codex runtime adapter terminal result",
+                    timeout_ms=request.timeout_ms,
+                    correlation_id=command.correlation_id,
+                )
                 terminal_result = ModelDispatchBusTerminalResult(
                     correlation_id=command.correlation_id,
                     status="timeout",
-                    error_message="Timed out waiting for Codex runtime adapter terminal result.",
+                    error_message=timeout_error.message,
                 )
             finally:
                 await unsubscribe()
@@ -557,9 +570,21 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+    parsed_args = collect_args(args, include_none=True)
 
     try:
-        payload = _load_payload(payload=args.payload, payload_file=args.payload_file)
+        payload = _load_payload(
+            payload=cast(str | None, parsed_args["payload"]),
+            payload_file=cast(str | None, parsed_args["payload_file"]),
+        )
+        correlation_id = cast(str | None, parsed_args["correlation_id"])
+        if correlation_id is None:
+            embedded_correlation_id = payload.get("correlation_id")
+            if (
+                isinstance(embedded_correlation_id, str)
+                and embedded_correlation_id.strip()
+            ):
+                correlation_id = embedded_correlation_id
     except FileNotFoundError as exc:
         response = _build_cli_error_response(
             command_name=args.command_name,
@@ -583,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
             response = client.compile_request(
                 command_name=args.command_name,
                 payload=payload,
-                correlation_id=args.correlation_id,
+                correlation_id=correlation_id,
                 timeout_ms=args.timeout_ms,
                 response_topic=args.response_topic,
                 target_runtime_address=args.target_runtime_address,
@@ -592,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
             response = client.dispatch_sync(
                 command_name=args.command_name,
                 payload=payload,
-                correlation_id=args.correlation_id,
+                correlation_id=correlation_id,
                 timeout_ms=args.timeout_ms,
                 response_topic=args.response_topic,
                 target_runtime_address=args.target_runtime_address,
@@ -605,13 +630,14 @@ def main(argv: list[str] | None = None) -> int:
             details={"errors": json.loads(exc.json(include_url=False))},
         )
     except (OSError, ValueError, RuntimeError) as exc:
+        error = handle_error(exc, code="runtime_adapter_error")
         response = _build_cli_error_response(
             command_name=args.command_name,
-            code="runtime_adapter_error",
-            message=str(exc),
+            code=error.code,
+            message=error.message,
         )
 
-    sys.stdout.write(response.model_dump_json(indent=2) + "\n")
+    sys.stdout.write(format_output(response) + "\n")
     return _response_to_exit_code(response)
 
 
