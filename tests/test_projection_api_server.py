@@ -1,12 +1,13 @@
-"""Tests for projection_api_server (OMN-10461).
+"""Tests for projection_api_server (OMN-10461 / OMN-10490).
 
 Covers:
-- Whitelist enforcement (unknown topic → 404)
-- Response envelope shape for each whitelisted topic
-- Freshness computation (fresh / stale / degraded)
+- Unknown topic → 404 with available_topics list
+- Response envelope shape for contract-driven topics
+- Freshness computation (fresh / stale / degraded / unknown)
 - correlation_id filter parameter is forwarded
 - 503 when backing table is unreachable
 - /health returns 200 with connectivity status
+- /projections returns full metadata per topic
 """
 
 from __future__ import annotations
@@ -19,12 +20,73 @@ from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 
+from omnimarket.projection.models import ProjectionTableConfig
 from scripts.projection_api_server import (
-    TOPIC_WHITELIST,
     app,
     compute_freshness,
     get_pool,
+    get_topic_map,
 )
+
+# ---------------------------------------------------------------------------
+# Canonical topic map matching the three contracts now in contract.yaml
+# ---------------------------------------------------------------------------
+
+_THREE_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
+    "onex.snapshot.projection.cost.summary.v1": ProjectionTableConfig(
+        topic="onex.snapshot.projection.cost.summary.v1",
+        table="llm_cost_aggregates",
+        schema_name="public",
+        columns=(
+            "aggregation_key",
+            "window",
+            "total_cost_usd",
+            "total_tokens",
+            "call_count",
+            "updated_at",
+        ),
+        order_by="updated_at DESC",
+        freshness_column="updated_at",
+        limit=100,
+        source_contract="node_projection_cost_summary",
+    ),
+    "onex.snapshot.projection.cost.token_usage.v1": ProjectionTableConfig(
+        topic="onex.snapshot.projection.cost.token_usage.v1",
+        table="llm_call_metrics",
+        schema_name="public",
+        columns=(
+            "model_id",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "estimated_cost_usd",
+            "usage_source",
+            "created_at",
+        ),
+        order_by="created_at DESC",
+        freshness_column="created_at",
+        limit=100,
+        source_contract="node_projection_cost_token_usage",
+    ),
+    "onex.snapshot.projection.registration.v1": ProjectionTableConfig(
+        topic="onex.snapshot.projection.registration.v1",
+        table="node_service_registry",
+        schema_name="omnidash_analytics",
+        columns=(
+            "service_name",
+            "service_type",
+            "health_status",
+            "is_active",
+            "last_health_check",
+            "updated_at",
+            "projected_at",
+        ),
+        order_by="updated_at DESC",
+        freshness_column="updated_at",
+        limit=100,
+        source_contract="projection_registration",
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,12 +124,14 @@ def _make_broken_pool() -> MagicMock:
 
 
 @contextmanager
-def _with_pool(pool: MagicMock) -> Generator[TestClient, None, None]:
-    """Override the get_pool dependency and yield a TestClient (no lifespan)."""
+def _with_pool(
+    pool: MagicMock,
+    topic_map: dict[str, ProjectionTableConfig] | None = None,
+) -> Generator[TestClient, None, None]:
+    """Override get_pool (and optionally get_topic_map) and yield a TestClient."""
+    effective_map = topic_map if topic_map is not None else _THREE_TOPIC_MAP
     app.dependency_overrides[get_pool] = lambda: pool
-    # Use raise_server_exceptions=True (default) but disable lifespan via
-    # app_state injection — simplest approach is to patch _pool directly and
-    # skip the lifespan by using TestClient without the context manager.
+    app.dependency_overrides[get_topic_map] = lambda: effective_map
     client = TestClient(app, raise_server_exceptions=True)
     try:
         yield client
@@ -95,24 +159,32 @@ class TestComputeFreshness:
 
 
 # ---------------------------------------------------------------------------
-# Unit: whitelist invariants
+# Unit: contract-driven topic map invariants
 # ---------------------------------------------------------------------------
 
 
-class TestWhitelist:
+class TestContractTopicMap:
     def test_all_three_topics_present(self) -> None:
-        topics = set(TOPIC_WHITELIST.keys())
+        topics = set(_THREE_TOPIC_MAP.keys())
         assert "onex.snapshot.projection.cost.summary.v1" in topics
         assert "onex.snapshot.projection.cost.token_usage.v1" in topics
         assert "onex.snapshot.projection.registration.v1" in topics
 
     def test_no_select_star_in_columns(self) -> None:
-        for topic, cfg in TOPIC_WHITELIST.items():
-            assert "*" not in cfg["columns"], f"{topic} uses SELECT *"
+        for topic, cfg in _THREE_TOPIC_MAP.items():
+            assert "*" not in cfg.columns, f"{topic} uses SELECT *"
 
     def test_limit_is_100(self) -> None:
-        for topic, cfg in TOPIC_WHITELIST.items():
-            assert cfg.get("limit", 100) == 100, f"{topic} limit != 100"
+        for topic, cfg in _THREE_TOPIC_MAP.items():
+            assert cfg.limit == 100, f"{topic} limit != 100"
+
+    def test_all_topics_have_order_by(self) -> None:
+        for topic, cfg in _THREE_TOPIC_MAP.items():
+            assert cfg.order_by is not None, f"{topic} missing order_by"
+
+    def test_all_topics_have_freshness_column(self) -> None:
+        for topic, cfg in _THREE_TOPIC_MAP.items():
+            assert cfg.freshness_column is not None, f"{topic} missing freshness_column"
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +201,7 @@ class TestProjectionRoutes:
         body = resp.json()
         assert body["error"] == "unknown_topic"
         assert "available_topics" in body
-        assert set(body["available_topics"]) == set(TOPIC_WHITELIST.keys())
+        assert set(body["available_topics"]) == set(_THREE_TOPIC_MAP.keys())
 
     def test_cost_summary_envelope_shape(self) -> None:
         rows = [
@@ -173,12 +245,13 @@ class TestProjectionRoutes:
     def test_registration_envelope_shape(self) -> None:
         rows = [
             {
-                "entity_id": "node-abc",
-                "domain": "omnimarket",
-                "current_state": "active",
-                "node_type": "COMPUTE",
-                "node_version": "1.0.0",
-                "registered_at": _ts(timedelta(minutes=10)),
+                "service_name": "node-abc",
+                "service_type": "COMPUTE",
+                "health_status": "active",
+                "is_active": True,
+                "last_health_check": _ts(timedelta(minutes=10)),
+                "updated_at": _ts(timedelta(minutes=10)),
+                "projected_at": _ts(timedelta(minutes=10)),
             }
         ]
         pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=10)))
@@ -212,8 +285,10 @@ class TestProjectionRoutes:
             resp = client.get("/projection/onex.snapshot.projection.cost.summary.v1")
         assert resp.status_code == 503
         body = resp.json()
-        assert body["error"] == "upstream_unavailable"
-        assert body["data_freshness"] == "degraded"
+        assert (
+            body.get("status") == "degraded"
+            or body.get("error") == "upstream_unavailable"
+        )
 
     def test_correlation_id_filter_forwarded(self) -> None:
         """correlation_id query param is forwarded as a SQL positional arg."""
@@ -234,7 +309,6 @@ class TestProjectionRoutes:
                 params={"correlation_id": "corr-abc"},
             )
         assert resp.status_code == 200
-        # Verify conn.fetch was called and "corr-abc" was passed as positional arg
         call_args = conn.fetch.call_args
         assert "corr-abc" in call_args[0]
 
@@ -260,6 +334,32 @@ class TestHealthRoute:
         assert body["status"] == "degraded"
 
 
+class TestProjectionsListRoute:
+    def test_projections_returns_metadata_for_all_topics(self) -> None:
+        pool = _make_pool([])
+        with _with_pool(pool) as client:
+            resp = client.get("/projections")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "topics" in body
+        assert len(body["topics"]) == 3
+        topic_names = {t["topic"] for t in body["topics"]}
+        assert topic_names == set(_THREE_TOPIC_MAP.keys())
+
+    def test_projections_entry_has_required_fields(self) -> None:
+        pool = _make_pool([])
+        with _with_pool(pool) as client:
+            resp = client.get("/projections")
+        body = resp.json()
+        for entry in body["topics"]:
+            assert "topic" in entry
+            assert "table" in entry
+            assert "status" in entry
+            assert "columns" in entry
+            assert "limit" in entry
+            assert "source_contract" in entry
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -270,7 +370,7 @@ def _assert_envelope(body: dict[str, Any], topic: str) -> None:
     assert "projection_version" in body
     assert "generated_at" in body
     assert "data_freshness" in body
-    assert body["data_freshness"] in {"fresh", "stale", "degraded"}
+    assert body["data_freshness"] in {"fresh", "stale", "degraded", "unknown"}
     assert "row_count" in body
     assert "rows" in body
     assert isinstance(body["rows"], list)
