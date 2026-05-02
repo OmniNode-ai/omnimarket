@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10491"
+title: "Populate all llm_call_metrics columns in projection consumer"
+summary: "Align the LLM cost projection consumer with the llm_call_metrics schema by populating deterministic
+  input hashes, source metadata, raw usage payloads, run identifiers, and an explicit conflict target
+  for idempotent inserts."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "events"
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused LLM cost projection consumer tests pass"
+    command: "uv run pytest src/omnimarket/nodes/node_projection_llm_cost/tests/ -q"
+  - kind: "manual"
+    description: "Ticket contract validates"
+    command: "uv run validate-yaml contracts/OMN-10491.yaml"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Focused LLM cost projection consumer tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_projection_llm_cost/tests/ -q"
+  - id: "dod-002"
+    description: "Ticket contract validates"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run validate-yaml contracts/OMN-10491.yaml"
+  - id: "dod-deploy"
+    description: |
+      Deploy posture for this runtime projection consumer slice. OMN-10491
+      changes the Kafka-to-Postgres LLM cost projection consumer but this PR
+      does not deploy, restart, or mutate the live runtime. Post-merge deploy
+      validation must prove the installed runtime can import the consumer and
+      read operator-managed configuration before the sidecar is started.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_projection_llm_cost.consumer import main; print(main.__name__)\"'"
