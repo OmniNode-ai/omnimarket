@@ -40,6 +40,10 @@ class PrRecord(BaseModel):
     repo: str = Field(..., description="Repo slug, e.g. 'OmniNode-ai/omnimarket'.")
     title: str = Field(default="")
     branch: str = Field(default="")
+    ticket_ids: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Canonical OMN ticket identifiers bound to this PR.",
+    )
     checks_status: str = Field(
         default="unknown",
         description="CI checks status: success | failure | pending | unknown",
@@ -49,6 +53,10 @@ class PrRecord(BaseModel):
         description="Review status: approved | changes_requested | pending | unknown",
     )
     has_conflicts: bool = Field(default=False)
+    failed_check_names: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Names of failed required or reported checks.",
+    )
     coderabbit_unresolved: int = Field(
         default=0,
         description="Count of unresolved CodeRabbit threads.",
@@ -65,6 +73,7 @@ class EnumPrCategory(StrEnum):
     GREEN = "green"
     RED = "red"
     CONFLICTED = "conflicted"
+    OCC_DEPENDENCY = "occ_dependency"
     NEEDS_REVIEW = "needs_review"
     UNKNOWN = "unknown"
 
@@ -77,6 +86,14 @@ class TriageRecord(BaseModel):
     pr_number: int = Field(..., description="GitHub PR number.")
     repo: str = Field(...)
     category: EnumPrCategory = Field(default=EnumPrCategory.UNKNOWN)
+    ticket_ids: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Canonical OMN ticket identifiers carried from inventory.",
+    )
+    failed_check_names: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Failed checks that informed this triage decision.",
+    )
     block_reason: str = Field(
         default="",
         description="Why this PR is blocked (populated for non-green PRs).",
@@ -99,7 +116,34 @@ class ReducerIntent(BaseModel):
     pr_number: int = Field(...)
     repo: str = Field(...)
     intent: EnumReducerIntent = Field(...)
+    ticket_ids: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Canonical OMN ticket identifiers for dependency joins.",
+    )
     reason: str = Field(default="")
+
+
+class OccDependencyEdge(BaseModel):
+    """Durable dependency edge from a downstream PR to OCC evidence."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_id: str = Field(..., description="Primary dependency identity.")
+    downstream_repo: str = Field(..., description="Repo owning the blocked PR.")
+    downstream_pr_number: int = Field(..., description="Blocked PR number.")
+    downstream_failed_check_names: tuple[str, ...] = Field(default_factory=tuple)
+    reason: str = Field(default="")
+    occ_pr_number: int | None = Field(
+        default=None,
+        description="Secondary reference when a known OCC evidence PR exists.",
+    )
+    rerun_guard_key: str = Field(
+        ...,
+        description=(
+            "Idempotency key: rerun at most once for this ticket/downstream PR "
+            "and a specific OCC merge SHA."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

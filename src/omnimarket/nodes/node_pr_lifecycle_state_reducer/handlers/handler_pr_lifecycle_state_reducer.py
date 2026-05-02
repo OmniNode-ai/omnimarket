@@ -287,6 +287,8 @@ class HandlerPrLifecycleStateReducer:
                 intent = EnumReducerIntent.SKIP
             elif pr.category == EnumPrCategory.GREEN:
                 intent = EnumReducerIntent.SKIP if fix_only else EnumReducerIntent.MERGE
+            elif pr.category == EnumPrCategory.OCC_DEPENDENCY:
+                intent = EnumReducerIntent.SKIP
             elif pr.category in (
                 EnumPrCategory.RED,
                 EnumPrCategory.CONFLICTED,
@@ -301,6 +303,7 @@ class HandlerPrLifecycleStateReducer:
                     pr_number=pr.pr_number,
                     repo=pr.repo,
                     intent=intent,
+                    ticket_ids=getattr(pr, "ticket_ids", ()),
                     reason=pr.block_reason,
                 )
             )

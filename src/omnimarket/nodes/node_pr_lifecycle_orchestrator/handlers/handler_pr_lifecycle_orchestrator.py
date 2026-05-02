@@ -32,6 +32,7 @@ import inspect
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -47,6 +48,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     FixResult,
     InventoryResult,
     MergeResult,
+    OccDependencyEdge,
     ProtocolFixHandler,
     ProtocolInventoryHandler,
     ProtocolMergeHandler,
@@ -268,6 +270,9 @@ _REVIEW_STATUS_MAP: dict[str, str] = {
     "COMMENT": "pending",
 }
 
+_TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
+_UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
+
 
 def _map_ci_status(pr_state: Any) -> str:
     """Map ModelPrState fields to orchestrator-internal checks_status string."""
@@ -276,6 +281,28 @@ def _map_ci_status(pr_state: Any) -> str:
     if getattr(pr_state, "ci_passing", None) is False:
         return "failure"
     return "unknown"
+
+
+def _failed_check_names(pr_state: Any) -> tuple[str, ...]:
+    """Return failed check names from a ModelPrState-like object."""
+    names: list[str] = []
+    for check in getattr(pr_state, "check_runs", ()) or ():
+        conclusion = str(getattr(check, "conclusion", "") or "").lower()
+        if conclusion in {"failure", "cancelled", "timed_out", "action_required"}:
+            name = str(getattr(check, "name", "") or "").strip()
+            if name:
+                names.append(name)
+    return tuple(sorted(set(names)))
+
+
+def _extract_ticket_ids(*values: str) -> tuple[str, ...]:
+    """Extract canonical OMN ticket IDs from PR title/branch metadata."""
+    found: set[str] = set()
+    for value in values:
+        found.update(
+            match.group(0).upper() for match in _TICKET_ID_PATTERN.finditer(value)
+        )
+    return tuple(sorted(found))
 
 
 def _map_review_status(pr_state: Any) -> str:
@@ -646,6 +673,14 @@ class HandlerPrLifecycleOrchestrator:
                 merge_only=command.merge_only,
             )
             state.reducer_result = reducer_result
+            self._write_occ_dependency_edges_file(
+                command.run_id,
+                self._occ_dependency_edges(
+                    triage_result=triage_result,
+                    reducer_result=reducer_result,
+                    occ_merge_sha=_UNKNOWN_OCC_MERGE_SHA,
+                ),
+            )
 
             if command.dry_run:
                 # dry_run: record intents but do not execute
@@ -921,15 +956,19 @@ class HandlerPrLifecycleOrchestrator:
             stuck_queue_prs.extend(getattr(raw, "stuck_queue_prs", ()))
             # raw is ModelPrInventoryOutput; adapt to PrRecord sequence.
             for pr_state in getattr(raw, "pr_states", ()):
+                title = getattr(pr_state, "title", "")
+                branch = getattr(pr_state, "head_ref", "")
                 all_prs.append(
                     PrRecord(
                         pr_number=pr_state.pr_number,
                         repo=pr_state.repo,
-                        title=getattr(pr_state, "title", ""),
-                        branch=getattr(pr_state, "head_ref", ""),
+                        title=title,
+                        branch=branch,
+                        ticket_ids=_extract_ticket_ids(title, branch),
                         checks_status=_map_ci_status(pr_state),
                         review_status=_map_review_status(pr_state),
                         has_conflicts=getattr(pr_state, "has_conflicts", False),
+                        failed_check_names=_failed_check_names(pr_state),
                         merge_state_status=getattr(
                             pr_state, "merge_state_status", None
                         ),
@@ -1016,9 +1055,11 @@ class HandlerPrLifecycleOrchestrator:
                 repo=pr.repo,
                 title=pr.title,
                 branch=pr.branch,
+                ticket_ids=pr.ticket_ids,
                 ci_status=_orch_checks_to_ci_status(pr.checks_status),
                 has_conflicts=pr.has_conflicts,
                 approved=(pr.review_status == "approved"),
+                failed_check_names=pr.failed_check_names,
             )
             for pr in prs
         )
@@ -1048,6 +1089,8 @@ class HandlerPrLifecycleOrchestrator:
                     pr_number=result.pr_number,
                     repo=result.repo,
                     category=category,
+                    ticket_ids=getattr(result, "ticket_ids", ()),
+                    failed_check_names=getattr(result, "failed_check_names", ()),
                     block_reason=getattr(result, "reason", ""),
                 )
             )
@@ -1183,6 +1226,46 @@ class HandlerPrLifecycleOrchestrator:
             raise ExceptionGroup("fix dispatch errors", errors)
         return [r for r in gathered if isinstance(r, FixResult)]
 
+    def _occ_dependency_edges(
+        self,
+        *,
+        triage_result: PrTriageResult,
+        reducer_result: ReducerResult,
+        occ_merge_sha: str,
+    ) -> tuple[OccDependencyEdge, ...]:
+        """Build dependency edges for receipt-only failures.
+
+        ``ticket_id`` is the primary join key. PR numbers are secondary
+        references because a downstream PR can move or be recreated while the
+        OCC evidence ticket identity remains stable.
+        """
+        skipped_occ = {
+            (intent.repo, intent.pr_number)
+            for intent in reducer_result.intents
+            if intent.intent == EnumReducerIntent.SKIP
+        }
+        edges: list[OccDependencyEdge] = []
+        for pr in triage_result.classified:
+            if pr.category != EnumPrCategory.OCC_DEPENDENCY:
+                continue
+            if (pr.repo, pr.pr_number) not in skipped_occ:
+                continue
+            for ticket_id in pr.ticket_ids:
+                rerun_guard_key = (
+                    f"{ticket_id}:{pr.repo}#{pr.pr_number}:occ:{occ_merge_sha}"
+                )
+                edges.append(
+                    OccDependencyEdge(
+                        ticket_id=ticket_id,
+                        downstream_repo=pr.repo,
+                        downstream_pr_number=pr.pr_number,
+                        downstream_failed_check_names=pr.failed_check_names,
+                        reason=pr.block_reason,
+                        rerun_guard_key=rerun_guard_key,
+                    )
+                )
+        return tuple(edges)
+
     def _build_result(
         self, state: _SweepState, correlation_id: UUID
     ) -> ModelPrLifecycleResult:
@@ -1197,6 +1280,61 @@ class HandlerPrLifecycleOrchestrator:
             error_message=state.error_message,
         )
 
+    def _sweep_run_dir(self, run_id: str) -> Path | None:
+        state_dir = os.environ.get(
+            "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
+        )
+        base = (Path(state_dir) / "merge-sweep").resolve()
+        out_dir = (base / run_id).resolve()
+        if not out_dir.is_relative_to(base):
+            logger.error(
+                "[PR-LIFECYCLE-ORCH] refusing to write sweep artifact: run_id "
+                "escapes merge-sweep root run_id=%s resolved=%s base=%s",
+                run_id,
+                out_dir,
+                base,
+            )
+            return None
+        return out_dir
+
+    def _write_occ_dependency_edges_file(
+        self,
+        run_id: str,
+        edges: tuple[OccDependencyEdge, ...],
+    ) -> None:
+        """Persist OCC dependency edges for downstream rerun automation."""
+        if not edges:
+            return
+        out_dir = self._sweep_run_dir(run_id)
+        if out_dir is None:
+            return
+        out_path = out_dir / "occ_dependency_edges.json"
+        payload = {
+            "run_id": run_id,
+            "primary_identity": "ticket_id",
+            "rerun_policy": (
+                "rerun at most once per OCC merge SHA per downstream PR, "
+                "and only for previous OCC_DEPENDENCY classifications"
+            ),
+            "edges": [edge.model_dump(mode="json") for edge in edges],
+        }
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(payload, indent=2))
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] wrote OCC dependency edges run_id=%s path=%s",
+                run_id,
+                out_path,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] failed to write OCC dependency edges "
+                "run_id=%s path=%s: %s",
+                run_id,
+                out_path,
+                exc,
+            )
+
     def _write_result_file(self, run_id: str, result: ModelPrLifecycleResult) -> None:
         """Persist the orchestrator result as ModelSkillResult-shaped JSON.
 
@@ -1204,22 +1342,8 @@ class HandlerPrLifecycleOrchestrator:
         A missing ``$ONEX_STATE_DIR`` falls back to ``~/.onex_state`` so that local
         test runs still produce a file.
         """
-        state_dir = os.environ.get(
-            "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
-        )
-        base = (Path(state_dir) / "merge-sweep").resolve()
-        out_dir = (base / run_id).resolve()
-        # Defense-in-depth: the model-level regex on run_id already forbids
-        # path separators, but if someone bypasses validation we still refuse
-        # to escape the merge-sweep root.
-        if not out_dir.is_relative_to(base):
-            logger.error(
-                "[PR-LIFECYCLE-ORCH] refusing to write result.json: run_id "
-                "escapes merge-sweep root run_id=%s resolved=%s base=%s",
-                run_id,
-                out_dir,
-                base,
-            )
+        out_dir = self._sweep_run_dir(run_id)
+        if out_dir is None:
             return
         out_path = out_dir / "result.json"
 

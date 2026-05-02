@@ -80,6 +80,33 @@ class TestPrLifecycleTriageComputeGoldenChain:
         assert result.results[0].category == EnumPrTriageCategory.RED
         assert result.total_red == 1
 
+    async def test_receipt_only_failure_is_occ_dependency(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A lone Receipt Gate failure is an OCC dependency, not code-fix work."""
+        handler = HandlerPrLifecycleTriage()
+        correlation_id = uuid4()
+        prs = (
+            ModelPrInventoryItem(
+                pr_number=203,
+                repo="OmniNode-ai/omnimarket",
+                title="feat(OMN-10486): receipt only failure",
+                ticket_ids=("OMN-10486",),
+                ci_status="failing",
+                failed_check_names=("verify / verify",),
+                has_conflicts=False,
+                approved=True,
+            ),
+        )
+
+        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+
+        assert result.results[0].category == EnumPrTriageCategory.OCC_DEPENDENCY
+        assert result.results[0].ticket_ids == ("OMN-10486",)
+        assert result.results[0].failed_check_names == ("verify / verify",)
+        assert result.total_occ_dependency == 1
+        assert result.total_red == 0
+
     async def test_conflicted_pr(self, event_bus: EventBusInmemory) -> None:
         """PR with merge conflicts -> CONFLICTED regardless of CI."""
         handler = HandlerPrLifecycleTriage()

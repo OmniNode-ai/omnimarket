@@ -107,6 +107,33 @@ class TestHandlerPrLifecycleStateReducerKwargContract:
         assert result.fix_count == 1
         assert result.merge_count == 0
 
+    def test_handle_skips_occ_dependency_pr(self) -> None:
+        """Receipt-only OCC dependency PRs must never dispatch code-fix work."""
+        handler = HandlerPrLifecycleStateReducer()
+        correlation_id = uuid4()
+        pr = TriageRecord(
+            pr_number=10486,
+            repo="OmniNode-ai/omnimarket",
+            category=EnumPrCategory.OCC_DEPENDENCY,
+            block_reason="Receipt Gate is the only failing check.",
+        )
+
+        result = asyncio.run(
+            handler.handle(
+                correlation_id=correlation_id,
+                classified=(pr,),
+                dry_run=False,
+                inventory_only=False,
+                fix_only=False,
+                merge_only=False,
+            )
+        )
+
+        assert isinstance(result, ReducerResult)
+        assert result.fix_count == 0
+        assert result.merge_count == 0
+        assert result.skip_count == 1
+
     def test_dry_run_still_returns_result(self) -> None:
         """dry_run=True must return a ReducerResult without crashing."""
         handler = HandlerPrLifecycleStateReducer()

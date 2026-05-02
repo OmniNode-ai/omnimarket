@@ -13,12 +13,14 @@ class EnumPrTriageCategory(StrEnum):
     - GREEN: CI passing, approved, no conflicts — ready to merge.
     - RED: CI failing or errored — needs fix before merge.
     - CONFLICTED: Has merge conflicts — needs rebase.
+    - OCC_DEPENDENCY: Receipt Gate is the only failing check — wait for OCC.
     - NEEDS_REVIEW: CI passing (or pending) but lacks required approval.
     """
 
     GREEN = "green"
     RED = "red"
     CONFLICTED = "conflicted"
+    OCC_DEPENDENCY = "occ_dependency"
     NEEDS_REVIEW = "needs_review"
 
 
