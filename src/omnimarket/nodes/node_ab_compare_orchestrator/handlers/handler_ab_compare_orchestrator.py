@@ -70,6 +70,7 @@ class _ResolvedModel(BaseModel):
     display_name: str
     endpoint_url: str
     endpoint_path: str
+    health_path: str
     protocol: str
     model_id_resolved: str
     cost_per_1k_input: float
@@ -136,6 +137,7 @@ def _resolve_models(
                 display_name=entry["display_name"],
                 endpoint_url=endpoint_url,
                 endpoint_path=entry.get("endpoint_path", "/v1/chat/completions"),
+                health_path=entry.get("health_path", "/health") or "/health",
                 protocol=entry["protocol"],
                 model_id_resolved=model_id_resolved,
                 cost_per_1k_input=float(entry["cost_per_1k_input"]),
@@ -155,7 +157,10 @@ async def _probe_health(model: _ResolvedModel) -> bool:
         return True
     try:
         async with httpx.AsyncClient(timeout=_HEALTH_PROBE_TIMEOUT) as client:
-            resp = await client.get(f"{model.endpoint_url}/health")
+            health_url = (
+                f"{model.endpoint_url.rstrip('/')}/{model.health_path.lstrip('/')}"
+            )
+            resp = await client.get(health_url)
             return resp.status_code == 200
     except Exception:
         return False
@@ -163,6 +168,7 @@ async def _probe_health(model: _ResolvedModel) -> bool:
 
 def _run_quality_check(output: str) -> str:
     """Run ruff check on code output, return 'pass' or 'fail:<reason>'."""
+    fname: str | None = None
     try:
         import tempfile
 
@@ -176,12 +182,14 @@ def _run_quality_check(output: str) -> str:
             timeout=10,
             check=False,
         )
-        Path(fname).unlink(missing_ok=True)
         return (
             "pass" if result.returncode == 0 else f"fail:{result.stdout[:120].strip()}"
         )
     except Exception as exc:
         return f"skip:{exc}"
+    finally:
+        if fname:
+            Path(fname).unlink(missing_ok=True)
 
 
 def _calculate_cost(

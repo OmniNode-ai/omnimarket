@@ -24,6 +24,13 @@ if TYPE_CHECKING:
     )
 
 
+def _calculate_savings(result: ModelAbCompareResult) -> float:
+    valid_costs = [row.cost_usd for row in result.comparison if not row.error]
+    if not valid_costs:
+        return 0.0
+    return max(valid_costs) - min(valid_costs)
+
+
 def _render_table(result: ModelAbCompareResult) -> None:
     try:
         from rich.console import Console
@@ -41,8 +48,7 @@ def _render_table(result: ModelAbCompareResult) -> None:
     table.add_column("Time", justify="right", footer="")
     table.add_column("Quality", footer="")
 
-    max_cost = max((r.cost_usd for r in result.comparison if not r.error), default=0.0)
-    savings = max_cost - 0.0  # local models cost $0.00
+    savings = _calculate_savings(result)
 
     for row in result.comparison:
         tokens = f"{row.total_tokens:,}" if not row.error else "—"
@@ -67,7 +73,6 @@ def _render_table_plain(result: ModelAbCompareResult) -> None:
     header = f"{'Model':<24} {'Tokens':>8} {'Cost':>10} {'Time':>7} {'Quality':<10}"
     click.echo(header)
     click.echo("-" * len(header))
-    max_cost = max((r.cost_usd for r in result.comparison if not r.error), default=0.0)
     for row in result.comparison:
         tokens = f"{row.total_tokens:,}" if not row.error else "—"
         cost = f"${row.cost_usd:.4f}" if not row.error else "error"
@@ -77,7 +82,7 @@ def _render_table_plain(result: ModelAbCompareResult) -> None:
             f"{row.display_name:<24} {tokens:>8} {cost:>10} {latency:>7} {quality:<10}"
         )
     click.echo("-" * len(header))
-    savings = max_cost - 0.0
+    savings = _calculate_savings(result)
     click.echo(f"{'SAVINGS vs most expensive':<24} {'':>8} ${savings:.4f}")
     if result.models_skipped:
         click.echo(f"Skipped: {', '.join(result.models_skipped)}")
@@ -147,9 +152,14 @@ def main(
     output: str,
 ) -> None:
     """Run a task through multiple LLM models and compare cost, speed, and quality."""
-    model_list = (
-        ["all"]
-        if models.strip().lower() == "all"
-        else [m.strip() for m in models.split(",")]
-    )
+    if models.strip().lower() == "all":
+        model_list = ["all"]
+    else:
+        model_list = [
+            model for model in (m.strip() for m in models.split(",")) if model
+        ]
+        if not model_list:
+            raise click.BadParameter(
+                "At least one model ID is required.", param_hint="--models"
+            )
     sys.exit(_run(task, model_list, system_prompt, quality_check, output))

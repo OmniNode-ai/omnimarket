@@ -45,6 +45,28 @@ _ROW_CLOUD = ModelComparisonRow(
     quality="pass",
 )
 
+_ROW_CLOUD_LOW_COST = ModelComparisonRow(
+    model_key="cloud-low",
+    display_name="Cloud Low",
+    prompt_tokens=100,
+    completion_tokens=100,
+    total_tokens=200,
+    cost_usd=0.01,
+    latency_ms=2800,
+    quality="pass",
+)
+
+_ROW_CLOUD_HIGH_COST = ModelComparisonRow(
+    model_key="cloud-high",
+    display_name="Cloud High",
+    prompt_tokens=100,
+    completion_tokens=100,
+    total_tokens=200,
+    cost_usd=0.03,
+    latency_ms=3100,
+    quality="pass",
+)
+
 _RESULT_TWO_MODELS = ModelAbCompareResult(
     comparison=[_ROW_LOCAL, _ROW_CLOUD],
     correlation_id="test-corr-123",
@@ -133,6 +155,38 @@ def test_cli_parses_comma_separated_models() -> None:
 
     assert result.exit_code == 0
     assert captured_command[0] == ["qwen3-coder-30b", "claude-sonnet"]
+
+
+@pytest.mark.unit
+def test_cli_filters_empty_model_tokens() -> None:
+    runner = CliRunner()
+    captured_command: list = []
+
+    def fake_run(
+        task: str,
+        models: list[str],
+        system_prompt: object,
+        quality_check: bool,
+        output: str,
+    ) -> int:
+        captured_command.append(models)
+        return 0
+
+    with patch("omnimarket.cli.cli_ab_compare._run", side_effect=fake_run):
+        result = runner.invoke(main, ["--task", "test", "--models", "alpha,beta,"])
+
+    assert result.exit_code == 0
+    assert captured_command[0] == ["alpha", "beta"]
+
+
+@pytest.mark.unit
+def test_cli_rejects_empty_model_list() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(main, ["--task", "test", "--models", " , "])
+
+    assert result.exit_code != 0
+    assert "At least one model ID is required" in result.output
 
 
 @pytest.mark.unit
@@ -236,6 +290,24 @@ def test_render_table_plain_shows_savings(capsys: pytest.CaptureFixture[str]) ->
     _render_table_plain(_RESULT_TWO_MODELS)
     captured = capsys.readouterr()
     assert "SAVINGS" in captured.out
+
+
+@pytest.mark.unit
+def test_render_table_plain_savings_uses_valid_cost_range(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = ModelAbCompareResult(
+        comparison=[_ROW_CLOUD_LOW_COST, _ROW_CLOUD_HIGH_COST],
+        correlation_id="test-corr-789",
+        status="COMPLETED",
+        models_skipped=[],
+    )
+
+    _render_table_plain(result)
+    captured = capsys.readouterr()
+
+    assert "SAVINGS" in captured.out
+    assert "$0.0200" in captured.out
 
 
 @pytest.mark.unit
