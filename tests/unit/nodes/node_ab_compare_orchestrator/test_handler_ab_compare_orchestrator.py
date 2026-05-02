@@ -4,7 +4,8 @@
 
 All tests use FakeEffectHandler — no network, no Kafka, no Docker.
 Uses a temp models_registry.yaml with stub models to avoid env var dependencies.
-The fake satisfies ProtocolInferenceEffect: handle(request) -> result.
+The fake satisfies the HandlerLlmOpenaiCompatible interface:
+  handle(request: ModelLlmInferenceRequest) -> ModelLlmInferenceResponse
 """
 
 from __future__ import annotations
@@ -15,11 +16,9 @@ from typing import Any
 
 import pytest
 import yaml
-from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import (
     HandlerAbCompareOrchestrator,
-    ProtocolInferenceEffect,
     _calculate_cost,
     _resolve_models,
     _ResolvedModel,
@@ -29,25 +28,38 @@ from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_start
 )
 
 # ---------------------------------------------------------------------------
-# Fake result returned by the effect handler
+# Fake result — duck-types ModelLlmInferenceResponse fields the orchestrator reads.
+# No omnibase_infra import needed for unit tests.
 # ---------------------------------------------------------------------------
 
 
-class _FakeResult(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+class _FakeUsage:
+    def __init__(self, prompt: int, completion: int) -> None:
+        self.tokens_input = prompt
+        self.tokens_output = completion
+        self.tokens_total = prompt + completion
 
-    model_key: str
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    latency_ms: int = 0
-    raw_output: str = ""
-    error: str = ""
-    correlation_id: str = ""
+
+class _FakeResponse:
+    """Duck-type for ModelLlmInferenceResponse — exposes only fields the orchestrator reads."""
+
+    def __init__(
+        self,
+        model_id: str,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        latency_ms: float = 0.0,
+        generated_text: str = "",
+    ) -> None:
+        self.model_id = model_id
+        self.usage = _FakeUsage(prompt_tokens, completion_tokens)
+        self.latency_ms = latency_ms
+        self.generated_text = generated_text or None  # None if empty
 
 
 # ---------------------------------------------------------------------------
-# Fake effect handler — satisfies ProtocolInferenceEffect
+# Fake effect handler — satisfies HandlerLlmOpenaiCompatible.handle() signature.
+# Keyed by model ID string (request.model == model_id_resolved from registry).
 # ---------------------------------------------------------------------------
 
 _FAKE_OUTPUT = (
@@ -62,51 +74,39 @@ _FAKE_OUTPUT = (
 
 
 class FakeEffectHandler:
-    """Deterministic fake: returns fixed token counts and output per model_key."""
+    """Deterministic fake: returns fixed token counts and output per model resolved ID."""
 
     def __init__(
         self,
         responses: dict[str, tuple[str, int, int, int]] | None = None,
         error_for: set[str] | None = None,
     ) -> None:
-        # responses: model_key -> (raw_output, prompt_tokens, completion_tokens, latency_ms)
+        # responses: model_id_resolved -> (raw_output, prompt_tokens, completion_tokens, latency_ms)
         self._responses = responses or {}
         self._default = (_FAKE_OUTPUT, 50, 100, 500)
         self._error_for = error_for or set()
 
-    async def handle(self, request: Any) -> _FakeResult:
-        model_key: str = request.model_key
-        correlation_id: str = request.correlation_id
+    async def handle(self, request: Any) -> _FakeResponse:
+        # request.model == model_id_resolved (e.g. "stub-model-a")
+        model_id: str = request.model
 
-        if model_key in self._error_for:
-            return _FakeResult(
-                model_key=model_key,
-                correlation_id=correlation_id,
-                error=f"Simulated error for {model_key}",
-            )
+        if model_id in self._error_for:
+            raise RuntimeError(f"Simulated error for {model_id}")
 
         raw_output, prompt_tokens, completion_tokens, latency_ms = self._responses.get(
-            model_key, self._default
+            model_id, self._default
         )
-        return _FakeResult(
-            model_key=model_key,
+        return _FakeResponse(
+            model_id=model_id,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
-            latency_ms=latency_ms,
-            raw_output=raw_output,
-            error="",
-            correlation_id=correlation_id,
+            latency_ms=float(latency_ms),
+            generated_text=raw_output,
         )
-
-
-def _assert_satisfies_protocol(handler: FakeEffectHandler) -> None:
-    """Static-analysis helper — mypy checks this at type-check time."""
-    _: ProtocolInferenceEffect = handler  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
-# Test registry fixtures — use new direct-endpoint format
+# Test registry fixtures — use direct base-URL endpoint format
 # ---------------------------------------------------------------------------
 
 _REGISTRY_TWO_LOCAL = {
@@ -224,6 +224,26 @@ def test_resolve_models_uses_model_id_field() -> None:
     registry = _REGISTRY_TWO_LOCAL["models"]
     resolved, _ = _resolve_models(registry, ["stub-local-a"])  # type: ignore[arg-type]
     assert resolved[0].model_id_resolved == "stub-model-a"
+
+
+@pytest.mark.unit
+def test_resolve_models_skips_non_openai_compatible_protocol() -> None:
+    """Non openai_compatible protocols are skipped."""
+    registry = [
+        {
+            "id": "stub-anthropic",
+            "display_name": "Anthropic",
+            "protocol": "anthropic",
+            "model_id": "claude-sonnet",
+            "cost_per_1k_input": 0.003,
+            "cost_per_1k_output": 0.015,
+            "location": "cloud",
+            "context_window": 200000,
+        }
+    ]
+    resolved, skipped = _resolve_models(registry, ["all"])  # type: ignore[arg-type]
+    assert "stub-anthropic" in skipped
+    assert len(resolved) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +463,8 @@ async def test_handle_status_completed_when_all_available(
 async def test_handle_records_token_counts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("STUB_LLM_B_API_KEY", raising=False)
 
-    fake = FakeEffectHandler(responses={"stub-local-a": (_FAKE_OUTPUT, 42, 88, 300)})
+    # Key by model_id_resolved ("stub-model-a") — that's what request.model is set to
+    fake = FakeEffectHandler(responses={"stub-model-a": (_FAKE_OUTPUT, 42, 88, 300)})
     reg_path = _write_registry(_REGISTRY_TWO_LOCAL)
     handler = _make_handler_with_registry(reg_path, fake)
 
@@ -460,13 +481,14 @@ async def test_handle_records_token_counts(monkeypatch: pytest.MonkeyPatch) -> N
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_handle_effect_error_recorded_in_row(
+async def test_handle_effect_exception_recorded_in_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Effect handler errors are captured into the row, not raised as exceptions."""
+    """Effect handler exceptions are captured into the row error field, not raised."""
     monkeypatch.delenv("STUB_LLM_B_API_KEY", raising=False)
 
-    fake = FakeEffectHandler(error_for={"stub-local-a"})
+    # Key by model_id_resolved ("stub-model-a") — that's what request.model is set to
+    fake = FakeEffectHandler(error_for={"stub-model-a"})
     reg_path = _write_registry(_REGISTRY_TWO_LOCAL)
     handler = _make_handler_with_registry(reg_path, fake)
 
@@ -509,4 +531,12 @@ async def test_handle_no_httpx_or_health_probe_in_orchestrator() -> None:
     # _DefaultHttpLlmClient must be gone
     assert not hasattr(mod, "_DefaultHttpLlmClient"), (
         "Orchestrator must not contain _DefaultHttpLlmClient"
+    )
+    # ProtocolInferenceEffect must be gone (replaced by direct infra handler)
+    assert not hasattr(mod, "ProtocolInferenceEffect"), (
+        "ProtocolInferenceEffect must be removed — use HandlerLlmOpenaiCompatible directly"
+    )
+    # node_ab_inference_effect must not be imported
+    assert "node_ab_inference_effect" not in str(getattr(mod, "__file__", "")), (
+        "Orchestrator must not reference node_ab_inference_effect"
     )
