@@ -211,6 +211,41 @@ def test_run_review_wires_concrete_handlers_not_stubs(
 
 
 @pytest.mark.unit
+def test_report_poster_zero_arg_dry_run_is_runtime_wirable() -> None:
+    """Runtime auto-wiring must be able to construct HandlerReportPoster."""
+    from omnimarket.nodes.node_pr_review_bot.models.models import (
+        EnumPrVerdict,
+        ReviewVerdict,
+    )
+
+    verdict = ReviewVerdict(
+        correlation_id=uuid4(),
+        pr_number=1,
+        repo="OmniNode-ai/test",
+        verdict=EnumPrVerdict.CLEAN,
+        total_findings=0,
+        threads_posted=0,
+        threads_verified_pass=0,
+        threads_verified_fail=0,
+        threads_pending=0,
+        judge_model_used="deepseek-r1",
+        duration_ms=0,
+        completed_at=datetime.now(tz=UTC),
+    )
+
+    poster = HandlerReportPoster()
+
+    poster.post_summary(
+        pr_number=1,
+        repo="OmniNode-ai/test",
+        verdict=verdict,
+        findings=(),
+        thread_states=(),
+        dry_run=True,
+    )
+
+
+@pytest.mark.unit
 def test_report_phase_receives_findings_from_fsm_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
