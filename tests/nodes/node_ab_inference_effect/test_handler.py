@@ -295,6 +295,25 @@ async def test_openai_compatible_rejects_untrusted_endpoint() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.unit
+async def test_openai_compatible_malformed_endpoint_port_returns_error() -> None:
+    """Malformed endpoint ports must not escape the error-result boundary."""
+    post = AsyncMock(return_value=(200, _make_openai_response()))
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=post,
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
+    req = _make_request(endpoint_url="http://localhost:99999")
+
+    result = await handler.handle(req)
+
+    assert result.error != ""
+    assert "allowlist" in result.error
+    assert result.usage_source == EnumUsageSource.UNKNOWN
+    post.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
 async def test_openai_compatible_malformed_response_returns_error_result() -> None:
     """Malformed successful provider responses stay inside the error-result boundary."""
     response: dict[str, Any] = {

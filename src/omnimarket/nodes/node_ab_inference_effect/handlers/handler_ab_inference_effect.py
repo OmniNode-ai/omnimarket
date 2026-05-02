@@ -327,7 +327,11 @@ def _normalize_endpoint_url(endpoint_url: str) -> str:
     parsed = urlparse(endpoint_url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         return ""
-    port = f":{parsed.port}" if parsed.port is not None else ""
+    try:
+        parsed_port = parsed.port
+    except ValueError:
+        return ""
+    port = f":{parsed_port}" if parsed_port is not None else ""
     return f"{parsed.scheme}://{parsed.hostname.lower()}{port}"
 
 
