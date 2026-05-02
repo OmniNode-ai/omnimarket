@@ -46,14 +46,3 @@ models:
     cost_per_1k_output: 0.0
     location: local
     context_window: 8192
-
-  - id: gemini-flash
-    display_name: "Gemini Flash"
-    endpoint: "https://api.z.ai"
-    protocol: openai_compatible
-    model_id: "gemini-2.0-flash"
-    cost_per_1k_input: 0.0001
-    cost_per_1k_output: 0.0004
-    location: cloud
-    requires_key: LLM_GLM_API_KEY
-    context_window: 1000000

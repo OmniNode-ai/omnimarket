@@ -124,6 +124,7 @@ def _resolve_models(
 
 def _run_quality_check(output: str) -> str:
     """Run ruff check on code output, return 'pass' or 'fail:<reason>'."""
+    fname: str | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
             f.write(output)
@@ -135,12 +136,14 @@ def _run_quality_check(output: str) -> str:
             timeout=10,
             check=False,
         )
-        Path(fname).unlink(missing_ok=True)
         return (
             "pass" if result.returncode == 0 else f"fail:{result.stdout[:120].strip()}"
         )
     except Exception as exc:
         return f"skip:{exc}"
+    finally:
+        if fname is not None:
+            Path(fname).unlink(missing_ok=True)
 
 
 def _calculate_cost(

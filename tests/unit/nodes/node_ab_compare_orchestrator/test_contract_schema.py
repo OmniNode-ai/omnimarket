@@ -175,7 +175,6 @@ def test_models_registry_has_expected_models() -> None:
         "deepseek-r1-14b",
         "deepseek-r1-32b",
         "qwen3-next-80b",
-        "gemini-flash",
     }
     assert expected == ids
 
