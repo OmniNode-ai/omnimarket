@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10478
+title: "Add ab-compare orchestrator node"
+summary: "Add the A/B compare orchestrator node that resolves model registry entries, probes local model health, fans out inference calls, and returns sorted comparison results with costs and token counts."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "public_api"
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused ab-compare orchestrator unit tests pass"
+    command: "uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_handler_ab_compare_orchestrator.py -q"
+  - kind: "manual"
+    description: "Node metadata dependency scope validates orchestrator imports"
+    command: "uv run python scripts/ci/check_node_metadata_dependencies.py"
+  - kind: "manual"
+    description: "Node drift gate validates changed orchestrator package registration"
+    command: "python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - kind: "ci"
+    description: "omnimarket PR #511 checks pass, including lint, deploy gate, and receipt gate"
+    command: "gh pr checks 511 --repo OmniNode-ai/omnimarket --watch"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Focused ab-compare orchestrator unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_handler_ab_compare_orchestrator.py -q"
+  - id: "dod-002"
+    description: "Node metadata dependency scope validates orchestrator imports"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_node_metadata_dependencies.py"
+  - id: "dod-003"
+    description: "Node drift gate validates changed orchestrator package registration"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke imports the ab-compare orchestrator handler and command/result models in the runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import HandlerAbCompareOrchestrator; from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_start import ModelAbCompareStart; from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_result import ModelAbCompareResult; print('ab-compare orchestrator deploy smoke ok')\""
