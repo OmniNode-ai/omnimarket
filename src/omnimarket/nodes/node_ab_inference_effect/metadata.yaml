@@ -10,7 +10,7 @@ capabilities:
   full_runtime: true
   requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   requires_docker: false
   side_effect_class: external_io
 dependencies:

@@ -14,9 +14,11 @@ zero token counts — it never raises.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Callable, Coroutine
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import httpx
 
@@ -35,6 +37,14 @@ _HttpPostFn = Callable[
     [str, dict[str, Any], dict[str, str], float],
     Coroutine[Any, Any, tuple[int, dict[str, Any]]],
 ]
+
+_ENDPOINT_ALLOWLIST_ENVS = (
+    "LLM_CODER_URL",
+    "LLM_CODER_FAST_URL",
+    "LLM_DEEPSEEK_R1_URL",
+    "LLM_QWEN3_NEXT_URL",
+    "LLM_GLM_URL",
+)
 
 
 async def _default_http_post(
@@ -64,9 +74,15 @@ class HandlerAbInferenceEffect:
         self,
         http_post_fn: _HttpPostFn | None = None,
         anthropic_client_factory: Callable[[], Any] | None = None,
+        allowed_endpoint_urls: set[str] | None = None,
     ) -> None:
         self._http_post = http_post_fn or _default_http_post
         self._anthropic_client_factory = anthropic_client_factory
+        self._allowed_endpoint_urls = (
+            allowed_endpoint_urls
+            if allowed_endpoint_urls is not None
+            else _configured_endpoint_allowlist()
+        )
 
     async def handle(self, request: ModelInferenceRequest) -> ModelInferenceResult:
         """Dispatch to the appropriate protocol handler.
@@ -100,6 +116,12 @@ class HandlerAbInferenceEffect:
     async def _call_openai_compatible(
         self, request: ModelInferenceRequest
     ) -> ModelInferenceResult:
+        if not _is_endpoint_allowed(request.endpoint_url, self._allowed_endpoint_urls):
+            return self._error_result(
+                request,
+                f"Endpoint URL is not in the configured allowlist: {request.endpoint_url}",
+            )
+
         url = f"{request.endpoint_url.rstrip('/')}/v1/chat/completions"
         messages: list[dict[str, str]] = []
         if request.system_prompt:
@@ -117,6 +139,7 @@ class HandlerAbInferenceEffect:
             _status, data = await self._http_post(
                 url, payload, headers, request.timeout_seconds
             )
+            return self._parse_openai_response(request, data, t0)
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
             latency_ms = int((time.monotonic() - t0) * 1000)
             logger.warning(
@@ -146,6 +169,9 @@ class HandlerAbInferenceEffect:
                 usage_source=EnumUsageSource.UNKNOWN,
             )
 
+    def _parse_openai_response(
+        self, request: ModelInferenceRequest, data: dict[str, Any], t0: float
+    ) -> ModelInferenceResult:
         latency_ms = int((time.monotonic() - t0) * 1000)
 
         usage = data.get("usage") or {}
@@ -185,7 +211,10 @@ class HandlerAbInferenceEffect:
         self, request: ModelInferenceRequest
     ) -> ModelInferenceResult:
         if self._anthropic_client_factory is not None:
-            client = self._anthropic_client_factory()
+            try:
+                client = self._anthropic_client_factory()
+            except Exception as exc:
+                return self._error_result(request, f"{type(exc).__name__}: {exc}")
         else:
             try:
                 import anthropic as _anthropic  # type: ignore[import-not-found]
@@ -196,7 +225,10 @@ class HandlerAbInferenceEffect:
                     error="anthropic SDK not installed; add anthropic to dependencies",
                     usage_source=EnumUsageSource.UNKNOWN,
                 )
-            client = _anthropic.AsyncAnthropic()
+            try:
+                client = _anthropic.AsyncAnthropic()
+            except Exception as exc:
+                return self._error_result(request, f"{type(exc).__name__}: {exc}")
 
         messages: list[dict[str, str]] = [{"role": "user", "content": request.prompt}]
 
@@ -210,7 +242,10 @@ class HandlerAbInferenceEffect:
 
         t0 = time.monotonic()
         try:
-            response = await client.messages.create(**kwargs)
+            response = await client.messages.create(
+                **kwargs, timeout=request.timeout_seconds
+            )
+            return self._parse_anthropic_response(request, response, t0)
         except Exception as exc:
             latency_ms = int((time.monotonic() - t0) * 1000)
             logger.warning(
@@ -226,6 +261,9 @@ class HandlerAbInferenceEffect:
                 usage_source=EnumUsageSource.UNKNOWN,
             )
 
+    def _parse_anthropic_response(
+        self, request: ModelInferenceRequest, response: Any, t0: float
+    ) -> ModelInferenceResult:
         latency_ms = int((time.monotonic() - t0) * 1000)
 
         usage = getattr(response, "usage", None)
@@ -260,6 +298,37 @@ class HandlerAbInferenceEffect:
             raw_output=raw_output,
             usage_source=usage_source,
         )
+
+    def _error_result(
+        self, request: ModelInferenceRequest, error: str
+    ) -> ModelInferenceResult:
+        return ModelInferenceResult(
+            model_key=request.model_key,
+            correlation_id=request.correlation_id,
+            error=error,
+            usage_source=EnumUsageSource.UNKNOWN,
+        )
+
+
+def _configured_endpoint_allowlist() -> set[str]:
+    return {
+        normalized
+        for value in (os.environ.get(name, "") for name in _ENDPOINT_ALLOWLIST_ENVS)
+        if (normalized := _normalize_endpoint_url(value))
+    }
+
+
+def _is_endpoint_allowed(endpoint_url: str, allowed_endpoint_urls: set[str]) -> bool:
+    normalized = _normalize_endpoint_url(endpoint_url)
+    return bool(normalized and normalized in allowed_endpoint_urls)
+
+
+def _normalize_endpoint_url(endpoint_url: str) -> str:
+    parsed = urlparse(endpoint_url.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return ""
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    return f"{parsed.scheme}://{parsed.hostname.lower()}{port}"
 
 
 __all__: list[str] = ["HandlerAbInferenceEffect"]

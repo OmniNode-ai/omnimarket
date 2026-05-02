@@ -30,6 +30,7 @@ from omnimarket.nodes.node_ab_inference_effect.models.model_inference_result imp
 # ---------------------------------------------------------------------------
 
 CORRELATION_ID = "test-corr-001"
+ALLOWED_ENDPOINTS = {"http://localhost:8000", "http://192.168.86.201:8000"}
 
 
 def _make_request(
@@ -95,7 +96,10 @@ async def test_openai_compatible_happy_path() -> None:
     response = _make_openai_response(
         prompt_tokens=15, completion_tokens=25, content="Hello world"
     )
-    handler = HandlerAbInferenceEffect(http_post_fn=_make_http_post_fn(response))
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_make_http_post_fn(response),
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
     req = _make_request(protocol="openai_compatible")
 
     result = await handler.handle(req)
@@ -128,7 +132,10 @@ async def test_openai_compatible_url_constructed_correctly() -> None:
         captured_urls.append(url)
         return 200, response
 
-    handler = HandlerAbInferenceEffect(http_post_fn=_capturing_post)
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_capturing_post,
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
     req = _make_request(endpoint_url="http://192.168.86.201:8000")
     await handler.handle(req)
 
@@ -152,7 +159,10 @@ async def test_openai_compatible_system_prompt_included() -> None:
         captured_payloads.append(payload)
         return 200, response
 
-    handler = HandlerAbInferenceEffect(http_post_fn=_capturing_post)
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_capturing_post,
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
     req = _make_request(system_prompt="You are an expert.", prompt="Write code.")
     await handler.handle(req)
 
@@ -177,7 +187,10 @@ async def test_openai_compatible_no_system_prompt_omits_system_message() -> None
         captured_payloads.append(payload)
         return 200, response
 
-    handler = HandlerAbInferenceEffect(http_post_fn=_capturing_post)
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_capturing_post,
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
     req = _make_request(system_prompt="", prompt="Hello")
     await handler.handle(req)
 
@@ -193,7 +206,10 @@ async def test_openai_compatible_missing_usage_marks_unknown() -> None:
     response: dict[str, Any] = {
         "choices": [{"message": {"content": "some output"}}],
     }
-    handler = HandlerAbInferenceEffect(http_post_fn=_make_http_post_fn(response))
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_make_http_post_fn(response),
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
     req = _make_request()
 
     result = await handler.handle(req)
@@ -217,7 +233,10 @@ async def test_openai_compatible_timeout_returns_error_result() -> None:
     ) -> tuple[int, dict[str, Any]]:
         raise httpx.TimeoutException("timed out")
 
-    handler = HandlerAbInferenceEffect(http_post_fn=_timeout_post)
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_timeout_post,
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
     req = _make_request()
 
     result = await handler.handle(req)
@@ -242,7 +261,50 @@ async def test_openai_compatible_connect_error_returns_error_result() -> None:
     ) -> tuple[int, dict[str, Any]]:
         raise httpx.ConnectError("connection refused")
 
-    handler = HandlerAbInferenceEffect(http_post_fn=_connect_err_post)
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_connect_err_post,
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
+    req = _make_request()
+
+    result = await handler.handle(req)
+
+    assert result.error != ""
+    assert result.prompt_tokens == 0
+    assert result.usage_source == EnumUsageSource.UNKNOWN
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_openai_compatible_rejects_untrusted_endpoint() -> None:
+    """OpenAI-compatible calls must target a configured endpoint, not caller-supplied arbitrary URLs."""
+    post = AsyncMock(return_value=(200, _make_openai_response()))
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=post,
+        allowed_endpoint_urls={"http://localhost:8000"},
+    )
+    req = _make_request(endpoint_url="http://169.254.169.254")
+
+    result = await handler.handle(req)
+
+    assert result.error != ""
+    assert "allowlist" in result.error
+    assert result.usage_source == EnumUsageSource.UNKNOWN
+    post.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_openai_compatible_malformed_response_returns_error_result() -> None:
+    """Malformed successful provider responses stay inside the error-result boundary."""
+    response: dict[str, Any] = {
+        "choices": [{"message": {"content": "some output"}}],
+        "usage": {"prompt_tokens": object()},
+    }
+    handler = HandlerAbInferenceEffect(
+        http_post_fn=_make_http_post_fn(response),
+        allowed_endpoint_urls=ALLOWED_ENDPOINTS,
+    )
     req = _make_request()
 
     result = await handler.handle(req)
@@ -327,6 +389,7 @@ async def test_anthropic_system_prompt_passed_as_kwarg() -> None:
     assert len(captured_kwargs) == 1
     assert captured_kwargs[0]["system"] == "Be concise."
     assert captured_kwargs[0]["messages"] == [{"role": "user", "content": "Explain X."}]
+    assert captured_kwargs[0]["timeout"] == 30.0
 
 
 @pytest.mark.asyncio
@@ -347,6 +410,44 @@ async def test_anthropic_api_error_returns_error_result() -> None:
 
     assert result.error != ""
     assert "RuntimeError" in result.error
+    assert result.prompt_tokens == 0
+    assert result.usage_source == EnumUsageSource.UNKNOWN
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_anthropic_client_factory_error_returns_error_result() -> None:
+    """Anthropic client construction failures stay inside the error-result boundary."""
+
+    def _factory() -> Any:
+        raise RuntimeError("missing api key")
+
+    handler = HandlerAbInferenceEffect(anthropic_client_factory=_factory)
+    req = _make_request(protocol="anthropic")
+
+    result = await handler.handle(req)
+
+    assert result.error != ""
+    assert "RuntimeError" in result.error
+    assert result.usage_source == EnumUsageSource.UNKNOWN
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_anthropic_malformed_response_returns_error_result() -> None:
+    """Malformed successful Anthropic responses stay inside the error-result boundary."""
+    fake_response = _make_anthropic_response()
+    fake_response.usage.input_tokens = object()
+
+    client = MagicMock()
+    client.messages.create = AsyncMock(return_value=fake_response)
+
+    handler = HandlerAbInferenceEffect(anthropic_client_factory=lambda: client)
+    req = _make_request(protocol="anthropic")
+
+    result = await handler.handle(req)
+
+    assert result.error != ""
     assert result.prompt_tokens == 0
     assert result.usage_source == EnumUsageSource.UNKNOWN
 
