@@ -323,8 +323,10 @@ class TestEventRegistry:
             "round_trip_ms",
             "status",
         ]
-        assert len(registration.fan_out) == 1
-        assert registration.fan_out[0].topic == "onex.evt.diagnostic.daemon-health.v1"
+        assert {fanout.topic for fanout in registration.fan_out} == {
+            "onex.evt.diagnostic.daemon-health.v1",
+            "onex.evt.omniclaude.diagnostic-daemon-health.v1",
+        }
         assert registry.get_payload_model("diagnostic.daemon.health") is (
             ModelDaemonHealthEvent
         )

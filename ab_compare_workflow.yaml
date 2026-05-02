@@ -8,7 +8,7 @@
 # RuntimeLocal single-handler execution path:
 #   1. Loads this contract
 #   2. Instantiates HandlerAbCompareOrchestrator
-#   3. Loads models_registry.yaml, probes health, skips unavailable models
+#   3. Loads models_registry.yaml, skips models missing required keys/endpoints
 #   4. Fans out inference in parallel (asyncio.gather)
 #   5. Collects results, calculates cost from registry pricing
 #   6. Emits terminal event with comparison payload

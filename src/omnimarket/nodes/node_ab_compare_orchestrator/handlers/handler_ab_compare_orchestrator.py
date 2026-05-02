@@ -3,13 +3,14 @@
 """HandlerAbCompareOrchestrator — fans out inference to N models in parallel.
 
 Reads models_registry.yaml at construction time. At handle() time:
-  1. Resolves env vars; skips models with missing endpoint or required key.
-  2. Probes health of local models (2s timeout); skips unreachable.
-  3. Fans out asyncio.gather() calls to the injected LLM client.
-  4. Calculates cost from registry pricing fields.
-  5. Returns ModelAbCompareResult with comparison rows sorted by cost.
+  1. Resolves env vars; skips models with missing required API key.
+  2. Fans out asyncio.gather() calls to HandlerLlmOpenaiCompatible from omnibase_infra.
+  3. Calculates cost from registry pricing fields.
+  4. Returns ModelAbCompareResult with comparison rows sorted by cost.
 
-The injected ProtocolAbLlmClient is the only I/O surface — tests inject a fake.
+All LLM I/O is delegated to HandlerLlmOpenaiCompatible (omnibase_infra), which
+handles retries, circuit breaking, auth, and error classification. The orchestrator
+never makes direct HTTP calls or imports httpx.
 """
 
 from __future__ import annotations
@@ -18,11 +19,10 @@ import asyncio
 import logging
 import os
 import subprocess
-import time
+import tempfile
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-import httpx
 import yaml
 from pydantic import BaseModel, ConfigDict
 
@@ -37,28 +37,9 @@ from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_start
 logger = logging.getLogger(__name__)
 
 _REGISTRY_PATH = Path(__file__).parent.parent / "models_registry.yaml"
-_HEALTH_PROBE_TIMEOUT = 2.0
 _DEFAULT_SYSTEM_PROMPT = (
-    "You are a expert software engineer. Respond with clean, working Python code only."
+    "You are an expert software engineer. Respond with clean, working Python code only."
 )
-
-
-class ProtocolAbLlmClient(Protocol):
-    """Injectable LLM client — real impl uses httpx/anthropic, tests use a fake."""
-
-    async def call(
-        self,
-        *,
-        endpoint_url: str,
-        model_id: str,
-        protocol: str,
-        system_prompt: str,
-        user_prompt: str,
-        timeout_seconds: float,
-        api_key: str | None,
-    ) -> tuple[str, int, int, int]:
-        """Return (raw_output, prompt_tokens, completion_tokens, latency_ms)."""
-        ...
 
 
 class _ResolvedModel(BaseModel):
@@ -69,8 +50,6 @@ class _ResolvedModel(BaseModel):
     model_id: str
     display_name: str
     endpoint_url: str
-    endpoint_path: str
-    health_path: str = "/health"
     protocol: str
     model_id_resolved: str
     cost_per_1k_input: float
@@ -100,35 +79,29 @@ def _resolve_models(
 
         # Key guard for cloud models
         requires_key: str | None = entry.get("requires_key")
-        if requires_key and not os.environ.get(requires_key):
-            logger.info("Skipping %s: missing env var %s", model_id, requires_key)
+        api_key: str | None = None
+        if requires_key:
+            api_key = os.environ.get(requires_key)
+            if not api_key:
+                logger.info("Skipping %s: missing env var %s", model_id, requires_key)
+                skipped.append(model_id)
+                continue
+
+        # Only openai_compatible protocol supported via HandlerLlmOpenaiCompatible
+        protocol = entry.get("protocol", "")
+        if protocol != "openai_compatible":
+            logger.info("Skipping %s: unsupported protocol %s", model_id, protocol)
             skipped.append(model_id)
             continue
 
-        # Endpoint resolution
-        if entry.get("protocol") == "anthropic":
-            endpoint_url = "anthropic_sdk"
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-        else:
-            endpoint_env: str | None = entry.get("endpoint_env")
-            if not endpoint_env:
-                logger.info("Skipping %s: no endpoint_env declared", model_id)
-                skipped.append(model_id)
-                continue
-            base = os.environ.get(endpoint_env, "").rstrip("/")
-            if not base:
-                logger.info("Skipping %s: env var %s is unset", model_id, endpoint_env)
-                skipped.append(model_id)
-                continue
-            endpoint_url = base
-            # Resolve api key from requires_key env if present
-            api_key = os.environ.get(requires_key) if requires_key else None
+        endpoint_url = entry.get("endpoint", "")
+        if not endpoint_url:
+            logger.info("Skipping %s: no endpoint declared", model_id)
+            skipped.append(model_id)
+            continue
 
-        model_id_env: str | None = entry.get("model_id_env")
-        model_id_resolved = (
-            os.environ.get(model_id_env, entry["model_id_default"])
-            if model_id_env
-            else entry["model_id_default"]
+        model_id_resolved = entry.get(
+            "model_id", entry.get("model_id_default", model_id)
         )
 
         resolved.append(
@@ -136,9 +109,7 @@ def _resolve_models(
                 model_id=model_id,
                 display_name=entry["display_name"],
                 endpoint_url=endpoint_url,
-                endpoint_path=entry.get("endpoint_path", "/v1/chat/completions"),
-                health_path=entry.get("health_path", "/health") or "/health",
-                protocol=entry["protocol"],
+                protocol=protocol,
                 model_id_resolved=model_id_resolved,
                 cost_per_1k_input=float(entry["cost_per_1k_input"]),
                 cost_per_1k_output=float(entry["cost_per_1k_output"]),
@@ -151,27 +122,10 @@ def _resolve_models(
     return resolved, skipped
 
 
-async def _probe_health(model: _ResolvedModel) -> bool:
-    """Return True if health endpoint responds 200, False otherwise."""
-    if model.protocol == "anthropic" or model.location == "cloud":
-        return True
-    try:
-        async with httpx.AsyncClient(timeout=_HEALTH_PROBE_TIMEOUT) as client:
-            health_url = (
-                f"{model.endpoint_url.rstrip('/')}/{model.health_path.lstrip('/')}"
-            )
-            resp = await client.get(health_url)
-            return resp.status_code == 200
-    except Exception:
-        return False
-
-
 def _run_quality_check(output: str) -> str:
     """Run ruff check on code output, return 'pass' or 'fail:<reason>'."""
     fname: str | None = None
     try:
-        import tempfile
-
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
             f.write(output)
             fname = f.name
@@ -188,7 +142,7 @@ def _run_quality_check(output: str) -> str:
     except Exception as exc:
         return f"skip:{exc}"
     finally:
-        if fname:
+        if fname is not None:
             Path(fname).unlink(missing_ok=True)
 
 
@@ -201,11 +155,41 @@ def _calculate_cost(
     ) / 1000.0
 
 
-class HandlerAbCompareOrchestrator:
-    """Orchestrator: loads registry, probes health, fans out, collects, emits."""
+def _create_transport() -> Any:
+    """Create a MixinLlmHttpTransport instance for HandlerLlmOpenaiCompatible."""
+    from omnibase_infra.mixins.mixin_llm_http_transport import MixinLlmHttpTransport
 
-    def __init__(self, llm_client: ProtocolAbLlmClient | None = None) -> None:
-        self._llm_client = llm_client or _DefaultHttpLlmClient()
+    class _Transport(MixinLlmHttpTransport):  # type: ignore[misc]
+        def __init__(self) -> None:
+            self._init_llm_http_transport(target_name="ab-compare-orchestrator")
+
+    return _Transport()
+
+
+class HandlerAbCompareOrchestrator:
+    """Orchestrator: loads registry, fans out to HandlerLlmOpenaiCompatible, collects, emits.
+
+    Uses HandlerLlmOpenaiCompatible from omnibase_infra for all LLM I/O.
+    No direct HTTP calls, no httpx imports in this module.
+    """
+
+    def __init__(self, effect_handler: Any | None = None) -> None:
+        """Initialize the orchestrator.
+
+        Args:
+            effect_handler: Injectable handler for testing. Must implement
+                ``async def handle(request: ModelLlmInferenceRequest) -> ModelLlmInferenceResponse``.
+                When None, creates a HandlerLlmOpenaiCompatible with a transport.
+        """
+        if effect_handler is not None:
+            self._effect = effect_handler
+        else:
+            from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
+                HandlerLlmOpenaiCompatible,
+            )
+
+            transport = _create_transport()
+            self._effect = HandlerLlmOpenaiCompatible(transport=transport)
         self._registry = _load_registry()
 
     async def handle(self, command: ModelAbCompareStart) -> ModelAbCompareResult:
@@ -213,19 +197,7 @@ class HandlerAbCompareOrchestrator:
 
         resolved, skipped = _resolve_models(self._registry, command.models)
 
-        # Probe health for local models; skip unreachable
-        probe_results = await asyncio.gather(
-            *(_probe_health(m) for m in resolved), return_exceptions=False
-        )
-        available: list[_ResolvedModel] = []
-        for model, healthy in zip(resolved, probe_results, strict=True):
-            if healthy:
-                available.append(model)
-            else:
-                logger.info("Skipping %s: health probe failed", model.model_id)
-                skipped.append(model.model_id)
-
-        if not available:
+        if not resolved:
             return ModelAbCompareResult(
                 comparison=[],
                 correlation_id=command.correlation_id,
@@ -233,14 +205,18 @@ class HandlerAbCompareOrchestrator:
                 models_skipped=skipped,
             )
 
-        # Fan out inference in parallel
+        # Fan out inference in parallel — the effect handler handles connection
+        # errors gracefully; we catch exceptions and record them in the row.
         inference_results = await asyncio.gather(
-            *(self._call_model(m, system_prompt, command.task) for m in available),
+            *(
+                self._call_model(m, system_prompt, command.task, command.correlation_id)
+                for m in resolved
+            ),
             return_exceptions=True,
         )
 
         rows: list[ModelComparisonRow] = []
-        for model, result in zip(available, inference_results, strict=True):
+        for model, result in zip(resolved, inference_results, strict=True):
             if isinstance(result, BaseException):
                 logger.warning("Model %s raised: %s", model.model_id, result)
                 rows.append(
@@ -252,11 +228,17 @@ class HandlerAbCompareOrchestrator:
                 )
                 continue
 
-            raw_output, prompt_tokens, completion_tokens, latency_ms = result
+            # result is a ModelLlmInferenceResponse
+            prompt_tokens = result.usage.tokens_input
+            completion_tokens = result.usage.tokens_output
+            total_tokens = result.usage.tokens_total
+            latency_ms = int(result.latency_ms)
+            generated_text = result.generated_text or ""
+
             cost = _calculate_cost(model, prompt_tokens, completion_tokens)
             quality = ""
-            if command.quality_check and raw_output:
-                quality = _run_quality_check(raw_output)
+            if command.quality_check and generated_text:
+                quality = _run_quality_check(generated_text)
 
             rows.append(
                 ModelComparisonRow(
@@ -264,10 +246,11 @@ class HandlerAbCompareOrchestrator:
                     display_name=model.display_name,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens,
+                    total_tokens=total_tokens,
                     cost_usd=cost,
                     latency_ms=latency_ms,
                     quality=quality,
+                    error="",
                 )
             )
 
@@ -285,131 +268,25 @@ class HandlerAbCompareOrchestrator:
         model: _ResolvedModel,
         system_prompt: str,
         user_prompt: str,
-    ) -> tuple[str, int, int, int]:
-        full_url = (
-            model.endpoint_url
-            if model.protocol == "anthropic"
-            else f"{model.endpoint_url}{model.endpoint_path}"
+        correlation_id: str,
+    ) -> Any:
+        from omnibase_infra.enums import EnumLlmOperationType
+        from omnibase_infra.nodes.node_llm_inference_effect.models.model_llm_inference_request import (
+            ModelLlmInferenceRequest,
         )
-        return await self._llm_client.call(
-            endpoint_url=full_url,
-            model_id=model.model_id_resolved,
-            protocol=model.protocol,
+
+        request = ModelLlmInferenceRequest(
+            base_url=model.endpoint_url,
+            operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+            model=model.model_id_resolved,
+            messages=({"role": "user", "content": user_prompt},),
             system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            timeout_seconds=120.0,
             api_key=model.api_key,
+            timeout_seconds=120.0,
         )
-
-
-class _DefaultHttpLlmClient:
-    """Production LLM client — OpenAI-compatible HTTP + Anthropic SDK."""
-
-    async def call(
-        self,
-        *,
-        endpoint_url: str,
-        model_id: str,
-        protocol: str,
-        system_prompt: str,
-        user_prompt: str,
-        timeout_seconds: float,
-        api_key: str | None,
-    ) -> tuple[str, int, int, int]:
-        start = time.monotonic()
-        if protocol == "anthropic":
-            return await self._call_anthropic(
-                model_id=model_id,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                timeout_seconds=timeout_seconds,
-                api_key=api_key,
-                start=start,
-            )
-        return await self._call_openai_compat(
-            endpoint_url=endpoint_url,
-            model_id=model_id,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            timeout_seconds=timeout_seconds,
-            api_key=api_key,
-            start=start,
-        )
-
-    async def _call_openai_compat(
-        self,
-        *,
-        endpoint_url: str,
-        model_id: str,
-        system_prompt: str,
-        user_prompt: str,
-        timeout_seconds: float,
-        api_key: str | None,
-        start: float,
-    ) -> tuple[str, int, int, int]:
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        payload = {
-            "model": model_id,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_tokens": 2048,
-        }
-
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            resp = await client.post(endpoint_url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-
-        latency_ms = int((time.monotonic() - start) * 1000)
-        usage = data.get("usage", {})
-        prompt_tokens = int(usage.get("prompt_tokens", 0))
-        completion_tokens = int(usage.get("completion_tokens", 0))
-        choices = data.get("choices", [])
-        message = choices[0].get("message", {}) if choices else {}
-        content = message.get("content", "")
-        raw_output = "" if content is None else str(content)
-        return raw_output, prompt_tokens, completion_tokens, latency_ms
-
-    async def _call_anthropic(
-        self,
-        *,
-        model_id: str,
-        system_prompt: str,
-        user_prompt: str,
-        timeout_seconds: float,
-        api_key: str | None,
-        start: float,
-    ) -> tuple[str, int, int, int]:
-        try:
-            import anthropic
-        except ImportError as exc:
-            msg = "anthropic SDK not installed; install with: uv add anthropic"
-            raise RuntimeError(msg) from exc
-
-        client = anthropic.AsyncAnthropic(
-            api_key=api_key,
-            timeout=timeout_seconds,
-        )
-        message = await client.messages.create(
-            model=model_id,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        latency_ms = int((time.monotonic() - start) * 1000)
-        prompt_tokens = message.usage.input_tokens
-        completion_tokens = message.usage.output_tokens
-        first_content_block = message.content[0] if message.content else None
-        raw_output = str(getattr(first_content_block, "text", ""))
-        return raw_output, prompt_tokens, completion_tokens, latency_ms
+        return await self._effect.handle(request)
 
 
 __all__: list[str] = [
     "HandlerAbCompareOrchestrator",
-    "ProtocolAbLlmClient",
 ]
