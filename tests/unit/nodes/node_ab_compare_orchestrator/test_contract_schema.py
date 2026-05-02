@@ -28,7 +28,7 @@ _REQUIRED_MODEL_FIELDS = {
     "location",
     "context_window",
 }
-_VALID_PROTOCOLS = {"openai_compatible", "anthropic"}
+_VALID_PROTOCOLS = {"openai_compatible"}
 _VALID_LOCATIONS = {"local", "cloud"}
 
 
@@ -175,7 +175,6 @@ def test_models_registry_has_expected_models() -> None:
         "deepseek-r1-14b",
         "deepseek-r1-32b",
         "qwen3-next-80b",
-        "claude-sonnet",
         "gemini-flash",
     }
     assert expected == ids

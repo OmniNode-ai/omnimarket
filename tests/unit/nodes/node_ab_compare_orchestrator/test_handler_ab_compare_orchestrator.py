@@ -10,6 +10,7 @@ The fake satisfies the HandlerLlmOpenaiCompatible interface:
 
 from __future__ import annotations
 
+import ast
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -509,34 +510,32 @@ async def test_handle_no_httpx_or_health_probe_in_orchestrator() -> None:
     import importlib
     import sys
 
-    # Ensure no httpx in the orchestrator module's direct imports
     mod_name = "omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator"
     if mod_name in sys.modules:
         mod = sys.modules[mod_name]
     else:
         mod = importlib.import_module(mod_name)
+    source_path = Path(mod.__file__ or "")
+    source = source_path.read_text()
+    tree = ast.parse(source)
 
-    # httpx must NOT be imported at module level in the orchestrator
-    assert not hasattr(mod, "httpx"), (
-        "Orchestrator must not import httpx at module level"
-    )
-    # ProtocolAbLlmClient must be gone
-    assert not hasattr(mod, "ProtocolAbLlmClient"), (
-        "Old ProtocolAbLlmClient must be removed"
-    )
-    # _probe_health must be gone
-    assert not hasattr(mod, "_probe_health"), (
-        "Orchestrator must not contain _probe_health"
-    )
-    # _DefaultHttpLlmClient must be gone
-    assert not hasattr(mod, "_DefaultHttpLlmClient"), (
-        "Orchestrator must not contain _DefaultHttpLlmClient"
-    )
-    # ProtocolInferenceEffect must be gone (replaced by direct infra handler)
-    assert not hasattr(mod, "ProtocolInferenceEffect"), (
-        "ProtocolInferenceEffect must be removed — use HandlerLlmOpenaiCompatible directly"
-    )
-    # node_ab_inference_effect must not be imported
-    assert "node_ab_inference_effect" not in str(getattr(mod, "__file__", "")), (
-        "Orchestrator must not reference node_ab_inference_effect"
-    )
+    imported_modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_modules.update(
+                alias.name.split(".", maxsplit=1)[0] for alias in node.names
+            )
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_modules.add(node.module)
+
+    assert "httpx" not in imported_modules
+    assert not any("node_ab_inference_effect" in name for name in imported_modules)
+
+    forbidden_symbols = {
+        "ProtocolAbLlmClient",
+        "_probe_health",
+        "_DefaultHttpLlmClient",
+        "ProtocolInferenceEffect",
+    }
+    for symbol in forbidden_symbols:
+        assert symbol not in source
