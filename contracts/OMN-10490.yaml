@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10490
+title: "Contract-driven projection API topic discovery"
+summary: "Use node contracts as the source of truth for projection API topic discovery and expose contract-declared projection tables without convention-based fallbacks."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+  - "topics"
+  - "events"
+evidence_requirements:
+  - kind: "manual"
+    description: "Projection API unit tests pass with contract-driven discovery."
+    command: "uv run pytest tests/unit/projection/ tests/test_projection_api_server.py -q"
+  - kind: "manual"
+    description: "Golden-chain projection registration and event-registry coverage pass."
+    command: "uv run pytest tests/test_golden_chain_emit_daemon.py tests/validators/test_event_registry_drift.py -q"
+  - kind: "manual"
+    description: "Post-merge runtime deploy smoke imports projection discovery and builds the contract-owned topic map."
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); print({'projection_topics': len(topic_map)})\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-projection-tests"
+    description: "Projection API unit tests pass with contract-driven discovery."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/projection/ tests/test_projection_api_server.py -q"
+  - id: "dod-golden-chain"
+    description: "Golden-chain projection registration and event-registry coverage pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_emit_daemon.py tests/validators/test_event_registry_drift.py -q"
+  - id: "dod-deploy"
+    description: "Post-merge runtime deploy smoke imports projection discovery and builds the contract-owned topic map; no live deploy or runtime restart was performed in this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); print({'projection_topics': len(topic_map)})\""

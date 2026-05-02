@@ -15,11 +15,12 @@ Invariants enforced here:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import yaml
-from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts
-from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 
@@ -32,8 +33,63 @@ ALLOWED_SCHEMAS: frozenset[str] = frozenset({"public", "omnidash_analytics"})
 _DEFAULT_LIMIT = 100
 
 
+class ProtocolDiscoveredContract(Protocol):
+    """Projection discovery only needs the public contract name and path."""
+
+    name: str
+    contract_path: Path
+
+
+class ProtocolAutoWiringManifest(Protocol):
+    """Minimal manifest shape consumed by projection topic discovery."""
+
+    @property
+    def contracts(self) -> Sequence[ProtocolDiscoveredContract]:
+        """Discovered contracts exposed by the manifest."""
+        ...
+
+
+@dataclass(frozen=True)
+class _DiscoveredContract:
+    name: str
+    contract_path: Path
+
+
+@dataclass(frozen=True)
+class _AutoWiringManifest:
+    contracts: tuple[_DiscoveredContract, ...]
+
+
+def discover_contracts() -> _AutoWiringManifest:
+    """Discover omnimarket node contracts from the installed package tree.
+
+    The projection API only needs contract files owned by this package. Reading
+    those files directly keeps startup deterministic for CI and deployed wheels
+    without importing handler modules or depending on a newer infra runtime
+    helper than the package lock can install.
+    """
+    nodes_dir = Path(__file__).resolve().parents[1] / "nodes"
+    contracts: list[_DiscoveredContract] = []
+    for contract_path in sorted(nodes_dir.glob("*/contract.yaml")):
+        node_name = contract_path.parent.name
+        try:
+            data = yaml.safe_load(contract_path.read_text())
+        except Exception as exc:
+            logger.warning("Failed to read contract at %s: %s", contract_path, exc)
+            data = None
+
+        if isinstance(data, dict) and isinstance(data.get("name"), str):
+            node_name = data["name"]
+
+        contracts.append(
+            _DiscoveredContract(name=node_name, contract_path=contract_path)
+        )
+
+    return _AutoWiringManifest(contracts=tuple(contracts))
+
+
 def build_projection_topic_map(
-    manifest: ModelAutoWiringManifest | None = None,
+    manifest: ProtocolAutoWiringManifest | None = None,
 ) -> dict[str, ProjectionTableConfig]:
     """Build topic -> table mapping from discovered contracts.
 
@@ -58,12 +114,11 @@ def build_projection_topic_map(
         with ``status=OK`` — table existence is checked separately by
         :func:`omnimarket.projection.validation.validate_topic_map_tables`.
     """
-    if manifest is None:
-        manifest = discover_contracts()
+    resolved_manifest = discover_contracts() if manifest is None else manifest
 
     topic_map: dict[str, ProjectionTableConfig] = {}
 
-    for contract in manifest.contracts:
+    for contract in resolved_manifest.contracts:
         contract_path: Path = contract.contract_path
         node_name: str = contract.name
 
