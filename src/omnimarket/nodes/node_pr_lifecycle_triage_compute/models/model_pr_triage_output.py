@@ -37,6 +37,11 @@ class ModelPrTriageOutput(BaseModel):
     total_conflicted: int = Field(
         default=0, ge=0, description="Count of CONFLICTED PRs."
     )
+    total_occ_dependency: int = Field(
+        default=0,
+        ge=0,
+        description="Count of PRs blocked only by OCC/Receipt Gate dependency.",
+    )
     total_needs_review: int = Field(
         default=0, ge=0, description="Count of NEEDS_REVIEW PRs."
     )

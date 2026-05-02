@@ -21,6 +21,14 @@ class ModelPrTriageResult(BaseModel):
     category: EnumPrTriageCategory = Field(
         ..., description="Triage category assigned to this PR."
     )
+    ticket_ids: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Canonical OMN ticket identifiers carried from inventory.",
+    )
+    failed_check_names: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Failed checks that informed this classification.",
+    )
     reason: str = Field(
         ..., description="Human-readable explanation of the classification."
     )

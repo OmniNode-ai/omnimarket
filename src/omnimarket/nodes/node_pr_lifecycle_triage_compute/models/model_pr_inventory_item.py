@@ -26,6 +26,10 @@ class ModelPrInventoryItem(BaseModel):
     )
     title: str = Field(default="", description="PR title.")
     branch: str = Field(default="", description="Head branch name.")
+    ticket_ids: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Canonical OMN ticket identifiers bound to this PR.",
+    )
     ci_status: str = Field(
         default="unknown",
         description=(
@@ -50,6 +54,13 @@ class ModelPrInventoryItem(BaseModel):
         default=0,
         ge=0,
         description="Number of unresolved review threads.",
+    )
+    failed_check_names: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Names of failed checks. Used to distinguish receipt-only OCC "
+            "dependency failures from product-code failures."
+        ),
     )
 
 

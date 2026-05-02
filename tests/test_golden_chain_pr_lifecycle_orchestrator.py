@@ -895,6 +895,64 @@ class TestPrLifecycleOrchestratorResultFile:
         assert payload["final_state"] == "FAILED"
         assert payload["error_message"] == "boom"
 
+    async def test_occ_dependency_edges_are_ticket_keyed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Receipt-only failures persist OCC dependency edges keyed by ticket_id."""
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("ONEX_OCC_MERGE_SHA", "occ-merge-sha-123")
+        pr = PrRecord(
+            pr_number=10486,
+            repo="OmniNode-ai/omnimarket",
+            title="feat(OMN-10486): OCC dependency",
+            branch="jonah/omn-10486-occ-dependency",
+            ticket_ids=("OMN-10486",),
+            checks_status="failure",
+            failed_check_names=("verify / verify",),
+        )
+        triage_record = TriageRecord(
+            pr_number=10486,
+            repo="OmniNode-ai/omnimarket",
+            category=EnumPrCategory.OCC_DEPENDENCY,
+            ticket_ids=("OMN-10486",),
+            failed_check_names=("verify / verify",),
+            block_reason="Receipt Gate is the only failing check.",
+        )
+        skip_intent = ReducerIntent(
+            pr_number=10486,
+            repo="OmniNode-ai/omnimarket",
+            intent=EnumReducerIntent.SKIP,
+            ticket_ids=("OMN-10486",),
+            reason="Receipt Gate is the only failing check.",
+        )
+        orch = _make_orchestrator(
+            inventory=MockInventory(prs=(pr,)),
+            triage=MockTriage(classified=(triage_record,)),
+            reducer=MockReducer(intents=(skip_intent,)),
+        )
+        cmd = _make_command(run_id="20260501-120000-occdep")
+
+        result = await orch.handle(cmd)
+
+        assert result.final_state == "COMPLETE"
+        path = (
+            tmp_path
+            / "merge-sweep"
+            / "20260501-120000-occdep"
+            / "occ_dependency_edges.json"
+        )
+        payload = json.loads(path.read_text())
+        assert payload["primary_identity"] == "ticket_id"
+        assert payload["edges"][0]["ticket_id"] == "OMN-10486"
+        assert payload["edges"][0]["downstream_pr_number"] == 10486
+        assert payload["edges"][0]["downstream_failed_check_names"] == [
+            "verify / verify"
+        ]
+        assert (
+            payload["edges"][0]["rerun_guard_key"]
+            == "OMN-10486:OmniNode-ai/omnimarket#10486:occ:occ-merge-sha-123"
+        )
+
 
 @pytest.mark.unit
 class TestPrLifecycleOrchestratorVerifyWiring:

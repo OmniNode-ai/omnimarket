@@ -44,6 +44,28 @@ logger = logging.getLogger(__name__)
 
 _CI_FAILING_STATUSES: frozenset[str] = frozenset({"failing", "error", "failed"})
 _CI_PASSING_STATUSES: frozenset[str] = frozenset({"passing", "success"})
+_RECEIPT_GATE_CHECK_NAME = "verify / verify"
+
+
+def _is_receipt_only_failure(pr: ModelPrInventoryItem) -> bool:
+    failed = {name.strip() for name in pr.failed_check_names if name.strip()}
+    return failed == {_RECEIPT_GATE_CHECK_NAME}
+
+
+def _result(
+    pr: ModelPrInventoryItem,
+    *,
+    category: EnumPrTriageCategory,
+    reason: str,
+) -> ModelPrTriageResult:
+    return ModelPrTriageResult(
+        pr_number=pr.pr_number,
+        repo=pr.repo,
+        category=category,
+        ticket_ids=pr.ticket_ids,
+        failed_check_names=pr.failed_check_names,
+        reason=reason,
+    )
 
 
 def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
@@ -63,9 +85,8 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
     """
     # 1. Conflicts take top priority — can't merge regardless of CI or approval
     if pr.has_conflicts:
-        return ModelPrTriageResult(
-            pr_number=pr.pr_number,
-            repo=pr.repo,
+        return _result(
+            pr,
             category=EnumPrTriageCategory.CONFLICTED,
             reason="PR has merge conflicts and requires a rebase.",
         )
@@ -73,18 +94,34 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
     # 2. Failing CI — needs a fix before anything else
     ci_lower = pr.ci_status.lower()
     if ci_lower in _CI_FAILING_STATUSES:
-        return ModelPrTriageResult(
-            pr_number=pr.pr_number,
-            repo=pr.repo,
+        if _is_receipt_only_failure(pr) and pr.ticket_ids:
+            return _result(
+                pr,
+                category=EnumPrTriageCategory.OCC_DEPENDENCY,
+                reason=(
+                    "Receipt Gate is the only failing check — classify as "
+                    "OCC dependency and do not dispatch product-code fixes."
+                ),
+            )
+        if _is_receipt_only_failure(pr):
+            return _result(
+                pr,
+                category=EnumPrTriageCategory.RED,
+                reason=(
+                    "Receipt Gate-only failure detected, but no ticket ID was found; "
+                    "fallback to RED to avoid an untracked OCC dependency."
+                ),
+            )
+        return _result(
+            pr,
             category=EnumPrTriageCategory.RED,
             reason=f"CI status is '{pr.ci_status}' — fix required before merge.",
         )
 
     # 3. Green — CI passing, approved, no unresolved threads
     if ci_lower in _CI_PASSING_STATUSES and pr.approved and pr.open_threads == 0:
-        return ModelPrTriageResult(
-            pr_number=pr.pr_number,
-            repo=pr.repo,
+        return _result(
+            pr,
             category=EnumPrTriageCategory.GREEN,
             reason="CI passing, approved, and no unresolved threads — ready to merge.",
         )
@@ -96,26 +133,23 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
             reason = f"CI status is '{pr.ci_status}' and awaiting approval."
         elif pr.open_threads > 0:
             reason = f"Approved but has {pr.open_threads} unresolved review thread(s)."
-        return ModelPrTriageResult(
-            pr_number=pr.pr_number,
-            repo=pr.repo,
+        return _result(
+            pr,
             category=EnumPrTriageCategory.NEEDS_REVIEW,
             reason=reason,
         )
 
     # Approved but has open threads or non-passing CI
     if pr.open_threads > 0:
-        return ModelPrTriageResult(
-            pr_number=pr.pr_number,
-            repo=pr.repo,
+        return _result(
+            pr,
             category=EnumPrTriageCategory.NEEDS_REVIEW,
             reason=f"Approved but has {pr.open_threads} unresolved review thread(s).",
         )
 
     # Approved, no conflicts, no failing CI, no open threads — but CI not confirmed passing
-    return ModelPrTriageResult(
-        pr_number=pr.pr_number,
-        repo=pr.repo,
+    return _result(
+        pr,
         category=EnumPrTriageCategory.NEEDS_REVIEW,
         reason=f"CI status is '{pr.ci_status}' — waiting for CI to pass before merge.",
     )
@@ -159,6 +193,7 @@ class HandlerPrLifecycleTriage:
         total_green = 0
         total_red = 0
         total_conflicted = 0
+        total_occ_dependency = 0
         total_needs_review = 0
 
         for pr in prs:
@@ -170,14 +205,17 @@ class HandlerPrLifecycleTriage:
                 total_red += 1
             elif result.category == EnumPrTriageCategory.CONFLICTED:
                 total_conflicted += 1
+            elif result.category == EnumPrTriageCategory.OCC_DEPENDENCY:
+                total_occ_dependency += 1
             else:
                 total_needs_review += 1
 
         logger.info(
-            "Triage complete: green=%d red=%d conflicted=%d needs_review=%d",
+            "Triage complete: green=%d red=%d conflicted=%d occ_dependency=%d needs_review=%d",
             total_green,
             total_red,
             total_conflicted,
+            total_occ_dependency,
             total_needs_review,
         )
 
@@ -187,5 +225,6 @@ class HandlerPrLifecycleTriage:
             total_green=total_green,
             total_red=total_red,
             total_conflicted=total_conflicted,
+            total_occ_dependency=total_occ_dependency,
             total_needs_review=total_needs_review,
         )
