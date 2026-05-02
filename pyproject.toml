@@ -206,6 +206,7 @@ node_pr_watch_orchestrator = "omnimarket.nodes.node_pr_watch_orchestrator"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
 node_version_skew_detector = "omnimarket.nodes.node_version_skew_detector"
 node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"
+node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

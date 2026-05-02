@@ -1,0 +1,86 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: ab_compare_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Fans out inference requests to N models declared in models_registry.yaml.
+  Skips models with unreachable endpoints or missing API keys.
+  Collects results, calculates cost from registry pricing, emits comparison.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerAbCompareOrchestrator
+        module: omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator
+      event_model:
+        name: ModelAbCompareStart
+        module: omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_start
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+
+inputs:
+  task:
+    type: str
+    description: "The coding task to run through all models"
+    required: true
+  models:
+    type: list[str]
+    description: "Model IDs to include, or ['all'] for all available models"
+    required: false
+    default: ["all"]
+  correlation_id:
+    type: uuid
+    description: "Unique run ID for event tracing"
+    required: true
+  system_prompt:
+    type: str
+    description: "Optional system prompt override"
+    required: false
+  quality_check:
+    type: bool
+    description: "Run ruff quality check on code output"
+    required: false
+    default: false
+
+outputs:
+  comparison:
+    type: list[ModelComparisonRow]
+    description: "Per-model cost/speed/quality rows sorted by cost ascending"
+  correlation_id:
+    type: uuid
+    description: "Echoed correlation_id for traceability"
+  status:
+    type: str
+    description: "COMPLETED or PARTIAL (some models skipped)"
+
+terminal_event: onex.evt.omnimarket.ab-compare-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ab-compare-start.v1
+  publish_topics:
+    - onex.cmd.omnimarket.ab-inference-requested.v1
+    - onex.evt.omnimarket.ab-compare-completed.v1
+
+metadata:
+  description: "A/B compare orchestrator — fans out inference to N models, emits comparison"
+  author: "OmniNode Platform Team"
+  created: "2026-05-01"
+  tags:
+    - "orchestrator"
+    - "ab-compare"
+    - "llm"
+    - "cost"
+    - "OMN-10477"
+  related_tickets:
+    - "OMN-10477"
+    - "OMN-10457"

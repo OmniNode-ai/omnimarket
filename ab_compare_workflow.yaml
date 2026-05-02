@@ -1,0 +1,47 @@
+---
+# ab_compare_workflow.yaml — Workflow contract for A/B model cost comparison.
+#
+# Invoked via:
+#   uv run onex run ab_compare_workflow.yaml --input '{"task": "...", "models": ["all"]}'
+#   uv run ab-compare --task "..." --models all
+#
+# RuntimeLocal single-handler execution path:
+#   1. Loads this contract
+#   2. Instantiates HandlerAbCompareOrchestrator
+#   3. Loads models_registry.yaml, probes health, skips unavailable models
+#   4. Fans out inference in parallel (asyncio.gather)
+#   5. Collects results, calculates cost from registry pricing
+#   6. Emits terminal event with comparison payload
+
+name: ab_compare_workflow
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+
+description: >
+  A/B model cost comparison workflow. Fans out inference to N models,
+  collects measured token usage, calculates cost, renders comparison.
+  Runs via RuntimeLocal (in-memory bus, no Kafka required) or Kafka backend.
+
+handler:
+  module: omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator
+  class: HandlerAbCompareOrchestrator
+  input_model:
+    module: omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_start
+    class: ModelAbCompareStart
+
+terminal_event: onex.evt.omnimarket.ab-compare-completed.v1
+
+metadata:
+  description: "A/B model cost comparison workflow"
+  author: "OmniNode Platform Team"
+  created: "2026-05-01"
+  tags:
+    - "ab-compare"
+    - "workflow"
+    - "orchestrator"
+    - "llm"
+    - "cost"
+    - "OMN-10477"
+  related_tickets:
+    - "OMN-10477"
+    - "OMN-10457"
