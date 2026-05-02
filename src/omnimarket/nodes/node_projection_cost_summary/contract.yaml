@@ -32,3 +32,18 @@ event_bus:
     - onex.evt.omnibase-infra.savings-estimated.v1
   publish_topics:
     - onex.evt.omnimarket.cost-summary-snapshot.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.cost.summary.v1"
+  table: "llm_cost_aggregates"
+  columns:
+    - "aggregation_key"
+    - "window"
+    - "total_cost_usd"
+    - "total_tokens"
+    - "call_count"
+    - "updated_at"
+  order_by: "updated_at DESC"
+  freshness_column: "updated_at"
+  limit: 100
