@@ -217,7 +217,7 @@ class HandlerAbInferenceEffect:
                 return self._error_result(request, f"{type(exc).__name__}: {exc}")
         else:
             try:
-                import anthropic as _anthropic  # type: ignore[import-not-found]
+                import anthropic as _anthropic
             except ImportError:
                 return ModelInferenceResult(
                     model_key=request.model_key,
