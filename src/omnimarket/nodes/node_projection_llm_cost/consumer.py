@@ -4,7 +4,7 @@
 
 Subscribes to ``onex.evt.omniintelligence.llm-call-completed.v1`` and
 materializes each event into the ``llm_call_metrics`` table using
-``ON CONFLICT DO NOTHING`` keyed on ``input_hash`` (migration 071).
+``ON CONFLICT (input_hash) DO NOTHING`` keyed on ``input_hash`` (migration 071).
 
 Environment variables (resolved at startup, no hardcoded strings):
     KAFKA_BOOTSTRAP_SERVERS  Redpanda bootstrap (default: localhost:9092)
@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import signal
@@ -39,15 +41,15 @@ SUBSCRIBE_TOPIC = TOPIC_LLM_CALL_COMPLETED
 CONSUMER_GROUP = "local.omnimarket.projection-llm-cost.consume.v1"
 TABLE = "llm_call_metrics"
 
-REQUIRED_FIELDS = frozenset(
-    {
-        "model_name",
-        "model_id",
-        "prompt_tokens",
-        "completion_tokens",
-        "total_tokens",
-    }
-)
+# DB enum usage_source_type accepts only these values.
+# MEASURED from the event maps to API (measured via the API's usage response).
+_USAGE_SOURCE_MAP: dict[str, str] = {
+    "MEASURED": "API",
+    "API": "API",
+    "ESTIMATED": "ESTIMATED",
+    "MISSING": "MISSING",
+    "UNKNOWN": "MISSING",
+}
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -78,10 +80,25 @@ def _validate_event(data: dict[str, Any]) -> bool:
     return has_model and has_tokens
 
 
+def _compute_input_hash(
+    reporting_source: str | None,
+    session_id: str | None,
+    model_id: str,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+) -> str:
+    """Deterministic dedup key matching the contract spec."""
+    key = f"{reporting_source or ''}:{session_id or ''}:{model_id}:{prompt_tokens or 0}:{completion_tokens or 0}"
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 def _build_row(data: dict[str, Any]) -> dict[str, Any]:
     """Map inbound event fields to llm_call_metrics columns."""
     model_id = str(data.get("model_id") or data.get("model_name") or "unknown")
     session_id = data.get("session_id") or data.get("sessionId")
+    run_id = data.get("run_id") or data.get("runId")
+    reporting_source = data.get("reporting_source") or data.get("source")
+
     correlation_id_raw = (
         data.get("correlation_id") or data.get("_correlation_id") or data.get("call_id")
     )
@@ -125,25 +142,22 @@ def _build_row(data: dict[str, Any]) -> dict[str, Any]:
     usage_source_raw = str(
         data.get("usage_source") or data.get("usageSource") or "MISSING"
     ).upper()
-    valid_usage_sources = {"API", "ESTIMATED", "MISSING"}
-    usage_source = (
-        usage_source_raw if usage_source_raw in valid_usage_sources else "MISSING"
-    )
-    usage_is_estimated = usage_source == "ESTIMATED"
+    usage_source = _USAGE_SOURCE_MAP.get(usage_source_raw, "MISSING")
+    usage_is_estimated = usage_source != "API"
 
-    # input_hash is the dedup key (migration 071 unique index)
-    input_hash = (
-        data.get("input_hash")
-        or data.get("idempotency_key")
-        or data.get("call_id")
-        or None
+    # Deterministic dedup key per contract spec
+    input_hash = _compute_input_hash(
+        reporting_source=str(reporting_source) if reporting_source else None,
+        session_id=str(session_id) if session_id else None,
+        model_id=model_id,
+        prompt_tokens=prompt_tokens or None,
+        completion_tokens=completion_tokens or None,
     )
-    if input_hash is not None:
-        input_hash = str(input_hash)[:71]
 
     # Parse created_at from event timestamp fields
     timestamp_raw = (
-        data.get("timestamp")
+        data.get("emitted_at")
+        or data.get("timestamp")
         or data.get("timestamp_iso")
         or data.get("created_at")
         or data.get("createdAt")
@@ -153,6 +167,7 @@ def _build_row(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "correlation_id": correlation_id,
         "session_id": str(session_id)[:255] if session_id else None,
+        "run_id": str(run_id)[:255] if run_id else None,
         "model_id": model_id[:255],
         "prompt_tokens": prompt_tokens or None,
         "completion_tokens": completion_tokens or None,
@@ -161,32 +176,42 @@ def _build_row(data: dict[str, Any]) -> dict[str, Any]:
         "latency_ms": latency_ms,
         "usage_source": usage_source,
         "usage_is_estimated": usage_is_estimated,
+        "usage_raw": json.dumps(data),
         "input_hash": input_hash,
+        "source": str(reporting_source)[:255] if reporting_source else None,
+        # code_version and contract_version are not in the event payload — stored NULL
+        "code_version": None,
+        "contract_version": None,
         "created_at": created_at,
     }
 
 
 async def _insert_row(db: Any, row: dict[str, Any]) -> bool:
-    """Insert a row into llm_call_metrics with ON CONFLICT DO NOTHING."""
+    """Insert a row into llm_call_metrics with ON CONFLICT (input_hash) DO NOTHING."""
     await db.execute(
         f"""
         INSERT INTO {TABLE} (
-            correlation_id, session_id, model_id,
+            correlation_id, session_id, run_id, model_id,
             prompt_tokens, completion_tokens, total_tokens,
             estimated_cost_usd, latency_ms,
-            usage_source, usage_is_estimated,
-            input_hash, created_at
+            usage_source, usage_is_estimated, usage_raw,
+            input_hash, source,
+            code_version, contract_version,
+            created_at
         ) VALUES (
-            $1, $2, $3,
-            $4, $5, $6,
-            $7, $8,
-            $9::usage_source_type, $10,
-            $11, $12
+            $1, $2, $3, $4,
+            $5, $6, $7,
+            $8, $9,
+            $10::usage_source_type, $11, $12::jsonb,
+            $13, $14,
+            $15, $16,
+            $17
         )
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (input_hash) DO NOTHING
         """,
         row["correlation_id"],
         row["session_id"],
+        row["run_id"],
         row["model_id"],
         row["prompt_tokens"],
         row["completion_tokens"],
@@ -195,7 +220,11 @@ async def _insert_row(db: Any, row: dict[str, Any]) -> bool:
         row["latency_ms"],
         row["usage_source"],
         row["usage_is_estimated"],
+        row["usage_raw"],
         row["input_hash"],
+        row["source"],
+        row["code_version"],
+        row["contract_version"],
         row["created_at"],
     )
     return True
