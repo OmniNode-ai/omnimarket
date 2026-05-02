@@ -900,6 +900,7 @@ class TestPrLifecycleOrchestratorResultFile:
     ) -> None:
         """Receipt-only failures persist OCC dependency edges keyed by ticket_id."""
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("ONEX_OCC_MERGE_SHA", "occ-merge-sha-123")
         pr = PrRecord(
             pr_number=10486,
             repo="OmniNode-ai/omnimarket",
@@ -949,7 +950,7 @@ class TestPrLifecycleOrchestratorResultFile:
         ]
         assert (
             payload["edges"][0]["rerun_guard_key"]
-            == "OMN-10486:OmniNode-ai/omnimarket#10486:occ:unknown-occ-merge-sha"
+            == "OMN-10486:OmniNode-ai/omnimarket#10486:occ:occ-merge-sha-123"
         )
 
 

@@ -107,6 +107,32 @@ class TestPrLifecycleTriageComputeGoldenChain:
         assert result.total_occ_dependency == 1
         assert result.total_red == 0
 
+    async def test_receipt_only_failure_without_ticket_id_is_red(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Receipt-only failures without ticket identity remain fix-traceable."""
+        handler = HandlerPrLifecycleTriage()
+        correlation_id = uuid4()
+        prs = (
+            ModelPrInventoryItem(
+                pr_number=204,
+                repo="OmniNode-ai/omnimarket",
+                title="feat: missing ticket id",
+                ticket_ids=(),
+                ci_status="failing",
+                failed_check_names=("verify / verify",),
+                has_conflicts=False,
+                approved=True,
+            ),
+        )
+
+        result = await handler.handle(correlation_id=correlation_id, prs=prs)
+
+        assert result.results[0].category == EnumPrTriageCategory.RED
+        assert "no ticket ID was found" in result.results[0].reason
+        assert result.total_occ_dependency == 0
+        assert result.total_red == 1
+
     async def test_conflicted_pr(self, event_bus: EventBusInmemory) -> None:
         """PR with merge conflicts -> CONFLICTED regardless of CI."""
         handler = HandlerPrLifecycleTriage()

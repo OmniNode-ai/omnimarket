@@ -94,13 +94,22 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
     # 2. Failing CI — needs a fix before anything else
     ci_lower = pr.ci_status.lower()
     if ci_lower in _CI_FAILING_STATUSES:
-        if _is_receipt_only_failure(pr):
+        if _is_receipt_only_failure(pr) and pr.ticket_ids:
             return _result(
                 pr,
                 category=EnumPrTriageCategory.OCC_DEPENDENCY,
                 reason=(
                     "Receipt Gate is the only failing check — classify as "
                     "OCC dependency and do not dispatch product-code fixes."
+                ),
+            )
+        if _is_receipt_only_failure(pr):
+            return _result(
+                pr,
+                category=EnumPrTriageCategory.RED,
+                reason=(
+                    "Receipt Gate-only failure detected, but no ticket ID was found; "
+                    "fallback to RED to avoid an untracked OCC dependency."
                 ),
             )
         return _result(

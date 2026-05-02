@@ -678,7 +678,10 @@ class HandlerPrLifecycleOrchestrator:
                 self._occ_dependency_edges(
                     triage_result=triage_result,
                     reducer_result=reducer_result,
-                    occ_merge_sha=_UNKNOWN_OCC_MERGE_SHA,
+                    occ_merge_sha=self._resolve_occ_merge_sha(
+                        triage_result=triage_result,
+                        reducer_result=reducer_result,
+                    ),
                 ),
             )
 
@@ -1265,6 +1268,22 @@ class HandlerPrLifecycleOrchestrator:
                     )
                 )
         return tuple(edges)
+
+    @staticmethod
+    def _resolve_occ_merge_sha(
+        *,
+        triage_result: PrTriageResult,
+        reducer_result: ReducerResult,
+    ) -> str:
+        """Return the OCC evidence revision for rerun guard keys when available."""
+        for source in (reducer_result, triage_result):
+            value = getattr(source, "occ_merge_sha", None)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        env_value = os.environ.get("ONEX_OCC_MERGE_SHA", "").strip()
+        if env_value:
+            return env_value
+        return _UNKNOWN_OCC_MERGE_SHA
 
     def _build_result(
         self, state: _SweepState, correlation_id: UUID
