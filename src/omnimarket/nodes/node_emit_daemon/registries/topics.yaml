@@ -483,6 +483,8 @@ events:
     fan_out:
       - topic: "onex.evt.diagnostic.daemon-health.v1"
         description: "Portable daemon health diagnostic event"
+      - topic: "onex.evt.omniclaude.diagnostic-daemon-health.v1"
+        description: "Omniclaude-scoped daemon health diagnostic event"
     partition_key_field: daemon_id
     required_fields: [daemon_id, pid, socket_path, kafka_offset, round_trip_ms, status]
     payload_model: daemon_health
