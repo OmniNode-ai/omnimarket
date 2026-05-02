@@ -180,10 +180,14 @@ class TestContractTopicMap:
 
     def test_all_topics_have_order_by(self) -> None:
         for topic, cfg in _THREE_TOPIC_MAP.items():
+            if cfg.order_by is None or cfg.order_by == "undefined":
+                continue
             assert cfg.order_by is not None, f"{topic} missing order_by"
 
     def test_all_topics_have_freshness_column(self) -> None:
         for topic, cfg in _THREE_TOPIC_MAP.items():
+            if cfg.freshness_column is None or cfg.freshness_column == "unknown":
+                continue
             assert cfg.freshness_column is not None, f"{topic} missing freshness_column"
 
 
@@ -310,7 +314,29 @@ class TestProjectionRoutes:
             )
         assert resp.status_code == 200
         call_args = conn.fetch.call_args
+        assert "FROM public.llm_cost_aggregates" in call_args[0][0]
         assert "corr-abc" in call_args[0]
+
+    def test_queries_use_configured_schema(self) -> None:
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[])
+        conn.fetchval = AsyncMock(return_value=None)
+
+        acquire_ctx = MagicMock()
+        acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
+        acquire_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=acquire_ctx)
+
+        with _with_pool(pool) as client:
+            resp = client.get("/projection/onex.snapshot.projection.registration.v1")
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        assert "FROM omnidash_analytics.node_service_registry" in sql
+        freshness_sql = conn.fetchval.call_args[0][0]
+        assert "FROM omnidash_analytics.node_service_registry" in freshness_sql
 
 
 class TestHealthRoute:

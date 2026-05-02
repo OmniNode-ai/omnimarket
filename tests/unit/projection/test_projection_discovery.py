@@ -151,6 +151,13 @@ class TestParseProjectionApiSection:
         cfg = _parse_projection_api_section(section, "node_test", p)
         assert cfg is None
 
+    def test_non_string_columns_rejected(self, tmp_path: Path) -> None:
+        section = self._valid_section()
+        section["columns"] = ["col_a", 123]
+        p = tmp_path / "contract.yaml"
+        cfg = _parse_projection_api_section(section, "node_test", p)
+        assert cfg is None
+
     def test_wildcard_columns_valid(self, tmp_path: Path) -> None:
         section = self._valid_section()
         section["columns"] = ["*"]
@@ -187,6 +194,13 @@ class TestParseProjectionApiSection:
         cfg = _parse_projection_api_section(section, "node_test", p)
         assert cfg is None
 
+    def test_non_string_schema_rejected(self, tmp_path: Path) -> None:
+        section = self._valid_section()
+        section["schema"] = 123
+        p = tmp_path / "contract.yaml"
+        cfg = _parse_projection_api_section(section, "node_test", p)
+        assert cfg is None
+
     def test_allowed_schemas_accepted(self, tmp_path: Path) -> None:
         for schema in ALLOWED_SCHEMAS:
             section = self._valid_section()
@@ -211,6 +225,22 @@ class TestParseProjectionApiSection:
         cfg = _parse_projection_api_section(section, "node_test", p)
         assert cfg is not None
         assert cfg.limit == 100
+
+    def test_optional_string_fields_reject_non_strings(self, tmp_path: Path) -> None:
+        for field in ("order_by", "freshness_column"):
+            section = self._valid_section()
+            section[field] = 123
+            p = tmp_path / "contract.yaml"
+            cfg = _parse_projection_api_section(section, "node_test", p)
+            assert cfg is None
+
+    def test_limit_must_be_positive_integer(self, tmp_path: Path) -> None:
+        for raw_limit in (0, -1, "100", True):
+            section = self._valid_section()
+            section["limit"] = raw_limit
+            p = tmp_path / "contract.yaml"
+            cfg = _parse_projection_api_section(section, "node_test", p)
+            assert cfg is None
 
 
 # ---------------------------------------------------------------------------

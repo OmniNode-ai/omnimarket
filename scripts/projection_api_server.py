@@ -92,27 +92,29 @@ _topic_map: dict[str, ProjectionTableConfig] = {}
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     global _pool, _topic_map
-    _pool = await _create_pool()
-
-    raw_map = build_projection_topic_map()
-    _topic_map = await validate_topic_map_tables(_pool, raw_map)
-
-    ok_count = sum(1 for c in _topic_map.values() if c.status == ProjectionStatus.OK)
-    degraded_count = sum(
-        1 for c in _topic_map.values() if c.status == ProjectionStatus.DEGRADED
-    )
-    log.info(
-        "Projection topic map built at startup (restart required to refresh): "
-        "%d ok, %d degraded",
-        ok_count,
-        degraded_count,
-    )
 
     try:
+        _pool = await _create_pool()
+
+        raw_map = build_projection_topic_map()
+        _topic_map = await validate_topic_map_tables(_pool, raw_map)
+
+        ok_count = sum(1 for c in _topic_map.values() if c.status == ProjectionStatus.OK)
+        degraded_count = sum(
+            1 for c in _topic_map.values() if c.status == ProjectionStatus.DEGRADED
+        )
+        log.info(
+            "Projection topic map built at startup (restart required to refresh): "
+            "%d ok, %d degraded",
+            ok_count,
+            degraded_count,
+        )
+
         yield
     finally:
         if _pool is not None:
             await _pool.close()
+            _pool = None
 
 
 app = FastAPI(
@@ -215,6 +217,7 @@ async def projection_query(
         )
 
     table: str = cfg.table
+    qualified_table = f"{cfg.schema_name}.{table}"
     columns: tuple[str, ...] = cfg.columns
     order_by: str | None = cfg.order_by
     limit: int = cfg.limit
@@ -230,14 +233,14 @@ async def projection_query(
 
             if correlation_id is not None:
                 sql = (
-                    f"SELECT {col_list} FROM {table}"
+                    f"SELECT {col_list} FROM {qualified_table}"
                     f" WHERE correlation_id = $1"
                     f"{order_clause} LIMIT {limit}"
                 )
                 raw_rows = await conn.fetch(sql, correlation_id)
                 latest_ts_val: Any = (
                     await conn.fetchval(
-                        f"SELECT MAX({freshness_col}) FROM {table}"
+                        f"SELECT MAX({freshness_col}) FROM {qualified_table}"
                         f" WHERE correlation_id = $1",
                         correlation_id,
                     )
@@ -245,10 +248,15 @@ async def projection_query(
                     else None
                 )
             else:
-                sql = f"SELECT {col_list} FROM {table}{order_clause} LIMIT {limit}"
+                sql = (
+                    f"SELECT {col_list} FROM {qualified_table}"
+                    f"{order_clause} LIMIT {limit}"
+                )
                 raw_rows = await conn.fetch(sql)
                 latest_ts_val = (
-                    await conn.fetchval(f"SELECT MAX({freshness_col}) FROM {table}")
+                    await conn.fetchval(
+                        f"SELECT MAX({freshness_col}) FROM {qualified_table}"
+                    )
                     if freshness_col is not None
                     else None
                 )

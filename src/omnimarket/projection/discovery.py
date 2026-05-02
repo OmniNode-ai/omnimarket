@@ -231,20 +231,35 @@ def _parse_projection_api_section(
         return None
 
     raw_columns = section.get("columns")
-    if not raw_columns or not isinstance(raw_columns, list) or len(raw_columns) == 0:
+    if (
+        not raw_columns
+        or not isinstance(raw_columns, list)
+        or len(raw_columns) == 0
+        or any(not isinstance(column, str) or not column for column in raw_columns)
+    ):
         logger.error(
             "Contract %r (path: %s): projection_api.columns is required "
-            "and must be a non-empty list when expose: true — contract excluded",
+            "and must be a non-empty list of strings when expose: true — "
+            "contract excluded",
             node_name,
             contract_path,
         )
         return None
 
-    columns: tuple[str, ...] = tuple(str(c) for c in raw_columns)
+    columns: tuple[str, ...] = tuple(raw_columns)
 
     # Schema resolution: honour explicit schema field; fall back to "public".
     raw_schema = section.get("schema", "public")
-    schema_name: str = str(raw_schema) if isinstance(raw_schema, str) else "public"
+    if not isinstance(raw_schema, str):
+        logger.error(
+            "Contract %r (path: %s): projection_api.schema must be a string "
+            "when expose: true — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+
+    schema_name: str = raw_schema
 
     if schema_name not in ALLOWED_SCHEMAS:
         logger.error(
@@ -259,13 +274,40 @@ def _parse_projection_api_section(
 
     # Optional fields — absent means undefined/unknown (not defaulted).
     raw_order_by = section.get("order_by")
-    order_by: str | None = str(raw_order_by) if isinstance(raw_order_by, str) else None
+    if raw_order_by is not None and not isinstance(raw_order_by, str):
+        logger.error(
+            "Contract %r (path: %s): projection_api.order_by must be a string "
+            "when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+    order_by: str | None = raw_order_by
+
     raw_freshness = section.get("freshness_column")
-    freshness_column: str | None = (
-        str(raw_freshness) if isinstance(raw_freshness, str) else None
-    )
+    if raw_freshness is not None and not isinstance(raw_freshness, str):
+        logger.error(
+            "Contract %r (path: %s): projection_api.freshness_column must be "
+            "a string when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+    freshness_column: str | None = raw_freshness
+
     raw_limit = section.get("limit")
-    limit: int = int(raw_limit) if isinstance(raw_limit, int) else _DEFAULT_LIMIT
+    if raw_limit is None:
+        limit = _DEFAULT_LIMIT
+    elif type(raw_limit) is int and raw_limit > 0:
+        limit = raw_limit
+    else:
+        logger.error(
+            "Contract %r (path: %s): projection_api.limit must be a positive "
+            "integer when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
 
     return ProjectionTableConfig(
         topic=topic,
