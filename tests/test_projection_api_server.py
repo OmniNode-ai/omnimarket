@@ -29,10 +29,30 @@ from scripts.projection_api_server import (
 )
 
 # ---------------------------------------------------------------------------
-# Canonical topic map matching the three contracts now in contract.yaml
+# Canonical topic map matching the contracts exposed through projection_api.
 # ---------------------------------------------------------------------------
 
-_THREE_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
+_PROJECTION_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
+    "onex.snapshot.projection.ab-compare.v1": ProjectionTableConfig(
+        topic="onex.snapshot.projection.ab-compare.v1",
+        table="llm_call_metrics",
+        schema_name="public",
+        columns=(
+            "correlation_id",
+            "model_id",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "estimated_cost_usd",
+            "latency_ms",
+            "usage_source",
+            "created_at",
+        ),
+        order_by="created_at DESC",
+        freshness_column="created_at",
+        limit=100,
+        source_contract="ab_compare_reducer",
+    ),
     "onex.snapshot.projection.cost.summary.v1": ProjectionTableConfig(
         topic="onex.snapshot.projection.cost.summary.v1",
         table="llm_cost_aggregates",
@@ -129,7 +149,7 @@ def _with_pool(
     topic_map: dict[str, ProjectionTableConfig] | None = None,
 ) -> Generator[TestClient, None, None]:
     """Override get_pool (and optionally get_topic_map) and yield a TestClient."""
-    effective_map = topic_map if topic_map is not None else _THREE_TOPIC_MAP
+    effective_map = topic_map if topic_map is not None else _PROJECTION_TOPIC_MAP
     app.dependency_overrides[get_pool] = lambda: pool
     app.dependency_overrides[get_topic_map] = lambda: effective_map
     client = TestClient(app, raise_server_exceptions=True)
@@ -164,28 +184,29 @@ class TestComputeFreshness:
 
 
 class TestContractTopicMap:
-    def test_all_three_topics_present(self) -> None:
-        topics = set(_THREE_TOPIC_MAP.keys())
+    def test_exposed_topics_present(self) -> None:
+        topics = set(_PROJECTION_TOPIC_MAP.keys())
+        assert "onex.snapshot.projection.ab-compare.v1" in topics
         assert "onex.snapshot.projection.cost.summary.v1" in topics
         assert "onex.snapshot.projection.cost.token_usage.v1" in topics
         assert "onex.snapshot.projection.registration.v1" in topics
 
     def test_no_select_star_in_columns(self) -> None:
-        for topic, cfg in _THREE_TOPIC_MAP.items():
+        for topic, cfg in _PROJECTION_TOPIC_MAP.items():
             assert "*" not in cfg.columns, f"{topic} uses SELECT *"
 
     def test_limit_is_100(self) -> None:
-        for topic, cfg in _THREE_TOPIC_MAP.items():
+        for topic, cfg in _PROJECTION_TOPIC_MAP.items():
             assert cfg.limit == 100, f"{topic} limit != 100"
 
     def test_all_topics_have_order_by(self) -> None:
-        for topic, cfg in _THREE_TOPIC_MAP.items():
+        for topic, cfg in _PROJECTION_TOPIC_MAP.items():
             if cfg.order_by is None or cfg.order_by == "undefined":
                 continue
             assert cfg.order_by is not None, f"{topic} missing order_by"
 
     def test_all_topics_have_freshness_column(self) -> None:
-        for topic, cfg in _THREE_TOPIC_MAP.items():
+        for topic, cfg in _PROJECTION_TOPIC_MAP.items():
             if cfg.freshness_column is None or cfg.freshness_column == "unknown":
                 continue
             assert cfg.freshness_column is not None, f"{topic} missing freshness_column"
@@ -205,7 +226,7 @@ class TestProjectionRoutes:
         body = resp.json()
         assert body["error"] == "unknown_topic"
         assert "available_topics" in body
-        assert set(body["available_topics"]) == set(_THREE_TOPIC_MAP.keys())
+        assert set(body["available_topics"]) == set(_PROJECTION_TOPIC_MAP.keys())
 
     def test_cost_summary_envelope_shape(self) -> None:
         rows = [
@@ -245,6 +266,31 @@ class TestProjectionRoutes:
         assert resp.status_code == 200
         _assert_envelope(resp.json(), "onex.snapshot.projection.cost.token_usage.v1")
         assert resp.json()["row_count"] == 1
+
+    def test_ab_compare_envelope_shape_uses_llm_call_metrics_fields(self) -> None:
+        rows = [
+            {
+                "correlation_id": "run-abc",
+                "model_id": "qwen3-coder-30b",
+                "prompt_tokens": 100,
+                "completion_tokens": 200,
+                "total_tokens": 300,
+                "estimated_cost_usd": "0.0025",
+                "latency_ms": "812.5",
+                "usage_source": "actual",
+                "created_at": _ts(timedelta(minutes=2)),
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=2)))
+        with _with_pool(pool) as client:
+            resp = client.get("/projection/onex.snapshot.projection.ab-compare.v1")
+        assert resp.status_code == 200
+        body = resp.json()
+        _assert_envelope(body, "onex.snapshot.projection.ab-compare.v1")
+        assert body["row_count"] == 1
+        assert body["rows"][0]["correlation_id"] == "run-abc"
+        assert body["rows"][0]["model_id"] == "qwen3-coder-30b"
+        assert body["rows"][0]["estimated_cost_usd"] == "0.0025"
 
     def test_registration_envelope_shape(self) -> None:
         rows = [
@@ -317,6 +363,30 @@ class TestProjectionRoutes:
         assert "FROM public.llm_cost_aggregates" in call_args[0][0]
         assert "corr-abc" in call_args[0]
 
+    def test_ab_compare_correlation_id_filter_targets_llm_call_metrics(self) -> None:
+        """AB Compare projection forwards correlation_id against llm_call_metrics."""
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[])
+        conn.fetchval = AsyncMock(return_value=None)
+
+        acquire_ctx = MagicMock()
+        acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
+        acquire_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=acquire_ctx)
+
+        with _with_pool(pool) as client:
+            resp = client.get(
+                "/projection/onex.snapshot.projection.ab-compare.v1",
+                params={"correlation_id": "run-abc"},
+            )
+        assert resp.status_code == 200
+        call_args = conn.fetch.call_args
+        assert "FROM public.llm_call_metrics" in call_args[0][0]
+        assert "WHERE correlation_id = $1" in call_args[0][0]
+        assert "run-abc" in call_args[0]
+
     def test_queries_use_configured_schema(self) -> None:
         conn = AsyncMock()
         conn.fetch = AsyncMock(return_value=[])
@@ -368,9 +438,9 @@ class TestProjectionsListRoute:
         assert resp.status_code == 200
         body = resp.json()
         assert "topics" in body
-        assert len(body["topics"]) == 3
+        assert len(body["topics"]) == 4
         topic_names = {t["topic"] for t in body["topics"]}
-        assert topic_names == set(_THREE_TOPIC_MAP.keys())
+        assert topic_names == set(_PROJECTION_TOPIC_MAP.keys())
 
     def test_projections_entry_has_required_fields(self) -> None:
         pool = _make_pool([])
