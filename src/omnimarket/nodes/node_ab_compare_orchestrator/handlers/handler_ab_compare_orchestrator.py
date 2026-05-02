@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 _REGISTRY_PATH = Path(__file__).parent.parent / "models_registry.yaml"
 _DEFAULT_SYSTEM_PROMPT = (
-    "You are a expert software engineer. Respond with clean, working Python code only."
+    "You are an expert software engineer. Respond with clean, working Python code only."
 )
 
 
