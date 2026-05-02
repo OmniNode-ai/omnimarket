@@ -17,10 +17,15 @@ never sent to GitHub.
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import logging
 from abc import ABC, abstractmethod
 from collections import Counter
 
+from omnimarket.nodes.node_pr_review_bot.adapter_github_bridge import (
+    AdapterGitHubBridge,
+)
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolReportPoster,
 )
@@ -63,6 +68,21 @@ class ProtocolGitHubBridge(ABC):
     def post_pr_comment(self, repo: str, pr_number: int, body: str) -> None:
         """Post a plain PR comment (not a review thread). Raises on failure."""
         ...
+
+
+class _AdapterGitHubBridgeSyncFacade(ProtocolGitHubBridge):
+    """Sync facade for the async GitHub bridge used by auto-wired handlers."""
+
+    def __init__(self, bridge: AdapterGitHubBridge | None = None) -> None:
+        self._bridge = bridge or AdapterGitHubBridge()
+
+    def post_pr_comment(self, repo: str, pr_number: int, body: str) -> None:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                asyncio.run,
+                self._bridge.post_pr_comment(repo, pr_number, body),
+            )
+            future.result()
 
 
 # ---------------------------------------------------------------------------
@@ -175,16 +195,17 @@ def build_summary_comment(
 class HandlerReportPoster(ProtocolReportPoster):
     """Posts the final PR review summary comment via AdapterGitHubBridge.
 
-    Implements ``ProtocolReportPoster``. Requires a ``ProtocolGitHubBridge``
-    instance for the actual GitHub API call so the handler remains unit-testable
-    without hitting the network.
+    Implements ``ProtocolReportPoster``. Accepts an optional
+    ``ProtocolGitHubBridge`` for tests and workflow-level shared adapter wiring.
+    When auto-wired by the runtime with no explicit dependencies, it constructs
+    a default sync facade over ``AdapterGitHubBridge``.
 
     Stateless: findings and thread_states are passed at call time from FSM
     state so the poster always sees the final accumulated sequences.
     """
 
-    def __init__(self, github_bridge: ProtocolGitHubBridge) -> None:
-        self._bridge = github_bridge
+    def __init__(self, github_bridge: ProtocolGitHubBridge | None = None) -> None:
+        self._bridge = github_bridge or _AdapterGitHubBridgeSyncFacade()
 
     def post_summary(
         self,
