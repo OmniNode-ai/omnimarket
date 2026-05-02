@@ -36,3 +36,12 @@ event_bus:
     - onex.evt.omniintelligence.llm-call-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-llm-cost-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.llm-cost.v1"
+  table: "llm_cost_aggregates"
+  columns: ["call_id", "model_name", "prompt_tokens", "completion_tokens", "total_tokens", "estimated_cost_usd", "created_at"]
+  order_by: "created_at DESC"
+  freshness_column: "created_at"
+  limit: 50

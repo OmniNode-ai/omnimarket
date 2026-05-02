@@ -24,3 +24,12 @@ event_bus:
     - onex.evt.omnimarket.ab-inference-completed.v1
   publish_topics:
     - onex.evt.omnimarket.ab-compare-completed.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.ab-compare.v1"
+  table: "ab_compare_results"
+  columns: ["correlation_id", "model_key", "display_name", "prompt_tokens", "completion_tokens", "total_tokens", "cost_usd", "latency_ms", "quality", "error", "created_at"]
+  order_by: "created_at DESC"
+  freshness_column: "created_at"
+  limit: 50
