@@ -383,7 +383,7 @@ class _DefaultHttpLlmClient:
         start: float,
     ) -> tuple[str, int, int, int]:
         try:
-            import anthropic  # type: ignore[import-not-found]  # guarded optional dep
+            import anthropic
         except ImportError as exc:
             msg = "anthropic SDK not installed; install with: uv add anthropic"
             raise RuntimeError(msg) from exc
@@ -401,7 +401,8 @@ class _DefaultHttpLlmClient:
         latency_ms = int((time.monotonic() - start) * 1000)
         prompt_tokens = message.usage.input_tokens
         completion_tokens = message.usage.output_tokens
-        raw_output = message.content[0].text if message.content else ""
+        first_content_block = message.content[0] if message.content else None
+        raw_output = str(getattr(first_content_block, "text", ""))
         return raw_output, prompt_tokens, completion_tokens, latency_ms
 
 
