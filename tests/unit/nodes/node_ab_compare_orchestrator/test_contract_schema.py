@@ -28,7 +28,7 @@ _REQUIRED_MODEL_FIELDS = {
     "location",
     "context_window",
 }
-_VALID_PROTOCOLS = {"openai_compatible", "anthropic"}
+_VALID_PROTOCOLS = {"openai_compatible"}
 _VALID_LOCATIONS = {"local", "cloud"}
 
 
@@ -111,15 +111,16 @@ def test_models_registry_locations_are_valid() -> None:
 
 
 @pytest.mark.unit
-def test_models_registry_local_models_have_endpoint_env() -> None:
+def test_models_registry_openai_models_have_base_endpoint() -> None:
     data = yaml.safe_load(REGISTRY_PATH.read_text())
     for model in data["models"]:
-        if model["location"] == "local":
-            assert "endpoint_env" in model, (
-                f"Local model '{model['id']}' must declare endpoint_env"
+        if model["protocol"] == "openai_compatible":
+            assert "endpoint" in model, (
+                f"OpenAI-compatible model '{model['id']}' must declare endpoint"
             )
-            assert "health_path" in model, (
-                f"Local model '{model['id']}' must declare health_path"
+            assert "/v1/chat/completions" not in model["endpoint"], (
+                f"OpenAI-compatible model '{model['id']}' must declare a base endpoint; "
+                "the effect node appends the chat completions path"
             )
 
 
@@ -174,8 +175,6 @@ def test_models_registry_has_expected_models() -> None:
         "deepseek-r1-14b",
         "deepseek-r1-32b",
         "qwen3-next-80b",
-        "claude-sonnet",
-        "gemini-flash",
     }
     assert expected == ids
 

@@ -55,9 +55,6 @@ outputs:
   comparison:
     type: list[ModelComparisonRow]
     description: "Per-model cost/speed/quality rows sorted by cost ascending"
-  correlation_id:
-    type: uuid
-    description: "Echoed correlation_id for traceability"
   status:
     type: str
     description: "COMPLETED or PARTIAL (some models skipped)"
