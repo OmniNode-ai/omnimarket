@@ -55,3 +55,20 @@ event_bus:
     - onex.evt.platform.node-state-change.v1
   publish_topics:
     - onex.evt.omnimarket.projection-registration-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.registration.v1"
+  table: "node_service_registry"
+  schema: "omnidash_analytics"
+  columns:
+    - "service_name"
+    - "service_type"
+    - "health_status"
+    - "is_active"
+    - "last_health_check"
+    - "updated_at"
+    - "projected_at"
+  order_by: "updated_at DESC"
+  freshness_column: "updated_at"
+  limit: 100
