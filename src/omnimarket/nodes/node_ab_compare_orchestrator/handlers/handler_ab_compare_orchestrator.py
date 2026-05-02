@@ -156,7 +156,7 @@ def _create_transport() -> Any:
     """Create a MixinLlmHttpTransport instance for HandlerLlmOpenaiCompatible."""
     from omnibase_infra.mixins.mixin_llm_http_transport import MixinLlmHttpTransport
 
-    class _Transport(MixinLlmHttpTransport):
+    class _Transport(MixinLlmHttpTransport):  # type: ignore[misc]
         def __init__(self) -> None:
             self._init_llm_http_transport(target_name="ab-compare-orchestrator")
 
