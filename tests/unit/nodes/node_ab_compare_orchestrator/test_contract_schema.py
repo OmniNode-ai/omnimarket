@@ -175,6 +175,7 @@ def test_models_registry_has_expected_models() -> None:
         "deepseek-r1-14b",
         "deepseek-r1-32b",
         "qwen3-next-80b",
+        "glm-4.5",
     }
     assert expected == ids
 
