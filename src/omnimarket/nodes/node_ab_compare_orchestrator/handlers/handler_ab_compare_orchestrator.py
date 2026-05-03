@@ -50,6 +50,7 @@ class _ResolvedModel(BaseModel):
     model_id: str
     display_name: str
     endpoint_url: str
+    full_endpoint_url: str | None = None
     protocol: str
     model_id_resolved: str
     cost_per_1k_input: float
@@ -94,14 +95,32 @@ def _resolve_models(
             skipped.append(model_id)
             continue
 
-        endpoint_url = entry.get("endpoint", "")
+        endpoint_env: str | None = entry.get("endpoint_env")
+        endpoint_url = (
+            os.environ.get(endpoint_env, entry.get("endpoint", ""))
+            if endpoint_env
+            else entry.get("endpoint", "")
+        )
         if not endpoint_url:
             logger.info("Skipping %s: no endpoint declared", model_id)
             skipped.append(model_id)
             continue
 
-        model_id_resolved = entry.get(
-            "model_id", entry.get("model_id_default", model_id)
+        endpoint_path: str | None = entry.get("endpoint_path")
+        full_endpoint_url = (
+            f"{endpoint_url.rstrip('/')}/{endpoint_path.lstrip('/')}"
+            if endpoint_path
+            else None
+        )
+
+        model_id_env: str | None = entry.get("model_id_env")
+        model_id_resolved = (
+            os.environ.get(
+                model_id_env,
+                entry.get("model_id", entry.get("model_id_default", model_id)),
+            )
+            if model_id_env
+            else entry.get("model_id", entry.get("model_id_default", model_id))
         )
 
         resolved.append(
@@ -109,6 +128,7 @@ def _resolve_models(
                 model_id=model_id,
                 display_name=entry["display_name"],
                 endpoint_url=endpoint_url,
+                full_endpoint_url=full_endpoint_url,
                 protocol=protocol,
                 model_id_resolved=model_id_resolved,
                 cost_per_1k_input=float(entry["cost_per_1k_input"]),
@@ -277,6 +297,7 @@ class HandlerAbCompareOrchestrator:
 
         request = ModelLlmInferenceRequest(
             base_url=model.endpoint_url,
+            endpoint_url=model.full_endpoint_url,
             operation_type=EnumLlmOperationType.CHAT_COMPLETION,
             model=model.model_id_resolved,
             messages=({"role": "user", "content": user_prompt},),
