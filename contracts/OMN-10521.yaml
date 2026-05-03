@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10521
+title: "Expose AB compare projection topic"
+summary: "Expose the contract-driven A/B comparison projection API topic backed by public.llm_call_metrics so dashboard components can render real model usage rows."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+  - "topics"
+  - "events"
+evidence_requirements:
+  - kind: "manual"
+    description: "AB compare projection discovery and projection API tests pass."
+    command: "uv run pytest tests/unit/projection/test_projection_discovery.py tests/test_projection_api_server.py -q"
+  - kind: "manual"
+    description: "Projection API lint scope passes."
+    command: "uv run ruff check src/omnimarket/projection scripts/projection_api_server.py tests/unit/projection tests/test_projection_api_server.py"
+  - kind: "manual"
+    description: "Post-merge runtime deploy smoke resolves the AB compare projection topic from contracts; no live deploy or runtime restart was performed in this PR."
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); assert 'onex.snapshot.projection.ab-compare.v1' in topic_map; assert topic_map['onex.snapshot.projection.ab-compare.v1'].table == 'llm_call_metrics'; print(topic_map['onex.snapshot.projection.ab-compare.v1'].table)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "AB compare projection discovery and projection API tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/projection/test_projection_discovery.py tests/test_projection_api_server.py -q"
+  - id: "dod-002"
+    description: "Projection API lint scope passes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/projection scripts/projection_api_server.py tests/unit/projection tests/test_projection_api_server.py"
+  - id: "dod-deploy"
+    description: "Post-merge runtime deploy smoke resolves the AB compare projection topic from contracts; no live deploy or runtime restart was performed in this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); assert 'onex.snapshot.projection.ab-compare.v1' in topic_map; assert topic_map['onex.snapshot.projection.ab-compare.v1'].table == 'llm_call_metrics'; print(topic_map['onex.snapshot.projection.ab-compare.v1'].table)\""

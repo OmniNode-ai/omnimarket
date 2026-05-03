@@ -249,6 +249,29 @@ class TestParseProjectionApiSection:
 
 
 class TestBuildProjectionTopicMap:
+    def test_ab_compare_reducer_contract_exposes_real_llm_metrics_projection(
+        self,
+    ) -> None:
+        topic_map = build_projection_topic_map()
+        cfg = topic_map["onex.snapshot.projection.ab-compare.v1"]
+        assert cfg.source_contract == "ab_compare_reducer"
+        assert cfg.schema_name == "public"
+        assert cfg.table == "llm_call_metrics"
+        assert cfg.columns == (
+            "correlation_id",
+            "model_id",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "estimated_cost_usd",
+            "latency_ms",
+            "usage_source",
+            "created_at",
+        )
+        assert cfg.order_by == "created_at DESC"
+        assert cfg.freshness_column == "created_at"
+        assert "*" not in cfg.columns
+
     def test_expose_true_required(self, tmp_path: Path) -> None:
         """Contracts with projection_api.expose: false are excluded."""
         p = _write_contract(
