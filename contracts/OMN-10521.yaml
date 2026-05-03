@@ -18,7 +18,7 @@ evidence_requirements:
     command: "uv run ruff check src/omnimarket/projection scripts/projection_api_server.py tests/unit/projection tests/test_projection_api_server.py"
   - kind: "manual"
     description: "Post-merge runtime deploy smoke resolves the AB compare projection topic from contracts; no live deploy or runtime restart was performed in this PR."
-    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); assert 'onex.snapshot.projection.ab-compare.v1' in topic_map; print(topic_map['onex.snapshot.projection.ab-compare.v1'].table)\""
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); assert 'onex.snapshot.projection.ab-compare.v1' in topic_map; assert topic_map['onex.snapshot.projection.ab-compare.v1'].table == 'llm_call_metrics'; print(topic_map['onex.snapshot.projection.ab-compare.v1'].table)\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -41,4 +41,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); assert 'onex.snapshot.projection.ab-compare.v1' in topic_map; print(topic_map['onex.snapshot.projection.ab-compare.v1'].table)\""
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.projection.discovery import build_projection_topic_map; topic_map = build_projection_topic_map(); assert 'onex.snapshot.projection.ab-compare.v1' in topic_map; assert topic_map['onex.snapshot.projection.ab-compare.v1'].table == 'llm_call_metrics'; print(topic_map['onex.snapshot.projection.ab-compare.v1'].table)\""
