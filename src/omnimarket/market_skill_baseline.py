@@ -29,7 +29,19 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OMNI_HOME = REPO_ROOT.parent
+
+
+def _resolve_omni_home() -> Path:
+    env_home = os.environ.get("OMNI_HOME")
+    if env_home:
+        return Path(env_home)
+    for parent in REPO_ROOT.parents:
+        if parent.name == "omni_home":
+            return parent
+    return REPO_ROOT.parent
+
+
+OMNI_HOME = _resolve_omni_home()
 REPO_ROOT_LABEL = "<omnimarket>"
 OMNI_HOME_LABEL = "<omni_home>"
 HOME_LABEL = "<home>"
@@ -83,6 +95,7 @@ class ModelMarketSkillSpec(BaseModel):
     node_name: str
     module: str
     contract_path: str
+    task_text: str
     pytest_targets: tuple[str, ...]
     smoke_kind: Literal[
         "aislop_sweep",
@@ -102,6 +115,7 @@ class ModelMarketSkillResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     skill_name: str
+    task_text: str
     contract: ModelContractInventory
     input_drift: ModelInputDrift
     cli_smoke: ModelCommandResult
@@ -137,6 +151,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_aislop_sweep",
         module="omnimarket.nodes.node_aislop_sweep",
         contract_path="src/omnimarket/nodes/node_aislop_sweep/contract.yaml",
+        task_text=(
+            "Scan repository code for high-severity AI-generated implementation "
+            "anti-patterns before escalating review work."
+        ),
         pytest_targets=(
             "tests/test_golden_chain_aislop_sweep.py",
             "tests/test_codex_runtime_client.py::test_aislop_sweep_pattern_b_runs_node_end_to_end",
@@ -148,6 +166,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_pr_lifecycle_orchestrator",
         module="omnimarket.nodes.node_pr_lifecycle_orchestrator",
         contract_path="src/omnimarket/nodes/node_pr_lifecycle_orchestrator/contract.yaml",
+        task_text=(
+            "Inventory PR state and plan lifecycle actions through the contracted "
+            "orchestrator."
+        ),
         pytest_targets=(
             "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py",
             "tests/test_golden_chain_pr_lifecycle_orchestrator.py",
@@ -160,6 +182,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_pr_polish",
         module="omnimarket.nodes.node_pr_polish",
         contract_path="src/omnimarket/nodes/node_pr_polish/contract.yaml",
+        task_text=(
+            "Polish a PR in dry-run mode and prove the PR cleanup loop reaches "
+            "its done phase."
+        ),
         pytest_targets=(
             "tests/test_golden_chain_pr_polish.py",
             "tests/test_codex_runtime_client.py::test_pr_polish_pattern_b_runs_node_end_to_end",
@@ -171,6 +197,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_local_review",
         module="omnimarket.nodes.node_local_review",
         contract_path="src/omnimarket/nodes/node_local_review/contract.yaml",
+        task_text=(
+            "Run the local review loop configuration that avoids spending cloud "
+            "or senior-human review budget first."
+        ),
         pytest_targets=(
             "tests/test_golden_chain_local_review.py",
             "tests/test_codex_runtime_client.py::test_local_review_pattern_b_runs_node_end_to_end",
@@ -182,6 +212,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_coderabbit_triage",
         module="omnimarket.nodes.node_coderabbit_triage",
         contract_path="src/omnimarket/nodes/node_coderabbit_triage/contract.yaml",
+        task_text=(
+            "Classify CodeRabbit review threads into blocking, suggestion, and "
+            "unknown buckets for automated follow-up."
+        ),
         pytest_targets=(
             "tests/test_golden_chain_coderabbit_triage.py",
             "tests/test_codex_runtime_client.py::test_coderabbit_triage_pattern_b_runs_node_end_to_end",
@@ -193,6 +227,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_session_bootstrap",
         module="omnimarket.nodes.node_session_bootstrap",
         contract_path="src/omnimarket/nodes/node_session_bootstrap/contract.yaml",
+        task_text=(
+            "Bootstrap a Codex session with contract state and registered cron "
+            "workflow hooks."
+        ),
         pytest_targets=(
             "tests/test_golden_chain_session_bootstrap.py",
             "tests/test_codex_runtime_client.py::test_session_bootstrap_pattern_b_runs_node_end_to_end",
@@ -204,6 +242,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_session_orchestrator",
         module="omnimarket.nodes.node_session_orchestrator",
         contract_path="src/omnimarket/nodes/node_session_orchestrator/contract.yaml",
+        task_text=(
+            "Score a deterministic ticket fixture and emit dispatch queue plus "
+            "dispatch receipt artifacts."
+        ),
         pytest_targets=(
             "src/omnimarket/nodes/node_session_orchestrator/tests/test_handler_session_orchestrator.py",
             "tests/unit/test_handler_session_orchestrator_graphql.py",
@@ -216,6 +258,10 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
         node_name="node_ticket_pipeline",
         module="omnimarket.nodes.node_ticket_pipeline",
         contract_path="src/omnimarket/nodes/node_ticket_pipeline/contract.yaml",
+        task_text=(
+            "Compile a ticket pipeline through pre-flight and implement dispatch "
+            "without mutating live services."
+        ),
         pytest_targets=(
             "tests/test_golden_chain_ticket_pipeline.py",
             "tests/test_codex_runtime_client.py::test_ticket_pipeline_pattern_b_runs_node_end_to_end",
@@ -943,6 +989,7 @@ def capture_market_skill_result(
         cli_smoke = _failure_command_result(stage="load_contract", error=exc)
         return ModelMarketSkillResult(
             skill_name=spec.skill_name,
+            task_text=spec.task_text,
             contract=contract,
             input_drift=input_drift,
             cli_smoke=cli_smoke,
@@ -961,6 +1008,7 @@ def capture_market_skill_result(
         cli_smoke = _failure_command_result(stage="compute_input_drift", error=exc)
         return ModelMarketSkillResult(
             skill_name=spec.skill_name,
+            task_text=spec.task_text,
             contract=contract,
             input_drift=input_drift,
             cli_smoke=cli_smoke,
@@ -982,6 +1030,7 @@ def capture_market_skill_result(
 
     return ModelMarketSkillResult(
         skill_name=spec.skill_name,
+        task_text=spec.task_text,
         contract=contract,
         input_drift=input_drift,
         cli_smoke=cli_smoke,
@@ -1076,6 +1125,7 @@ def render_markdown(report: ModelMarketSkillBaselineReport) -> str:
             [
                 f"### {item.skill_name}",
                 "",
+                f"- Task: `{item.task_text}`",
                 f"- Node: `{item.contract.node_name}`",
                 f"- Contract: `{item.contract.contract_name}`",
                 f"- Node type: `{item.contract.node_type}`",
