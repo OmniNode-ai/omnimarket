@@ -215,6 +215,9 @@ node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
 ab-compare = "omnimarket.cli.cli_ab_compare:main"
+ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
+delegation-cost-demo = "omnimarket.cli.cli_delegation_cost_demo:main"
+market-skills-demo = "omnimarket.cli.cli_market_skills_demo:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"

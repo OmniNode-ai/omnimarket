@@ -1,0 +1,36 @@
+May 3 AB Compare Suite - All Registry Models + GLM Cloud Baseline
+Generated: 2026-05-03T09:37:29-04:00
+Worktree: <omnimarket OMN-10457 worktree>
+
+$ uv run ab-compare-suite --models all --transport direct --output table
+MULTI-RUN AB MODEL COMPARISON
+runs=2
+
+RUN 1: Write a Python function slugify(text: str) -> str that lowercases text, replaces non-alphanumeric runs with hyphens, and strips leading/trailing hyphens.
+correlation_id=ab-suite-1-4547529f-3388-485a-8bf3-5ae98ece5cde status=COMPLETED
+model                    status    tokens       cost     time
+-------------------------------------------------------------
+Qwen3-Coder-30B          ok           151  $0.000000    480ms
+DeepSeek-R1-14B          ok           183  $0.000000  70511ms
+Qwen3-Next-80B           ok           145  $0.000000  72067ms
+DeepSeek-R1-32B          ok           185  $0.000000  85150ms
+glm-4.5 (z.ai)           ok           169  $0.000085   4209ms
+
+RUN 2: Write a Python function parse_ints(lines: list[str]) -> list[int] that extracts the first signed integer from each line and skips lines without one.
+correlation_id=ab-suite-2-d47c3a17-f720-4ee5-a273-d7ae04df95dc status=COMPLETED
+model                    status    tokens       cost     time
+-------------------------------------------------------------
+Qwen3-Coder-30B          ok           188  $0.000000    655ms
+DeepSeek-R1-14B          ok           178  $0.000000  43390ms
+Qwen3-Next-80B           ok           188  $0.000000  45809ms
+DeepSeek-R1-32B          ok           180  $0.000000  58270ms
+glm-4.5 (z.ai)           ok           164  $0.000082   3677ms
+
+AGGREGATE BY MODEL
+model                     ok/runs errors   tokens       cost   avg_time
+-----------------------------------------------------------------------
+Qwen3-Coder-30B           2/2          0      339 $ 0.000000       568ms
+DeepSeek-R1-14B           2/2          0      361 $ 0.000000     56950ms
+Qwen3-Next-80B            2/2          0      333 $ 0.000000     58938ms
+DeepSeek-R1-32B           2/2          0      365 $ 0.000000     71710ms
+glm-4.5 (z.ai)            2/2          0      333 $ 0.000167      3943ms
