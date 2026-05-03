@@ -1,9 +1,12 @@
 ---
 # models_registry.yaml — A/B compare model registry.
 #
-# Endpoints are base URLs (no path). The effect node appends /v1/chat/completions.
-# Only API keys use env vars (they're actual secrets).
-# Models with missing required keys are skipped at runtime.
+# endpoint is the default OpenAI-compatible base URL. endpoint_env can override
+# it at runtime; blank env values are treated as unset and fall back to endpoint.
+# model_id is the default API model identifier. model_id_env can override it at
+# runtime; blank env values are treated as unset and fall back to model_id.
+# protocol must currently be openai_compatible for orchestrator execution.
+# requires_key names the API-key env var; models with missing keys are skipped.
 
 schema_version: "1.0.0"
 models:

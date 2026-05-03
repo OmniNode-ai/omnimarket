@@ -95,25 +95,24 @@ def _resolve_models(
             continue
 
         endpoint_env: str | None = entry.get("endpoint_env")
-        endpoint_url = (
-            os.environ.get(endpoint_env, entry.get("endpoint", ""))
-            if endpoint_env
-            else entry.get("endpoint", "")
-        )
+        endpoint_default = str(entry.get("endpoint", "") or "")
+        endpoint_override = os.environ.get(endpoint_env) if endpoint_env else None
+        endpoint_url = endpoint_override or endpoint_default
         if not endpoint_url:
             logger.info("Skipping %s: no endpoint declared", model_id)
             skipped.append(model_id)
             continue
 
         model_id_env: str | None = entry.get("model_id_env")
-        model_id_resolved = (
-            os.environ.get(
-                model_id_env,
-                entry.get("model_id", entry.get("model_id_default", model_id)),
-            )
-            if model_id_env
-            else entry.get("model_id", entry.get("model_id_default", model_id))
+        model_id_default = str(
+            entry.get("model_id", entry.get("model_id_default", model_id)) or ""
         )
+        model_id_override = os.environ.get(model_id_env) if model_id_env else None
+        model_id_resolved = model_id_override or model_id_default
+        if not model_id_resolved:
+            logger.info("Skipping %s: no model id declared", model_id)
+            skipped.append(model_id)
+            continue
 
         resolved.append(
             _ResolvedModel(

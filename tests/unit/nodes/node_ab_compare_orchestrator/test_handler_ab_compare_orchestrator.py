@@ -261,6 +261,39 @@ def test_resolve_models_honors_endpoint_and_model_env_overrides(
 
 
 @pytest.mark.unit
+def test_resolve_models_ignores_blank_endpoint_and_model_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Blank env vars fall back to registry defaults instead of hiding them."""
+    monkeypatch.setenv("STUB_GLM_KEY", "test-key")
+    monkeypatch.setenv("STUB_GLM_URL", "")
+    monkeypatch.setenv("STUB_GLM_MODEL", "")
+    registry = [
+        {
+            "id": "stub-glm",
+            "display_name": "Stub GLM",
+            "endpoint": "https://default.invalid/api/paas/v4",
+            "endpoint_env": "STUB_GLM_URL",
+            "protocol": "openai_compatible",
+            "model_id": "glm-default",
+            "model_id_env": "STUB_GLM_MODEL",
+            "cost_per_1k_input": 0.0005,
+            "cost_per_1k_output": 0.0005,
+            "location": "cloud",
+            "requires_key": "STUB_GLM_KEY",
+            "context_window": 131072,
+        }
+    ]
+
+    resolved, skipped = _resolve_models(registry, ["all"])  # type: ignore[arg-type]
+
+    assert skipped == []
+    assert len(resolved) == 1
+    assert resolved[0].endpoint_url == "https://default.invalid/api/paas/v4"
+    assert resolved[0].model_id_resolved == "glm-default"
+
+
+@pytest.mark.unit
 def test_resolve_models_skips_non_openai_compatible_protocol() -> None:
     """Non openai_compatible protocols are skipped."""
     registry = [
