@@ -56,6 +56,36 @@ class ProtocolValkeyClient(Protocol):
     def delete(self, key: str) -> int: ...
 
 
+class _NoopKafkaPublisher:
+    def publish(self, topic: str, payload: dict[str, Any]) -> None:
+        logger.warning(
+            "EmergencyBypassParser: no Kafka publisher configured; "
+            "dropping bypass event for topic %s",
+            topic,
+        )
+
+
+class _NoopDbConn:
+    def execute(self, sql: str, params: dict[str, Any]) -> None:
+        logger.warning(
+            "EmergencyBypassParser: no DB connection configured; "
+            "bypass audit row was not written"
+        )
+
+
+class _LockdownValkeyClient:
+    def set(self, key: str, value: str, *, ex: int, nx: bool) -> bool:
+        logger.warning(
+            "EmergencyBypassParser: no Valkey client configured; "
+            "rejecting bypass claim for %s",
+            key,
+        )
+        return False
+
+    def delete(self, key: str) -> int:
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
@@ -94,21 +124,21 @@ class HandlerEmergencyBypassParser:
 
     def __init__(
         self,
-        authorized_actors: list[str],
-        kafka_publisher: ProtocolKafkaPublisher,
-        db_conn: ProtocolDbConn,
-        valkey_client: ProtocolValkeyClient,
+        authorized_actors: list[str] | None = None,
+        kafka_publisher: ProtocolKafkaPublisher | None = None,
+        db_conn: ProtocolDbConn | None = None,
+        valkey_client: ProtocolValkeyClient | None = None,
     ) -> None:
         # Filter empty strings to support lockdown mode (config set to "")
-        self._authorized = {a for a in authorized_actors if a}
+        self._authorized = {a for a in (authorized_actors or []) if a}
         if not self._authorized:
             logger.warning(
                 "EmergencyBypassParser: no authorized actors configured — "
                 "all bypass attempts will be rejected (lockdown mode)"
             )
-        self._kafka = kafka_publisher
-        self._db = db_conn
-        self._valkey = valkey_client
+        self._kafka = kafka_publisher or _NoopKafkaPublisher()
+        self._db = db_conn or _NoopDbConn()
+        self._valkey = valkey_client or _LockdownValkeyClient()
 
     # ------------------------------------------------------------------
     # Public entry point

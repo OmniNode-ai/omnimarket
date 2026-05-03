@@ -115,6 +115,48 @@ class ProtocolGraphQLClient(ABC):
         ...
 
 
+class _FailClosedReviewer:
+    def review_hunk(
+        self,
+        *,
+        model_key: str,
+        diff_content: str,
+        finding_context: str,
+    ) -> dict[str, str]:
+        return {
+            "verdict": "DIRTY",
+            "reasoning": "runtime verification loop has no reviewer configured",
+        }
+
+
+class _NoopGraphQLClient:
+    def resolve_thread(
+        self,
+        *,
+        pr_number: int,
+        repo: str,
+        thread_id: str,
+    ) -> bool:
+        logger.warning(
+            "VerificationLoop: no GraphQL client configured; refusing to resolve %s",
+            thread_id,
+        )
+        return False
+
+    def post_thread_reply(
+        self,
+        *,
+        pr_number: int,
+        repo: str,
+        thread_id: str,
+        body: str,
+    ) -> None:
+        logger.warning(
+            "VerificationLoop: no GraphQL client configured; dropping reply for %s",
+            thread_id,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Result model
 # ---------------------------------------------------------------------------
@@ -147,18 +189,21 @@ class HandlerVerificationLoop:
 
     def __init__(
         self,
-        reviewer: ProtocolHostileReviewerInvoker,
-        graphql_client: ProtocolGraphQLClient,
-        reviewer_models: list[str],
+        reviewer: ProtocolHostileReviewerInvoker | None = None,
+        graphql_client: ProtocolGraphQLClient | None = None,
+        reviewer_models: list[str] | None = None,
     ) -> None:
-        if not reviewer_models:
+        resolved_reviewer_models = (
+            ["runtime-lockdown"] if reviewer_models is None else reviewer_models
+        )
+        if not resolved_reviewer_models:
             raise ValueError(
                 "reviewer_models must not be empty — no reviewers configured means "
                 "no verification is possible; fail closed rather than silently pass."
             )
-        self._reviewer = reviewer
-        self._gql = graphql_client
-        self._reviewer_models = reviewer_models
+        self._reviewer = reviewer or _FailClosedReviewer()
+        self._gql = graphql_client or _NoopGraphQLClient()
+        self._reviewer_models = list(resolved_reviewer_models)
 
     def run(
         self,
