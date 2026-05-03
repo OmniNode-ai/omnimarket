@@ -50,7 +50,6 @@ class _ResolvedModel(BaseModel):
     model_id: str
     display_name: str
     endpoint_url: str
-    full_endpoint_url: str | None = None
     protocol: str
     model_id_resolved: str
     cost_per_1k_input: float
@@ -106,13 +105,6 @@ def _resolve_models(
             skipped.append(model_id)
             continue
 
-        endpoint_path: str | None = entry.get("endpoint_path")
-        full_endpoint_url = (
-            f"{endpoint_url.rstrip('/')}/{endpoint_path.lstrip('/')}"
-            if endpoint_path
-            else None
-        )
-
         model_id_env: str | None = entry.get("model_id_env")
         model_id_resolved = (
             os.environ.get(
@@ -128,7 +120,6 @@ def _resolve_models(
                 model_id=model_id,
                 display_name=entry["display_name"],
                 endpoint_url=endpoint_url,
-                full_endpoint_url=full_endpoint_url,
                 protocol=protocol,
                 model_id_resolved=model_id_resolved,
                 cost_per_1k_input=float(entry["cost_per_1k_input"]),
@@ -297,7 +288,6 @@ class HandlerAbCompareOrchestrator:
 
         request = ModelLlmInferenceRequest(
             base_url=model.endpoint_url,
-            endpoint_url=model.full_endpoint_url,
             operation_type=EnumLlmOperationType.CHAT_COMPLETION,
             model=model.model_id_resolved,
             messages=({"role": "user", "content": user_prompt},),

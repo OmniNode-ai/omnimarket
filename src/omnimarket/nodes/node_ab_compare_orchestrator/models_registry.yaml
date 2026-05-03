@@ -51,7 +51,6 @@ models:
     display_name: "z.ai GLM-4.5"
     endpoint: "https://api.z.ai/api/coding/paas/v4"
     endpoint_env: LLM_GLM_URL
-    endpoint_path: "/chat/completions"
     protocol: openai_compatible
     model_id: "glm-4.5"
     model_id_env: LLM_GLM_MODEL_NAME

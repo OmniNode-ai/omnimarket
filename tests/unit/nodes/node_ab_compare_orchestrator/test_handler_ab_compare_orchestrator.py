@@ -241,7 +241,6 @@ def test_resolve_models_honors_endpoint_and_model_env_overrides(
             "display_name": "Stub GLM",
             "endpoint": "https://default.invalid/api/paas/v4",
             "endpoint_env": "STUB_GLM_URL",
-            "endpoint_path": "/chat/completions",
             "protocol": "openai_compatible",
             "model_id": "glm-default",
             "model_id_env": "STUB_GLM_MODEL",
@@ -258,10 +257,6 @@ def test_resolve_models_honors_endpoint_and_model_env_overrides(
     assert skipped == []
     assert len(resolved) == 1
     assert resolved[0].endpoint_url == "https://example.invalid/api/paas/v4"
-    assert (
-        resolved[0].full_endpoint_url
-        == "https://example.invalid/api/paas/v4/chat/completions"
-    )
     assert resolved[0].model_id_resolved == "glm-test"
 
 
