@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: OMN-10457
-title: "Add conference delegation and cost demo CLIs"
-summary: "Adds conference/YC demo CLIs for delegation cost projections, market skill lanes, and multi-run AB model comparison across registry models plus the GLM cloud baseline."
+title: "Add conference delegation cost demo CLIs and AB registry configuration"
+summary: "Adds conference/YC demo CLIs for delegation cost projections, market skill lanes, and multi-run AB model comparison, while preserving env-backed GLM registry endpoint resolution for laptop and .201 demo profiles."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -20,40 +20,67 @@ evidence_requirements:
     description: "All-registry-model AB suite demo output is captured with the direct transport."
     command: "uv run ab-compare-suite --models all --transport direct --output table --output-file docs/tracking/2026-05-03-ab-compare-suite-all-models.txt"
   - kind: "manual"
-    description: "Post-merge deploy smoke confirms CLI entry points import and the safe projection wrapper is present; no live deploy or runtime restart was performed in this PR."
-    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.cli.cli_ab_compare_suite import main as ab_compare_suite; from omnimarket.cli.cli_delegation_cost_demo import main as delegation_cost_demo; from omnimarket.cli.cli_market_skills_demo import main as market_skills_demo; print('omnimarket demo cli deploy smoke ok')\""
+    description: "Focused AB compare orchestrator registry tests pass."
+    command: "uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_contract_schema.py tests/unit/nodes/node_ab_compare_orchestrator/test_handler_ab_compare_orchestrator.py -q"
+  - kind: "manual"
+    description: "Ruff passes for the AB compare orchestrator registry changes."
+    command: "uv run ruff check src/omnimarket/nodes/node_ab_compare_orchestrator tests/unit/nodes/node_ab_compare_orchestrator"
+  - kind: "manual"
+    description: "Repo-local OMN-10457 deploy contract validates."
+    command: "uv run validate-yaml contracts/OMN-10457.yaml"
+  - kind: "manual"
+    description: "Post-merge deploy smoke confirms CLI entry points and AB registry resolution import; no live deploy or runtime restart was performed in this PR."
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.cli.cli_ab_compare_suite import main as ab_compare_suite; from omnimarket.cli.cli_delegation_cost_demo import main as delegation_cost_demo; from omnimarket.cli.cli_market_skills_demo import main as market_skills_demo; from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import HandlerABCompareOrchestrator; print('omnimarket demo cli and registry deploy smoke ok')\""
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-001"
+  - id: "dod-demo-tests"
     description: "Focused demo CLI tests pass."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/test_cli_ab_compare_suite.py tests/unit/test_cli_ab_compare.py tests/unit/test_cli_delegation_cost_demo.py tests/unit/test_cli_market_skills_demo.py tests/unit/scripts/test_run_delegation_cost_projection_process.py -q"
-  - id: "dod-002"
+  - id: "dod-demo-typecheck"
     description: "Strict mypy passes for the affected CLI modules."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run mypy src/omnimarket/ --strict"
-  - id: "dod-003"
+  - id: "dod-demo-lint"
     description: "Ruff passes for the affected CLI and test modules."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run ruff check src/omnimarket/cli/cli_ab_compare_suite.py src/omnimarket/cli/cli_delegation_cost_demo.py src/omnimarket/cli/cli_market_skills_demo.py tests/unit/test_cli_ab_compare_suite.py tests/unit/test_cli_delegation_cost_demo.py tests/unit/test_cli_market_skills_demo.py tests/unit/scripts/test_run_delegation_cost_projection_process.py"
-  - id: "dod-004"
+  - id: "dod-demo-output"
     description: "All-registry-model AB suite demo output is captured with the direct transport."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run ab-compare-suite --models all --transport direct --output table --output-file docs/tracking/2026-05-03-ab-compare-suite-all-models.txt"
-  - id: "dod-deploy"
-    description: "Post-merge deploy smoke confirms CLI entry points import and the safe projection wrapper is present; no live deploy or runtime restart was performed in this PR."
+  - id: "dod-ab-endpoint-tests"
+    description: "Focused AB compare orchestrator registry tests pass."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.cli.cli_ab_compare_suite import main as ab_compare_suite; from omnimarket.cli.cli_delegation_cost_demo import main as delegation_cost_demo; from omnimarket.cli.cli_market_skills_demo import main as market_skills_demo; print('omnimarket demo cli deploy smoke ok')\""
+        check_value: "uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_contract_schema.py tests/unit/nodes/node_ab_compare_orchestrator/test_handler_ab_compare_orchestrator.py -q"
+  - id: "dod-ab-endpoint-lint"
+    description: "Ruff passes for the AB compare orchestrator registry changes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_ab_compare_orchestrator tests/unit/nodes/node_ab_compare_orchestrator"
+  - id: "dod-demo-contract"
+    description: "Repo-local OMN-10457 deploy contract validates."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run validate-yaml contracts/OMN-10457.yaml"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke confirms CLI entry points and AB registry resolution import; no live deploy or runtime restart was performed in this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.cli.cli_ab_compare_suite import main as ab_compare_suite; from omnimarket.cli.cli_delegation_cost_demo import main as delegation_cost_demo; from omnimarket.cli.cli_market_skills_demo import main as market_skills_demo; from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import HandlerABCompareOrchestrator; print('omnimarket demo cli and registry deploy smoke ok')\""
