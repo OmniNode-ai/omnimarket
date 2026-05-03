@@ -203,7 +203,7 @@ class HandlerVerificationLoop:
             )
         self._reviewer = reviewer or _FailClosedReviewer()
         self._gql = graphql_client or _NoopGraphQLClient()
-        self._reviewer_models = resolved_reviewer_models
+        self._reviewer_models = list(resolved_reviewer_models)
 
     def run(
         self,

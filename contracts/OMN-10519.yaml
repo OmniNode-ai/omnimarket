@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10519
+title: "Stabilize runtime auto-wiring for PR review handlers"
+summary: "Make PR review bot handlers fail-closed and zero-arg runtime-wirable so the stability runtime can boot through auto-discovery."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused runtime auto-wiring regressions pass for touched PR review handlers."
+    command: "uv run pytest tests/nodes/node_pr_review_bot/test_handler_report_poster_autowire.py tests/test_emergency_bypass_parser.py tests/test_verification_loop.py -q"
+  - kind: "manual"
+    description: "Touched runtime handler and regression tests pass ruff."
+    command: "uv run ruff check src/omnimarket/nodes/node_pr_review_bot/handlers/handler_emergency_bypass_parser.py src/omnimarket/nodes/node_pr_review_bot/handlers/handler_verification_loop.py tests/nodes/node_pr_review_bot/test_handler_report_poster_autowire.py"
+  - kind: "manual"
+    description: "Stability-test deploy proof uses a PR overlay image on .201 and verifies the runtime advances past handler constructor auto-wiring."
+    command: "docker exec omninode-stability-test-runtime python - <<'PY'\nfrom inspect import signature\nfrom omnimarket.nodes.node_pr_review_bot.handlers.handler_emergency_bypass_parser import HandlerEmergencyBypassParser\nfrom omnimarket.nodes.node_pr_review_bot.handlers.handler_verification_loop import HandlerVerificationLoop\nprint(signature(HandlerEmergencyBypassParser.__init__))\nprint(signature(HandlerVerificationLoop.__init__))\nPY"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-autowire-tests"
+    description: "Focused tests prove HandlerReportPoster, HandlerEmergencyBypassParser, and HandlerVerificationLoop resolve through zero-arg runtime auto-wiring."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_pr_review_bot/test_handler_report_poster_autowire.py tests/test_emergency_bypass_parser.py tests/test_verification_loop.py -q"
+  - id: "dod-ruff"
+    description: "Touched runtime handlers and auto-wiring regression tests pass lint."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_pr_review_bot/handlers/handler_emergency_bypass_parser.py src/omnimarket/nodes/node_pr_review_bot/handlers/handler_verification_loop.py tests/nodes/node_pr_review_bot/test_handler_report_poster_autowire.py"
+  - id: "dod-deploy-stability-runtime"
+    description: "Deploy/readiness evidence: .201 stability runtime overlay image imports the touched handlers and advances past constructor auto-wiring without restart."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec omninode-stability-test-runtime python - <<'PY'\nfrom inspect import signature\nfrom omnimarket.nodes.node_pr_review_bot.handlers.handler_emergency_bypass_parser import HandlerEmergencyBypassParser\nfrom omnimarket.nodes.node_pr_review_bot.handlers.handler_verification_loop import HandlerVerificationLoop\nprint(signature(HandlerEmergencyBypassParser.__init__))\nprint(signature(HandlerVerificationLoop.__init__))\nPY"
+      - check_type: "command"
+        check_value: "docker inspect omninode-stability-test-runtime --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} restart={{.RestartCount}} image={{.Image}}'"
