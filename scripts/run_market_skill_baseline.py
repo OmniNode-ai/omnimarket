@@ -33,6 +33,7 @@ def _print_stream_result(item: ModelMarketSkillResult) -> None:
         f"[market-skill] {item.skill_name} "
         f"node={item.contract.node_name} status={item.overall_status}\n"
     )
+    sys.stdout.write(f"[market-skill] {item.skill_name} task={item.task_text}\n")
     sys.stdout.write(
         f"[market-skill] {item.skill_name} contract={item.contract.contract_name} "
         f"terminal_event={item.contract.terminal_event} "

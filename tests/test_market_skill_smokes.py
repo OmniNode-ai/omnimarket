@@ -159,6 +159,7 @@ def test_streaming_baseline_prints_each_skill_result(
 ) -> None:
     item = ModelMarketSkillResult(
         skill_name="ticket_pipeline",
+        task_text="Compile a ticket pipeline demo task.",
         contract=ModelContractInventory(
             contract_name="ticket_pipeline",
             node_name="node_ticket_pipeline",
@@ -199,6 +200,10 @@ def test_streaming_baseline_prints_each_skill_result(
     assert report.working_count == 1
     assert (
         "[market-skill] ticket_pipeline node=node_ticket_pipeline status=working"
+        in output
+    )
+    assert (
+        "[market-skill] ticket_pipeline task=Compile a ticket pipeline demo task."
         in output
     )
     assert "[market-skill] ticket_pipeline cli=pass rc=0" in output

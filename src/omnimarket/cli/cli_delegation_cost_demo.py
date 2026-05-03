@@ -74,6 +74,10 @@ _DEFAULT_PROFILE_SET: dict[str, Any] = {
         },
     }
 }
+_DEFAULT_TASK_TEXT = (
+    "Route one ticket-classification task to the local model profile, compare "
+    "against the GLM cloud baseline, and materialize the savings projection."
+)
 
 
 @dataclass(frozen=True)
@@ -398,6 +402,7 @@ def _json_default(value: object) -> str:
 def _render_json(
     *,
     profile: ResolvedDemoProfile,
+    task_text: str,
     delegation_row: dict[str, object],
     cost_row: dict[str, object],
     savings_row: dict[str, object],
@@ -410,6 +415,7 @@ def _render_json(
             "local_model_id": profile.local_model_id,
             "cloud_baseline_model": profile.cloud_baseline_model,
         },
+        "task_text": task_text,
         "rows": {
             "delegation_events": delegation_row,
             "llm_cost_aggregates": cost_row,
@@ -421,7 +427,7 @@ def _render_json(
 
 
 def _render_table(
-    *, profile: ResolvedDemoProfile, joined: JoinedProjectionProof
+    *, profile: ResolvedDemoProfile, task_text: str, joined: JoinedProjectionProof
 ) -> None:
     header = (
         f"{'correlation_id':<36} {'delegated_to':<14} {'model':<22} "
@@ -429,6 +435,7 @@ def _render_table(
     )
     click.echo("DELEGATION COST SAVINGS PROOF")
     click.echo(f"profile={profile.name}")
+    click.echo(f"task={task_text}")
     click.echo(header)
     click.echo("-" * len(header))
     click.echo(
@@ -460,6 +467,7 @@ def _run(
     correlation_id: str,
     session_id: str,
     task_type: str,
+    task_text: str,
     repo: str,
     timestamp_raw: str | None,
     total_tokens: int,
@@ -511,13 +519,14 @@ def _run(
     if output == "json":
         _render_json(
             profile=profile,
+            task_text=task_text,
             delegation_row=delegation_row,
             cost_row=cost_row,
             savings_row=savings_row,
             joined=joined,
         )
     else:
-        _render_table(profile=profile, joined=joined)
+        _render_table(profile=profile, task_text=task_text, joined=joined)
     return 0
 
 
@@ -540,6 +549,7 @@ def _run(
     show_default=True,
 )
 @click.option("--task-type", default="ticket-classification", show_default=True)
+@click.option("--task-text", default=_DEFAULT_TASK_TEXT, show_default=True)
 @click.option("--repo", default="omnimarket", show_default=True)
 @click.option("--timestamp", "timestamp_raw", default=None, help="ISO-8601 timestamp.")
 @click.option("--total-tokens", default=123, show_default=True, type=int)
@@ -571,6 +581,7 @@ def main(
     correlation_id: str,
     session_id: str,
     task_type: str,
+    task_text: str,
     repo: str,
     timestamp_raw: str | None,
     total_tokens: int,
@@ -592,6 +603,7 @@ def main(
             correlation_id=correlation_id,
             session_id=session_id,
             task_type=task_type,
+            task_text=task_text,
             repo=repo,
             timestamp_raw=timestamp_raw,
             total_tokens=total_tokens,

@@ -44,6 +44,7 @@ def test_cli_default_profile_prints_joined_projection_table(
     assert result.exit_code == 0
     assert "DELEGATION COST SAVINGS PROOF" in result.output
     assert "profile=local_201" in result.output
+    assert "task=Route one ticket-classification task" in result.output
     assert "local-qwen" in result.output
     assert "qwen3-coder-30b" in result.output
     assert "glm-4.5" in result.output
@@ -63,6 +64,7 @@ def test_cli_json_output_contains_projected_rows_and_join(
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["profile"]["name"] == "local_201"
+    assert "ticket-classification task" in payload["task_text"]
     assert payload["profile"]["local_model_id"] == "qwen3-coder-30b"
     assert payload["rows"]["delegation_events"]["delegated_to"] == "local-qwen"
     assert payload["rows"]["llm_cost_aggregates"]["model_name"] == "qwen3-coder-30b"

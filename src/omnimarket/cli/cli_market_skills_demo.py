@@ -31,6 +31,7 @@ class DemoDefinition:
 
     demo_id: str
     title: str
+    task_text: str
     pitch_claim: str
     skill_names: tuple[str, ...]
     market_nodes: tuple[str, ...]
@@ -59,6 +60,7 @@ class ModelMarketSkillsDemo(BaseModel):
 
     demo_id: str
     title: str
+    task_text: str
     pitch_claim: str
     value_tags: list[str]
     command_hint: str
@@ -83,6 +85,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="cost-routing-projection",
         title="Delegation + Cost Savings Projection",
+        task_text=(
+            "Route one coding task to the local Qwen profile, compare it to "
+            "the GLM cloud baseline, and show the projected savings row."
+        ),
         pitch_claim=(
             "Routes model work to the cheapest capable local profile and "
             "materializes the savings row."
@@ -100,6 +106,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="all-model-cost-arbitrage",
         title="All-Model Cost Arbitrage",
+        task_text=(
+            "Run the same two coding tasks across every configured local model "
+            "plus GLM so the model market is visible in one table."
+        ),
         pitch_claim=(
             "Runs every configured local model plus the GLM cloud baseline so "
             "the audience can see speed, token, and marginal API cost deltas."
@@ -117,6 +127,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="merge-delegation",
         title="PR Lifecycle Delegation",
+        task_text=(
+            "Inventory a PR and delegate lifecycle planning to the contracted "
+            "PR orchestrator."
+        ),
         pitch_claim=(
             "Delegates PR inventory, fix, verify, and merge decisions into a "
             "contracted market node."
@@ -132,6 +146,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="review-cost-control",
         title="Review Work Deflection",
+        task_text=(
+            "Run local review, CodeRabbit thread triage, and PR polish before "
+            "spending higher-cost review attention."
+        ),
         pitch_claim=(
             "Uses local review, CodeRabbit triage, and PR polish before "
             "spending human attention on review cleanup."
@@ -147,6 +165,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="session-dispatch",
         title="Session to Ticket Dispatch",
+        task_text=(
+            "Bootstrap a session, score ticket work, and produce dispatch "
+            "artifacts for downstream operators."
+        ),
         pitch_claim=(
             "Bootstraps a session, composes dispatch artifacts, and proves a "
             "ticket pipeline can compile delegated work."
@@ -163,6 +185,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="review-escalation-gate",
         title="Review Escalation Gate",
+        task_text=(
+            "Attempt cheap/local review and cleanup first, then identify what "
+            "would justify escalation to a more expensive model or operator."
+        ),
         pitch_claim=(
             "Uses cheap local review and deterministic cleanup first, then "
             "escalates only unresolved review work to higher-cost assistance."
@@ -179,6 +205,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="ticket-intake-routing",
         title="Ticket Intake to Market Dispatch",
+        task_text=(
+            "Convert a session/ticket brief into dispatchable market work and "
+            "receipt artifacts."
+        ),
         pitch_claim=(
             "Turns a session/ticket brief into dispatchable market work, "
             "showing the platform can route work before humans pick operators."
@@ -195,6 +225,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="pr-health-triage",
         title="PR Health Triage Market",
+        task_text=(
+            "Classify PRs into stale, red, conflicted, review-blocked, and "
+            "healthy queues for machine-actionable triage."
+        ),
         pitch_claim=(
             "Classifies stale, red, conflicted, and review-blocked PRs into "
             "machine-actionable queues without spending senior review time."
@@ -212,6 +246,10 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
     DemoDefinition(
         demo_id="review-thread-policy-control",
         title="Review Thread Policy Control",
+        task_text=(
+            "Prove review-thread replies stay draft-first and policy bypasses "
+            "can be reconciled."
+        ),
         pitch_claim=(
             "Keeps review-thread actions governed: draft replies by default "
             "and re-open threads when non-bot actors bypass policy."
@@ -310,6 +348,7 @@ def _build_demo(
     return ModelMarketSkillsDemo(
         demo_id=definition.demo_id,
         title=definition.title,
+        task_text=definition.task_text,
         pitch_claim=definition.pitch_claim,
         value_tags=list(definition.value_tags),
         command_hint=definition.command_hint,
@@ -369,6 +408,7 @@ def _render_table(report: ModelMarketSkillsDemoReport) -> None:
             f"{demo.demo_id:<{demo_width}} {demo.proof_status:<16} "
             f"{skill_count:>6} {tags:<{tag_width}} {demo.command_hint}"
         )
+        click.echo(f"  task: {demo.task_text}")
         click.echo(f"  claim: {demo.pitch_claim}")
         if demo.market_nodes:
             click.echo(f"  nodes: {', '.join(demo.market_nodes)}")

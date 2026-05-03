@@ -41,6 +41,7 @@ def test_cli_lists_all_demo_lanes_without_running_smokes() -> None:
     assert "node_model_router" in result.output
     assert "node_pr_lifecycle_orchestrator" in result.output
     assert "node_session_orchestrator" in result.output
+    assert "task: Run the same two coding tasks" in result.output
 
 
 @pytest.mark.unit
@@ -88,6 +89,7 @@ def test_cli_json_for_all_model_cost_arbitrage_lists_ab_nodes() -> None:
     payload = json.loads(result.output)
     demo = payload["demos"][0]
     assert demo["demo_id"] == "all-model-cost-arbitrage"
+    assert "same two coding tasks" in demo["task_text"]
     assert demo["proof_status"] == "external-command"
     assert demo["market_nodes"] == [
         "node_ab_compare_orchestrator",
