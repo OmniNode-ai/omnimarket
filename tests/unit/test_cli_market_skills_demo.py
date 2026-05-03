@@ -96,7 +96,7 @@ def test_cli_json_for_all_model_cost_arbitrage_lists_ab_nodes() -> None:
         "node_model_router",
     ]
     assert "cost-savings" in demo["value_tags"]
-    assert "uv run ab-compare-suite --models all" in demo["command_hint"]
+    assert demo["command_hint"] == "uv run ab-compare-suite --models all --output table"
 
 
 @pytest.mark.unit

@@ -111,7 +111,7 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
             "node_ab_compare_reducer",
             "node_model_router",
         ),
-        command_hint="uv run ab-compare-suite --models all --runs 3 --output table",
+        command_hint="uv run ab-compare-suite --models all --output table",
         value_tags=("cost-savings", "model-routing", "cloud-baseline"),
     ),
     DemoDefinition(
