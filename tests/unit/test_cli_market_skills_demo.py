@@ -30,9 +30,15 @@ def test_cli_lists_all_demo_lanes_without_running_smokes() -> None:
     assert result.exit_code == 0
     assert "MARKET SKILL DEMO CATALOG" in result.output
     assert "cost-routing-projection" in result.output
+    assert "all-model-cost-arbitrage" in result.output
     assert "merge-delegation" in result.output
     assert "review-cost-control" in result.output
     assert "session-dispatch" in result.output
+    assert "review-escalation-gate" in result.output
+    assert "ticket-intake-routing" in result.output
+    assert "pr-health-triage" in result.output
+    assert "review-thread-policy-control" in result.output
+    assert "node_model_router" in result.output
     assert "node_pr_lifecycle_orchestrator" in result.output
     assert "node_session_orchestrator" in result.output
 
@@ -66,9 +72,64 @@ def test_cli_json_for_review_demo_contains_expected_nodes() -> None:
 
 
 @pytest.mark.unit
+def test_cli_json_for_all_model_cost_arbitrage_lists_ab_nodes() -> None:
+    result = CliRunner().invoke(
+        main,
+        [
+            "--demo",
+            "all-model-cost-arbitrage",
+            "--no-run-smokes",
+            "--output",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    demo = payload["demos"][0]
+    assert demo["demo_id"] == "all-model-cost-arbitrage"
+    assert demo["proof_status"] == "external-command"
+    assert demo["market_nodes"] == [
+        "node_ab_compare_orchestrator",
+        "node_ab_inference_effect",
+        "node_ab_compare_reducer",
+        "node_model_router",
+    ]
+    assert "cost-savings" in demo["value_tags"]
+    assert "uv run ab-compare-suite --models all" in demo["command_hint"]
+
+
+@pytest.mark.unit
+def test_cli_json_for_review_thread_policy_control_lists_governance_nodes() -> None:
+    result = CliRunner().invoke(
+        main,
+        [
+            "--demo",
+            "review-thread-policy-control",
+            "--no-run-smokes",
+            "--output",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    demo = payload["demos"][0]
+    assert demo["demo_id"] == "review-thread-policy-control"
+    assert demo["market_nodes"] == [
+        "node_thread_reply_effect",
+        "node_review_thread_reconciler",
+        "node_finding_aggregator_compute",
+    ]
+    assert "governance" in demo["value_tags"]
+    assert "test_handler_thread_reply.py" in demo["command_hint"]
+
+
+@pytest.mark.unit
 def test_cli_rejects_unknown_demo() -> None:
     result = CliRunner().invoke(main, ["--demo", "missing", "--no-run-smokes"])
 
     assert result.exit_code != 0
     assert "Unknown demo" in result.output
+    assert "all-model-cost-arbitrage" in result.output
     assert "review-cost-control" in result.output

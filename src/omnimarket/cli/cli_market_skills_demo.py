@@ -33,6 +33,7 @@ class DemoDefinition:
     title: str
     pitch_claim: str
     skill_names: tuple[str, ...]
+    market_nodes: tuple[str, ...]
     command_hint: str
     value_tags: tuple[str, ...]
 
@@ -87,8 +88,31 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
             "materializes the savings row."
         ),
         skill_names=(),
+        market_nodes=(
+            "node_model_router",
+            "node_projection_delegation",
+            "node_projection_llm_cost",
+            "node_projection_savings",
+        ),
         command_hint="uv run delegation-cost-demo --output table",
         value_tags=("delegation", "cost-savings", "projection"),
+    ),
+    DemoDefinition(
+        demo_id="all-model-cost-arbitrage",
+        title="All-Model Cost Arbitrage",
+        pitch_claim=(
+            "Runs every configured local model plus the GLM cloud baseline so "
+            "the audience can see speed, token, and marginal API cost deltas."
+        ),
+        skill_names=(),
+        market_nodes=(
+            "node_ab_compare_orchestrator",
+            "node_ab_inference_effect",
+            "node_ab_compare_reducer",
+            "node_model_router",
+        ),
+        command_hint="uv run ab-compare-suite --models all --runs 3 --output table",
+        value_tags=("cost-savings", "model-routing", "cloud-baseline"),
     ),
     DemoDefinition(
         demo_id="merge-delegation",
@@ -98,6 +122,7 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
             "contracted market node."
         ),
         skill_names=("pr_lifecycle_orchestrator",),
+        market_nodes=(),
         command_hint=(
             "uv run python scripts/run_market_skill_baseline.py "
             "--skills pr_lifecycle_orchestrator --skip-pytest --stream"
@@ -112,6 +137,7 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
             "spending human attention on review cleanup."
         ),
         skill_names=("local_review", "coderabbit_triage", "pr_polish"),
+        market_nodes=(),
         command_hint=(
             "uv run python scripts/run_market_skill_baseline.py "
             "--skills local_review,coderabbit_triage,pr_polish --skip-pytest --stream"
@@ -126,12 +152,82 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
             "ticket pipeline can compile delegated work."
         ),
         skill_names=("session_bootstrap", "session_orchestrator", "ticket_pipeline"),
+        market_nodes=(),
         command_hint=(
             "uv run python scripts/run_market_skill_baseline.py "
             "--skills session_bootstrap,session_orchestrator,ticket_pipeline "
             "--skip-pytest --stream"
         ),
         value_tags=("orchestration", "delegation", "workflow-proof"),
+    ),
+    DemoDefinition(
+        demo_id="review-escalation-gate",
+        title="Review Escalation Gate",
+        pitch_claim=(
+            "Uses cheap local review and deterministic cleanup first, then "
+            "escalates only unresolved review work to higher-cost assistance."
+        ),
+        skill_names=("local_review", "coderabbit_triage", "aislop_sweep", "pr_polish"),
+        market_nodes=("node_model_router", "node_projection_llm_cost"),
+        command_hint=(
+            "uv run python scripts/run_market_skill_baseline.py "
+            "--skills local_review,coderabbit_triage,aislop_sweep,pr_polish "
+            "--skip-pytest --stream"
+        ),
+        value_tags=("review-automation", "cost-avoidance", "escalation-control"),
+    ),
+    DemoDefinition(
+        demo_id="ticket-intake-routing",
+        title="Ticket Intake to Market Dispatch",
+        pitch_claim=(
+            "Turns a session/ticket brief into dispatchable market work, "
+            "showing the platform can route work before humans pick operators."
+        ),
+        skill_names=("session_bootstrap", "ticket_pipeline", "session_orchestrator"),
+        market_nodes=("node_build_dispatch_effect", "node_dispatch_worker"),
+        command_hint=(
+            "uv run python scripts/run_market_skill_baseline.py "
+            "--skills session_bootstrap,ticket_pipeline,session_orchestrator "
+            "--skip-pytest --stream"
+        ),
+        value_tags=("delegation", "market-dispatch", "workflow-proof"),
+    ),
+    DemoDefinition(
+        demo_id="pr-health-triage",
+        title="PR Health Triage Market",
+        pitch_claim=(
+            "Classifies stale, red, conflicted, and review-blocked PRs into "
+            "machine-actionable queues without spending senior review time."
+        ),
+        skill_names=(),
+        market_nodes=(
+            "node_pr_snapshot_effect",
+            "node_pr_health_monitor",
+            "node_linear_triage",
+            "node_create_ticket",
+        ),
+        command_hint="uv run pytest tests/test_golden_chain_pr_health_monitor.py -q",
+        value_tags=("triage", "delegation", "human-time-savings"),
+    ),
+    DemoDefinition(
+        demo_id="review-thread-policy-control",
+        title="Review Thread Policy Control",
+        pitch_claim=(
+            "Keeps review-thread actions governed: draft replies by default "
+            "and re-open threads when non-bot actors bypass policy."
+        ),
+        skill_names=(),
+        market_nodes=(
+            "node_thread_reply_effect",
+            "node_review_thread_reconciler",
+            "node_finding_aggregator_compute",
+        ),
+        command_hint=(
+            "uv run pytest tests/nodes/node_thread_reply_effect/"
+            "test_handler_thread_reply.py "
+            "tests/test_golden_chain_review_thread_reconciler.py -q"
+        ),
+        value_tags=("governance", "review-automation", "cost-avoidance"),
     ),
 )
 
@@ -217,7 +313,10 @@ def _build_demo(
         pitch_claim=definition.pitch_claim,
         value_tags=list(definition.value_tags),
         command_hint=definition.command_hint,
-        market_nodes=[proof.node_name for proof in skill_proofs],
+        market_nodes=[
+            *definition.market_nodes,
+            *(proof.node_name for proof in skill_proofs),
+        ],
         proof_status=proof_status,
         working_skills=working,
         total_skills=total,
@@ -251,7 +350,12 @@ def _render_table(report: ModelMarketSkillsDemoReport) -> None:
         f"run_smokes={str(report.run_smokes).lower()} "
         f"include_pytest={str(report.include_pytest).lower()}"
     )
-    header = f"{'demo':<24} {'status':<16} {'skills':>6} {'value_tags':<42} {'command'}"
+    demo_width = max(24, *(len(demo.demo_id) for demo in report.demos))
+    tag_width = max(42, *(_tag_width(demo) for demo in report.demos))
+    header = (
+        f"{'demo':<{demo_width}} {'status':<16} {'skills':>6} "
+        f"{'value_tags':<{tag_width}} {'command'}"
+    )
     click.echo(header)
     click.echo("-" * len(header))
     for demo in report.demos:
@@ -262,12 +366,16 @@ def _render_table(report: ModelMarketSkillsDemoReport) -> None:
             else f"{demo.working_skills}/{demo.total_skills}"
         )
         click.echo(
-            f"{demo.demo_id:<24} {demo.proof_status:<16} {skill_count:>6} "
-            f"{tags:<42} {demo.command_hint}"
+            f"{demo.demo_id:<{demo_width}} {demo.proof_status:<16} "
+            f"{skill_count:>6} {tags:<{tag_width}} {demo.command_hint}"
         )
         click.echo(f"  claim: {demo.pitch_claim}")
         if demo.market_nodes:
             click.echo(f"  nodes: {', '.join(demo.market_nodes)}")
+
+
+def _tag_width(demo: ModelMarketSkillsDemo) -> int:
+    return len(",".join(demo.value_tags))
 
 
 def _render_json(report: ModelMarketSkillsDemoReport) -> None:
