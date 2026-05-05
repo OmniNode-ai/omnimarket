@@ -30,9 +30,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-TOPIC_SESSION_ORCH_START = "onex.cmd.omnimarket.session-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_SESSION_ORCH_COMPLETED = "onex.evt.omnimarket.session-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_SESSION_ORCH_FAILED = "onex.evt.omnimarket.session-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
+    TOPIC_SESSION_ORCH_COMPLETED,
+    TOPIC_SESSION_ORCH_FAILED,
+    TOPIC_SESSION_ORCH_START,
+)
 
 logger = logging.getLogger(__name__)
 

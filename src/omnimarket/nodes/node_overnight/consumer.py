@@ -30,9 +30,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-TOPIC_OVERNIGHT_START = "onex.cmd.omnimarket.overnight-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERNIGHT_COMPLETED = "onex.evt.omnimarket.overnight-session-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERNIGHT_FAILED = "onex.evt.omnimarket.overnight-session-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
+    TOPIC_OVERNIGHT_COMPLETE as TOPIC_OVERNIGHT_COMPLETED,
+)
+from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
+    TOPIC_OVERNIGHT_FAILED,
+    TOPIC_OVERNIGHT_START,
+)
 
 logger = logging.getLogger(__name__)
 

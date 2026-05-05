@@ -30,9 +30,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-TOPIC_AUTOPILOT_START = "onex.cmd.omnimarket.autopilot-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_AUTOPILOT_COMPLETED = "onex.evt.omnimarket.autopilot-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_AUTOPILOT_FAILED = "onex.evt.omnimarket.autopilot-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+from omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator import (
+    TOPIC_AUTOPILOT_COMPLETED,
+    TOPIC_AUTOPILOT_FAILED,
+    TOPIC_AUTOPILOT_START,
+)
 
 logger = logging.getLogger(__name__)
 
