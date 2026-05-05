@@ -568,7 +568,11 @@ def _context_ticket_id(context: ModelContextBundle) -> str:
         return raw_ticket_id
     if _TICKET_ID_RE.fullmatch(context.task_id):
         return context.task_id
-    return "OMN-0000"
+    raise ValueError(
+        "ModelContextBundle must provide a canonical OMN ticket id via "
+        f"ticket_id or task_id before verifier receipts can be built; "
+        f"task_id={context.task_id!r}"
+    )
 
 
 def _receipt_commit_sha() -> str:

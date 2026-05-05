@@ -8,6 +8,8 @@ updated, pass after.
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestOmnimarketOverseerImportMigration:
     def test_handler_overseer_verifier_importable(self) -> None:
@@ -51,3 +53,51 @@ class TestOmnimarketOverseerImportMigration:
         )
 
         assert NodeSkillOverseerVerifyOrchestrator is not None
+
+    def test_verify_with_context_requires_canonical_ticket_id(self) -> None:
+        from onex_change_control.overseer.model_context_bundle import (
+            ModelContextBundleL0,
+        )
+
+        from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
+            HandlerOverseerVerifier,
+        )
+
+        context = ModelContextBundleL0(
+            run_id="run-1",
+            task_id="task-1",
+            role="test",
+            fsm_state="running",
+        )
+        with pytest.raises(ValueError, match="canonical OMN ticket id"):
+            HandlerOverseerVerifier().verify_with_context(
+                context=context,
+                domain="build",
+                node_id="node-test",
+            )
+
+    def test_verify_with_context_uses_context_ticket_id_for_receipts(self) -> None:
+        from onex_change_control.overseer.model_context_bundle import (
+            ModelContextBundleL1,
+        )
+
+        from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
+            HandlerOverseerVerifier,
+        )
+
+        context = ModelContextBundleL1(
+            run_id="run-1",
+            task_id="task-1",
+            role="test",
+            fsm_state="running",
+            ticket_id="OMN-10530",
+            summary="release pins",
+        )
+        output = HandlerOverseerVerifier().verify_with_context(
+            context=context,
+            domain="build",
+            node_id="node-test",
+        )
+
+        assert output.checks
+        assert {receipt.ticket_id for receipt in output.checks} == {"OMN-10530"}
