@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overseer_benchmarker
+version: "1.0.0"
+description: "Continuous benchmarking harness — appends scorecard rows to overseer_performance_ledger"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_overseer_benchmarker: "omnimarket.nodes.node_overseer_benchmarker"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["benchmark", "eval", "overseer", "ledger", "scoring"]
+pack: "delegation"
+display_name: "Overseer Benchmarker"
+node_role: "report"
