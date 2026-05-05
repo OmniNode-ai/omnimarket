@@ -3,9 +3,9 @@
 ---
 # pr-review-bot.yml
 #
-# Dedicated PR review bot workflow running on the .201 self-hosted runner.
-# This gives the bot LAN access to Qwen3-Coder-30B (:8000) and DeepSeek-R1 (:8001)
-# which are unreachable from GitHub-hosted runners.
+# Dedicated PR review bot workflow.
+# Runner placement is controlled by centralized selector variables so CI can be
+# rerouted without changing workflow source.
 #
 # Distinct from cr-thread-gate.yml (CodeRabbit thread resolution gate) and
 # pr-arch-review.yml (architectural lint + stub FSM). This is the LIVE review
@@ -91,14 +91,20 @@ jobs:
           fi
 
   # ============================================================================
-  # PR Review Bot — runs on .201 self-hosted runner for LAN LLM access.
+  # PR Review Bot — live review pipeline with configurable runner placement.
   # Qwen3-Coder-30B at :8000 (RTX 5090) — primary reviewer.
   # DeepSeek-R1-14B at :8001 (RTX 4090) — judge model.
   # KAFKA_BOOTSTRAP_SERVERS is pre-mounted in the runner's Infisical environment.
   # ============================================================================
   pr-review-bot:
-    name: PR Review Bot (self-hosted, .201)
-    runs-on: [self-hosted, omnibase-ci]
+    name: PR Review Bot
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name != github.repository
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
     timeout-minutes: 20
     needs: [resolve-bot-token]
 
@@ -237,7 +243,7 @@ jobs:
             }
 
             const body = [
-              `## ${verdictEmoji} PR Review Bot (self-hosted) — ${verdictLabel}`,
+              `## ${verdictEmoji} PR Review Bot — ${verdictLabel}`,
               '',
               `**Findings**: ${findings}  `,
               `**Run ID**: \`${correlationId}\``,
@@ -256,7 +262,7 @@ jobs:
               '| `risks_noted` | Findings noted; threads passed judge verification |',
               '| `blocking_issue` | MAJOR/CRITICAL findings not resolved — do not merge |',
               '',
-              '_Powered by [node_pr_review_bot](src/omnimarket/nodes/node_pr_review_bot/) on .201 self-hosted runner — Qwen3-Coder-30B reviewer + DeepSeek-R1 judge (OMN-7963)_',
+              '_Powered by [node_pr_review_bot](src/omnimarket/nodes/node_pr_review_bot/) — Qwen3-Coder-30B reviewer + DeepSeek-R1 judge (OMN-7963)_',
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -267,7 +273,7 @@ jobs:
 
             const botComment = comments.find(c =>
               (c.user.login === botLogin || c.user.type === 'Bot') &&
-              c.body.includes('PR Review Bot (self-hosted)')
+              c.body.includes('PR Review Bot')
             );
 
             if (botComment) {
