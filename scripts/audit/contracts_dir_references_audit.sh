@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# OMN-10552: cross-repo audit for references to omnimarket/contracts/.
+# Cross-repo audit for references to omnimarket/contracts/.
 #
 # When the work-tracking YAMLs move from omnimarket/contracts/ to
 # omnimarket/docs/work-tracking/contracts/, every external reference must be
@@ -51,7 +51,7 @@ total=0
 for repo_dir in "${OMNI_HOME}"/*/; do
   repo="$(basename "${repo_dir%/}")"
   # Skip non-repo dirs (e.g. omni_worktrees, .onex_state).
-  [[ -d "${repo_dir}.git" || -d "${repo_dir}.git" ]] || continue
+  [[ -d "${repo_dir}/.git" || -f "${repo_dir}/.git" ]] || continue
 
   # Use ripgrep if available (fast, respects .gitignore); fall back to grep -R.
   if command -v rg >/dev/null 2>&1; then

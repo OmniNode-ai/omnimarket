@@ -1,9 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Structural tests for the work-tracking contracts move (OMN-10552).
-
-Wave 1 / Task 6 of the Public-Shippable plan
-(`docs/plans/2026-05-05-omnimarket-public-shippable.md`).
+"""Structural tests for the work-tracking contracts move.
 
 The 84 work-tracking ``OMN-XXXXX.yaml`` files moved from
 ``omnimarket/contracts/`` to ``omnimarket/docs/work-tracking/contracts/``.
@@ -11,13 +8,13 @@ The runtime layer never read them; they are pure dod_evidence artifacts.
 These tests pin that invariant:
 
 - ``contracts/OMN-*.yaml`` glob in repo root must be empty.
-- Moved files must not contain ``/Users/jonah`` or ``/Volumes/PRO-G40``
-  absolute paths (the three known sites — OMN-10127, OMN-10166, OMN-10382 —
-  were rewritten to ``${OMNI_HOME}/...`` placeholders during the move).
+- Moved files must not contain user or volume absolute paths. Placeholder
+  forms such as ``${OMNI_HOME}/...`` are allowed.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -54,12 +51,16 @@ def test_work_tracking_contracts_have_no_user_paths() -> None:
     Placeholder forms like ``${OMNI_HOME}/...`` are allowed.
     """
     new = REPO_ROOT / "docs" / "work-tracking" / "contracts"
+    forbidden_patterns = (
+        re.compile(r"/Users/[A-Za-z0-9._-]+"),
+        re.compile(r"/Volumes/[A-Za-z0-9._-]+"),
+    )
     findings: list[str] = []
     for yaml_path in sorted(new.glob("OMN-*.yaml")):
         text = yaml_path.read_text(encoding="utf-8")
-        for needle in ("/Users/jonah", "/Volumes/PRO-G40"):
-            if needle in text:
-                findings.append(f"{yaml_path.name}: contains {needle!r}")
+        for pattern in forbidden_patterns:
+            if match := pattern.search(text):
+                findings.append(f"{yaml_path.name}: contains {match.group(0)!r}")
     assert findings == [], (
         f"work-tracking contracts contain user/volume paths: {findings}"
     )

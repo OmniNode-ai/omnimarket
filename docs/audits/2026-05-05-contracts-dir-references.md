@@ -1,8 +1,5 @@
 # Cross-Repo Audit: References to `omnimarket/contracts/`
 
-**Ticket:** OMN-10552
-**Plan:** docs/plans/2026-05-05-omnimarket-public-shippable.md (Task 6)
-
 ## Scope
 
 Walk every repo under `$OMNI_HOME` and grep for two patterns:
@@ -11,8 +8,7 @@ Walk every repo under `$OMNI_HOME` and grep for two patterns:
 2. The shape `contracts/OMN-[0-9]+` — catches scripts that `cd` into a repo
    first and reference relative paths.
 
-Output: `docs/audits/2026-05-05-contracts-dir-references.csv` (641 rows on the
-2026-05-05 baseline).
+Output: `docs/audits/2026-05-05-contracts-dir-references.csv`.
 
 ## Result classification
 
@@ -31,18 +27,11 @@ The move is safe: nothing breaks at the source-tree level. The
 
 ## Files modified during the move
 
-The plan flagged three files containing absolute user/volume paths inside
-their dod_evidence commands. These were rewritten to `${OMNI_HOME}/...`
-placeholders during the move:
+The move scrubbed absolute user and volume paths from work-tracking evidence
+commands by replacing them with `${OMNI_HOME}/...` placeholders.
 
-| File (now under `docs/work-tracking/contracts/`) | Old literal               | New literal                       |
-|--------------------------------------------------|---------------------------|------------------------------------|
-| `OMN-10127.yaml` (×2 sites)                      | `/Users/jonah/Code/omni_home/omnibase_infra` | `${OMNI_HOME}/omnibase_infra` |
-| `OMN-10166.yaml` (×1 site)                       | `/Volumes/PRO-G40/Code/omni_home/omnibase_infra` | `${OMNI_HOME}/omnibase_infra` |
-| `OMN-10382.yaml` (×4 sites)                      | `/Users/jonah/Code/omni_home/omni_worktrees/OMN-10382/omnibase_core` | `${OMNI_HOME}/omni_worktrees/OMN-10382/omnibase_core` |
-
-All three files are work-tracking artifacts (already merged in PRs that
-shipped the actual changes). The dod_evidence commands are now portable.
+The affected files are work-tracking artifacts. Their dod_evidence commands
+are now portable.
 
 ## Acceptance
 
