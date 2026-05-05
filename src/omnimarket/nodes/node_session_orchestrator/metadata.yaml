@@ -17,6 +17,7 @@ dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase_compat"
   - "pyyaml>=6.0"
+  - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "session", "health-gate", "rsd", "dispatch", "unified"]
