@@ -1,0 +1,642 @@
+repo,file,line,context
+omnibase_compat,/Users/jonah/Code/omni_home/omnibase_compat/contracts/OMN-8038.yaml,46,        check_value: "contracts/OMN-8038.yaml"
+omnibase_compat,/Users/jonah/Code/omni_home/omnibase_compat/contracts/OMN-8368.yaml,48,        check_value: "contracts/OMN-8368.yaml"
+omnibase_compat,/Users/jonah/Code/omni_home/omnibase_compat/contracts/OMN-9344.yaml,31,        check_value: "contracts/OMN-9344.yaml"
+omnibase_core,/Users/jonah/Code/omni_home/omnibase_core/tests/validation/test_zone_classifier.py,48,    assert classify_path(Path("contracts/OMN-10411.yaml")) == EnumFileZone.DOCS
+omnibase_core,/Users/jonah/Code/omni_home/omnibase_core/tests/unit/models/ticket/test_model_ticket_contract_merged.py,389,                check_value: "contracts/OMN-6238.yaml"
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-1419.yaml,35,        check_value: 'test -f contracts/OMN-1419.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9410.yaml,35,        check_value: 'test -f contracts/OMN-9410.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9637.yaml,27,        check_value: 'test -f contracts/OMN-9637.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10081.yaml,31,        check_value: 'test -f contracts/OMN-10081.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9550.yaml,37,        check_value: 'test -f contracts/OMN-9550.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9629.yaml,28,        check_value: 'test -f contracts/OMN-9629.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9557.yaml,37,        check_value: 'test -f contracts/OMN-9557.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10089.yaml,28,        check_value: "test -f contracts/OMN-10089.yaml"
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9620.yaml,28,        check_value: 'test -f contracts/OMN-9620.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10500.yaml,15,    command: "uv run validate-yaml contracts/OMN-10500.yaml"
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10500.yaml,35,        check_value: "uv run validate-yaml contracts/OMN-10500.yaml"
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9600.yaml,38,        check_value: 'test -f contracts/OMN-9600.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10453.yaml,21,    command: uv run validate-yaml contracts/OMN-10453.yaml
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10453.yaml,47,        check_value: 'uv run validate-yaml contracts/OMN-10453.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9556.yaml,34,        check_value: 'test -f contracts/OMN-9556.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9420.yaml,35,        check_value: 'test -f contracts/OMN-9420.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10048.yaml,3,# (contracts/OMN-10048.yaml in OnniNode-ai/onex_change_control).
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-10048.yaml,27,        check_value: 'test -f contracts/OMN-10048.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9646.yaml,30,        check_value: 'test -f contracts/OMN-9646.yaml'
+omnibase_infra,/Users/jonah/Code/omni_home/omnibase_infra/contracts/OMN-9215.yaml,40,        check_value: 'test -f contracts/OMN-9215.yaml'
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/plugins/onex/skills/dod_verify/SKILL.md,46,/dod-verify OMN-1234 --contract-path contracts/OMN-1234.yaml
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/plugins/onex/skills/dod_verify/prompt.md,59,- `/dod-verify OMN-1234 --contract-path contracts/OMN-1234.yaml`
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,268,            contract_path="contracts/OMN-5168.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,281,            contract_path="contracts/OMN-5168.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,295,            contract_path="contracts/OMN-5168.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,450,                contract_path="contracts/OMN-5198.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,472,                contract_path="contracts/OMN-5198.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,491,                contract_path="contracts/OMN-5198.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,513,                contract_path="contracts/OMN-5198.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,538,            contract_path="contracts/OMN-9792.yaml"
+omniclaude,/Users/jonah/Code/omni_home/omniclaude/tests/lib/test_dod_evidence_runner.py,559,            contract_path="contracts/OMN-9792.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10131.yaml,27,    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10131.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10131.yaml,71,        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10131.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10130.yaml,21,    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10130.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10130.yaml,53,        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10130.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10464.yaml,21,    command: "uv run validate-yaml contracts/OMN-10464.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10464.yaml,44,        check_value: "uv run validate-yaml contracts/OMN-10464.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-8800.yaml,24,    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8800.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-8800.yaml,56,        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8800.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10491.yaml,20,    command: "uv run validate-yaml contracts/OMN-10491.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10491.yaml,37,        check_value: "uv run validate-yaml contracts/OMN-10491.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-9288.yaml,22,    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-9288.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-9288.yaml,54,        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-9288.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-8401.yaml,29,    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8401.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-8401.yaml,73,        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8401.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10465.yaml,20,    command: "uv run validate-yaml contracts/OMN-10465.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10465.yaml,46,        check_value: "uv run validate-yaml contracts/OMN-10465.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10439.yaml,20,    command: "uv run validate-yaml contracts/OMN-10439.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10439.yaml,43,        check_value: "uv run validate-yaml contracts/OMN-10439.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10438.yaml,20,    command: "uv run validate-yaml contracts/OMN-10438.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10438.yaml,43,        check_value: "uv run validate-yaml contracts/OMN-10438.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10128.yaml,24,    command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10128.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10128.yaml,56,        check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10128.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10457.yaml,30,    command: "uv run validate-yaml contracts/OMN-10457.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10457.yaml,80,        check_value: "uv run validate-yaml contracts/OMN-10457.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10440.yaml,20,    command: "uv run validate-yaml contracts/OMN-10440.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/contracts/OMN-10440.yaml,43,        check_value: "uv run validate-yaml contracts/OMN-10440.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,122,            contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,160,            contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,200,            contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,237,            contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,282,            contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,319,            contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,357,                contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,400,            contract_rel_path="contracts/OMN-9855.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py,441,            contract_rel_path="contracts/OMN-9999.yaml"
+omnimarket,/Users/jonah/Code/omni_home/omnimarket/src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py,223,                repo root  e.g. ``contracts/OMN-9855.yaml``.
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-27-codex-runtime-occ-prestage.md,42,| `OMN-10080` | `onex_change_control` | `contracts/OMN-10080.yaml` | yes | none | none; this is the pre-stage contract itself |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-27-codex-runtime-occ-prestage.md,43,| `OMN-10081` | `omnibase_infra` | `contracts/OMN-10081.yaml` | yes | `protocols`  `envelopes`  `public_api` | `drift/dod_receipts/OMN-10081/dod-001/` through `dod-003/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-27-codex-runtime-occ-prestage.md,44,| `OMN-10082` | `omnibase_infra` | `contracts/OMN-10082.yaml` | yes | `protocols`  `envelopes`  `public_api` | `drift/dod_receipts/OMN-10082/dod-001/` through `dod-003/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-27-codex-runtime-occ-prestage.md,45,| `OMN-10083` | `omnimarket` | `contracts/OMN-10083.yaml` | yes | `protocols`  `public_api` | `drift/dod_receipts/OMN-10083/dod-001/` through `dod-003/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-27-codex-runtime-occ-prestage.md,46,| `OMN-10084` | `omniclaude`  `omnimarket` | `contracts/OMN-10084.yaml` | no | none | `drift/dod_receipts/OMN-10084/dod-001/` through `dod-003/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-27-codex-runtime-occ-prestage.md,47,| `OMN-10085` | `omnibase_infra`  `omnimarket` | `contracts/OMN-10085.yaml` | yes | `protocols`  `envelopes`  `public_api` | `drift/dod_receipts/OMN-10085/dod-001/` through `dod-005/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-26-adversarial-receipt-proof-of-life.md,11,## Section 1: Contract (literal cat of contracts/OMN-9762.yaml)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/CLAUDE.md,71,uv run validate-yaml contracts/OMN-123.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/templates/ticket_contract.template.yaml,10,#   1. Copy this template to contracts/<ticket_id>.yaml (e.g.  contracts/OMN-962.yaml)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/REVIEW_READINESS.md,31,with open("contracts/OMN-123.yaml") as f:
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/REVIEW_READINESS.md,38,poetry run python scripts/validate_yaml.py contracts/OMN-123.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-28-canonical-skill-path-occ-prestage.md,45,| `OMN-10236` | `onex_change_control` | `contracts/OMN-10236.yaml` | yes | none | none; this is the pre-stage contract itself |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-28-canonical-skill-path-occ-prestage.md,46,| `OMN-10237` | `omnibase_infra` | `contracts/OMN-10237.yaml` | yes | `protocols`  `public_api` | `drift/dod_receipts/OMN-10237/dod-001/` through `dod-004/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-28-canonical-skill-path-occ-prestage.md,47,| `OMN-10238` | `omnibase_core`  `omnibase_infra`  `omnimarket`  `omniclaude` | `contracts/OMN-10238.yaml` | yes | `protocols`  `public_api` | `drift/dod_receipts/OMN-10238/dod-001/` through `dod-003/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/docs/tracking/2026-04-28-canonical-skill-path-occ-prestage.md,48,| `OMN-10239` | `omnibase_infra`  `omnimarket`  `omniclaude` | `contracts/OMN-10239.yaml` | yes | none | `drift/dod_receipts/OMN-10239/dod-001/` through `dod-003/` |
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-7484/dod_report.json,7,  "contract_path": "contracts/OMN-7484.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-8603/dod_report.json,7,  "contract_path": "contracts/OMN-8603.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9785/dod_report.json,7,  "contract_path": "contracts/OMN-9785.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9767/dod_report.json,7,  "contract_path": "contracts/OMN-9767.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/scripts/lint_contract_check_values.py,16,    python3 scripts/lint_contract_check_values.py contracts/OMN-1234.yaml [...]
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/scripts/check_dod_evidence_present.py,18,    python3 scripts/check_dod_evidence_present.py contracts/OMN-1234.yaml [...]
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9896/dod_report.json,7,  "contract_path": "contracts/OMN-9896.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/README.md,133,uv run validate-yaml contracts/OMN-9605.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9837/dod_report.json,7,  "contract_path": "contracts/OMN-9837.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9648/dod_report.json,7,  "contract_path": "contracts/OMN-9648.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6238.yaml,47,        check_value: "contracts/OMN-6238.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9774/dod_report.json,7,  "contract_path": "contracts/OMN-9774.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3128.yaml,47,        check_value: "contracts/OMN-3128.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-10426/dod_report.json,7,  "contract_path": "contracts/OMN-10426.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7868.yaml,47,        check_value: "contracts/OMN-7868.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9856/dod_report.json,30,        "message": "OK (175ms): [INFO] Validating 1 file(s)...\n\n[OK] contracts/OMN-9856.yaml (ticket_contract)\n\n[OK] All 1 file(s) valid"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9834/dod_report.json,7,  "contract_path": "contracts/OMN-9834.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-10430/dod_report.json,7,  "contract_path": "contracts/OMN-10430.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4194.yaml,47,        check_value: "contracts/OMN-4194.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-6977/dod_report.json,7,  "contract_path": "contracts/OMN-6977.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5013.yaml,47,        check_value: "contracts/OMN-5013.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/evidence/OMN-9765/dod_report.json,7,  "contract_path": "contracts/OMN-9765.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10281.yaml,20,    command: uv run validate-yaml contracts/OMN-10281.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10457/dod-demo-contract/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10457.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10457/dod-demo-contract/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10457.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10457/dod-demo-contract/command.yaml,16,  [OK] contracts/OMN-10457.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10457/dod-001/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10457.yaml contracts/OMN-10460.yaml contracts/OMN-10461.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10457/dod-001/command.yaml,7,  contracts/OMN-10465.yaml && python -m omnibase_core.validation.receipt_gate_cli --pr-body '' --pr-title
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10457/dod-001/command.yaml,15,probe_command: "uv run validate-yaml contracts/OMN-10457.yaml contracts/OMN-10460.yaml contracts/OMN-10461.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10457/dod-001/command.yaml,16,  contracts/OMN-10465.yaml && python -m omnibase_core.validation.receipt_gate_cli --pr-body '' --pr-title
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10450/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10450.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10450/dod-contract-validate/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10450.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10450/dod-contract-validate/command.yaml,15,probe_stdout: "[OK] contracts/OMN-10450.yaml (ticket_contract)"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5005.yaml,47,        check_value: "contracts/OMN-5005.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4154.yaml,47,        check_value: "contracts/OMN-4154.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8063/dod-occ-contract/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-8063.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8063/dod-occ-contract/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-8063.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8063/dod-occ-contract/command.yaml,16,  [OK] contracts/OMN-8063.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/tests/unit/test_validate_string_versions.py,87,            "contracts/OMN-9593.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10451/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10451.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10451/dod-contract-validate/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10451.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10451/dod-contract-validate/command.yaml,15,probe_stdout: "[OK] contracts/OMN-10451.yaml (ticket_contract)"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9333/dod-002/command.yaml,5,check_value: 'test -f contracts/OMN-9333.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9333/dod-002/command.yaml,10,actual_output: 'contracts/OMN-9333.yaml present in onex_change_control main (merged via PR #300).'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10278.yaml,14,    command: "uv run validate-yaml contracts/OMN-10278.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-595.yaml,47,        check_value: "contracts/OMN-595.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2703.yaml,47,        check_value: "contracts/OMN-2703.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10048/dod-deploy/command.yaml,24,  runtime-paths matcher; the canonical post-redeploy verification command lives in contracts/OMN-10048.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9356/dod-002/command.yaml,5,check_value: test -f contracts/OMN-9356.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10316/dod-occ-self-evidence/command.yaml,6,check_value: git diff --name-only origin/main...HEAD | grep '^contracts/OMN-10316.yaml$'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10316/dod-occ-self-evidence/command.yaml,12,probe_command: git diff --name-only origin/main...HEAD | grep '^contracts/OMN-10316.yaml$'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10316/dod-occ-self-evidence/command.yaml,14,  contracts/OMN-10316.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4213.yaml,47,        check_value: "contracts/OMN-4213.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-917.yaml,47,        check_value: "contracts/OMN-917.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8462.yaml,53,        check_value: "contracts/OMN-8462.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6384.yaml,47,        check_value: "contracts/OMN-6384.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10123/dod-ci-contract/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10123.yaml && rg -n \"Check Plugin\\* lifecycle class
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10123/dod-ci-contract/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10123.yaml && rg -n \"Check Plugin\\* lifecycle class
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10123/dod-ci-contract/command.yaml,17,probe_stdout: "[OK] contracts/OMN-10123.yaml (ticket_contract); .github/workflows/ci.yml and .pre-commit-config.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4141.yaml,47,        check_value: "contracts/OMN-4141.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10343/dod-occ-pr-686/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10343.yaml && CONTRACT_REPO_DIR=$PWD python scripts/ci/run_contract_compliance_check.py
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10343/dod-occ-pr-686/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10343.yaml && CONTRACT_REPO_DIR=$PWD python scripts/ci/run_contract_compliance_check.py
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10343/dod-occ-pr-686/command.yaml,16,  [OK] contracts/OMN-10343.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10422/dod-occ-self-evidence/command.yaml,8,  | grep -Fx contracts/OMN-10422.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10422/dod-occ-self-evidence/command.yaml,16,  | grep -Fx contracts/OMN-10422.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10422/dod-occ-self-evidence/command.yaml,18,  contracts/OMN-10422.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9215/dod-002/command.yaml,5,check_value: 'test -f contracts/OMN-9215.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9215/dod-002/command.yaml,10,actual_output: 'contracts/OMN-9215.yaml present on PR #1353 head (see companion omnibase_infra commit
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9215/dod-002/command.yaml,11,  staging contracts/OMN-9215.yaml).'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9420/dod-002/file_exists.yaml,5,check_value: contracts/OMN-9420.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-7537/dod-005/command.yaml,5,check_value: "test -f contracts/OMN-7537.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10449/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10449.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10449/dod-contract-validate/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10449.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10449/dod-contract-validate/command.yaml,15,probe_stdout: "[OK] contracts/OMN-10449.yaml (ticket_contract)"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9870/dod-004/command.yaml,6,check_value: "grep -q 'validate-yaml contracts/OMN-9870.yaml' drift/dod_receipts/OMN-9870/dod-004/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9870/dod-004/command.yaml,14,probe_command: "cd /redacted/omni_home/omni_worktrees/OMN-9870/omnimarket && uv run validate-yaml contracts/OMN-9870.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9870/dod-004/command.yaml,17,  uv run validate-yaml contracts/OMN-9870.yaml: PASS
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7847.yaml,53,        check_value: "contracts/OMN-7847.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10130/dod-contract-parse/command.yaml,7,  PASS$' drift/dod_receipts/OMN-10130/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10130.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10130/dod-contract-parse/command.yaml,14,probe_command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10130.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10130/dod-contract-parse/command.yaml,16,  contracts/OMN-10130.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10387/dod-002/command.yaml,9,  && python - <<'PY'\nfrom pathlib import Path\nimport yaml\ndata = yaml.safe_load(Path('contracts/OMN-10387.yaml').read_text())\nassert
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10387/dod-002/command.yaml,24,  PASS: focused ruff check passed for the OMN-10387 touched Python files  and contracts/OMN-10387.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9410/dod-002/file_exists.yaml,5,check_value: contracts/OMN-9410.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9241/dod-002/command.yaml,5,check_value: test -f contracts/OMN-9241.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7451.yaml,47,        check_value: "contracts/OMN-7451.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8123.yaml,47,        check_value: "contracts/OMN-8123.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10447/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10447.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10447/dod-contract-validate/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10447.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10447/dod-contract-validate/command.yaml,15,probe_stdout: "[OK] contracts/OMN-10447.yaml (ticket_contract)"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10500/dod-infra-contract/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10500.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10500/dod-infra-contract/command.yaml,12,probe_command: "cd omni_worktrees/OMN-10500/omnibase_infra && uv run validate-yaml contracts/OMN-10500.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10500/dod-infra-contract/command.yaml,16,  [OK] contracts/OMN-10500.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9457/dod-002/file_exists.yaml,5,check_value: contracts/OMN-9457.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9457/dod-002/file_exists.yaml,10,actual_output: contracts/OMN-9457.yaml exists
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,15,    command: "test -f contracts/OMN-10080.yaml && test -f contracts/OMN-10081.yaml && test -f contracts/OMN-10082.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,16,      && test -f contracts/OMN-10083.yaml && test -f contracts/OMN-10084.yaml && test -f contracts/OMN-10085.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,19,    command: "uv run validate-yaml contracts/OMN-10080.yaml contracts/OMN-10081.yaml contracts/OMN-10082.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,20,      contracts/OMN-10083.yaml contracts/OMN-10084.yaml contracts/OMN-10085.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,38,        check_value: "test -f contracts/OMN-10080.yaml && test -f contracts/OMN-10081.yaml && test -f
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,39,          contracts/OMN-10082.yaml && test -f contracts/OMN-10083.yaml && test -f contracts/OMN-10084.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,40,          && test -f contracts/OMN-10085.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,46,        check_value: "uv run validate-yaml contracts/OMN-10080.yaml contracts/OMN-10081.yaml contracts/OMN-10082.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10080.yaml,47,          contracts/OMN-10083.yaml contracts/OMN-10084.yaml contracts/OMN-10085.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10500/dod-occ-pr-684/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10500.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10500/dod-occ-pr-684/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10500.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10500/dod-occ-pr-684/command.yaml,14,  [OK] contracts/OMN-10500.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9411/dod-002/command.yaml,5,check_value: test -f contracts/OMN-9411.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7452.yaml,47,        check_value: "contracts/OMN-7452.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8838/dod-002/command.yaml,5,check_value: 'test -f contracts/OMN-8838.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8838/dod-002/command.yaml,10,actual_output: 'contracts/OMN-8838.yaml present in onex_change_control main (merged via PR #300).'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10281/dod-003/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10281.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10281/dod-003/command.yaml,12,probe_command: "cd omni_worktrees/OMN-10281/omnibase_infra && uv run validate-yaml contracts/OMN-10281.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10281/dod-003/command.yaml,16,  [OK] contracts/OMN-10281.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3150.yaml,47,        check_value: "contracts/OMN-3150.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8131/dod-005/command.yaml,13,probe_command: "review deploy-gate smoke plan in contracts/OMN-8131.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8800/dod-contract-parse/command.yaml,7,  grep -q 'contracts/OMN-8800.yaml' drift/dod_receipts/OMN-8800/dod-contract-parse/command.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8800/dod-contract-parse/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-8800.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8800/dod-contract-parse/command.yaml,17,  [OK] contracts/OMN-8800.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8800/dod-contract-parse/command.yaml,20,actual_output: "PASS: repo-local contracts/OMN-8800.yaml validated on omnimarket PR #505 head f06907c4c0eb5e8c4757c02af51deba9c8123b54."
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8131/dod-003/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-8131.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8131/dod-003/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-8131.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8131/dod-003/command.yaml,15,  [OK] contracts/OMN-8131.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-632.yaml,47,        check_value: "contracts/OMN-632.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10125/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10125.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10125/dod-contract-validate/command.yaml,15,probe_command: "uv run validate-yaml contracts/OMN-10125.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10125/dod-contract-validate/command.yaml,18,  [OK] contracts/OMN-10125.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10131/dod-contract-parse/command.yaml,7,  PASS$' drift/dod_receipts/OMN-10131/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10131.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10131/dod-contract-parse/command.yaml,14,probe_command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10131.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10131/dod-contract-parse/command.yaml,16,  contracts/OMN-10131.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8401/dod-contract-parse/command.yaml,7,  PASS$' drift/dod_receipts/OMN-8401/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-8401.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8401/dod-contract-parse/command.yaml,14,probe_command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-8401.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8401/dod-contract-parse/command.yaml,16,  contracts/OMN-8401.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-645.yaml,47,        check_value: "contracts/OMN-645.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9727/dod-001/command.yaml,15,   contracts/OMN-9727.yaml                            |  22 ++++
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8461.yaml,53,        check_value: "contracts/OMN-8461.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-7839/dod-005/command.yaml,5,check_value: test -f contracts/OMN-7839.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9335.yaml,36,        check_value: test -f contracts/OMN-9335.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8800.yaml,29,      grep -q 'contracts/OMN-8800.yaml' drift/dod_receipts/OMN-8800/dod-contract-parse/command.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8800.yaml,66,          && grep -q 'contracts/OMN-8800.yaml' drift/dod_receipts/OMN-8800/dod-contract-parse/command.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-002/command.yaml,6,check_value: "test -f contracts/OMN-9344.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-002/command.yaml,12,probe_command: "cd omni_worktrees/OMN-9344/omnibase_compat_clean && test -f contracts/OMN-9344.yaml &&
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-002/command.yaml,13,  printf 'contracts/OMN-9344.yaml present\n'"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-002/command.yaml,15,  contracts/OMN-9344.yaml present
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-002/command.yaml,16,actual_output: "PASS: repo-local contracts/OMN-9344.yaml is present on omnibase_compat PR #81 head 97365b966c887907c45f77244232e2a28279b773."
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-occ-pr-685/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-9344.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-occ-pr-685/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-9344.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9344/dod-occ-pr-685/command.yaml,14,  [OK] contracts/OMN-9344.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5009.yaml,47,        check_value: "contracts/OMN-5009.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9398.yaml,29,        check_value: "test -f contracts/OMN-9398.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7537.yaml,52,        check_value: "test -f contracts/OMN-7537.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10278/dod-001/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10278.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10278/dod-001/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10278.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10278/dod-001/command.yaml,16,  [OK] contracts/OMN-10278.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7872.yaml,47,        check_value: "contracts/OMN-7872.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omnimarket-evidence-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omnimarket-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omnimarket-evidence-validate/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10530.yaml && uv run python -m omnibase_core.validation.validator_occ_merge_eligibility
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3077.yaml,47,        check_value: "contracts/OMN-3077.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10445/dod-deploy/command.yaml,13,probe_command: "test -f contracts/OMN-10445.yaml && grep -q 'docker exec omninode-runtime' contracts/OMN-10445.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10445/dod-deploy/command.yaml,15,  post-merge deploy validation command recorded in contracts/OMN-10445.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-spi-evidence-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-spi-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-spi-evidence-validate/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10530.yaml && uv run python -m omnibase_core.validation.receipt_gate_cli
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-spi-evidence-validate/command.yaml,20,  [OK] contracts/OMN-10530.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10489/dod-002/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10489.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10489/dod-002/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10489.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10489/dod-002/command.yaml,15,  [OK] contracts/OMN-10489.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10489/dod-deploy/command.yaml,13,probe_command: "review deploy-gate smoke plan in contracts/OMN-10489.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6388.yaml,53,        check_value: "contracts/OMN-6388.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omniclaude-evidence-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omniclaude-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omniclaude-evidence-validate/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10530.yaml && uv run python -m omnibase_core.validation.validator_occ_merge_eligibility
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omniintelligence-evidence-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omniintelligence-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omniintelligence-evidence-validate/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10530.yaml && uv run python -m omnibase_core.validation.validator_occ_merge_eligibility
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10452/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10452.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10452/dod-contract-validate/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10452.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10452/dod-contract-validate/command.yaml,15,probe_stdout: "[OK] contracts/OMN-10452.yaml (ticket_contract)"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3146.yaml,47,        check_value: "contracts/OMN-3146.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-evidence-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-evidence-validate/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10530.yaml && uv run python -m omnibase_core.validation.receipt_gate_cli
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-evidence-validate/command.yaml,19,  [OK] contracts/OMN-10530.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7943.yaml,47,        check_value: "contracts/OMN-7943.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5587.yaml,47,        check_value: "contracts/OMN-5587.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9592/dod-003/command.yaml,5,check_value: "PYTHONPATH=src uv run validate-yaml contracts/OMN-9592.yaml && PYTHONPATH=src uv run python
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9592/dod-003/command.yaml,12,actual_output: "contracts/OMN-9592.yaml valid; deploy-gate simulation passed for OMN-9592 without a bypass
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2324.yaml,47,        check_value: "contracts/OMN-2324.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9550/dod-002/file_exists.yaml,10,actual_output: "omnibase_infra PR #1388 contains contracts/OMN-9550.yaml and was pushed through normal
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omnimemory-evidence-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omnimemory-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-omnimemory-evidence-validate/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10530.yaml && uv run python -m omnibase_core.validation.validator_occ_merge_eligibility
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9556/dod-002/file_exists.yaml,14,actual_output: "omnibase_infra PR #1391 contains contracts/OMN-9556.yaml; all substantive CI checks were
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9557/dod-003/file_exists.yaml,10,actual_output: "omnibase_infra PR #1394 contains contracts/OMN-9557.yaml  is stacked on OMN-9550  and
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10464/dod-003/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10464.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10464/dod-003/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10464.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10464/dod-003/command.yaml,16,  [OK] contracts/OMN-10464.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-infra-evidence-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-infra-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-infra-evidence-validate/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10530.yaml && uv run python -m omnibase_core.validation.receipt_gate_cli
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10530/dod-occ-infra-evidence-validate/command.yaml,20,  [OK] contracts/OMN-10530.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4142.yaml,47,        check_value: "contracts/OMN-4142.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-825.yaml,47,        check_value: "contracts/OMN-825.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9398/dod-002/command.yaml,5,check_value: 'test -f contracts/OMN-9398.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10490/dod-occ-pr-682/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10490.yaml && python YAML parse for OMN-10490 contract
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10490/dod-occ-pr-682/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10490.yaml && python YAML parse for contracts/OMN-10490.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10490/dod-occ-pr-682/command.yaml,20,  [OK] contracts/OMN-10490.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10490/dod-occ-pr-682/command.yaml,21,  YAML parse passed for contracts/OMN-10490.yaml and OMN-10490 receipts.
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10491/dod-occ-pr-683/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10491.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10491/dod-occ-pr-683/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10491.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10491/dod-occ-pr-683/command.yaml,14,  [OK] contracts/OMN-10491.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10448/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10448.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10448/dod-contract-validate/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10448.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10448/dod-contract-validate/command.yaml,15,probe_stdout: "[OK] contracts/OMN-10448.yaml (ticket_contract)"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8024.yaml,47,        check_value: "contracts/OMN-8024.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-596/dod-002/command.yaml,5,check_value: test -f contracts/OMN-596.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-596/dod-002/command.yaml,10,actual_output: "contracts/OMN-596.yaml present in onex_change_control (tracked at HEAD of main; updated
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-8843/dod-002/file_exists.yaml,5,check_value: contracts/OMN-8843.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10464.yaml,24,    command: "uv run validate-yaml contracts/OMN-10464.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10464.yaml,53,        check_value: "uv run validate-yaml contracts/OMN-10464.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3149.yaml,47,        check_value: "contracts/OMN-3149.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10453/dod-contract-validate/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10453.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10453/dod-contract-validate/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10453.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10453/dod-contract-validate/command.yaml,16,probe_stdout: "[OK] contracts/OMN-10453.yaml (ticket_contract)"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3111.yaml,47,        check_value: "contracts/OMN-3111.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10353/dod-occ-pr-691/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10353.yaml && YAML parse for OMN-10353 contract and receipts
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10353/dod-occ-pr-691/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10353.yaml && ruby -e 'require \"yaml\"; ARGV.each
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10353/dod-occ-pr-691/command.yaml,15,  }' contracts/OMN-10353.yaml drift/dod_receipts/OMN-10353/dod-001/command.yaml drift/dod_receipts/OMN-10353/dod-occ-pr-691/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10353/dod-occ-pr-691/command.yaml,22,  [OK] contracts/OMN-10353.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10353/dod-occ-pr-691/command.yaml,24,  contracts/OMN-10353.yaml OMN-10353 contract
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6313.yaml,47,        check_value: "contracts/OMN-6313.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-7205/dod-occ-self-evidence/command.yaml,8,  | grep -Fx contracts/OMN-7205.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-7205/dod-occ-self-evidence/command.yaml,16,  | grep -Fx contracts/OMN-7205.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-7205/dod-occ-self-evidence/command.yaml,18,  contracts/OMN-7205.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10519/dod-occ-pr-688/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10519.yaml && python YAML parse for OMN-10519 contract
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10519/dod-occ-pr-688/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10519.yaml && uv run python - <<'PY'\nimport yaml\nfrom
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10519/dod-occ-pr-688/command.yaml,14,  pathlib import Path\nfor path in [Path('contracts/OMN-10519.yaml')  Path('drift/dod_receipts/OMN-10519/dod-001/command.yaml')
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10519/dod-occ-pr-688/command.yaml,23,  [OK] contracts/OMN-10519.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10519/dod-occ-pr-688/command.yaml,25,  contracts/OMN-10519.yaml OMN-10519 contract
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10126.yaml,32,    command: "uv run validate-yaml contracts/OMN-10126.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10521/dod-occ-pr-687/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10521.yaml && grep checks for OMN-10521 receipts"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10521/dod-occ-pr-687/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10521.yaml && CONTRACT_REPO_DIR=$PWD grep checks referenced
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10521/dod-occ-pr-687/command.yaml,13,  by contracts/OMN-10521.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10521/dod-occ-pr-687/command.yaml,15,  [OK] contracts/OMN-10521.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9151/dod-003/command.yaml,5,check_value: "contracts/OMN-9151.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-001/command.yaml,8,  run validate-yaml contracts/OMN-10518.yaml && VALIDATE_PR_FILES=$'docker/Dockerfile.runtime\\ncontracts/OMN-10518.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-001/command.yaml,19,  run validate-yaml contracts/OMN-10518.yaml && VALIDATE_PR_FILES=$'docker/Dockerfile.runtime\\ncontracts/OMN-10518.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-001/command.yaml,26,  [OK] contracts/OMN-10518.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-occ-pr-690/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10518.yaml && YAML parse for OMN-10518 contract and receipts
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-occ-pr-690/command.yaml,13,probe_command: "uv run validate-yaml contracts/OMN-10518.yaml && python - <<'PY'\nimport yaml\nfrom pathlib
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-occ-pr-690/command.yaml,14,  import Path\nfor path in [Path('contracts/OMN-10518.yaml')  Path('drift/dod_receipts/OMN-10518/dod-001/command.yaml')
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-occ-pr-690/command.yaml,23,  [OK] contracts/OMN-10518.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10518/dod-occ-pr-690/command.yaml,25,  contracts/OMN-10518.yaml OMN-10518 contract
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10349/dod-001/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10349.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10349/dod-001/command.yaml,12,probe_command: "uv run validate-yaml contracts/OMN-10349.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10349/dod-001/command.yaml,16,  [OK] contracts/OMN-10349.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-596.yaml,31,        check_value: "test -f contracts/OMN-596.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9401.yaml,29,        check_value: "test -f contracts/OMN-9401.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10130.yaml,28,      PASS$' drift/dod_receipts/OMN-10130/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10130.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10130.yaml,73,          '^status: PASS$' drift/dod_receipts/OMN-10130/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10130.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4730.yaml,47,        check_value: "contracts/OMN-4730.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4360.yaml,47,        check_value: "contracts/OMN-4360.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9288/dod-contract-parse/command.yaml,6,check_value: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-9288.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9288/dod-contract-parse/command.yaml,12,probe_command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-9288.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9288/dod-contract-parse/command.yaml,15,probe_stdout: "contracts/OMN-9288.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10382/dod-infra-migration/command.yaml,16,  It adds repo-local contracts/OMN-10382.yaml  migration 077  schema fingerprint refresh  recompute pricing
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8601.yaml,47,        check_value: "contracts/OMN-8601.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10128/dod-contract-parse/command.yaml,7,  PASS$' drift/dod_receipts/OMN-10128/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10128.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10128/dod-contract-parse/command.yaml,14,probe_command: "uv run python - <<'PY'\nimport yaml\nfrom pathlib import Path\npath = Path('contracts/OMN-10128.yaml')\nyaml.safe_load(path.read_text())\nprint(path)\nPY"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10128/dod-contract-parse/command.yaml,16,  contracts/OMN-10128.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9856.yaml,48,          && uv run validate-yaml contracts/OMN-9856.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9425/dod-002/command.yaml,5,check_value: 'test -f contracts/OMN-9425.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9425/dod-002/command.yaml,10,actual_output: 'contracts/OMN-9425.yaml present in onex_change_control (landed via this PR).'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9292.yaml,34,        check_value: 'test -f contracts/OMN-9292.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-1419/dod-002/file_exists.yaml,5,check_value: contracts/OMN-1419.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-1419/dod-002/file_exists.yaml,10,actual_output: "file exists: contracts/OMN-1419.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9401/dod-002/command.yaml,5,check_value: test -f contracts/OMN-9401.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10126/dod-omniclaude-contract/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10126.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10126/dod-omniclaude-contract/command.yaml,15,probe_command: "uv run validate-yaml contracts/OMN-10126.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10126/dod-omniclaude-contract/command.yaml,18,  [OK] contracts/OMN-10126.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4789.yaml,47,        check_value: "contracts/OMN-4789.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10126/dod-omnimarket-contract/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10126.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10126/dod-omnimarket-contract/command.yaml,15,probe_command: "uv run validate-yaml contracts/OMN-10126.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10126/dod-omnimarket-contract/command.yaml,18,  [OK] contracts/OMN-10126.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-7384/dod-002/command.yaml,21,  - uv run validate-yaml contracts/OMN-7384.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-7384/dod-002/command.yaml,22,  - uv run python scripts/check_dod_evidence_present.py contracts/OMN-7384.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3109.yaml,47,        check_value: "contracts/OMN-3109.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10131.yaml,32,      PASS$' drift/dod_receipts/OMN-10131/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10131.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10131.yaml,85,          '^status: PASS$' drift/dod_receipts/OMN-10131/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10131.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9856/dod-003/command.yaml,6,check_value: uv run validate-yaml contracts/OMN-9856.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9856/dod-003/command.yaml,12,probe_command: uv run validate-yaml contracts/OMN-9856.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-9400/dod-002/command.yaml,5,check_value: test -f contracts/OMN-9400.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-002/command.yaml,6,check_value: "uv run validate-yaml contracts/OMN-10169.yaml && uv lock --check && uv run --with 'omnibase-spi==0.20.5'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-002/command.yaml,9,  pre-commit run --files pyproject.toml contracts/OMN-10169.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-002/command.yaml,15,probe_command: "uv run validate-yaml contracts/OMN-10169.yaml && uv lock --check && uv run --with 'omnibase-spi==0.20.5'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-002/command.yaml,18,  pre-commit run --files pyproject.toml contracts/OMN-10169.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-002/command.yaml,20,  [OK] contracts/OMN-10169.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-003/command.yaml,6,check_value: "uv lock && uv run validate-yaml contracts/OMN-10169.yaml && uv lock --check && uv run pytest
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-003/command.yaml,10,  =' pyproject.toml && git diff --check && pre-commit run --files pyproject.toml uv.lock contracts/OMN-10169.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-003/command.yaml,12,  && grep -F 'deploy-gate / deploy-gate' contracts/OMN-10169.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-003/command.yaml,18,probe_command: "uv lock && uv run validate-yaml contracts/OMN-10169.yaml && uv lock --check && uv run
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-003/command.yaml,22,  =' pyproject.toml && git diff --check && pre-commit run --files pyproject.toml uv.lock contracts/OMN-10169.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-003/command.yaml,24,  && grep -F 'deploy-gate / deploy-gate' contracts/OMN-10169.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10169/dod-003/command.yaml,26,  [OK] contracts/OMN-10169.yaml (ticket_contract)
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-10127/dod-validator-precommit/command.yaml,15,  .github/workflows/ci.yml .pre-commit-config.yaml contracts/OMN-10127.yaml scripts/validation/event_registry_drift_baseline.txt
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/drift/dod_receipts/OMN-435/dod-005/command.yaml,5,check_value: "test -f contracts/OMN-435.yaml && echo EXISTS"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4355.yaml,47,        check_value: "contracts/OMN-4355.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9400.yaml,29,        check_value: "test -f contracts/OMN-9400.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4731.yaml,47,        check_value: "contracts/OMN-4731.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8712.yaml,31,        check_value: 'test -f contracts/OMN-8712.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9142.yaml,31,        check_value: 'test -f contracts/OMN-9142.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5114.yaml,47,        check_value: "contracts/OMN-5114.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3125.yaml,47,        check_value: "contracts/OMN-3125.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3099.yaml,47,        check_value: "contracts/OMN-3099.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8293.yaml,47,        check_value: "contracts/OMN-8293.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8401.yaml,36,      PASS$' drift/dod_receipts/OMN-8401/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-8401.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8401.yaml,99,          PASS$' drift/dod_receipts/OMN-8401/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-8401.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8458.yaml,47,        check_value: "contracts/OMN-8458.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7873.yaml,47,        check_value: "contracts/OMN-7873.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7536.yaml,47,        check_value: "contracts/OMN-7536.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8456.yaml,47,        check_value: "contracts/OMN-8456.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1323.yaml,47,        check_value: "contracts/OMN-1323.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3164.yaml,47,        check_value: "contracts/OMN-3164.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5008.yaml,47,        check_value: "contracts/OMN-5008.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6307.yaml,47,        check_value: "contracts/OMN-6307.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3152.yaml,47,        check_value: "contracts/OMN-3152.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2485.yaml,47,        check_value: "contracts/OMN-2485.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4140.yaml,47,        check_value: "contracts/OMN-4140.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5006.yaml,47,        check_value: "contracts/OMN-5006.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3056.yaml,47,        check_value: "contracts/OMN-3056.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8067.yaml,47,        check_value: "contracts/OMN-8067.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5593.yaml,47,        check_value: "contracts/OMN-5593.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6311.yaml,47,        check_value: "contracts/OMN-6311.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9420.yaml,29,        check_value: "contracts/OMN-9420.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6385.yaml,47,        check_value: "contracts/OMN-6385.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-500.yaml,47,        check_value: "contracts/OMN-500.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6794.yaml,47,        check_value: "contracts/OMN-6794.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10500.yaml,28,    command: "cd omni_worktrees/OMN-10500/omnibase_infra && uv run validate-yaml contracts/OMN-10500.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10500.yaml,79,          && grep -q 'contracts/OMN-10500.yaml (ticket_contract)' \"$CONTRACT_REPO_DIR/drift/dod_receipts/OMN-10500/dod-infra-contract/command.yaml\""
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5012.yaml,47,        check_value: "contracts/OMN-5012.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3129.yaml,47,        check_value: "contracts/OMN-3129.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9344.yaml,34,        check_value: test -f contracts/OMN-9344.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8410.yaml,47,        check_value: "contracts/OMN-8410.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5367.yaml,47,        check_value: "contracts/OMN-5367.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5737.yaml,47,        check_value: "contracts/OMN-5737.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3175.yaml,47,        check_value: "contracts/OMN-3175.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8447.yaml,47,        check_value: "contracts/OMN-8447.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5275.yaml,47,        check_value: "contracts/OMN-5275.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3030.yaml,47,        check_value: "contracts/OMN-3030.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-663.yaml,47,        check_value: "contracts/OMN-663.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4188.yaml,47,        check_value: "contracts/OMN-4188.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7527.yaml,47,        check_value: "contracts/OMN-7527.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7462.yaml,47,        check_value: "contracts/OMN-7462.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4976.yaml,47,        check_value: "contracts/OMN-4976.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6875.yaml,47,        check_value: "contracts/OMN-6875.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-435.yaml,51,        check_value: "test -f contracts/OMN-435.yaml && echo EXISTS"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4130.yaml,47,        check_value: "contracts/OMN-4130.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2359.yaml,47,        check_value: "contracts/OMN-2359.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7788.yaml,47,        check_value: "contracts/OMN-7788.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2709.yaml,47,        check_value: "contracts/OMN-2709.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3163.yaml,47,        check_value: "contracts/OMN-3163.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4720.yaml,47,        check_value: "contracts/OMN-4720.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4736.yaml,47,        check_value: "contracts/OMN-4736.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9411.yaml,29,        check_value: "test -f contracts/OMN-9411.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7839.yaml,47,        check_value: "contracts/OMN-7839.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4184.yaml,47,        check_value: "contracts/OMN-4184.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7213.yaml,47,        check_value: "contracts/OMN-7213.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7897.yaml,47,        check_value: "contracts/OMN-7897.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9870.yaml,62,        check_value: "grep -q 'validate-yaml contracts/OMN-9870.yaml' drift/dod_receipts/OMN-9870/dod-004/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8373.yaml,47,        check_value: "contracts/OMN-8373.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9348.yaml,31,        check_value: 'test -f contracts/OMN-9348.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8627.yaml,47,        check_value: "contracts/OMN-8627.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3883.yaml,47,        check_value: "contracts/OMN-3883.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6382.yaml,47,        check_value: "contracts/OMN-6382.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3114.yaml,47,        check_value: "contracts/OMN-3114.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4393.yaml,47,        check_value: "contracts/OMN-4393.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6309.yaml,47,        check_value: "contracts/OMN-6309.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8125.yaml,47,        check_value: "contracts/OMN-8125.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5594.yaml,47,        check_value: "contracts/OMN-5594.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4106.yaml,47,        check_value: "contracts/OMN-4106.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8349.yaml,47,        check_value: "contracts/OMN-8349.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7454.yaml,47,        check_value: "contracts/OMN-7454.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-643.yaml,47,        check_value: "contracts/OMN-643.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-642.yaml,47,        check_value: "contracts/OMN-642.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9333.yaml,34,        check_value: test -f contracts/OMN-9333.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-838.yaml,47,        check_value: "contracts/OMN-838.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9277.yaml,25,        check_value: 'test -f contracts/OMN-9278.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6301.yaml,47,        check_value: "contracts/OMN-6301.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3103.yaml,47,        check_value: "contracts/OMN-3103.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8098.yaml,47,        check_value: "contracts/OMN-8098.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8481.yaml,47,        check_value: "contracts/OMN-8481.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5595.yaml,47,        check_value: "contracts/OMN-5595.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5700.yaml,47,        check_value: "contracts/OMN-5700.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9290.yaml,31,        check_value: 'test -f contracts/OMN-9290.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3904.yaml,47,        check_value: "contracts/OMN-3904.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7414.yaml,47,        check_value: "contracts/OMN-7414.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-711.yaml,47,        check_value: "contracts/OMN-711.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6383.yaml,47,        check_value: "contracts/OMN-6383.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8372.yaml,47,        check_value: "contracts/OMN-8372.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6317.yaml,47,        check_value: "contracts/OMN-6317.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8124.yaml,47,        check_value: "contracts/OMN-8124.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7455.yaml,47,        check_value: "contracts/OMN-7455.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2207.yaml,47,        check_value: "contracts/OMN-2207.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7906.yaml,53,        check_value: "contracts/OMN-7906.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10530.yaml,48,        check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10530.yaml,84,        check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-spi-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10530.yaml,132,        check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-infra-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10530.yaml,158,        check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omniclaude-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10530.yaml,177,        check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omniintelligence-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10530.yaml,195,        check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omnimemory-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10530.yaml,217,        check_value: "uv run validate-yaml contracts/OMN-10530.yaml && grep -q 'status: PASS' drift/dod_receipts/OMN-10530/dod-occ-omnimarket-evidence-validate/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4193.yaml,47,        check_value: "contracts/OMN-4193.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-843.yaml,47,        check_value: "contracts/OMN-843.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4756.yaml,47,        check_value: "contracts/OMN-4756.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4202.yaml,47,        check_value: "contracts/OMN-4202.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9349.yaml,33,        check_value: 'test -f contracts/OMN-9349.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7896.yaml,47,        check_value: "contracts/OMN-7896.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8626.yaml,47,        check_value: "contracts/OMN-8626.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4717.yaml,47,        check_value: "contracts/OMN-4717.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8069.yaml,53,        check_value: "contracts/OMN-8069.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9294.yaml,31,        check_value: 'test -f contracts/OMN-9294.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4737.yaml,47,        check_value: "contracts/OMN-4737.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9410.yaml,29,        check_value: "contracts/OMN-9410.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1411.yaml,47,        check_value: "contracts/OMN-1411.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10422.yaml,48,          && grep -q 'contracts/OMN-10422.yaml' drift/dod_receipts/OMN-10422/dod-occ-self-evidence/command.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7336.yaml,47,        check_value: "contracts/OMN-7336.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2358.yaml,47,        check_value: "contracts/OMN-2358.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3027.yaml,47,        check_value: "contracts/OMN-3027.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4131.yaml,47,        check_value: "contracts/OMN-4131.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10349.yaml,17,    command: "uv run validate-yaml contracts/OMN-10349.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3820.yaml,47,        check_value: "contracts/OMN-3820.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9241.yaml,30,        check_value: "test -f contracts/OMN-9241.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3123.yaml,47,        check_value: "contracts/OMN-3123.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8368.yaml,32,        check_value: 'test -f contracts/OMN-8368.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5274.yaml,47,        check_value: "contracts/OMN-5274.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9151.yaml,38,        check_value: 'contracts/OMN-9151.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5736.yaml,47,        check_value: "contracts/OMN-5736.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9278.yaml,32,        check_value: 'test -f contracts/OMN-9278.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3008.yaml,47,        check_value: "contracts/OMN-3008.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10125.yaml,28,    command: "uv run validate-yaml contracts/OMN-10125.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7335.yaml,47,        check_value: "contracts/OMN-7335.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6318.yaml,53,        check_value: "contracts/OMN-6318.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6461.yaml,47,        check_value: "contracts/OMN-6461.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4132.yaml,47,        check_value: "contracts/OMN-4132.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9215.yaml,37,        check_value: 'test -f contracts/OMN-9215.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4165.yaml,47,        check_value: "contracts/OMN-4165.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8041.yaml,47,        check_value: "contracts/OMN-8041.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3209.yaml,47,        check_value: "contracts/OMN-3209.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5257.yaml,47,        check_value: "contracts/OMN-5257.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2204.yaml,47,        check_value: "contracts/OMN-2204.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8478.yaml,47,        check_value: "contracts/OMN-8478.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8465.yaml,53,        check_value: "contracts/OMN-8465.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8629.yaml,47,        check_value: "contracts/OMN-8629.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9350.yaml,31,        check_value: test -f contracts/OMN-9350.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4780.yaml,47,        check_value: "contracts/OMN-4780.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7905.yaml,53,        check_value: "contracts/OMN-7905.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3161.yaml,47,        check_value: "contracts/OMN-3161.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8445.yaml,47,        check_value: "contracts/OMN-8445.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8412.yaml,47,        check_value: "contracts/OMN-8412.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8598.yaml,47,        check_value: "contracts/OMN-8598.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2711.yaml,47,        check_value: "contracts/OMN-2711.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7575.yaml,47,        check_value: "contracts/OMN-7575.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-636.yaml,53,        check_value: "contracts/OMN-636.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7397.yaml,47,        check_value: "contracts/OMN-7397.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4738.yaml,47,        check_value: "contracts/OMN-4738.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7944.yaml,47,        check_value: "contracts/OMN-7944.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9425.yaml,34,        check_value: test -f contracts/OMN-9425.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4329.yaml,47,        check_value: "contracts/OMN-4329.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4352.yaml,47,        check_value: "contracts/OMN-4352.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1412.yaml,47,        check_value: "contracts/OMN-1412.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3213.yaml,47,        check_value: "contracts/OMN-3213.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4135.yaml,47,        check_value: "contracts/OMN-4135.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6380.yaml,47,        check_value: "contracts/OMN-6380.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4186.yaml,47,        check_value: "contracts/OMN-4186.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8625.yaml,47,        check_value: "contracts/OMN-8625.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2947.yaml,47,        check_value: "contracts/OMN-2947.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4715.yaml,47,        check_value: "contracts/OMN-4715.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7990.yaml,47,        check_value: "contracts/OMN-7990.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8624.yaml,47,        check_value: "contracts/OMN-8624.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4191.yaml,47,        check_value: "contracts/OMN-4191.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10457.yaml,13,    command: "uv run validate-yaml contracts/OMN-10457.yaml contracts/OMN-10460.yaml contracts/OMN-10461.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10457.yaml,14,      contracts/OMN-10465.yaml && python -m omnibase_core.validation.receipt_gate_cli --pr-body '' --pr-title
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1419.yaml,29,        check_value: "contracts/OMN-1419.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1690.yaml,47,        check_value: "contracts/OMN-1690.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2454.yaml,47,        check_value: "contracts/OMN-2454.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8409.yaml,47,        check_value: "contracts/OMN-8409.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4719.yaml,47,        check_value: "contracts/OMN-4719.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3101.yaml,47,        check_value: "contracts/OMN-3101.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3033.yaml,47,        check_value: "contracts/OMN-3033.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4980.yaml,47,        check_value: "contracts/OMN-4980.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7877.yaml,47,        check_value: "contracts/OMN-7877.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3131.yaml,47,        check_value: "contracts/OMN-3131.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4133.yaml,47,        check_value: "contracts/OMN-4133.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7343.yaml,47,        check_value: "contracts/OMN-7343.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2710.yaml,47,        check_value: "contracts/OMN-2710.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8628.yaml,47,        check_value: "contracts/OMN-8628.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6303.yaml,47,        check_value: "contracts/OMN-6303.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8413.yaml,47,        check_value: "contracts/OMN-8413.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7590.yaml,47,        check_value: "contracts/OMN-7590.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10066.yaml,56,        check_value: "test -f contracts/OMN-10066.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6876.yaml,47,        check_value: "contracts/OMN-6876.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4162.yaml,47,        check_value: "contracts/OMN-4162.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8038.yaml,41,        check_value: "contracts/OMN-8038.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5743.yaml,47,        check_value: "contracts/OMN-5743.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-123.yaml,47,        check_value: "contracts/OMN-123.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9150.yaml,31,        check_value: 'test -f contracts/OMN-9150.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1707.yaml,47,        check_value: "contracts/OMN-1707.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8463.yaml,47,        check_value: "contracts/OMN-8463.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4353.yaml,47,        check_value: "contracts/OMN-4353.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10128.yaml,32,      PASS$' drift/dod_receipts/OMN-10128/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10128.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10128.yaml,83,          '^status: PASS$' drift/dod_receipts/OMN-10128/dod-contract-parse/command.yaml && grep -q 'contracts/OMN-10128.yaml'
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3002.yaml,47,        check_value: "contracts/OMN-3002.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3824.yaml,47,        check_value: "contracts/OMN-3824.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5302.yaml,47,        check_value: "contracts/OMN-5302.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10169.yaml,17,    command: "cd ../omnimarket && uv run validate-yaml contracts/OMN-10169.yaml && uv lock --check &&
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10169.yaml,19,      omnibase_infra checkout}\" pre-commit run --files pyproject.toml contracts/OMN-10169.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10169.yaml,22,    command: "cd ../omnibase_infra && uv run validate-yaml contracts/OMN-10169.yaml && uv lock --check
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10169.yaml,24,      -q && git diff --check && pre-commit run --files pyproject.toml uv.lock contracts/OMN-10169.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10169.yaml,26,      && grep -F 'deploy-gate / deploy-gate' contracts/OMN-10169.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7780.yaml,47,        check_value: "contracts/OMN-7780.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2453.yaml,47,        check_value: "contracts/OMN-2453.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4138.yaml,47,        check_value: "contracts/OMN-4138.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6312.yaml,47,        check_value: "contracts/OMN-6312.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8176.yaml,47,        check_value: "contracts/OMN-8176.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6847.yaml,47,        check_value: "contracts/OMN-6847.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4180.yaml,47,        check_value: "contracts/OMN-4180.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-7867.yaml,47,        check_value: "contracts/OMN-7867.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3829.yaml,47,        check_value: "contracts/OMN-3829.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6386.yaml,47,        check_value: "contracts/OMN-6386.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10387.yaml,25,      pathlib import Path\nimport yaml\ndata = yaml.safe_load(Path('contracts/OMN-10387.yaml').read_text())\nassert
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8459.yaml,47,        check_value: "contracts/OMN-8459.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5007.yaml,47,        check_value: "contracts/OMN-5007.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6308.yaml,47,        check_value: "contracts/OMN-6308.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-2465.yaml,47,        check_value: "contracts/OMN-2465.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4732.yaml,47,        check_value: "contracts/OMN-4732.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8838.yaml,31,        check_value: test -f contracts/OMN-8838.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-666.yaml,47,        check_value: "contracts/OMN-666.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3059.yaml,47,        check_value: "contracts/OMN-3059.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3798.yaml,47,        check_value: "contracts/OMN-3798.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1859.yaml,47,        check_value: "contracts/OMN-1859.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8843.yaml,32,        check_value: "contracts/OMN-8843.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-4134.yaml,47,        check_value: "contracts/OMN-4134.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-9356.yaml,31,        check_value: test -f contracts/OMN-9356.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10061.yaml,31,        check_value: test -f contracts/OMN-10061.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3126.yaml,47,        check_value: "contracts/OMN-3126.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-5732.yaml,47,        check_value: "contracts/OMN-5732.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,15,    command: "test -f contracts/OMN-10236.yaml && test -f contracts/OMN-10237.yaml && test -f contracts/OMN-10238.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,16,      && test -f contracts/OMN-10239.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,19,    command: "uv run validate-yaml contracts/OMN-10236.yaml contracts/OMN-10237.yaml contracts/OMN-10238.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,20,      contracts/OMN-10239.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,41,        check_value: "test -f contracts/OMN-10236.yaml && test -f contracts/OMN-10237.yaml && test -f
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,42,          contracts/OMN-10238.yaml && test -f contracts/OMN-10239.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,48,        check_value: "uv run validate-yaml contracts/OMN-10236.yaml contracts/OMN-10237.yaml contracts/OMN-10238.yaml
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-10236.yaml,49,          contracts/OMN-10239.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3170.yaml,47,        check_value: "contracts/OMN-3170.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-3075.yaml,47,        check_value: "contracts/OMN-3075.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-8101.yaml,47,        check_value: "contracts/OMN-8101.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-630.yaml,47,        check_value: "contracts/OMN-630.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-6298.yaml,47,        check_value: "contracts/OMN-6298.yaml"
+onex_change_control,/Users/jonah/Code/omni_home/onex_change_control/contracts/OMN-1770.yaml,47,        check_value: "contracts/OMN-1770.yaml"
