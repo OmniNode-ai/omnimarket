@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from importlib.metadata import entry_points
 from pathlib import Path
 
 import yaml
@@ -84,3 +85,15 @@ def test_contract_declares_node_as_implemented() -> None:
 
     assert raw.get("node_not_implemented") is not True
     assert raw["terminal_event"] == "onex.evt.omnimarket.dod-sweep-completed.v1"
+
+
+def test_node_is_registered_as_onex_entry_point() -> None:
+    matches = [
+        entry_point
+        for entry_point in entry_points(group="onex.nodes")
+        if entry_point.name == "node_dod_sweep_orchestrator"
+    ]
+
+    assert len(matches) == 1
+    assert matches[0].value == "omnimarket.nodes.node_dod_sweep_orchestrator"
+    assert matches[0].load().__name__ == "omnimarket.nodes.node_dod_sweep_orchestrator"
