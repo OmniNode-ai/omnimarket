@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10530
+title: "Rollback checkpoint release cascade"
+summary: "Pin omnimarket to the published rollback checkpoint package chain while preserving a post-merge
+  deploy-readiness smoke for runtime handler changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "omnimarket PR checks pass, including deploy gate and receipt gate"
+    command: "gh pr checks 522 --repo OmniNode-ai/omnimarket"
+  - kind: "manual"
+    description: "Local release-pin verification and non-live tests pass"
+    command: "uv run pytest tests/ -q --tb=short -m 'not kafka and not integration'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-release-pins"
+    description: "Pinned checkpoint dependencies resolve with a locked uv environment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv sync --locked --all-extras && uv run python -c \"from importlib.metadata import version; expected = {'omnibase-core': '0.40.1', 'omnibase-spi': '0.20.6', 'omnibase-infra': '0.34.2', 'omnibase-compat': '0.3.1', 'omninode-memory': '0.15.0', 'onex-change-control': '0.5.0'}; [print(f'{package} {version(package)}') for package in expected]\""
+  - id: "dod-local-quality"
+    description: "Local lint, format, typecheck, and non-live tests pass for the release-pin branch."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/ && uv run mypy src/omnimarket/ --strict && uv run pytest tests/ -q --tb=short -m 'not kafka and not integration'"
+  - id: "dod-deploy-smoke"
+    description: "Post-merge deploy smoke imports the touched overseer verifier runtime handler in the deployed container."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import HandlerOverseerVerifier; print('deploy smoke ok', HandlerOverseerVerifier.__name__)\""
