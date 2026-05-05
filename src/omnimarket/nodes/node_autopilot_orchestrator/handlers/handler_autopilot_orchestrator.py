@@ -57,6 +57,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+TOPIC_AUTOPILOT_START = "onex.cmd.omnimarket.autopilot-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_AUTOPILOT_COMPLETED = "onex.evt.omnimarket.autopilot-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_AUTOPILOT_FAILED = "onex.evt.omnimarket.autopilot-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+
 _CIRCUIT_BREAKER_THRESHOLD = 3
 
 
