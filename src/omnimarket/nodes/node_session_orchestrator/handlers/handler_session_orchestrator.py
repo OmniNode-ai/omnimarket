@@ -50,6 +50,10 @@ from omnimarket.nodes.node_dispatch_worker import (
 
 logger = logging.getLogger(__name__)
 
+TOPIC_SESSION_ORCH_START = "onex.cmd.omnimarket.session-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_SESSION_ORCH_COMPLETED = "onex.evt.omnimarket.session-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_SESSION_ORCH_FAILED = "onex.evt.omnimarket.session-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+
 # ---------------------------------------------------------------------------
 # Env var helpers — fail-fast on required vars (no defaults for infra paths)
 # ---------------------------------------------------------------------------
