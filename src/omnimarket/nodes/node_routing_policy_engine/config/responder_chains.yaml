@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+chains:
+  - tier: C1
+    description: "Fast local responder for simple deterministic work."
+    models:
+      - provider: local
+        model: qwen3-14b
+  - tier: C2
+    description: "Coder-capable responder chain with frontier fallback."
+    models:
+      - provider: local
+        model: qwen3-coder-30b
+      - provider: anthropic
+        model: claude-sonnet-4-6
+  - tier: C3
+    description: "Reasoning responder chain with frontier fallback."
+    models:
+      - provider: local
+        model: deepseek-r1-32b
+      - provider: anthropic
+        model: claude-sonnet-4-6
+  - tier: C4
+    description: "Explicit frontier responder for maximum-capability escalation."
+    models:
+      - provider: anthropic
+        model: claude-opus-4-6
