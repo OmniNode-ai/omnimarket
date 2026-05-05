@@ -47,3 +47,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.contract-sweep-violation.v1
     - onex.evt.omnimarket.contract-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

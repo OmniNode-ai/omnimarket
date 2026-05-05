@@ -69,3 +69,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.authorize-completed.v1
     - onex.evt.omnimarket.authorize-failed.v1
+
+metadata:
+  transport_type: kafka

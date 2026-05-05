@@ -150,6 +150,7 @@ dod_evidence:
       uv run python -c "from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import HandlerOverseerVerifier; print('OK')"
 
 metadata:
+  transport_type: kafka
   description: "Overseer Verifier — deterministic 5-dimension verification gate for overseer outputs"
   author: "OmniNode Platform Team"
   created: "2026-04-09"

@@ -69,6 +69,7 @@ event_bus:
     - onex.evt.omnimarket.ab-compare-completed.v1
 
 metadata:
+  transport_type: kafka
   description: "A/B compare orchestrator — fans out inference to N models, emits comparison"
   author: "OmniNode Platform Team"
   created: "2026-05-01"

@@ -29,3 +29,6 @@ tags:
   - storage
   - postgres
   - phase-3
+
+metadata:
+  transport_type: kafka

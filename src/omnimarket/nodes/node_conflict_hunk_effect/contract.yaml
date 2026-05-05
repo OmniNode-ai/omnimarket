@@ -58,3 +58,6 @@ dod_evidence:
     Phase 2 Wave 2: full handler impl. LLM calls use injected llm_call_fn for unit tests.
     All safety checks (branch guard, file allowlist, patch size, scope check) implemented.
     pytest gate runs in worktree. No shell=True.
+
+metadata:
+  transport_type: kafka

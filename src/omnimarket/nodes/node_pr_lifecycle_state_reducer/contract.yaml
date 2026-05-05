@@ -137,6 +137,7 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
 
 metadata:
+  transport_type: kafka
   description: "PR lifecycle FSM reducer"
   author: "OmniNode Team"
   created: "2026-04-09"

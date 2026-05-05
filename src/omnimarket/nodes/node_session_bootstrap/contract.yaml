@@ -167,3 +167,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.session-bootstrap-completed.v2
     - onex.evt.omnimarket.session-cron-health-violation.v1
+
+metadata:
+  transport_type: kafka

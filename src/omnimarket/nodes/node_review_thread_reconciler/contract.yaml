@@ -90,3 +90,6 @@ dod_evidence:
   - kind: ci
     description: "Webhook subscriptions confirmed on all repos"
     command: "bash scripts/verify_webhook_subscriptions.sh"
+
+metadata:
+  transport_type: kafka

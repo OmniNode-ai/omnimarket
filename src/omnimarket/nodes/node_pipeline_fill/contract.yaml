@@ -44,6 +44,7 @@ event_bus:
     - onex.cmd.omnimarket.ticket-pipeline-start.v1
 terminal_event: onex.evt.omnimarket.pipeline-fill-completed.v1
 metadata:
+  transport_type: kafka
   description: "RSD-driven pipeline fill orchestrator for autonomous build loop"
   author: "OmniNode Team"
   created: "2026-04-13"

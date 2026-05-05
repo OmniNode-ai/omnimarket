@@ -30,3 +30,6 @@ event_bus:
     - onex.cmd.omnimarket.ledger-append.v1
   publish_topics:
     - onex.evt.omnimarket.ledger-appended.v1
+
+metadata:
+  transport_type: kafka

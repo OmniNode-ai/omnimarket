@@ -24,3 +24,6 @@ event_bus:
     - onex.cmd.omnimarket.ab-inference-requested.v1
   publish_topics:
     - onex.evt.omnimarket.ab-inference-completed.v1
+
+metadata:
+  transport_type: kafka

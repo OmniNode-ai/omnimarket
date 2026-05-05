@@ -47,3 +47,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.data-flow-sweep-result.v1
     - onex.evt.omnimarket.data-flow-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

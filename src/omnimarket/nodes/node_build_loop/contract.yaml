@@ -61,3 +61,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.build-loop-phase-transition.v1
     - onex.evt.omnimarket.build-loop-completed.v1
+
+metadata:
+  transport_type: kafka

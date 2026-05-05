@@ -153,3 +153,6 @@ dependencies:
     required: true
     module: "omnimarket.nodes.node_kreuzberg_parse_effect.models.model_kreuzberg_parse_config"
     description: "Typed parse-service configuration injected into HandlerKreuzbergParse."
+
+metadata:
+  transport_type: kafka

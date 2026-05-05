@@ -108,3 +108,6 @@ dod_evidence:
   ARCHITECTURE:
     description: "no shell fallback or direct Agent/TaskCreate side effect"
     pass_criteria: "handler returns delegation payloads and writes receipts only"
+
+metadata:
+  transport_type: kafka

@@ -64,3 +64,6 @@ event_bus:
     - onex.cmd.omnimarket.audit-trail-compact.v1
   publish_topics:
     - onex.evt.omnimarket.audit-trail-compacted.v1
+
+metadata:
+  transport_type: kafka

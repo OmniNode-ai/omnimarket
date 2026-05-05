@@ -101,3 +101,6 @@ dod_evidence:
     assertion: HTTP call per shape returns correct DB rows
   - type: negative
     assertion: No Postgres credentials in omnidash env for these shapes
+
+metadata:
+  transport_type: kafka

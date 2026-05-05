@@ -201,3 +201,6 @@ tags:
   - vector
   - omn-5657
   - omn-5665
+
+metadata:
+  transport_type: postgres
