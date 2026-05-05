@@ -1189,6 +1189,201 @@ class TestPlaceholderSubstitution:
 
 
 @pytest.mark.unit
+class TestFileExistsOccCwd:
+    """OMN-10542: file_exists must use the same OCC cwd inference as command checks.
+
+    OCC contracts under ``onex_change_control/contracts/`` use relative paths
+    like ``drift/dod_receipts/<ticket>/...`` that are anchored at the OCC repo
+    root, not at OMNI_HOME. Before this fix, ``_run_file_exists_check``
+    resolved relative paths against OMNI_HOME directly, false-failing every
+    OCC ``file_exists`` check on real receipt files.
+    """
+
+    @staticmethod
+    def _write_occ_contract(
+        occ_contracts_dir: Path,
+        ticket_id: str,
+        dod_evidence: list[dict],
+    ) -> Path:
+        """Write a contract under an onex_change_control/contracts/ tree."""
+        contract = {
+            "schema_version": "1.0.0",
+            "ticket_id": ticket_id,
+            "dod_evidence": dod_evidence,
+        }
+        path = occ_contracts_dir / f"{ticket_id}.yaml"
+        path.write_text(yaml.dump(contract), encoding="utf-8")
+        return path
+
+    def test_occ_relative_file_exists_resolves_against_occ_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OCC contract: relative file_exists path resolves against OCC repo, not OMNI_HOME."""
+        occ_dir = tmp_path / "onex_change_control"
+        occ_contracts = occ_dir / "contracts"
+        occ_contracts.mkdir(parents=True)
+        # Receipt file lives under the OCC repo, anchored at OCC root.
+        receipt_dir = occ_dir / "drift" / "dod_receipts" / "OMN-9788" / "dod-001"
+        receipt_dir.mkdir(parents=True)
+        receipt = receipt_dir / "file_exists.yaml"
+        receipt.write_text("status: PASS\n", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        contract_path = self._write_occ_contract(
+            occ_contracts,
+            "OMN-9788",
+            [
+                {
+                    "id": "dod-001",
+                    "description": "OCC receipt path is relative to OCC root",
+                    "checks": [
+                        {
+                            "check_type": "file_exists",
+                            "check_value": (
+                                "drift/dod_receipts/OMN-9788/dod-001/file_exists.yaml"
+                            ),
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect("OMN-9788", contract_path=str(contract_path))
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED, (
+            f"OCC file_exists should resolve against OCC root, got: {results[0].message!r}"
+        )
+
+    def test_occ_relative_file_exists_glob_resolves_against_occ_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OCC glob patterns also anchor at the OCC repo root."""
+        occ_dir = tmp_path / "onex_change_control"
+        occ_contracts = occ_dir / "contracts"
+        occ_contracts.mkdir(parents=True)
+        receipt_dir = occ_dir / "drift" / "dod_receipts" / "OMN-9788"
+        (receipt_dir / "dod-001").mkdir(parents=True)
+        (receipt_dir / "dod-002").mkdir(parents=True)
+        (receipt_dir / "dod-001" / "file_exists.yaml").write_text("a", encoding="utf-8")
+        (receipt_dir / "dod-002" / "file_exists.yaml").write_text("b", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        contract_path = self._write_occ_contract(
+            occ_contracts,
+            "OMN-9788",
+            [
+                {
+                    "id": "dod-001",
+                    "description": "Glob anchored at OCC root",
+                    "checks": [
+                        {
+                            "check_type": "file_exists",
+                            "check_value": "drift/dod_receipts/OMN-9788/*/file_exists.yaml",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect("OMN-9788", contract_path=str(contract_path))
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert "2 match" in (results[0].message or "")
+
+    def test_non_occ_contract_relative_file_exists_resolves_against_omni_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-OCC contract: relative file_exists path resolves against OMNI_HOME (legacy)."""
+        # Create an OCC tree to prove the OCC root is NOT used when contract lives elsewhere.
+        occ_dir = tmp_path / "onex_change_control"
+        (occ_dir / "drift" / "dod_receipts" / "OMN-TEST" / "dod-001").mkdir(
+            parents=True
+        )
+        # Receipt at OMNI_HOME root that the test will resolve against.
+        target = tmp_path / "artifact.yaml"
+        target.write_text("ok", encoding="utf-8")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "Non-OCC contract resolves against OMNI_HOME",
+                    "checks": [{"check_type": "file_exists", "path": "artifact.yaml"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST",
+            contract_path=str(tmp_path / "OMN-TEST.yaml"),
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    def test_occ_relative_file_exists_missing_still_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OCC file_exists for a missing receipt still fails — fix doesn't mask absence."""
+        occ_dir = tmp_path / "onex_change_control"
+        occ_contracts = occ_dir / "contracts"
+        occ_contracts.mkdir(parents=True)
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        contract_path = self._write_occ_contract(
+            occ_contracts,
+            "OMN-9788",
+            [
+                {
+                    "id": "dod-001",
+                    "description": "Missing OCC receipt still fails",
+                    "checks": [
+                        {
+                            "check_type": "file_exists",
+                            "check_value": (
+                                "drift/dod_receipts/OMN-9788/dod-001/file_exists.yaml"
+                            ),
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect("OMN-9788", contract_path=str(contract_path))
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "does not exist" in (results[0].message or "").lower()
+
+    def test_occ_relative_file_exists_traversal_still_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OCC contracts cannot escape OMNI_HOME via .. segments."""
+        occ_dir = tmp_path / "onex_change_control"
+        occ_contracts = occ_dir / "contracts"
+        occ_contracts.mkdir(parents=True)
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        contract_path = self._write_occ_contract(
+            occ_contracts,
+            "OMN-9788",
+            [
+                {
+                    "id": "dod-001",
+                    "description": "Traversal attempt under OCC",
+                    "checks": [
+                        {
+                            "check_type": "file_exists",
+                            "check_value": "../../etc/passwd",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect("OMN-9788", contract_path=str(contract_path))
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert "traversal" in (results[0].message or "").lower()
+
+
+@pytest.mark.unit
 class TestHandlerWithCollector:
     """Integration tests: handler auto-collects evidence when not provided."""
 
