@@ -5,14 +5,17 @@
 Routes based on ticket complexity, with GLM-4.5 as the primary frontier
 code generation backend:
 - Tier 1 (primary): GLM-4.5 via Zhipu API — best quality, 20 concurrent
-- Tier 2 (fallback): local Qwen3-Coder-30B — 64K ctx, zero cost
-- Tier 3 (classification only): local Qwen3-14B — fast, routing/simple tasks
+- Tier 2 (architecture/multi-file): Gemini CLI — repo-aware, SSO auth
+- Tier 3 (fallback): local Qwen3-Coder-30B — 64K ctx, zero cost
+- Tier 4 (classification only): local Qwen3-14B — fast, routing/simple tasks
 - Review: DeepSeek-R1 (reasoning specialist)
-- Complex overflow: Gemini, OpenAI (when GLM unavailable)
+- Complex overflow: Gemini API, OpenAI (when GLM and Gemini CLI unavailable)
 
-All endpoints speak OpenAI-compatible chat/completions API.
+All endpoints speak OpenAI-compatible chat/completions API, except GEMINI_CLI
+which is invoked via subprocess using the installed `gemini` CLI binary.
 
 Related:
+    - OMN-7833: Wire Gemini CLI into build loop
     - OMN-7832: Wire GLM into build loop
     - OMN-7810: Wire build loop to Linear queue
     - OMN-5113: Autonomous Build Loop epic
@@ -39,10 +42,11 @@ class EnumModelTier(StrEnum):
 
     FRONTIER_GLM = "frontier_glm"  # GLM-4.5 — primary code gen (Zhipu API)
     FRONTIER_REVIEW = "frontier_review"  # GLM-4.7-Flash — cheap frontier code reviewer
+    GEMINI_CLI = "gemini-cli"  # Gemini CLI — architecture/multi-file tasks, repo-aware
     LOCAL_FAST = "local_fast"  # Qwen3-14B — classification, simple tasks
     LOCAL_CODER = "local_coder"  # Qwen3-Coder-30B — medium code tasks
     LOCAL_REASONING = "local_reasoning"  # DeepSeek-R1 — review, reasoning
-    FRONTIER_GOOGLE = "frontier_google"  # Gemini — complex tasks
+    FRONTIER_GOOGLE = "frontier_google"  # Gemini API — complex tasks (API path)
     FRONTIER_OPENAI = "frontier_openai"  # GPT/Codex — complex tasks
 
 
@@ -96,6 +100,13 @@ _SIMPLE_KEYWORDS: frozenset[str] = frozenset(
 _MIN_HARNESS_SAMPLES: int = 20
 _TASK_TYPE_CODE_GENERATION = "code_generation"
 _TASK_TYPE_CLASSIFICATION = "classification"
+
+
+def _gemini_cli_available() -> bool:
+    """Return True if the `gemini` CLI binary is available on PATH."""
+    import shutil
+
+    return shutil.which("gemini") is not None
 
 
 def load_llm_eval_harness_samples(
@@ -269,16 +280,33 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             timeout_seconds=120.0,
         )
 
-    # Frontier Google (Gemini)
-    google_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get(
+    # Gemini CLI — preferred for architecture/multi-file tasks; repo-aware via SSO
+    # Auth: GEMINI_API_KEY or GOOGLE_API_KEY (both same value per ticket description)
+    # Availability: requires `gemini` CLI binary on PATH
+    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get(
         "GOOGLE_API_KEY", ""
     )
-    if google_key:
+    if gemini_key and _gemini_cli_available():
+        configs[EnumModelTier.GEMINI_CLI] = ModelEndpointConfig(
+            tier=EnumModelTier.GEMINI_CLI,
+            base_url="cli://gemini",  # sentinel: dispatched via subprocess, not HTTP
+            model_id="gemini-cli",
+            api_key=gemini_key,
+            max_tokens=8192,
+            context_window=1000000,
+            timeout_seconds=300.0,
+        )
+        logger.info("Gemini CLI tier configured (gemini binary available)")
+    elif gemini_key:
+        logger.info("Gemini CLI binary not found on PATH — GEMINI_CLI tier skipped")
+
+    # Frontier Google (Gemini API — fallback when CLI unavailable)
+    if gemini_key:
         configs[EnumModelTier.FRONTIER_GOOGLE] = ModelEndpointConfig(
             tier=EnumModelTier.FRONTIER_GOOGLE,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai",
             model_id="gemini-2.5-flash",
-            api_key=google_key,
+            api_key=gemini_key,
             max_tokens=8192,
             context_window=1000000,
             timeout_seconds=120.0,
@@ -311,13 +339,15 @@ def route_ticket_to_tier(
     """Route a ticket to the appropriate model tier based on complexity.
 
     GLM-4.5 is the primary code generation backend for all buildable tickets.
-    Local models serve as fallbacks when GLM is unavailable.
+    Gemini CLI is preferred over other frontier options for architecture and
+    multi-file tasks due to its repo-context awareness.
 
     Routing priority:
     1. GLM-4.5 (primary frontier, best quality) for all code gen tasks
-    2. Complex keywords with no GLM -> Gemini, OpenAI
-    3. Simple keywords with no frontier -> local fast (Qwen3-14B)
-    4. Default fallback -> local coder (Qwen3-Coder-30B)
+    2. Architecture/multi-file complex keywords with no GLM -> Gemini CLI
+    3. Complex keywords with no GLM/Gemini CLI -> Gemini API, OpenAI
+    4. Simple keywords with no frontier -> local fast (Qwen3-14B)
+    5. Default fallback -> local coder (Qwen3-Coder-30B)
     """
     text = f"{title} {description} {' '.join(labels)}".lower()
     available = available_tiers or frozenset(EnumModelTier)
@@ -338,9 +368,11 @@ def route_ticket_to_tier(
     if EnumModelTier.FRONTIER_GLM in available:
         return EnumModelTier.FRONTIER_GLM
 
-    # Check complex keywords — route to other frontier models
+    # Check complex keywords — prefer Gemini CLI for architecture/multi-file tasks
     has_complex = any(kw in text for kw in _COMPLEX_KEYWORDS)
     if has_complex:
+        if EnumModelTier.GEMINI_CLI in available:
+            return EnumModelTier.GEMINI_CLI
         if EnumModelTier.FRONTIER_GOOGLE in available:
             return EnumModelTier.FRONTIER_GOOGLE
         if EnumModelTier.FRONTIER_OPENAI in available:
@@ -361,6 +393,7 @@ def route_ticket_to_tier(
         return EnumModelTier.LOCAL_CODER
     # Fallback chain
     for tier in (
+        EnumModelTier.GEMINI_CLI,
         EnumModelTier.FRONTIER_GOOGLE,
         EnumModelTier.FRONTIER_OPENAI,
         EnumModelTier.LOCAL_FAST,

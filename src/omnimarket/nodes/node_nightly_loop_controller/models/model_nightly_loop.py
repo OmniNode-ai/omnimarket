@@ -188,6 +188,58 @@ class ModelNightlyLoopResult(BaseModel):
     )
 
 
+def build_default_routing_table() -> tuple[ModelDelegationRoute, ...]:
+    """Return the default delegation routing table for the nightly loop.
+
+    Includes a gemini-cli route for architecture and multi-file refactor tasks,
+    preferred over the local coder for those task types.
+
+    Callers may extend or replace this table via ModelNightlyLoopConfig.routing_table.
+    """
+    import os
+
+    gemini_endpoint = os.environ.get("GEMINI_CLI_ENDPOINT", "cli://gemini")
+    local_coder_endpoint = os.environ.get("LLM_CODER_URL", "http://192.168.86.201:8000")
+    local_fast_endpoint = os.environ.get(
+        "LLM_CODER_FAST_URL", "http://192.168.86.201:8001"
+    )
+
+    return (
+        ModelDelegationRoute(
+            task_type="architecture",
+            model_endpoint=gemini_endpoint,
+            model_id="gemini-cli",
+            cost_per_call_usd=0.0,
+            max_context_tokens=1000000,
+            is_frontier=True,
+        ),
+        ModelDelegationRoute(
+            task_type="multi-file",
+            model_endpoint=gemini_endpoint,
+            model_id="gemini-cli",
+            cost_per_call_usd=0.0,
+            max_context_tokens=1000000,
+            is_frontier=True,
+        ),
+        ModelDelegationRoute(
+            task_type="refactor",
+            model_endpoint=local_coder_endpoint,
+            model_id="default",
+            cost_per_call_usd=0.0,
+            max_context_tokens=64000,
+            is_frontier=False,
+        ),
+        ModelDelegationRoute(
+            task_type="classification",
+            model_endpoint=local_fast_endpoint,
+            model_id="default",
+            cost_per_call_usd=0.0,
+            max_context_tokens=40000,
+            is_frontier=False,
+        ),
+    )
+
+
 __all__: list[str] = [
     "DecisionOutcome",
     "GapStatus",
@@ -196,4 +248,5 @@ __all__: list[str] = [
     "ModelNightlyLoopDecision",
     "ModelNightlyLoopIteration",
     "ModelNightlyLoopResult",
+    "build_default_routing_table",
 ]

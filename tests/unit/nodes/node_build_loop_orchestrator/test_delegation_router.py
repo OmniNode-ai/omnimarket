@@ -21,6 +21,10 @@ _LOCAL_ONLY = frozenset(
 )
 
 _LOCAL_PLUS_GOOGLE = _LOCAL_ONLY | {EnumModelTier.FRONTIER_GOOGLE}
+_LOCAL_PLUS_GEMINI_CLI = _LOCAL_ONLY | {EnumModelTier.GEMINI_CLI}
+_LOCAL_PLUS_GEMINI_CLI_AND_GOOGLE = _LOCAL_PLUS_GEMINI_CLI | {
+    EnumModelTier.FRONTIER_GOOGLE
+}
 
 
 @pytest.mark.unit
@@ -132,6 +136,60 @@ class TestRouteTicketToTier:
         )
 
         assert tier == EnumModelTier.FRONTIER_GLM
+
+    def test_architecture_task_routes_to_gemini_cli_when_available(self) -> None:
+        """Gemini CLI should be preferred over FRONTIER_GOOGLE for architecture tasks."""
+        tier = route_ticket_to_tier(
+            "design new architecture for event bus",
+            "multi-file refactor needed across repos",
+            available_tiers=_LOCAL_PLUS_GEMINI_CLI_AND_GOOGLE,
+        )
+        assert tier == EnumModelTier.GEMINI_CLI
+
+    def test_multi_file_task_routes_to_gemini_cli_when_available(self) -> None:
+        tier = route_ticket_to_tier(
+            "cross-repo migration of schema",
+            "breaking change across multiple services",
+            available_tiers=_LOCAL_PLUS_GEMINI_CLI,
+        )
+        assert tier == EnumModelTier.GEMINI_CLI
+
+    def test_gemini_cli_preferred_over_frontier_google_for_complex_tasks(self) -> None:
+        tier = route_ticket_to_tier(
+            "new service orchestrator pipeline",
+            "kafka event bus migration",
+            available_tiers=_LOCAL_PLUS_GEMINI_CLI_AND_GOOGLE,
+        )
+        assert tier == EnumModelTier.GEMINI_CLI
+
+    def test_gemini_cli_fallback_to_frontier_google_when_cli_unavailable(self) -> None:
+        """When GEMINI_CLI is unavailable, complex tasks fall back to FRONTIER_GOOGLE."""
+        tier = route_ticket_to_tier(
+            "design new architecture",
+            "multi-repo migration needed",
+            available_tiers=_LOCAL_PLUS_GOOGLE,
+        )
+        assert tier == EnumModelTier.FRONTIER_GOOGLE
+
+    def test_gemini_cli_fallback_to_local_coder_when_no_frontier(self) -> None:
+        """When no frontier tier is available, complex tasks fall back to LOCAL_CODER."""
+        tier = route_ticket_to_tier(
+            "design new architecture",
+            "new node orchestrator pipeline",
+            available_tiers=frozenset(
+                {EnumModelTier.LOCAL_FAST, EnumModelTier.LOCAL_CODER}
+            ),
+        )
+        assert tier == EnumModelTier.LOCAL_CODER
+
+    def test_gemini_cli_not_selected_for_simple_tasks(self) -> None:
+        """Simple tasks should not be routed to GEMINI_CLI."""
+        tier = route_ticket_to_tier(
+            "fix lint error",
+            "rename import",
+            available_tiers=_LOCAL_PLUS_GEMINI_CLI,
+        )
+        assert tier == EnumModelTier.LOCAL_FAST
 
     def test_reads_harness_result_json_for_mature_samples(self, tmp_path: Path) -> None:
         harness_result = tmp_path / "llm_eval_results.json"
