@@ -22,6 +22,7 @@ entry_flags:
   autonomous: "Run without human gates (default: true)"
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["autopilot", "orchestrator", "close-out", "pipeline", "fsm", "OMN-6872"]

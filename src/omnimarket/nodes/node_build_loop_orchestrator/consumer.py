@@ -11,7 +11,7 @@ Environment:
     KAFKA_BOOTSTRAP_SERVERS  Redpanda/Kafka bootstrap (required)
     KAFKA_BROKER             Alias for KAFKA_BOOTSTRAP_SERVERS (fallback)
     BUILD_LOOP_GROUP         Consumer group ID
-                             (default: local.omnimarket.build-loop-orchestrator.consume.v1)
+                             (default: local.omnimarket.build_loop_orchestrator.consume.1.0.0)
 
 Usage:
     python -m omnimarket.nodes.node_build_loop_orchestrator.consumer
@@ -37,7 +37,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_o
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_GROUP = "local.omnimarket.build-loop-orchestrator.consume.v1"
+_DEFAULT_GROUP = "local.omnimarket.build_loop_orchestrator.consume.1.0.0"
 
 
 def _parse_command(raw: dict[str, Any]) -> dict[str, Any]:
