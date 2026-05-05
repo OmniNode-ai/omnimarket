@@ -110,10 +110,14 @@ def test_cost_projection_nodes_are_discoverable(
     _consumer_group: str,
     _model_name: str,
 ) -> None:
-    eps = {ep.name: ep for ep in entry_points(group="onex.nodes")}
-    assert node_name in eps
-    assert eps[node_name].value == f"omnimarket.nodes.{node_name}"
-    assert eps[node_name].load().__name__ == f"omnimarket.nodes.{node_name}"
+    eps = [
+        ep
+        for ep in entry_points(group="onex.nodes")
+        if ep.name == node_name and ep.dist.metadata["Name"] == "omnimarket"
+    ]
+    assert len(eps) == 1
+    assert eps[0].value == f"omnimarket.nodes.{node_name}"
+    assert eps[0].load().__name__ == f"omnimarket.nodes.{node_name}"
 
     handler = getattr(import_module(handler_module), handler_class)
     result = handler().handle({"timestamp": "2026-04-29T12:34:56Z"})
