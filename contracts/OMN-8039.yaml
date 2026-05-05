@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-8039
+title: "Task 3: Responder chain YAML config and ModelResponderChain"
+summary: "Add typed responder-chain configuration for routing policy capability tiers C1-C4."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "public_api"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused pytest validates responder_chains.yaml parses and declares C1-C4 with expected models"
+    command: "uv run pytest tests/test_responder_chain_loading.py -v"
+  - kind: "tests"
+    description: "Ruff validates new responder-chain model and loading test"
+    command: "uv run ruff check src/omnimarket/nodes/node_routing_policy_engine/models/model_responder_chain.py tests/test_responder_chain_loading.py"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports the responder-chain config model in the runtime container; no live deploy or runtime restart was performed in this PR."
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_routing_policy_engine.models.model_responder_chain import ModelResponderChainConfig; print(ModelResponderChainConfig.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Responder-chain YAML parses and covers C1-C4"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_responder_chain_loading.py -v"
+  - id: "dod-002"
+    description: "New responder-chain model and test pass Ruff checks"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_routing_policy_engine/models/model_responder_chain.py tests/test_responder_chain_loading.py"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke imports the responder-chain config model in the runtime container; no live deploy or runtime restart was performed in this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_routing_policy_engine.models.model_responder_chain import ModelResponderChainConfig; print(ModelResponderChainConfig.__name__)\""
