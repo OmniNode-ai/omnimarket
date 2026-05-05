@@ -51,6 +51,7 @@ def test_empty_construction_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
         "VALKEY_HOST",
         "VALKEY_PORT",
         "LLM_CODER_URL",
+        "LLM_CODER_MODEL_ID",
         "LLM_CODER_FAST_URL",
         "LLM_REASONER_URL",
         "LLM_EMBEDDING_URL",
@@ -118,6 +119,57 @@ def test_kafka_satisfied_by_broker_alias(monkeypatch: pytest.MonkeyPatch) -> Non
         kafka_broker="broker.example:9092",
     )
     assert settings.validate_required_services() == []
+
+
+@pytest.mark.unit
+def test_required_service_values_must_contain_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for var in (
+        "KAFKA_BOOTSTRAP_SERVERS",
+        "KAFKA_BROKER",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_DATABASE",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "OMNIBASE_INFRA_DB_URL",
+        "OMNIDASH_ANALYTICS_DB_URL",
+        "QDRANT_HOST",
+        "QDRANT_PORT",
+        "VALKEY_HOST",
+        "VALKEY_PORT",
+        "EMBEDDING_MODEL_URL",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        enable_kafka=True,
+        enable_postgres=True,
+        enable_qdrant=True,
+        enable_valkey=True,
+        enable_memory_service=True,
+        kafka_bootstrap_servers="   ",
+        kafka_broker="   ",
+        postgres_host="   ",
+        postgres_database="   ",
+        postgres_user="   ",
+        postgres_password=SecretStr("   "),
+        qdrant_host="   ",
+        valkey_host="   ",
+        embedding_model_url="   ",
+    )
+
+    errors = settings.validate_required_services()
+    assert any("KAFKA_BOOTSTRAP_SERVERS" in e for e in errors)
+    assert any("POSTGRES_HOST" in e for e in errors)
+    assert any("POSTGRES_DATABASE" in e for e in errors)
+    assert any("POSTGRES_USER" in e for e in errors)
+    assert any("POSTGRES_PASSWORD" in e for e in errors)
+    assert any("QDRANT_HOST" in e for e in errors)
+    assert any("VALKEY_HOST" in e for e in errors)
+    assert any("EMBEDDING_MODEL_URL" in e for e in errors)
 
 
 @pytest.mark.unit

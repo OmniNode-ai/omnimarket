@@ -42,15 +42,16 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _find_and_load_env() -> None:
+def load_env_from_parents() -> None:
     """Walk up from this file looking for a ``.env`` and load it if present.
 
-    Mirrors omniclaude's pattern. Loading is best-effort and never raises —
+    Local bootstrap code may call this before constructing ``Settings``.
+    Loading is best-effort and never raises —
     in production the env is provided by the runtime, not by a checked-in
     .env file. .env support exists for local dev only.
     """
     try:
-        from dotenv import load_dotenv  # type: ignore[import-not-found]
+        from dotenv import load_dotenv
     except ImportError:  # python-dotenv not installed → noop
         return
 
@@ -66,16 +67,15 @@ def _find_and_load_env() -> None:
         current = parent
 
 
-_find_and_load_env()
-
-
 class Settings(BaseSettings):
     """Typed configuration for omnimarket production code.
 
-    Read from environment variables (and optional ``.env`` file). All defaults
-    are empty / zero / false — fields are required only when their service is
-    enabled. Use ``validate_required_services()`` after construction to get a
-    structured list of missing-required errors before starting a service.
+    Read from environment variables and pydantic's configured ``.env`` file.
+    Parent-directory ``.env`` discovery is opt-in through
+    ``load_env_from_parents()``. All defaults are empty / zero / false — fields
+    are required only when their service is enabled. Use
+    ``validate_required_services()`` after construction to get a structured
+    list of missing-required errors before starting a service.
     """
 
     model_config = SettingsConfigDict(
@@ -402,11 +402,16 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------------
     # Computed accessors
     # ------------------------------------------------------------------------
+    @staticmethod
+    def _has_text(value: str) -> bool:
+        """Return true when a string contains non-whitespace text."""
+        return bool(value.strip())
+
     def get_effective_kafka_bootstrap_servers(self) -> str:
         """Return ``kafka_bootstrap_servers`` if set, else ``kafka_broker``."""
-        if self.kafka_bootstrap_servers:
-            return self.kafka_bootstrap_servers
-        return self.kafka_broker
+        if self._has_text(self.kafka_bootstrap_servers):
+            return self.kafka_bootstrap_servers.strip()
+        return self.kafka_broker.strip()
 
     def get_effective_postgres_dsn(self) -> str:
         """Return the first non-empty DSN from the configured DB URLs.
@@ -418,8 +423,8 @@ class Settings(BaseSettings):
         """
         for dsn in (self.omnibase_infra_db_url, self.omnidash_analytics_db_url):
             value = dsn.get_secret_value()
-            if value:
-                return value
+            if self._has_text(value):
+                return value.strip()
         return ""
 
     # ------------------------------------------------------------------------
@@ -446,7 +451,7 @@ class Settings(BaseSettings):
         if self.enable_postgres:
             has_dsn = bool(self.get_effective_postgres_dsn())
             if not has_dsn:
-                if not self.postgres_host:
+                if not self._has_text(self.postgres_host):
                     errors.append(
                         "POSTGRES_HOST is required when ENABLE_POSTGRES=true and no "
                         "*_DB_URL is set. Set POSTGRES_HOST or a *_DB_URL, or set "
@@ -458,19 +463,19 @@ class Settings(BaseSettings):
                         "*_DB_URL is set. Set POSTGRES_PORT (5432 standard) or a "
                         "*_DB_URL, or set ENABLE_POSTGRES=false."
                     )
-                if not self.postgres_database:
+                if not self._has_text(self.postgres_database):
                     errors.append(
                         "POSTGRES_DATABASE is required when ENABLE_POSTGRES=true and "
                         "no *_DB_URL is set. Set POSTGRES_DATABASE or a *_DB_URL, "
                         "or set ENABLE_POSTGRES=false."
                     )
-                if not self.postgres_user:
+                if not self._has_text(self.postgres_user):
                     errors.append(
                         "POSTGRES_USER is required when ENABLE_POSTGRES=true and "
                         "no *_DB_URL is set. Set POSTGRES_USER or a *_DB_URL, "
                         "or set ENABLE_POSTGRES=false."
                     )
-                if not self.postgres_password.get_secret_value():
+                if not self._has_text(self.postgres_password.get_secret_value()):
                     errors.append(
                         "POSTGRES_PASSWORD is required when ENABLE_POSTGRES=true "
                         "and no *_DB_URL is set. Set POSTGRES_PASSWORD or a "
@@ -478,7 +483,7 @@ class Settings(BaseSettings):
                     )
 
         if self.enable_qdrant:
-            if not self.qdrant_host:
+            if not self._has_text(self.qdrant_host):
                 errors.append(
                     "QDRANT_HOST is required when ENABLE_QDRANT=true. Set "
                     "QDRANT_HOST or set ENABLE_QDRANT=false."
@@ -490,7 +495,7 @@ class Settings(BaseSettings):
                 )
 
         if self.enable_valkey:
-            if not self.valkey_host:
+            if not self._has_text(self.valkey_host):
                 errors.append(
                     "VALKEY_HOST is required when ENABLE_VALKEY=true. Set "
                     "VALKEY_HOST or set ENABLE_VALKEY=false."
@@ -501,7 +506,7 @@ class Settings(BaseSettings):
                     "VALKEY_PORT or set ENABLE_VALKEY=false."
                 )
 
-        if self.enable_memory_service and not self.embedding_model_url:
+        if self.enable_memory_service and not self._has_text(self.embedding_model_url):
             errors.append(
                 "EMBEDDING_MODEL_URL is required when "
                 "ENABLE_MEMORY_SERVICE=true. Set EMBEDDING_MODEL_URL or "
