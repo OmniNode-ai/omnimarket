@@ -186,7 +186,7 @@ jobs:
   #   - RuntimeLocal starts EventBusInmemory, subscribes to terminal topic
   #   - Handler executes and runtime writes workflow_result.json
   #   - Exit code 0 = COMPLETED, evidence on disk
-  # No Kafka, no Postgres, no .201 required.
+  # No Kafka or Postgres required.
   # ============================================================================
 
   e2e-workflow-runner:

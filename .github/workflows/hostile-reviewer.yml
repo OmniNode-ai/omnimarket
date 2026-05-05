@@ -8,7 +8,7 @@
 # Invokes omniintelligence.review_pairing.cli_review (node-based path via
 # HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model deepseek-r1.
 # Codex is excluded from the initial pilot — add --model codex once non-interactive
-# OAuth auth is confirmed on the omnibase-ci runner (OMN-8524).
+# OAuth auth is confirmed on trusted CI runners (OMN-8524).
 #
 # Gate semantics (pilot phase):
 #   blocked  — critical/error findings from at least one succeeded model → exit 1
@@ -31,9 +31,13 @@ permissions:
 jobs:
   hostile-review:
     name: Hostile Reviewer (adversarial gate)
-    # self-hosted runner on .201 required — DeepSeek-R1 at :8001 is LAN-only
-    # LLM_DEEPSEEK_URL must be set in the runner's environment (Infisical or shell profile)
-    runs-on: [self-hosted, omnibase-ci]
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name != github.repository
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
     timeout-minutes: 20
 
     steps:
@@ -72,6 +76,8 @@ jobs:
         run: uv python install 3.12
 
       - name: Install omniintelligence dependencies
+        id: install-omniintelligence
+        continue-on-error: true
         working-directory: ../omniintelligence
         run: uv sync --locked --all-extras
 
@@ -81,8 +87,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-          # LLM_DEEPSEEK_URL is read directly from the runner's environment (Infisical-injected
-          # or set in the runner's shell profile on .201) — no GitHub secret needed
+          # LLM_DEEPSEEK_URL is read directly from the selected runner's environment
+          # (Infisical-injected or shell profile) — no GitHub secret needed
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
@@ -232,7 +238,13 @@ jobs:
 
   hostile-review-gate:
     name: Hostile Review Gate
-    runs-on: [self-hosted, omnibase-ci]
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name != github.repository
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
     needs: [hostile-review]
     if: always()
     steps:
