@@ -13,8 +13,20 @@ handler:
   class: HandlerPrWatchOrchestrator
   input_model: omnimarket.nodes.node_pr_watch_orchestrator.models.model_pr_watch_orchestrator_request.ModelPrWatchOrchestratorRequest
 
+handler_routing:
+  default_handler: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator:HandlerPrWatchOrchestrator
+
 descriptor:
   node_archetype: orchestrator
   purity: impure
   idempotent: true
   timeout_ms: 30000
+
+event_bus:
+  consumer_group: omnimarket.pr_watch_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-watch-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-watch-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-watch.v1

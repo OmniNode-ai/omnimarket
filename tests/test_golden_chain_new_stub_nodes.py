@@ -76,6 +76,30 @@ def test_stub_node_contract_is_explicit(case: StubNodeCase) -> None:
 
 
 @pytest.mark.unit
+def test_pr_watch_stub_declares_runtime_routing_surface() -> None:
+    contract_path = (
+        _repo_root()
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_pr_watch_orchestrator"
+        / "contract.yaml"
+    )
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+
+    assert raw["handler_routing"]["default_handler"] == (
+        "omnimarket.nodes.node_pr_watch_orchestrator.handlers."
+        "handler_pr_watch_orchestrator:HandlerPrWatchOrchestrator"
+    )
+    assert raw["event_bus"] == {
+        "consumer_group": "omnimarket.pr_watch_orchestrator.consume.v1",
+        "subscribe_topics": ["onex.cmd.omnimarket.pr-watch-start.v1"],
+        "publish_topics": ["onex.evt.omnimarket.pr-watch-completed.v1"],
+        "dlq_topics": ["onex.dlq.omnimarket.pr-watch.v1"],
+    }
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("case", STUB_NODE_CASES, ids=lambda case: case.node_name)
 def test_stub_node_entry_point_loads(case: StubNodeCase) -> None:
     eps = {ep.name: ep for ep in entry_points(group="onex.nodes")}
