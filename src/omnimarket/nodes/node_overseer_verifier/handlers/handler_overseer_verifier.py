@@ -25,16 +25,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import subprocess
+from datetime import UTC, datetime
 from typing import Any
 
+from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
+from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 from onex_change_control.overseer.enum_failure_class import EnumFailureClass
 from onex_change_control.overseer.enum_verifier_verdict import EnumVerifierVerdict
 from onex_change_control.overseer.model_context_bundle import ModelContextBundle
-from onex_change_control.overseer.model_verifier_output import (
-    ModelVerifierCheckResult,
-    ModelVerifierOutput,
-)
+from onex_change_control.overseer.model_verifier_output import ModelVerifierOutput
 
 from omnimarket.nodes.node_overseer_verifier.models.model_claimed_pr import (
     ModelClaimedPr,
@@ -44,6 +46,9 @@ from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request impor
 )
 
 logger = logging.getLogger(__name__)
+
+_TICKET_ID_RE = re.compile(r"^OMN-\d+$")
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 # Minimum confidence required for outcome_success_validation to pass.
 _CONFIDENCE_THRESHOLD: float = 0.5
@@ -373,7 +378,8 @@ class HandlerOverseerVerifier:
         verdict = EnumVerifierVerdict(verdict_str)
 
         raw_checks = raw.get("checks", [])
-        check_results: list[ModelVerifierCheckResult] = []
+        ticket_id = _context_ticket_id(context)
+        check_results: list[ModelDodReceipt] = []
         if isinstance(raw_checks, list):
             for c in raw_checks:
                 if isinstance(c, dict):
@@ -382,11 +388,12 @@ class HandlerOverseerVerifier:
                     if not passed and c.get("failure_class"):
                         fc = _parse_failure_class(str(c["failure_class"]))
                     check_results.append(
-                        ModelVerifierCheckResult(
-                            name=str(c.get("name", "")),
+                        _check_dict_to_receipt(
+                            check=c,
                             passed=passed,
-                            message=str(c.get("message", "")),
                             failure_class=fc,
+                            ticket_id=ticket_id,
+                            node_id=node_id,
                         )
                     )
 
@@ -510,9 +517,70 @@ def _checks_to_dicts(checks: list[_CheckResult]) -> list[dict[str, object]]:
             "name": c.name,
             "passed": c.passed,
             "message": c.message,
+            "failure_class": _FAILURE_CLASSES.get(c.name) if not c.passed else None,
         }
         for c in checks
     ]
+
+
+def _check_dict_to_receipt(
+    *,
+    check: dict[str, object],
+    passed: bool,
+    failure_class: EnumFailureClass | None,
+    ticket_id: str,
+    node_id: str,
+) -> ModelDodReceipt:
+    """Convert an internal verifier check to OCC's canonical receipt model."""
+    name = str(check.get("name", "unknown_check")) or "unknown_check"
+    message = str(check.get("message", ""))
+    probe_stdout = json.dumps(
+        {
+            "name": name,
+            "passed": passed,
+            "message": message,
+            "failure_class": failure_class.value if failure_class else None,
+        },
+        sort_keys=True,
+    )
+    return ModelDodReceipt(
+        schema_version="1.0.0",
+        ticket_id=ticket_id,
+        evidence_item_id=name,
+        check_type="command",
+        check_value=f"handler_overseer_verifier.{name}",
+        status=EnumReceiptStatus.PASS if passed else EnumReceiptStatus.FAIL,
+        run_timestamp=datetime.now(UTC),
+        commit_sha=_receipt_commit_sha(),
+        runner=node_id,
+        verifier="handler_overseer_verifier",
+        probe_command="HandlerOverseerVerifier.verify",
+        probe_stdout=probe_stdout,
+        actual_output=message,
+        exit_code=0 if passed else 1,
+    )
+
+
+def _context_ticket_id(context: ModelContextBundle) -> str:
+    """Return a receipt-valid ticket id from the context bundle."""
+    raw_ticket_id = getattr(context, "ticket_id", None)
+    if isinstance(raw_ticket_id, str) and _TICKET_ID_RE.fullmatch(raw_ticket_id):
+        return raw_ticket_id
+    if _TICKET_ID_RE.fullmatch(context.task_id):
+        return context.task_id
+    raise ValueError(
+        "ModelContextBundle must provide a canonical OMN ticket id via "
+        f"ticket_id or task_id before verifier receipts can be built; "
+        f"task_id={context.task_id!r}"
+    )
+
+
+def _receipt_commit_sha() -> str:
+    """Return a receipt-valid commit SHA when CI provides one."""
+    raw_sha = os.environ.get("GITHUB_SHA", "")
+    if _COMMIT_SHA_RE.fullmatch(raw_sha):
+        return raw_sha
+    return "0" * 40
 
 
 def _parse_failure_class(value: str) -> EnumFailureClass | None:

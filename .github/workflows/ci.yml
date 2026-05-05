@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Ruff check
         run: uv run ruff check src/ tests/
       - name: Ruff format check
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Mypy strict
         run: uv run mypy src/omnimarket/ --strict
 
@@ -99,7 +99,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Pytest
         run: uv run pytest tests/ -v --tb=short -m "not kafka"
 
@@ -122,7 +122,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Topic naming lint (OMN-8507)
         env:
           OMNIBASE_INFRA_PATH: ../omnibase_infra
@@ -154,7 +154,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Validate event registry drift
         run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude
 
@@ -216,7 +216,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Run golden_chain_sweep workflow E2E
         run: |
           STATE_ROOT=$(mktemp -d)
@@ -275,7 +275,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Run golden chain suite
         run: |
           uv run pytest             tests/test_golden_chain_*.py             tests/unit/nodes/test_golden_chain_*.py             tests/nodes/*/test_golden_chain_*.py             -v --tb=short -q -m "not kafka"             --junit-xml=golden-chain-results.xml
@@ -310,7 +310,7 @@ jobs:
 
       - name: Install onex_change_control
         working-directory: onex_change_control
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
 
       - name: Validate contract YAML files
         working-directory: onex_change_control

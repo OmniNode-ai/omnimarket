@@ -11,7 +11,7 @@ authors = [
 ]
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.13"
 keywords = [
     "onex",
     "marketplace",
@@ -29,10 +29,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "omnibase_core>=0.40.0",
-    "omnibase-compat>=0.3.1",
-    "omnibase-spi>=0.20.5",
-    "omnibase-infra>=0.32.0",
+    "omnibase_core==0.40.1",
+    "omnibase-compat==0.3.1",
+    "omnibase-spi==0.20.6",
+    "omnibase-infra==0.34.2",
     "onex-change-control>=0.5.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
@@ -46,7 +46,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "httpx>=0.27.0",
     "anthropic>=0.25.0",
-    "omninode-memory>=0.1.0",
+    "omninode-memory==0.15.0",
     "radon>=6.0.1",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.3.0",
@@ -226,11 +226,17 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", branch = "main" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", branch = "main" }
-omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", branch = "main" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", branch = "main" }
-onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", branch = "main" }
+omnibase-compat = { url = "https://github.com/OmniNode-ai/omnibase_compat/archive/ea4239d357fe07bb7c45afee9edceaa5c428bf32.zip" }
+omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
+onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
+
+[tool.uv]
+override-dependencies = [
+    "omnibase-core==0.40.1",
+    "omnibase-spi==0.20.6",
+    "omnibase-infra==0.34.2",
+    "omnibase-compat @ https://github.com/OmniNode-ai/omnibase_compat/archive/ea4239d357fe07bb7c45afee9edceaa5c428bf32.zip",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
