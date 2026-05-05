@@ -1,0 +1,25 @@
+name: node_local_supervisor
+version: "1.0.0"
+description: "Executes a pre-made routing decision: invokes model, verifies output, retries per budget"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_local_supervisor: "omnimarket.nodes.node_local_supervisor"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_compat>=0.1.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["local-supervisor", "execution", "retry", "two-strike", "effect"]
+pack: "routing"
+display_name: "Local Supervisor"
+node_role: "effect"
