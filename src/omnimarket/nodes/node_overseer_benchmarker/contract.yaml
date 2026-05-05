@@ -53,6 +53,9 @@ outputs:
   status:
     type: str
     description: "clean | partial | error | dry_run"
+  dry_run:
+    type: bool
+    description: "Echo of the dry_run flag from the request"
 
 terminal_event: onex.evt.omnimarket.overseer-benchmarker-completed.v1
 

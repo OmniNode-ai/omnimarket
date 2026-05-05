@@ -58,7 +58,7 @@ class BenchmarkRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     run_id: str = Field(description="Caller-assigned ID for this benchmark run")
-    models: list[str] = Field(default_factory=list)
+    models: list[str] = Field(min_length=1, description="Model keys to benchmark")
     max_tasks_per_type: int = 5
     dry_run: bool = False
 
