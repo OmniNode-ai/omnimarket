@@ -76,6 +76,8 @@ jobs:
         run: uv python install 3.12
 
       - name: Install omniintelligence dependencies
+        id: install-omniintelligence
+        continue-on-error: true
         working-directory: ../omniintelligence
         run: uv sync --locked --all-extras
 
