@@ -18,6 +18,7 @@ dependencies:
   - "confluent-kafka"
   - "onex-change-control>=0.5.0"
   - "typing-extensions"
+  - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["overnight", "orchestrator", "autonomous", "pipeline", "session"]

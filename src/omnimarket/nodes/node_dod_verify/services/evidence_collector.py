@@ -230,7 +230,7 @@ class EvidenceCollector:
                     )
                 messages.append(msg)
             elif check_type == "file_exists":
-                ok, msg = self._run_file_exists_check(check)
+                ok, msg = self._run_file_exists_check(check, contract_path)
                 if not ok:
                     return ModelEvidenceCheckResult(
                         evidence_id=evidence_id,
@@ -544,17 +544,24 @@ class EvidenceCollector:
     def _run_file_exists_check(
         self,
         check: dict[str, Any],
+        contract_path: Path | None = None,
     ) -> tuple[bool, str]:
         """Verify a path exists within the repo-root containment boundary.
 
         Accepts ``path`` or ``check_value`` as the target. Resolution rules:
 
-        - Relative paths resolve against ``OMNI_HOME`` (or ``Path.cwd()`` fallback).
-        - Absolute paths are permitted only if they resolve inside the base.
+        - Relative paths resolve against the inferred OCC repo root when the
+          contract lives under ``onex_change_control/`` (matches the cwd
+          inference used by ``_run_command_check``); otherwise they resolve
+          against ``OMNI_HOME`` (or ``Path.cwd()`` fallback). Regression for
+          OMN-10542.
+        - Absolute paths are permitted only if they resolve inside ``OMNI_HOME``
+          (when set).
         - ``..`` segments in the raw input are rejected up-front.
         - Every candidate (and every glob match) is canonicalised via
           ``Path.resolve()`` — which follows symlinks — and checked against
-          ``base`` with ``is_relative_to``. Symlink escapes are therefore blocked.
+          the containment base with ``is_relative_to``. Symlink escapes are
+          therefore blocked.
         - Glob metacharacters (``*``, ``?``, ``[``) are expanded; at least one
           match must remain after containment filtering.
         """
@@ -567,8 +574,20 @@ class EvidenceCollector:
             return False, f"Path traversal not allowed: {raw_path}"
 
         omni_home = os.environ.get("OMNI_HOME")
+        # Containment base: OMNI_HOME (or cwd fallback). All resolved paths must
+        # land inside this boundary regardless of where they were resolved from.
         base = Path(omni_home).resolve() if omni_home else Path.cwd().resolve()
-        candidate = raw_path_obj if raw_path_obj.is_absolute() else base / raw_path_obj
+
+        # Relative-path resolution root: prefer the OCC repo root when this
+        # contract lives under onex_change_control/, mirroring the cwd
+        # inference _run_command_check uses (OMN-10542). The OCC root stays
+        # inside OMNI_HOME so the containment check below is unaffected.
+        occ_cwd = self._infer_occ_cwd(contract_path)
+        resolve_root = Path(occ_cwd).resolve() if occ_cwd else base
+
+        candidate = (
+            raw_path_obj if raw_path_obj.is_absolute() else resolve_root / raw_path_obj
+        )
         has_glob = any(ch in raw_path for ch in ("*", "?", "["))
 
         if has_glob:

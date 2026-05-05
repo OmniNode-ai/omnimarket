@@ -21,6 +21,8 @@ handler:
 descriptor:
   node_archetype: orchestrator
   purity: pure
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 28800000
 
