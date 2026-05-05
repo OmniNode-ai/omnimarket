@@ -69,3 +69,6 @@ event_bus:
     - onex.cmd.omnimarket.linear-triage-start.v1
   publish_topics:
     - onex.evt.omnimarket.linear-triage-completed.v1
+
+metadata:
+  transport_type: kafka

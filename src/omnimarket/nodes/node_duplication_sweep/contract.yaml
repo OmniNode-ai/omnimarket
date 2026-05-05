@@ -46,3 +46,6 @@ event_bus:
     - onex.cmd.omnimarket.duplication-sweep-start.v1
   publish_topics:
     - onex.evt.omnimarket.duplication-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

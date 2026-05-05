@@ -620,6 +620,7 @@ health_check:
 # Metadata
 # ========
 metadata:
+  transport_type: postgres
   author: "OmniNode Team"
   created: "2025-11-14"
   updated: "2026-02-27"

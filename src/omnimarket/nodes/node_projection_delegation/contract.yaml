@@ -42,3 +42,6 @@ event_bus:
     - onex.evt.omniclaude.delegation-shadow-comparison.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
+
+metadata:
+  transport_type: kafka

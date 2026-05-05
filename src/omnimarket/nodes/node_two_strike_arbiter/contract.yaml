@@ -72,3 +72,6 @@ event_bus:
     - onex.evt.omnimarket.fix-attempt-failed.v1
   publish_topics:
     - onex.evt.omnimarket.two-strike-arbiter.v1
+
+metadata:
+  transport_type: kafka

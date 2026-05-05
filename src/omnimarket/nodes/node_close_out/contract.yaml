@@ -58,3 +58,6 @@ event_bus:
     - onex.evt.omnimarket.close-out-phase-transition.v1
     - onex.evt.omnimarket.close-out-completed.v1
     - onex.evt.omnimarket.close-out-skipped.v1
+
+metadata:
+  transport_type: kafka

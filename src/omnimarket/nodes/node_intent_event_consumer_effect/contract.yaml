@@ -156,3 +156,6 @@ dependencies:
   - name: "HandlerIntentStorageAdapter"
     type: "handler"
     required: true
+
+metadata:
+  transport_type: kafka

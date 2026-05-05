@@ -34,3 +34,6 @@ event_bus:
     - onex.evt.omnimarket.overnight-session-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-overnight-applied.v1
+
+metadata:
+  transport_type: kafka

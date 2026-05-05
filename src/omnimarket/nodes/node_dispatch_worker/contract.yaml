@@ -104,3 +104,6 @@ dod_evidence:
     description: template behavioral invariants check passes
     command: python check_template_behavioral_invariants.py
     pass_criteria: all role template invariants green; template_version bumped if content changed
+
+metadata:
+  transport_type: kafka

@@ -66,3 +66,6 @@ event_bus:
     - onex.cmd.omnimarket.kafka-probe-trigger.v1
   publish_topics:
     - onex.evt.omnimarket.kafka-probe-result.v1
+
+metadata:
+  transport_type: kafka

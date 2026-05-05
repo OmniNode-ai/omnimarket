@@ -91,3 +91,6 @@ event_bus:
     - onex.cmd.omnimarket.data-verification-start.v1
   publish_topics:
     - onex.evt.omnimarket.data-verification-completed.v1
+
+metadata:
+  transport_type: kafka

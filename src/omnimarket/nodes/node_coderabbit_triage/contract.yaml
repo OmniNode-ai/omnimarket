@@ -62,3 +62,6 @@ event_bus:
     - onex.cmd.omnimarket.coderabbit-triage-start.v1
   publish_topics:
     - onex.evt.omnimarket.coderabbit-triage-completed.v1
+
+metadata:
+  transport_type: kafka

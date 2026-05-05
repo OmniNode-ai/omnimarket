@@ -29,3 +29,6 @@ event_bus:
     - onex.evt.omniintelligence.llm-call-completed.v1
   publish_topics:
     - onex.evt.omnimarket.cost-by-repo-snapshot.v1
+
+metadata:
+  transport_type: kafka

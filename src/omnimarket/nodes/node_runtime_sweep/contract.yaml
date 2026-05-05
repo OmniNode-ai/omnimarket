@@ -55,3 +55,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.runtime-sweep-finding.v1
     - onex.evt.omnimarket.runtime-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

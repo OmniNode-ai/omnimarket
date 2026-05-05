@@ -27,3 +27,6 @@ event_bus:
     - onex.evt.omniclaude.session-outcome.v1
   publish_topics:
     - onex.evt.omnimarket.projection-session-outcome-applied.v1
+
+metadata:
+  transport_type: kafka

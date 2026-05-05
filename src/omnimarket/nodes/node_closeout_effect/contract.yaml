@@ -51,3 +51,6 @@ event_bus:
     - onex.cmd.omnimarket.closeout-effect-start.v1
   publish_topics:
     - onex.evt.omnimarket.closeout-effect-completed.v1
+
+metadata:
+  transport_type: kafka
