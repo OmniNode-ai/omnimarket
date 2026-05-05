@@ -72,7 +72,7 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1124",
         "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1187",
         # node_overnight → node_build_loop
-        "omnimarket/nodes/node_overnight/handlers/handler_overnight.py:1071",
+        "omnimarket/nodes/node_overnight/handlers/handler_overnight.py:1072",
         # node_pipeline_fill → node_rsd_fill_compute
         "omnimarket/nodes/node_pipeline_fill/handlers/handler_pipeline_fill.py:40",
         # node_merge_sweep_state_reducer reach-ins
