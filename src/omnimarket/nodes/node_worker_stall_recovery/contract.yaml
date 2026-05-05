@@ -85,3 +85,6 @@ event_bus:
     - onex.evt.omnimarket.worker-stall-recovery-result.v1
   dlq_topics:
     - onex.dlq.omnimarket.worker-stall-recovery.v1
+
+metadata:
+  transport_type: kafka

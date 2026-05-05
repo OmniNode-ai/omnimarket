@@ -101,3 +101,6 @@ event_bus:
     # without external cron jobs. Fires only when enable_self_loop=True and an
     # event_bus is wired.
     - onex.cmd.omnimarket.overnight-start.v1
+
+metadata:
+  transport_type: kafka

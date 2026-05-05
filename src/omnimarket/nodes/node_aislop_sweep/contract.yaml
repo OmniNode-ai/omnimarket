@@ -59,3 +59,6 @@ event_bus:
     - onex.evt.omnimarket.aislop-sweep-finding.v1
     - onex.evt.omnimarket.aislop-sweep-completed.v1
     - onex.evt.omnimarket.sweep-result.v1
+
+metadata:
+  transport_type: kafka

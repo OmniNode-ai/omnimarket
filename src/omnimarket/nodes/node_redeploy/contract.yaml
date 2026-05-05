@@ -135,6 +135,7 @@ dependencies:
     - "omnibase_core>=0.39.0"
 
 metadata:
+  transport_type: kafka
   description: "Full post-release runtime redeploy WorkflowPackage"
   author: "OmniNode Platform Team"
   created: "2026-04-05"

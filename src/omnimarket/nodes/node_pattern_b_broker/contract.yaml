@@ -115,3 +115,6 @@ dod_evidence:
     description: Typed Pattern B broker contract/model tests pass locally.
     command: uv run pytest tests/unit/nodes/node_pattern_b_broker -q
     pass_criteria: Models require enum-backed event/state values and load topics from the node contract.
+
+metadata:
+  transport_type: kafka

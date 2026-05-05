@@ -76,3 +76,6 @@ event_bus:
     - onex.cmd.omnimarket.verification-receipt-start.v1
   publish_topics:
     - onex.evt.omnimarket.verification-receipt-completed.v1
+
+metadata:
+  transport_type: kafka

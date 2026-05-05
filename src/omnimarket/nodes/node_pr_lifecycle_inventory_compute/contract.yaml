@@ -38,6 +38,7 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1
 metadata:
+  transport_type: kafka
   description: "PR lifecycle inventory compute node — raw data collection"
   author: "OmniNode Platform Team"
   created: "2026-04-09"

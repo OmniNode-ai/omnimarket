@@ -46,6 +46,7 @@ event_bus:
     - onex.evt.omnimarket.alert-response-completed.v1
 
 metadata:
+  transport_type: kafka
   description: "Monitor alert classifier and auto-remediation dispatcher"
   author: "OmniNode Team"
   created: "2026-04-15"

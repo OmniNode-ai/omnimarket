@@ -86,3 +86,6 @@ dod_evidence:
     - tests/nodes/node_thread_reply_effect/test_handler_thread_reply.py
   validation_notes: >
     Phase 2 Wave 1: scaffold + TDD tests. Real LLM calls land in OMN-8990 Wave 2.
+
+metadata:
+  transport_type: kafka

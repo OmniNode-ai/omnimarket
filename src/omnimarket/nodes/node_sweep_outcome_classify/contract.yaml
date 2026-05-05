@@ -34,3 +34,6 @@ event_bus:
     - onex.evt.omnimarket.pr-ci-rerun-triggered.v1
   publish_topics:
     - onex.evt.omnimarket.pr-polish-outcome.v1
+
+metadata:
+  transport_type: kafka

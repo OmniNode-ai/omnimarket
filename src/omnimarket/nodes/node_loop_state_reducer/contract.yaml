@@ -136,6 +136,7 @@ event_bus:
     - onex.evt.omnimarket.build-loop-state-reduced.v1
 
 metadata:
+  transport_type: kafka
   description: "Build loop FSM reducer for the autonomous build loop"
   author: "OmniNode Team"
   created: "2026-04-02"

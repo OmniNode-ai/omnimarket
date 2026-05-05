@@ -80,3 +80,6 @@ dod_evidence:
   validation_notes: >
     Phase 1: deterministic happy path + basic error handling.
     Phase 2 (follow-up): Slack gate integration, risk tiers, CDQA gate check.
+
+metadata:
+  transport_type: kafka

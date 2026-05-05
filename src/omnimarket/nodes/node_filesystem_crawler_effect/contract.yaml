@@ -76,3 +76,6 @@ handler_routing:
       handler:
         name: "HandlerCrawlFilesystem"
         module: "omnimarket.nodes.node_filesystem_crawler_effect.handlers.handler_crawl_filesystem"
+
+metadata:
+  transport_type: kafka

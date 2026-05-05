@@ -241,3 +241,6 @@ tags:
   # - postgresql
   # - redis
   # - pinecone
+
+metadata:
+  transport_type: postgres

@@ -32,3 +32,6 @@ event_bus:
     - onex.cmd.omnimarket.full-triage-start.v1
   publish_topics:
     - onex.evt.omnimarket.triage-completed.v1
+
+metadata:
+  transport_type: kafka

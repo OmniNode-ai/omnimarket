@@ -47,3 +47,6 @@ event_bus:
     - onex.cmd.omnimarket.pr-polish-start.v1
   dlq_topics:
     - onex.dlq.omnimarket.merge-sweep-triage.v1
+
+metadata:
+  transport_type: kafka

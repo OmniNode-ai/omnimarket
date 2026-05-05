@@ -90,3 +90,6 @@ event_bus:
     - onex.cmd.omnimarket.fixer-dispatch-start.v1
   publish_topics:
     - onex.evt.omnimarket.fixer-dispatch-completed.v1
+
+metadata:
+  transport_type: kafka

@@ -30,3 +30,6 @@ event_bus:
     - onex.evt.omnimarket.pr-watch-completed.v1
   dlq_topics:
     - onex.dlq.omnimarket.pr-watch.v1
+
+metadata:
+  transport_type: kafka

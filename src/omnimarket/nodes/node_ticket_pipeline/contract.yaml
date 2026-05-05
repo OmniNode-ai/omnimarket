@@ -58,3 +58,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.ticket-pipeline-phase-transition.v1
     - onex.evt.omnimarket.ticket-pipeline-completed.v1
+
+metadata:
+  transport_type: kafka

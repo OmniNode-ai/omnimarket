@@ -61,3 +61,6 @@ event_bus:
     - onex.evt.omnimarket.pr-ci-fix-attempted.v1
   dlq_topics:
     - onex.dlq.omnimarket.pr-ci-fix.v1
+
+metadata:
+  transport_type: kafka

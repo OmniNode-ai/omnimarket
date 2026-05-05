@@ -39,3 +39,6 @@ sub_handler_dependencies:
   - check_database_projections
   - check_ci_status
   - check_coverage
+
+metadata:
+  transport_type: kafka

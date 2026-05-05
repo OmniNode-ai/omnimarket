@@ -138,3 +138,6 @@ load_balancing_enabled: false
 failure_isolation_enabled: true
 monitoring_enabled: true
 metrics_collection_enabled: true
+
+metadata:
+  transport_type: kafka

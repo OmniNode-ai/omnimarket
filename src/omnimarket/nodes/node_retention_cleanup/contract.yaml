@@ -55,3 +55,6 @@ retention_policy:
     - table: agent_routing_decisions
       column: created_at
       retention_days: 30
+
+metadata:
+  transport_type: kafka

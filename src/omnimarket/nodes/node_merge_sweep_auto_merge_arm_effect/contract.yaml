@@ -34,3 +34,6 @@ event_bus:
     - onex.evt.omnimarket.pr-auto-merge-armed.v1
   dlq_topics:
     - onex.dlq.omnimarket.pr-auto-merge-arm.v1
+
+metadata:
+  transport_type: kafka

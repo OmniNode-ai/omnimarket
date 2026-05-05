@@ -60,3 +60,6 @@ event_bus:
     - onex.cmd.omnimarket.doc-freshness-sweep-start.v1
   publish_topics:
     - onex.evt.omnimarket.doc-freshness-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

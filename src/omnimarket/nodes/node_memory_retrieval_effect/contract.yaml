@@ -235,3 +235,6 @@ tags:
   - graph
   - qdrant
   - postgresql
+
+metadata:
+  transport_type: postgres

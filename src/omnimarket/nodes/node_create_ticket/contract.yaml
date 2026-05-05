@@ -81,3 +81,6 @@ event_bus:
     - onex.cmd.omnimarket.create-ticket-start.v1
   publish_topics:
     - onex.evt.omnimarket.create-ticket-completed.v1
+
+metadata:
+  transport_type: kafka
