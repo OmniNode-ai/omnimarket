@@ -48,4 +48,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import EnumModelTier; from omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop import build_default_routing_table; assert EnumModelTier.GEMINI_CLI.value == '\\''gemini-cli'\\''; assert any(route.model_tier == '\\''gemini-cli'\\'' for route in build_default_routing_table()); print('\\''deploy smoke ok'\\'')\"'"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import EnumModelTier; from omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop import build_default_routing_table; assert EnumModelTier.GEMINI_CLI.value == 'gemini-cli'; assert any(route.model_tier == 'gemini-cli' for route in build_default_routing_table()); print('deploy smoke ok')\""
