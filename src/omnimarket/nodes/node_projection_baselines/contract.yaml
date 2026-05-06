@@ -43,3 +43,6 @@ event_bus:
     - onex.evt.omnibase-infra.baselines-computed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-baselines-applied.v1
+
+metadata:
+  transport_type: kafka

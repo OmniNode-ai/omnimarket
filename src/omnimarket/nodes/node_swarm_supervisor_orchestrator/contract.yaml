@@ -118,6 +118,7 @@ fsm:
       trigger: "unhandled exception"
 
 metadata:
+  transport_type: kafka
   description: "Swarm supervisor — heartbeat polling, zombie detection, auto-respawn"
   author: "OmniNode Platform Team"
   created: "2026-04-13"

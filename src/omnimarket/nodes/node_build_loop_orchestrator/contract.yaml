@@ -161,6 +161,7 @@ fsm:
       trigger: "error"
 
 metadata:
+  transport_type: kafka
   description: "Build loop orchestrator composing 6 sub-handlers via FSM reducer"
   author: "OmniNode Platform Team"
   created: "2026-04-07"

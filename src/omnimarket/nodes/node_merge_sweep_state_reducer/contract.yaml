@@ -34,3 +34,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.merge-sweep-state-reduced.v1
     - onex.evt.omnimarket.merge-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

@@ -104,3 +104,6 @@ event_bus:
     - onex.cmd.omnimarket.pr-lifecycle-merge-start.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-merge-completed.v1
+
+metadata:
+  transport_type: kafka

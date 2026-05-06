@@ -55,3 +55,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.dashboard-sweep-page-classified.v1
     - onex.evt.omnimarket.dashboard-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

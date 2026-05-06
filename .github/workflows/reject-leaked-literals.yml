@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-10554: leaked-literals gate, ADVISORY MODE.
+#
+# Wave 0 of the Public-Shippable plan
+# (`docs/plans/2026-05-05-omnimarket-public-shippable.md`).
+#
+# This workflow surfaces the leaked-literals baseline for situational
+# awareness. It runs `scripts/validation/check_leaked_literals.sh advisory all`
+# on every PR and on merge_group entry, prints findings to the run log, and
+# ALWAYS exits 0. It is NOT a required status check.
+#
+# Wave 3 (Task 8 blocking-mode) flips MODE to `blocking` after Tasks 3+7 land
+# their scrubs and brings this workflow under "required status checks". Until
+# then, finding count is informational and downstream tasks consume the report.
+
+name: Leaked Literals Gate (advisory)
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  leak-gate-advisory:
+    name: Scan for leaked literals (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run leak gate in advisory mode
+        run: |
+          bash scripts/validation/check_leaked_literals.sh advisory all

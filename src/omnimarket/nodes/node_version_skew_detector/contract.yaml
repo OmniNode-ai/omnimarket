@@ -61,3 +61,6 @@ event_bus:
   publish_topics:
     - onex.evt.omniclaude.version-skew-detected.v1
     - onex.evt.omniclaude.version-skew-healthy.v1
+
+metadata:
+  transport_type: kafka

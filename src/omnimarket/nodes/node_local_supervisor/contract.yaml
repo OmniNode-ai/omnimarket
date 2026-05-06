@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_local_supervisor
+# Effectful orchestrator: receives a ModelRoutingDecision and executes it.
+# Invokes the selected model, runs verifier on output, handles retries per
+# the retry budget and strategy. Does NOT make routing decisions.
+#
+# Related: OMN-8050
+---
+name: local_supervisor
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Local supervisor — executes a pre-made ModelRoutingDecision.
+  Invokes the selected model endpoint, runs the overseer verifier on the
+  output, and retries according to the retry budget and strategy supplied
+  in the request. Does NOT make routing decisions; that is
+  node_routing_policy_engine's responsibility.
+  Escalates when the retry budget is exhausted.
+
+handler:
+  module: omnimarket.nodes.node_local_supervisor.handlers.handler_local_supervisor
+  class: HandlerLocalSupervisor
+  input_model: ModelLocalSupervisorRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+
+model_routing:
+  primary: qwen3-coder-30b
+  fallback: claude-sonnet
+  timeout_per_attempt_s: 60
+  max_retries: 3
+  reason_for_fallback: "local timeout or unavailable"
+  fallback_allowed_roles:
+    - supervisor
+  call_style: async
+
+inputs:
+  routing_decision:
+    type: object
+    description: "Pre-made routing decision: model_key, endpoint_url, role, correlation_id"
+    required: true
+  prompt:
+    type: str
+    description: "Prompt text to invoke the selected model with"
+    required: true
+  retry_budget:
+    type: int
+    description: "Maximum number of execution attempts (Two-Strike: >= 3 always escalates)"
+    required: true
+  retry_strategy:
+    type: str
+    description: "Retry strategy (improved_context_retry, same_model_same_context, peer_model, tier_escalation)"
+    required: true
+  correlation_id:
+    type: str
+    description: "Trace/correlation ID"
+    required: true
+
+outputs:
+  output:
+    type: str
+    description: "Model output text on success, empty string on escalation"
+  verdict:
+    type: str
+    description: "PASS, FAIL, or ESCALATE"
+  attempt_count:
+    type: int
+    description: "Number of attempts made before reaching verdict"
+  model_key:
+    type: str
+    description: "Model key that produced the accepted output"
+  escalated:
+    type: bool
+    description: "True when budget exhausted without verified pass"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.local-supervisor-execute.v1
+  publish_topics:
+    - onex.evt.omnimarket.local-supervisor-completed.v1
+    - onex.evt.omnimarket.local-supervisor-escalated.v1
+
+metadata:
+  author: OmniNode Platform Team
+  license: MIT
+  maturity: stable
+  tags:
+    - local-supervisor
+    - execution
+    - retry
+    - two-strike
+    - OMN-8050
+  related_tickets:
+    - "OMN-8050"
+    - "OMN-8047"

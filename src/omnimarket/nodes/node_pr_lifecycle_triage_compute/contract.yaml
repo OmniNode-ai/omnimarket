@@ -36,6 +36,7 @@ handler_routing:
         name: "HandlerPrLifecycleTriage"
         module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage"
 metadata:
+  transport_type: kafka
   description: "PR triage compute node for pr_lifecycle domain"
   author: "OmniNode Team"
   created: "2026-04-09"

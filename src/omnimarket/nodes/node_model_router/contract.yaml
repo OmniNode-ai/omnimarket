@@ -86,6 +86,7 @@ event_bus:
     - onex.evt.omnimarket.model-routing-degraded.v1
 
 metadata:
+  transport_type: kafka
   description: "Contract-driven LLM routing substrate"
   author: "OmniNode Platform Team"
   created: "2026-04-11"

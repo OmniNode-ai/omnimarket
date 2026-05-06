@@ -246,6 +246,7 @@ fsm:
       trigger: "error"
 
 metadata:
+  transport_type: kafka
   description: "PR Lifecycle orchestrator — FSM wiring 5 sub-handlers"
   author: "OmniNode Platform Team"
   created: "2026-04-09"

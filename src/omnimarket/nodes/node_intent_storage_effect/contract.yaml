@@ -211,3 +211,6 @@ tags:
   - memgraph
   - graph
   - analytics
+
+metadata:
+  transport_type: kafka

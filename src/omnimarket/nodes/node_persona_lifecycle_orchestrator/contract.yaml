@@ -43,3 +43,6 @@ tags:
   - orchestrator
   - lifecycle
   - phase-3
+
+metadata:
+  transport_type: kafka

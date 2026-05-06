@@ -20,7 +20,7 @@ evidence_requirements:
     command: "uv run ruff check src/omnimarket/validators tests/validators/test_event_registry_drift.py && uv run ruff format --check src/omnimarket/validators tests/validators/test_event_registry_drift.py && uv run mypy src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py --strict --show-error-codes"
   - kind: manual
     description: "Pre-commit hook set passes on touched files with OMNIBASE_INFRA_PATH"
-    command: "OMNIBASE_INFRA_PATH=/Users/jonah/Code/omni_home/omnibase_infra pre-commit run --files .github/workflows/ci.yml .pre-commit-config.yaml scripts/validation/event_registry_drift_baseline.txt src/omnimarket/validators/__init__.py src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py"
+    command: "OMNIBASE_INFRA_PATH=${OMNI_HOME}/omnibase_infra pre-commit run --files .github/workflows/ci.yml .pre-commit-config.yaml scripts/validation/event_registry_drift_baseline.txt src/omnimarket/validators/__init__.py src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -49,4 +49,4 @@ dod_evidence:
     source: manual
     checks:
       - check_type: command
-        check_value: "OMNIBASE_INFRA_PATH=/Users/jonah/Code/omni_home/omnibase_infra pre-commit run --files .github/workflows/ci.yml .pre-commit-config.yaml scripts/validation/event_registry_drift_baseline.txt src/omnimarket/validators/__init__.py src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py"
+        check_value: "OMNIBASE_INFRA_PATH=${OMNI_HOME}/omnibase_infra pre-commit run --files .github/workflows/ci.yml .pre-commit-config.yaml scripts/validation/event_registry_drift_baseline.txt src/omnimarket/validators/__init__.py src/omnimarket/validators/event_registry_drift.py tests/validators/test_event_registry_drift.py"

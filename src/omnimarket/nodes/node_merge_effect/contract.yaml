@@ -71,3 +71,6 @@ event_bus:
     - onex.evt.omnimarket.merge-result.v1
   dlq_topics:
     - onex.dlq.omnimarket.pr-merge.v1
+
+metadata:
+  transport_type: kafka

@@ -43,6 +43,7 @@ event_bus:
     - onex.cmd.omnimarket.delegation-request.v1
 
 metadata:
+  transport_type: kafka
   description: "Build dispatch effect node for autonomous build loop"
   author: "OmniNode Team"
   created: "2026-04-02"

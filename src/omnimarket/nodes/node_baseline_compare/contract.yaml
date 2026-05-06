@@ -71,3 +71,6 @@ event_bus:
     - onex.cmd.omnimarket.baseline-compare-start.v1
   publish_topics:
     - onex.evt.omnimarket.baseline-compared.v1
+
+metadata:
+  transport_type: kafka

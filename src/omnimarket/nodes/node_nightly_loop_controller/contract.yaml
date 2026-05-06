@@ -108,6 +108,7 @@ event_bus:
     - onex.evt.omnimarket.build-loop-failed.v1
 
 metadata:
+  transport_type: kafka
   description: "Persistent nightly loop controller with DB-backed decision store"
   author: "OmniNode Platform Team"
   created: "2026-04-08"

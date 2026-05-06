@@ -55,3 +55,6 @@ event_bus:
     - onex.cmd.omnimarket.ticket-work-start.v1
   publish_topics:
     - onex.evt.omnimarket.ticket-work-completed.v1
+
+metadata:
+  transport_type: kafka

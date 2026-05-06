@@ -78,3 +78,6 @@ event_bus:
     - onex.cmd.omnimarket.bus-audit-start.v1
   publish_topics:
     - onex.evt.omnimarket.bus-audit-completed.v1
+
+metadata:
+  transport_type: kafka

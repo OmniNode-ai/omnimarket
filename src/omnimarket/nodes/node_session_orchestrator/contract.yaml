@@ -196,3 +196,6 @@ health_dimensions:
     description: "Any canonical repo behind origin/main"
     blocks_dispatch_on_red: false
     blocks_dispatch_on_yellow: false
+
+metadata:
+  transport_type: kafka

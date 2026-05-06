@@ -87,3 +87,6 @@ event_bus:
     - onex.cmd.omnimarket.session-post-mortem-start.v1
   publish_topics:
     - onex.evt.omnimarket.session-post-mortem.v1
+
+metadata:
+  transport_type: kafka

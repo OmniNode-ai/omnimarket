@@ -36,3 +36,6 @@ event_bus:
     - onex.evt.omnimarket.pr-rebase-completed.v1
   dlq_topics:
     - onex.dlq.omnimarket.pr-rebase.v1
+
+metadata:
+  transport_type: kafka

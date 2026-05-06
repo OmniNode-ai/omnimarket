@@ -60,3 +60,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.local-review-phase-transition.v1
     - onex.evt.omnimarket.local-review-completed.v1
+
+metadata:
+  transport_type: kafka

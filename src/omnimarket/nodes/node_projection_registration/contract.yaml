@@ -72,3 +72,6 @@ projection_api:
   order_by: "updated_at DESC"
   freshness_column: "updated_at"
   limit: 100
+
+metadata:
+  transport_type: kafka

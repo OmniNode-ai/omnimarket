@@ -51,3 +51,6 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.coverage-sweep-gap.v1
     - onex.evt.omnimarket.coverage-sweep-completed.v1
+
+metadata:
+  transport_type: kafka

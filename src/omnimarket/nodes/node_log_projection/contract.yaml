@@ -19,3 +19,6 @@ event_bus:
     - onex.evt.platform.log-entry.v1
   publish_topics:
     - onex.evt.omnimarket.log-projection-snapshot.v1
+
+metadata:
+  transport_type: kafka

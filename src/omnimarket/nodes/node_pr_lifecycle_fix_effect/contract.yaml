@@ -78,3 +78,6 @@ event_bus:
     - onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
+
+metadata:
+  transport_type: kafka

@@ -72,3 +72,6 @@ event_bus:
     - onex.cmd.omnimarket.integration-test-runner-start.v1
   publish_topics:
     - onex.evt.omnimarket.integration-test-runner-completed.v1
+
+metadata:
+  transport_type: kafka

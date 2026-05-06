@@ -61,3 +61,6 @@ event_bus:
     - onex.intent.omnimarket.state-persist.v1
   publish_topics:
     - onex.evt.omnimarket.state-persisted.v1
+
+metadata:
+  transport_type: kafka

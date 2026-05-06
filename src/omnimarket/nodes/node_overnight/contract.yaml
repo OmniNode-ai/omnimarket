@@ -21,6 +21,8 @@ handler:
 descriptor:
   node_archetype: orchestrator
   purity: pure
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 28800000
 
@@ -101,3 +103,6 @@ event_bus:
     # without external cron jobs. Fires only when enable_self_loop=True and an
     # event_bus is wired.
     - onex.cmd.omnimarket.overnight-start.v1
+
+metadata:
+  transport_type: kafka

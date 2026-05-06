@@ -200,3 +200,6 @@ tags:
   - classification
   - omn-5657
   - omn-5664
+
+metadata:
+  transport_type: postgres
