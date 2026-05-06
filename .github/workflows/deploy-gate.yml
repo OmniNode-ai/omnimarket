@@ -23,4 +23,4 @@ jobs:
     uses: OmniNode-ai/omniclaude/.github/workflows/deploy-gate-reusable.yml@main
     secrets: inherit
     with:
-      contracts-dir: contracts
+      contracts-dir: docs/work-tracking/contracts

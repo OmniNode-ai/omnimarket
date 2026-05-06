@@ -24,6 +24,7 @@ from omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop imp
     GapStatus,
     ModelDelegationRoute,
     ModelNightlyLoopConfig,
+    build_default_routing_table,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
@@ -291,3 +292,52 @@ class TestContractWiring:
 
         assert "OMNIBASE_INFRA_DB_URL" in contract["env_deps"]
         assert "KAFKA_BOOTSTRAP_SERVERS" in contract["env_deps"]
+
+
+class TestDefaultRoutingTable:
+    """Tests for build_default_routing_table — gemini-cli wiring."""
+
+    def test_default_routing_table_includes_gemini_cli_routes(self) -> None:
+        table = build_default_routing_table()
+        gemini_routes = [r for r in table if r.model_id == "gemini-cli"]
+        assert len(gemini_routes) >= 2, (
+            "Expected at least architecture + multi-file routes"
+        )
+
+    def test_default_routing_table_architecture_route(self) -> None:
+        table = build_default_routing_table()
+        arch = next((r for r in table if r.task_type == "architecture"), None)
+        assert arch is not None
+        assert arch.model_id == "gemini-cli"
+        assert arch.is_frontier is True
+        assert arch.max_context_tokens == 1000000
+
+    def test_default_routing_table_multi_file_route(self) -> None:
+        table = build_default_routing_table()
+        mf = next((r for r in table if r.task_type == "multi-file"), None)
+        assert mf is not None
+        assert mf.model_id == "gemini-cli"
+        assert mf.is_frontier is True
+
+    def test_default_routing_table_gemini_cli_routes_before_local(self) -> None:
+        table = build_default_routing_table()
+        gemini_indices = [i for i, r in enumerate(table) if r.model_id == "gemini-cli"]
+        local_indices = [i for i, r in enumerate(table) if not r.is_frontier]
+        assert all(gi < li for gi in gemini_indices for li in local_indices), (
+            "Gemini CLI routes must appear before local routes in routing table"
+        )
+
+    def test_default_routing_table_usable_in_config(self) -> None:
+        table = build_default_routing_table()
+        config = ModelNightlyLoopConfig(
+            priorities=("architecture",),
+            routing_table=table,
+            max_iterations_per_run=1,
+        )
+        db = InmemoryDatabaseAdapter()
+        handler = HandlerNightlyLoopController()
+        result = handler.run(config=config, db=db)
+        assert result.iterations_completed == 1
+        dispatched = [d for d in result.decisions if d.action == "dispatch-ticket"]
+        assert len(dispatched) >= 1
+        assert dispatched[0].model_used == "gemini-cli"
