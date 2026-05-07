@@ -1,0 +1,36 @@
+# OMN-10079 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+schema_version: "1.0.0"
+ticket_id: "OMN-10079"
+title: "Codex runtime local runtime ingress"
+summary: "accept runtime node projection payloads and Pattern B broker command serialization"
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "envelopes"
+  - "public_api"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Node registration projection accepts runtime node payload aliases and state changes"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_projection_registration.py -q"
+  - id: "dod-002"
+    description: "Codex Pattern B runtime client omits null optional fields accepted by the runtime broker"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_codex_runtime_client.py::test_session_bootstrap_pattern_b_runs_node_end_to_end -q"
+  - id: "dod-deploy"
+    description: ".201 runtime dry-run market dispatch completed through the brokered runtime path"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec omninode-runtime-effects /app/.venv/bin/python -m omnimarket.adapters.codex.runtime_client --command-name session_bootstrap --payload-file /tmp/omn-10079-session-bootstrap-payload-full.json --timeout-ms 45000"

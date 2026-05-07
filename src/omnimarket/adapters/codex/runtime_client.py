@@ -177,7 +177,7 @@ class _CodexDispatchBusAdapter:
         await self._transport.publish(
             route.command_topic,
             None,
-            envelope.model_dump_json().encode("utf-8"),
+            envelope.model_dump_json(exclude_none=True).encode("utf-8"),
             None,
         )
 

@@ -8,6 +8,7 @@ from omnimarket.nodes.node_projection_registration.handlers.handler_projection_r
     HandlerProjectionRegistration,
     ModelNodeHeartbeatEvent,
     ModelNodeIntrospectionEvent,
+    ModelNodeStateChangeEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
@@ -97,6 +98,92 @@ class TestRegistrationProjection:
         rows = db.query("node_service_registry")
         assert len(rows) == 1
         assert rows[0]["service_name"] == "new-svc"
+
+    def test_runtime_introspection_uses_node_identity_aliases(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(
+            {
+                "_db": db,
+                "_event_type": "introspection",
+                "node_id": "runtime-effect-001",
+                "node_type": "effect",
+                "node_version": {"major": 1, "minor": 0, "patch": 0},
+                "health_status": "healthy",
+            }
+        )
+        assert result["rows_upserted"] == 1
+        rows = db.query("node_service_registry")
+        assert len(rows) == 1
+        assert rows[0]["service_name"] == "runtime-effect-001"
+        assert rows[0]["service_type"] == "effect"
+        assert rows[0]["metadata"]["node_id"] == "runtime-effect-001"
+        assert rows[0]["metadata"]["node_version"] == {
+            "major": 1,
+            "minor": 0,
+            "patch": 0,
+        }
+
+    def test_runtime_heartbeat_uses_node_id_and_fractional_uptime(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(
+            {
+                "_db": db,
+                "_event_type": "heartbeat",
+                "node_id": "runtime-effect-001",
+                "uptime_seconds": 0.78,
+                "timestamp": "2026-05-07T05:28:48.436025Z",
+            }
+        )
+        assert result["rows_upserted"] == 1
+        rows = db.query("node_service_registry")
+        assert len(rows) == 1
+        assert rows[0]["service_name"] == "runtime-effect-001"
+        assert rows[0]["health_status"] == "healthy"
+        assert rows[0]["uptime_seconds"] == 0
+
+    def test_runtime_identity_resolution_ignores_blank_service_name(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(
+            {
+                "_db": db,
+                "_event_type": "heartbeat",
+                "service_name": "   ",
+                "node_id": "runtime-effect-001",
+            }
+        )
+        assert result["rows_upserted"] == 1
+        rows = db.query("node_service_registry")
+        assert rows[0]["service_name"] == "runtime-effect-001"
+
+    def test_runtime_state_change_uses_node_id(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.project_state_change(
+            ModelNodeStateChangeEvent(node_id="runtime-effect-001", new_state="active"),
+            db,
+        )
+        assert result.rows_upserted == 1
+        rows = db.query("node_service_registry")
+        assert len(rows) == 1
+        assert rows[0]["service_name"] == "runtime-effect-001"
+        assert rows[0]["health_status"] == "active"
+        assert rows[0]["is_active"] is True
+
+    def test_handle_accepts_hyphenated_state_change_event_type(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(
+            {
+                "_db": db,
+                "_event_type": "state-change",
+                "node_id": "runtime-effect-001",
+                "new_state": "active",
+            }
+        )
+        assert result["rows_upserted"] == 1
+        rows = db.query("node_service_registry")
+        assert len(rows) == 1
+        assert rows[0]["service_name"] == "runtime-effect-001"
+        assert rows[0]["health_status"] == "active"
+        assert rows[0]["is_active"] is True
 
     def test_event_bus_wiring(self) -> None:
         contract_path = (
