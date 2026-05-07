@@ -33,4 +33,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "deploy: docker exec omninode-runtime-effects /app/.venv/bin/python -m omnimarket.adapters.codex.runtime_client --command-name session_bootstrap --payload-file /tmp/omn-10079-session-bootstrap-payload-full.json --timeout-ms 45000"
+        check_value: "docker exec omninode-runtime-effects /app/.venv/bin/python -m omnimarket.adapters.codex.runtime_client --command-name session_bootstrap --payload-file /tmp/omn-10079-session-bootstrap-payload-full.json --timeout-ms 45000"
