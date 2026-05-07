@@ -4,7 +4,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-10569"
 title: "Strip baked LAN/path/identity defaults from omnimarket production source"
-summary: "Replace all hardcoded 192.168.x.x IPs, /Users/jonah paths, /Volumes/PRO-G40 paths, localhost:9092 Kafka defaults, and model ID literals in src/omnimarket/ with empty-string defaults."
+summary: "Replace all hardcoded 192.168.x.x IPs, user home paths, external volume paths, localhost:9092 Kafka defaults, and model ID literals in src/omnimarket/ with empty-string defaults."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
