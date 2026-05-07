@@ -76,6 +76,7 @@ WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", ""))
 
 # LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
 LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
+LLM_FAST_MODEL_NAME = os.environ.get("LLM_CODER_FAST_MODEL_NAME", "")
 LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "")
 
 # Frontier: GLM-4.5 (primary code generation backend)
@@ -417,7 +418,7 @@ class LiveTicketClassifyHandler:
                     ticket_id=ticket.ticket_id,
                     buildability=buildability,
                     source=source,
-                    model_used="Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"  # onex-allow-model-id OMN-10580 reason="hardcoded model name for classification log; runtime model routing uses LLM_CODER_FAST_URL"
+                    model_used=LLM_FAST_MODEL_NAME
                     if source == "llm_classifier"
                     else "",
                     raw_response=raw_resp[:200],
@@ -484,7 +485,7 @@ class LiveTicketClassifyHandler:
                 resp = await client.post(
                     f"{LLM_FAST_URL}/v1/chat/completions",
                     json={
-                        "model": "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",  # onex-allow-model-id OMN-10580 reason="direct LLM call fallback when contract routing unavailable; real routing uses env-var-driven registry"
+                        "model": LLM_FAST_MODEL_NAME,
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 256,
                         "temperature": 0.0,
@@ -877,17 +878,23 @@ class LiveBuildDispatchHandler:
             if impl and "_skip" not in impl:
                 return impl, LLM_GLM_MODEL_NAME
 
-        # Tier 2: Local coder (Qwen3-Coder-30B, longer context)
+        # Tier 2: Local coder (longer context) — model ID from env var only
         if LLM_CODER_URL:
-            coder_model = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"  # onex-allow-model-id OMN-10580 reason="tier-2 local coder fallback; real deployments set LLM_CODER_MODEL_NAME"
-            impl = await self._call_llm(
-                url=f"{LLM_CODER_URL}/v1/chat/completions",
-                model=coder_model,
-                prompt=prompt,
-                max_tokens=4096,
-            )
-            if impl and "_skip" not in impl:
-                return impl, "qwen3-coder-30b"
+            coder_model = os.environ.get("LLM_CODER_MODEL_NAME", "").strip()
+            if not coder_model:
+                logger.warning(
+                    "[DISPATCH] LLM_CODER_MODEL_NAME not set — skipping local coder tier for %s",
+                    target.ticket_id,
+                )
+            else:
+                impl = await self._call_llm(
+                    url=f"{LLM_CODER_URL}/v1/chat/completions",
+                    model=coder_model,
+                    prompt=prompt,
+                    max_tokens=4096,
+                )
+                if impl and "_skip" not in impl:
+                    return impl, coder_model
 
         # Tier 3: Frontier fallback (OpenAI)
         if OPENAI_API_KEY:

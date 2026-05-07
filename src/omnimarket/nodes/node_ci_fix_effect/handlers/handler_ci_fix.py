@@ -66,13 +66,32 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
 class ModelCiFixEndpointConfig(BaseModel):
-    """Contract-owned OpenAI-compatible endpoint for a semantic model key."""
+    """Contract-owned OpenAI-compatible endpoint for a semantic model key.
+
+    Supports both legacy literal form (base_url/model_id) and env-var form
+    (url_env/model_id_env). Use resolved_base_url and resolved_model_id
+    for the effective values — they check the env var first.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    base_url: str = Field(..., min_length=1)
-    model_id: str = Field(..., min_length=1)
+    base_url: str = Field(default="")
+    model_id: str = Field(default="")
+    url_env: str = Field(default="")
+    model_id_env: str = Field(default="")
     timeout_seconds: float = Field(default=120.0, gt=0)
+
+    @property
+    def resolved_base_url(self) -> str:
+        if self.url_env:
+            return os.environ.get(self.url_env, "").strip()
+        return self.base_url
+
+    @property
+    def resolved_model_id(self) -> str:
+        if self.model_id_env:
+            return os.environ.get(self.model_id_env, "").strip()
+        return self.model_id
 
 
 class ModelCiFixRoutingConfig(BaseModel):
@@ -187,10 +206,18 @@ def _resolve_llm_provider(
             f"{_CONTRACT_PATH} model_routing.ci_fixer.model_endpoints "
             f"(known: {known})"
         )
+    resolved_url = endpoint.resolved_base_url
+    resolved_model = endpoint.resolved_model_id
+    if not resolved_url or not resolved_model:
+        raise ValueError(
+            f"model key {primary_model!r} has unresolved endpoint config: "
+            f"base_url={resolved_url!r} model_id={resolved_model!r}. "
+            "Set the corresponding LLM_* env vars."
+        )
     return (
         AdapterLlmProviderOpenai(
-            base_url=endpoint.base_url,
-            default_model=endpoint.model_id,
+            base_url=resolved_url,
+            default_model=resolved_model,
             provider_name="ci-fixer",
             provider_type="local",
             max_timeout_seconds=endpoint.timeout_seconds,
@@ -461,7 +488,7 @@ async def _generate_validated_patch(
         )
         llm_request = _build_llm_request(
             prompt=prompt,
-            model_name=endpoint.model_id,
+            model_name=endpoint.resolved_model_id,
             max_tokens=policy.max_tokens,
             temperature=policy.temperature,
             timeout_seconds=endpoint.timeout_seconds,
@@ -856,8 +883,8 @@ class HandlerCiFixEffect:
                 request.repo,
                 request.pr_number,
                 primary_model,
-                endpoint.base_url,
-                endpoint.model_id,
+                endpoint.resolved_base_url,
+                endpoint.resolved_model_id,
                 policy.max_tokens,
                 endpoint.timeout_seconds,
                 routing_config.patch_allowlist_patterns,

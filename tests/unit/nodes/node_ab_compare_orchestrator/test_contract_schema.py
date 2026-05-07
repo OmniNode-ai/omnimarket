@@ -115,13 +115,16 @@ def test_models_registry_openai_models_have_base_endpoint() -> None:
     data = yaml.safe_load(REGISTRY_PATH.read_text())
     for model in data["models"]:
         if model["protocol"] == "openai_compatible":
-            assert "endpoint" in model, (
-                f"OpenAI-compatible model '{model['id']}' must declare endpoint"
+            has_endpoint = "endpoint" in model or "endpoint_env" in model
+            assert has_endpoint, (
+                f"OpenAI-compatible model '{model['id']}' must declare either "
+                "'endpoint' (literal) or 'endpoint_env' (env-var key)"
             )
-            assert "/v1/chat/completions" not in model["endpoint"], (
-                f"OpenAI-compatible model '{model['id']}' must declare a base endpoint; "
-                "the effect node appends the chat completions path"
-            )
+            if "endpoint" in model:
+                assert "/v1/chat/completions" not in model["endpoint"], (
+                    f"OpenAI-compatible model '{model['id']}' must declare a base endpoint; "
+                    "the effect node appends the chat completions path"
+                )
 
 
 @pytest.mark.unit

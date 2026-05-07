@@ -9,7 +9,13 @@ model keys without per-node registry duplication.
 """
 
 from omnimarket.inference.bridge_config_loader import (
+    ConfigError,
+    load_inference_bridge_config,
     load_inference_bridge_config_from_env,
 )
 
-__all__: list[str] = ["load_inference_bridge_config_from_env"]
+__all__: list[str] = [
+    "ConfigError",
+    "load_inference_bridge_config",
+    "load_inference_bridge_config_from_env",
+]
