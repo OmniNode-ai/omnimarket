@@ -31,8 +31,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NODES_DIR = REPO_ROOT / "src" / "omnimarket" / "nodes"
-DEFAULT_CSV_OUT = REPO_ROOT / "docs" / "audits" / "2026-05-05-contract-config-audit.csv"
-DEFAULT_MD_OUT = REPO_ROOT / "docs" / "audits" / "2026-05-05-contract-config-audit.md"
+DEFAULT_CSV_OUT = REPO_ROOT / "docs" / "audits" / "2026-05-07-contract-config-audit.csv"
+DEFAULT_MD_OUT = REPO_ROOT / "docs" / "audits" / "2026-05-07-contract-config-audit.md"
 
 # Handler-import patterns that indicate the node consumes a given transport.
 # Each entry: (transport_label, regex). Detection is grep-based across all
@@ -356,9 +356,9 @@ def write_summary_md(rows: list[ContractRow], path: Path, csv_path: Path) -> Non
     )
 
     lines: list[str] = []
-    lines.append("# Contract Config Audit Summary — 2026-05-05")
+    lines.append("# Contract Config Audit Summary — 2026-05-07")
     lines.append("")
-    lines.append("**Ticket:** OMN-10565 (Task 17, Epic 4: Contract-Declared Config)")
+    lines.append("**Ticket:** OMN-10589 (Task 17, Epic 4: Contract-Declared Config)")
     lines.append("")
     try:
         csv_display = csv_path.relative_to(REPO_ROOT).as_posix()
