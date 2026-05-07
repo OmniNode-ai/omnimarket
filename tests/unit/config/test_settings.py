@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-file OMN-10580 reason="test fixture — contains the forbidden-literal regex pattern catalog as test data; the literals appear in assertions, not as runtime values"
+# onex-allow-file OMN-10580 reason="regex catalog asserts forbidden defaults do not appear in Settings"; test-literal-ok: negative assertions only
+# test-literal-ok: negative assertions only
 """Unit tests for ``omnimarket.config.Settings``.
 
 OMN-10548. Wave 1 / Task 2 of the Public-Shippable plan. Coverage:

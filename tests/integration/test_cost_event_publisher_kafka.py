@@ -4,7 +4,7 @@
 """Integration test: cost_event_publisher publishes real events to Kafka.
 
 Requires:
-- Kafka reachable at 192.168.86.201:19092
+- Kafka reachable at KAFKA_BOOTSTRAP_SERVERS (defaults to localhost:19092)
 - Run with brew Python (LAN grant): /path/to/.venv-brew/bin/pytest tests/integration/test_cost_event_publisher_kafka.py -v
 
 Marked @pytest.mark.kafka so the default uv run pytest suite skips it.
@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -28,7 +29,7 @@ if str(_REPO_ROOT) not in sys.path:
 if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-BOOTSTRAP_SERVERS = "192.168.86.201:19092"
+BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
 TOPIC = "onex.evt.omniintelligence.llm-call-completed.v1"
 
 

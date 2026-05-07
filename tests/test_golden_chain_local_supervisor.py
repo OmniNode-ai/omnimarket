@@ -33,7 +33,7 @@ from omnimarket.nodes.node_local_supervisor.models.model_local_supervisor_result
 def _make_decision(**overrides: object) -> ModelRoutingDecision:
     defaults: dict[str, object] = {
         "model_key": "qwen3-coder-30b",
-        "endpoint_url": "http://192.168.86.201:8000",
+        "endpoint_url": "http://localhost:8000",
         "role": "supervisor",
         "used_fallback": False,
     }
@@ -94,7 +94,7 @@ def test_local_supervisor_executes_routing_decision() -> None:
     # Verify it used the routing decision's endpoint and model_key
     assert len(invoker_calls) == 1
     endpoint_url, model_key, prompt = invoker_calls[0]
-    assert endpoint_url == "http://192.168.86.201:8000"
+    assert endpoint_url == "http://localhost:8000"
     assert model_key == "qwen3-coder-30b"
     assert prompt == request.prompt
 

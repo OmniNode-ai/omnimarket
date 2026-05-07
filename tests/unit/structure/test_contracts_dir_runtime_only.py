@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# test-literal-ok: regex patterns used to assert contracts do NOT contain user paths
 """Structural tests for the work-tracking contracts move.
 
 The 84 work-tracking ``OMN-XXXXX.yaml`` files moved from

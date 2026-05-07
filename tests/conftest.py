@@ -9,6 +9,7 @@ import asyncio
 import os
 import time
 from collections.abc import AsyncGenerator, Callable, Generator
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -27,18 +28,74 @@ def event_bus() -> EventBusInmemory:
 
 
 # ---------------------------------------------------------------------------
+# Canonical portable fixtures — use these instead of hardcoded literals
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_postgres_dsn() -> str:
+    """Safe unit-test DSN — never reaches a real database."""
+    return "postgresql://test:test@localhost:5432/test_db"
+
+
+@pytest.fixture
+def fake_kafka_bootstrap() -> str:
+    """Safe unit-test Kafka bootstrap address."""
+    return "localhost:9092"
+
+
+@pytest.fixture
+def fake_omni_home(tmp_path: Path) -> Path:
+    """Isolated tmp directory standing in for OMNI_HOME / user home paths."""
+    home = tmp_path / "omni_home"
+    home.mkdir(parents=True, exist_ok=True)
+    return home
+
+
+@pytest.fixture
+def fake_lan_ip() -> str:
+    """Loopback address used in unit tests instead of a LAN IP."""
+    return "127.0.0.1"
+
+
+@pytest.fixture
+def fake_llm_url() -> str:
+    """Localhost LLM base URL for unit tests."""
+    return "http://localhost:8000"
+
+
+@pytest.fixture
+def mock_settings(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Settings instance wired with test values, env monkeypatched to match."""
+    from omnimarket.config.settings import Settings
+
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    monkeypatch.setenv("POSTGRES_HOST", "localhost")
+    monkeypatch.setenv("POSTGRES_PORT", "5432")
+    monkeypatch.setenv("POSTGRES_DATABASE", "test_db")
+    monkeypatch.setenv("POSTGRES_USER", "test")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "test")
+    monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
+    monkeypatch.setenv("LLM_CODER_FAST_URL", "http://localhost:8001")
+    monkeypatch.setenv("LLM_REASONER_URL", "http://localhost:8001")
+    monkeypatch.setenv("LLM_EMBEDDING_URL", "http://localhost:8100")
+
+    return Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
 # Integration fixtures (only active under @pytest.mark.integration)
 # ---------------------------------------------------------------------------
 
-_POSTGRES_HOST = os.environ.get("INTEGRATION_POSTGRES_HOST", "192.168.86.201")
-_POSTGRES_PORT = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5436"))
+_POSTGRES_HOST = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+_POSTGRES_PORT = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
 _POSTGRES_USER = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
 _POSTGRES_PASSWORD = os.environ.get(
     "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
 )
 _POSTGRES_DB = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
 
-_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
+_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
 
 def _integration_dsn() -> str:
@@ -52,7 +109,7 @@ def _integration_dsn() -> str:
 async def postgres_fixture(
     request: pytest.FixtureRequest,
 ) -> AsyncGenerator[asyncpg.Connection, None]:
-    """Real asyncpg connection to 192.168.86.201:5436.
+    """Real asyncpg connection — reads INTEGRATION_POSTGRES_HOST from env.
 
     Skips automatically when not under @pytest.mark.integration or when
     POSTGRES_PASSWORD is unset (CI without .env).
@@ -87,8 +144,8 @@ async def kafka_integration_bus(
 ) -> AsyncGenerator[EventBusKafka, None]:
     """Real Kafka-backed event bus wired to KAFKA_BOOTSTRAP_SERVERS.
 
-    Defaults to localhost:19092 (matches docker-compose.e2e.yml Redpanda port).
-    Skips automatically when not under @pytest.mark.integration.
+    Defaults to localhost:9092. Skips automatically when not under
+    @pytest.mark.integration.
 
     Topic auto-creation is handled by the e2e compose redpanda-topic-manager
     service. For ad-hoc topics used in tests, callers should publish with

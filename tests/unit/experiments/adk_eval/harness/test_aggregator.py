@@ -44,7 +44,7 @@ def _track_b_metrics() -> dict[str, Any]:
     return {
         "track": "B",
         "runner": "experiments.adk_eval.type_debt_scout_poc",
-        "base_url": "http://192.168.86.201:8000",
+        "base_url": "http://localhost:8000",
         "model_id": "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
         "started_at": "2026-04-23T21:00:00+00:00",
         "ended_at": "2026-04-23T21:25:00+00:00",
@@ -107,7 +107,7 @@ class TestAggregate:
         b = result["track_b"]
         assert b["cost_usd_per_run_median"] == 0.0
         assert "Marginal inference cost only" in b["cost_note"]
-        assert "192.168.86.201:8000" in b["model"]
+        assert "localhost:8000" in b["model"]
         assert b["latency_seconds_median"] == pytest.approx(280.0, abs=TOL)
         assert b["dev_time_minutes_rough"] == 40
         assert b["binary_f1"] == pytest.approx(0.70, abs=TOL)

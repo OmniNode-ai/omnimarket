@@ -1,3 +1,4 @@
+# onex-allow-internal-ip: test input strings exercise the aislop hardcoded-config checker
 """Tests for the hardcoded-config check in NodeAislopSweep."""
 
 from __future__ import annotations

@@ -35,7 +35,7 @@ async def test_model_router_routes_to_local_first() -> None:
     )
     registry = {
         "qwen3-coder-30b": {
-            "base_url": "http://192.168.86.201:8000",
+            "base_url": "http://localhost:8000",
             "health_path": "/health",
             "ci_override_url": "",
         },
@@ -58,4 +58,4 @@ async def test_model_router_routes_to_local_first() -> None:
         result = await router.route_async(request)
 
     assert result.model_key == "qwen3-coder-30b"
-    assert "192.168.86.201:8000" in result.endpoint_url
+    assert "localhost:8000" in result.endpoint_url

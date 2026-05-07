@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# test-literal-ok: asserts wheel paths do not contain local absolute paths
 """Verify the hatchling wheel excludes non-production content.
 
 Ensures experiments/, .onex_state/, work-tracking YAML, and machine-specific
