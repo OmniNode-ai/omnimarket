@@ -38,4 +38,3 @@ These nodes have handler imports that suggest transport usage not declared in `d
 | `node_navigation_history_reducer` | postgres | handler uses ['postgres'] but contract dependencies[] does not declare it |
 | `node_pr_review_bot` | llm | handler uses ['llm'] but contract dependencies[] does not declare it |
 | `node_projection_llm_cost` | kafka,postgres | handler uses ['postgres'] but contract dependencies[] does not declare it |
-

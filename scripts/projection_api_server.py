@@ -99,7 +99,9 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         raw_map = build_projection_topic_map()
         _topic_map = await validate_topic_map_tables(_pool, raw_map)
 
-        ok_count = sum(1 for c in _topic_map.values() if c.status == ProjectionStatus.OK)
+        ok_count = sum(
+            1 for c in _topic_map.values() if c.status == ProjectionStatus.OK
+        )
         degraded_count = sum(
             1 for c in _topic_map.values() if c.status == ProjectionStatus.DEGRADED
         )

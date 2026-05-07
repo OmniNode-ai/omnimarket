@@ -12,13 +12,13 @@ This check is purely syntactic — catches malformed entries before commit.
 
 Exits 1 if any entry is malformed.
 """
+
 from __future__ import annotations
 
 import re
 import sys
 import tomllib
 from pathlib import Path
-
 
 VALID_MODULE_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$")
 
@@ -36,9 +36,7 @@ def main(files: list[str]) -> int:
         config = tomllib.load(f)
 
     entry_points: dict[str, str] = (
-        config.get("project", {})
-        .get("entry-points", {})
-        .get("onex.nodes", {})
+        config.get("project", {}).get("entry-points", {}).get("onex.nodes", {})
     )
 
     broken = []
@@ -46,7 +44,13 @@ def main(files: list[str]) -> int:
         if not VALID_MODULE_RE.match(module_path):
             broken.append((name, module_path, "invalid dotted module path"))
         elif ":" in module_path:
-            broken.append((name, module_path, "unexpected colon (onex.nodes uses module path, not module:class)"))
+            broken.append(
+                (
+                    name,
+                    module_path,
+                    "unexpected colon (onex.nodes uses module path, not module:class)",
+                )
+            )
 
     if broken:
         print("entry-point-format: malformed onex.nodes entries in pyproject.toml:\n")

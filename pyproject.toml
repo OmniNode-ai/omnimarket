@@ -220,6 +220,7 @@ ab-compare = "omnimarket.cli.cli_ab_compare:main"
 ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
 delegation-cost-demo = "omnimarket.cli.cli_delegation_cost_demo:main"
 market-skills-demo = "omnimarket.cli.cli_market_skills_demo:main"
+omnimarket-validate-config = "omnimarket.cli.validate_config:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
