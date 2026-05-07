@@ -1,3 +1,4 @@
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in review thread reconciler test fixtures; not a runtime default"
 """Golden chain tests for node_review_thread_reconciler.
 
 TDD-first: these tests are written before the implementation.

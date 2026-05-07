@@ -18,11 +18,11 @@ class ModelInferenceRequest(BaseModel):
     )
     endpoint_url: str = Field(
         ...,
-        description="Full base URL for the LLM endpoint (e.g. http://192.168.86.201:8000).",
+        description="Full base URL for the LLM endpoint (e.g. http://192.168.86.201:8000).",  # onex-allow-internal-ip OMN-10580 reason="field description example only; no runtime default"
     )
     model_id: str = Field(
         ...,
-        description="Model identifier passed to the API (e.g. cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit).",
+        description="Model identifier passed to the API (e.g. cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit).",  # onex-allow-model-id OMN-10580 reason="field description example only; no runtime default"
     )
     protocol: str = Field(
         ..., description="Transport protocol: openai_compatible | anthropic."

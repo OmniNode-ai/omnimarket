@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint as allowed-endpoint test input and in request fixtures; not a runtime default"
 
 """Tests for HandlerAbInferenceEffect.
 

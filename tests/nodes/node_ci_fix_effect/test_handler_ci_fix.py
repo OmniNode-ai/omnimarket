@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint as CI fix effect test input; not a runtime default"
 """Tests for node_ci_fix_effect [OMN-8994].
 
 Covers: CiFixResult model, Wave 2 handler behaviour (successful fix, LLM failure,

@@ -1,0 +1,214 @@
+# Leaked Literals Allowlist — OMN-10580
+#
+# This file is the machine-readable registry of all intentional
+# leaked-literal exemptions in this repo.
+#
+# Governance: docs/leaked-literals-governance.md
+# Gate script: scripts/validation/check_leaked_literals.sh
+#
+# Format:
+#   - file: <repo-relative path>
+#     type: per_line | file_level | self_exempt
+#     ticket: OMN-XXXXX
+#     reason: <one-line explanation>
+#
+# NOTE: The gate script does NOT parse this file at runtime — exemptions are
+# enforced via inline annotations (# onex-allow-* comments) and the
+# SELF_EXEMPT_FILES array in check_leaked_literals.sh.  This YAML is a
+# human-readable audit trail only.
+
+exemptions:
+  # ── Self-exempt (pattern catalog / CI workflow / this governance doc) ──────
+  - file: scripts/validation/check_leaked_literals.sh
+    type: self_exempt
+    ticket: OMN-10580
+    reason: contains the LEAK_REGEX pattern catalog; self-referential by necessity
+
+  - file: .github/workflows/reject-leaked-literals.yml
+    type: self_exempt
+    ticket: OMN-10580
+    reason: CI workflow that invokes the gate script; references annotation syntax in docs
+
+  - file: docs/leaked-literals-governance.md
+    type: self_exempt
+    ticket: OMN-10580
+    reason: governance doc showing annotation examples; self-referential
+
+  - file: docs/audits/2026-05-05-raw-env-usage.csv
+    type: self_exempt
+    ticket: OMN-10580
+    reason: generated audit report containing literal inventory as data rows
+
+  - file: docs/audits/2026-05-05-raw-env-usage.md
+    type: self_exempt
+    ticket: OMN-10580
+    reason: generated audit summary referencing literal patterns as data
+
+  - file: docs/audits/2026-05-05-contracts-dir-references.csv
+    type: self_exempt
+    ticket: OMN-10580
+    reason: generated audit report; path references are data rows, not source defaults
+
+  - file: docs/tracking/delegation-cost-projection-lane.md
+    type: self_exempt
+    ticket: OMN-10580
+    reason: tracking doc with config examples and lab address as orientation hints
+
+  # ── File-level exemptions (test fixtures) ────────────────────────────────
+  - file: tests/test_emergency_bypass_parser.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses jonahgabriel as synthetic actor in bypass-parser test corpus
+
+  - file: tests/unit/config/test_settings.py
+    type: file_level
+    ticket: OMN-10580
+    reason: pattern catalog in assertions for Settings validation tests
+
+  - file: tests/unit/scripts/test_leak_gate.py
+    type: file_level
+    ticket: OMN-10580
+    reason: writes synthetic leaky files to test the gate script itself
+
+  - file: tests/nodes/node_pr_review_bot/test_workflow_runner_wiring.py
+    type: file_level
+    ticket: OMN-10580
+    reason: LLM wiring test using lab endpoints as allowed-endpoint inputs
+
+  - file: tests/test_webhook_reconciler.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab git actor handle as synthetic PR author in webhook test fixtures
+
+  - file: tests/unit/scripts/test_run_delegation_cost_projection_process.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab Kafka address as monkeypatched env var in delegation cost tests
+
+  - file: tests/unit/nodes/node_overnight/test_main_publish_events.py
+    type: file_level
+    ticket: OMN-10580
+    reason: sets lab Kafka bootstrap address via monkeypatch to test event publishing
+
+  - file: tests/unit/experiments/adk_eval/harness/test_aggregator.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint and model ID as test inputs to verify aggregator wiring
+
+  - file: tests/nodes/node_ab_inference_effect/test_handler.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint as allowed-endpoint test input in request fixtures
+
+  - file: tests/test_session_bootstrap_rev7.py
+    type: file_level
+    ticket: OMN-10580
+    reason: asserts /Users/jonah does NOT appear in prompts; literal appears in assertion string
+
+  - file: tests/test_model_router_routes_to_local_first.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint as router test input to verify local-first routing
+
+  - file: tests/test_golden_chain_local_supervisor.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in routing fixtures for local supervisor golden chain
+
+  - file: tests/nodes/node_merge_sweep_triage_orchestrator/test_phase2_command_models.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab endpoint as command model test input
+
+  - file: tests/integration/test_cost_event_publisher_kafka.py
+    type: file_level
+    ticket: OMN-10580
+    reason: integration test using lab Kafka bootstrap address as test target
+
+  - file: tests/conftest.py
+    type: file_level
+    ticket: OMN-10580
+    reason: lab endpoints used as fixture defaults for golden chain tests
+
+  - file: tests/test_model_router_exponential_backoff.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in router backoff test inputs
+
+  - file: tests/test_model_router_fallback_on_degradation.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in router fallback test inputs
+
+  - file: tests/test_model_router_health_check_degrades.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in router health-check test inputs
+
+  - file: tests/test_model_router_publishes_degradation_event.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in degradation event test inputs
+
+  - file: tests/test_runtime_sha_verify_handler.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab endpoint as SHA verify handler test input
+
+  - file: tests/test_golden_chain_nightly_loop_controller.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in nightly loop controller test fixtures
+
+  - file: tests/test_golden_chain_pr_lifecycle_upgrade.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in PR lifecycle upgrade test fixtures
+
+  - file: tests/test_golden_chain_review_thread_reconciler.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint in review thread reconciler test fixtures
+
+  - file: tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint as CI fix effect test input
+
+  - file: tests/nodes/node_thread_reply_effect/test_handler_thread_reply.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab git actor handle as synthetic PR branch name in test fixtures
+
+  - file: tests/test_model_router_authorization_and_ttl.py
+    type: file_level
+    ticket: OMN-10580
+    reason: uses lab LLM endpoint as router authorization/TTL test input
+
+  # ── Per-line annotations (source files) ──────────────────────────────────
+  # Listed here for discoverability; authoritative annotation is inline in the source.
+
+  - file: scripts/projection_api_server.py
+    type: per_line
+    ticket: OMN-10580
+    reason: env-var fallback to lab Postgres; override via POSTGRES_HOST / POSTGRES_PORT
+
+  - file: src/omnimarket/nodes/node_baseline_capture/handlers/probes/probe_kafka_topics.py
+    type: per_line
+    ticket: OMN-10580
+    reason: env-var fallback to lab Redpanda admin; override via REDPANDA_ADMIN_HOST
+
+  - file: src/omnimarket/nodes/node_baseline_capture/handlers/probes/probe_system_health.py
+    type: per_line
+    ticket: OMN-10580
+    reason: env-var fallbacks to lab service endpoints; overrideable per env var
+
+  - file: src/omnimarket/nodes/node_platform_readiness/handlers/handler_platform_readiness.py
+    type: per_line
+    ticket: OMN-10580
+    reason: env-var fallback SSH target for lab infra; override via ONEX_INFRA_SSH_TARGET
+
+  - file: src/omnimarket/nodes/node_projection_llm_cost/consumer.py
+    type: per_line
+    ticket: OMN-10580
+    reason: env-var fallback to lab Postgres; override via POSTGRES_HOST

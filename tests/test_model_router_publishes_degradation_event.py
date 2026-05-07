@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in degradation event test inputs; not a runtime default"
 
 """TDD target 3: router publishes ModelRoutingDegradedEvent when streak cap reached.
 

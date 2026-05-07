@@ -35,7 +35,10 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
 )
 
 _OMNI_HOME = os.environ.get("OMNI_HOME", os.path.expanduser("~/Code/omni_home"))
-_DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "http://192.168.86.201:3000")
+_DASHBOARD_API = os.environ.get(
+    "ONEX_DASHBOARD_API",
+    "http://192.168.86.201:3000",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab dashboard; override via ONEX_DASHBOARD_API"
+)
 _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 _GITHUB_REPOS = [
     "OmniNode-ai/omnimarket",

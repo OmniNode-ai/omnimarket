@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — sets lab LLM endpoint env vars and model IDs via monkeypatch to verify wiring; values are test inputs, not runtime defaults"
 """Golden-chain wiring tests for node_pr_review_bot.workflow_runner (OMN-9351).
 
 Two regressions this suite locks down:

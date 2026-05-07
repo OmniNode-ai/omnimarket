@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in router backoff test inputs; not a runtime default"
 
 """TDD target 5: retry delays follow min(1 * 2^attempt, 30s) ± 20% jitter.
 

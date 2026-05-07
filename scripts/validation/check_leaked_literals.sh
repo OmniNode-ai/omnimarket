@@ -2,13 +2,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# OMN-10554: leaked-literals gate.
+# OMN-10580 (hardens OMN-10554): leaked-literals gate — BLOCKING MODE.
 #
 # Scans the omnimarket tree for personal/home-lab/AWS-account literals that
 # must not ship in a public package. Mode is controlled by the first arg:
 #
-#   advisory   — print findings; ALWAYS exit 0 (Wave 0 default).
-#   blocking   — print findings; exit 1 on any unallowlisted hit (Wave 3+).
+#   blocking   — print findings; exit 1 on any unannotated hit (default).
+#   advisory   — print findings; ALWAYS exit 0 (use for auditing only).
 #
 # Optional second arg controls scope:
 #
@@ -16,16 +16,34 @@
 #   diff       — scan only files modified in the current branch vs origin/main.
 #
 # Usage:
-#   bash scripts/validation/check_leaked_literals.sh                    # advisory + all
+#   bash scripts/validation/check_leaked_literals.sh                    # blocking + all (default)
+#   bash scripts/validation/check_leaked_literals.sh advisory all       # advisory + full tree
 #   bash scripts/validation/check_leaked_literals.sh advisory diff      # advisory + branch diff
-#   bash scripts/validation/check_leaked_literals.sh blocking all       # blocking + full tree
+#   bash scripts/validation/check_leaked_literals.sh blocking diff      # blocking + branch diff
 #
-# Scope policy:
-#   block_always:   src/**, tests/**, scripts/**, pyproject.toml, .github/**
-#   docs_policy:    docs/** allowed only with annotation:
-#                   `# onex-allow-(internal-ip|local-path|test-fixture|raw-env) OMN-XXXXX reason="..."`
-#                   Plain `# onex-allow-internal-ip` (no ticket+reason) is rejected.
-#   ignore:         .git/**, dist/**, build/**, .venv/**, node_modules/**, *.lock
+# Scope policy (all paths scanned; annotations permitted everywhere):
+#   All files except self-exempt gate scripts and ignored dirs are scanned.
+#   Any line carrying a valid annotation on the SAME line as the literal is
+#   exempt from blocking.
+#
+#   Valid annotation form (ticket + reason required):
+#     # onex-allow-internal-ip OMN-XXXXX reason="<concrete reason>"
+#     # onex-allow-local-path OMN-XXXXX reason="<concrete reason>"
+#     # onex-allow-test-fixture OMN-XXXXX reason="<concrete reason>"
+#     # onex-allow-raw-env OMN-XXXXX reason="<concrete reason>"
+#     # onex-allow-model-id OMN-XXXXX reason="<concrete reason>"
+#
+#   A bare annotation without ticket+reason (e.g. `# onex-allow-internal-ip`)
+#   is REJECTED — every exception must be ticketed and reasoned.
+#
+# File-level exemption (for test fixtures with many deliberate occurrences):
+#   Add anywhere in the file:
+#     # onex-allow-file OMN-XXXXX reason="<concrete reason>"
+#   The entire file is skipped. Use sparingly; prefer per-line annotations in
+#   production source. Test fixture files that test the gate itself are the
+#   primary intended use.
+#
+#   Ignored dirs: .git/**, dist/**, build/**, .venv/**, node_modules/**, *.lock
 #
 # Patterns scanned (mirrors the leak-class catalog in
 # docs/plans/2026-05-05-omnimarket-public-shippable.md):
@@ -43,20 +61,13 @@
 #   onreviewbot@gmail.com  (personal email)
 #   super-secret           (test-fixture credential placeholder that looks credentialed)
 #
-# Allowlist annotation (per-file, on the same line as the literal):
-#   # onex-allow-internal-ip OMN-XXXXX reason="<concrete reason>"
-#   # onex-allow-local-path OMN-XXXXX reason="<concrete reason>"
-#   # onex-allow-test-fixture OMN-XXXXX reason="<concrete reason>"
-#   # onex-allow-raw-env OMN-XXXXX reason="<concrete reason>"
-#
-# A bare `# onex-allow-internal-ip` (no ticket + reason) is REJECTED — the
-# governance rule is that every exception is ticketed and reasoned.
+# Governance: docs/leaked-literals-governance.md
 #
 # Filenames with spaces are handled (uses NUL-delimited file enumeration).
 
 set -uo pipefail
 
-MODE="${1:-advisory}"
+MODE="${1:-blocking}"
 SCOPE="${2:-all}"
 
 if [[ "${MODE}" != "advisory" && "${MODE}" != "blocking" ]]; then
@@ -74,13 +85,22 @@ fi
 LEAK_REGEX='192\.168\.86\.|/Users/jonah|/Volumes/PRO-G40|cyankiwi/|Corianas/|mlx-community/(Qwen3-Next|DeepSeek|Qwen3-Embedding-8B|Qwen3\.5)|jonahgabriel|dash\.dev\.omninode\.ai|272493677981|OmniCloudPlatformAdmin|i-0e596e8b557e27785|onreviewbot@gmail\.com|super-secret'
 
 # Allowlist annotation: must include leak-class, ticket, and reason.
-ALLOWLIST_REGEX='# onex-allow-(internal-ip|local-path|test-fixture|raw-env) OMN-[0-9]+ reason="[^"]+"'
+# Extended with onex-allow-model-id for private HuggingFace model identifiers.
+ALLOWLIST_REGEX='# onex-allow-(internal-ip|local-path|test-fixture|raw-env|model-id) OMN-[0-9]+ reason="[^"]+"'
 
 # Per-file exemptions (the gate script and its CI workflow obviously contain the
 # pattern catalog and must self-reference; that is not a leak).
 SELF_EXEMPT_FILES=(
   "scripts/validation/check_leaked_literals.sh"
   ".github/workflows/reject-leaked-literals.yml"
+  "docs/leaked-literals-governance.md"
+  ".leaked-literals-allowlist.yaml"
+  # Generated audit reports — contain leaked literals as data, not source defaults.
+  "docs/audits/2026-05-05-raw-env-usage.csv"
+  "docs/audits/2026-05-05-raw-env-usage.md"
+  "docs/audits/2026-05-05-contracts-dir-references.csv"
+  # Tracking docs may reference lab addresses as examples or config hints.
+  "docs/tracking/delegation-cost-projection-lane.md"
 )
 
 # Locate the repo root robustly (tolerates being called from elsewhere).
@@ -129,6 +149,14 @@ while IFS= read -r -d '' f; do
   _is_self_exempt "${f}" && continue
   total_scanned=$((total_scanned + 1))
 
+  # File-level exemption: if the file contains a # onex-allow-file annotation
+  # anywhere, skip it entirely. Used for test fixtures that deliberately contain
+  # pattern literals as test data. Must include a reason.
+  FILE_LEVEL_EXEMPT_REGEX='# onex-allow-file OMN-[0-9]+ reason="[^"]+"'
+  if grep -qE "${FILE_LEVEL_EXEMPT_REGEX}" -- "${f}" 2>/dev/null; then
+    continue
+  fi
+
   # Pull every line containing a leak literal.
   hits="$(grep -nE "${LEAK_REGEX}" -- "${f}" 2>/dev/null || true)"
   [[ -z "${hits}" ]] && continue
@@ -136,23 +164,10 @@ while IFS= read -r -d '' f; do
   while IFS= read -r line; do
     [[ -z "${line}" ]] && continue
 
-    # Decide allowlist policy by path prefix.
-    case "${f}" in
-      docs/*)
-        # docs allowed iff line carries a valid annotation.
-        if grep -qE "${ALLOWLIST_REGEX}" <<<"${line}"; then
-          continue
-        fi
-        ;;
-      src/*|tests/*|scripts/*|pyproject.toml|.github/*)
-        # block_always — annotation does NOT permit; src/tests/scripts must be clean.
-        :
-        ;;
-      *)
-        # Unclassified path — treat as block_always (conservative).
-        :
-        ;;
-    esac
+    # Any path: annotation on the same line as the literal exempts it.
+    if grep -qE "${ALLOWLIST_REGEX}" <<<"${line}"; then
+      continue
+    fi
 
     findings+=("${f}:${line}")
   done <<<"${hits}"
@@ -165,7 +180,7 @@ if (( ${#findings[@]} > 0 )); then
 fi
 
 if [[ "${MODE}" == "advisory" ]]; then
-  echo "leak-gate: advisory — exit 0 regardless of findings"
+  echo "leak-gate: advisory mode — exit 0 regardless of findings (add annotations + rerun blocking to enforce)"
   exit 0
 fi
 

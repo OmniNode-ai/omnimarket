@@ -57,7 +57,10 @@ _SECRET_RE = re.compile(
 # Minimal registry entries for commonly declared model keys.
 _BASE_REGISTRY: dict[str, dict[str, str]] = {
     "qwen3-coder-30b": {
-        "base_url": os.environ.get("LLM_CODER_URL", "http://192.168.86.201:8000"),
+        "base_url": os.environ.get(
+            "LLM_CODER_URL",
+            "http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab LLM coder; override via LLM_CODER_URL"
+        ),
         "health_path": "/health",
     },
     "glm-4.5": {
@@ -65,7 +68,10 @@ _BASE_REGISTRY: dict[str, dict[str, str]] = {
         "health_path": "",
     },
     "deepseek-r1-14b": {
-        "base_url": os.environ.get("LLM_CODER_FAST_URL", "http://192.168.86.201:8001"),
+        "base_url": os.environ.get(
+            "LLM_CODER_FAST_URL",
+            "http://192.168.86.201:8001",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab LLM fast; override via LLM_CODER_FAST_URL"
+        ),
         "health_path": "/health",
     },
 }

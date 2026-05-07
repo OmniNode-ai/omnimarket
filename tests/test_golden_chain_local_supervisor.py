@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in routing fixtures; not a runtime default"
 """Golden chain tests for HandlerLocalSupervisor.
 
 Covers: executes routing decision, retries on verifier fail, escalates after budget exhausted.

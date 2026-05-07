@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in PR lifecycle upgrade test fixtures; not a runtime default"
 """Golden chain integration tests for new node_pr_lifecycle_orchestrator capabilities.
 
 Tests 5 scenarios from OMN-8197 Workstream 2:

@@ -219,7 +219,7 @@ runtime_config:
     # OMN-8497: default is the solo repo owner. Override to restrict further.
     # Empty string means no one is authorized (full lockdown mode).
     description: "GitHub handle(s) authorized to trigger emergency bypass. Comma-separated for multiple actors. Set to empty string to disable bypass entirely."
-    default: "jonahgabriel"
+    default: "jonahgabriel"  # onex-allow-raw-env OMN-10580 reason="solo-repo owner default for emergency bypass; override via review_bot.emergency_bypass_actor config key"
     required: false
 
 dependencies:
