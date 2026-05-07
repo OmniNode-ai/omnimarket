@@ -141,6 +141,20 @@ class TestRegistrationProjection:
         assert rows[0]["health_status"] == "healthy"
         assert rows[0]["uptime_seconds"] == 0
 
+    def test_runtime_identity_resolution_ignores_blank_service_name(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(
+            {
+                "_db": db,
+                "_event_type": "heartbeat",
+                "service_name": "   ",
+                "node_id": "runtime-effect-001",
+            }
+        )
+        assert result["rows_upserted"] == 1
+        rows = db.query("node_service_registry")
+        assert rows[0]["service_name"] == "runtime-effect-001"
+
     def test_runtime_state_change_uses_node_id(self) -> None:
         db = InmemoryDatabaseAdapter()
         result = HANDLER.project_state_change(
@@ -148,6 +162,23 @@ class TestRegistrationProjection:
             db,
         )
         assert result.rows_upserted == 1
+        rows = db.query("node_service_registry")
+        assert len(rows) == 1
+        assert rows[0]["service_name"] == "runtime-effect-001"
+        assert rows[0]["health_status"] == "active"
+        assert rows[0]["is_active"] is True
+
+    def test_handle_accepts_hyphenated_state_change_event_type(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        result = HANDLER.handle(
+            {
+                "_db": db,
+                "_event_type": "state-change",
+                "node_id": "runtime-effect-001",
+                "new_state": "active",
+            }
+        )
+        assert result["rows_upserted"] == 1
         rows = db.query("node_service_registry")
         assert len(rows) == 1
         assert rows[0]["service_name"] == "runtime-effect-001"

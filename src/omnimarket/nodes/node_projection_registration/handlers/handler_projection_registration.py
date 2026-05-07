@@ -42,12 +42,15 @@ def _require_service_name(
     node_id: str | None,
     event_name: str,
 ) -> str:
-    resolved = service_name or node_name or node_id
-    if not resolved:
-        raise ValueError(
-            f"{event_name} requires service_name, node_name/nodeName, or node_id/nodeId"
-        )
-    return resolved
+    for candidate in (service_name, node_name, node_id):
+        if candidate is None:
+            continue
+        resolved = candidate.strip()
+        if resolved:
+            return resolved
+    raise ValueError(
+        f"{event_name} requires service_name, node_name/nodeName, or node_id/nodeId"
+    )
 
 
 class ModelNodeIntrospectionEvent(BaseModel):
@@ -190,6 +193,10 @@ class ModelNodeStateChangeEvent(BaseModel):
     def resolved_health_status(self) -> str:
         return self.health_status or self.new_state
 
+    @property
+    def resolved_new_state(self) -> str:
+        return self.new_state.strip() or "unknown"
+
 
 class ModelProjectionResult(BaseModel):
     """Result of a projection operation."""
@@ -302,7 +309,7 @@ class HandlerProjectionRegistration:
         row: dict[str, object] = {
             "service_name": event.resolved_service_name,
             "health_status": health_status,
-            "is_active": health_status.lower() == "active",
+            "is_active": event.resolved_new_state.lower() == "active",
             "updated_at": now,
             "projected_at": now,
         }
