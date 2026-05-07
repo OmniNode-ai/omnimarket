@@ -33,6 +33,7 @@ def _build_wheel() -> Path:
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),
+        timeout=120,
     )
     if result.returncode != 0:
         raise RuntimeError(
