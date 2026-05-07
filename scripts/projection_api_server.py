@@ -69,7 +69,12 @@ def compute_freshness(latest_ts: str | None) -> str:
 
 def _dsn() -> str:
     password = os.environ["POSTGRES_PASSWORD"]
-    return f"postgresql://postgres:{password}@192.168.86.201:5436/omnibase_infra"  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Postgres; override via POSTGRES_HOST / POSTGRES_PORT"
+    host = os.environ.get(
+        "POSTGRES_HOST",
+        "192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Postgres; override via POSTGRES_HOST"
+    )
+    port = os.environ.get("POSTGRES_PORT", "5436")
+    return f"postgresql://postgres:{password}@{host}:{port}/omnibase_infra"
 
 
 async def _create_pool() -> asyncpg.Pool:

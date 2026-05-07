@@ -20,7 +20,10 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_SSH_HOST = "jonah@192.168.86.201"  # onex-allow-internal-ip OMN-10580 reason="lab infra SSH default; override via ONEX_INFRA_SSH_TARGET env var"
+_SSH_HOST = os.environ.get(
+    "ONEX_INFRA_SSH_TARGET",
+    "jonah@192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="lab infra SSH default; override via ONEX_INFRA_SSH_TARGET"
+)
 _SSH_TIMEOUT = 15
 
 

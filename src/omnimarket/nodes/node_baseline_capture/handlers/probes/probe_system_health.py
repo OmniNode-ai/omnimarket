@@ -25,7 +25,7 @@ def _services_from_env() -> list[tuple[str, str]]:
         ),
         (
             "redpanda",
-            "http://192.168.86.201:9644/v1/cluster/health",  # onex-allow-internal-ip OMN-10580 reason="lab Redpanda admin health endpoint; override via REDPANDA_ADMIN_HOST env var"
+            f"http://{os.environ.get('REDPANDA_ADMIN_HOST', '192.168.86.201')}:9644/v1/cluster/health",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Redpanda admin; override via REDPANDA_ADMIN_HOST"
         ),
         (
             "valkey",
