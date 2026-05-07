@@ -6,8 +6,8 @@ Loads the P5 input findings, dispatches the handler against Qwen3-Coder,
 captures latency across repeated runs, and writes evidence artifacts.
 
 Usage:
-    uv run python -m omnimarket.experiments.adk_eval.type_debt_scout_poc \
-        --input src/omnimarket/experiments/adk_eval/eval/input_findings.jsonl \
+    uv run python -m experiments.adk_eval.type_debt_scout_poc \
+        --input experiments/adk_eval/eval/input_findings.jsonl \
         --output <path>/track_b_output.json \
         --metrics <path>/track_b_metrics.json \
         --runs 5
@@ -24,11 +24,11 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.experiments.adk_eval.tools.mypy_parser import (
+from experiments.adk_eval.tools.mypy_parser import (
     ModelMypyFinding,
     parse_mypy_jsonl,
 )
-from omnimarket.experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
+from experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
     ModelTrackBConfig,
     _build_router,
     resolve_base_url_from_env,
@@ -204,7 +204,7 @@ async def _main_async(args: argparse.Namespace) -> int:
     # that would explain the failure post-mortem.
     metrics = {
         "track": "B",
-        "runner": "omnimarket.experiments.adk_eval.type_debt_scout_poc",
+        "runner": "experiments.adk_eval.type_debt_scout_poc",
         "base_url": config.base_url,
         "model_id": config.model_id,
         "started_at": started.isoformat(),

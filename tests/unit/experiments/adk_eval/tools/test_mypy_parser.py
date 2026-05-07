@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.experiments.adk_eval.tools.mypy_parser import (
+from experiments.adk_eval.tools.mypy_parser import (
     EnumDebtCategory,
     EnumLintSeverity,
     ModelMypyFinding,

@@ -39,12 +39,12 @@ from omnibase_infra.adapters.llm.model_llm_adapter_response import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.experiments.adk_eval._local_models import (
+from experiments.adk_eval._local_models import (
     ModelTypeDebtPriority,
     ModelTypeDebtReport,
 )
-from omnimarket.experiments.adk_eval.tools.mypy_parser import ModelMypyFinding
-from omnimarket.experiments.adk_eval.type_debt_scout_poc.adapter_llm_provider_curl import (
+from experiments.adk_eval.tools.mypy_parser import ModelMypyFinding
+from experiments.adk_eval.type_debt_scout_poc.adapter_llm_provider_curl import (
     AdapterLlmProviderCurl,
 )
 

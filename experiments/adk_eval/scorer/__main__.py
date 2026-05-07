@@ -4,7 +4,7 @@
 """CLI for the ADK-eval scorer (P9).
 
 Usage:
-    python -m omnimarket.experiments.adk_eval.scorer \\
+    python -m experiments.adk_eval.scorer \\
         --track-a path/to/track_a_report.json \\
         --track-b path/to/track_b_report.json \\
         --output .onex_state/evidence/adk-eval/scores.json
@@ -21,8 +21,8 @@ import json
 import sys
 from pathlib import Path
 
-from omnimarket.experiments.adk_eval._local_models import ModelTypeDebtReport
-from omnimarket.experiments.adk_eval.scorer.scorer import (
+from experiments.adk_eval._local_models import ModelTypeDebtReport
+from experiments.adk_eval.scorer.scorer import (
     load_labels,
     score_reports,
 )
@@ -38,7 +38,7 @@ def _load_report_or_none(path: Path | None) -> ModelTypeDebtReport | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="omnimarket.experiments.adk_eval.scorer",
+        prog="experiments.adk_eval.scorer",
         description="Score ADK-eval track reports against the P5 labeled sample.",
     )
     parser.add_argument(

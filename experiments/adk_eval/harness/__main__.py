@@ -22,7 +22,7 @@ import os
 import sys
 from pathlib import Path
 
-from omnimarket.experiments.adk_eval.harness.aggregator import aggregate
+from experiments.adk_eval.harness.aggregator import aggregate
 
 _DEFAULT_DEV_TIME_MINUTES_A = 60
 _DEFAULT_DEV_TIME_MINUTES_B = 40
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     evidence_dir = _default_evidence_dir()
 
     parser = argparse.ArgumentParser(
-        prog="omnimarket.experiments.adk_eval.harness",
+        prog="experiments.adk_eval.harness",
         description=(
             "Aggregate ADK-eval track metrics + scorer output into "
             "measurements.json for the P10 Decision Gate."

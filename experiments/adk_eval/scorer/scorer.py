@@ -24,7 +24,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.experiments.adk_eval._local_models import (
+from experiments.adk_eval._local_models import (
     EnumTypeDebtPriority,
     ModelTypeDebtReport,
 )

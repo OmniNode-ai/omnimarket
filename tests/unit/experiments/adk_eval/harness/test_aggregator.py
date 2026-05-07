@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.experiments.adk_eval.harness.aggregator import aggregate
+from experiments.adk_eval.harness.aggregator import aggregate
 
 TOL = 1e-6
 
@@ -43,7 +43,7 @@ def _track_a_metrics() -> dict[str, Any]:
 def _track_b_metrics() -> dict[str, Any]:
     return {
         "track": "B",
-        "runner": "omnimarket.experiments.adk_eval.type_debt_scout_poc",
+        "runner": "experiments.adk_eval.type_debt_scout_poc",
         "base_url": "http://192.168.86.201:8000",
         "model_id": "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
         "started_at": "2026-04-23T21:00:00+00:00",

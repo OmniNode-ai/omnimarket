@@ -12,6 +12,6 @@ computes ratios. All cost numbers are marginal per-run inference cost;
 dev-time is rough single-developer wall-clock, not rigorous TCO.
 """
 
-from omnimarket.experiments.adk_eval.harness.aggregator import aggregate
+from experiments.adk_eval.harness.aggregator import aggregate
 
 __all__ = ["aggregate"]
