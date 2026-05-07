@@ -174,8 +174,8 @@ def load_inference_bridge_config(
 def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     """Return a ``ModelInferenceBridgeConfig`` populated from env vars.
 
-    Delegates to ``load_inference_bridge_config`` after constructing a
-    minimal Settings-compatible namespace from env vars. Prefer
+    Reads LLM_* env vars directly via ``_MODEL_KEY_REGISTRY`` without
+    requiring a Settings instance. Prefer
     ``load_inference_bridge_config(settings)`` in new code.
     """
     model_configs: dict[str, dict[str, object]] = {}

@@ -1,10 +1,11 @@
 ---
 # models_registry.yaml — A/B compare model registry.
 #
-# Each local model declares endpoint_env / model_id_env (env var keys) and
+# Local models declare endpoint_env / model_id_env (env var keys) and
 # requires_config_keys listing the vars that must be set for this entry to be
-# active. No default endpoint or model_id literals are stored here; all
-# resolution happens at runtime from environment variables.
+# active. All local-model resolution happens at runtime from environment
+# variables. The cloud entry (glm-4.5) retains literal endpoint / model_id
+# fallbacks alongside its env-var overrides for zero-config cloud access.
 # protocol must currently be openai_compatible for orchestrator execution.
 # requires_key names the API-key env var; models with missing keys are skipped.
 

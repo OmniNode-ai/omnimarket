@@ -211,7 +211,8 @@ def _resolve_llm_provider(
     if not resolved_url or not resolved_model:
         raise ValueError(
             f"model key {primary_model!r} has unresolved endpoint config: "
-            f"base_url={resolved_url!r} model_id={resolved_model!r}. "
+            f"base_url={resolved_url!r} (env: {endpoint.url_env!r}) "
+            f"model_id={resolved_model!r} (env: {endpoint.model_id_env!r}). "
             "Set the corresponding LLM_* env vars."
         )
     return (
