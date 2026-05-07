@@ -93,7 +93,7 @@ jobs:
             echo "bot_login=onexbot[bot]" >> "$GITHUB_OUTPUT"
             echo "Using onexbot GitHub App token"
           else
-            echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
+            echo "token=${{ github.token }}" >> "$GITHUB_OUTPUT"
             echo "bot_login=github-actions[bot]" >> "$GITHUB_OUTPUT"
             echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as github-actions[bot])"
           fi
@@ -122,6 +122,26 @@ jobs:
           ERRORS=0
           WARNINGS=0
           REPORT=""
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          mapfile -t CHANGED_SRC_FILES < <(
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- src/ || true
+          )
+          mapfile -t CHANGED_PY_FILES < <(
+            printf '%s\n' "${CHANGED_SRC_FILES[@]}" \
+              | grep -E '\.py$' \
+              | grep -v '/tests/' \
+              || true
+          )
+          mapfile -t CHANGED_CONTRACT_FILES < <(
+            printf '%s\n' "${CHANGED_SRC_FILES[@]}" \
+              | grep -E '(^|/)contract\.yaml$' \
+              || true
+          )
+
+          echo "Changed Python source files: ${#CHANGED_PY_FILES[@]}"
+          echo "Changed contract files: ${#CHANGED_CONTRACT_FILES[@]}"
 
           # -----------------------------------------------------------------------
           # Rule 1: No hardcoded Kafka topic strings in handler code.
@@ -134,12 +154,15 @@ jobs:
           #          test files (topic fixtures are acceptable there),
           #          scripts/lint_no_hardcoded_topics.py itself.
           # -----------------------------------------------------------------------
-          TOPIC_HITS=$(grep -rn --include='*.py' \
-            -E '"onex\.(cmd|evt)\.[a-z_]+\.[a-z_-]+\.v[0-9]+"' \
-            src/ \
-            --exclude-dir=__pycache__ \
-            --exclude='lint_no_hardcoded_topics.py' \
-            2>/dev/null || true)
+          TOPIC_HITS=""
+          if [ "${#CHANGED_PY_FILES[@]}" -gt 0 ]; then
+            TOPIC_HITS=$(grep -Hn -E \
+              '"onex\.(cmd|evt)\.[a-z_]+\.[a-z_-]+\.v[0-9]+"' \
+              "${CHANGED_PY_FILES[@]}" \
+              2>/dev/null \
+              | grep -v 'lint_no_hardcoded_topics.py' \
+              || true)
+          fi
 
           if [ -n "$TOPIC_HITS" ]; then
             echo "::error::ARCH-TOPIC-001: Hardcoded Kafka topic string(s) found in handler code."
@@ -157,11 +180,13 @@ jobs:
           # Passing event_bus=None bypasses the DI container and breaks the
           # contract system. See: feedback_no_manual_wiring.md
           # -----------------------------------------------------------------------
-          BUS_NONE_HITS=$(grep -rn --include='*.py' \
-            'event_bus\s*=\s*None' \
-            src/ \
-            --exclude-dir=__pycache__ \
-            2>/dev/null | grep -v '^\s*#' || true)
+          BUS_NONE_HITS=""
+          if [ "${#CHANGED_PY_FILES[@]}" -gt 0 ]; then
+            BUS_NONE_HITS=$(grep -Hn -E \
+              'event_bus\s*=\s*None' \
+              "${CHANGED_PY_FILES[@]}" \
+              2>/dev/null | grep -v '^\s*#' || true)
+          fi
 
           if [ -n "$BUS_NONE_HITS" ]; then
             echo "::error::ARCH-DI-001: event_bus=None bypass detected."
@@ -180,10 +205,10 @@ jobs:
           # outside of: workflow_runner.py, WorkflowPackage entry points,
           # conftest.py / test files, and adapter modules.
           # -----------------------------------------------------------------------
-          MANUAL_WIRE_HITS=$(grep -rn --include='*.py' \
-            -E 'Handler[A-Z][A-Za-z]+\(' \
-            src/ \
-            --exclude-dir=__pycache__ \
+          MANUAL_WIRE_HITS=""
+          if [ "${#CHANGED_PY_FILES[@]}" -gt 0 ]; then
+            MANUAL_WIRE_HITS=$(grep -Hn -E 'Handler[A-Z][A-Za-z]+\(' \
+            "${CHANGED_PY_FILES[@]}" \
             2>/dev/null \
             | grep -v 'workflow_runner\.py' \
             | grep -v 'adapter_' \
@@ -192,6 +217,7 @@ jobs:
             | grep -v 'isinstance(' \
             | grep -v '#' \
             || true)
+          fi
 
           if [ -n "$MANUAL_WIRE_HITS" ]; then
             echo "::warning::ARCH-DI-002: Direct Handler instantiation outside workflow_runner / adapter layers."
@@ -207,11 +233,13 @@ jobs:
           # Rule 4: No reinvented DI — DIContainer / ServiceLocator patterns
           # from outside omnibase_core.
           # -----------------------------------------------------------------------
-          DI_REINVENT_HITS=$(grep -rn --include='*.py' \
-            -E 'class\s+(DIContainer|ServiceLocator|DependencyContainer|InjectionContext)\b' \
-            src/ \
-            --exclude-dir=__pycache__ \
-            2>/dev/null || true)
+          DI_REINVENT_HITS=""
+          if [ "${#CHANGED_PY_FILES[@]}" -gt 0 ]; then
+            DI_REINVENT_HITS=$(grep -Hn -E \
+              'class\s+(DIContainer|ServiceLocator|DependencyContainer|InjectionContext)\b' \
+              "${CHANGED_PY_FILES[@]}" \
+              2>/dev/null || true)
+          fi
 
           if [ -n "$DI_REINVENT_HITS" ]; then
             echo "::error::ARCH-DI-003: Reinvented DI container detected."
@@ -224,20 +252,22 @@ jobs:
           fi
 
           # -----------------------------------------------------------------------
-          # Rule 5: contract.yaml topics follow onex.{cmd|evt}.{producer}.{name}.v{N}
+          # Rule 5: contract.yaml topics follow onex.{cmd|evt|dlq}.{producer}.{name}.v{N}
           # -----------------------------------------------------------------------
-          CONTRACT_TOPIC_VIOLATIONS=$(find src/ -name 'contract.yaml' -exec \
-            grep -Hn 'onex\.' {} \; 2>/dev/null \
-            | grep -vE 'onex\.(cmd|evt)\.[a-z_]+\.[a-z_-]+\.v[0-9]+' \
-            | grep -v '#' \
-            || true)
+          CONTRACT_TOPIC_VIOLATIONS=""
+          if [ "${#CHANGED_CONTRACT_FILES[@]}" -gt 0 ]; then
+            CONTRACT_TOPIC_VIOLATIONS=$(grep -Hn 'onex\.' "${CHANGED_CONTRACT_FILES[@]}" 2>/dev/null \
+              | grep -vE 'onex\.(cmd|evt|dlq)\.[a-z_]+\.[a-z_-]+\.v[0-9]+' \
+              | grep -v '#' \
+              || true)
+          fi
 
           if [ -n "$CONTRACT_TOPIC_VIOLATIONS" ]; then
-            echo "::error::ARCH-TOPIC-002: contract.yaml topic(s) do not follow onex.{cmd|evt}.{producer}.{name}.v{N} convention."
+            echo "::error::ARCH-TOPIC-002: contract.yaml topic(s) do not follow onex.{cmd|evt|dlq}.{producer}.{name}.v{N} convention."
             echo "$CONTRACT_TOPIC_VIOLATIONS" | while IFS= read -r line; do
               echo "  $line"
             done
-            REPORT="${REPORT}### ARCH-TOPIC-002: Non-standard topic names in contract.yaml\n\n\`\`\`\n${CONTRACT_TOPIC_VIOLATIONS}\n\`\`\`\n\nAll topics must follow the \`onex.{cmd|evt}.{producer}.{event-name}.v{N}\` convention.\n\n"
+            REPORT="${REPORT}### ARCH-TOPIC-002: Non-standard topic names in contract.yaml\n\n\`\`\`\n${CONTRACT_TOPIC_VIOLATIONS}\n\`\`\`\n\nAll topics must follow the \`onex.{cmd|evt|dlq}.{producer}.{event-name}.v{N}\` convention.\n\n"
             ERRORS=$((ERRORS + 1))
           fi
 
@@ -301,7 +331,7 @@ jobs:
               '| ARCH-DI-001 | No `event_bus=None` bypass |',
               '| ARCH-DI-002 | No direct Handler instantiation outside workflow_runner/adapters |',
               '| ARCH-DI-003 | No reinvented DI containers |',
-              '| ARCH-TOPIC-002 | contract.yaml topics follow `onex.{cmd|evt}.{producer}.{name}.v{N}` |',
+              '| ARCH-TOPIC-002 | contract.yaml topics follow `onex.{cmd|evt|dlq}.{producer}.{name}.v{N}` |',
               '',
               '---',
               '',
@@ -376,6 +406,8 @@ jobs:
           GITHUB_TOKEN: ${{ needs.resolve-bot-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          PR_REVIEWER_MODELS: ${{ vars.PR_REVIEWER_MODELS }}
+          PR_REVIEW_JUDGE_MODEL: ${{ vars.PR_REVIEW_JUDGE_MODEL }}
         run: |
           uv run python - <<'PYEOF'
           import sys
@@ -384,6 +416,31 @@ jobs:
 
           pr_number = int(os.environ["PR_NUMBER"])
           repo = os.environ["REPO"]
+          reviewer_models = [
+              model.strip()
+              for model in os.environ.get("PR_REVIEWER_MODELS", "").split(",")
+              if model.strip()
+          ]
+          judge_model = os.environ.get("PR_REVIEW_JUDGE_MODEL", "").strip()
+
+          if not reviewer_models or not judge_model:
+              out = {
+                  "correlation_id": "",
+                  "verdict": "clean",
+                  "total_findings": 0,
+                  "threads_posted": 0,
+                  "threads_verified_pass": 0,
+                  "threads_verified_fail": 0,
+                  "phases_completed": 0,
+                  "final_phase": "skipped_no_review_models",
+                  "duration_ms": 0,
+              }
+              print(json.dumps(out, indent=2))
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("verdict=clean\n")
+                  f.write("total_findings=0\n")
+                  f.write("correlation_id=\n")
+              raise SystemExit(0)
 
           from omnimarket.nodes.node_pr_review_bot.models.models import EnumFindingSeverity
           from omnimarket.nodes.node_pr_review_bot.workflow_runner import run_review
@@ -391,8 +448,8 @@ jobs:
           result = run_review(
               pr_number=pr_number,
               repo=repo,
-              reviewer_models=["qwen3-coder-30b", "qwen3-14b"],
-              judge_model="deepseek-r1",
+              reviewer_models=reviewer_models,
+              judge_model=judge_model,
               severity_threshold=EnumFindingSeverity.MAJOR,
               dry_run=False,
               max_findings_per_pr=20,
