@@ -71,7 +71,7 @@ class ModelCiFixEndpointConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     base_url: str = Field(..., min_length=1)
-    model_id: str = Field(..., min_length=1)
+    model_id: str = ""
     timeout_seconds: float = Field(default=120.0, gt=0)
 
 
@@ -210,6 +210,12 @@ def _resolve_llm_provider(
             f"model key {primary_model!r} is not declared in "
             f"{_CONTRACT_PATH} model_routing.ci_fixer.model_endpoints "
             f"(known: {known})"
+        )
+    if not endpoint.model_id:
+        raise ValueError(
+            f"model key {primary_model!r} resolved an empty model_id from "
+            f"{_CONTRACT_PATH} model_routing.ci_fixer.model_endpoints; set the "
+            "configured model_id_env before invoking CI fix LLM calls"
         )
     return (
         AdapterLlmProviderOpenai(
