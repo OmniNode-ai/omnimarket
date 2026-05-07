@@ -91,9 +91,11 @@ LEAK_REGEX='192\.168\.86\.|/Users/jonah|/Volumes/PRO-G40|cyankiwi/|Corianas/|mlx
 ALLOWLIST_REGEX='# onex-allow-(internal-ip|local-path|test-fixture|raw-env|model-id) OMN-[0-9]+ reason="[^"]+"'
 
 # Per-file exemptions (the gate script and its CI workflow obviously contain the
-# pattern catalog and must self-reference; that is not a leak).
+# pattern catalog and must self-reference; the raw-env audit emits a findings
+# CSV whose purpose is to preserve literal evidence for follow-up cleanup).
 SELF_EXEMPT_FILES=(
   "scripts/validation/check_leaked_literals.sh"
+  "scripts/audit/raw_env_usage_audit.py"
   ".github/workflows/reject-leaked-literals.yml"
   "docs/leaked-literals-governance.md"
   ".leaked-literals-allowlist.yaml"
@@ -140,6 +142,7 @@ _is_self_exempt() {
   for exempt in "${SELF_EXEMPT_FILES[@]}"; do
     [[ "${path}" == "${exempt}" ]] && return 0
   done
+  [[ "${path}" == docs/audits/*-raw-env-usage.csv ]] && return 0
   return 1
 }
 
