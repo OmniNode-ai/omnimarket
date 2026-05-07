@@ -36,6 +36,7 @@ dependencies = [
     "onex-change-control>=0.5.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
+    "pydantic-settings>=2.0.0,<3.0.0",
     "pyyaml>=6.0.2,<7.0.0",
     "packaging>=24.0",
     "aiokafka>=0.11.0",
