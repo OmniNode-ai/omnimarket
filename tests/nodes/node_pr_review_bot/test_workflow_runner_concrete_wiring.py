@@ -38,10 +38,13 @@ from omnimarket.nodes.node_pr_review_bot.workflow_runner import (
 def test_build_inference_bridge_config_populates_coder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """model_configs must include qwen3-coder entry when LLM_CODER_URL is set."""
+    """model_configs must include qwen3-coder entry when LLM_CODER_URL+MODEL_NAME are set."""
     monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-coder-model")
     monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-host:8001")
+    monkeypatch.setenv("LLM_CODER_FAST_MODEL_NAME", "test-fast-model")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://test-host:8101")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-deepseek-model")
 
     cfg = load_inference_bridge_config_from_env()
 
@@ -54,10 +57,13 @@ def test_build_inference_bridge_config_populates_coder(
 def test_build_inference_bridge_config_populates_deepseek(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """model_configs must include deepseek-r1 entry when LLM_DEEPSEEK_R1_URL is set."""
+    """model_configs must include deepseek-r1 entry when LLM_DEEPSEEK_R1_URL+MODEL_NAME are set."""
     monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-coder-model")
     monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-host:8001")
+    monkeypatch.setenv("LLM_CODER_FAST_MODEL_NAME", "test-fast-model")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://test-host:8101")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-deepseek-model")
 
     cfg = load_inference_bridge_config_from_env()
 
@@ -71,8 +77,11 @@ def test_build_inference_bridge_config_empty_when_no_env(
 ) -> None:
     """When env vars are absent, model_configs should be empty (no crash)."""
     monkeypatch.delenv("LLM_CODER_URL", raising=False)
+    monkeypatch.delenv("LLM_CODER_MODEL_NAME", raising=False)
     monkeypatch.delenv("LLM_CODER_FAST_URL", raising=False)
+    monkeypatch.delenv("LLM_CODER_FAST_MODEL_NAME", raising=False)
     monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
+    monkeypatch.delenv("LLM_DEEPSEEK_R1_MODEL_NAME", raising=False)
 
     cfg = load_inference_bridge_config_from_env()
 
