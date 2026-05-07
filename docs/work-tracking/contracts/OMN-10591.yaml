@@ -1,3 +1,4 @@
+# onex-allow-file OMN-10591 reason="DoD probe commands grep FOR model-id literals to verify absence; the patterns are search targets, not leaked identifiers in production code"
 ---
 schema_version: "1.0.0"
 ticket_id: OMN-10591
