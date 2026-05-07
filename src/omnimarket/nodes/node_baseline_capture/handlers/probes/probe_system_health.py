@@ -17,37 +17,47 @@ _TIMEOUT_S = 3.0
 
 
 def _services_from_env() -> list[tuple[str, str]]:
-    """Build list of (name, url) tuples from environment variables."""
-    candidates = [
-        (
-            "postgres",
-            f"http://{os.environ.get('POSTGRES_HOST', '192.168.86.201')}:{os.environ.get('POSTGRES_PORT', '5436')}",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Postgres; override via POSTGRES_HOST/PORT"
-        ),
-        (
-            "redpanda",
-            f"http://{os.environ.get('REDPANDA_ADMIN_HOST', '192.168.86.201')}:9644/v1/cluster/health",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Redpanda admin; override via REDPANDA_ADMIN_HOST"
-        ),
-        (
-            "valkey",
-            "http://192.168.86.201:16379",  # onex-allow-internal-ip OMN-10580 reason="lab Valkey endpoint; no env-var override in this probe"
-        ),
-        (
-            "qdrant",
-            f"http://{os.environ.get('QDRANT_HOST', '192.168.86.201')}:{os.environ.get('QDRANT_PORT', '6333')}/healthz",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Qdrant; override via QDRANT_HOST/PORT"
-        ),
-        (
-            "llm_coder",
-            f"{os.environ.get('LLM_CODER_URL', 'http://192.168.86.201:8000')}/health",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab LLM coder; override via LLM_CODER_URL"
-        ),
-        (
-            "llm_coder_fast",
-            f"{os.environ.get('LLM_CODER_FAST_URL', 'http://192.168.86.201:8001')}/health",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab LLM fast; override via LLM_CODER_FAST_URL"
-        ),
-        (
-            "llm_embedding",
-            f"{os.environ.get('LLM_EMBEDDING_URL', 'http://192.168.86.200:8100')}/health",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab embedding endpoint; override via LLM_EMBEDDING_URL"
-        ),
-    ]
+    """Build list of (name, url) tuples from environment variables.
+
+    Services with unconfigured URLs are omitted — callers must set the
+    appropriate env vars to include them in health probes.
+    """
+    candidates: list[tuple[str, str]] = []
+
+    postgres_host = os.environ.get("POSTGRES_HOST", "")
+    postgres_port = os.environ.get("POSTGRES_PORT", "")
+    if postgres_host and postgres_port:
+        candidates.append(("postgres", f"http://{postgres_host}:{postgres_port}"))
+
+    redpanda_host = os.environ.get("REDPANDA_ADMIN_HOST", "")
+    redpanda_port = os.environ.get("REDPANDA_ADMIN_PORT", "9644")
+    if redpanda_host:
+        candidates.append(
+            ("redpanda", f"http://{redpanda_host}:{redpanda_port}/v1/cluster/health")
+        )
+
+    valkey_host = os.environ.get("VALKEY_HOST", "")
+    valkey_port = os.environ.get("VALKEY_PORT", "")
+    if valkey_host and valkey_port:
+        candidates.append(("valkey", f"http://{valkey_host}:{valkey_port}"))
+
+    qdrant_host = os.environ.get("QDRANT_HOST", "")
+    qdrant_port = os.environ.get("QDRANT_PORT", "")
+    if qdrant_host and qdrant_port:
+        candidates.append(("qdrant", f"http://{qdrant_host}:{qdrant_port}/healthz"))
+
+    llm_coder_url = os.environ.get("LLM_CODER_URL", "")
+    if llm_coder_url:
+        candidates.append(("llm_coder", f"{llm_coder_url}/health"))
+
+    llm_coder_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")
+    if llm_coder_fast_url:
+        candidates.append(("llm_coder_fast", f"{llm_coder_fast_url}/health"))
+
+    llm_embedding_url = os.environ.get("LLM_EMBEDDING_URL", "")
+    if llm_embedding_url:
+        candidates.append(("llm_embedding", f"{llm_embedding_url}/health"))
+
     return candidates
 
 

@@ -158,7 +158,7 @@ class EvidenceCollector:
                 return candidate
 
         # Fallback: resolve via OMNI_HOME env var
-        omni_home = os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home"))
+        omni_home = os.environ.get("OMNI_HOME", "")
         candidate = (
             Path(omni_home) / "onex_change_control" / "contracts" / f"{ticket_id}.yaml"
         )

@@ -188,7 +188,7 @@ def run_live_pr_polish(
 def _resolve_run_dir(command: ModelPrPolishStartCommand) -> Path:
     if command.run_dir:
         return Path(command.run_dir)
-    state_dir = Path(os.environ.get("ONEX_STATE_DIR", str(Path.home() / ".onex_state")))
+    state_dir = Path(os.environ.get("ONEX_STATE_DIR", ""))
     repo_slug = (command.repo or "unknown-repo").replace("/", "-")
     pr_part = str(command.pr_number) if command.pr_number is not None else "unknown-pr"
     run_id = uuid4().hex[:12]

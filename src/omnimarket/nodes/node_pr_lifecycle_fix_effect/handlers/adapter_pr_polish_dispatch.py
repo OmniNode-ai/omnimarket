@@ -114,7 +114,7 @@ class PrPolishDispatchAdapter:
 
     @staticmethod
     def _resolve_state_dir() -> Path:
-        return Path(os.environ.get("ONEX_STATE_DIR", str(Path.home() / ".onex_state")))
+        return Path(os.environ.get("ONEX_STATE_DIR", ""))
 
     async def dispatch_review_fix(
         self, repo: str, pr_number: int, ticket_id: str | None

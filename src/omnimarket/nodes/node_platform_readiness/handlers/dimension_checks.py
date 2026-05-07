@@ -37,15 +37,9 @@ from omnimarket.nodes.node_platform_readiness.models.dimension_result_v2 import 
     ModelDimensionResultV2,
 )
 
-_OMNI_HOME = os.environ.get("OMNI_HOME", os.path.expanduser("~/Code/omni_home"))
-_RUNTIME_API = os.environ.get(
-    "ONEX_RUNTIME_API",
-    "http://192.168.86.201:8080",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab runtime API; override via ONEX_RUNTIME_API"
-)
-_DASHBOARD_API = os.environ.get(
-    "ONEX_DASHBOARD_API",
-    "http://192.168.86.201:3000",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab dashboard; override via ONEX_DASHBOARD_API"
-)
+_OMNI_HOME = os.environ.get("OMNI_HOME", "")
+_RUNTIME_API = os.environ.get("ONEX_RUNTIME_API", "")
+_DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")
 _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 _GITHUB_REPOS = [
     "OmniNode-ai/omnimarket",

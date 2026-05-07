@@ -343,7 +343,7 @@ async def _call_glm(
 
     base_url = os.environ.get("LLM_GLM_URL", "").strip()
     api_key = os.environ.get("LLM_GLM_API_KEY", "").strip()
-    model_name = os.environ.get("LLM_GLM_MODEL_NAME", "glm-4.5").strip() or "glm-4.5"
+    model_name = os.environ.get("LLM_GLM_MODEL_NAME", "").strip()
     if not base_url or not api_key:
         return None
 

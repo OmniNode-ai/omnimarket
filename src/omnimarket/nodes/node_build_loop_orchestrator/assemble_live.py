@@ -71,10 +71,8 @@ logger = logging.getLogger(__name__)
 LINEAR_API_URL = "https://api.linear.app/graphql"
 LINEAR_TEAM_ID = "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6"
 
-OMNI_HOME = Path(os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home")))
-WORKTREE_ROOT = Path(
-    os.environ.get("OMNI_WORKTREES_ROOT", str(Path.home() / "Code" / "omni_worktrees"))
-)
+OMNI_HOME = Path(os.environ.get("OMNI_HOME", ""))
+WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", ""))
 
 # LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
 LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
@@ -83,7 +81,7 @@ LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "")
 # Frontier: GLM-4.5 (primary code generation backend)
 LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
 LLM_GLM_URL = os.environ.get("LLM_GLM_URL", "")
-LLM_GLM_MODEL_NAME = os.environ.get("LLM_GLM_MODEL_NAME", "glm-4.5")
+LLM_GLM_MODEL_NAME = os.environ.get("LLM_GLM_MODEL_NAME", "")
 
 # Frontier: OpenAI
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")

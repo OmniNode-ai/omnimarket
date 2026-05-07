@@ -20,10 +20,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_SSH_HOST = os.environ.get(
-    "ONEX_INFRA_SSH_TARGET",
-    "jonah@192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="lab infra SSH default; override via ONEX_INFRA_SSH_TARGET"
-)
+_SSH_HOST = os.environ.get("ONEX_INFRA_SSH_TARGET", "")
 _SSH_TIMEOUT = 15
 
 
@@ -172,7 +169,7 @@ class HandlerHandoffEffect:
 
         cwd_hash = hashlib.sha256(work_dir.encode()).hexdigest()[:8]
 
-        state_dir = Path(os.environ.get("ONEX_STATE_DIR", Path.home() / ".onex_state"))
+        state_dir = Path(os.environ.get("ONEX_STATE_DIR", ""))
         env_sync_log = state_dir / "logs" / "env-sync.log"
 
         # Raises InfraHealthGatherError on any SSH failure — fail loudly

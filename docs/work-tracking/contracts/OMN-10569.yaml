@@ -1,0 +1,33 @@
+# OMN-10569 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+schema_version: "1.0.0"
+ticket_id: "OMN-10569"
+title: "Strip baked LAN/path/identity defaults from omnimarket production source"
+summary: "Replace all hardcoded 192.168.x.x IPs, user home paths, external volume paths, localhost:9092 Kafka defaults, and model ID literals in src/omnimarket/ with empty-string defaults."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "3425 unit tests pass; zero new failures vs main."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m 'not kafka' --ignore=tests/test_datasource_postgres.py -q"
+  - id: "dod-002"
+    description: "grep confirms no 192.168.x.x IPs remain as os.environ.get defaults in src/omnimarket/."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -rn '192\\.168\\.' src/omnimarket/ --include='*.py' | grep 'os\\.environ\\.get' | grep -v '# onex-allow-internal-ip'"
+  - id: "dod-deploy"
+    description: "Runtime handlers import cleanly with empty env-var defaults on the running runtime container — no LAN defaults baked in."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec omninode-runtime-effects /app/.venv/bin/python -c \"import omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply as h; assert h._BASE_REGISTRY.get('qwen3-coder-30b', {}).get('url', '') == '', 'LAN default still baked in'\""
