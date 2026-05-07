@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10581
+title: ".env.example + omnimarket-validate-config CLI"
+summary: >
+  Add scripts/generate_env_example.py (generates .env.example from Settings
+  model), src/omnimarket/cli/validate_config.py (omnimarket-validate-config
+  CLI entry point), and unit tests enforcing .env.example stays in sync.
+  OMN-10581. Wave 1 / Task 9 of the Public-Shippable plan.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "validate_config and env_example_sync unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/cli/test_validate_config.py tests/unit/config/test_env_example_sync.py -v"
+  - id: "dod-generate"
+    description: ".env.example generated from Settings model and matches committed file"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/generate_env_example.py"
+  - id: "dod-deploy"
+    description: >
+      Post-merge deploy smoke plan: omnimarket-validate-config CLI is a
+      local dev tool (no runtime container change); no live deploy or
+      runtime restart is required. Post-merge smoke: install the package and
+      invoke the entry point.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.cli.validate_config'"

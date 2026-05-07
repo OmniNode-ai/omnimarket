@@ -58,26 +58,15 @@ def _field_source(settings: Settings, field_name: str) -> str:
     return "env"
 
 
-def _is_secret_field(field_name: str) -> bool:
-    field_info = Settings.model_fields.get(field_name)
-    if field_info is None:
-        return False
-    ann = field_info.annotation
-    return ann is SecretStr or (
-        hasattr(ann, "__args__") and SecretStr in (ann.__args__ or ())
-    )
-
-
 def _get_display_value(settings: Settings, field_name: str) -> str:
     raw = getattr(settings, field_name)
-    is_secret = _is_secret_field(field_name)
     if isinstance(raw, SecretStr):
         return _mask(raw.get_secret_value(), is_secret=True)
     if isinstance(raw, bool):
         return str(raw).lower()
     if isinstance(raw, int):
         return str(raw) if raw != 0 else "(not set)"
-    return _mask(str(raw), is_secret=is_secret)
+    return _mask(str(raw), is_secret=False)
 
 
 @click.command(name="omnimarket-validate-config")

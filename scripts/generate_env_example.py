@@ -195,6 +195,9 @@ def generate(output_path: Path | None = None) -> str:
             lines.append(f"# {env_key}={default_val}")
             lines.append("")
 
+    # Strip trailing blank lines so the file ends with exactly one newline.
+    while lines and lines[-1] == "":
+        lines.pop()
     content = "\n".join(lines) + "\n"
 
     if output_path is not None:
