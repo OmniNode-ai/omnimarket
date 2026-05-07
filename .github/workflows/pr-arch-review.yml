@@ -33,6 +33,7 @@
 #
 #   bot_login constants in handler_thread_poster.py and handler_thread_watcher.py
 #   must match the actual app slug: "onexbot[bot]"
+#   Cleanup: replace jonahgabriel fallback with github-actions[bot] in a follow-up PR.  # onex-allow-raw-env OMN-10580 reason="Inline cleanup note referencing the fallback identity; not a credential or hardcoded actor"
 
 name: PR Architectural Review
 

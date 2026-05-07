@@ -86,6 +86,8 @@ LEAK_REGEX='192\.168\.86\.|/Users/jonah|/Volumes/PRO-G40|cyankiwi/|Corianas/|mlx
 
 # Allowlist annotation: must include leak-class, ticket, and reason.
 # Extended with onex-allow-model-id for private HuggingFace model identifiers.
+# Type-specific cross-checking (require annotation type to match leak pattern class)
+# is deferred to a follow-up gate hardening pass after initial rollout.
 ALLOWLIST_REGEX='# onex-allow-(internal-ip|local-path|test-fixture|raw-env|model-id) OMN-[0-9]+ reason="[^"]+"'
 
 # Per-file exemptions (the gate script and its CI workflow obviously contain the
