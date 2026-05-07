@@ -86,7 +86,7 @@ jobs:
             echo "Using onexbot GitHub App token"
           else
             echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
-            echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"
+            echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"  # onex-allow-raw-env OMN-10580 reason="CI fallback bot login set to repo owner when GitHub App not configured"
             echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN"
           fi
 

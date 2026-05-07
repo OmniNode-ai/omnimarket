@@ -20,7 +20,7 @@ x-projection-defaults: &projection-defaults
   network_mode: host
   env_file: .env
   environment:
-    KAFKA_BROKERS: ${KAFKA_BROKERS:-192.168.86.201:19092}
+    KAFKA_BROKERS: ${KAFKA_BROKERS:-192.168.86.201:19092}  # onex-allow-internal-ip OMN-10580 reason="compose env-var fallback to lab Kafka; KAFKA_BROKERS must be set for non-lab deployments"
     OMNIDASH_ANALYTICS_DB_URL: ${OMNIDASH_ANALYTICS_DB_URL}
     KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-omnimarket-projections-v1}
     PYTHONUNBUFFERED: "1"

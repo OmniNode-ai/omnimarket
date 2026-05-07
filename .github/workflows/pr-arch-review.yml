@@ -23,7 +23,7 @@
 # Bot identity (onexbot GitHub App):
 #   When ONEXBOT_APP_ID + ONEXBOT_APP_PRIVATE_KEY org secrets are set, comments are
 #   posted as onexbot[bot] via a short-lived installation token. Until the GitHub App
-#   is created, the workflow falls back to GITHUB_TOKEN (posts as jonahgabriel).
+#   is created, the workflow falls back to GITHUB_TOKEN (posts as jonahgabriel).  # onex-allow-raw-env OMN-10580 reason="CI comment describing GitHub token fallback actor; not a credential"
 #
 #   To create the app:
 #     https://github.com/organizations/OmniNode-ai/settings/apps/new
@@ -80,8 +80,8 @@ jobs:
             echo "Using onexbot GitHub App token"
           else
             echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
-            echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"
-            echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as jonahgabriel)"
+            echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"  # onex-allow-raw-env OMN-10580 reason="CI fallback bot login set to repo owner when GitHub App not configured"
+            echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as jonahgabriel)"  # onex-allow-raw-env OMN-10580 reason="CI log message documenting fallback actor; not a credential"
           fi
 
   # ============================================================================

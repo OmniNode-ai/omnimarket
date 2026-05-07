@@ -57,7 +57,7 @@ VALID_REPORTING_SOURCES = frozenset(
     {"build-loop", "claude-session", "codex", "unknown"}
 )
 
-DEFAULT_BOOTSTRAP_SERVERS = "192.168.86.201:19092"
+DEFAULT_BOOTSTRAP_SERVERS = "192.168.86.201:19092"  # onex-allow-internal-ip OMN-10580 reason="lab Kafka bootstrap default; override via KAFKA_BOOTSTRAP_SERVERS env var"
 DEFAULT_POLL_INTERVAL_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 2.0
