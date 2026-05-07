@@ -60,12 +60,25 @@ jobs:
       bot_login: ${{ steps.pick.outputs.bot_login }}
 
     steps:
+      - name: Detect onexbot app secrets
+        id: app-secret-status
+        shell: bash
+        env:
+          ONEXBOT_APP_ID: ${{ secrets.ONEXBOT_APP_ID }}
+          ONEXBOT_APP_PRIVATE_KEY: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+        run: |
+          if [ -n "$ONEXBOT_APP_ID" ] && [ -n "$ONEXBOT_APP_PRIVATE_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Generate onexbot installation token (if app secrets present)
         id: app-token
         # Only attempt if both secrets are non-empty. The `vars.` context would
         # work for non-sensitive values; secrets are used here for both because
         # APP_ID is stored alongside the private key as an org secret.
-        if: ${{ secrets.ONEXBOT_APP_ID != '' && secrets.ONEXBOT_APP_PRIVATE_KEY != '' }}
+        if: ${{ steps.app-secret-status.outputs.present == 'true' }}
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.ONEXBOT_APP_ID }}
