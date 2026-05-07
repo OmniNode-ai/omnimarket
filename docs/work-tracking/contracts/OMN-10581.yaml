@@ -36,4 +36,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "printf '%s\n' 'post-merge smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.cli.validate_config'"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} omnimarket-validate-config"

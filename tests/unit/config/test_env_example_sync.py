@@ -11,7 +11,6 @@ adding or removing Settings fields.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -22,7 +21,7 @@ _GENERATE_SCRIPT = _REPO_ROOT / "scripts" / "generate_env_example.py"
 
 
 @pytest.mark.unit
-def test_env_example_is_in_sync_with_settings() -> None:
+def test_env_example_is_in_sync_with_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """The committed .env.example must match what generate_env_example.py produces.
 
     Re-run `uv run python scripts/generate_env_example.py` if this fails.
@@ -33,9 +32,9 @@ def test_env_example_is_in_sync_with_settings() -> None:
         "Run: uv run python scripts/generate_env_example.py"
     )
 
-    # Import the generator module directly so we don't spawn a subprocess.
-    sys.path.insert(0, str(_REPO_ROOT / "src"))
-    sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+    # Use monkeypatch so sys.path mutations are automatically reverted after the test.
+    monkeypatch.syspath_prepend(str(_REPO_ROOT / "src"))
+    monkeypatch.syspath_prepend(str(_REPO_ROOT / "scripts"))
 
     # Load via importlib to avoid name collision with 'generate_env_example' if
     # it were ever added as a package.
