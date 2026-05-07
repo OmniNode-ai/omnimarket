@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-file OMN-10580 reason="test fixture — writes synthetic leaky files containing forbidden literals to test the gate script itself; literals are test inputs, not runtime values"
+# onex-allow-file OMN-10580 reason="writes synthetic leaky files to test the leak-gate script"; test-literal-ok: fixture literals only
+# test-literal-ok: fixture literals only
 """Unit tests for scripts/validation/check_leaked_literals.sh.
 
 OMN-10554. Wave 0 (advisory). Wave 3 will extend this with blocking-mode
