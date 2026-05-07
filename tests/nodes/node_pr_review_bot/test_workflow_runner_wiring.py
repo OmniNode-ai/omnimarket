@@ -53,12 +53,12 @@ def test_bridge_loader_populates_known_keys_from_env(
     """The loader must register at least qwen3-coder + deepseek-r1 when the
     corresponding ``LLM_*_URL`` env vars are set, so ``run_review`` callers
     can pass those keys without manual registry wiring."""
-    monkeypatch.setenv("LLM_CODER_URL", "http://192.168.86.201:8000")
+    monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
     monkeypatch.setenv(
         "LLM_CODER_MODEL_NAME",
         "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
     )
-    monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://192.168.86.201:8001")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://localhost:8001")
     monkeypatch.setenv(
         "LLM_DEEPSEEK_R1_MODEL_NAME",
         "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",
@@ -74,7 +74,7 @@ def test_bridge_loader_populates_known_keys_from_env(
         "deepseek-r1 must be registered when LLM_DEEPSEEK_R1_URL is set"
     )
     qwen = config.model_configs["qwen3-coder"]
-    assert qwen["base_url"] == "http://192.168.86.201:8000"
+    assert qwen["base_url"] == "http://localhost:8000"
     assert qwen["model_id"] == "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
     assert qwen["transport"] == "http"
 

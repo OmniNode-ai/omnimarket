@@ -35,7 +35,7 @@ async def test_model_router_falls_back_to_claude_on_degradation() -> None:
     )
     registry = {
         "qwen3-coder-30b": {
-            "base_url": "http://192.168.86.201:8000",
+            "base_url": "http://localhost:8000",
             "health_path": "/health",
             "ci_override_url": "",
         },

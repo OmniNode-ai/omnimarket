@@ -90,7 +90,7 @@ def test_check_refuses_protected_runtime_without_printing_secret(
     env_file.write_text(
         "\n".join(
             [
-                "OMNIDASH_ANALYTICS_DB_URL=postgresql://postgres:super-secret@192.168.86.201:5436/omnibase_infra",
+                "OMNIDASH_ANALYTICS_DB_URL=postgresql://postgres:super-secret@192.168.86.201:5436/omnibase_infra",  # onex-allow-internal-ip: testing that the script rejects LAN DSNs
                 "KAFKA_BROKERS=localhost:19092",
             ]
         ),

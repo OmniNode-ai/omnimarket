@@ -31,7 +31,7 @@ from omnimarket.nodes.node_ab_inference_effect.models.model_inference_result imp
 # ---------------------------------------------------------------------------
 
 CORRELATION_ID = "test-corr-001"
-ALLOWED_ENDPOINTS = {"http://localhost:8000", "http://192.168.86.201:8000"}
+ALLOWED_ENDPOINTS = {"http://localhost:8000"}
 
 
 def _make_request(
@@ -137,11 +137,11 @@ async def test_openai_compatible_url_constructed_correctly() -> None:
         http_post_fn=_capturing_post,
         allowed_endpoint_urls=ALLOWED_ENDPOINTS,
     )
-    req = _make_request(endpoint_url="http://192.168.86.201:8000")
+    req = _make_request(endpoint_url="http://localhost:8000")
     await handler.handle(req)
 
     assert len(captured_urls) == 1
-    assert captured_urls[0] == "http://192.168.86.201:8000/v1/chat/completions"
+    assert captured_urls[0] == "http://localhost:8000/v1/chat/completions"
 
 
 @pytest.mark.asyncio

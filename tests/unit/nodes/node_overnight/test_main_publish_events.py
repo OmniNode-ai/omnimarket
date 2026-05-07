@@ -35,7 +35,7 @@ def test_build_kafka_publisher_returns_none_when_no_bootstrap(
 def test_build_kafka_publisher_returns_none_when_confluent_kafka_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "192.168.86.201:19092")
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
     # Hide confluent_kafka from imports
     with patch.dict(sys.modules, {"confluent_kafka": None}):  # type: ignore[dict-item]
@@ -54,7 +54,7 @@ def test_build_kafka_publisher_returns_none_when_confluent_kafka_missing(
 def test_build_kafka_publisher_returns_callable_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "192.168.86.201:19092")
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
     mock_producer = MagicMock()
     mock_confluent = MagicMock()
@@ -76,7 +76,7 @@ def test_build_kafka_publisher_returns_callable_when_configured(
 def test_build_kafka_publisher_callable_invokes_produce(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "192.168.86.201:19092")
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
     mock_producer = MagicMock()
     mock_confluent = MagicMock()

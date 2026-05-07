@@ -77,7 +77,7 @@ class TestNightlyLoopController:
         db = InmemoryDatabaseAdapter()
         route = ModelDelegationRoute(
             task_type="golden-chain",
-            model_endpoint="http://192.168.86.201:8001",
+            model_endpoint="http://localhost:8001",
             model_id="Qwen/Qwen3-14B-AWQ",
             cost_per_call_usd=0.001,
             is_frontier=False,

@@ -184,9 +184,9 @@ class TestHandlerRuntimeShaVerifyProbeMethod:
         assert sha == _MATCHING_SHA
         call_args = mock_run.call_args
         cmd = call_args[0][0]
-        assert "192.168.86.201" in " ".join(
+        assert request.runtime_host in " ".join(
             cmd
-        )  # onex-allow-internal-ip: test assertion
+        )  # host comes from _make_request fixture
         assert "git" in " ".join(cmd)
         assert "rev-parse" in " ".join(cmd)
 
