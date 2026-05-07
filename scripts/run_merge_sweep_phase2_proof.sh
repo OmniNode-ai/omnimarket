@@ -136,7 +136,7 @@ print("Gate 1a: ModelThreadReplyCommand — PASS")
 conflict_hunk_cmd = ModelConflictHunkCommand(
     pr_number=201,
     repo=REPO,
-    head_ref_name="jonahgabriel/feature-201",
+    head_ref_name="jonahgabriel/feature-201",  # onex-allow-raw-env OMN-10580 reason="proof script test fixture using synthetic branch name matching Linear default format"
     base_ref_name="main",
     conflict_files=["src/omnimarket/nodes/node_example/handler.py"],
     correlation_id=CORR_ID,

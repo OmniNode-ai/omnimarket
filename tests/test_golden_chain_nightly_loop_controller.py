@@ -1,3 +1,4 @@
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in nightly loop controller test fixtures; not a runtime default"
 """Golden chain tests for node_nightly_loop_controller.
 
 Proves: config -> handler -> decisions -> iterations -> projection -> API

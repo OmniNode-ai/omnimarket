@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab IP and super-secret placeholder to verify the script redacts secrets from output; values are test inputs, not credentials"
 """Tests for scripts/run_delegation_cost_projection_process.sh."""
 
 from __future__ import annotations

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in router fallback test inputs; not a runtime default"
 
 """TDD target 2: router falls back to secondary after 3 consecutive primary failures.
 

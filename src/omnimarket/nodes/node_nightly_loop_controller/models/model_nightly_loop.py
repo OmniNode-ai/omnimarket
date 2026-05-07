@@ -199,9 +199,13 @@ def build_default_routing_table() -> tuple[ModelDelegationRoute, ...]:
     import os
 
     gemini_endpoint = os.environ.get("GEMINI_CLI_ENDPOINT", "cli://gemini")
-    local_coder_endpoint = os.environ.get("LLM_CODER_URL", "http://192.168.86.201:8000")
+    local_coder_endpoint = os.environ.get(
+        "LLM_CODER_URL",
+        "http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab coder endpoint; override via LLM_CODER_URL"
+    )
     local_fast_endpoint = os.environ.get(
-        "LLM_CODER_FAST_URL", "http://192.168.86.201:8001"
+        "LLM_CODER_FAST_URL",
+        "http://192.168.86.201:8001",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab fast endpoint; override via LLM_CODER_FAST_URL"
     )
 
     return (

@@ -317,8 +317,12 @@ class NodeDuplicationSweep:
     """Detect duplicate definitions across repos."""
 
     def handle(self, request: DuplicationSweepRequest) -> DuplicationSweepResult:
-        omni_home = request.omni_home or os.environ.get(
-            "OMNI_HOME", "/Users/jonah/Code/omni_home"
+        omni_home = (
+            request.omni_home
+            or os.environ.get(
+                "OMNI_HOME",
+                "/Users/jonah/Code/omni_home",  # onex-allow-local-path OMN-10580 reason="OMNI_HOME env-var fallback; OMNI_HOME must be set in any non-dev environment"
+            )
         )
         checks = request.checks or _ALL_CHECKS
 

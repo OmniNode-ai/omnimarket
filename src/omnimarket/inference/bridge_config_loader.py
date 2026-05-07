@@ -38,7 +38,7 @@ _MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str, str, int], ...]] = (
         "qwen3-coder",
         "LLM_CODER_URL",
         "LLM_CODER_MODEL_NAME",
-        "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
+        "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",  # onex-allow-model-id OMN-10580 reason="lab-local model registry default; override via LLM_CODER_MODEL_NAME"
         112_000,
     ),
     (
@@ -52,14 +52,14 @@ _MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str, str, int], ...]] = (
         "deepseek-r1",
         "LLM_DEEPSEEK_R1_URL",
         "LLM_DEEPSEEK_R1_MODEL_NAME",
-        "mlx-community/DeepSeek-R1-Distill-Qwen-32B-bf16",
+        "mlx-community/DeepSeek-R1-Distill-Qwen-32B-bf16",  # onex-allow-model-id OMN-10580 reason="lab-local model registry default; override via LLM_DEEPSEEK_R1_MODEL_NAME"
         8_192,
     ),
     (
         "qwen3-next",
         "LLM_QWEN3_NEXT_URL",
         "LLM_QWEN3_NEXT_MODEL_NAME",
-        "mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit",
+        "mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit",  # onex-allow-model-id OMN-10580 reason="lab-local model registry default; override via LLM_QWEN3_NEXT_MODEL_NAME"
         8_192,
     ),
     (

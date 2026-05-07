@@ -43,6 +43,16 @@ repos:
   # Requires omnibase_infra at $OMNIBASE_INFRA_PATH or ../omnibase_infra.
   - repo: local
     hooks:
+      # OMN-10580: Leaked-literals gate — blocks hardcoded LAN IPs, personal
+      # paths, private model IDs from being committed. Add an inline annotation
+      # to exempt a legitimate occurrence (see docs/leaked-literals-governance.md).
+      - id: leaked-literals-gate
+        name: Leaked literals gate (OMN-10580)
+        language: system
+        entry: bash scripts/validation/check_leaked_literals.sh blocking diff
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — asserts /Users/jonah and /Volumes/ paths do NOT appear in prompts; the literal appears in the assertion string itself, not as a value"
 """Unit tests for session bootstrap Rev 7 additions.
 
 Covers:

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab endpoint as command model test input; not a runtime default"
 """Unit tests for Phase 2 command models [OMN-8987].
 
 TDD: tests written before implementation.

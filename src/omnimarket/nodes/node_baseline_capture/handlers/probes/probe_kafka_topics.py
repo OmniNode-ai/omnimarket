@@ -30,7 +30,10 @@ class ProbeKafkaTopics:
             return []
 
         # Redpanda admin API — default port 9644
-        admin_host = os.environ.get("REDPANDA_ADMIN_HOST", "192.168.86.201")
+        admin_host = os.environ.get(
+            "REDPANDA_ADMIN_HOST",
+            "192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Redpanda host; override via REDPANDA_ADMIN_HOST"
+        )
         admin_port = os.environ.get("REDPANDA_ADMIN_PORT", "9644")
         base_url = f"http://{admin_host}:{admin_port}"
 

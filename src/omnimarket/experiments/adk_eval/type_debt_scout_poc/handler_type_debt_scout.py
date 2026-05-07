@@ -55,8 +55,8 @@ _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.md"
 _USER_TEMPLATE_PATH = _PROMPTS_DIR / "user_template.md"
 
 _PROVIDER_NAME = "qwen3_coder_local"
-_DEFAULT_BASE_URL = "http://192.168.86.201:8000"
-_DEFAULT_MODEL_ID = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+_DEFAULT_BASE_URL = "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10580 reason="experiment dev default; real deployments set LLM_CODER_URL"
+_DEFAULT_MODEL_ID = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"  # onex-allow-model-id OMN-10580 reason="experiment dev default; real deployments set LLM_CODER_MODEL_NAME"
 _DEFAULT_MAX_TOKENS = 4096
 _DEFAULT_TIMEOUT_SECONDS = 420.0
 _DEFAULT_TEMPERATURE = 0.1

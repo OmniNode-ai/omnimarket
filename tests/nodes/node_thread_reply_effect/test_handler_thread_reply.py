@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-
+# onex-allow-file OMN-10580 reason="test fixture — uses lab git actor handle as synthetic PR branch name; not an identity claim or runtime default"
 """Tests for HandlerThreadReply (OMN-8989 TDD spec + OMN-8990 Wave 2).
 
 TDD cases:

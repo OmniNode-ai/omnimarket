@@ -28,7 +28,10 @@ SOW_PHASE2_REQUIRED_TOPICS: list[str] = [
 ]
 
 # SSH target for .201 infra checks — override via ONEX_INFRA_SSH_TARGET env var
-_INFRA_SSH_TARGET = os.environ.get("ONEX_INFRA_SSH_TARGET", "jonah@192.168.86.201")
+_INFRA_SSH_TARGET = os.environ.get(
+    "ONEX_INFRA_SSH_TARGET",
+    "jonah@192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab SSH target; override via ONEX_INFRA_SSH_TARGET"
+)
 
 
 class EnumReadinessStatus(StrEnum):

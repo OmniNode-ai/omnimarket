@@ -63,7 +63,10 @@ def _resolve_repo_dirs(repos: list[str], omni_home: str) -> list[str]:
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    omni_home = os.environ.get("OMNI_HOME", "/Volumes/PRO-G40/Code/omni_home")
+    omni_home = os.environ.get(
+        "OMNI_HOME",
+        "/Volumes/PRO-G40/Code/omni_home",  # onex-allow-local-path OMN-10580 reason="OMNI_HOME env-var fallback; OMNI_HOME must be set in any non-dev environment"
+    )
 
     parser = argparse.ArgumentParser(
         description="Detect AI-generated quality anti-patterns across repos."

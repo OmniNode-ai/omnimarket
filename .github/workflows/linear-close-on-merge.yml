@@ -10,7 +10,7 @@
 # and calls the Linear API to mark the ticket as Done.
 #
 # Branch name conventions supported:
-#   jonahgabriel/omn-XXXX-description  (Linear default)
+#   jonahgabriel/omn-XXXX-description  (Linear default)  # onex-allow-raw-env OMN-10580 reason="branch name format example in comment; not a credential or connection string"
 #   jonah/omn-XXXX-description          (short username variant)
 #   epic/OMN-XXXX/OMN-YYYY/run-id       (epic-team branches, closes child OMN-YYYY)
 #   OMN-XXXX-description                (bare prefix variant)

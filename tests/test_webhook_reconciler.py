@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses jonahgabriel as a synthetic bypass actor in test scenarios; not a credential"
 """Unit tests for HandlerWebhookReconciler — OMN-8492, Component 1."""
 
 from __future__ import annotations

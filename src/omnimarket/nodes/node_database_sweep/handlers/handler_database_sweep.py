@@ -381,8 +381,12 @@ class NodeDatabaseSweep:
     """Scan projection tables and migration state across all ONEX databases."""
 
     def handle(self, request: DatabaseSweepRequest) -> DatabaseSweepResult:
-        omni_home = request.omni_home or os.environ.get(
-            "OMNI_HOME", "/Users/jonah/Code/omni_home"
+        omni_home = (
+            request.omni_home
+            or os.environ.get(
+                "OMNI_HOME",
+                "/Users/jonah/Code/omni_home",  # onex-allow-local-path OMN-10580 reason="OMNI_HOME env-var fallback; OMNI_HOME must be set in any non-dev environment"
+            )
         )
         analytics_db = "omnidash_analytics"
 

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="integration test — uses lab Kafka bootstrap address as test target; not a runtime default"
 """Integration test: cost_event_publisher publishes real events to Kafka.
 
 Requires:

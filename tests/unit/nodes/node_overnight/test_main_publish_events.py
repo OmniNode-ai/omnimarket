@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — sets lab Kafka address via monkeypatch to test event publishing; value is a test input, not a runtime default"
 """Unit tests for node_overnight __main__ --publish-events flag (OMN-8403).
 
 Verifies that:

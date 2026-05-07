@@ -69,7 +69,12 @@ def compute_freshness(latest_ts: str | None) -> str:
 
 def _dsn() -> str:
     password = os.environ["POSTGRES_PASSWORD"]
-    return f"postgresql://postgres:{password}@192.168.86.201:5436/omnibase_infra"  # onex-allow-internal-ip
+    host = os.environ.get(
+        "POSTGRES_HOST",
+        "192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Postgres; override via POSTGRES_HOST"
+    )
+    port = os.environ.get("POSTGRES_PORT", "5436")
+    return f"postgresql://postgres:{password}@{host}:{port}/omnibase_infra"
 
 
 async def _create_pool() -> asyncpg.Pool:
@@ -99,7 +104,9 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         raw_map = build_projection_topic_map()
         _topic_map = await validate_topic_map_tables(_pool, raw_map)
 
-        ok_count = sum(1 for c in _topic_map.values() if c.status == ProjectionStatus.OK)
+        ok_count = sum(
+            1 for c in _topic_map.values() if c.status == ProjectionStatus.OK
+        )
         degraded_count = sum(
             1 for c in _topic_map.values() if c.status == ProjectionStatus.DEGRADED
         )

@@ -14,7 +14,7 @@ Environment variables (resolved at startup, no hardcoded strings):
 
 Usage:
     uv run python -m omnimarket.nodes.node_projection_llm_cost.consumer \\
-        --bootstrap-servers 192.168.86.201:19092
+        --bootstrap-servers 192.168.86.201:19092  # onex-allow-internal-ip OMN-10580 reason="docstring usage example only; real value from KAFKA_BOOTSTRAP_SERVERS env var"
 """
 
 from __future__ import annotations
@@ -336,7 +336,10 @@ def _build_dsn() -> str:
     dsn = os.environ.get("OMNIDASH_ANALYTICS_DB_URL")
     if dsn:
         return dsn
-    host = os.environ.get("POSTGRES_HOST", "192.168.86.201")
+    host = os.environ.get(
+        "POSTGRES_HOST",
+        "192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Postgres; override via POSTGRES_HOST"
+    )
     port = os.environ.get("POSTGRES_PORT", "5436")
     user = os.environ.get("POSTGRES_USER", "postgres")
     password = os.environ["POSTGRES_PASSWORD"]

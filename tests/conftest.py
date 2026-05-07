@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — lab endpoints used as fixture defaults for golden chain tests; not runtime defaults"
 """Shared test fixtures for omnimarket golden chain and integration tests."""
 
 from __future__ import annotations

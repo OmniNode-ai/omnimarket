@@ -65,7 +65,10 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-_CANONICAL_WORKTREES = "/Volumes/PRO-G40/Code/omni_worktrees"  # local-path-ok
+_CANONICAL_WORKTREES = os.environ.get(
+    "OMNI_WORKTREES",
+    "/Volumes/PRO-G40/Code/omni_worktrees",  # onex-allow-local-path OMN-10580 reason="worktree root fallback; override via OMNI_WORKTREES env var"
+)
 
 _DEFAULT_VERIFICATION_STEPS: list[ModelWorkflowVerification] = [
     ModelWorkflowVerification(

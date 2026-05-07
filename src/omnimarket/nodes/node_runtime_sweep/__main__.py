@@ -95,7 +95,10 @@ def _collect_contracts(omni_home: str, scope: str) -> list[ModelContractInput]:
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    omni_home = os.environ.get("OMNI_HOME", "/Volumes/PRO-G40/Code/omni_home")
+    omni_home = os.environ.get(
+        "OMNI_HOME",
+        "/Volumes/PRO-G40/Code/omni_home",  # onex-allow-local-path OMN-10580 reason="OMNI_HOME env-var fallback; OMNI_HOME must be set in any non-dev environment"
+    )
 
     parser = argparse.ArgumentParser(
         description="Runtime registration and wiring verification."

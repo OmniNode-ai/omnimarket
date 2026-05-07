@@ -43,7 +43,7 @@ Required:
   - KAFKA_BROKERS or KAFKA_BOOTSTRAP_SERVERS in that env/environment
 
 Safety:
-  The wrapper refuses 192.168.86.201 endpoints so the local lane cannot mutate .201.
+  The wrapper refuses 192.168.86.201 endpoints so the local lane cannot mutate .201.  # onex-allow-internal-ip OMN-10580 reason="safety guard docstring; the IP appears as a string to reject, not a connection target"
   Secrets are never printed.
 EOF
 }
@@ -71,7 +71,7 @@ refuse_protected_runtime() {
   local name="$1"
   local value="${!name:-}"
   [[ -z "${value}" ]] && return 0
-  if [[ "${value}" == *"192.168.86.201"* ]]; then
+  if [[ "${value}" == *"192.168.86.201"* ]]; then  # onex-allow-internal-ip OMN-10580 reason="safety guard that BLOCKS connections to .201; IP used as a pattern to reject, not a target"
     die "${name} points at protected .201 runtime; use local bus/database endpoints"
   fi
 }

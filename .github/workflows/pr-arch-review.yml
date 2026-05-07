@@ -23,7 +23,7 @@
 # Bot identity (onexbot GitHub App):
 #   When ONEXBOT_APP_ID + ONEXBOT_APP_PRIVATE_KEY org secrets are set, comments are
 #   posted as onexbot[bot] via a short-lived installation token. Until the GitHub App
-#   is created, the workflow falls back to GITHUB_TOKEN (posts as jonahgabriel).
+#   is created, the workflow falls back to GITHUB_TOKEN (posts as github-actions[bot]).
 #
 #   To create the app:
 #     https://github.com/organizations/OmniNode-ai/settings/apps/new
@@ -33,6 +33,7 @@
 #
 #   bot_login constants in handler_thread_poster.py and handler_thread_watcher.py
 #   must match the actual app slug: "onexbot[bot]"
+#   Fallback identity is now github-actions[bot] — no personal username in the fallback path.
 
 name: PR Architectural Review
 
@@ -80,8 +81,8 @@ jobs:
             echo "Using onexbot GitHub App token"
           else
             echo "token=${{ secrets.GITHUB_TOKEN }}" >> "$GITHUB_OUTPUT"
-            echo "bot_login=jonahgabriel" >> "$GITHUB_OUTPUT"
-            echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as jonahgabriel)"
+            echo "bot_login=github-actions[bot]" >> "$GITHUB_OUTPUT"
+            echo "ONEXBOT_APP_ID/ONEXBOT_APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN (posts as github-actions[bot])"
           fi
 
   # ============================================================================

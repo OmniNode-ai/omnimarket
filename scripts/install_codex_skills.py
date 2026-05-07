@@ -34,7 +34,9 @@ def _default_marketplace_source_dir(codex_home: Path) -> Path:
 
 def _iter_skill_dirs(source_dir: Path) -> list[Path]:
     return sorted(
-        path for path in source_dir.iterdir() if path.is_dir() and (path / "SKILL.md").is_file()
+        path
+        for path in source_dir.iterdir()
+        if path.is_dir() and (path / "SKILL.md").is_file()
     )
 
 

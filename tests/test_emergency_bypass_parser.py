@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses jonahgabriel as a synthetic actor handle throughout the test suite; not a leaked credential"
 """Unit tests for HandlerEmergencyBypassParser — OMN-8497.
 
 TDD: all 6 DoD cases must pass.

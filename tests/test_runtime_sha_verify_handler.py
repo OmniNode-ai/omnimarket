@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — uses lab endpoint as SHA verify handler test input; not a runtime default"
 
 """Tests for runtime SHA verifier handler (OMN-9356).
 

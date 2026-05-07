@@ -419,7 +419,7 @@ class LiveTicketClassifyHandler:
                     ticket_id=ticket.ticket_id,
                     buildability=buildability,
                     source=source,
-                    model_used="Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"
+                    model_used="Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"  # onex-allow-model-id OMN-10580 reason="hardcoded model name for classification log; runtime model routing uses LLM_CODER_FAST_URL"
                     if source == "llm_classifier"
                     else "",
                     raw_response=raw_resp[:200],
@@ -486,7 +486,7 @@ class LiveTicketClassifyHandler:
                 resp = await client.post(
                     f"{LLM_FAST_URL}/v1/chat/completions",
                     json={
-                        "model": "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",
+                        "model": "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",  # onex-allow-model-id OMN-10580 reason="direct LLM call fallback when contract routing unavailable; real routing uses env-var-driven registry"
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 256,
                         "temperature": 0.0,
@@ -881,7 +881,7 @@ class LiveBuildDispatchHandler:
 
         # Tier 2: Local coder (Qwen3-Coder-30B, longer context)
         if LLM_CODER_URL:
-            coder_model = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+            coder_model = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"  # onex-allow-model-id OMN-10580 reason="tier-2 local coder fallback; real deployments set LLM_CODER_MODEL_NAME"
             impl = await self._call_llm(
                 url=f"{LLM_CODER_URL}/v1/chat/completions",
                 model=coder_model,

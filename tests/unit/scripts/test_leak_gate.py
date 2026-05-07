@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10580 reason="test fixture — writes synthetic leaky files containing forbidden literals to test the gate script itself; literals are test inputs, not runtime values"
 """Unit tests for scripts/validation/check_leaked_literals.sh.
 
 OMN-10554. Wave 0 (advisory). Wave 3 will extend this with blocking-mode
@@ -134,17 +135,31 @@ def test_docs_path_with_bare_annotation_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_src_path_annotation_does_not_exempt(tmp_path: Path) -> None:
-    """src/** is block_always — annotations do NOT permit leaks there."""
+def test_src_path_annotation_exempts(tmp_path: Path) -> None:
+    """Annotations ARE honoured in src/ — env-var fallbacks with proper annotation are allowed."""
     _init_repo(tmp_path)
     leaky = tmp_path / "src" / "module.py"
     leaky.parent.mkdir(parents=True, exist_ok=True)
     leaky.write_text(
         'HOST = "192.168.86.201"  '
-        '# onex-allow-internal-ip OMN-10554 reason="should not work"\n'
+        '# onex-allow-internal-ip OMN-10554 reason="env-var fallback; override via HOST_ENV"\n'
     )
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-qm", "annotated-src"], cwd=tmp_path, check=True)
+
+    result = _run(tmp_path, "blocking", "all")
+    assert result.returncode == 0
+
+
+@pytest.mark.unit
+def test_src_path_unannotated_is_blocked(tmp_path: Path) -> None:
+    """src/ files without annotation are still blocked."""
+    _init_repo(tmp_path)
+    leaky = tmp_path / "src" / "module.py"
+    leaky.parent.mkdir(parents=True, exist_ok=True)
+    leaky.write_text('HOST = "192.168.86.201"\n')
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "bare-src"], cwd=tmp_path, check=True)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 1
