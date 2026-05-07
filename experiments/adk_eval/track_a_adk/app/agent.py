@@ -6,7 +6,7 @@
 
 AI Studio auth path (GEMINI_API_KEY / GOOGLE_API_KEY). Single tool
 `run_mypy_and_parse` imported from the shared parser at
-`omnimarket.experiments.adk_eval.tools.mypy_parser`.
+`experiments.adk_eval.tools.mypy_parser`.
 
 Output contract: agent is prompted to return a JSON payload parseable as
 `ModelTypeDebtReport` (the harness validates before writing).
@@ -31,7 +31,7 @@ def run_mypy_and_parse(repo_path: str) -> list[dict[str, Any]]:
 
     Wraps the shared parser used by both Track A (this agent) and Track B
     (omnimarket POC), living at
-    ``omnimarket.experiments.adk_eval.tools.mypy_parser``. Returns a list of
+    ``experiments.adk_eval.tools.mypy_parser``. Returns a list of
     dicts built from ``ModelMypyFinding.model_dump()``.
 
     Args:
@@ -42,7 +42,7 @@ def run_mypy_and_parse(repo_path: str) -> list[dict[str, Any]]:
         List of mypy findings, each a dict with keys ``file``, ``line``,
         ``column``, ``severity``, ``error_code``, ``message``.
     """
-    from omnimarket.experiments.adk_eval.tools.mypy_parser import (
+    from experiments.adk_eval.tools.mypy_parser import (
         run_mypy_and_parse as _run,
     )
 

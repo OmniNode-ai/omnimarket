@@ -353,7 +353,7 @@ ignore_missing_imports = true
 # so suppress the not-found and untyped errors for that subtree.
 [[tool.mypy.overrides]]
 module = [
-    "omnimarket.experiments.adk_eval.track_a_adk.*",
+    "experiments.adk_eval.track_a_adk.*",
 ]
 ignore_errors = true
 

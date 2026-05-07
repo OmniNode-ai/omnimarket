@@ -13,7 +13,7 @@ See ``docs/plans/2026-04-23-adk-evaluation-tech-debt-agent.md`` for the
 decision gate and the "Evaluation Truth Boundary" constraints.
 """
 
-from omnimarket.experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
+from experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
     ModelTrackBConfig,
     run_type_debt_scout,
 )

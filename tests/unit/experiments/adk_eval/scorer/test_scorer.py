@@ -21,11 +21,11 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.experiments.adk_eval._local_models import (
+from experiments.adk_eval._local_models import (
     EnumTypeDebtPriority,
     ModelTypeDebtReport,
 )
-from omnimarket.experiments.adk_eval.scorer import (
+from experiments.adk_eval.scorer import (
     load_labels,
     score_report,
     score_reports,

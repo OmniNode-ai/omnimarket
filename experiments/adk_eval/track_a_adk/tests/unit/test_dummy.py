@@ -5,7 +5,7 @@
 OMN-9639 makes the local ADK scout runnable over A2A. The exposed tool the
 agent calls is ``app.agent.run_mypy_and_parse``, which delegates (via a
 deferred import) to the shared parser at
-``omnimarket.experiments.adk_eval.tools.mypy_parser``.
+``experiments.adk_eval.tools.mypy_parser``.
 
 These tests cover the subproject-local invariants only — tool wiring,
 agent-card metadata — so a regression that breaks A2A exposure or removes the

@@ -10,7 +10,7 @@ emits precision/recall/F1 in both binary (actionable vs not) and 4-class
 Sample is LLM-self-labeled (not human-gold); scores are directional.
 """
 
-from omnimarket.experiments.adk_eval.scorer.scorer import (
+from experiments.adk_eval.scorer.scorer import (
     ModelConfusionMatrix,
     ModelPerClassScore,
     ModelTrackScore,
