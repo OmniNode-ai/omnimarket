@@ -76,7 +76,9 @@ WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", ""))
 
 # LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)
 LLM_FAST_URL = os.environ.get("LLM_CODER_FAST_URL", "")
+LLM_FAST_MODEL_NAME = os.environ.get("LLM_CODER_FAST_MODEL_NAME", "")
 LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "")
+LLM_CODER_MODEL_NAME = os.environ.get("LLM_CODER_MODEL_NAME", "")
 
 # Frontier: GLM-4.5 (primary code generation backend)
 LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
@@ -417,7 +419,7 @@ class LiveTicketClassifyHandler:
                     ticket_id=ticket.ticket_id,
                     buildability=buildability,
                     source=source,
-                    model_used="Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"  # onex-allow-model-id OMN-10580 reason="hardcoded model name for classification log; runtime model routing uses LLM_CODER_FAST_URL"
+                    model_used=LLM_FAST_MODEL_NAME
                     if source == "llm_classifier"
                     else "",
                     raw_response=raw_resp[:200],
@@ -484,7 +486,7 @@ class LiveTicketClassifyHandler:
                 resp = await client.post(
                     f"{LLM_FAST_URL}/v1/chat/completions",
                     json={
-                        "model": "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",  # onex-allow-model-id OMN-10580 reason="direct LLM call fallback when contract routing unavailable; real routing uses env-var-driven registry"
+                        "model": LLM_FAST_MODEL_NAME,
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 256,
                         "temperature": 0.0,
@@ -879,7 +881,7 @@ class LiveBuildDispatchHandler:
 
         # Tier 2: Local coder (Qwen3-Coder-30B, longer context)
         if LLM_CODER_URL:
-            coder_model = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"  # onex-allow-model-id OMN-10580 reason="tier-2 local coder fallback; real deployments set LLM_CODER_MODEL_NAME"
+            coder_model = LLM_CODER_MODEL_NAME
             impl = await self._call_llm(
                 url=f"{LLM_CODER_URL}/v1/chat/completions",
                 model=coder_model,

@@ -3,8 +3,9 @@
 #
 # endpoint is the default OpenAI-compatible base URL. endpoint_env can override
 # it at runtime; blank env values are treated as unset and fall back to endpoint.
-# model_id is the default API model identifier. model_id_env can override it at
-# runtime; blank env values are treated as unset and fall back to model_id.
+# model_id_env names the env var that supplies the model identifier at runtime.
+# model_id_default is the fallback when the env var is unset; "" means skip the
+# model rather than using a hardcoded ID.
 # protocol must currently be openai_compatible for orchestrator execution.
 # requires_key names the API-key env var; models with missing keys are skipped.
 
@@ -13,8 +14,10 @@ models:
   - id: qwen3-coder-30b
     display_name: "Qwen3-Coder-30B"
     endpoint: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_CODER_URL"
+    endpoint_env: LLM_CODER_URL
     protocol: openai_compatible
-    model_id: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"  # onex-allow-model-id OMN-10580 reason="lab default; override via model_id_env=LLM_CODER_MODEL_NAME"
+    model_id_env: LLM_CODER_MODEL_NAME
+    model_id_default: ""
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
     location: local
@@ -23,8 +26,10 @@ models:
   - id: deepseek-r1-14b
     display_name: "DeepSeek-R1-14B"
     endpoint: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_CODER_FAST_URL"
+    endpoint_env: LLM_CODER_FAST_URL
     protocol: openai_compatible
-    model_id: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"  # onex-allow-model-id OMN-10580 reason="lab default; override via model_id_env=LLM_CODER_FAST_MODEL_NAME"
+    model_id_env: LLM_CODER_FAST_MODEL_NAME
+    model_id_default: ""
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
     location: local
@@ -33,8 +38,10 @@ models:
   - id: deepseek-r1-32b
     display_name: "DeepSeek-R1-32B"
     endpoint: "http://192.168.86.200:8101"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_DEEPSEEK_R1_URL"
+    endpoint_env: LLM_DEEPSEEK_R1_URL
     protocol: openai_compatible
-    model_id: "mlx-community/DeepSeek-R1-Distill-Qwen-32B-bf16"  # onex-allow-model-id OMN-10580 reason="lab default; override via model_id_env=LLM_DEEPSEEK_R1_MODEL_NAME"
+    model_id_env: LLM_DEEPSEEK_R1_MODEL_NAME
+    model_id_default: ""
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
     location: local
@@ -43,8 +50,10 @@ models:
   - id: qwen3-next-80b
     display_name: "Qwen3-Next-80B"
     endpoint: "http://192.168.86.200:8102"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_QWEN3_NEXT_URL"
+    endpoint_env: LLM_QWEN3_NEXT_URL
     protocol: openai_compatible
-    model_id: "mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit"  # onex-allow-model-id OMN-10580 reason="lab default; override via model_id_env=LLM_QWEN3_NEXT_MODEL_NAME"
+    model_id_env: LLM_QWEN3_NEXT_MODEL_NAME
+    model_id_default: ""
     cost_per_1k_input: 0.0
     cost_per_1k_output: 0.0
     location: local

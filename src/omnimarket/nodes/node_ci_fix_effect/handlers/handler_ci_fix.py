@@ -102,6 +102,29 @@ class ModelCiFixRoutingConfig(BaseModel):
         return value
 
 
+def _resolve_endpoint_env_vars(raw: dict[str, object]) -> dict[str, object]:
+    """Resolve base_url_env and model_id_env overrides before Pydantic validation."""
+    endpoints = raw.get("model_endpoints")
+    if not isinstance(endpoints, dict):
+        return raw
+    resolved_endpoints: dict[str, object] = {}
+    for key, cfg in endpoints.items():
+        if not isinstance(cfg, dict):
+            resolved_endpoints[key] = cfg
+            continue
+        entry: dict[str, object] = dict(cfg)
+        base_url_env = entry.pop("base_url_env", None)
+        if isinstance(base_url_env, str) and base_url_env:
+            override = os.environ.get(base_url_env, "").strip()
+            if override:
+                entry["base_url"] = override
+        model_id_env = entry.pop("model_id_env", None)
+        if isinstance(model_id_env, str) and model_id_env:
+            entry["model_id"] = os.environ.get(model_id_env, "")
+        resolved_endpoints[key] = entry
+    return {**raw, "model_endpoints": resolved_endpoints}
+
+
 def _load_contract_routing_config(
     role: str = "ci_fixer",
 ) -> ModelCiFixRoutingConfig:
@@ -113,6 +136,7 @@ def _load_contract_routing_config(
         raise ValueError(
             f"{_CONTRACT_PATH} missing model_routing.{role} config"
         ) from exc
+    raw = _resolve_endpoint_env_vars(raw)
     try:
         return ModelCiFixRoutingConfig.model_validate(raw)
     except _PydanticValidationError as exc:
