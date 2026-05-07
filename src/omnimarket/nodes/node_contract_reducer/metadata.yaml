@@ -1,0 +1,23 @@
+name: node_contract_reducer
+version: "1.0.0"
+description: "Generic contract-driven state machine reducer — interprets transition tables from contracts"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_contract_reducer: "omnimarket.nodes.node_contract_reducer"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "state-machine", "onboarding", "contract-driven"]
+pack: "workflow"
+display_name: "Contract Reducer"
+node_role: "compute"
