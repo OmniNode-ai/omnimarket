@@ -368,9 +368,8 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    broker = os.environ.get(
-        "KAFKA_BOOTSTRAP_SERVERS",
-        os.environ.get("KAFKA_BROKER", "localhost:9092"),
+    broker = os.environ.get("KAFKA_BOOTSTRAP_SERVERS") or os.environ.get(
+        "KAFKA_BROKER", ""
     )
     group_id = os.environ.get("E2E_ORCH_GROUP", _DEFAULT_GROUP)
     ci_timeout = int(os.environ.get("CI_POLL_TIMEOUT_SECONDS", _DEFAULT_CI_TIMEOUT))

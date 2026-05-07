@@ -191,9 +191,8 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    broker = os.environ.get(
-        "KAFKA_BOOTSTRAP_SERVERS",
-        os.environ.get("KAFKA_BROKER", "localhost:9092"),
+    broker = os.environ.get("KAFKA_BOOTSTRAP_SERVERS") or os.environ.get(
+        "KAFKA_BROKER", ""
     )
     group_id = os.environ.get("SESSION_ORCH_GROUP", _DEFAULT_GROUP)
     asyncio.run(_run_consumer(broker, group_id))

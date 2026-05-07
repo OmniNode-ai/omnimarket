@@ -8,7 +8,7 @@ on completion.
 
 Environment variables (all resolved at startup — no hardcoded strings):
     GH_PAT             GitHub PAT (required — fail-fast if missing)
-    KAFKA_BROKER        Redpanda/Kafka bootstrap server (default: localhost:9092)
+    KAFKA_BROKER        Redpanda/Kafka bootstrap server (required — no default)
     ONEX_STATE_DIR      Failure-history state dir (default: ~/.onex_state)
     MERGE_SWEEP_GROUP   Consumer group ID (default: omnimarket.merge_sweep.consume.v1)
 
@@ -274,7 +274,9 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    broker = os.environ.get("KAFKA_BROKER", "localhost:9092")
+    broker = os.environ.get("KAFKA_BOOTSTRAP_SERVERS") or os.environ.get(
+        "KAFKA_BROKER", ""
+    )
     group_id = os.environ.get("MERGE_SWEEP_GROUP", "omnimarket.merge_sweep.consume.v1")
     state_dir = os.environ.get("ONEX_STATE_DIR", os.path.expanduser("~/.onex_state"))
 

@@ -169,12 +169,7 @@ def _resolve_state_dir(state_dir: Path | None) -> Path:
 
 
 def _resolve_omni_home() -> Path:
-    return Path(
-        os.environ.get(
-            "OMNI_HOME",
-            "/Users/jonah/Code/omni_home",  # onex-allow-local-path OMN-10580 reason="OMNI_HOME env-var fallback; OMNI_HOME must be set in any non-dev environment"
-        )
-    )
+    return Path(os.environ["OMNI_HOME"])
 
 
 def _to_dispatch_worker_command(

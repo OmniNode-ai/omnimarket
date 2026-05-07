@@ -18,7 +18,7 @@ class ModelInferenceRequest(BaseModel):
     )
     endpoint_url: str = Field(
         ...,
-        description="Full base URL for the LLM endpoint (e.g. http://192.168.86.201:8000).",  # onex-allow-internal-ip OMN-10580 reason="field description example only; no runtime default"
+        description="Full base URL for the LLM endpoint (e.g. http://<host>:<port>).",
     )
     model_id: str = Field(
         ...,

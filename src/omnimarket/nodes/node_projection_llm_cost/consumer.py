@@ -7,14 +7,14 @@ materializes each event into the ``llm_call_metrics`` table using
 ``ON CONFLICT (input_hash) DO NOTHING`` keyed on ``input_hash`` (migration 071).
 
 Environment variables (resolved at startup, no hardcoded strings):
-    KAFKA_BOOTSTRAP_SERVERS  Redpanda bootstrap (default: localhost:9092)
+    KAFKA_BOOTSTRAP_SERVERS  Redpanda bootstrap (required — no default)
     KAFKA_CONSUMER_GROUP     Consumer group override
     OMNIDASH_ANALYTICS_DB_URL  asyncpg DSN (required)
     POSTGRES_PASSWORD        Only needed if constructing DSN manually
 
 Usage:
     uv run python -m omnimarket.nodes.node_projection_llm_cost.consumer \\
-        --bootstrap-servers 192.168.86.201:19092  # onex-allow-internal-ip OMN-10580 reason="docstring usage example only; real value from KAFKA_BOOTSTRAP_SERVERS env var"
+        --bootstrap-servers $KAFKA_BOOTSTRAP_SERVERS
 """
 
 from __future__ import annotations
@@ -336,10 +336,7 @@ def _build_dsn() -> str:
     dsn = os.environ.get("OMNIDASH_ANALYTICS_DB_URL")
     if dsn:
         return dsn
-    host = os.environ.get(
-        "POSTGRES_HOST",
-        "192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Postgres; override via POSTGRES_HOST"
-    )
+    host = os.environ.get("POSTGRES_HOST", "")
     port = os.environ.get("POSTGRES_PORT", "5436")
     user = os.environ.get("POSTGRES_USER", "postgres")
     password = os.environ["POSTGRES_PASSWORD"]
@@ -358,7 +355,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--bootstrap-servers",
-        default=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+        default=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""),
         help="Kafka bootstrap servers (env: KAFKA_BOOTSTRAP_SERVERS)",
     )
     parser.add_argument(

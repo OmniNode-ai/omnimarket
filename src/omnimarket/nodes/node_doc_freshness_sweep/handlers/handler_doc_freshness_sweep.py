@@ -152,13 +152,7 @@ class NodeDocFreshnessSweep:
     """Scan documentation files across repos for broken references and stale content."""
 
     def handle(self, request: DocFreshnessSweepRequest) -> DocFreshnessSweepResult:
-        omni_home = (
-            request.omni_home
-            or os.environ.get(
-                "OMNI_HOME",
-                "/Users/jonah/Code/omni_home",  # onex-allow-local-path OMN-10580 reason="OMNI_HOME env-var fallback; OMNI_HOME must be set in any non-dev environment"
-            )
-        )
+        omni_home = request.omni_home or os.environ.get("OMNI_HOME", "")
         repos = request.repos or _DEFAULT_REPOS
 
         # Resolve repo directories

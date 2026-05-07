@@ -17,7 +17,7 @@ probes call existing skills via subprocess or SSH. All config comes from env var
 or contract.yaml — no hardcoded paths, IPs, or usernames.
 
 Required env vars for SSH probes:
-  ONEX_INFRA_HOST — hostname or IP of the infra server (e.g. 192.168.86.201)  # onex-allow-internal-ip OMN-10580 reason="docstring example only; no runtime default"
+  ONEX_INFRA_HOST — hostname or IP of the infra server
   ONEX_INFRA_USER — SSH username (e.g. jonah)
 
 Optional env vars:

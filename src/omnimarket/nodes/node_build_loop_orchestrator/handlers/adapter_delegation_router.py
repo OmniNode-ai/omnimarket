@@ -214,7 +214,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     # Frontier GLM (primary code gen) — reads LLM_GLM_* from env
     glm_key = os.environ.get("LLM_GLM_API_KEY", "")
     glm_url = os.environ.get("LLM_GLM_URL", "")
-    glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "glm-4.5")
+    glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "")
     if glm_key and glm_url:
         configs[EnumModelTier.FRONTIER_GLM] = ModelEndpointConfig(
             tier=EnumModelTier.FRONTIER_GLM,

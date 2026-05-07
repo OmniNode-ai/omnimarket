@@ -167,7 +167,7 @@ class BaseProjectionRunner(ABC):
         await self._db.connect()
         logger.info("DB connected")
 
-        brokers = os.environ.get(KAFKA_BROKERS_ENV, "localhost:9092")
+        brokers = os.environ.get(KAFKA_BROKERS_ENV, "")
         attempts = 0
 
         while attempts < MAX_RETRY_ATTEMPTS and self._running is not False:
