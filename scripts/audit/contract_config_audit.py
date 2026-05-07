@@ -341,7 +341,12 @@ def write_csv(rows: list[ContractRow], path: Path) -> None:
             writer.writerow(r.to_csv_row())
 
 
-def write_summary_md(rows: list[ContractRow], path: Path, csv_path: Path) -> None:
+def write_summary_md(
+    rows: list[ContractRow],
+    path: Path,
+    csv_path: Path,
+    run_date: str = "2026-05-07",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {"config_free": 0, "config_required": 0, "needs_review": 0}
     for r in rows:
@@ -356,9 +361,7 @@ def write_summary_md(rows: list[ContractRow], path: Path, csv_path: Path) -> Non
     )
 
     lines: list[str] = []
-    lines.append("# Contract Config Audit Summary — 2026-05-07")
-    lines.append("")
-    lines.append("**Ticket:** OMN-10589 (Task 17, Epic 4: Contract-Declared Config)")
+    lines.append(f"# Contract Config Audit Summary — {run_date}")
     lines.append("")
     try:
         csv_display = csv_path.relative_to(REPO_ROOT).as_posix()
@@ -424,6 +427,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Output summary markdown path",
     )
     parser.add_argument(
+        "--run-date",
+        default="2026-05-07",
+        help="Date label used in the summary heading (YYYY-MM-DD)",
+    )
+    parser.add_argument(
         "--print-summary",
         action="store_true",
         help="Print per-classification counts to stdout",
@@ -449,7 +457,7 @@ def main(argv: list[str] | None = None) -> int:
             rows.append(row)
 
     write_csv(rows, args.csv_out)
-    write_summary_md(rows, args.md_out, args.csv_out)
+    write_summary_md(rows, args.md_out, args.csv_out, run_date=args.run_date)
 
     if args.print_summary:
         counts: dict[str, int] = {}

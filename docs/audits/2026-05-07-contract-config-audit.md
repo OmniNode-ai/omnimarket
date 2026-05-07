@@ -1,7 +1,5 @@
 # Contract Config Audit Summary — 2026-05-07
 
-**Ticket:** OMN-10589 (Task 17, Epic 4: Contract-Declared Config)
-
 **Source CSV:** `docs/audits/2026-05-07-contract-config-audit.csv`
 
 ## Counts by classification
