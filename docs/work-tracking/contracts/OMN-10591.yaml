@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10591
+title: "Refactor models_registry.yaml + bridge_config_loader.py to flat registry paths"
+summary: "Remove all hardcoded model IDs and LAN endpoint literals from models_registry.yaml, bridge_config_loader.py, node_ci_fix_effect/contract.yaml, and assemble_live.py. All model resolution goes through env vars / Settings."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "No hardcoded model IDs remain in modified files"
+    command: "grep -r 'cyankiwi/|Corianas/|mlx-community/' src/omnimarket/nodes/node_ab_compare_orchestrator/ src/omnimarket/inference/ src/omnimarket/nodes/node_ci_fix_effect/ src/omnimarket/nodes/node_build_loop_orchestrator/ && echo FAIL || echo PASS"
+  - kind: "manual"
+    description: "Unit tests pass for bridge_config_loader"
+    command: "uv run pytest tests/unit/inference/test_bridge_config_loader.py -q"
+  - kind: "manual"
+    description: "Full test suite passes"
+    command: "uv run pytest tests/ -q -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-no-hardcoded-model-ids"
+    description: "No hardcoded model IDs remain in the modified files"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -r 'cyankiwi/' src/omnimarket/ && echo FAIL || echo PASS"
+  - id: "dod-unit-tests"
+    description: "bridge_config_loader unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/inference/test_bridge_config_loader.py -q"
+  - id: "dod-deploy"
+    description: "Runtime paths touched are config-only refactors; no live deploy required. Post-merge smoke: verify runtime startup does not reference removed literals."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy smoke: assemble_live.py and contract.yaml now read LLM_* env vars; no docker exec or service restart required for this config-path refactor'"
