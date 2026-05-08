@@ -34,4 +34,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "deploy validation: grep 'node_adr_segmentation_llm_effect' pyproject.toml confirms entry-point registration for omnimarket runtime deploy"
+        check_value: "grep -q 'node_adr_segmentation_llm_effect' pyproject.toml"

@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 _SEGMENT_TYPES = [t.value for t in EnumSegmentType]
 
-_SYSTEM_PROMPT = (
+_SYSTEM_PROMPT_TEMPLATE = (
     "You are an expert technical document analyst specializing in architectural decision records "
     "(ADRs) and engineering documentation.\n"
     "\n"
@@ -63,8 +63,9 @@ _SYSTEM_PROMPT = (
     "- background: Context, history, or setup that motivates decisions\n"
     "- unknown: Cannot be confidently classified into any above category\n"
     "\n"
-    "IMPORTANT: Use 'unknown' as the default for low-confidence classifications (confidence < 0.4). "
-    "Do NOT use 'implementation_detail' as a catch-all.\n"
+    "IMPORTANT: Use 'unknown' as the default for low-confidence classifications "
+    "(confidence < {low_confidence_threshold}). Do NOT use 'implementation_detail' "
+    "as a catch-all.\n"
     "\n"
     "Respond with ONLY a JSON array of segment objects. Each object must have:\n"
     '  "start_line": integer (1-based),\n'
@@ -128,6 +129,7 @@ def _parse_segments(
     if not isinstance(data, list):
         return None
 
+    total_lines = len(request.source_content.splitlines())
     segments: list[ModelDocumentSegment] = []
     for item in data:
         if not isinstance(item, dict):
@@ -151,7 +153,7 @@ def _parse_segments(
         except (TypeError, ValueError):
             return None
 
-        if start_line < 1 or end_line < start_line:
+        if start_line < 1 or end_line < start_line or end_line > total_lines:
             return None
         if not (0.0 <= confidence <= 1.0):
             return None
@@ -204,16 +206,19 @@ class HandlerSegmentation:
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
         segmentation_model_key: str = "qwen3-coder",
+        segmentation_temperature: float = 0.1,
         segmentation_timeout_seconds: float = 120.0,
         low_confidence_threshold: float = 0.4,
         prompt_template_id: str = "adr_segmentation_v1",
         prompt_template_version: str = "1.0.0",
     ) -> None:
-        bridge_config = load_inference_bridge_config_from_env()
-        self._bridge: ModelInferenceAdapter = (
-            inference_bridge or AdapterInferenceBridge(bridge_config)
-        )
+        if inference_bridge is None:
+            bridge_config = load_inference_bridge_config_from_env()
+            self._bridge = AdapterInferenceBridge(bridge_config)
+        else:
+            self._bridge = inference_bridge
         self._model_key = segmentation_model_key
+        self._temperature = segmentation_temperature
         self._timeout = segmentation_timeout_seconds
         self._low_confidence_threshold = low_confidence_threshold
         self._prompt_template_id = prompt_template_id
@@ -229,7 +234,10 @@ class HandlerSegmentation:
         )
 
         user_prompt = _build_user_prompt(request)
-        full_prompt = f"{_SYSTEM_PROMPT}\n\n{user_prompt}"
+        system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
+            low_confidence_threshold=self._low_confidence_threshold
+        )
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
         prompt_hash = _sha256(full_prompt)
         input_hash = _sha256(request.source_content)
 
@@ -240,9 +248,10 @@ class HandlerSegmentation:
         try:
             raw_response = await self._bridge.infer(
                 model_key=self._model_key,
-                system_prompt=_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 timeout_seconds=self._timeout,
+                temperature=self._temperature,
             )
         except Exception as exc:
             logger.warning(
@@ -280,9 +289,10 @@ class HandlerSegmentation:
             try:
                 repair_response = await self._bridge.infer(
                     model_key=self._model_key,
-                    system_prompt=_SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     user_prompt=repair_prompt,
                     timeout_seconds=self._timeout,
+                    temperature=self._temperature,
                 )
                 segments = _parse_segments(
                     repair_response, request, self._low_confidence_threshold
@@ -350,6 +360,9 @@ class HandlerSegmentation:
         return cls(
             segmentation_model_key=str(
                 cfg.get("segmentation_model_key", {}).get("default", "qwen3-coder")
+            ),
+            segmentation_temperature=float(
+                cfg.get("segmentation_temperature", {}).get("default", 0.1)
             ),
             segmentation_timeout_seconds=float(
                 cfg.get("segmentation_timeout_seconds", {}).get("default", 120.0)

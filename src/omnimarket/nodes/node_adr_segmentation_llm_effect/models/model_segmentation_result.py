@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+_SHA256_HEX_RE = r"^[0-9a-f]{64}$"
 
 
 class EnumSegmentType(StrEnum):
@@ -34,6 +36,7 @@ class ModelDocumentSegment(BaseModel):
 
     segment_id: str = Field(
         ...,
+        pattern=_SHA256_HEX_RE,
         description=(
             "Deterministic SHA-256 hex digest of "
             "source_path + source_content_sha256 + start_line + end_line + segment_type."
@@ -43,7 +46,9 @@ class ModelDocumentSegment(BaseModel):
         ..., description="Repository-relative path to the source document."
     )
     source_content_sha256: str = Field(
-        ..., description="SHA-256 of the full source document content."
+        ...,
+        pattern=_SHA256_HEX_RE,
+        description="64-hex SHA-256 digest of the full source document content.",
     )
     start_line: int = Field(
         ..., description="1-based start line of this segment.", ge=1
@@ -56,7 +61,9 @@ class ModelDocumentSegment(BaseModel):
     )
     content: str = Field(..., description="Verbatim text of this segment.")
     segment_content_sha256: str = Field(
-        ..., description="SHA-256 hex digest of the segment content."
+        ...,
+        pattern=_SHA256_HEX_RE,
+        description="64-hex SHA-256 digest of the segment content.",
     )
     confidence: float = Field(
         ...,
@@ -64,6 +71,12 @@ class ModelDocumentSegment(BaseModel):
         ge=0.0,
         le=1.0,
     )
+
+    @model_validator(mode="after")
+    def validate_line_span(self) -> ModelDocumentSegment:
+        if self.end_line < self.start_line:
+            raise ValueError("end_line must be greater than or equal to start_line")
+        return self
 
 
 class ModelLLMCallEvidence(BaseModel):
@@ -79,13 +92,19 @@ class ModelLLMCallEvidence(BaseModel):
     )
     model_key: str = Field(..., description="Model key used for segmentation.")
     prompt_hash: str = Field(
-        ..., description="SHA-256 hex digest of the full prompt sent."
+        ...,
+        pattern=_SHA256_HEX_RE,
+        description="64-hex SHA-256 digest of the full prompt sent.",
     )
     input_hash: str = Field(
-        ..., description="SHA-256 hex digest of the source document content."
+        ...,
+        pattern=_SHA256_HEX_RE,
+        description="64-hex SHA-256 digest of the source document content.",
     )
     response_hash: str = Field(
-        ..., description="SHA-256 hex digest of the raw LLM response."
+        ...,
+        pattern=_SHA256_HEX_RE,
+        description="64-hex SHA-256 digest of the raw LLM response.",
     )
     usage_source: str = Field(
         default="llm_response",
@@ -146,6 +165,21 @@ class ModelSegmentationResult(BaseModel):
         default=None,
         description="Evidence record for the LLM segmentation call.",
     )
+
+    @model_validator(mode="after")
+    def validate_success_failure_shape(self) -> ModelSegmentationResult:
+        if self.success:
+            if self.error_code is not None or self.error_message is not None:
+                raise ValueError(
+                    "error_code and error_message must be unset when success=True"
+                )
+            return self
+
+        if not self.error_code or not self.error_message or self.model_id is None:
+            raise ValueError(
+                "error_code, error_message, and model_id are required when success=False"
+            )
+        return self
 
 
 __all__: list[str] = [

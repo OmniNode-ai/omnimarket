@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+_SHA256_HEX_RE = r"^[0-9a-f]{64}$"
+
 
 class ModelSegmentationRequest(BaseModel):
     """Command payload for a single document semantic segmentation call."""
@@ -23,6 +25,7 @@ class ModelSegmentationRequest(BaseModel):
     )
     source_content_sha256: str = Field(
         ...,
+        pattern=_SHA256_HEX_RE,
         description="SHA-256 hex digest of source_content, pre-computed by the caller.",
     )
     correlation_id: str = Field(

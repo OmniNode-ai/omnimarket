@@ -29,6 +29,7 @@ class ModelInferenceAdapter(ABC):
         system_prompt: str,
         user_prompt: str,
         timeout_seconds: float,
+        temperature: float | None = None,
     ) -> str:
         """Send prompt to a model and return raw response text."""
         ...
@@ -55,6 +56,7 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         system_prompt: str,
         user_prompt: str,
         timeout_seconds: float,
+        temperature: float | None = None,
     ) -> str:
         model_cfg = self._config.model_configs.get(model_key)
         if model_cfg is None:
@@ -67,7 +69,12 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
                 model_key, model_cfg, system_prompt, user_prompt, timeout_seconds
             )
         return await self._call_http_model(
-            model_key, model_cfg, system_prompt, user_prompt, timeout_seconds
+            model_key,
+            model_cfg,
+            system_prompt,
+            user_prompt,
+            timeout_seconds,
+            temperature,
         )
 
     async def _call_http_model(
@@ -77,6 +84,7 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         system_prompt: str,
         user_prompt: str,
         timeout_seconds: float,
+        temperature: float | None,
     ) -> str:
         base_url = str(cfg.get("base_url", ""))
         if not base_url:
@@ -96,7 +104,9 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
                 {"role": "user", "content": user_prompt},
             ],
             "max_tokens": 2048,
-            "temperature": 0.2,
+            "temperature": float(
+                temperature if temperature is not None else cfg.get("temperature", 0.2)
+            ),
         }
 
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:

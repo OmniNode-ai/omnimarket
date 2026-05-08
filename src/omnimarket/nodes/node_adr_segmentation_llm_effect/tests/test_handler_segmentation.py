@@ -112,6 +112,7 @@ class _MockBridge(ModelInferenceAdapter):
     def __init__(self, responses: list[str | Exception]) -> None:
         self._responses = list(responses)
         self._call_count = 0
+        self.calls: list[dict[str, object]] = []
 
     async def infer(
         self,
@@ -119,9 +120,19 @@ class _MockBridge(ModelInferenceAdapter):
         system_prompt: str,
         user_prompt: str,
         timeout_seconds: float,
+        temperature: float | None = None,
     ) -> str:
         if self._call_count >= len(self._responses):
             raise RuntimeError("Unexpected extra infer() call")
+        self.calls.append(
+            {
+                "model_key": model_key,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "timeout_seconds": timeout_seconds,
+                "temperature": temperature,
+            }
+        )
         response = self._responses[self._call_count]
         self._call_count += 1
         if isinstance(response, Exception):
@@ -270,6 +281,22 @@ def test_parse_segments_invalid_line_range_returns_none() -> None:
 
 
 @pytest.mark.unit
+def test_parse_segments_out_of_bounds_line_range_returns_none() -> None:
+    raw = json.dumps(
+        [
+            {
+                "start_line": 1,
+                "end_line": 999,
+                "segment_type": "decision",
+                "content": "x",
+                "confidence": 0.9,
+            }
+        ]
+    )
+    assert _parse_segments(raw, _make_request(), 0.4) is None
+
+
+@pytest.mark.unit
 def test_parse_segments_strips_markdown_fences() -> None:
     fenced = f"```json\n{_GOOD_RESPONSE}\n```"
     request = _make_request()
@@ -338,6 +365,23 @@ async def test_handle_evidence_hashes_are_correct() -> None:
     assert result.llm_call_evidence is not None
     assert result.llm_call_evidence.input_hash == _sha256(request.source_content)
     assert result.llm_call_evidence.response_hash == _sha256(_GOOD_RESPONSE)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_uses_configured_prompt_threshold_and_temperature() -> None:
+    bridge = _MockBridge([_GOOD_RESPONSE])
+    handler = HandlerSegmentation(
+        inference_bridge=bridge,
+        low_confidence_threshold=0.55,
+        segmentation_temperature=0.15,
+    )
+
+    result = await handler.handle(_make_request())
+
+    assert result.success is True
+    assert "confidence < 0.55" in bridge.calls[0]["system_prompt"]
+    assert bridge.calls[0]["temperature"] == pytest.approx(0.15)
 
 
 # ---------------------------------------------------------------------------
@@ -480,8 +524,30 @@ def test_segmentation_result_success_false_has_empty_segments() -> None:
         success=False,
         error_code="SEGMENTATION_LLM_CALL_FAILED",
         error_message="failed",
+        model_id="qwen3-coder",
     )
     assert result.segments == []
+
+
+@pytest.mark.unit
+def test_segmentation_request_rejects_invalid_source_sha() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _make_request(source_content_sha256="not-a-sha")
+
+
+@pytest.mark.unit
+def test_segmentation_result_rejects_failure_without_error_fields() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ModelSegmentationResult(
+            correlation_id="c1",
+            source_path="path/a.md",
+            success=False,
+            model_id="qwen3-coder",
+        )
 
 
 @pytest.mark.unit
