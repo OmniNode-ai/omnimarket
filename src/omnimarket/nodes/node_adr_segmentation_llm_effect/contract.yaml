@@ -34,12 +34,6 @@ config:
   segmentation_model_key:
     description: "Model key to use for segmentation (must be in AdapterInferenceBridge config)."
     default: "qwen3-coder"
-  segmentation_endpoint_url:
-    description: "Base URL for the segmentation LLM endpoint."
-    default: "http://192.168.86.201:8000"
-  segmentation_model_name:
-    description: "Exact model identifier to send in the API request."
-    default: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
   segmentation_temperature:
     description: "Temperature for the segmentation LLM call."
     default: 0.1

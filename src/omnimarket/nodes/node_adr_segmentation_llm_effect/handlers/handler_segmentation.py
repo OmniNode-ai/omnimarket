@@ -20,6 +20,9 @@ import logging
 import time
 from typing import Any, Literal
 
+from omnimarket.inference.bridge_config_loader import (
+    load_inference_bridge_config_from_env,
+)
 from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_request import (
     ModelSegmentationRequest,
 )
@@ -32,7 +35,6 @@ from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation
 from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
-    ModelInferenceBridgeConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,8 +209,9 @@ class HandlerSegmentation:
         prompt_template_id: str = "adr_segmentation_v1",
         prompt_template_version: str = "1.0.0",
     ) -> None:
+        bridge_config = load_inference_bridge_config_from_env()
         self._bridge: ModelInferenceAdapter = (
-            inference_bridge or AdapterInferenceBridge(ModelInferenceBridgeConfig())
+            inference_bridge or AdapterInferenceBridge(bridge_config)
         )
         self._model_key = segmentation_model_key
         self._timeout = segmentation_timeout_seconds

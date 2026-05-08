@@ -1,0 +1,37 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10694"
+title: "Build semantic segmentation LLM effect node"
+summary: >
+  Adds node_adr_segmentation_llm_effect to omnimarket for ADR canary semantic
+  segmentation. The node accepts markdown source content, asks a configured
+  inference bridge model to segment and classify semantic units, computes
+  deterministic segment IDs and content hashes, and returns structured evidence.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "events"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "Focused unit tests cover segmentation parsing, deterministic IDs, repair behavior, and LLM failure handling."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_adr_segmentation_llm_effect/tests/ -v"
+  - id: "dod-leak-gate"
+    description: "Blocking leaked-literals gate passes after removing endpoint and model literals from the node contract."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash scripts/validation/check_leaked_literals.sh blocking all"
+  - id: "dod-deploy"
+    description: "Deploy readiness evidence: node is registered as an omnimarket entry point and uses env-backed inference bridge configuration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy validation: grep 'node_adr_segmentation_llm_effect' pyproject.toml confirms entry-point registration for omnimarket runtime deploy"
