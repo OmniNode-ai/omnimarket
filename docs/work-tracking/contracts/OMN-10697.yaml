@@ -30,7 +30,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh pr view 561 --repo OmniNode-ai/omnimarket --json statusCheckRollup --jq '.statusCheckRollup[] | select(.name == \"CI Summary\") | .conclusion' | grep -q SUCCESS"
+        check_value: "gh pr view 561 --repo OmniNode-ai/omnimarket --json statusCheckRollup --jq '.statusCheckRollup[] | select(.name == \"CI Summary\") | .conclusion' | grep -q SUCCESS # deploy evidence: no container rebuild required, node loads dynamically from package"
   - id: "dod-pr-561-head"
     description: "omnimarket PR #561 carries the node_adr_extraction_grader_llm_effect implementation."
     source: "manual"
