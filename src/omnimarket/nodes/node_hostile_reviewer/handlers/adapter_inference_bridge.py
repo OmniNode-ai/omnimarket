@@ -89,6 +89,11 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        extra_headers = cfg.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            for k, v in extra_headers.items():
+                headers[str(k)] = str(v)
+
         payload = {
             "model": model_id,
             "messages": [

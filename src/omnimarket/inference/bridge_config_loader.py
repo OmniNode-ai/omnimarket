@@ -21,6 +21,12 @@ The canonical short keys are intentionally aligned with
 already drives ``LLM_CODER_URL``/``LLM_DEEPSEEK_R1_URL`` for the same
 purpose). Keep this table and that script in sync if either side grows a
 new model.
+
+OpenRouter keys follow the pattern ``openrouter/<model_id>`` where model_id is
+the full OpenRouter routing string (e.g. ``qwen/qwen3-coder:free``). These are
+registered dynamically from the OpenRouter model catalog when OPENROUTER_API_KEY
+is present. The base URL is declared in contract and read from
+OPENROUTER_BASE_URL (defaults to https://openrouter.ai/api).
 """
 
 from __future__ import annotations
@@ -28,6 +34,10 @@ from __future__ import annotations
 import os
 from typing import Final
 
+from omnimarket.inference.openrouter_models import (
+    EnumModelAvailability,
+    get_openrouter_models,
+)
 from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
@@ -44,6 +54,9 @@ _MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str, int], ...]] = (
     ("glm", "LLM_GLM_URL", "LLM_GLM_MODEL_NAME", 128_000),
 )
 
+# Contract-declared OpenRouter base URL. OPENROUTER_API_KEY stays in env (secret).
+_OPENROUTER_BASE_URL_DEFAULT: Final[str] = "https://openrouter.ai/api"
+
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 120.0
 
 
@@ -54,6 +67,10 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     with ``base_url``, ``model_id`` (from the model-name env var, empty string
     if unset), ``transport="http"``, ``context_window``, and ``timeout_seconds``.
     GLM also picks up ``api_key`` from ``LLM_GLM_API_KEY`` when present.
+
+    OpenRouter models are registered as ``openrouter/<model_id>`` keys when
+    OPENROUTER_API_KEY is set. Each entry carries the OpenRouter base URL,
+    model_id, and required HTTP-Referer / X-Title headers.
     """
     model_configs: dict[str, dict[str, object]] = {}
 
@@ -77,7 +94,42 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
 
         model_configs[key] = cfg
 
+    _register_openrouter_models(model_configs)
+
     return ModelInferenceBridgeConfig(model_configs=model_configs)
+
+
+def _register_openrouter_models(model_configs: dict[str, dict[str, object]]) -> None:
+    """Populate model_configs with OpenRouter free-tier entries.
+
+    Skips silently when OPENROUTER_API_KEY is absent so callers never fail
+    on hosts that don't have OpenRouter configured.
+    """
+    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        return
+
+    base_url = os.environ.get(
+        "OPENROUTER_BASE_URL", _OPENROUTER_BASE_URL_DEFAULT
+    ).strip()
+
+    for model in get_openrouter_models():
+        if model.availability != EnumModelAvailability.AVAILABLE:
+            continue
+
+        key = f"openrouter/{model.model_id}"
+        model_configs[key] = {
+            "base_url": base_url,
+            "model_id": model.model_id,
+            "transport": "http",
+            "context_window": model.context_window,
+            "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,
+            "api_key": api_key,
+            "extra_headers": {
+                "HTTP-Referer": "https://omninode.ai",
+                "X-Title": "OmniNode ONEX",
+            },
+        }
 
 
 __all__: list[str] = ["load_inference_bridge_config_from_env"]
