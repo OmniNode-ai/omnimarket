@@ -209,8 +209,20 @@ def _build_llm_request(
 
 @lru_cache(maxsize=1)
 def _load_patch_allowlist_patterns() -> tuple[re.Pattern[str], ...]:
-    routing = _load_contract_routing_config()
-    return tuple(re.compile(pattern) for pattern in routing.patch_allowlist_patterns)
+    with _CONTRACT_PATH.open(encoding="utf-8") as f:
+        contract = yaml.safe_load(f)
+    try:
+        patterns = contract["model_routing"]["ci_fixer"]["patch_allowlist_patterns"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            f"{_CONTRACT_PATH} missing model_routing.ci_fixer.patch_allowlist_patterns"
+        ) from exc
+    if not isinstance(patterns, list) or not patterns:
+        raise ValueError(
+            f"{_CONTRACT_PATH} model_routing.ci_fixer.patch_allowlist_patterns "
+            "must be a non-empty list"
+        )
+    return tuple(re.compile(str(pattern)) for pattern in patterns)
 
 
 def _resolve_llm_provider(
