@@ -1,0 +1,56 @@
+---
+name: node_adr_draft_generation_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Deterministic ADR markdown renderer. Accepts a ModelDecisionExtraction and
+  produces a fully-formed ADR draft with no LLM calls. Same input always
+  produces identical output — required for extraction quality measurement.
+
+handler:
+  module: omnimarket.nodes.node_adr_draft_generation_compute.handlers.handler_adr_generation
+  class: HandlerADRGeneration
+  input_model: omnimarket.nodes.node_adr_draft_generation_compute.models.model_generation_request.ModelADRGenerationRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  extraction:
+    type: object
+    required: true
+    description: Serialised ModelDecisionExtraction from the canary pipeline
+  run_id:
+    type: str
+    required: false
+    default: ""
+
+outputs:
+  status:
+    type: str
+    enum: [ok, error]
+  extraction_id:
+    type: str
+  run_id:
+    type: str
+  markdown:
+    type: str
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.adr-draft-generation-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.adr-draft-generation-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.adr-draft-generation-completed.v1
+
+metadata:
+  transport_type: kafka
