@@ -1,0 +1,50 @@
+---
+name: node_contract_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Generic contract-driven state machine reducer. Accepts accumulated state,
+  a user response, and a transition table declared in the calling contract.
+  Evaluates the transition, merges any state updates, advances current_step,
+  and reports whether the flow is terminal. Pure compute — no I/O.
+
+handler:
+  module: omnimarket.nodes.node_contract_reducer.handlers.handler_contract_reducer
+  class: HandlerContractReducer
+  input_model: omnimarket.nodes.node_contract_reducer.models.model_reducer_input.ModelReducerInput
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  current_state:
+    type: dict
+    description: "Accumulated state dict; must contain 'current_step' key"
+    required: true
+  user_response:
+    type: str
+    description: "The user's response token for the current step"
+    required: true
+  contract_transitions:
+    type: list
+    description: "Transition table from the calling contract"
+    required: true
+
+outputs:
+  updated_state:
+    type: dict
+    description: "State after applying the transition"
+  next_step:
+    type: str
+    description: "Step identifier the flow advances to"
+  is_terminal:
+    type: bool
+    description: "True when next_step is 'done' or has no outgoing transition"
+
+metadata:
+  transport_type: direct
