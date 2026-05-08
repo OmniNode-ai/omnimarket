@@ -1,0 +1,45 @@
+---
+name: adr_extraction_grader_llm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Heuristic grader that uses Claude Opus to score ADR extraction quality.
+  Accepts ground truth ADR text, model extraction output, and source document.
+  Returns per-dimension scores (recall, precision, fidelity, format_compliance)
+  for ranking model behavior — not ground truth determination.
+
+handler:
+  module: omnimarket.nodes.node_adr_extraction_grader_llm_effect.handlers.handler_extraction_grader
+  class: HandlerExtractionGrader
+  input_model: omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request.ModelGradingRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.adr-extraction-grading-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.adr-extraction-grading-completed.v1
+
+config:
+  grader_model_key:
+    description: "Model key to use for grading (must be in AdapterInferenceBridge config)."
+    default: "opus"
+  grader_timeout_seconds:
+    description: "Per-call timeout in seconds for the grading LLM call."
+    default: 120.0
+  prompt_template_id:
+    description: "Identifier for the grading prompt template."
+    default: "adr_grading_v1"
+  prompt_template_version:
+    description: "Version of the grading prompt template."
+    default: "1.0.0"
+
+metadata:
+  transport_type: kafka
