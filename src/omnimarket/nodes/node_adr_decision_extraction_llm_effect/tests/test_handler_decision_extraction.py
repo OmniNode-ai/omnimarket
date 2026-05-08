@@ -110,17 +110,16 @@ def _make_request(
     return ModelExtractionRequest(**defaults)
 
 
-_SENTINEL: list[str] = []
-
-
 def _extraction_payload(
     decision_type: str = "architecture_decision",
     statement: str = "Use PostgreSQL as primary database.",
-    source_segment_ids: list[str] | None = _SENTINEL,  # type: ignore[assignment]
+    source_segment_ids: list[str] | None = None,
     confidence: float = 0.9,
     **extra: object,
 ) -> dict[str, object]:
-    seg_ids = ["seg-aaa"] if source_segment_ids is _SENTINEL else source_segment_ids
+    seg_ids: list[str] = (
+        ["seg-aaa"] if source_segment_ids is None else source_segment_ids
+    )
     return {
         "decision_type": decision_type,
         "statement": statement,
@@ -214,7 +213,7 @@ def test_validate_item_valid() -> None:
 @pytest.mark.unit
 def test_validate_item_missing_required_field() -> None:
     item = _extraction_payload()
-    del item["decision_type"]  # type: ignore[misc]
+    del item["decision_type"]
     assert _validate_item(item) is False
 
 
@@ -239,7 +238,7 @@ def test_validate_item_out_of_range_confidence() -> None:
 @pytest.mark.unit
 def test_validate_item_boolean_confidence_rejected() -> None:
     item = _extraction_payload()
-    item["confidence"] = True  # type: ignore[assignment]
+    item["confidence"] = True
     assert _validate_item(item) is False
 
 
