@@ -1,0 +1,50 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10591
+title: "Remove hardcoded model IDs from runtime model routing"
+summary: "Moves CI-fix and model registry routing from literal model IDs to env-backed configuration while preserving fail-fast runtime behavior when required model-name env vars are absent."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "No hardcoded local model IDs remain in modified runtime/config paths"
+    command: "bash scripts/validation/check_leaked_literals.sh"
+  - kind: "manual"
+    description: "Bridge config loader unit tests pass"
+    command: "uv run pytest tests/unit/test_bridge_config_loader.py -q"
+  - kind: "manual"
+    description: "CI-fix handler tests pass with env-backed model IDs"
+    command: "uv run pytest tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py -q"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan only; live deploy/restart requires explicit operator approval"
+    command: "deploy validation: verify LLM_CODER_MODEL_NAME and LLM_CODER_FAST_MODEL_NAME are present before invoking CI-fix LLM calls"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-no-hardcoded-model-ids"
+    description: "No hardcoded local model IDs remain in modified runtime/config paths"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash scripts/validation/check_leaked_literals.sh"
+  - id: "dod-unit-tests"
+    description: "Bridge config loader unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/test_bridge_config_loader.py -q"
+  - id: "dod-ci-fix-tests"
+    description: "CI-fix handler tests pass with env-backed model IDs"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py -q"
+  - id: "dod-deploy-proof-plan"
+    description: "Post-merge deploy smoke plan only; no live deploy or restart performed during PR validation"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy validation: verify LLM_CODER_MODEL_NAME and LLM_CODER_FAST_MODEL_NAME are present before invoking CI-fix LLM calls"

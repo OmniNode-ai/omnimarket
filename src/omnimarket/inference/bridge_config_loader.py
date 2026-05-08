@@ -32,43 +32,16 @@ from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge im
     ModelInferenceBridgeConfig,
 )
 
-# key -> (url env var, model_id env var, default model_id, context window)
-_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str, str, int], ...]] = (
-    (
-        "qwen3-coder",
-        "LLM_CODER_URL",
-        "LLM_CODER_MODEL_NAME",
-        "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",  # onex-allow-model-id OMN-10580 reason="lab-local model registry default; override via LLM_CODER_MODEL_NAME"
-        112_000,
-    ),
-    (
-        "qwen3-14b",
-        "LLM_CODER_FAST_URL",
-        "LLM_CODER_FAST_MODEL_NAME",
-        "Qwen/Qwen3-14B-AWQ",
-        24_000,
-    ),
-    (
-        "deepseek-r1",
-        "LLM_DEEPSEEK_R1_URL",
-        "LLM_DEEPSEEK_R1_MODEL_NAME",
-        "mlx-community/DeepSeek-R1-Distill-Qwen-32B-bf16",  # onex-allow-model-id OMN-10580 reason="lab-local model registry default; override via LLM_DEEPSEEK_R1_MODEL_NAME"
-        8_192,
-    ),
-    (
-        "qwen3-next",
-        "LLM_QWEN3_NEXT_URL",
-        "LLM_QWEN3_NEXT_MODEL_NAME",
-        "mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit",  # onex-allow-model-id OMN-10580 reason="lab-local model registry default; override via LLM_QWEN3_NEXT_MODEL_NAME"
-        8_192,
-    ),
-    (
-        "glm",
-        "LLM_GLM_URL",
-        "LLM_GLM_MODEL_NAME",
-        "glm-4.5",
-        128_000,
-    ),
+# key -> (url env var, model_id env var, context window)
+# model_id is always resolved from the env var — no hardcoded defaults.
+# If the model-name env var is unset, model_id resolves to "" and the
+# downstream API call will fail immediately with an invalid-model error.
+_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str, int], ...]] = (
+    ("qwen3-coder", "LLM_CODER_URL", "LLM_CODER_MODEL_NAME", 112_000),
+    ("qwen3-14b", "LLM_CODER_FAST_URL", "LLM_CODER_FAST_MODEL_NAME", 24_000),
+    ("deepseek-r1", "LLM_DEEPSEEK_R1_URL", "LLM_DEEPSEEK_R1_MODEL_NAME", 8_192),
+    ("qwen3-next", "LLM_QWEN3_NEXT_URL", "LLM_QWEN3_NEXT_MODEL_NAME", 8_192),
+    ("glm", "LLM_GLM_URL", "LLM_GLM_MODEL_NAME", 128_000),
 )
 
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 120.0
@@ -78,26 +51,20 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     """Return a ``ModelInferenceBridgeConfig`` populated from env vars.
 
     For each registry entry: if the URL env var is set, register the key
-    with ``base_url``, ``model_id`` (from the model-name env var or default),
-    ``transport="http"``, ``context_window``, and ``timeout_seconds``.
+    with ``base_url``, ``model_id`` (from the model-name env var, empty string
+    if unset), ``transport="http"``, ``context_window``, and ``timeout_seconds``.
     GLM also picks up ``api_key`` from ``LLM_GLM_API_KEY`` when present.
     """
     model_configs: dict[str, dict[str, object]] = {}
 
-    for (
-        key,
-        url_env,
-        model_env,
-        default_model_id,
-        context_window,
-    ) in _MODEL_KEY_REGISTRY:
+    for key, url_env, model_env, context_window in _MODEL_KEY_REGISTRY:
         base_url = os.environ.get(url_env, "").strip()
         if not base_url:
             continue
 
         cfg: dict[str, object] = {
             "base_url": base_url,
-            "model_id": os.environ.get(model_env, default_model_id),
+            "model_id": os.environ.get(model_env, ""),
             "transport": "http",
             "context_window": context_window,
             "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,
