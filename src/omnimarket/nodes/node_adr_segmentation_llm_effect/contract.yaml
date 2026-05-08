@@ -1,0 +1,60 @@
+---
+name: adr_segmentation_llm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Semantic segmentation effect node that uses an LLM to split markdown documents
+  into classified semantic units. Each segment is typed (decision, critique,
+  proposal, etc.) with a deterministic segment_id and content hash.
+
+handler:
+  module: omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation
+  class: HandlerSegmentation
+  input_model: omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_request.ModelSegmentationRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+
+io_operations:
+  - operation_type: llm_call
+    timeout_seconds: 120
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.adr-segmentation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.adr-segmentation-completed.v1
+
+config:
+  segmentation_model_key:
+    description: "Model key to use for segmentation (must be in AdapterInferenceBridge config)."
+    default: "qwen3-coder"
+  segmentation_endpoint_url:
+    description: "Base URL for the segmentation LLM endpoint."
+    default: "http://192.168.86.201:8000"
+  segmentation_model_name:
+    description: "Exact model identifier to send in the API request."
+    default: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+  segmentation_temperature:
+    description: "Temperature for the segmentation LLM call."
+    default: 0.1
+  segmentation_timeout_seconds:
+    description: "Per-call timeout in seconds for the segmentation LLM call."
+    default: 120.0
+  low_confidence_threshold:
+    description: "Confidence below this value triggers UNKNOWN classification."
+    default: 0.4
+  prompt_template_id:
+    description: "Identifier for the segmentation prompt template."
+    default: "adr_segmentation_v1"
+  prompt_template_version:
+    description: "Version of the segmentation prompt template."
+    default: "1.0.0"
+
+metadata:
+  transport_type: kafka
