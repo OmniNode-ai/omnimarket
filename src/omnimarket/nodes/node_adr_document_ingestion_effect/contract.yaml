@@ -1,0 +1,164 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_adr_document_ingestion_effect
+# EFFECT node — crawls markdown files, extracts git metadata, computes content hashes.
+# Read-only: no writes, no LLM calls, no network I/O.
+# [OMN-10693]
+
+name: "node_adr_document_ingestion_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "b3c4d5e6-f7a8-9012-bcde-f01234567891"
+node_type: "EFFECT"
+input_model: "ModelIngestionRequest"
+output_model: "ModelIngestionResult"
+handler:
+  module: omnimarket.nodes.node_adr_document_ingestion_effect.handlers.handler_document_ingestion
+  class: HandlerDocumentIngestion
+  input_model: ModelIngestionRequest
+description: |
+  Consumes adr-document-ingestion-requested.v1 commands, walks each root_path
+  recursively for .md files (excluding node_modules/, .git/, omni_worktrees/,
+  __pycache__/), computes sha256 of file content, and extracts git metadata
+  (commit sha, author, created_at, updated_at) via async subprocess.
+  Emits adr-document-ingestion-completed.v1 with a list of ModelDocumentEntry
+  records ready for downstream segmentation and extraction nodes.
+
+  Read-only invariants:
+    - No filesystem writes
+    - No LLM calls
+    - No network I/O
+    - source_path is always relative to root_path
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-10693"
+  parent_epic: "OMN-10689"
+  node_type: EFFECT
+  read_only: true
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  no_bare_os_environ_get: true
+  unit_tests: true
+  integration_test_stubs: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "filesystem_read"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+  - operation_type: "subprocess_read"
+    atomic: false
+    timeout_seconds: 10
+    validation_enabled: false
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "adr_document_ingestion_effect"
+  main_tool_class: "NodeAdrDocumentIngestionEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: false
+
+# === NODE CONFIGURATION ===
+config: {}
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["root_paths"]
+  optional: ["exclude_patterns"]
+
+output_state:
+  object_type: "object"
+  required: ["documents"]
+
+# === ACTIONS ===
+actions:
+  - name: "ingest_documents"
+    description: "Walk root_paths for .md files and extract metadata"
+    inputs: ["root_paths", "exclude_patterns"]
+    outputs: ["documents"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "git"
+    dependency_type: "subprocess"
+    description: "git CLI for log metadata extraction"
+    required: false
+    notes: "Graceful skip — git metadata fields are nullable"
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 30000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["adr-document-ingestion-completed"]
+  event_categories: ["adr", "ingestion", "effect", "filesystem"]
+  publish_events: true
+  subscribe_events: true
+  invocation_mode: "subscription"
+  event_routing: "adr"
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.adr-document-ingestion-completed.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.adr-document-ingestion-requested.v1":
+      schema_ref: "omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest"
+      description: "Command to crawl root_paths for markdown documents."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.adr-document-ingestion-completed.v1":
+      schema_ref: "omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_result.ModelIngestionResult"
+      description: "Completed ingestion — list of document metadata entries."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "ingest_documents"
+      handler_class: "HandlerDocumentIngestion"
+      handler_module: "omnimarket.nodes.node_adr_document_ingestion_effect.handlers.handler_document_ingestion"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  constraint_definitions:
+    root_paths: "list[str], min length 1"
+    source_content_sha256: "hex string, length 64"
+    file_size_bytes: "int >= 0"
+
+# === TAGS ===
+tags:
+  - adr
+  - ingestion
+  - effect
+  - filesystem
+  - read-only
+  - omn-10693
+
+metadata:
+  transport_type: postgres
