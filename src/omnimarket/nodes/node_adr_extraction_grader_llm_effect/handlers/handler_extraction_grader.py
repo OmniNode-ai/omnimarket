@@ -30,6 +30,7 @@ from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading
 )
 from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
     AdapterInferenceBridge,
+    ModelInferenceAdapter,
     ModelInferenceBridgeConfig,
 )
 
@@ -109,14 +110,14 @@ class HandlerExtractionGrader:
 
     def __init__(
         self,
-        inference_bridge: AdapterInferenceBridge | None = None,
+        inference_bridge: ModelInferenceAdapter | None = None,
         grader_model_key: str = "opus",
         grader_timeout_seconds: float = 120.0,
         prompt_template_id: str = "adr_grading_v1",
         prompt_template_version: str = "1.0.0",
     ) -> None:
-        self._bridge = inference_bridge or AdapterInferenceBridge(
-            ModelInferenceBridgeConfig()
+        self._bridge: ModelInferenceAdapter = (
+            inference_bridge or AdapterInferenceBridge(ModelInferenceBridgeConfig())
         )
         self._grader_model_key = grader_model_key
         self._grader_timeout_seconds = grader_timeout_seconds

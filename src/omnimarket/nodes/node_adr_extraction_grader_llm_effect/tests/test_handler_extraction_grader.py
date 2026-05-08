@@ -83,7 +83,7 @@ def _make_request(**overrides: object) -> ModelGradingRequest:
         "model_key_under_test": "qwen3-coder",
     }
     defaults.update(overrides)
-    return ModelGradingRequest(**defaults)  # type: ignore[arg-type]
+    return ModelGradingRequest(**defaults)
 
 
 # ---------------------------------------------------------------------------
