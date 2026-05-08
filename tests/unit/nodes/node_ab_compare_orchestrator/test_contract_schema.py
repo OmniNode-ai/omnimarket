@@ -112,16 +112,24 @@ def test_models_registry_locations_are_valid() -> None:
 
 @pytest.mark.unit
 def test_models_registry_openai_models_have_base_endpoint() -> None:
+    """Every openai_compatible model must declare either `endpoint` (literal
+    base URL — typical for cloud) or `endpoint_env` (env var lookup — required
+    for local lab models per OMN-10645 to avoid baking lab IPs in the registry).
+    """
     data = yaml.safe_load(REGISTRY_PATH.read_text())
     for model in data["models"]:
         if model["protocol"] == "openai_compatible":
-            assert "endpoint" in model, (
-                f"OpenAI-compatible model '{model['id']}' must declare endpoint"
+            has_literal = "endpoint" in model
+            has_env = "endpoint_env" in model and bool(model["endpoint_env"])
+            assert has_literal or has_env, (
+                f"OpenAI-compatible model '{model['id']}' must declare "
+                "either `endpoint` or `endpoint_env`"
             )
-            assert "/v1/chat/completions" not in model["endpoint"], (
-                f"OpenAI-compatible model '{model['id']}' must declare a base endpoint; "
-                "the effect node appends the chat completions path"
-            )
+            if has_literal:
+                assert "/v1/chat/completions" not in model["endpoint"], (
+                    f"OpenAI-compatible model '{model['id']}' must declare a base "
+                    "endpoint; the effect node appends the chat completions path"
+                )
 
 
 @pytest.mark.unit

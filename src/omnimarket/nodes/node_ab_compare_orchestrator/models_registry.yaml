@@ -1,10 +1,15 @@
 ---
 # models_registry.yaml — A/B compare model registry.
 #
-# endpoint is the default OpenAI-compatible base URL. endpoint_env can override
-# it at runtime; blank env values are treated as unset and fall back to endpoint.
-# model_id_env names the env var that supplies the model identifier at runtime.
-# model_id_default is the fallback when the env var is unset; "" means skip the
+# OMN-10645: per-entry `endpoint:` LAN literals removed. The handler reads
+# `endpoint_env` at runtime; if the named env var is unset/empty AND no
+# `endpoint:` literal is declared (the case for all local lab models), the
+# orchestrator skips that model with a clear log line. Cloud entries with a
+# stable public URL (e.g. GLM) keep an `endpoint:` literal.
+#
+# endpoint_env names the env var that supplies the OpenAI-compatible base URL.
+# model_id_env names the env var that supplies the model identifier.
+# model_id_default is the fallback when the env var is unset; "" = skip the
 # model rather than using a hardcoded ID.
 # protocol must currently be openai_compatible for orchestrator execution.
 # requires_key names the API-key env var; models with missing keys are skipped.
@@ -13,7 +18,6 @@ schema_version: "1.0.0"
 models:
   - id: qwen3-coder-30b
     display_name: "Qwen3-Coder-30B"
-    endpoint: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_CODER_URL"
     endpoint_env: LLM_CODER_URL
     protocol: openai_compatible
     model_id_env: LLM_CODER_MODEL_NAME
@@ -25,7 +29,6 @@ models:
 
   - id: deepseek-r1-14b
     display_name: "DeepSeek-R1-14B"
-    endpoint: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_CODER_FAST_URL"
     endpoint_env: LLM_CODER_FAST_URL
     protocol: openai_compatible
     model_id_env: LLM_CODER_FAST_MODEL_NAME
@@ -37,7 +40,6 @@ models:
 
   - id: deepseek-r1-32b
     display_name: "DeepSeek-R1-32B"
-    endpoint: "http://192.168.86.200:8101"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_DEEPSEEK_R1_URL"
     endpoint_env: LLM_DEEPSEEK_R1_URL
     protocol: openai_compatible
     model_id_env: LLM_DEEPSEEK_R1_MODEL_NAME
@@ -49,7 +51,6 @@ models:
 
   - id: qwen3-next-80b
     display_name: "Qwen3-Next-80B"
-    endpoint: "http://192.168.86.200:8102"  # onex-allow-internal-ip OMN-10580 reason="lab default; override via endpoint_env=LLM_QWEN3_NEXT_URL"
     endpoint_env: LLM_QWEN3_NEXT_URL
     protocol: openai_compatible
     model_id_env: LLM_QWEN3_NEXT_MODEL_NAME
