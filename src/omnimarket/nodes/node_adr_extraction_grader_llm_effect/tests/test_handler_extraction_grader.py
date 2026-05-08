@@ -139,6 +139,14 @@ def test_parse_scores_empty_string_returns_none() -> None:
     assert _parse_scores("") is None
 
 
+@pytest.mark.unit
+def test_parse_scores_boolean_values_rejected() -> None:
+    raw = json.dumps(
+        {"recall": True, "precision": 0.8, "fidelity": 0.7, "format_compliance": 0.9}
+    )
+    assert _parse_scores(raw) is None
+
+
 # ---------------------------------------------------------------------------
 # HandlerExtractionGrader happy path
 # ---------------------------------------------------------------------------

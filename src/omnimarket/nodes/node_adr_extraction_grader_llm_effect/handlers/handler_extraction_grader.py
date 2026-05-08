@@ -87,8 +87,11 @@ def _parse_scores(raw: str) -> dict[str, float] | None:
 
     scores: dict[str, float] = {}
     for key in required:
+        raw_val = data[key]
+        if isinstance(raw_val, bool):
+            return None
         try:
-            val = float(data[key])
+            val = float(raw_val)
         except (TypeError, ValueError):
             return None
         if not (0.0 <= val <= 1.0):
