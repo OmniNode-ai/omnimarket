@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10696
+title: "Build ADR draft generation compute node"
+summary: "Pure deterministic COMPUTE node that renders ADR markdown from ModelDecisionExtraction with no LLM calls. Same input produces identical output."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "21 unit tests pass covering all ADR sections and determinism invariants"
+    command: "uv run pytest src/omnimarket/nodes/node_adr_draft_generation_compute/tests/ -v"
+  - kind: "manual"
+    description: "Node is a pure COMPUTE type — no live deploy or runtime restart required"
+    command: "printf '%s\n' 'deploy smoke: node_adr_draft_generation_compute is COMPUTE-type, purity=pure, no runtime container lifecycle'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "21 unit tests pass covering all ADR markdown sections and determinism"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_adr_draft_generation_compute/tests/ -v"
+  - id: "dod-deploy"
+    description: "Node is a pure COMPUTE type with purity=pure in contract.yaml; no live deploy, docker exec, or runtime restart is required or appropriate"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy smoke: node_adr_draft_generation_compute purity=pure, no runtime deploy needed'"
