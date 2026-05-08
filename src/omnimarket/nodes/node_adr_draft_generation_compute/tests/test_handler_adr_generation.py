@@ -96,14 +96,20 @@ class TestHandlerADRGenerationStructure:
         result = HandlerADRGeneration().handle(request)
         assert "**Status**: Proposed" in result.markdown
 
-    def test_markdown_has_iso_date(self) -> None:
-        extraction = _make_extraction()
+    def test_markdown_has_iso_date_from_timestamp(self) -> None:
+        # Date is derived from provenance.timestamp, not the wall clock.
+        extraction = _make_extraction(timestamp="2026-05-08T10:00:00Z")
         request = ModelADRGenerationRequest(extraction=extraction)
         result = HandlerADRGeneration().handle(request)
-        # date line must be present with ISO format (YYYY-MM-DD)
-        import re
+        assert "**Date**: 2026-05-08" in result.markdown
 
-        assert re.search(r"\*\*Date\*\*: \d{4}-\d{2}-\d{2}", result.markdown)
+    def test_adr_date_field_overrides_timestamp(self) -> None:
+        extraction = _make_extraction(timestamp="2026-05-08T10:00:00Z")
+        request = ModelADRGenerationRequest(
+            extraction=extraction, adr_date="2025-01-01"
+        )
+        result = HandlerADRGeneration().handle(request)
+        assert "**Date**: 2025-01-01" in result.markdown
 
     def test_markdown_has_related_section(self) -> None:
         extraction = _make_extraction(source_doc_paths=["docs/adr/0001-kafka.md"])

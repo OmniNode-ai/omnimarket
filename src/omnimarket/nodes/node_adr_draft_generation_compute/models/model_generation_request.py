@@ -14,6 +14,10 @@ class ModelADRGenerationRequest(BaseModel):
 
     extraction: ModelDecisionExtraction
     run_id: str = ""
+    # ISO date (YYYY-MM-DD) for the ADR **Date** field. Derived from
+    # extraction.provenance.timestamp when empty so output is fully
+    # determined by inputs and never reads the wall clock.
+    adr_date: str = ""
 
 
 __all__ = ["ModelADRGenerationRequest"]

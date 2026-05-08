@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
-
 from omnimarket.nodes.node_adr_draft_generation_compute.models.model_generation_request import (
     ModelADRGenerationRequest,
 )
@@ -12,7 +10,14 @@ from omnimarket.nodes.node_adr_draft_generation_compute.models.model_generation_
     ModelADRGenerationResult,
 )
 
-_TODAY = datetime.date.today().isoformat()
+
+def _resolve_date(request: ModelADRGenerationRequest) -> str:
+    if request.adr_date:
+        return request.adr_date
+    # Derive from provenance timestamp (ISO 8601 date prefix) so the output is
+    # fully determined by the request fields and never reads the wall clock.
+    ts = request.extraction.provenance.timestamp
+    return ts[:10] if ts else ""
 
 
 class HandlerADRGeneration:
@@ -26,7 +31,7 @@ class HandlerADRGeneration:
         lines.append(f"# ADR: {ext.title}")
         lines.append("")
         lines.append("**Status**: Proposed")
-        lines.append(f"**Date**: {_TODAY}")
+        lines.append(f"**Date**: {_resolve_date(request)}")
 
         related = ", ".join(ext.provenance.source_doc_paths)
         lines.append(f"**Related**: {related}")
