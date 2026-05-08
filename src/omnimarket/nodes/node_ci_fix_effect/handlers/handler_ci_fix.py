@@ -103,7 +103,14 @@ class ModelCiFixRoutingConfig(BaseModel):
 
 
 def _resolve_endpoint_env_vars(raw: dict[str, object]) -> dict[str, object]:
-    """Resolve base_url_env and model_id_env overrides before Pydantic validation."""
+    """Resolve base_url_env and model_id_env into concrete values.
+
+    OMN-10644: contract.yaml carries no hardcoded ``base_url`` or ``model_id``
+    literal -- both are read from env vars at load time. If the contract
+    declares ``base_url_env`` and the named env var is unset/empty (with no
+    fallback literal), raise so the operator gets a clear configuration
+    failure instead of silently using a baked lab default.
+    """
     endpoints = raw.get("model_endpoints")
     if not isinstance(endpoints, dict):
         return raw
@@ -116,6 +123,13 @@ def _resolve_endpoint_env_vars(raw: dict[str, object]) -> dict[str, object]:
         base_url_env = entry.pop("base_url_env", None)
         if isinstance(base_url_env, str) and base_url_env:
             override = os.environ.get(base_url_env, "").strip()
+            if not override and not entry.get("base_url"):
+                raise ValueError(
+                    f"{_CONTRACT_PATH} model_endpoints.{key}.base_url_env is "
+                    f"{base_url_env!r} but the env var is unset/empty and no "
+                    "literal base_url is declared in contract.yaml. Set "
+                    f"{base_url_env} in your environment."
+                )
             if override:
                 entry["base_url"] = override
         model_id_env = entry.pop("model_id_env", None)

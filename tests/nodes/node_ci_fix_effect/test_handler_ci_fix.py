@@ -27,7 +27,9 @@ from omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix import (
     _extract_candidate_context_paths,
     _extract_patch_files,
     _extract_patch_from_llm_response,
+    _load_contract_routing_config,
     _patch_within_allowlist,
+    _resolve_endpoint_env_vars,
     _resolve_routing_policy,
     _validate_git_style_unified_diff,
 )
@@ -799,3 +801,69 @@ class TestHandlerDepChangeGuard:
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert "too large" in (evt.error or "")
+
+
+# ---------------------------------------------------------------------------
+# OMN-10644: contract.yaml carries no hardcoded base_url; env var is required
+# ---------------------------------------------------------------------------
+
+
+class TestEndpointEnvVarRequired:
+    @pytest.mark.unit
+    def test_resolve_env_vars_succeeds_when_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-fast:8001")
+        monkeypatch.setenv("LLM_CODER_FAST_MODEL_NAME", "test-fast-model")
+        raw: dict[str, Any] = {
+            "model_endpoints": {
+                "deepseek-r1-14b": {
+                    "base_url_env": "LLM_CODER_FAST_URL",
+                    "model_id_env": "LLM_CODER_FAST_MODEL_NAME",
+                    "timeout_seconds": 120.0,
+                },
+            },
+        }
+        resolved = _resolve_endpoint_env_vars(raw)
+        endpoint = resolved["model_endpoints"]["deepseek-r1-14b"]  # type: ignore[index]
+        assert endpoint["base_url"] == "http://test-fast:8001"
+        assert endpoint["model_id"] == "test-fast-model"
+
+    @pytest.mark.unit
+    def test_resolve_env_vars_raises_when_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LLM_CODER_FAST_URL", raising=False)
+        raw: dict[str, Any] = {
+            "model_endpoints": {
+                "deepseek-r1-14b": {
+                    "base_url_env": "LLM_CODER_FAST_URL",
+                    "timeout_seconds": 120.0,
+                },
+            },
+        }
+        with pytest.raises(ValueError, match="LLM_CODER_FAST_URL"):
+            _resolve_endpoint_env_vars(raw)
+
+    @pytest.mark.unit
+    def test_load_contract_fails_loud_without_env_vars(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Real contract.yaml has no literal base_url; load must raise without env."""
+        monkeypatch.delenv("LLM_CODER_FAST_URL", raising=False)
+        monkeypatch.delenv("LLM_CODER_URL", raising=False)
+        with pytest.raises(ValueError, match=r"LLM_CODER_FAST_URL|LLM_CODER_URL"):
+            _load_contract_routing_config()
+
+    @pytest.mark.unit
+    def test_load_contract_succeeds_with_env_vars_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-fast:8001")
+        monkeypatch.setenv("LLM_CODER_FAST_MODEL_NAME", "test-deepseek-r1-distill-14b")
+        monkeypatch.setenv("LLM_CODER_URL", "http://test-coder:8000")
+        monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-qwen3-coder-30b")
+        cfg = _load_contract_routing_config()
+        endpoint = cfg.model_endpoints["deepseek-r1-14b"]
+        assert endpoint.base_url == "http://test-fast:8001"
+        assert endpoint.model_id == "test-deepseek-r1-distill-14b"
