@@ -42,13 +42,15 @@ model_routing:
       - "^tests/"
       - "^\\.github/workflows/"
     model_endpoints:
+      # OMN-10644: no static base_url or model_id literal. Both are read from env
+      # vars at load time. Operators MUST configure LLM_CODER_FAST_URL /
+      # LLM_CODER_URL (and matching *_MODEL_NAME) for this node to function;
+      # the handler fails loud at contract load when an env var is unset.
       deepseek-r1-14b:
-        base_url: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10580 reason="lab LLM endpoint default; override via LLM_CODER_FAST_URL env var"
         base_url_env: LLM_CODER_FAST_URL
         model_id_env: LLM_CODER_FAST_MODEL_NAME
         timeout_seconds: 120.0
       qwen3-coder-30b:
-        base_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10580 reason="lab LLM endpoint default; override via LLM_CODER_URL env var"
         base_url_env: LLM_CODER_URL
         model_id_env: LLM_CODER_MODEL_NAME
         timeout_seconds: 120.0

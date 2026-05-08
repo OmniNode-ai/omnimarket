@@ -103,7 +103,14 @@ class ModelCiFixRoutingConfig(BaseModel):
 
 
 def _resolve_endpoint_env_vars(raw: dict[str, object]) -> dict[str, object]:
-    """Resolve base_url_env and model_id_env overrides before Pydantic validation."""
+    """Resolve base_url_env and model_id_env into concrete values.
+
+    OMN-10644: contract.yaml carries no hardcoded ``base_url`` or ``model_id``
+    literal -- both are read from env vars at load time. If the contract
+    declares ``base_url_env`` and the named env var is unset/empty (with no
+    fallback literal), raise so the operator gets a clear configuration
+    failure instead of silently using a baked lab default.
+    """
     endpoints = raw.get("model_endpoints")
     if not isinstance(endpoints, dict):
         return raw
@@ -116,6 +123,13 @@ def _resolve_endpoint_env_vars(raw: dict[str, object]) -> dict[str, object]:
         base_url_env = entry.pop("base_url_env", None)
         if isinstance(base_url_env, str) and base_url_env:
             override = os.environ.get(base_url_env, "").strip()
+            if not override and not entry.get("base_url"):
+                raise ValueError(
+                    f"{_CONTRACT_PATH} model_endpoints.{key}.base_url_env is "
+                    f"{base_url_env!r} but the env var is unset/empty and no "
+                    "literal base_url is declared in contract.yaml. Set "
+                    f"{base_url_env} in your environment."
+                )
             if override:
                 entry["base_url"] = override
         model_id_env = entry.pop("model_id_env", None)
@@ -194,9 +208,35 @@ def _build_llm_request(
 
 
 @lru_cache(maxsize=1)
+def _load_patch_allowlist_pattern_strings() -> tuple[str, ...]:
+    with _CONTRACT_PATH.open(encoding="utf-8") as f:
+        contract = yaml.safe_load(f)
+    try:
+        patterns = contract["model_routing"]["ci_fixer"]["patch_allowlist_patterns"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            f"{_CONTRACT_PATH} missing model_routing.ci_fixer.patch_allowlist_patterns"
+        ) from exc
+    if not isinstance(patterns, list) or not patterns:
+        raise ValueError(
+            f"{_CONTRACT_PATH} model_routing.ci_fixer.patch_allowlist_patterns "
+            "must be a non-empty list"
+        )
+    for pattern in patterns:
+        try:
+            re.compile(str(pattern))
+        except re.error as exc:
+            raise ValueError(
+                f"{_CONTRACT_PATH} invalid patch allowlist regex {pattern!r}: {exc}"
+            ) from exc
+    return tuple(str(pattern) for pattern in patterns)
+
+
+@lru_cache(maxsize=1)
 def _load_patch_allowlist_patterns() -> tuple[re.Pattern[str], ...]:
-    routing = _load_contract_routing_config()
-    return tuple(re.compile(pattern) for pattern in routing.patch_allowlist_patterns)
+    return tuple(
+        re.compile(pattern) for pattern in _load_patch_allowlist_pattern_strings()
+    )
 
 
 def _resolve_llm_provider(
@@ -470,7 +510,7 @@ async def _generate_validated_patch(
     provider: AdapterLlmProviderOpenai,
     endpoint: ModelCiFixEndpointConfig,
     policy: ModelRoutingPolicy,
-    routing_config: ModelCiFixRoutingConfig,
+    patch_allowlist_patterns: tuple[str, ...],
     user_prompt: str,
     source_context: str,
     max_attempts: int = 2,
@@ -484,7 +524,7 @@ async def _generate_validated_patch(
                 f"unified diff only. Validation failure: {validation_failure}"
             )
         prompt = (
-            f"{_build_llm_system_prompt(routing_config.patch_allowlist_patterns)}"
+            f"{_build_llm_system_prompt(list(patch_allowlist_patterns))}"
             f"\n\n{source_context}"
             f"\n\n{user_prompt}"
             f"{retry_context}"
@@ -840,7 +880,7 @@ class HandlerCiFixEffect:
 
             primary_model = policy.primary
             provider, endpoint = _resolve_llm_provider(primary_model)
-            routing_config = _load_contract_routing_config()
+            patch_allowlist_pattern_strings = _load_patch_allowlist_pattern_strings()
             allowlist_patterns = _load_patch_allowlist_patterns()
             _log.info(
                 "CI fix phase=resolve_pr_worktree start repo=%s pr=%s",
@@ -890,7 +930,7 @@ class HandlerCiFixEffect:
                 endpoint.model_id,
                 policy.max_tokens,
                 endpoint.timeout_seconds,
-                routing_config.patch_allowlist_patterns,
+                list(patch_allowlist_pattern_strings),
             )
             user_prompt = (
                 f"Failing job: {request.failing_job_name}\n"
@@ -902,7 +942,7 @@ class HandlerCiFixEffect:
                 provider=provider,
                 endpoint=endpoint,
                 policy=policy,
-                routing_config=routing_config,
+                patch_allowlist_patterns=patch_allowlist_pattern_strings,
                 user_prompt=user_prompt,
                 source_context=source_context,
             )
