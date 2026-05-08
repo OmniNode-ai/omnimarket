@@ -119,6 +119,25 @@ def test_openrouter_base_url_override(monkeypatch: pytest.MonkeyPatch):
         assert cfg.model_configs[key]["base_url"] == "https://proxy.example.com/api"
 
 
+@pytest.mark.unit
+def test_openrouter_blank_base_url_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "   ")
+
+    from omnimarket.inference.bridge_config_loader import (
+        load_inference_bridge_config_from_env,
+    )
+
+    cfg = load_inference_bridge_config_from_env()
+
+    openrouter_keys = [k for k in cfg.model_configs if k.startswith("openrouter/")]
+    assert len(openrouter_keys) > 0
+    for key in openrouter_keys:
+        assert cfg.model_configs[key]["base_url"] == "https://openrouter.ai/api"
+
+
 # --- AdapterInferenceBridge extra_headers passthrough ---
 
 
@@ -217,6 +236,51 @@ async def test_bridge_extra_headers_in_actual_request():
     assert sent_headers.get("HTTP-Referer") == "https://omninode.ai"
     assert sent_headers.get("X-Title") == "OmniNode ONEX"
     assert sent_headers.get("Authorization") == "Bearer sk-test"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_bridge_extra_headers_cannot_override_reserved_headers():
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "openrouter/test-model:free": {
+                "base_url": "https://openrouter.ai/api",
+                "model_id": "test/model:free",
+                "transport": "http",
+                "context_window": 8192,
+                "timeout_seconds": 60.0,
+                "api_key": "sk-test",
+                "extra_headers": {
+                    "authorization": "Bearer attacker",
+                    "Content-Type": "text/plain",
+                    "X-Title": "OmniNode ONEX",
+                },
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config=config)
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = lambda: None
+    mock_response.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
+
+    import httpx
+
+    with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_response
+        result = await bridge.infer(
+            model_key="openrouter/test-model:free",
+            system_prompt="You are a reviewer.",
+            user_prompt="Review this.",
+            timeout_seconds=60.0,
+        )
+
+    assert result == "ok"
+    sent_headers = mock_post.call_args.kwargs.get("headers", {})
+    assert sent_headers.get("Authorization") == "Bearer sk-test"
+    assert sent_headers.get("Content-Type") == "application/json"
+    assert "authorization" not in sent_headers
+    assert sent_headers.get("X-Title") == "OmniNode ONEX"
 
 
 # --- Shared inference package re-export ---

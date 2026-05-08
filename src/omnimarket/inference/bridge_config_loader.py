@@ -34,12 +34,12 @@ from __future__ import annotations
 import os
 from typing import Final
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceBridgeConfig,
+)
 from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     get_openrouter_models,
-)
-from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
-    ModelInferenceBridgeConfig,
 )
 
 # key -> (url env var, model_id env var, context window)
@@ -109,9 +109,10 @@ def _register_openrouter_models(model_configs: dict[str, dict[str, object]]) -> 
     if not api_key:
         return
 
-    base_url = os.environ.get(
-        "OPENROUTER_BASE_URL", _OPENROUTER_BASE_URL_DEFAULT
-    ).strip()
+    raw_base_url = os.environ.get("OPENROUTER_BASE_URL")
+    base_url = (raw_base_url or _OPENROUTER_BASE_URL_DEFAULT).strip()
+    if not base_url:
+        base_url = _OPENROUTER_BASE_URL_DEFAULT
 
     for model in get_openrouter_models():
         if model.availability != EnumModelAvailability.AVAILABLE:
