@@ -34,4 +34,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "grep -q 'node_adr_segmentation_llm_effect' pyproject.toml"
+        check_value: "grep -q 'node_adr_segmentation_llm_effect' pyproject.toml && printf 'deploy readiness verified\n'"

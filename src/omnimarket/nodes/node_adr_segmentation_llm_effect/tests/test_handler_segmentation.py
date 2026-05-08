@@ -379,8 +379,10 @@ async def test_handle_uses_configured_prompt_threshold_and_temperature() -> None
 
     result = await handler.handle(_make_request())
 
+    system_prompt = bridge.calls[0]["system_prompt"]
+    assert isinstance(system_prompt, str)
     assert result.success is True
-    assert "confidence < 0.55" in bridge.calls[0]["system_prompt"]
+    assert "confidence < 0.55" in system_prompt
     assert bridge.calls[0]["temperature"] == pytest.approx(0.15)
 
 

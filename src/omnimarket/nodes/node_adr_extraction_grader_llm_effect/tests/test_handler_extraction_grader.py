@@ -68,6 +68,7 @@ class _MockBridge(ModelInferenceAdapter):
         system_prompt: str,
         user_prompt: str,
         timeout_seconds: float,
+        temperature: float | None = None,
     ) -> str:
         if isinstance(self._response, Exception):
             raise self._response

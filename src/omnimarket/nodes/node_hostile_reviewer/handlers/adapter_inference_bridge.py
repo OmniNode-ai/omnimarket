@@ -97,6 +97,12 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        raw_temperature = (
+            temperature if temperature is not None else cfg.get("temperature", 0.2)
+        )
+        if not isinstance(raw_temperature, (int, float, str)):
+            raw_temperature = 0.2
+
         payload = {
             "model": model_id,
             "messages": [
@@ -104,9 +110,7 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
                 {"role": "user", "content": user_prompt},
             ],
             "max_tokens": 2048,
-            "temperature": float(
-                temperature if temperature is not None else cfg.get("temperature", 0.2)
-            ),
+            "temperature": float(raw_temperature),
         }
 
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
