@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-file OMN-10580 reason="test fixture — uses lab IP and super-secret placeholder to verify the script redacts secrets from output; values are test inputs, not credentials"
+# onex-allow-file OMN-10580 reason="test fixture — uses lab IP and a redacted-test-placeholder password literal to verify the script redacts secrets from output; values are test inputs, not credentials"
 """Tests for scripts/run_delegation_cost_projection_process.sh."""
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ def test_check_refuses_protected_runtime_without_printing_secret(
     env_file.write_text(
         "\n".join(
             [
-                "OMNIDASH_ANALYTICS_DB_URL=postgresql://postgres:super-secret@192.168.86.201:5436/omnibase_infra",  # onex-allow-internal-ip: testing that the script rejects LAN DSNs
+                "OMNIDASH_ANALYTICS_DB_URL=postgresql://postgres:redacted-test-placeholder@192.168.86.201:5436/omnibase_infra",  # onex-allow-internal-ip: testing that the script rejects LAN DSNs
                 "KAFKA_BROKERS=localhost:19092",
             ]
         ),
@@ -108,5 +108,5 @@ def test_check_refuses_protected_runtime_without_printing_secret(
 
     assert result.returncode == 1
     assert "protected .201 runtime" in result.stderr
-    assert "super-secret" not in result.stdout
-    assert "super-secret" not in result.stderr
+    assert "redacted-test-placeholder" not in result.stdout
+    assert "redacted-test-placeholder" not in result.stderr

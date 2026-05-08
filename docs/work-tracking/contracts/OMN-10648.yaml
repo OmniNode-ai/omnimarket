@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10648
+title: "Remove personal GitHub username default from pr_review_bot contract"
+summary: >
+  Strip the static personal emergency bypass actor from
+  node_pr_review_bot/contract.yaml and require runtime operators to provide
+  GITHUB_REVIEWER_LOGIN explicitly when enabling emergency bypass behavior.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Emergency bypass parser tests pass"
+    command: "uv run pytest tests/test_emergency_bypass_parser.py -q"
+  - kind: "manual"
+    description: "Repository pre-commit gate passes for the contract change"
+    command: "pre-commit run --all-files"
+  - kind: "manual"
+    description: "Post-merge deploy validation checks reviewer identity env before runtime use"
+    command: "deploy validation: verify GITHUB_REVIEWER_LOGIN is explicitly set before enabling node_pr_review_bot emergency bypass actor config"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "Emergency bypass parser tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_emergency_bypass_parser.py -q"
+  - id: "dod-pre-commit"
+    description: "Repository pre-commit gate passes for the contract change"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "pre-commit run --all-files"
+  - id: "dod-deploy-proof-plan"
+    description: "Post-merge deploy proof plan only; no live deploy or restart performed during PR validation"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy validation: verify GITHUB_REVIEWER_LOGIN is explicitly set before enabling node_pr_review_bot emergency bypass actor config"

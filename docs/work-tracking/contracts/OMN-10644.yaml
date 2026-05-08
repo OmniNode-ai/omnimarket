@@ -1,0 +1,45 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10644
+title: "Strip hardcoded LLM endpoints from ci_fix_effect contract"
+summary: >
+  Remove lab-specific LLM base URLs and model IDs from node_ci_fix_effect and
+  require runtime operators to provide LLM_CODER_* environment variables. Patch
+  allowlist helper loading remains contract-driven without requiring endpoint
+  env vars for pure helper tests.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "CI fix effect unit tests pass"
+    command: "uv run pytest tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py -q"
+  - kind: "manual"
+    description: "Touched handler and tests pass ruff"
+    command: "uv run ruff check src/omnimarket/nodes/node_ci_fix_effect/handlers/handler_ci_fix.py tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py"
+  - kind: "manual"
+    description: "Post-merge deploy validation checks LLM_CODER endpoint env vars before runtime invocation"
+    command: "deploy validation: verify LLM_CODER_FAST_URL, LLM_CODER_URL, and matching model env vars are set before invoking node_ci_fix_effect"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "CI fix effect unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py -q"
+  - id: "dod-ruff"
+    description: "Touched handler and tests pass ruff"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_ci_fix_effect/handlers/handler_ci_fix.py tests/nodes/node_ci_fix_effect/test_handler_ci_fix.py"
+  - id: "dod-deploy-proof-plan"
+    description: "Post-merge deploy proof plan only; no live deploy or restart performed during PR validation"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy validation: verify LLM_CODER_FAST_URL, LLM_CODER_URL, and matching model env vars are set before invoking node_ci_fix_effect"

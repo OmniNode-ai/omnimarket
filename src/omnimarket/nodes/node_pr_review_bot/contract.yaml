@@ -216,10 +216,11 @@ event_bus:
 
 runtime_config:
   review_bot.emergency_bypass_actor:
-    # OMN-8497: default is the solo repo owner. Override to restrict further.
-    # Empty string means no one is authorized (full lockdown mode).
-    description: "GitHub handle(s) authorized to trigger emergency bypass. Comma-separated for multiple actors. Set to empty string to disable bypass entirely."
-    default: "jonahgabriel"  # onex-allow-raw-env OMN-10580 reason="solo-repo owner default for emergency bypass; override via review_bot.emergency_bypass_actor config key"
+    # OMN-8497 / OMN-10648: no static default. Operators MUST configure the
+    # authorized actor list explicitly. Empty/unset = full lockdown mode (all
+    # bypass attempts rejected).
+    description: "GitHub handle(s) authorized to trigger emergency bypass. Comma-separated for multiple actors. Read from env var GITHUB_REVIEWER_LOGIN. Empty/unset = lockdown mode."
+    env_var: GITHUB_REVIEWER_LOGIN
     required: false
 
 dependencies:
