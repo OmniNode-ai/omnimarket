@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -59,41 +60,54 @@ class HandlerDocumentIngestion:
             if not root.exists():
                 logger.warning("Root path does not exist, skipping: %s", root_str)
                 continue
+            if not root.is_dir():
+                logger.warning("Root path is not a directory, skipping: %s", root_str)
+                continue
 
             repo_name = root.name
 
-            for md_file in root.rglob("*.md"):
-                rel = md_file.relative_to(root)
-                if _matches_exclude(rel, request.exclude_patterns):
-                    continue
+            for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+                rel_dir = Path(dirpath).relative_to(root)
+                dirnames[:] = [
+                    d
+                    for d in dirnames
+                    if not _matches_exclude(rel_dir / d, request.exclude_patterns)
+                ]
+                for filename in filenames:
+                    if not filename.endswith(".md"):
+                        continue
+                    md_file = Path(dirpath) / filename
+                    rel = md_file.relative_to(root)
+                    if _matches_exclude(rel, request.exclude_patterns):
+                        continue
 
-                try:
-                    sha256 = _compute_sha256(md_file)
-                    size = md_file.stat().st_size
-                    (
-                        git_sha,
-                        author,
-                        created_at_raw,
-                        updated_at_raw,
-                    ) = await self._git_metadata(md_file, root)
+                    try:
+                        sha256 = _compute_sha256(md_file)
+                        size = md_file.stat().st_size
+                        (
+                            git_sha,
+                            author,
+                            created_at_raw,
+                            updated_at_raw,
+                        ) = await self._git_metadata(md_file, root)
 
-                    created_at = _parse_iso(created_at_raw)
-                    updated_at = _parse_iso(updated_at_raw)
+                        created_at = _parse_iso(created_at_raw)
+                        updated_at = _parse_iso(updated_at_raw)
 
-                    documents.append(
-                        ModelDocumentEntry(
-                            source_path=str(rel),
-                            repo_name=repo_name,
-                            git_sha=git_sha,
-                            author=author,
-                            created_at=created_at,
-                            updated_at=updated_at,
-                            file_size_bytes=size,
-                            source_content_sha256=sha256,
+                        documents.append(
+                            ModelDocumentEntry(
+                                source_path=str(rel),
+                                repo_name=repo_name,
+                                git_sha=git_sha,
+                                author=author,
+                                created_at=created_at,
+                                updated_at=updated_at,
+                                file_size_bytes=size,
+                                source_content_sha256=sha256,
+                            )
                         )
-                    )
-                except Exception:
-                    logger.exception("Failed to process file: %s", md_file)
+                    except Exception:
+                        logger.exception("Failed to process file: %s", md_file)
 
         return ModelIngestionResult(documents=documents)
 

@@ -328,6 +328,26 @@ class TestHandlerDocumentIngestion:
         assert result.documents == []
 
     @pytest.mark.asyncio
+    async def test_file_root_path_skipped(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "not_a_dir.md"
+        file_path.write_text("# content", encoding="utf-8")
+        valid_root = tmp_path / "valid_dir"
+        _write_md(valid_root / "real.md")
+
+        mock_git = AsyncMock(return_value=(None, None, None, None))
+        handler = HandlerDocumentIngestion()
+
+        with patch.object(handler, "_git_metadata", mock_git):
+            result = await handler.handle(
+                request=ModelIngestionRequest(
+                    root_paths=[str(file_path), str(valid_root)]
+                )
+            )
+
+        assert len(result.documents) == 1
+        assert result.documents[0].source_path == "real.md"
+
+    @pytest.mark.asyncio
     async def test_nonexistent_root_path_skipped(self, tmp_path: Path) -> None:
         missing = str(tmp_path / "does_not_exist")
         _write_md(tmp_path / "real.md")
