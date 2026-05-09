@@ -36,6 +36,7 @@ import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -50,9 +51,26 @@ from omnimarket.nodes.node_dispatch_worker import (
 
 logger = logging.getLogger(__name__)
 
-TOPIC_SESSION_ORCH_START = "onex.cmd.omnimarket.session-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_SESSION_ORCH_COMPLETED = "onex.evt.omnimarket.session-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_SESSION_ORCH_FAILED = "onex.evt.omnimarket.session-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+
+def _load_contract_topics() -> tuple[str, str, str]:
+    contract_path = Path(__file__).resolve().parents[1] / "contract.yaml"
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    event_bus = raw.get("event_bus") or {}
+    subscribe_topics = event_bus.get("subscribe_topics") or []
+    publish_topics = event_bus.get("publish_topics") or []
+    start_topic = str(subscribe_topics[0])
+    completed_topic = str(raw["terminal_event"])
+    failed_topic = next(
+        str(topic) for topic in publish_topics if "failed" in str(topic)
+    )
+    return start_topic, completed_topic, failed_topic
+
+
+(
+    TOPIC_SESSION_ORCH_START,
+    TOPIC_SESSION_ORCH_COMPLETED,
+    TOPIC_SESSION_ORCH_FAILED,
+) = _load_contract_topics()
 
 # ---------------------------------------------------------------------------
 # Env var helpers — fail-fast on required vars (no defaults for infra paths)
