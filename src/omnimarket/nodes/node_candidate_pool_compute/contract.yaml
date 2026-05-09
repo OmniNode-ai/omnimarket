@@ -1,0 +1,78 @@
+---
+name: node_candidate_pool_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Bootstrap-grade multi-candidate selection. Scores N generated outputs against
+  JSON schema validity and LOC budget constraints. Pure, deterministic — same
+  input always produces identical output. No LLM calls, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_candidate_pool_compute.handlers.handler_candidate_pool
+  class: HandlerCandidatePool
+  input_model: omnimarket.nodes.node_candidate_pool_compute.models.model_pool_request.ModelCandidatePoolRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  candidates:
+    type: array
+    items: str
+    required: true
+    description: List of candidate output strings to score
+  target_schema:
+    type: object
+    required: true
+    description: JSON Schema dict to validate each candidate against
+  max_loc:
+    type: int
+    required: true
+    description: Maximum lines-of-code budget; candidates exceeding this are penalised
+  min_candidates:
+    type: int
+    required: false
+    default: 1
+    description: Minimum number of candidates required; triggers error if not met
+  run_id:
+    type: str
+    required: false
+    default: ""
+
+outputs:
+  status:
+    type: str
+    enum: [ok, error]
+  run_id:
+    type: str
+  ranked_candidates:
+    type: array
+    description: Candidates ordered best-first with per-candidate scores
+  best_candidate_index:
+    type: int
+    description: Index into the original candidates list for the top-ranked entry
+  all_valid:
+    type: bool
+    description: True when every candidate passes schema validation
+  summary:
+    type: str
+    description: Human-readable one-line summary of pool evaluation
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.candidate-pool-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.candidate-pool-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.candidate-pool-completed.v1
+
+metadata:
+  transport_type: kafka
