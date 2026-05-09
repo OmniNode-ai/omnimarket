@@ -270,7 +270,9 @@ class TestHandlerContextBundleDeterminism:
         result_l2 = handler.handle(_req(EnumContextLevel.L2))
         assert result_l1.bundle_id != result_l2.bundle_id
 
-    def test_different_l4_historical_summaries_produce_different_bundle_ids(self) -> None:
+    def test_different_l4_historical_summaries_produce_different_bundle_ids(
+        self,
+    ) -> None:
         handler = HandlerContextBundle()
         result_a = handler.handle(
             _req(EnumContextLevel.L4, historical_summary="attempt one")
