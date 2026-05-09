@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ADR Canary Ground Truth Manifest
+#
+# Each entry declares:
+#   - id: unique slug for the manifest entry
+#   - root_paths: list of repo-root-relative or absolute paths to ingest markdown from
+#   - ground_truth_adr: the authoritative ADR text used as grading reference
+#   - models: list of extraction models to evaluate
+#
+# Model fields:
+#   - key: short identifier used in scores and evidence filenames
+#   - provider: "local" | "openrouter" | "anthropic"
+#   - model_id: exact model ID passed to the inference bridge
+#   - external: true = requires allow_external_providers=True to run
+#
+# [OMN-10698]
+
+entries:
+  - id: "kafka-bus-selection"
+    root_paths:
+      - "docs/"
+    ground_truth_adr: |
+      # ADR: Kafka/Redpanda as Primary Event Bus
+
+      ## Status
+      Accepted
+
+      ## Context
+      OmniNode requires a durable, replay-capable event bus for distributed node
+      coordination. Multiple transports were evaluated including Redis Streams,
+      NATS, and Kafka/Redpanda.
+
+      ## Decision
+      We selected Redpanda (Kafka-compatible) as the primary event bus.
+      EventBusInmemory is used as a local fallback for testing.
+
+      ## Consequences
+      - All inter-node communication is routed through Redpanda topics
+      - Topics are declared in contract.yaml; no hardcoded strings in handlers
+      - Consumer groups enable horizontal scaling and replay
+      - Local development uses EventBusInmemory via ONEX_EVENT_BUS_TYPE=inmemory
+    models:
+      - key: "qwen3-coder"
+        provider: "local"
+        model_id: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+        external: false
+      - key: "deepseek-r1-14b"
+        provider: "local"
+        model_id: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"
+        external: false
+
+  - id: "contract-first-topics"
+    root_paths:
+      - "docs/"
+      - "src/omnimarket/nodes/node_adr_document_ingestion_effect/"
+    ground_truth_adr: |
+      # ADR: Contract-First Topic Definitions
+
+      ## Status
+      Accepted
+
+      ## Context
+      Early node implementations hardcoded Kafka topic strings in Python handlers,
+      leading to drift between what nodes published and what consumers expected.
+      This caused invisible wiring bugs that only surfaced at runtime.
+
+      ## Decision
+      All Kafka topics MUST be declared in contract.yaml under event_bus.publish_topics
+      and event_bus.subscribe_topics. Handlers reference topics via config loading,
+      never as hardcoded string literals. CI enforces this via the aislop-sweep rule.
+
+      ## Consequences
+      - contract.yaml is the single source of truth for all topic names
+      - Topic naming convention: onex.{cmd|evt}.{service}.{event-name}.v{N}
+      - Pre-commit hook rejects hardcoded topic strings in Python source
+      - Handler tests mock the bus; topic strings come from loaded contracts
+    models:
+      - key: "qwen3-coder"
+        provider: "local"
+        model_id: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+        external: false
+      - key: "deepseek-r1-14b"
+        provider: "local"
+        model_id: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"
+        external: false
