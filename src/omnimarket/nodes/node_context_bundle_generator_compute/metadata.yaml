@@ -1,0 +1,19 @@
+name: node_context_bundle_generator_compute
+version: "1.0.0"
+description: "Deterministic context bundle builder — L0-L4 progressive context extraction from task state and run context"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_context_bundle_generator_compute: "omnimarket.nodes.node_context_bundle_generator_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context", "bundle", "deterministic"]
+pack: "core"
+display_name: "Context Bundle Generator"
+node_role: "compute"

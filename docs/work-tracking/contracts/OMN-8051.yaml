@@ -1,0 +1,35 @@
+# OMN-8051 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+schema_version: "1.0.0"
+ticket_id: "OMN-8051"
+title: "Add context bundle generator compute node"
+summary: "Add node_context_bundle_generator_compute as a pure COMPUTE node that assembles deterministic context bundles from task, run, and candidate artifact inputs."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Context bundle generator handler tests pass for deterministic bundle assembly."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_context_bundle_generator_compute/tests/test_handler_context_bundle.py -q"
+  - id: "dod-002"
+    description: "Context bundle generator node and tests pass ruff lint."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_context_bundle_generator_compute"
+  - id: "dod-deploy"
+    description: "Runtime-impacting node addition is deploy-gated; post-merge runtime redeploy and health validation are handled in the merge-sweep runtime phase."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "post-merge redeploy runtime and verify /health reports healthy event bus and no failed handlers"
