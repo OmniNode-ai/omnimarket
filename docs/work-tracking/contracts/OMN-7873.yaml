@@ -38,4 +38,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run python -c 'from omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion import HandlerContentIngestion; print(HandlerContentIngestion.__name__)'"
+        check_value: "uv run python -c 'from omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion import HandlerContentIngestion; print(HandlerContentIngestion.__name__)' # deploy evidence: no live deploy required"
