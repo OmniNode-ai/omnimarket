@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10692
+title: "Extend inference bridge with OpenRouter free-tier support"
+summary: >
+  Adds OpenRouter free-tier model catalog support to omnimarket inference bridge
+  configuration and hardens request construction. OPENROUTER_API_KEY enables
+  openrouter/<model_id> entries, OPENROUTER_BASE_URL falls back to the contract
+  default when unset or blank, and extra_headers cannot override reserved
+  Authorization or Content-Type headers.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "config"
+  - "public_api"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-openrouter-tests"
+    description: "Focused OpenRouter catalog, loader, and inference bridge tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/inference/test_openrouter_integration.py tests/test_adapter_inference_bridge.py -q"
+  - id: "dod-config-hardening"
+    description: "Blank OpenRouter base URL fallback and reserved header protection are covered by tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/inference/test_openrouter_integration.py::test_openrouter_blank_base_url_falls_back_to_default tests/inference/test_openrouter_integration.py::test_bridge_extra_headers_cannot_override_reserved_headers -q"
+  - id: "dod-deploy"
+    description: >
+      No live runtime deploy is required for this PR. The change updates
+      package code and contract-declared optional configuration; omnimarket
+      package CI validates importability and runtime sweep behavior. Activation
+      requires OPENROUTER_API_KEY at runtime and does not require a daemon
+      restart beyond the normal package release path.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 560 --repo OmniNode-ai/omnimarket --json statusCheckRollup --jq '.statusCheckRollup[] | select(.name == \"Runtime Sweep\") | .conclusion' | grep -q SUCCESS # deploy evidence: package-only inference bridge config change"
+  - id: "dod-pr-560-head"
+    description: "omnimarket PR #560 carries the OpenRouter bridge implementation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 560 --repo OmniNode-ai/omnimarket --json headRefOid --jq '.headRefOid' | grep -q eb1254895cd0c9a794b449bb44a566ab203e3dea"
