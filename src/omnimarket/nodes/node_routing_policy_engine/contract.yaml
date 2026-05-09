@@ -2,25 +2,24 @@
 # SPDX-License-Identifier: MIT
 
 # ONEX Node Contract — node_routing_policy_engine
-# Pure compute: maps failure class + attempt count to retry type.
-# Two-Strike protocol: attempt_count >= 3 always escalates.
+# Pure compute: selects optimal model via exploit/explore policy given constraints.
 #
-# Related: OMN-8044
+# Related: OMN-8040
 ---
-name: routing_policy_engine
+name: node_routing_policy_engine
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-
 description: >
-  Retry strategy engine — maps EnumFailureClass to EnumRetryType.
-  Two-Strike protocol: attempt_count >= 3 always escalates to
-  TIER_ESCALATION regardless of failure class.
+  Deterministic model-selection engine. Accepts a task type, capability
+  requirements, available models with scores, and cost constraints; applies
+  exploitation (best eligible model) or exploration (second-best) based on
+  a caller-supplied seed value. No LLM calls, no I/O, same input = same output.
 
 handler:
-  module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_retry_strategy
-  function: determine_retry_type
-  input_model: inline
+  module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_routing_policy
+  class: HandlerRoutingPolicy
+  input_model: omnimarket.nodes.node_routing_policy_engine.models.model_routing_policy_request.ModelRoutingPolicyRequest
 
 descriptor:
   node_archetype: compute
@@ -29,28 +28,80 @@ descriptor:
   timeout_ms: 1000
 
 inputs:
-  failure_class:
+  task_type:
     type: str
-    description: "Failure classification (missing_context, malformed_output, insufficient_reasoning, model_weakness)"
+    description: "Task type (code, reasoning, embedding, summarization, general)"
     required: true
-  attempt_count:
-    type: int
-    description: "Current retry attempt count (0-indexed). >= 3 triggers Two-Strike escalation."
+  required_capabilities:
+    type: array
+    description: "Capabilities the selected model must support"
+    required: false
+    default: []
+  available_models:
+    type: array
+    description: "Candidate models with key, score, cost_per_token, capabilities"
     required: true
+  max_cost_per_token:
+    type: float
+    description: "Hard cost ceiling; models above it are excluded"
+    required: false
+    nullable: true
+  exploration_seed:
+    type: float
+    description: "Uniform random value in [0, 1) for exploit/explore branching. Omit or null to always exploit."
+    required: false
+    nullable: true
+  exploration_rate:
+    type: float
+    description: "Fraction of traffic routed to exploration (default 0.15)"
+    required: false
+    default: 0.15
+  request_id:
+    type: str
+    required: false
+    default: ""
 
 outputs:
-  retry_type:
+  status:
     type: str
-    description: "Recommended retry strategy (improved_context_retry, same_model_same_context, tier_escalation, peer_model)"
+    enum: [ok, error]
+  selected_model_key:
+    type: str
+    required: false
+    nullable: true
+  selection_mode:
+    type: str
+    enum: [exploit, explore]
+    required: false
+    nullable: true
+  selection_reason:
+    type: str
+  alternative_candidates:
+    type: array
+  request_id:
+    type: str
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.routing-policy-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.routing-policy-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.routing-policy-completed.v1
 
 metadata:
-  author: OmniNode Team
+  transport_type: kafka
+  author: OmniNode Platform Team
   license: MIT
   maturity: stable
   tags:
     - routing
-    - retry
     - policy
-    - two-strike
+    - compute
+    - exploit-explore
   related_tickets:
-    - "OMN-8044"
+    - "OMN-8040"
