@@ -11,6 +11,7 @@ capabilities:
   requires_network: false
 dependencies:
   - "omnibase_core>=0.40.0"
+  - "jsonschema>=4.0.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["compute", "candidate", "scoring", "selection", "deterministic"]
