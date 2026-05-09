@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -37,6 +38,32 @@ from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_report im
 from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request import (
     ModelCanaryCommandPayload,
 )
+
+
+class FakeContainer:
+    def __init__(self, services: Mapping[Any, object]) -> None:
+        self._services = dict(services)
+
+    def get_service(
+        self,
+        protocol_type: object,
+        service_name: str | None = None,
+    ) -> object:
+        for key in (service_name, protocol_type):
+            if key in self._services:
+                return self._services[key]
+        raise LookupError(service_name or str(protocol_type))
+
+    def get_service_optional(
+        self,
+        protocol_type: object,
+        service_name: str | None = None,
+    ) -> object | None:
+        try:
+            return self.get_service(protocol_type, service_name=service_name)
+        except LookupError:
+            return None
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -141,14 +168,19 @@ def _make_handler(
     draft_gen_handler = AsyncMock()
     draft_gen_handler.generate = AsyncMock(return_value=draft_result.markdown)
 
-    return HandlerCanaryOrchestrator(
-        ingestion=ingestion_handler,
-        extraction=extraction_handler,
-        grading=grader_handler,
-        draft_gen=draft_gen_handler,
-        max_concurrent_extractions=2,
-        grader_model_key="opus",
+    handler = HandlerCanaryOrchestrator(
+        FakeContainer(
+            {
+                "ingestion": ingestion_handler,
+                "extraction": extraction_handler,
+                "grading": grader_handler,
+                "draft_gen": draft_gen_handler,
+            }
+        )
     )
+    handler._max_concurrent_extractions = 2  # noqa: SLF001
+    handler._grader_model_key = "opus"  # noqa: SLF001
+    return handler
 
 
 # ---------------------------------------------------------------------------
@@ -317,14 +349,32 @@ class TestWriteScorecard:
 def _stub_handler() -> HandlerCanaryOrchestrator:
     """Minimal handler with no-op mocks for tests that only exercise dry_run."""
     return HandlerCanaryOrchestrator(
-        ingestion=AsyncMock(),
-        extraction=AsyncMock(),
-        grading=AsyncMock(),
-        draft_gen=AsyncMock(),
+        FakeContainer(
+            {
+                "ingestion": AsyncMock(),
+                "extraction": AsyncMock(),
+                "grading": AsyncMock(),
+                "draft_gen": AsyncMock(),
+            }
+        )
     )
 
 
 class TestHandlerCanaryOrchestrator:
+    def test_constructor_resolves_protocols_from_container(self) -> None:
+        services = {
+            "ingestion": AsyncMock(),
+            "extraction": AsyncMock(),
+            "grading": AsyncMock(),
+            "draft_gen": AsyncMock(),
+        }
+        handler = HandlerCanaryOrchestrator(FakeContainer(services))
+
+        assert handler._ingestion is services["ingestion"]  # noqa: SLF001
+        assert handler._extraction is services["extraction"]  # noqa: SLF001
+        assert handler._grading is services["grading"]  # noqa: SLF001
+        assert handler._draft_gen is services["draft_gen"]  # noqa: SLF001
+
     def test_dry_run(self, tmp_path: Path, minimal_manifest: Path) -> None:
         handler = _stub_handler()
         payload = ModelCanaryCommandPayload(
@@ -404,12 +454,16 @@ class TestHandlerCanaryOrchestrator:
         mock_ingest.ingest = AsyncMock(return_value=mock_ingest_result)
 
         handler = HandlerCanaryOrchestrator(
-            ingestion=mock_ingest,
-            extraction=AsyncMock(),
-            grading=AsyncMock(),
-            draft_gen=AsyncMock(),
-            allow_external_providers=False,
+            FakeContainer(
+                {
+                    "ingestion": mock_ingest,
+                    "extraction": AsyncMock(),
+                    "grading": AsyncMock(),
+                    "draft_gen": AsyncMock(),
+                }
+            )
         )
+        handler._allow_external_providers = False  # noqa: SLF001
 
         result = asyncio.get_event_loop().run_until_complete(
             handler.handle(
@@ -484,10 +538,14 @@ class TestHandlerCanaryOrchestrator:
         mock_draft.generate = AsyncMock(return_value="")
 
         handler = HandlerCanaryOrchestrator(
-            ingestion=mock_ingest,
-            extraction=mock_extract,
-            grading=mock_grader,
-            draft_gen=mock_draft,
+            FakeContainer(
+                {
+                    "ingestion": mock_ingest,
+                    "extraction": mock_extract,
+                    "grading": mock_grader,
+                    "draft_gen": mock_draft,
+                }
+            )
         )
 
         result = asyncio.get_event_loop().run_until_complete(
@@ -518,7 +576,9 @@ class TestHandlerCanaryOrchestrator:
             "grading": AsyncMock(),
             "draft_gen": AsyncMock(),
         }
-        handler = HandlerCanaryOrchestrator.from_contract(contract, **mocks)
+        handler = HandlerCanaryOrchestrator.from_contract(
+            contract, container=FakeContainer(mocks)
+        )
         assert handler._max_concurrent_extractions == 8  # noqa: SLF001
         assert handler._grader_model_key == "deepseek-r1"  # noqa: SLF001
         assert handler._allow_external_providers is True  # noqa: SLF001
@@ -530,7 +590,9 @@ class TestHandlerCanaryOrchestrator:
             "grading": AsyncMock(),
             "draft_gen": AsyncMock(),
         }
-        handler = HandlerCanaryOrchestrator.from_contract({}, **mocks)
+        handler = HandlerCanaryOrchestrator.from_contract(
+            {}, container=FakeContainer(mocks)
+        )
         assert handler._max_concurrent_extractions == 4  # noqa: SLF001
         assert handler._grader_model_key == "opus"  # noqa: SLF001
         assert handler._allow_external_providers is False  # noqa: SLF001
@@ -565,3 +627,86 @@ class TestHandlerCanaryOrchestrator:
         data = json.loads(evidence_file.read_text())
         assert data["model_key"] == "qwen3-coder"
         assert data["entry_id"] == "test-entry-1"
+
+
+class _FakeBusMessage:
+    def __init__(self, value: bytes) -> None:
+        self.value = value
+
+
+class _FakeRequestResponseBus:
+    def __init__(self, response_payload: dict[str, object]) -> None:
+        self.response_payload = response_payload
+        self.published: list[tuple[str, dict[str, object]]] = []
+        self.subscriptions: dict[str, Callable[[object], Awaitable[None]]] = {}
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object | None = None,
+        on_message: object | None = None,
+        **kwargs: object,
+    ) -> object:
+        if not callable(on_message):
+            raise TypeError("on_message callback is required")
+        self.subscriptions[topic] = on_message
+
+        async def unsubscribe() -> None:
+            self.subscriptions.pop(topic, None)
+
+        return unsubscribe
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        envelope = json.loads(value.decode("utf-8"))
+        self.published.append((topic, envelope))
+        completed_topic = "onex.evt.omnimarket.adr-document-ingestion-completed.v1"
+        on_message = self.subscriptions[completed_topic]
+        response = {
+            "correlation_id": envelope["correlation_id"],
+            "payload": self.response_payload,
+        }
+        await on_message(_FakeBusMessage(json.dumps(response).encode("utf-8")))
+
+
+class TestAdrBusProtocolAdapters:
+    def test_ingestion_adapter_resolves_bus_from_container_and_awaits_response(
+        self,
+    ) -> None:
+        from omnimarket.adapters.adr import AdapterBusAdrIngestion
+
+        bus = _FakeRequestResponseBus(
+            {
+                "documents": [
+                    {
+                        "source_path": "docs/adr.md",
+                        "repo_name": "omnimarket",
+                        "git_sha": None,
+                        "author": None,
+                        "created_at": None,
+                        "updated_at": None,
+                        "file_size_bytes": 12,
+                        "source_content_sha256": "abc123",
+                    }
+                ]
+            }
+        )
+        adapter = AdapterBusAdrIngestion(FakeContainer({"event_bus": bus}))
+
+        result = asyncio.get_event_loop().run_until_complete(
+            adapter.ingest(["/tmp/source"])
+        )
+
+        assert result.root_paths == ["/tmp/source"]
+        assert result.documents[0].source_path == "docs/adr.md"
+        assert bus.published[0][0] == (
+            "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"
+        )
+        payload = bus.published[0][1]["payload"]
+        assert isinstance(payload, dict)
+        assert payload["root_paths"] == ["/tmp/source"]

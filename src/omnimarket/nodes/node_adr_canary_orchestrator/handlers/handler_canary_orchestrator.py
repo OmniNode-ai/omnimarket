@@ -25,6 +25,8 @@ import logging
 import random
 import string
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
@@ -138,6 +140,14 @@ class ModelGroundTruthManifest(BaseModel):
     entries: list[ModelAdrManifestEntry]
 
 
+@dataclass(frozen=True, slots=True)
+class _AdrProtocolAdapters:
+    ingestion: ProtocolAdrIngestion
+    extraction: ProtocolAdrExtraction
+    grading: ProtocolAdrGrading
+    draft_gen: ProtocolAdrDraftGen
+
+
 # ---------------------------------------------------------------------------
 # Scorecard writer
 # ---------------------------------------------------------------------------
@@ -204,26 +214,17 @@ class HandlerCanaryOrchestrator:
     handler_type: Literal["node_handler"] = "node_handler"
     handler_category: Literal["effectful"] = "effectful"
 
-    def __init__(
-        self,
-        *,
-        ingestion: ProtocolAdrIngestion,
-        extraction: ProtocolAdrExtraction,
-        grading: ProtocolAdrGrading,
-        draft_gen: ProtocolAdrDraftGen,
-        max_concurrent_extractions: int = 4,
-        grader_model_key: str = "opus",
-        allow_external_providers: bool = False,
-        topic_completed: str = "",
-    ) -> None:
-        self._ingestion = ingestion
-        self._extraction = extraction
-        self._grading = grading
-        self._draft_gen = draft_gen
-        self._max_concurrent_extractions = max_concurrent_extractions
-        self._grader_model_key = grader_model_key
-        self._allow_external_providers = allow_external_providers
-        self._topic_completed = topic_completed
+    def __init__(self, container: object) -> None:
+        adapters = _resolve_adr_protocol_adapters(container)
+        self._container = container
+        self._ingestion = adapters.ingestion
+        self._extraction = adapters.extraction
+        self._grading = adapters.grading
+        self._draft_gen = adapters.draft_gen
+        self._max_concurrent_extractions = 4
+        self._grader_model_key = "opus"
+        self._allow_external_providers = False
+        self._topic_completed = ""
 
     # ------------------------------------------------------------------
     # Manifest loading — path must be absolute or resolvable
@@ -499,37 +500,130 @@ class HandlerCanaryOrchestrator:
         cls,
         contract: dict[str, Any],
         *,
-        ingestion: ProtocolAdrIngestion,
-        extraction: ProtocolAdrExtraction,
-        grading: ProtocolAdrGrading,
-        draft_gen: ProtocolAdrDraftGen,
+        container: object,
     ) -> HandlerCanaryOrchestrator:
-        """Build from a loaded contract.yaml dict with injected sub-handlers."""
+        """Build from a loaded contract.yaml dict with container-owned dependencies."""
         cfg = contract.get("config", {})
         event_bus = contract.get("event_bus", {})
         publish_topics: list[str] = event_bus.get("publish_topics", [])
         topic_completed = next((t for t in publish_topics if "completed" in t), "")
-        return cls(
-            ingestion=ingestion,
-            extraction=extraction,
-            grading=grading,
-            draft_gen=draft_gen,
-            max_concurrent_extractions=int(
-                cfg.get("max_concurrent_extractions", {}).get("default", 4)
-            ),
-            grader_model_key=str(
-                cfg.get("grader_model_key", {}).get("default", "opus")
-            ),
-            allow_external_providers=bool(
-                cfg.get("allow_external_providers", {}).get("default", False)
-            ),
-            topic_completed=topic_completed,
+        handler = cls(container)
+        handler._max_concurrent_extractions = int(
+            cfg.get("max_concurrent_extractions", {}).get("default", 4)
         )
+        handler._grader_model_key = str(
+            cfg.get("grader_model_key", {}).get("default", "opus")
+        )
+        handler._allow_external_providers = bool(
+            cfg.get("allow_external_providers", {}).get("default", False)
+        )
+        handler._topic_completed = topic_completed
+        return handler
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _resolve_adr_protocol_adapters(container: object) -> _AdrProtocolAdapters:
+    ingestion = _resolve_container_dependency(
+        container, ProtocolAdrIngestion, "ingestion"
+    )
+    extraction = _resolve_container_dependency(
+        container, ProtocolAdrExtraction, "extraction"
+    )
+    grading = _resolve_container_dependency(container, ProtocolAdrGrading, "grading")
+    draft_gen = _resolve_container_dependency(
+        container, ProtocolAdrDraftGen, "draft_gen"
+    )
+
+    if ingestion is None or extraction is None or grading is None or draft_gen is None:
+        from omnimarket.adapters.adr import build_adr_bus_protocol_adapters
+
+        bus_adapters = build_adr_bus_protocol_adapters(container)
+        ingestion = ingestion or bus_adapters.ingestion
+        extraction = extraction or bus_adapters.extraction
+        grading = grading or bus_adapters.grading
+        draft_gen = draft_gen or bus_adapters.draft_gen
+
+    return _AdrProtocolAdapters(
+        ingestion=_require_protocol("ingestion", ingestion, ProtocolAdrIngestion),
+        extraction=_require_protocol("extraction", extraction, ProtocolAdrExtraction),
+        grading=_require_protocol("grading", grading, ProtocolAdrGrading),
+        draft_gen=_require_protocol("draft_gen", draft_gen, ProtocolAdrDraftGen),
+    )
+
+
+def _resolve_container_dependency(
+    container: object,
+    protocol_type: object,
+    service_name: str,
+) -> Any | None:
+    if isinstance(container, dict):
+        value = container.get(service_name) or container.get(protocol_type)
+        return value if value is not None else None
+
+    for method_name in (
+        "get_service",
+        "get_service_sync",
+        "get_service_optional",
+    ):
+        method = getattr(container, method_name, None)
+        if not callable(method):
+            continue
+        for args, kwargs in (
+            ((protocol_type,), {"service_name": service_name}),
+            ((protocol_type,), {}),
+            ((service_name,), {}),
+        ):
+            resolved = _call_optional(method, *args, **kwargs)
+            if resolved is not None:
+                return resolved
+
+    for method_name in ("resolve", "get"):
+        method = getattr(container, method_name, None)
+        if not callable(method):
+            continue
+        for key in (service_name, protocol_type):
+            resolved = _call_optional(method, key)
+            if resolved is not None:
+                return resolved
+
+    if hasattr(container, service_name):
+        return getattr(container, service_name)
+    return None
+
+
+def _call_optional(
+    method: Callable[..., object],
+    *args: object,
+    **kwargs: object,
+) -> object | None:
+    try:
+        return method(*args, **kwargs)
+    except (AttributeError, KeyError, LookupError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _require_protocol(
+    service_name: str,
+    candidate: object | None,
+    protocol_type: object,
+) -> Any:
+    method_name = {
+        "ingestion": "ingest",
+        "extraction": "extract",
+        "grading": "grade",
+        "draft_gen": "generate",
+    }[service_name]
+    if candidate is None or not callable(getattr(candidate, method_name, None)):
+        protocol_name = getattr(protocol_type, "__name__", str(protocol_type))
+        raise TypeError(
+            "HandlerCanaryOrchestrator container did not resolve "
+            f"{service_name!r} as {protocol_name}."
+        )
+    return candidate
 
 
 def _make_run_id() -> str:

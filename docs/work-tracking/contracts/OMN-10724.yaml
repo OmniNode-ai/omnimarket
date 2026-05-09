@@ -1,0 +1,59 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10724
+title: "Build bus-backed protocol adapters for ADR canary"
+summary: "Replace direct ADR canary sub-handler constructor injection with DI-container construction and bus-backed protocol adapters for document ingestion, extraction, grading, and draft generation."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - runtime_handler_constructor
+  - event_bus_topics
+  - adr_canary_protocol_adapters
+evidence_requirements:
+  - kind: "manual"
+    description: "ADR canary orchestrator focused tests pass"
+    command: "uv run pytest src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py -q"
+  - kind: "manual"
+    description: "Touched ADR canary files pass ruff"
+    command: "uv run ruff check src/omnimarket/adapters/adr src/omnimarket/nodes/node_adr_canary_orchestrator/handlers/handler_canary_orchestrator.py src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py"
+  - kind: "manual"
+    description: "Touched ADR canary files are formatted"
+    command: "uv run ruff format --check src/omnimarket/adapters/adr src/omnimarket/nodes/node_adr_canary_orchestrator/handlers/handler_canary_orchestrator.py src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py"
+  - kind: "manual"
+    description: "Touched runtime constructors are DI-container-only"
+    command: "uv run python - <<'PY'\nimport inspect\nfrom omnimarket.adapters.adr import AdapterBusAdrDraftGen, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrIngestion, build_adr_bus_protocol_adapters\nfrom omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import HandlerCanaryOrchestrator\nclasses = [HandlerCanaryOrchestrator, AdapterBusAdrIngestion, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrDraftGen]\nfor cls in classes:\n    assert list(inspect.signature(cls).parameters) == ['container'], cls\nassert list(inspect.signature(build_adr_bus_protocol_adapters).parameters) == ['container']\nPY"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-adr-canary-tests"
+    description: "ADR canary orchestrator focused tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py -q"
+  - id: "dod-ruff-check"
+    description: "Touched ADR canary files pass ruff"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/adapters/adr src/omnimarket/nodes/node_adr_canary_orchestrator/handlers/handler_canary_orchestrator.py src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py"
+  - id: "dod-ruff-format"
+    description: "Touched ADR canary files are formatted"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff format --check src/omnimarket/adapters/adr src/omnimarket/nodes/node_adr_canary_orchestrator/handlers/handler_canary_orchestrator.py src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py"
+  - id: "dod-constructor-di"
+    description: "Touched runtime constructors are DI-container-only"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nimport inspect\nfrom omnimarket.adapters.adr import AdapterBusAdrDraftGen, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrIngestion, build_adr_bus_protocol_adapters\nfrom omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import HandlerCanaryOrchestrator\nclasses = [HandlerCanaryOrchestrator, AdapterBusAdrIngestion, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrDraftGen]\nfor cls in classes:\n    assert list(inspect.signature(cls).parameters) == ['container'], cls\nassert list(inspect.signature(build_adr_bus_protocol_adapters).parameters) == ['container']\nPY"
+  - id: "dod-deploy"
+    description: "Post-merge validation plan only; no live deploy or runtime restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: publish ADR canary command and verify bus-backed sub-node responses before demo runtime use'"
