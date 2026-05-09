@@ -47,7 +47,7 @@ dod_evidence:
     source: "generated"
     checks:
       - check_type: "command"
-        check_value: "test -f docs/work-tracking/contracts/OMN-7943.yaml && echo 'contract exists'"
+        check_value: "test -f docs/work-tracking/contracts/OMN-7943.yaml && echo 'contract present'"
   - id: "dod-deploy"
     description: "Post-merge deploy smoke: schema registry handler imports cleanly in deployed runtime container"
     source: "manual"
