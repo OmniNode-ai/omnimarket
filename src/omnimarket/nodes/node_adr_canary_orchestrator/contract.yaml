@@ -13,6 +13,8 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "c4d5e6f7-a8b9-0123-cdef-012345678901"
 node_type: "ORCHESTRATOR"
+runtime_profiles:
+  - canary
 input_model: "ModelCanaryCommandPayload"
 output_model: "ModelCanaryReport"
 handler:
