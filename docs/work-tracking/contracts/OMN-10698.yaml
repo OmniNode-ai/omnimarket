@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10698
+title: "Add ADR canary orchestrator node"
+summary: >
+  Adds the ADR canary orchestrator node, shared ADR protocol models, adapter
+  boundaries for sibling node integration, ground-truth manifest fixtures, and
+  a thin command publisher for running the canary pipeline.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+  - "protocols"
+evidence_requirements:
+  - kind: "manual"
+    description: "Orchestrator tests pass"
+    command: "env -u PYTHONPATH uv run pytest src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py -q"
+  - kind: "manual"
+    description: "Strict type check passes"
+    command: "env -u PYTHONPATH uv run mypy src/omnimarket/ --strict"
+  - kind: "manual"
+    description: "Literal gate passes"
+    command: "bash scripts/validation/check_leaked_literals.sh blocking all"
+  - kind: "manual"
+    description: "Deploy gate evidence captured"
+    command: "printf '%s\n' 'deploy: runtime-impacting node addition; validate by rebuilding/redeploying runtime image after merge and checking adr-canary topic registration'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "ADR canary orchestrator tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run pytest src/omnimarket/nodes/node_adr_canary_orchestrator/tests/test_handler_canary_orchestrator.py -q"
+  - id: "dod-typecheck"
+    description: "Strict mypy passes across omnimarket"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run mypy src/omnimarket/ --strict"
+  - id: "dod-leak-gate"
+    description: "Leaked literals gate reports zero findings"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash scripts/validation/check_leaked_literals.sh blocking all"
+  - id: "dod-deploy"
+    description: >
+      Runtime-impacting node addition requires post-merge runtime rebuild and
+      redeploy proof. The current evening runtime redeploy already proves the
+      base ADR nodes on .201; this canary orchestrator must be included in the
+      next image cut and validated by topic registration before release.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy: post-merge runtime rebuild/redeploy required; verify adr-canary topic registration and command consumption'"
