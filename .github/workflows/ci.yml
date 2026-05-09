@@ -113,7 +113,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install pyyaml + pydantic (lightweight, no full sync needed)
-        run: uv pip install pyyaml pydantic
+        run: uv pip install --system pyyaml pydantic
 
       - name: Compute changed files
         id: diff
