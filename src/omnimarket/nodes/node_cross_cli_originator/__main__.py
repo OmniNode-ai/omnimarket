@@ -60,24 +60,23 @@ def main() -> None:
         ModelCrossCliOriginatorInput,
     )
 
-    if args.json_input:
-        command = ModelCrossCliOriginatorInput.model_validate_json(args.json_input)
-    else:
-        if not args.prompt:
-            parser.error("--prompt is required unless --json-input is provided.")
-
-        from uuid import UUID
-
-        correlation_id = UUID(args.correlation_id) if args.correlation_id else None
-        command = ModelCrossCliOriginatorInput(
-            prompt=args.prompt,
-            task_type=args.task_type,
-            session_id=args.session_id,
-            correlation_id=correlation_id,
-        )
+    if not args.json_input and not args.prompt:
+        parser.error("--prompt is required unless --json-input is provided.")
 
     handler = HandlerCrossCliOriginator()
     try:
+        if args.json_input:
+            command = ModelCrossCliOriginatorInput.model_validate_json(args.json_input)
+        else:
+            from uuid import UUID
+
+            correlation_id = UUID(args.correlation_id) if args.correlation_id else None
+            command = ModelCrossCliOriginatorInput(
+                prompt=args.prompt,
+                task_type=args.task_type,
+                session_id=args.session_id,
+                correlation_id=correlation_id,
+            )
         result = handler.handle(command)
     except Exception as exc:
         _log.error("cross_cli_originator failed: %s", exc)

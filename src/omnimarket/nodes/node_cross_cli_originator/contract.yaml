@@ -9,6 +9,11 @@ description: >
   delegation prompt, builds a delegation envelope, and publishes it to the
   event bus. Thin wrapper — no orchestration logic, no direct handler imports.
 
+handler:
+  module: omnimarket.nodes.node_cross_cli_originator.handlers.handler_cross_cli_originator
+  class: HandlerCrossCliOriginator
+  input_model: omnimarket.nodes.node_cross_cli_originator.models.model_cross_cli_originator_input.ModelCrossCliOriginatorInput
+
 handler_routing:
   routing_strategy: operation_match
   handlers:
