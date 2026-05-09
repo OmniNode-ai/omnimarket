@@ -52,6 +52,17 @@ def fake_omni_home(tmp_path: Path) -> Path:
     return home
 
 
+@pytest.fixture(autouse=True)
+def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Set OMNI_HOME to a tmp dir for any test that runs without it in the env.
+
+    Guards against os.environ["OMNI_HOME"] KeyErrors in handlers that read
+    OMNI_HOME directly (fail-fast pattern introduced in OMN-10646).
+    """
+    if not os.environ.get("OMNI_HOME"):
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
+
+
 @pytest.fixture
 def fake_lan_ip() -> str:
     """Loopback address used in unit tests instead of a LAN IP."""
