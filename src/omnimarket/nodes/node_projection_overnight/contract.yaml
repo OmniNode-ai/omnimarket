@@ -35,5 +35,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-overnight-applied.v1
 
+sub_handler_dependencies:
+  - HandlerProjectionOvernightSessionStart
+
 metadata:
   transport_type: kafka

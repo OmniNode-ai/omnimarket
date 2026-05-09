@@ -25,8 +25,12 @@ from omnimarket.nodes.node_projection_overnight.handlers.handler_projection_over
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 SESSION_START_HANDLER = HandlerProjectionOvernightSessionStart()
-PHASE_END_HANDLER = HandlerProjectionOvernightPhaseEnd()
-SESSION_COMPLETE_HANDLER = HandlerProjectionOvernightSessionComplete()
+PHASE_END_HANDLER = HandlerProjectionOvernightPhaseEnd(
+    session_start_handler=SESSION_START_HANDLER
+)
+SESSION_COMPLETE_HANDLER = HandlerProjectionOvernightSessionComplete(
+    session_start_handler=SESSION_START_HANDLER
+)
 
 
 class TestOvernightSessionStartProjection:
@@ -70,7 +74,9 @@ class TestOvernightSessionStartProjection:
 class TestOvernightPhaseEndProjection:
     def test_project_phase_end_creates_phase_row(self) -> None:
         db = InmemoryDatabaseAdapter()
-        handler = HandlerProjectionOvernightPhaseEnd()
+        handler = HandlerProjectionOvernightPhaseEnd(
+            session_start_handler=HandlerProjectionOvernightSessionStart()
+        )
         event = ModelOvernightPhaseEndEvent(
             correlation_id="sess-010",
             phase="build_loop_orchestrator",
@@ -90,7 +96,9 @@ class TestOvernightPhaseEndProjection:
     def test_phase_end_ensures_parent_session_row(self) -> None:
         """Out-of-order: phase-end arrives before session-start."""
         db = InmemoryDatabaseAdapter()
-        handler = HandlerProjectionOvernightPhaseEnd()
+        handler = HandlerProjectionOvernightPhaseEnd(
+            session_start_handler=HandlerProjectionOvernightSessionStart()
+        )
         event = ModelOvernightPhaseEndEvent(
             correlation_id="sess-011",
             phase="platform_readiness",
@@ -105,7 +113,9 @@ class TestOvernightPhaseEndProjection:
 
     def test_skipped_phase_stored_correctly(self) -> None:
         db = InmemoryDatabaseAdapter()
-        handler = HandlerProjectionOvernightPhaseEnd()
+        handler = HandlerProjectionOvernightPhaseEnd(
+            session_start_handler=HandlerProjectionOvernightSessionStart()
+        )
         event = ModelOvernightPhaseEndEvent(
             correlation_id="sess-012",
             phase="ci_watch",
@@ -120,7 +130,9 @@ class TestOvernightPhaseEndProjection:
 
     def test_unknown_phase_status_defaults_to_failed(self) -> None:
         db = InmemoryDatabaseAdapter()
-        handler = HandlerProjectionOvernightPhaseEnd()
+        handler = HandlerProjectionOvernightPhaseEnd(
+            session_start_handler=HandlerProjectionOvernightSessionStart()
+        )
         event = ModelOvernightPhaseEndEvent(
             correlation_id="sess-013",
             phase="merge_sweep",
@@ -142,7 +154,9 @@ class TestOvernightSessionCompleteProjection:
             ),
             db,
         )
-        handler = HandlerProjectionOvernightSessionComplete()
+        handler = HandlerProjectionOvernightSessionComplete(
+            session_start_handler=HandlerProjectionOvernightSessionStart()
+        )
         event = ModelOvernightSessionCompleteEvent(
             correlation_id="sess-020",
             session_status="completed",
@@ -162,7 +176,9 @@ class TestOvernightSessionCompleteProjection:
     def test_complete_without_prior_start_creates_row(self) -> None:
         """Out-of-order: session-completed arrives before any phase-start."""
         db = InmemoryDatabaseAdapter()
-        handler = HandlerProjectionOvernightSessionComplete()
+        handler = HandlerProjectionOvernightSessionComplete(
+            session_start_handler=HandlerProjectionOvernightSessionStart()
+        )
         event = ModelOvernightSessionCompleteEvent(
             correlation_id="sess-021",
             session_status="partial",
@@ -178,8 +194,13 @@ class TestOvernightSessionCompleteProjection:
     def test_full_session_lifecycle(self) -> None:
         """Full lifecycle: start → 2 phase-ends → complete."""
         db = InmemoryDatabaseAdapter()
-        phase_handler = HandlerProjectionOvernightPhaseEnd()
-        complete_handler = HandlerProjectionOvernightSessionComplete()
+        _session_start = HandlerProjectionOvernightSessionStart()
+        phase_handler = HandlerProjectionOvernightPhaseEnd(
+            session_start_handler=_session_start
+        )
+        complete_handler = HandlerProjectionOvernightSessionComplete(
+            session_start_handler=_session_start
+        )
 
         SESSION_START_HANDLER.project(
             ModelOvernightSessionStartEvent(
@@ -232,7 +253,9 @@ class TestOvernightProjectionPhaseNormalized:
     def test_overnight_session_phases_normalized_not_jsonb(self) -> None:
         """OMN-8455 TDD requirement: phases stored in separate table, not JSONB."""
         db = InmemoryDatabaseAdapter()
-        handler = HandlerProjectionOvernightPhaseEnd()
+        handler = HandlerProjectionOvernightPhaseEnd(
+            session_start_handler=HandlerProjectionOvernightSessionStart()
+        )
         for phase in [
             "nightly_loop_controller",
             "build_loop_orchestrator",
