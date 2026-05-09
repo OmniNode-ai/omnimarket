@@ -227,6 +227,7 @@ node_adr_segmentation_llm_effect = "omnimarket.nodes.node_adr_segmentation_llm_e
 node_adr_decision_extraction_llm_effect = "omnimarket.nodes.node_adr_decision_extraction_llm_effect"
 node_candidate_pool_compute = "omnimarket.nodes.node_candidate_pool_compute"
 node_cross_cli_originator = "omnimarket.nodes.node_cross_cli_originator"
+node_output_schema_registry_compute = "omnimarket.nodes.node_output_schema_registry_compute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

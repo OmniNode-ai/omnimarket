@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-7943
+title: "Create output schema registry COMPUTE node in omnimarket"
+summary: "Add node_output_schema_registry_compute — a pure deterministic COMPUTE node that maps schema keys to Pydantic model_json_schema() dicts. Ships with keys: review_output -> ModelReviewOutput, plan_document -> ModelPlanDocument."
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "omnimarket#577 checks pass for node_output_schema_registry_compute"
+    command: "gh pr checks 577 --repo OmniNode-ai/omnimarket"
+  - kind: "manual"
+    description: "18 unit tests pass (success, error, determinism, known_schema_keys)"
+    command: "uv run pytest src/omnimarket/nodes/node_output_schema_registry_compute/tests/ -v"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "PR opened against main branch"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 577 --repo OmniNode-ai/omnimarket --json state -q .state"
+  - id: "dod-002"
+    description: "PR merged to main"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 577 --repo OmniNode-ai/omnimarket --json mergedAt -q .mergedAt"
+  - id: "dod-003"
+    description: "Tests pass in CI"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr checks 577 --repo OmniNode-ai/omnimarket --watch"
+  - id: "dod-004"
+    description: "Pre-commit hooks clean"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "pre-commit run --all-files"
+  - id: "dod-005"
+    description: "Contract/schema artifact file exists"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "test -f docs/work-tracking/contracts/OMN-7943.yaml && echo 'contract present'"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke: schema registry handler imports cleanly in deployed runtime container"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_output_schema_registry_compute.handlers.handler_output_schema_registry import HandlerOutputSchemaRegistry; print('deploy smoke ok')\""
