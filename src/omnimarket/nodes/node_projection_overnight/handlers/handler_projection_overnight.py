@@ -131,8 +131,11 @@ class HandlerProjectionOvernightPhaseEnd:
     sequence_number) makes duplicate phase-end events idempotent.
     """
 
-    def __init__(self) -> None:
-        self._session_start_handler = HandlerProjectionOvernightSessionStart()
+    def __init__(
+        self,
+        session_start_handler: HandlerProjectionOvernightSessionStart,
+    ) -> None:
+        self._session_start_handler = session_start_handler
         self._phase_sequence: dict[str, int] = {}
 
     def project(
@@ -179,8 +182,11 @@ class HandlerProjectionOvernightSessionComplete:
     Late arrivals after status is already terminal are silently absorbed.
     """
 
-    def __init__(self) -> None:
-        self._session_start_handler = HandlerProjectionOvernightSessionStart()
+    def __init__(
+        self,
+        session_start_handler: HandlerProjectionOvernightSessionStart,
+    ) -> None:
+        self._session_start_handler = session_start_handler
 
     def project(
         self,
