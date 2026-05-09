@@ -63,7 +63,7 @@ KNOWN_MAIN_VIOLATIONS: set[str] = {
     # Missing handler block (compute/effect/reducer type but no handler declared)
     "node_agent_learning_retrieval_effect",
     "node_build_dispatch_effect",
-    "node_intent_query_effect",
+    # node_intent_query_effect: fixed in OMN-10738 (handler block added)
     "node_intent_storage_effect",
     "node_loop_state_reducer",
     "node_memory_retrieval_effect",

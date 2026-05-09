@@ -104,6 +104,15 @@ repos:
         language: system
         pass_filenames: false
 
+      # OMN-10738: Blocks silent localhost/hardcoded-endpoint fallbacks in env reads
+      - id: validate-no-env-fallbacks
+        name: Validate no silent env fallbacks
+        language: system
+        entry: uv run python scripts/validation/validate_no_env_fallbacks.py
+        pass_filenames: false
+        files: ^src/.*\.py$
+        stages: [pre-commit]
+
 # Configuration
 default_install_hook_types: [pre-commit]
 default_stages: [pre-commit]

@@ -60,6 +60,10 @@ jobs:
           echo "OK: No node-level topics.py files found."
       - name: ONCP node metadata dependency scope
         run: uv run python scripts/ci/check_node_metadata_dependencies.py
+      # SYNC: Pre-commit hook 'validate-no-env-fallbacks' at pre-commit stage (OMN-10738)
+      # Prevents silent fallback to localhost defaults via os.getenv/os.environ.get
+      - name: Validate no silent env fallbacks
+        run: uv run python scripts/validation/validate_no_env_fallbacks.py
 
   typecheck:
     runs-on: ubuntu-latest

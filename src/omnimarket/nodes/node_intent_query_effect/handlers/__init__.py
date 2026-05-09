@@ -19,8 +19,8 @@ Example::
     container = ModelONEXContainer()
     handler = HandlerIntentQuery(container)
     await handler.initialize(
-        connection_uri=os.getenv("MEMGRAPH_URI", "bolt://{OMNIMEMORY_MEMGRAPH_HOST}:{OMNIMEMORY_MEMGRAPH_PORT}"),
-        auth=(os.getenv("MEMGRAPH_USER", ""), os.getenv("MEMGRAPH_PASSWORD", "")),
+        connection_uri=os.environ["MEMGRAPH_URI"],
+        auth=(os.environ.get("MEMGRAPH_USER", ""), os.environ.get("MEMGRAPH_PASSWORD", "")),
     )
 
     # Execute query

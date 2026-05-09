@@ -7,6 +7,10 @@
 
 # === REQUIRED ROOT FIELDS ===
 name: "node_intent_query_effect"
+handler:
+  module: omnimarket.nodes.node_intent_query_effect.handlers.handler_intent_query
+  class: HandlerIntentQuery
+  input_model: omnimarket.nodes.node_intent_query_effect.models.model_handler_intent_query_config.ModelHandlerIntentQueryConfig
 contract_version: {major: 0, minor: 2, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 description: "Effect node for event-driven intent queries via Kafka. Provides distribution analysis, session-based
