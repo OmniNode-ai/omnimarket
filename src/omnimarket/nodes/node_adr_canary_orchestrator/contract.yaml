@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_adr_canary_orchestrator
+# ORCHESTRATOR node — drives the ADR canary pipeline end-to-end.
+# Subscribes to adr-canary-requested.v1 and orchestrates:
+#   ingest → extract (multi-model) → grade → draft → evidence bundle
+# [OMN-10698]
+
+name: "node_adr_canary_orchestrator"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "c4d5e6f7-a8b9-0123-cdef-012345678901"
+node_type: "ORCHESTRATOR"
+input_model: "ModelCanaryCommandPayload"
+output_model: "ModelCanaryReport"
+handler:
+  module: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator
+  class: HandlerCanaryOrchestrator
+  input_model: ModelCanaryCommandPayload
+description: |
+  Subscribes to onex.cmd.omnimarket.adr-canary-requested.v1.
+  For each manifest entry, orchestrates the full ADR canary pipeline:
+    1. Ingest source documents (delegates to node_adr_document_ingestion_effect via bus cmd)
+    2. Run multi-model extraction (node_adr_decision_extraction_llm_effect, concurrent)
+    3. Grade each extraction with Opus (node_adr_extraction_grader_llm_effect)
+    4. Generate ADR draft (node_adr_draft_generation_compute)
+  Produces a per-run evidence bundle at output_dir/<run_id>/ and a scorecard.md.
+  Emits onex.evt.omnimarket.adr-canary-completed.v1 on completion.
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-10698"
+  parent_epic: "OMN-10689"
+  node_type: ORCHESTRATOR
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  no_bare_os_environ_get: true
+  unit_tests: true
+  all_config_in_contract: true
+
+# === NODE CONFIGURATION ===
+config:
+  manifest_path:
+    default: "docs/adr-canary/ground_truth_manifest.yaml"
+    description: "Path to the ground truth manifest (relative to repo root)"
+  output_dir:
+    default: "docs/adr-canary-runs/"
+    description: "Base output directory for canary run evidence bundles"
+  max_concurrent_extractions:
+    default: 4
+    description: "Maximum concurrent LLM extraction calls per manifest entry"
+  grader_model_key:
+    default: "opus"
+    description: "LLM model key for the extraction grader"
+  max_cost_usd:
+    default: null
+    description: "Hard budget cap in USD; null = no cap"
+  allow_external_providers:
+    default: false
+    description: "Allow LLM calls to external (non-local) providers"
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.adr-canary-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.adr-canary-completed.v1"
+    - "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"
+    - "onex.cmd.omnimarket.adr-extraction-requested.v1"
+    - "onex.cmd.omnimarket.adr-grading-requested.v1"
+    - "onex.cmd.omnimarket.adr-draft-generation-requested.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.adr-canary-requested.v1":
+      schema_ref: "omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request.ModelCanaryCommandPayload"
+      description: "Command to run the ADR canary evaluation pipeline."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.adr-canary-completed.v1":
+      schema_ref: "omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_report.ModelCanaryReport"
+      description: "Canary run completed — scorecard and evidence bundle paths."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "run_canary"
+      handler_class: "HandlerCanaryOrchestrator"
+      handler_module: "omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator"
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 1800000
+
+# === TAGS ===
+tags:
+  - adr
+  - canary
+  - orchestrator
+  - evaluation
+  - multi-model
+  - omn-10698
+
+metadata:
+  transport_type: kafka

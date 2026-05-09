@@ -1,0 +1,32 @@
+name: node_adr_canary_orchestrator
+version: "0.1.0"
+description: "ADR canary orchestrator — drives the full ADR canary evaluation pipeline end-to-end"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_adr_canary_orchestrator: "omnimarket.nodes.node_adr_canary_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+entry_flags:
+  manifest_path: "Path to ground truth manifest YAML (default: docs/adr-canary/ground_truth_manifest.yaml)"
+  model_subset: "Comma-separated model keys to evaluate (default: all models in manifest)"
+  output_dir: "Base directory for canary run evidence bundles (default: docs/adr-canary-runs/)"
+  dry_run: "Log what would run without making LLM calls"
+  resume_run_id: "Resume an interrupted canary run by run_id"
+  max_cost_usd: "Hard budget cap in USD (default: no cap)"
+  allow_external_providers: "Allow non-local LLM providers (default: false)"
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["adr", "canary", "orchestrator", "evaluation", "multi-model", "OMN-10698"]
+pack: "adr"
+display_name: "ADR Canary Orchestrator"
+node_role: "orchestrator"
+tickets: ["OMN-10698"]
