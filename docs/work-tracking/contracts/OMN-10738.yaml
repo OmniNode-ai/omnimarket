@@ -1,0 +1,33 @@
+# OMN-10738 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+schema_version: "1.0.0"
+ticket_id: "OMN-10738"
+title: "Fix 3 silent fallback violations in omnimarket (OMN-10658 follow-up)"
+summary: "Remove os.getenv/shell-fallback localhost defaults from KAFKA_BOOTSTRAP_SERVERS and MEMGRAPH_URI; add validate_no_env_fallbacks.py validator wired as pre-commit hook and CI gate"
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "validate_no_env_fallbacks.py reports zero violations on src/"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/validation/validate_no_env_fallbacks.py"
+  - id: "dod-002"
+    description: "node_intent_query_effect golden-chain tests pass with fixed handler"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_intent_query_effect/ -v -m 'not kafka'"
+  - id: "dod-003"
+    description: "Pre-commit validate-no-env-fallbacks hook wired and passing"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "OMNIBASE_INFRA_PATH=/Users/jonah/Code/omni_home/omnibase_infra pre-commit run validate-no-env-fallbacks --all-files"
