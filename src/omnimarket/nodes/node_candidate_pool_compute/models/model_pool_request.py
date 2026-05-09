@@ -10,7 +10,7 @@ class ModelCandidatePoolRequest(BaseModel):
 
     candidates: list[str]
     target_schema: dict[str, object]
-    max_loc: int
+    max_loc: int = Field(ge=0)
     min_candidates: int = Field(default=1, ge=1)
     run_id: str = ""
 

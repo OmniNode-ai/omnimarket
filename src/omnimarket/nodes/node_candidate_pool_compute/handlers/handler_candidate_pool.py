@@ -35,7 +35,7 @@ def _validate_schema(candidate: str, schema: dict[str, object]) -> bool:
         try:
             jsonschema.validate(instance=data, schema=schema)
             return True
-        except jsonschema.ValidationError:
+        except (jsonschema.ValidationError, jsonschema.SchemaError):
             return False
     except ImportError:
         pass

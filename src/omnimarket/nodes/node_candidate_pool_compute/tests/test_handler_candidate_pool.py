@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_candidate_pool_compute.handlers.handler_candidate_pool import (
     HandlerCandidatePool,
@@ -90,6 +91,11 @@ class TestValidateSchema:
         array_schema: dict[str, object] = {"type": "array"}
         assert _validate_schema(json.dumps([1, 2]), array_schema) is True
 
+    def test_malformed_schema_returns_false_when_jsonschema_available(self) -> None:
+        pytest.importorskip("jsonschema")
+        malformed_schema: dict[str, object] = {"type": "not-a-jsonschema-type"}
+        assert _validate_schema(_VALID_JSON, malformed_schema) is False
+
 
 @pytest.mark.unit
 class TestFitness:
@@ -154,10 +160,11 @@ class TestHandlerCandidatePoolScoring:
         assert result.best_candidate_index == 1
 
     def test_compact_candidate_ranked_above_verbose_when_both_valid(self) -> None:
-        compact = json.dumps({"name": "a", "value": 1})
-        verbose = "\n".join(
-            [json.dumps({"name": "b", "value": 2})] + ["# comment"] * 50
-        )
+        compact = json.dumps({"name": "a", "value": 1}, separators=(",", ":"))
+        verbose = json.dumps({"name": "b", "value": 2}, indent=2)
+        assert _validate_schema(compact, _OBJECT_SCHEMA) is True
+        assert _validate_schema(verbose, _OBJECT_SCHEMA) is True
+        assert _count_loc(verbose) > _count_loc(compact)
         result = HandlerCandidatePool().handle(_req([verbose, compact], max_loc=10))
         assert result.ranked_candidates[0].original_index == 1
 
@@ -195,3 +202,10 @@ class TestHandlerCandidatePoolDeterminism:
         req_b = _req([_INVALID_JSON])
         handler = HandlerCandidatePool()
         assert handler.handle(req_a) != handler.handle(req_b)
+
+
+@pytest.mark.unit
+class TestCandidatePoolRequestValidation:
+    def test_negative_max_loc_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _req([_VALID_JSON], max_loc=-1)
