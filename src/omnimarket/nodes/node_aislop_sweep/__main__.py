@@ -63,7 +63,7 @@ def _resolve_repo_dirs(repos: list[str], omni_home: str) -> list[str]:
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    omni_home = os.environ.get("OMNI_HOME", "")
+    omni_home = os.environ.get("OMNI_HOME")
     if not omni_home:
         _log.error("OMNI_HOME is not set — cannot resolve repo directories")
         sys.exit(1)

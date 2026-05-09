@@ -50,6 +50,7 @@ def test_cli_compiles_queue_item_and_prints_result(tmp_path: Path) -> None:
 
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
+    env.setdefault("OMNI_HOME", str(omni_home))
     completed = subprocess.run(
         [
             sys.executable,
@@ -93,6 +94,7 @@ def test_cli_scans_limit_one(tmp_path: Path) -> None:
 
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
+    env.setdefault("OMNI_HOME", str(omni_home))
     completed = subprocess.run(
         [
             sys.executable,
@@ -137,6 +139,7 @@ def test_cli_accepts_documented_dry_run_flag(tmp_path: Path) -> None:
 
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
+    env.setdefault("OMNI_HOME", str(omni_home))
     completed = subprocess.run(
         [
             sys.executable,

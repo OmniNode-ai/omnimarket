@@ -37,7 +37,6 @@ from omnimarket.nodes.node_platform_readiness.models.dimension_result_v2 import 
     ModelDimensionResultV2,
 )
 
-_OMNI_HOME = os.environ.get("OMNI_HOME", "")
 _RUNTIME_API = os.environ.get("ONEX_RUNTIME_API", "")
 _DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")
 _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
@@ -60,7 +59,7 @@ _MIN_RUNTIME_NODES = 40
 class CheckContext:
     """Shared context passed to all dimension check functions."""
 
-    omni_home: Path = field(default_factory=lambda: Path(_OMNI_HOME))
+    omni_home: Path = field(default_factory=lambda: Path(os.environ["OMNI_HOME"]))
     runtime_api: str = _RUNTIME_API
     dashboard_api: str = _DASHBOARD_API
     github_token: str = _GITHUB_TOKEN

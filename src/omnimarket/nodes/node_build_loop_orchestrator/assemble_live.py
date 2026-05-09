@@ -71,7 +71,7 @@ logger = logging.getLogger(__name__)
 LINEAR_API_URL = "https://api.linear.app/graphql"
 LINEAR_TEAM_ID = "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6"
 
-OMNI_HOME = Path(os.environ.get("OMNI_HOME", ""))
+OMNI_HOME = Path(os.environ["OMNI_HOME"])
 WORKTREE_ROOT = Path(os.environ.get("OMNI_WORKTREES_ROOT", ""))
 
 # LLM endpoints — resolved from env vars only, no hardcoded IP fallbacks (OMN-8782)

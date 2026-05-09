@@ -159,7 +159,7 @@ def _scan_repo(
 
 def _snapshot_dir() -> Path:
     """Return the pr-snapshots state directory, creating it if needed."""
-    omni_home = os.environ.get("OMNI_HOME", "")
+    omni_home = os.environ["OMNI_HOME"]
     state_dir = Path(omni_home) / ".onex_state" / "pr-snapshots"
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir

@@ -40,6 +40,7 @@ def test_handler_persists_dispatch_record(
     """Handler writes a dispatch record YAML without importing omniclaude."""
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("ONEX_PARENT_SESSION_ID", "test-session-abc")
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     for mod_name in list(sys.modules):
         if mod_name == "omniclaude" or mod_name.startswith("omniclaude."):
             monkeypatch.delitem(sys.modules, mod_name, raising=False)
@@ -73,6 +74,27 @@ def test_handler_persists_dispatch_record(
     assert record["ticket"] == "OMN-9999"
     assert record["parent_session_id"] == "test-session-abc"
     assert len(record.get("prompt_digest", "")) >= 8
+
+
+@pytest.mark.unit
+def test_handler_requires_omni_home_for_prompt_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prompt compilation fails before emitting empty or root worktree paths."""
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+    monkeypatch.delenv("OMNI_WORKTREES", raising=False)
+
+    handler = HandlerDispatchWorker()
+    cmd = ModelDispatchWorkerCommand(
+        name="test-worker-no-omni-home",
+        team="test-team",
+        role=EnumWorkerRole.fixer,
+        scope="dummy scope for test",
+        targets=["OMN-9999", "omnibase_core#100"],
+    )
+
+    with pytest.raises(ValueError, match="OMNI_HOME must be set"):
+        handler.handle(cmd, existing_task_subjects=[])
 
 
 @pytest.mark.unit

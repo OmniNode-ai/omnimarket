@@ -19,6 +19,7 @@ from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import (
     HandlerPipelineFill,
     _is_blocked,
     _to_scored_ticket,
+    _topics_from_contract,
 )
 from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command import (
     ModelPipelineFillCommand,
@@ -99,6 +100,41 @@ def test_to_scored_ticket_high_priority_scores_higher() -> None:
     urgent = _to_scored_ticket(_make_ticket(priority=1))
     low = _to_scored_ticket(_make_ticket(priority=4))
     assert urgent.rsd_score > low.rsd_score
+
+
+@pytest.mark.unit
+def test_topics_from_contract_requires_publish_topics() -> None:
+    with (
+        patch(
+            "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._load_contract",
+            return_value={
+                "event_bus": {
+                    "publish_topics": ["onex.cmd.omnimarket.ticket-pipeline-start.v1"]
+                }
+            },
+        ),
+        pytest.raises(RuntimeError, match="pipeline_fill_completed"),
+    ):
+        _topics_from_contract()
+
+
+@pytest.mark.unit
+def test_topics_from_contract_returns_required_topics() -> None:
+    with patch(
+        "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._load_contract",
+        return_value={
+            "event_bus": {
+                "publish_topics": [
+                    "onex.cmd.omnimarket.ticket-pipeline-start.v1",
+                    "onex.evt.omnimarket.pipeline-fill-completed.v1",
+                ]
+            }
+        },
+    ):
+        assert _topics_from_contract() == {
+            "ticket_pipeline_start": "onex.cmd.omnimarket.ticket-pipeline-start.v1",
+            "pipeline_fill_completed": "onex.evt.omnimarket.pipeline-fill-completed.v1",
+        }
 
 
 # ---------------------------------------------------------------------------

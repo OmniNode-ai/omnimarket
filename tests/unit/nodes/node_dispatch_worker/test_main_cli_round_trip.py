@@ -52,6 +52,7 @@ def test_json_input_round_trips_to_dispatch_worker_result(tmp_path: Path) -> Non
     import os
 
     env = {k: v for k, v in os.environ.items() if k != "ONEX_STATE_DIR"}
+    env.setdefault("OMNI_HOME", str(tmp_path))
     completed = subprocess.run(
         [
             sys.executable,
@@ -99,6 +100,7 @@ def test_module_cli_persists_dispatch_record_in_omnimarket_env(tmp_path: Path) -
     env = dict(os.environ)
     env["ONEX_STATE_DIR"] = str(state_dir)
     env["ONEX_PARENT_SESSION_ID"] = "parent-session-10273"
+    env.setdefault("OMNI_HOME", str(tmp_path))
     completed = subprocess.run(
         [
             sys.executable,

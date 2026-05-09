@@ -34,7 +34,6 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
     EnumReadinessStatus,
 )
 
-_OMNI_HOME = os.environ.get("OMNI_HOME", "")
 _DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")
 _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 _GITHUB_REPOS = [
@@ -53,7 +52,7 @@ _GITHUB_REPOS = [
 class DiagnosticsCheckContext:
     """Shared context passed to all dimension check functions."""
 
-    omni_home: Path = field(default_factory=lambda: Path(_OMNI_HOME))
+    omni_home: Path = field(default_factory=lambda: Path(os.environ["OMNI_HOME"]))
     dashboard_api: str = _DASHBOARD_API
     github_token: str = field(default_factory=lambda: _GITHUB_TOKEN)
     github_repos: list[str] = field(default_factory=lambda: list(_GITHUB_REPOS))

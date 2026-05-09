@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10646
+title: "Replace silent OMNI_HOME fallbacks with fail-fast reads"
+summary: "Remove silent OMNI_HOME fallback behavior from omnimarket runtime sweep, platform checks, PR snapshot,
+  and build-loop surfaces so workspace state is read from explicit operator configuration."
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused OMNI_HOME fallback and dispatch worker tests pass"
+    command: "uv run pytest tests/unit/nodes/node_dispatch_queue_drainer/test_handler_dispatch_queue_drainer.py tests/unit/nodes/node_dispatch_queue_drainer/test_main_cli.py tests/unit/nodes/node_dispatch_worker/test_main_cli_round_trip.py tests/unit/test_dispatch_worker_persists_dispatch_record.py -q"
+  - kind: "manual"
+    description: "Touched fail-fast runtime surfaces pass ruff"
+    command: "uv run ruff check src/omnimarket/nodes/node_aislop_sweep src/omnimarket/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_compliance_sweep src/omnimarket/nodes/node_coverage_sweep src/omnimarket/nodes/node_dispatch_worker src/omnimarket/nodes/node_pipeline_fill src/omnimarket/nodes/node_platform_diagnostics src/omnimarket/nodes/node_platform_readiness src/omnimarket/nodes/node_pr_snapshot_effect src/omnimarket/nodes/node_runtime_sweep tests/conftest.py"
+  - kind: "manual"
+    description: "Post-merge runtime deploy validation confirms fail-fast runtime surfaces can load"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_runtime_sweep --help"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused dispatch queue, dispatch worker, and OMNI_HOME guard tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_dispatch_queue_drainer/test_handler_dispatch_queue_drainer.py tests/unit/nodes/node_dispatch_queue_drainer/test_main_cli.py tests/unit/nodes/node_dispatch_worker/test_main_cli_round_trip.py tests/unit/test_dispatch_worker_persists_dispatch_record.py -q"
+  - id: "dod-ruff"
+    description: "Touched fail-fast runtime surfaces pass ruff"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_aislop_sweep src/omnimarket/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_compliance_sweep src/omnimarket/nodes/node_coverage_sweep src/omnimarket/nodes/node_dispatch_worker src/omnimarket/nodes/node_pipeline_fill src/omnimarket/nodes/node_platform_diagnostics src/omnimarket/nodes/node_platform_readiness src/omnimarket/nodes/node_pr_snapshot_effect src/omnimarket/nodes/node_runtime_sweep tests/conftest.py"
+  - id: "dod-runtime-deploy-validation"
+    description: "Post-merge runtime deploy validation confirms fail-fast runtime surfaces can load"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_runtime_sweep --help"
