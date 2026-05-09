@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_context_bundle_generator_compute.handlers.handler_context_bundle import (
     HandlerContextBundle,
@@ -107,12 +108,12 @@ class TestHandlerContextBundleStatus:
 
     def test_requested_level_echoed(self) -> None:
         result = HandlerContextBundle().handle(_req(EnumContextLevel.L3))
-        assert result.requested_level == "L3"
+        assert result.requested_level == EnumContextLevel.L3
 
     def test_achieved_level_matches_requested(self) -> None:
         for level in EnumContextLevel:
             result = HandlerContextBundle().handle(_req(level))
-            assert result.achieved_level == level.value
+            assert result.achieved_level == level
 
 
 @pytest.mark.unit
@@ -127,7 +128,7 @@ class TestHandlerContextBundleL0:
 
     def test_l0_level_field(self) -> None:
         result = HandlerContextBundle().handle(_req(EnumContextLevel.L0))
-        assert result.bundle.level == "L0"
+        assert result.bundle.level == EnumContextLevel.L0
 
 
 @pytest.mark.unit
@@ -148,7 +149,7 @@ class TestHandlerContextBundleL1:
 
     def test_l1_level_field(self) -> None:
         result = HandlerContextBundle().handle(_req(EnumContextLevel.L1))
-        assert result.bundle.level == "L1"
+        assert result.bundle.level == EnumContextLevel.L1
 
 
 @pytest.mark.unit
@@ -169,7 +170,7 @@ class TestHandlerContextBundleL2:
 
     def test_l2_level_field(self) -> None:
         result = HandlerContextBundle().handle(_req(EnumContextLevel.L2))
-        assert result.bundle.level == "L2"
+        assert result.bundle.level == EnumContextLevel.L2
 
 
 @pytest.mark.unit
@@ -188,7 +189,7 @@ class TestHandlerContextBundleL3:
 
     def test_l3_level_field(self) -> None:
         result = HandlerContextBundle().handle(_req(EnumContextLevel.L3))
-        assert result.bundle.level == "L3"
+        assert result.bundle.level == EnumContextLevel.L3
 
 
 @pytest.mark.unit
@@ -218,7 +219,7 @@ class TestHandlerContextBundleL4:
 
     def test_l4_level_field(self) -> None:
         result = HandlerContextBundle().handle(_req(EnumContextLevel.L4))
-        assert result.bundle.level == "L4"
+        assert result.bundle.level == EnumContextLevel.L4
 
     def test_l4_defaults_for_empty_historical(self) -> None:
         result = HandlerContextBundle().handle(_req(EnumContextLevel.L4))
@@ -268,3 +269,34 @@ class TestHandlerContextBundleDeterminism:
         result_l1 = handler.handle(_req(EnumContextLevel.L1))
         result_l2 = handler.handle(_req(EnumContextLevel.L2))
         assert result_l1.bundle_id != result_l2.bundle_id
+
+    def test_different_l4_historical_summaries_produce_different_bundle_ids(self) -> None:
+        handler = HandlerContextBundle()
+        result_a = handler.handle(
+            _req(EnumContextLevel.L4, historical_summary="attempt one")
+        )
+        result_b = handler.handle(
+            _req(EnumContextLevel.L4, historical_summary="attempt two")
+        )
+        assert result_a.bundle_id != result_b.bundle_id
+
+    def test_different_l4_attempt_counts_produce_different_bundle_ids(self) -> None:
+        handler = HandlerContextBundle()
+        result_a = handler.handle(_req(EnumContextLevel.L4, prior_attempt_count=1))
+        result_b = handler.handle(_req(EnumContextLevel.L4, prior_attempt_count=2))
+        assert result_a.bundle_id != result_b.bundle_id
+
+
+@pytest.mark.unit
+class TestContextBundleValidation:
+    def test_empty_ticket_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _task(ticket_id="")
+
+    def test_empty_session_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _run(session_id="")
+
+    def test_negative_prior_attempt_count_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _req(EnumContextLevel.L4, prior_attempt_count=-1)

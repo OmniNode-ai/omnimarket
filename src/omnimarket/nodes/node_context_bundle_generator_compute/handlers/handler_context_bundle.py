@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 from omnimarket.nodes.node_context_bundle_generator_compute.models.model_bundle_request import (
     ModelContextBundleRequest,
@@ -21,9 +22,22 @@ from omnimarket.nodes.node_context_bundle_generator_compute.models.model_context
 )
 
 
-def _bundle_id(ticket_id: str, session_id: str, level: str) -> str:
-    raw = f"{ticket_id}:{session_id}:{level}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+def _bundle_id(
+    level: EnumContextLevel,
+    bundle: (
+        ModelContextBundleL0
+        | ModelContextBundleL1
+        | ModelContextBundleL2
+        | ModelContextBundleL3
+        | ModelContextBundleL4
+    ),
+) -> str:
+    raw = json.dumps(
+        {"level": level.value, "bundle": bundle.model_dump(mode="json")},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 class HandlerContextBundle:
@@ -33,7 +47,6 @@ class HandlerContextBundle:
         ts = request.task_state
         rc = request.run_context
         level = request.requested_level
-        bid = _bundle_id(ts.ticket_id, rc.session_id, level)
 
         bundle: (
             ModelContextBundleL0
@@ -113,10 +126,11 @@ class HandlerContextBundle:
                 prior_attempt_count=request.prior_attempt_count,
             )
 
+        bid = _bundle_id(level, bundle)
         return ModelContextBundleResult(
             status=EnumBundleStatus.OK,
             bundle_id=bid,
-            requested_level=level.value,
+            requested_level=level,
             achieved_level=bundle.level,
             bundle=bundle,
         )

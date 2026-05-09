@@ -8,6 +8,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_context_bundle_generator_compute.models.model_context_bundle import (
+    EnumContextLevel,
     ModelContextBundleL0,
     ModelContextBundleL1,
     ModelContextBundleL2,
@@ -35,8 +36,8 @@ class ModelContextBundleResult(BaseModel):
 
     status: EnumBundleStatus
     bundle_id: str
-    requested_level: str
-    achieved_level: str
+    requested_level: EnumContextLevel
+    achieved_level: EnumContextLevel
     bundle: BundleUnion
     error: str | None = None
 

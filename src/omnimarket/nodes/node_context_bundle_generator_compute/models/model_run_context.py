@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelRunContext(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    session_id: str
+    session_id: str = Field(min_length=1)
     agent_id: str = ""
     timestamp: str = ""
     worker_type: str = ""

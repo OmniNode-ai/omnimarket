@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnumTaskStatus(StrEnum):
@@ -27,7 +27,7 @@ class EnumTaskPriority(StrEnum):
 class ModelTaskState(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    ticket_id: str
+    ticket_id: str = Field(min_length=1)
     title: str = ""
     status: EnumTaskStatus = EnumTaskStatus.TODO
     assignee: str = ""

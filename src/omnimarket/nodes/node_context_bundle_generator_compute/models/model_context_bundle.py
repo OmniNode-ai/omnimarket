@@ -21,7 +21,7 @@ class ModelContextBundleL0(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     ticket_id: str
-    level: str = "L0"
+    level: EnumContextLevel = EnumContextLevel.L0
 
 
 class ModelContextBundleL1(ModelContextBundleL0):
@@ -32,7 +32,7 @@ class ModelContextBundleL1(ModelContextBundleL0):
     assignee: str = ""
     priority: str = ""
     labels: tuple[str, ...] = ()
-    level: str = "L1"
+    level: EnumContextLevel = EnumContextLevel.L1
 
 
 class ModelContextBundleL2(ModelContextBundleL1):
@@ -45,7 +45,7 @@ class ModelContextBundleL2(ModelContextBundleL1):
     repo: str = ""
     branch: str = ""
     trigger_event: str = ""
-    level: str = "L2"
+    level: EnumContextLevel = EnumContextLevel.L2
 
 
 class ModelContextBundleL3(ModelContextBundleL2):
@@ -53,7 +53,7 @@ class ModelContextBundleL3(ModelContextBundleL2):
 
     parent_ticket_id: str = ""
     related_ticket_ids: tuple[str, ...] = ()
-    level: str = "L3"
+    level: EnumContextLevel = EnumContextLevel.L3
 
 
 class ModelContextBundleL4(ModelContextBundleL3):
@@ -61,7 +61,7 @@ class ModelContextBundleL4(ModelContextBundleL3):
 
     historical_summary: str = ""
     prior_attempt_count: int = 0
-    level: str = "L4"
+    level: EnumContextLevel = EnumContextLevel.L4
 
 
 __all__ = [
