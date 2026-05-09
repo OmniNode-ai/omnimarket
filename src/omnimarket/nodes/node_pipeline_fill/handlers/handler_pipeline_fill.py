@@ -169,10 +169,17 @@ def _topics_from_contract() -> dict[str, str]:
     publish = contract.get("event_bus", {}).get("publish_topics", [])
     result: dict[str, str] = {}
     for topic in publish:
-        if "ticket-pipeline-start" in topic:
+        if isinstance(topic, str) and "ticket-pipeline-start" in topic:
             result["ticket_pipeline_start"] = topic
-        elif "pipeline-fill-completed" in topic:
+        elif isinstance(topic, str) and "pipeline-fill-completed" in topic:
             result["pipeline_fill_completed"] = topic
+    required = {"ticket_pipeline_start", "pipeline_fill_completed"}
+    missing = sorted(required - set(result))
+    if missing:
+        raise RuntimeError(
+            "node_pipeline_fill contract.yaml missing required publish topic(s): "
+            f"{missing}"
+        )
     return result
 
 
@@ -193,8 +200,8 @@ class HandlerPipelineFill:
             event_bus  # injected in production; None => fire-and-forget log
         )
         _topics = _topics_from_contract()
-        self._topic_ticket_pipeline_start = _topics.get("ticket_pipeline_start", "")
-        self._topic_pipeline_fill_completed = _topics.get("pipeline_fill_completed", "")
+        self._topic_ticket_pipeline_start = _topics["ticket_pipeline_start"]
+        self._topic_pipeline_fill_completed = _topics["pipeline_fill_completed"]
 
     @property
     def handler_type(self) -> HandlerType:

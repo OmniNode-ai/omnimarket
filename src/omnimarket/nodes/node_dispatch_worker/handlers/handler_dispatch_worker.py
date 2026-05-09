@@ -544,13 +544,17 @@ class HandlerDispatchWorker:
         target_pr = _extract_target_pr(command.targets)
         target_repo = repo
 
-        omni_home = os.environ.get("OMNI_HOME", "")
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            raise ValueError("OMNI_HOME must be set before compiling dispatch prompts.")
         worktree_root = os.environ.get(
             "OMNI_WORKTREES",
-            os.path.join(os.path.dirname(omni_home), "omni_worktrees")
-            if omni_home
-            else "",
+            os.path.join(os.path.dirname(omni_home), "omni_worktrees"),
         )
+        if not worktree_root or Path(worktree_root).expanduser() == Path("/"):
+            raise ValueError(
+                "OMNI_WORKTREES must resolve to a non-root worktree directory."
+            )
 
         ctx: dict[str, object] = defaultdict(
             str,

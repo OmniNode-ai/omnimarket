@@ -77,6 +77,27 @@ def test_handler_persists_dispatch_record(
 
 
 @pytest.mark.unit
+def test_handler_requires_omni_home_for_prompt_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prompt compilation fails before emitting empty or root worktree paths."""
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+    monkeypatch.delenv("OMNI_WORKTREES", raising=False)
+
+    handler = HandlerDispatchWorker()
+    cmd = ModelDispatchWorkerCommand(
+        name="test-worker-no-omni-home",
+        team="test-team",
+        role=EnumWorkerRole.fixer,
+        scope="dummy scope for test",
+        targets=["OMN-9999", "omnibase_core#100"],
+    )
+
+    with pytest.raises(ValueError, match="OMNI_HOME must be set"):
+        handler.handle(cmd, existing_task_subjects=[])
+
+
+@pytest.mark.unit
 def test_writer_requires_explicit_state_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
