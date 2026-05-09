@@ -31,7 +31,6 @@ _log = logging.getLogger(__name__)
 
 _ALLOWED_TABLES: frozenset[str] = frozenset(
     [
-        "event_bus_events",
         "agent_actions",
         "agent_routing_decisions",
     ]
