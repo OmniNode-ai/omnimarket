@@ -142,10 +142,10 @@ def _make_handler(
     draft_gen_handler.generate = AsyncMock(return_value=draft_result.markdown)
 
     return HandlerCanaryOrchestrator(
-        ingestion_handler=ingestion_handler,
-        extraction_handler=extraction_handler,
-        grader_handler=grader_handler,
-        draft_gen_handler=draft_gen_handler,
+        ingestion=ingestion_handler,
+        extraction=extraction_handler,
+        grading=grader_handler,
+        draft_gen=draft_gen_handler,
         max_concurrent_extractions=2,
         grader_model_key="opus",
     )
@@ -314,9 +314,19 @@ class TestWriteScorecard:
         assert "ADR Canary Scorecard" in content
 
 
+def _stub_handler() -> HandlerCanaryOrchestrator:
+    """Minimal handler with no-op mocks for tests that only exercise dry_run."""
+    return HandlerCanaryOrchestrator(
+        ingestion=AsyncMock(),
+        extraction=AsyncMock(),
+        grading=AsyncMock(),
+        draft_gen=AsyncMock(),
+    )
+
+
 class TestHandlerCanaryOrchestrator:
     def test_dry_run(self, tmp_path: Path, minimal_manifest: Path) -> None:
-        handler = HandlerCanaryOrchestrator()
+        handler = _stub_handler()
         payload = ModelCanaryCommandPayload(
             manifest_path=str(minimal_manifest),
             output_dir=str(tmp_path / "runs"),
@@ -329,7 +339,7 @@ class TestHandlerCanaryOrchestrator:
         assert result.success is True
 
     def test_dry_run_bad_manifest(self, tmp_path: Path) -> None:
-        handler = HandlerCanaryOrchestrator()
+        handler = _stub_handler()
         payload = ModelCanaryCommandPayload(
             manifest_path=str(tmp_path / "nonexistent.yaml"),
             output_dir=str(tmp_path / "runs"),
@@ -394,7 +404,10 @@ class TestHandlerCanaryOrchestrator:
         mock_ingest.ingest = AsyncMock(return_value=mock_ingest_result)
 
         handler = HandlerCanaryOrchestrator(
-            ingestion_handler=mock_ingest,
+            ingestion=mock_ingest,
+            extraction=AsyncMock(),
+            grading=AsyncMock(),
+            draft_gen=AsyncMock(),
             allow_external_providers=False,
         )
 
@@ -471,10 +484,10 @@ class TestHandlerCanaryOrchestrator:
         mock_draft.generate = AsyncMock(return_value="")
 
         handler = HandlerCanaryOrchestrator(
-            ingestion_handler=mock_ingest,
-            extraction_handler=mock_extract,
-            grader_handler=mock_grader,
-            draft_gen_handler=mock_draft,
+            ingestion=mock_ingest,
+            extraction=mock_extract,
+            grading=mock_grader,
+            draft_gen=mock_draft,
         )
 
         result = asyncio.get_event_loop().run_until_complete(
@@ -499,13 +512,25 @@ class TestHandlerCanaryOrchestrator:
                 "allow_external_providers": {"default": True},
             }
         }
-        handler = HandlerCanaryOrchestrator.from_contract(contract)
+        mocks = {
+            "ingestion": AsyncMock(),
+            "extraction": AsyncMock(),
+            "grading": AsyncMock(),
+            "draft_gen": AsyncMock(),
+        }
+        handler = HandlerCanaryOrchestrator.from_contract(contract, **mocks)
         assert handler._max_concurrent_extractions == 8  # noqa: SLF001
         assert handler._grader_model_key == "deepseek-r1"  # noqa: SLF001
         assert handler._allow_external_providers is True  # noqa: SLF001
 
     def test_from_contract_defaults(self) -> None:
-        handler = HandlerCanaryOrchestrator.from_contract({})
+        mocks = {
+            "ingestion": AsyncMock(),
+            "extraction": AsyncMock(),
+            "grading": AsyncMock(),
+            "draft_gen": AsyncMock(),
+        }
+        handler = HandlerCanaryOrchestrator.from_contract({}, **mocks)
         assert handler._max_concurrent_extractions == 4  # noqa: SLF001
         assert handler._grader_model_key == "opus"  # noqa: SLF001
         assert handler._allow_external_providers is False  # noqa: SLF001

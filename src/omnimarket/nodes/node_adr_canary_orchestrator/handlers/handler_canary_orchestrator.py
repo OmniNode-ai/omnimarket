@@ -206,63 +206,24 @@ class HandlerCanaryOrchestrator:
 
     def __init__(
         self,
-        ingestion_handler: ProtocolAdrIngestion | None = None,
-        extraction_handler: ProtocolAdrExtraction | None = None,
-        grader_handler: ProtocolAdrGrading | None = None,
-        draft_gen_handler: ProtocolAdrDraftGen | None = None,
+        *,
+        ingestion: ProtocolAdrIngestion,
+        extraction: ProtocolAdrExtraction,
+        grading: ProtocolAdrGrading,
+        draft_gen: ProtocolAdrDraftGen,
         max_concurrent_extractions: int = 4,
         grader_model_key: str = "opus",
         allow_external_providers: bool = False,
         topic_completed: str = "",
     ) -> None:
-        self._ingestion = ingestion_handler
-        self._extraction = extraction_handler
-        self._grading = grader_handler
-        self._draft_gen = draft_gen_handler
+        self._ingestion = ingestion
+        self._extraction = extraction
+        self._grading = grading
+        self._draft_gen = draft_gen
         self._max_concurrent_extractions = max_concurrent_extractions
         self._grader_model_key = grader_model_key
         self._allow_external_providers = allow_external_providers
         self._topic_completed = topic_completed
-
-    # ------------------------------------------------------------------
-    # Default protocol adapters (imported lazily to avoid circular deps)
-    # ------------------------------------------------------------------
-
-    def _get_ingestion(self) -> ProtocolAdrIngestion:
-        if self._ingestion is not None:
-            return self._ingestion
-        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_ingestion import (
-            AdapterAdrIngestion,
-        )
-
-        return AdapterAdrIngestion()
-
-    def _get_extraction(self) -> ProtocolAdrExtraction:
-        if self._extraction is not None:
-            return self._extraction
-        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_extraction import (
-            AdapterAdrExtraction,
-        )
-
-        return AdapterAdrExtraction()
-
-    def _get_grading(self) -> ProtocolAdrGrading:
-        if self._grading is not None:
-            return self._grading
-        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_grading import (
-            AdapterAdrGrading,
-        )
-
-        return AdapterAdrGrading()
-
-    def _get_draft_gen(self) -> ProtocolAdrDraftGen:
-        if self._draft_gen is not None:
-            return self._draft_gen
-        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_draft_gen import (
-            AdapterAdrDraftGen,
-        )
-
-        return AdapterAdrDraftGen()
 
     # ------------------------------------------------------------------
     # Manifest loading — path must be absolute or resolvable
@@ -305,9 +266,9 @@ class HandlerCanaryOrchestrator:
             model_key=model.key,
             model_id=model.model_id,
         )
-        extraction_proto = self._get_extraction()
-        grading_proto = self._get_grading()
-        draft_gen_proto = self._get_draft_gen()
+        extraction_proto = self._extraction
+        grading_proto = self._grading
+        draft_gen_proto = self._draft_gen
 
         # Step 1: extract
         try:
@@ -450,7 +411,7 @@ class HandlerCanaryOrchestrator:
         evidence_dir = Path(request.output_dir) / run_id
         evidence_dir.mkdir(parents=True, exist_ok=True)
 
-        ingestion_proto = self._get_ingestion()
+        ingestion_proto = self._ingestion
         sem = asyncio.Semaphore(self._max_concurrent_extractions)
 
         all_records: list[ModelEvidenceRecord] = []
@@ -534,13 +495,25 @@ class HandlerCanaryOrchestrator:
         )
 
     @classmethod
-    def from_contract(cls, contract: dict[str, Any]) -> HandlerCanaryOrchestrator:
-        """Build from a loaded contract.yaml dict."""
+    def from_contract(
+        cls,
+        contract: dict[str, Any],
+        *,
+        ingestion: ProtocolAdrIngestion,
+        extraction: ProtocolAdrExtraction,
+        grading: ProtocolAdrGrading,
+        draft_gen: ProtocolAdrDraftGen,
+    ) -> HandlerCanaryOrchestrator:
+        """Build from a loaded contract.yaml dict with injected sub-handlers."""
         cfg = contract.get("config", {})
         event_bus = contract.get("event_bus", {})
         publish_topics: list[str] = event_bus.get("publish_topics", [])
         topic_completed = next((t for t in publish_topics if "completed" in t), "")
         return cls(
+            ingestion=ingestion,
+            extraction=extraction,
+            grading=grading,
+            draft_gen=draft_gen,
             max_concurrent_extractions=int(
                 cfg.get("max_concurrent_extractions", {}).get("default", 4)
             ),
