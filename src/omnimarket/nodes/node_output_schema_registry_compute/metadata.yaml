@@ -1,0 +1,19 @@
+name: node_output_schema_registry_compute
+version: "1.0.0"
+description: "Pure COMPUTE node — resolves schema_key to Pydantic model_json_schema() with no LLM calls or I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_output_schema_registry_compute: "omnimarket.nodes.node_output_schema_registry_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "schema", "registry", "deterministic", "pydantic"]
+pack: "schema"
+display_name: "Output Schema Registry"
+node_role: "compute"

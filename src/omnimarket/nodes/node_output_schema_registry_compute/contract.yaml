@@ -1,0 +1,53 @@
+---
+name: node_output_schema_registry_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure COMPUTE node that resolves a schema key to its Pydantic model JSON schema.
+  Accepts a schema_key string and returns the model_json_schema() dict for the
+  registered Pydantic model. No LLM calls, no I/O — deterministic and side-effect-free.
+
+handler:
+  module: omnimarket.nodes.node_output_schema_registry_compute.handlers.handler_output_schema_registry
+  class: HandlerOutputSchemaRegistry
+  input_model: omnimarket.nodes.node_output_schema_registry_compute.models.model_schema_registry_request.ModelSchemaRegistryRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+inputs:
+  schema_key:
+    type: str
+    required: true
+    description: Registry key identifying the Pydantic model whose JSON schema to return
+
+outputs:
+  status:
+    type: str
+    enum: [ok, error]
+  schema_key:
+    type: str
+  json_schema:
+    type: object
+    description: Pydantic model_json_schema() output for the resolved model
+    required: false
+    nullable: true
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.schema-registry-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.schema-registry-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.schema-registry-completed.v1
+
+metadata:
+  transport_type: kafka
