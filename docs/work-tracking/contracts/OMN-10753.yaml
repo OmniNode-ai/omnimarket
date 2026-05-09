@@ -33,7 +33,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "docker exec omninode-runtime python -c 'from omnimarket.nodes.node_emit_daemon.socket_server import EmitDaemonSocketServer; print(\"import ok\")'  # deploy-verify: emit daemon importable"
+        check_value: "docker exec omninode-runtime python -c 'from omnimarket.nodes.node_emit_daemon.socket_server import EmitSocketServer; print(\"import ok\")'  # deploy-verify: emit daemon importable"
   - id: "dod-ruff-check"
     description: "Changed files pass ruff"
     source: "manual"
