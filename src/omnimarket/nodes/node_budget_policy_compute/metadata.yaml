@@ -1,0 +1,19 @@
+name: node_budget_policy_compute
+version: "1.0.0"
+description: "Pure deterministic budget policy evaluator — no LLM calls, no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_budget_policy_compute: "omnimarket.nodes.node_budget_policy_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "budget", "policy", "deterministic", "resource-management"]
+pack: "core"
+display_name: "Budget Policy"
+node_role: "compute"
