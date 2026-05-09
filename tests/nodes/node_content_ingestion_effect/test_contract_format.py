@@ -14,6 +14,16 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion import (
+    HandlerContentIngestion,
+)
+from omnimarket.nodes.node_content_ingestion_effect.models.model_extraction_result import (
+    ModelExtractionResult,
+)
+from omnimarket.nodes.node_content_ingestion_effect.models.model_ingestion_request import (
+    ModelIngestionRequest,
+)
+
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "src"
@@ -132,3 +142,43 @@ def test_contract_handler_block_has_no_omniintelligence_keys(
         f"handler.{forbidden_key} is an omniintelligence contract key — "
         f"omnimarket contracts use handler.module + handler.class"
     )
+
+
+@pytest.mark.asyncio
+async def test_handler_does_not_count_unimplemented_extraction_as_success() -> None:
+    handler = HandlerContentIngestion()
+    request = ModelIngestionRequest(
+        source_paths=["docs/example.md"],
+        content_type="markdown",
+        correlation_id="corr-1",
+    )
+
+    results = await handler.handle(request=request)
+    summary = await handler.summarize(results=results, request=request)
+
+    assert results == [
+        ModelExtractionResult(
+            source_path="docs/example.md",
+            content_type="markdown",
+            extracted_text=None,
+            extraction_error="extraction_not_implemented",
+        )
+    ]
+    assert summary.succeeded == 0
+    assert summary.failed == 1
+
+
+@pytest.mark.asyncio
+async def test_handler_success_count_requires_extracted_text() -> None:
+    handler = HandlerContentIngestion()
+    request = ModelIngestionRequest(source_paths=["a.md", "b.md"])
+    summary = await handler.summarize(
+        request=request,
+        results=[
+            ModelExtractionResult(source_path="a.md", extracted_text="content"),
+            ModelExtractionResult(source_path="b.md", extracted_text=None),
+        ],
+    )
+
+    assert summary.succeeded == 1
+    assert summary.failed == 1

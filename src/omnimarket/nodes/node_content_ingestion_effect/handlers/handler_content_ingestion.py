@@ -44,7 +44,7 @@ class HandlerContentIngestion:
                 source_path=source_path,
                 content_type=request.content_type,
                 extracted_text=None,
-                extraction_error=None,
+                extraction_error="extraction_not_implemented",
             )
             results.append(result)
 
@@ -56,7 +56,11 @@ class HandlerContentIngestion:
         results: list[ModelExtractionResult],
         request: ModelIngestionRequest,
     ) -> ModelIngestionSummary:
-        succeeded = sum(1 for r in results if r.extraction_error is None)
+        succeeded = sum(
+            1
+            for r in results
+            if r.extraction_error is None and r.extracted_text is not None
+        )
         failed = len(results) - succeeded
         return ModelIngestionSummary(
             total_processed=len(results),
