@@ -144,6 +144,7 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.session-orchestrator-completed.v1
     - onex.evt.omnimarket.session-health-transition.v1
+    - onex.evt.omnimarket.session-orchestrator-failed.v1
 
 terminal_event: onex.evt.omnimarket.session-orchestrator-completed.v1
 
