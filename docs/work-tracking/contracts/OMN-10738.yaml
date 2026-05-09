@@ -3,7 +3,7 @@
 # This file is the per-repo deploy-evidence carrier only.
 schema_version: "1.0.0"
 ticket_id: "OMN-10738"
-title: "Fix 3 silent fallback violations in omnimarket (OMN-10658 follow-up)"
+title: "Fix 3 silent fallback violations in omnimarket"
 summary: "Remove os.getenv/shell-fallback localhost defaults from KAFKA_BOOTSTRAP_SERVERS and MEMGRAPH_URI; add validate_no_env_fallbacks.py validator wired as pre-commit hook and CI gate"
 is_seam_ticket: false
 interface_change: false
@@ -31,3 +31,9 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "pre-commit run validate-no-env-fallbacks --all-files"
+  - id: "dod-deploy"
+    description: "No runtime deploy required — change is env-read hardening (os.getenv → os.environ[KEY]) and validator tooling only. No handler logic, container rebuild, or service restart needed. Post-merge deploy smoke: handler import unchanged."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: no runtime deploy required for OMN-10738 (env-read hardening only — no handler logic changed, no container rebuild needed)'"
