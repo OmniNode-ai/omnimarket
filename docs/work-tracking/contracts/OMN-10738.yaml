@@ -30,4 +30,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "OMNIBASE_INFRA_PATH=/Users/jonah/Code/omni_home/omnibase_infra pre-commit run validate-no-env-fallbacks --all-files"
+        check_value: "pre-commit run validate-no-env-fallbacks --all-files"
