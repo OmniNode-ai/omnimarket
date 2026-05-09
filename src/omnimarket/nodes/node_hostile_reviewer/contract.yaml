@@ -113,6 +113,13 @@ event_bus:
     - onex.evt.omnimarket.hostile-reviewer-convergence-reduced.v1
     - onex.evt.omnimarket.hostile-reviewer-inference-dispatched.v1
 
+config:
+  openrouter_base_url:
+    env_var: "OPENROUTER_BASE_URL"
+    default: "https://openrouter.ai/api"
+    description: "Base URL for OpenRouter API. Override for testing or proxy routing."
+    required: false
+
 dependencies:
   nodes:
     - name: "node_finding_aggregator_compute"

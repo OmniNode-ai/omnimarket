@@ -12,11 +12,16 @@ import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
+from typing import Final
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
+
+_RESERVED_EXTRA_HEADER_NAMES: Final[frozenset[str]] = frozenset(
+    {"authorization", "content-type"}
+)
 
 
 class ModelInferenceAdapter(ABC):
@@ -88,6 +93,15 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+
+        extra_headers = cfg.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            for k, v in extra_headers.items():
+                header_name = str(k)
+                if header_name.lower() in _RESERVED_EXTRA_HEADER_NAMES:
+                    logger.warning("Ignoring reserved extra header: %s", header_name)
+                    continue
+                headers[header_name] = str(v)
 
         payload = {
             "model": model_id,
