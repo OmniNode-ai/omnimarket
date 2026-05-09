@@ -88,6 +88,21 @@ event_bus:
       schema_ref: "omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_report.ModelCanaryReport"
       description: "Canary run completed — scorecard and evidence bundle paths."
 
+# === SUB-HANDLER DEPENDENCIES ===
+sub_handler_dependencies:
+  - name: ingestion
+    protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrIngestion
+    optional: false
+  - name: extraction
+    protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrExtraction
+    optional: false
+  - name: grading
+    protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrGrading
+    optional: false
+  - name: draft_gen
+    protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrDraftGen
+    optional: false
+
 # === HANDLER ROUTING ===
 handler_routing:
   handlers:
