@@ -1463,6 +1463,20 @@ class HandlerSessionOrchestrator:
             parent_session_id=session_id,
         )
 
+    def _build_dispatch_env(
+        self,
+        *,
+        session_id: str,
+        dispatch_id: str,
+        ticket_id: str,
+    ) -> dict[str, str]:
+        """Return env vars that dispatched subprocesses must inherit for correlation."""
+        return {
+            "ONEX_SESSION_ID": session_id,
+            "ONEX_RUN_ID": dispatch_id,
+            "ONEX_CORRELATION_PREFIX": f"{session_id}.{dispatch_id}.{ticket_id}",
+        }
+
     def _write_dispatch_artifact(
         self,
         session_id: str,
@@ -1480,12 +1494,18 @@ class HandlerSessionOrchestrator:
         path = os.path.join(
             artifact_dir, f"{safe_session}-{dispatch_id}-{safe_ticket}.json"
         )
+        dispatch_env = self._build_dispatch_env(
+            session_id=session_id,
+            dispatch_id=dispatch_id,
+            ticket_id=ticket_id,
+        )
         payload = {
             "session_id": session_id,
             "ticket_id": ticket_id,
             "dispatch_id": dispatch_id,
             "correlation_chain": correlation_chain,
             "compiled_at": _now().isoformat(),
+            "dispatch_env": dispatch_env,
             "dispatch_worker": compiled.model_dump(mode="json"),
         }
         with open(path, "w", encoding="utf-8") as fh:
