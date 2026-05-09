@@ -55,7 +55,7 @@ def minimal_manifest(tmp_path: Path) -> Path:
                     {
                         "key": "qwen3-coder",
                         "provider": "local",
-                        "model_id": "cyankiwi/Qwen3-Coder-30B",  # onex-allow-model-id OMN-10698 reason="test fixture model id exercises manifest parsing"
+                        "model_id": "test/qwen3-coder-30b",
                         "external": False,
                     },
                 ],

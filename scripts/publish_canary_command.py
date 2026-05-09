@@ -91,9 +91,8 @@ def _parse_args() -> argparse.Namespace:
 async def _publish(args: argparse.Namespace) -> None:
     topic = args.topic or _load_command_topic()
     if not args.bootstrap:
-        raise SystemExit(
-            "--bootstrap or KAFKA_BOOTSTRAP_SERVERS is required; no lab default is embedded."
-        )
+        logger.error("KAFKA_BOOTSTRAP_SERVERS not set and --bootstrap not provided")
+        sys.exit(1)
 
     model_subset = None
     if args.model_subset:
