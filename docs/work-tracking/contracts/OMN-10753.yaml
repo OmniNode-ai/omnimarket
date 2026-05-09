@@ -1,0 +1,42 @@
+schema_version: "1.0.0"
+ticket_id: OMN-10753
+title: "Wire CLAUDE_CODE_SESSION_ID into emit daemon as canonical session ID"
+summary: "Inject session_id from CLAUDE_CODE_SESSION_ID into _inject_metadata() in the emit daemon socket_server. Hook clients pass session_id in each event payload; daemon preserves it and falls back to env only when absent."
+is_seam_ticket: true
+interface_change: false
+interfaces_touched:
+  - node_emit_daemon_socket_server
+  - emit_daemon_metadata_injection
+evidence_requirements:
+  - kind: "manual"
+    description: "Emit daemon session_id injection unit tests pass"
+    command: "uv run pytest tests/unit/nodes/node_emit_daemon/test_inject_metadata_session_id.py -q"
+  - kind: "manual"
+    description: "Changed files pass ruff check"
+    command: "uv run ruff check src/omnimarket/nodes/node_emit_daemon/socket_server.py tests/unit/nodes/node_emit_daemon/test_inject_metadata_session_id.py"
+  - kind: "manual"
+    description: "Changed files are formatted"
+    command: "uv run ruff format --check src/omnimarket/nodes/node_emit_daemon/socket_server.py tests/unit/nodes/node_emit_daemon/test_inject_metadata_session_id.py"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-session-id-inject-tests"
+    description: "Emit daemon session_id injection unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_emit_daemon/test_inject_metadata_session_id.py -q"
+  - id: "dod-deploy-socket-server"
+    description: "Socket server deploy path verified — no runtime restart required for metadata-only logic change"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec omninode-runtime python -c 'from omnimarket.nodes.node_emit_daemon.socket_server import EmitDaemonSocketServer; print(\"import ok\")'  # deploy-verify: emit daemon importable"
+  - id: "dod-ruff-check"
+    description: "Changed files pass ruff"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_emit_daemon/socket_server.py"
