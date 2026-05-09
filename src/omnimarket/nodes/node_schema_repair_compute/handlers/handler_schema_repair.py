@@ -63,11 +63,16 @@ def _build_error_summary(validation_errors: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
+def _escape_markdown_fence(value: str) -> str:
+    return value.replace("```", "\\`\\`\\`")
+
+
 def _build_repair_prompt(
     request: ModelSchemaRepairRequest,
     error_summary: str,
 ) -> str:
     schema_str = json.dumps(request.target_schema, indent=2)
+    safe_malformed_output = _escape_markdown_fence(request.malformed_output)
 
     lines: list[str] = []
     lines.append("Your previous response did not conform to the required JSON schema.")
@@ -80,7 +85,7 @@ def _build_repair_prompt(
     lines.append("## Your Previous (Invalid) Response")
     lines.append("")
     lines.append("```")
-    lines.append(request.malformed_output)
+    lines.append(safe_malformed_output)
     lines.append("```")
     lines.append("")
     lines.append("## What Went Wrong")

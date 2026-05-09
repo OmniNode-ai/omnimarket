@@ -153,6 +153,16 @@ class TestHandlerSchemaRepairPromptContent:
         result = HandlerSchemaRepair().handle(_make_request(malformed_output=malformed))
         assert malformed in result.repair_prompt
 
+    def test_repair_prompt_escapes_embedded_fences(self) -> None:
+        malformed = '{"text": "before ```json\\n{}\\n``` after"}'
+        result = HandlerSchemaRepair().handle(_make_request(malformed_output=malformed))
+        previous_response = result.repair_prompt.split(
+            "## Your Previous (Invalid) Response", maxsplit=1
+        )[1].split("## What Went Wrong", maxsplit=1)[0]
+
+        assert "\\`\\`\\`json" in previous_response
+        assert previous_response.count("```") == 2
+
     def test_repair_prompt_includes_schema_fields(self) -> None:
         result = HandlerSchemaRepair().handle(_make_request())
         assert "name" in result.repair_prompt
