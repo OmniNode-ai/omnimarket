@@ -150,6 +150,7 @@ class _MockBridge(ModelInferenceAdapter):
         system_prompt: str,
         user_prompt: str,
         timeout_seconds: float,
+        temperature: float | None = None,
     ) -> str:
         response = self._responses[min(self._call_count, len(self._responses) - 1)]
         self._call_count += 1

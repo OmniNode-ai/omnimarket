@@ -164,7 +164,9 @@ async def test_extra_headers_passed_to_http_call():
 
     captured_headers: dict[str, str] = {}
 
-    async def mock_http(model_key, cfg, system_prompt, user_prompt, timeout_seconds):
+    async def mock_http(
+        model_key, cfg, system_prompt, user_prompt, timeout_seconds, temperature=None
+    ):
         api_key = str(cfg.get("api_key", "")) or None
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
