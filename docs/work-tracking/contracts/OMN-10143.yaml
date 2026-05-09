@@ -5,8 +5,7 @@ title: "Add cross-CLI originator effect node"
 summary: "Shared CLI entry point for opencode/codex delegation. Thin EFFECT node: accepts delegation prompt, builds envelope, publishes to onex.cmd.omnimarket.cross-cli-delegation-requested.v1 via EmitClient Unix socket."
 is_seam_ticket: false
 interface_change: false
-interfaces_touched:
-  - "src/omnimarket/nodes/node_cross_cli_originator/"
+interfaces_touched: []
 evidence_requirements:
   - kind: "manual"
     description: "Unit tests for cross-CLI originator handler pass"
