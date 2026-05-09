@@ -6,9 +6,9 @@ summary: "Replace direct ADR canary sub-handler constructor injection with DI-co
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
-  - runtime_handler_constructor
-  - event_bus_topics
-  - adr_canary_protocol_adapters
+  - public_api
+  - topics
+  - protocols
 evidence_requirements:
   - kind: "manual"
     description: "ADR canary orchestrator focused tests pass"
@@ -22,6 +22,9 @@ evidence_requirements:
   - kind: "manual"
     description: "Touched runtime constructors are DI-container-only"
     command: "uv run python - <<'PY'\nimport inspect\nfrom omnimarket.adapters.adr import AdapterBusAdrDraftGen, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrIngestion, build_adr_bus_protocol_adapters\nfrom omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import HandlerCanaryOrchestrator\nclasses = [HandlerCanaryOrchestrator, AdapterBusAdrIngestion, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrDraftGen]\nfor cls in classes:\n    assert list(inspect.signature(cls).parameters) == ['container'], cls\nassert list(inspect.signature(build_adr_bus_protocol_adapters).parameters) == ['container']\nPY"
+  - kind: "manual"
+    description: "ADR Canary real bus-backed golden chain reaches ingestion, extraction, grading, and draft sub-nodes"
+    command: "uv run pytest tests/test_golden_chain_adr_canary_real_bus_chain.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -51,6 +54,12 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run python - <<'PY'\nimport inspect\nfrom omnimarket.adapters.adr import AdapterBusAdrDraftGen, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrIngestion, build_adr_bus_protocol_adapters\nfrom omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import HandlerCanaryOrchestrator\nclasses = [HandlerCanaryOrchestrator, AdapterBusAdrIngestion, AdapterBusAdrExtraction, AdapterBusAdrGrading, AdapterBusAdrDraftGen]\nfor cls in classes:\n    assert list(inspect.signature(cls).parameters) == ['container'], cls\nassert list(inspect.signature(build_adr_bus_protocol_adapters).parameters) == ['container']\nPY"
+  - id: "dod-real-bus-chain"
+    description: "ADR Canary real bus-backed golden chain reaches ingestion, extraction, grading, and draft sub-nodes"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_adr_canary_real_bus_chain.py -q"
   - id: "dod-deploy"
     description: "Post-merge validation plan only; no live deploy or runtime restart was performed in this PR"
     source: "manual"
