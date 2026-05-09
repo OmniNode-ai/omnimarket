@@ -6,8 +6,7 @@ summary: "Remove silent OMNI_HOME fallback behavior from omnimarket runtime swee
   and build-loop surfaces so workspace state is read from explicit operator configuration."
 is_seam_ticket: true
 interface_change: false
-interfaces_touched:
-  - "runtime_config"
+interfaces_touched: []
 evidence_requirements:
   - kind: "manual"
     description: "Focused OMNI_HOME fallback and dispatch worker tests pass"
