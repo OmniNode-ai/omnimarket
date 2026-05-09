@@ -270,6 +270,8 @@ class EmitSocketServer:
         correlation_id: str | None,
     ) -> dict[str, object]:
         """Add standard metadata fields to payload."""
+        import os
+
         result = dict(payload)
         if "correlation_id" not in result or result["correlation_id"] is None:
             result["correlation_id"] = correlation_id or str(uuid4())
@@ -277,6 +279,12 @@ class EmitSocketServer:
             result["causation_id"] = None
         if "emitted_at" not in result:
             result["emitted_at"] = datetime.now(UTC).isoformat()
+        # session_id: preserve payload value; fall back to CLAUDE_CODE_SESSION_ID env var.
+        # Clients (Option B) are the canonical source — daemon is session-agnostic.
+        if "session_id" not in result or not result["session_id"]:
+            env_session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+            if env_session_id:
+                result["session_id"] = env_session_id
         # Derive entity_id from session_id when absent
         if "entity_id" not in result:
             session_id = result.get("session_id")
