@@ -1,0 +1,63 @@
+---
+name: node_context_bundle_generator_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Builds a ModelContextBundle at the requested level (L0-L4) from task state
+  and run context. Pure deterministic extraction — no I/O, no LLM calls.
+  Same inputs always produce identical output.
+
+handler:
+  module: omnimarket.nodes.node_context_bundle_generator_compute.handlers.handler_context_bundle
+  class: HandlerContextBundle
+  input_model: omnimarket.nodes.node_context_bundle_generator_compute.models.model_bundle_request.ModelContextBundleRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  task_state:
+    type: object
+    required: true
+    description: Task identity and status fields (ticket_id, status, assignee, priority, title)
+  run_context:
+    type: object
+    required: true
+    description: Execution context (session_id, agent_id, timestamp)
+  requested_level:
+    type: str
+    required: false
+    default: "L2"
+    description: Context depth — L0 (identity only) through L4 (with historical)
+
+outputs:
+  status:
+    type: str
+    enum: [ok, error]
+  bundle_id:
+    type: str
+  requested_level:
+    type: str
+  achieved_level:
+    type: str
+  bundle:
+    type: object
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.context-bundle-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-bundle-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-bundle-completed.v1
+
+metadata:
+  transport_type: kafka
