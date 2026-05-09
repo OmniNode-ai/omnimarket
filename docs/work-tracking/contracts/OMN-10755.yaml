@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10755
+title: "Remove stale event_bus_events references and add correlation_id forward gate"
+summary: >
+  event_bus_events was dropped in the 2026-05-09 DB rebuild. Removes the stale retention-cleanup
+  target from node_retention_cleanup (contract.yaml + handler). Companion PR omnibase_infra#1542
+  adds a WARNING-level forward gate to HandlerLedgerAppend for null correlation_id.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Unit test suite (921 tests) passes with event_bus_events removed"
+    command: "uv run pytest tests/unit/ -q"
+  - kind: "manual"
+    description: "Ruff lint and mypy --strict clean on node_retention_cleanup"
+    command: "uv run ruff check src/omnimarket/nodes/node_retention_cleanup/ && uv run mypy src/omnimarket/nodes/node_retention_cleanup/ --strict"
+  - kind: "manual"
+    description: "Post-merge deploy smoke plan — handler-only cleanup, no new topology"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup import HandlerRetentionCleanup; h = HandlerRetentionCleanup.__new__(HandlerRetentionCleanup); print(h._ALLOWED_TABLES if hasattr(h, \"_ALLOWED_TABLES\") else \"ok\")'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "921 unit tests pass after removing event_bus_events from node_retention_cleanup"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/ -q"
+  - id: "dod-lint"
+    description: "Ruff lint and mypy --strict clean on node_retention_cleanup"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_retention_cleanup/ && uv run mypy src/omnimarket/nodes/node_retention_cleanup/ --strict"
+  - id: "dod-deploy"
+    description: "No live deploy required — handler-only cleanup removing stale table reference. Deploy-agent inactive per OMN-8841."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup import HandlerRetentionCleanup; print(\"event_bus_events not in allowed:\", \"event_bus_events\" not in str(HandlerRetentionCleanup.__dict__))'"
