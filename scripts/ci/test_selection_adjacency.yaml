@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# scripts/ci/test_selection_adjacency.yaml
+# Static adjacency map from src/omnimarket/<module> to dependent modules.
+# When a key module changes, every module in `reverse_deps` ALSO has its tests run.
+# Treated as CI contract data — manually curated, reviewed in PRs that change it.
+#
+# NOTE: Most omnimarket tests live at tests/*.py (flat). The detector maps
+# src/omnimarket/<module> → tests/<module>/ for subdirs and tests/ (root) for
+# flat test files. Shared-module escalation forces tests/ (full suite).
+
+schema_version: 1
+
+# `shared_modules` triggers full-suite escalation if any of these change.
+# Curate based on operational risk + import fan-out across nodes and adapters.
+shared_modules:
+  - models
+  - protocols
+  - enums
+  - routing
+  - runtime
+
+# Per-repo full-suite escalation threshold.
+thresholds:
+  modules_changed_for_full_suite: 6
+
+# Test infrastructure — any change forces the full suite.
+test_infrastructure_paths:
+  - tests/conftest.py
+  - tests/fixtures/
+  - pytest.ini
+  - pyproject.toml
+
+# Reverse dependency edges.
+# Key = changed src module; value = modules that import it.
+# Leaf modules with no dependents list empty reverse_deps.
+adjacency:
+  # High-fan-out shared modules (trigger full suite via shared_modules above)
+  models:
+    reverse_deps: [nodes, adapters, projection, inference, routing, runtime, classifiers, registry]
+  protocols:
+    reverse_deps: [nodes, adapters, inference, routing, runtime]
+  enums:
+    reverse_deps: [models, nodes, adapters, routing, runtime, events]
+  routing:
+    reverse_deps: [nodes, runtime, inference]
+  runtime:
+    reverse_deps: [nodes, inference]
+
+  # Mid-fan-out modules
+  adapters:
+    reverse_deps: [nodes, inference]
+  nodes:
+    reverse_deps: []
+  inference:
+    reverse_deps: [nodes]
+  projection:
+    reverse_deps: [nodes, runtime]
+  events:
+    reverse_deps: [nodes, runtime, adapters]
+  registry:
+    reverse_deps: [nodes, runtime]
+
+  # Leaf / low-fan-out modules
+  classifiers:
+    reverse_deps: []
+  cli:
+    reverse_deps: []
+  config:
+    reverse_deps: [nodes, runtime, inference]
+  intelligence:
+    reverse_deps: [nodes]
+  logging:
+    reverse_deps: []
+  validators:
+    reverse_deps: []

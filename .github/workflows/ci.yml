@@ -86,8 +86,79 @@ jobs:
       - name: Mypy strict
         run: uv run mypy src/omnimarket/ --strict
 
-  test:
+  # ---------------------------------------------------------------------------
+  # Detect Changes — emits matrix for test job (OMN-10759)
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
+    outputs:
+      is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
+      full_suite_reason: ${{ steps.detect.outputs.full_suite_reason }}
+      split_count: ${{ steps.detect.outputs.split_count }}
+      matrix: ${{ steps.detect.outputs.matrix }}
+      selected_paths: ${{ steps.detect.outputs.selected_paths }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install pyyaml + pydantic (lightweight, no full sync needed)
+        run: uv pip install pyyaml pydantic
+
+      - name: Compute changed files
+        id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            git fetch --no-tags --depth=1 origin "$base" || true
+            git diff --name-only "$base"...HEAD > changed.txt
+          else
+            git diff --name-only HEAD~1 HEAD > changed.txt || echo "" > changed.txt
+          fi
+          echo "Changed files:"
+          cat changed.txt
+
+      - name: Resolve test selection
+        id: detect
+        env:
+          FLAG: ${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}
+        run: |
+          python -m scripts.ci.detect_test_paths \
+            --changed-files-from changed.txt \
+            --ref-name "${{ github.ref_name }}" \
+            --event-name "${{ github.event_name }}" \
+            --feature-flag "$FLAG" \
+            > selection.json
+          cat selection.json
+          is_full=$(python -c "import json; d=json.load(open('selection.json')); print(str(d['is_full_suite']).lower())")
+          reason=$(python -c "import json; d=json.load(open('selection.json')); print(d['full_suite_reason'] or '')")
+          split_count=$(python -c "import json; d=json.load(open('selection.json')); print(d['split_count'])")
+          matrix=$(python -c "import json; d=json.load(open('selection.json')); print(json.dumps(d['matrix']))")
+          paths=$(python -c "import json; d=json.load(open('selection.json')); print(json.dumps(d['selected_paths']))")
+          echo "is_full_suite=$is_full" >> "$GITHUB_OUTPUT"
+          echo "full_suite_reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "split_count=$split_count" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "selected_paths=$paths" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
+    needs: [detect-changes]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        split: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
@@ -104,8 +175,53 @@ jobs:
         run: uv python install 3.12
       - name: Install dependencies
         run: uv sync --locked --all-extras
-      - name: Pytest
-        run: uv run pytest tests/ -v --tb=short -m "not kafka"
+
+      - name: Restore test durations cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .test_durations
+          key: test-durations-${{ github.sha }}
+          restore-keys: |
+            test-durations-
+
+      - name: Run pytest (smart selection)
+        if: vars.ENABLE_SMART_TESTS == 'true' && needs.detect-changes.outputs.is_full_suite == 'false'
+        run: |
+          paths=$(echo '${{ needs.detect-changes.outputs.selected_paths }}' | python -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
+          uv run pytest $paths \
+            --splits ${{ needs.detect-changes.outputs.split_count }} \
+            --group ${{ matrix.split }} \
+            -v --tb=short -m "not kafka" \
+            --junitxml=junit-${{ matrix.split }}.xml
+
+      - name: Run pytest (full suite)
+        if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
+        run: |
+          uv run pytest tests/ \
+            --splits ${{ needs.detect-changes.outputs.split_count }} \
+            --group ${{ matrix.split }} \
+            --store-durations \
+            --durations-path .test_durations \
+            -v --tb=short -m "not kafka" \
+            --junitxml=junit-${{ matrix.split }}.xml
+
+      - name: Save test durations (full suite only, split 1)
+        if: |
+          needs.detect-changes.outputs.is_full_suite == 'true' &&
+          matrix.split == 1 &&
+          success()
+        uses: actions/cache/save@v4
+        with:
+          path: .test_durations
+          key: test-durations-${{ github.sha }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.split }}
+          path: junit-${{ matrix.split }}.xml
+          retention-days: 7
 
   topic-naming-lint:
     runs-on: ubuntu-latest
@@ -331,7 +447,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains]
+    needs: [lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains]
     if: always()
     steps:
       - name: Check CI results
@@ -342,6 +458,7 @@ jobs:
           for check in \
             "lint=${{ needs.lint.result }}" \
             "typecheck=${{ needs.typecheck.result }}" \
+            "detect-changes=${{ needs.detect-changes.result }}" \
             "test=${{ needs.test.result }}" \
             "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
             "runtime-sweep=${{ needs.runtime-sweep.result }}" \
