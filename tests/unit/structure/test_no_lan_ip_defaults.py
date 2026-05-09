@@ -28,13 +28,19 @@ _LINE_EXEMPTION = re.compile(r"#\s*onex-allow-internal-ip")
 def _collect_violations() -> list[tuple[str, int, str]]:
     violations: list[tuple[str, int, str]] = []
     for py_file in sorted(_SRC_ROOT.rglob("*.py")):
-        if py_file.name.startswith("test_"):
+        rel_path = py_file.relative_to(_SRC_ROOT)
+        if (
+            py_file.name.startswith("test_")
+            or py_file.name.endswith("_test.py")
+            or "tests" in rel_path.parts
+        ):
             continue
+        rel = str(rel_path)
         try:
             text = py_file.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            violations.append((rel, 0, f"<unreadable file: {exc}>"))
             continue
-        rel = str(py_file.relative_to(_SRC_ROOT))
         for lineno, line in enumerate(text.splitlines(), start=1):
             if _LINE_EXEMPTION.search(line):
                 continue
