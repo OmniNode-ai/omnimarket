@@ -1,0 +1,73 @@
+---
+name: node_schema_repair_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Deterministic schema repair prompt builder. Accepts malformed LLM output plus
+  Pydantic validation errors and returns a targeted repair prompt for re-dispatch.
+  No LLM calls — pure prompt construction. Same input always produces identical output.
+
+handler:
+  module: omnimarket.nodes.node_schema_repair_compute.handlers.handler_schema_repair
+  class: HandlerSchemaRepair
+  input_model: omnimarket.nodes.node_schema_repair_compute.models.model_repair_request.ModelSchemaRepairRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  malformed_output:
+    type: str
+    required: true
+    description: Raw LLM output that failed Pydantic validation
+  validation_errors:
+    type: array
+    required: true
+    description: List of Pydantic error dicts (loc, msg, type, input)
+  target_schema:
+    type: object
+    required: true
+    description: JSON schema dict describing the expected output structure
+  original_prompt:
+    type: str
+    required: true
+    description: The original prompt that produced the malformed output
+  run_id:
+    type: str
+    required: false
+    default: ""
+
+outputs:
+  status:
+    type: str
+    enum: [ok, error]
+  repair_prompt:
+    type: str
+    description: Targeted repair prompt to send back to the LLM
+  error_summary:
+    type: str
+    description: Human-readable summary of what went wrong
+  repairable:
+    type: bool
+    description: Whether re-prompting is likely to fix the errors
+  run_id:
+    type: str
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.schema-repair-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.schema-repair-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.schema-repair-completed.v1
+
+metadata:
+  transport_type: kafka

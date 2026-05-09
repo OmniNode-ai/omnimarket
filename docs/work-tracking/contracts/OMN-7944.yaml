@@ -1,0 +1,35 @@
+# OMN-7944 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+schema_version: "1.0.0"
+ticket_id: "OMN-7944"
+title: "Add schema repair compute node"
+summary: "Add node_schema_repair_compute as a pure COMPUTE node that builds deterministic repair prompts from malformed model output and schema validation errors."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Schema repair handler tests pass, including embedded markdown fence escaping."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_schema_repair_compute/tests/test_handler_schema_repair.py -q"
+  - id: "dod-002"
+    description: "Schema repair handler and tests pass ruff lint."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_schema_repair_compute/handlers/handler_schema_repair.py src/omnimarket/nodes/node_schema_repair_compute/tests/test_handler_schema_repair.py"
+  - id: "dod-deploy"
+    description: "Runtime-impacting node addition is deploy-gated; post-merge runtime redeploy and health validation are handled in the merge-sweep runtime phase."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "post-merge redeploy runtime and verify /health reports healthy event bus and no failed handlers"

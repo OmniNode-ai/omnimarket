@@ -1,0 +1,19 @@
+name: node_schema_repair_compute
+version: "1.0.0"
+description: "Deterministic schema repair prompt builder — constructs targeted LLM repair prompts from Pydantic validation errors, no LLM calls"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_schema_repair_compute: "omnimarket.nodes.node_schema_repair_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "schema", "repair", "deterministic", "prompt-engineering"]
+pack: "core"
+display_name: "Schema Repair"
+node_role: "compute"
