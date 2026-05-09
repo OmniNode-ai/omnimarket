@@ -161,7 +161,7 @@ def _load_contract() -> dict[str, Any]:
 
 
 def _resolve_omni_home() -> Path:
-    omni_home = os.environ.get("OMNI_HOME", "")
+    omni_home = os.environ.get("OMNI_HOME")
     if omni_home:
         return Path(omni_home)
     # fallback: resolve from package location (worktrees or canonical clone)

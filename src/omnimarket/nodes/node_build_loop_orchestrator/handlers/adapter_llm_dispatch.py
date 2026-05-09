@@ -122,7 +122,7 @@ _DEFAULT_DELEGATION_TOPIC: str = _load_topic_from_contract(
 
 def _get_state_dir() -> Path:
     """Resolve .onex_state from OMNI_HOME env or cwd fallback."""
-    omni_home = os.environ.get("OMNI_HOME", "")
+    omni_home = os.environ.get("OMNI_HOME")
     if omni_home:
         return Path(omni_home) / ".onex_state"
     return Path.cwd() / ".onex_state"

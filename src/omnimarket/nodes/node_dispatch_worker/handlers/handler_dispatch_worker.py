@@ -544,7 +544,7 @@ class HandlerDispatchWorker:
         target_pr = _extract_target_pr(command.targets)
         target_repo = repo
 
-        omni_home = os.environ.get("OMNI_HOME", os.path.expanduser("~/omni_home"))
+        omni_home = os.environ["OMNI_HOME"]
         worktree_root = os.environ.get(
             "OMNI_WORKTREES", os.path.join(os.path.dirname(omni_home), "omni_worktrees")
         )
