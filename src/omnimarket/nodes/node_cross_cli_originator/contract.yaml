@@ -1,0 +1,64 @@
+---
+name: cross_cli_originator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Shared CLI entry point invoked by opencode/codex plugins. Accepts a
+  delegation prompt, builds a delegation envelope, and publishes it to the
+  event bus. Thin wrapper — no orchestration logic, no direct handler imports.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: originate
+      handler:
+        name: HandlerCrossCliOriginator
+        module: omnimarket.nodes.node_cross_cli_originator.handlers.handler_cross_cli_originator
+
+input_model:
+  name: ModelCrossCliOriginatorInput
+  module: omnimarket.nodes.node_cross_cli_originator.models.model_cross_cli_originator_input
+  description: "Delegation prompt and metadata from the invoking CLI plugin."
+
+output_model:
+  name: ModelCrossCliOriginatorResult
+  module: omnimarket.nodes.node_cross_cli_originator.models.model_cross_cli_originator_result
+  description: "Published event_id and correlation_id for the caller to track."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 10000
+
+terminal_event: onex.evt.omnimarket.cross-cli-delegation-completed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.cmd.omnimarket.cross-cli-delegation-requested.v1
+    - onex.evt.omnimarket.cross-cli-delegation-completed.v1
+
+env_dependencies:
+  KAFKA_BOOTSTRAP_SERVERS:
+    required: false
+    description: "Kafka broker. Falls back to emit daemon socket if unset."
+  ONEX_EMIT_SOCKET_PATH:
+    required: false
+    description: "Emit daemon Unix socket path. Default: /tmp/onex-emit.sock"
+
+metadata:
+  transport_type: kafka
+  description: "Cross-CLI delegation originator — opencode/codex plugin entry point"
+  author: "OmniNode Platform Team"
+  created: "2026-05-09"
+  tags:
+    - effect
+    - cross-cli
+    - delegation
+    - originator
+    - OMN-10143
+  related_tickets:
+    - OMN-10143
