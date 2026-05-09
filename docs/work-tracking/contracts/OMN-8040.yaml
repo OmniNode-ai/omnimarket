@@ -1,0 +1,35 @@
+# OMN-8040 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+schema_version: "1.0.0"
+ticket_id: "OMN-8040"
+title: "Add routing policy engine compute node"
+summary: "Add node_routing_policy_engine as a pure COMPUTE node for deterministic model selection from caller-provided constraints and candidates."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "node_contract"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Routing policy handler unit coverage passes for exploit, explore, cost filter, capability filter, and deterministic behavior."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_routing_policy_engine/tests/test_handler_routing_policy.py -q"
+  - id: "dod-002"
+    description: "Routing policy node contract and source pass repository lint/type/test CI checks on PR #568."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr checks 568 --repo OmniNode-ai/omnimarket"
+  - id: "dod-deploy"
+    description: "Runtime-impacting node addition is deploy-gated; post-merge runtime redeploy and health validation are handled in the merge-sweep runtime phase."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "post-merge redeploy runtime and verify /health reports healthy event bus and no failed handlers"
