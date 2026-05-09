@@ -4,16 +4,16 @@
 """HandlerCanaryOrchestrator — drives the ADR canary evaluation pipeline.
 
 Pipeline per manifest entry:
-  1. Ingest source documents (HandlerDocumentIngestion, injected)
-  2. For each model: extract decisions (HandlerDecisionExtraction, injected, concurrent)
-  3. Grade each extraction (HandlerExtractionGrader, injected)
-  4. Generate ADR draft (HandlerAdrGeneration, injected)
+  1. Ingest source documents via ProtocolAdrIngestion
+  2. For each model: extract via ProtocolAdrExtraction (concurrent, bounded)
+  3. Grade each extraction via ProtocolAdrGrading
+  4. Generate ADR draft via ProtocolAdrDraftGen
   5. Write evidence JSON to output_dir/<run_id>/<entry_id>/<model_key>.json
   6. Write scorecard.md to output_dir/<run_id>/scorecard.md
-  7. Emit adr-canary-completed.v1
 
-All sub-handlers are injected; defaults call sibling node handlers directly.
-Config is read from contract.yaml config block via from_contract() factory.
+All protocols use shared ADR types from omnimarket.models.adr — no sibling
+node package imports. Sub-node adapters translate shared → private models.
+Topics are read from contract.yaml, never hardcoded.
 
 [OMN-10698]
 """
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 import string
 import time
@@ -33,6 +32,13 @@ from typing import Any, Literal, Protocol, runtime_checkable
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.adr import (
+    ModelAdrExtractionSummary,
+    ModelAdrGradingScores,
+    ModelAdrIngestionResult,
+    ModelAdrManifestEntry,
+    ModelAdrManifestModel,
+)
 from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_report import (
     ModelCanaryReport,
     ModelModelScore,
@@ -43,66 +49,62 @@ from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request i
 
 logger = logging.getLogger(__name__)
 
-# onex-topic-allow: pending contract auto-wiring
-TOPIC_CANARY_COMPLETED = "onex.evt.omnimarket.adr-canary-completed.v1"
-
 
 # ---------------------------------------------------------------------------
-# Protocols for injected sub-handlers
+# Protocol interfaces — defined by what the orchestrator needs, not by what
+# the sub-nodes expose. Adapters (in tests or wired by runtime) translate.
 # ---------------------------------------------------------------------------
 
 
 @runtime_checkable
-class ProtocolIngestionHandler(Protocol):
-    async def handle(self, *, request: Any) -> Any: ...
+class ProtocolAdrIngestion(Protocol):
+    """Consume root_paths; return document references."""
+
+    async def ingest(self, root_paths: list[str]) -> ModelAdrIngestionResult: ...
 
 
 @runtime_checkable
-class ProtocolExtractionHandler(Protocol):
-    async def handle(self, request: Any) -> Any: ...
+class ProtocolAdrExtraction(Protocol):
+    """Extract decisions from an ingestion result for a specific model."""
+
+    async def extract(
+        self,
+        *,
+        ingestion: ModelAdrIngestionResult,
+        model_key: str,
+        model_id: str,
+        correlation_id: str,
+    ) -> ModelAdrExtractionSummary: ...
 
 
 @runtime_checkable
-class ProtocolGraderHandler(Protocol):
-    async def handle(self, request: Any) -> Any: ...
+class ProtocolAdrGrading(Protocol):
+    """Grade an extraction against a ground-truth ADR."""
+
+    async def grade(
+        self,
+        *,
+        ground_truth_adr: str,
+        extraction: ModelAdrExtractionSummary,
+        source_summary: str,
+        correlation_id: str,
+    ) -> ModelAdrGradingScores: ...
 
 
 @runtime_checkable
-class ProtocolDraftGenHandler(Protocol):
-    async def handle(self, request: Any) -> Any: ...
+class ProtocolAdrDraftGen(Protocol):
+    """Generate an ADR draft markdown from an extraction summary."""
+
+    async def generate(
+        self,
+        *,
+        extraction: ModelAdrExtractionSummary,
+        run_id: str,
+    ) -> str: ...
 
 
 # ---------------------------------------------------------------------------
-# Ground truth manifest models
-# ---------------------------------------------------------------------------
-
-
-class ModelManifestModel(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    key: str
-    provider: str = "local"
-    model_id: str
-    external: bool = False
-
-
-class ModelManifestEntry(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    id: str
-    root_paths: list[str]
-    ground_truth_adr: str
-    models: list[ModelManifestModel]
-
-
-class ModelGroundTruthManifest(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    entries: list[ModelManifestEntry]
-
-
-# ---------------------------------------------------------------------------
-# Evidence record written per model per entry
+# Evidence record
 # ---------------------------------------------------------------------------
 
 
@@ -123,6 +125,17 @@ class ModelEvidenceRecord(BaseModel):
     extraction_error: str | None = None
     grading_error: str | None = None
     latency_ms: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Ground truth manifest (orchestrator-owned types)
+# ---------------------------------------------------------------------------
+
+
+class ModelGroundTruthManifest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: list[ModelAdrManifestEntry]
 
 
 # ---------------------------------------------------------------------------
@@ -180,8 +193,12 @@ def _write_scorecard(
 class HandlerCanaryOrchestrator:
     """ORCHESTRATOR handler driving the ADR canary evaluation pipeline.
 
-    All sub-handlers are optional; when omitted, the sibling node handlers are
-    imported lazily so the module does not force circular imports at load time.
+    All sub-capabilities are injected via protocol interfaces. The handler
+    never imports from sibling node packages — it only depends on shared
+    types in omnimarket.models.adr and its own models.
+
+    Config is read from contract.yaml via from_contract(). Topics are loaded
+    from the contract at construction time — never hardcoded here.
     """
 
     handler_type: Literal["node_handler"] = "node_handler"
@@ -189,88 +206,84 @@ class HandlerCanaryOrchestrator:
 
     def __init__(
         self,
-        ingestion_handler: ProtocolIngestionHandler | None = None,
-        extraction_handler: ProtocolExtractionHandler | None = None,
-        grader_handler: ProtocolGraderHandler | None = None,
-        draft_gen_handler: ProtocolDraftGenHandler | None = None,
+        ingestion_handler: ProtocolAdrIngestion | None = None,
+        extraction_handler: ProtocolAdrExtraction | None = None,
+        grader_handler: ProtocolAdrGrading | None = None,
+        draft_gen_handler: ProtocolAdrDraftGen | None = None,
         max_concurrent_extractions: int = 4,
         grader_model_key: str = "opus",
         allow_external_providers: bool = False,
+        topic_completed: str = "",
     ) -> None:
-        self._ingestion_handler = ingestion_handler
-        self._extraction_handler = extraction_handler
-        self._grader_handler = grader_handler
-        self._draft_gen_handler = draft_gen_handler
+        self._ingestion = ingestion_handler
+        self._extraction = extraction_handler
+        self._grading = grader_handler
+        self._draft_gen = draft_gen_handler
         self._max_concurrent_extractions = max_concurrent_extractions
         self._grader_model_key = grader_model_key
         self._allow_external_providers = allow_external_providers
+        self._topic_completed = topic_completed
 
     # ------------------------------------------------------------------
-    # Sub-handler lazy defaults
+    # Default protocol adapters (imported lazily to avoid circular deps)
     # ------------------------------------------------------------------
 
-    def _get_ingestion_handler(self) -> ProtocolIngestionHandler:
-        if self._ingestion_handler is not None:
-            return self._ingestion_handler
-        from omnimarket.nodes.node_adr_document_ingestion_effect.handlers.handler_document_ingestion import (
-            HandlerDocumentIngestion,
+    def _get_ingestion(self) -> ProtocolAdrIngestion:
+        if self._ingestion is not None:
+            return self._ingestion
+        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_ingestion import (
+            AdapterAdrIngestion,
         )
 
-        return HandlerDocumentIngestion()
+        return AdapterAdrIngestion()
 
-    def _get_extraction_handler(self) -> ProtocolExtractionHandler:
-        if self._extraction_handler is not None:
-            return self._extraction_handler
-        from omnimarket.nodes.node_adr_decision_extraction_llm_effect.handlers.handler_decision_extraction import (
-            HandlerDecisionExtraction,
+    def _get_extraction(self) -> ProtocolAdrExtraction:
+        if self._extraction is not None:
+            return self._extraction
+        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_extraction import (
+            AdapterAdrExtraction,
         )
 
-        return HandlerDecisionExtraction()
+        return AdapterAdrExtraction()
 
-    def _get_grader_handler(self) -> ProtocolGraderHandler:
-        if self._grader_handler is not None:
-            return self._grader_handler
-        from omnimarket.nodes.node_adr_extraction_grader_llm_effect.handlers.handler_extraction_grader import (
-            HandlerExtractionGrader,
+    def _get_grading(self) -> ProtocolAdrGrading:
+        if self._grading is not None:
+            return self._grading
+        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_grading import (
+            AdapterAdrGrading,
         )
 
-        return HandlerExtractionGrader(grader_model_key=self._grader_model_key)
+        return AdapterAdrGrading()
 
-    def _get_draft_gen_handler(self) -> ProtocolDraftGenHandler:
-        if self._draft_gen_handler is not None:
-            return self._draft_gen_handler
-        from omnimarket.nodes.node_adr_draft_generation_compute.handlers.handler_adr_generation import (
-            HandlerAdrGeneration,
+    def _get_draft_gen(self) -> ProtocolAdrDraftGen:
+        if self._draft_gen is not None:
+            return self._draft_gen
+        from omnimarket.nodes.node_adr_canary_orchestrator.adapters.adapter_draft_gen import (
+            AdapterAdrDraftGen,
         )
 
-        return HandlerAdrGeneration()
+        return AdapterAdrDraftGen()
 
     # ------------------------------------------------------------------
-    # Manifest loading
+    # Manifest loading — path must be absolute or resolvable
     # ------------------------------------------------------------------
 
     def _load_manifest(self, manifest_path: str) -> ModelGroundTruthManifest:
         path = Path(manifest_path)
-        if not path.is_absolute():
-            omni_home = os.environ.get("OMNI_HOME", "")
-            if omni_home:
-                candidate = Path(omni_home) / "omnimarket" / manifest_path
-                if candidate.exists():
-                    path = candidate
         with path.open(encoding="utf-8") as fh:
             raw = yaml.safe_load(fh)
         return ModelGroundTruthManifest.model_validate(raw)
 
     # ------------------------------------------------------------------
-    # Per-model extraction + grading
+    # Per-model pipeline
     # ------------------------------------------------------------------
 
     async def _run_model(
         self,
-        entry: ModelManifestEntry,
-        model: ModelManifestModel,
+        entry: ModelAdrManifestEntry,
+        model: ModelAdrManifestModel,
         run_id: str,
-        ingestion_result: Any,
+        ingestion: ModelAdrIngestionResult,
         evidence_entry_dir: Path,
     ) -> ModelEvidenceRecord:
         if model.external and not self._allow_external_providers:
@@ -292,25 +305,18 @@ class HandlerCanaryOrchestrator:
             model_key=model.key,
             model_id=model.model_id,
         )
-
-        extraction_handler = self._get_extraction_handler()
-        grader_handler = self._get_grader_handler()
-        draft_gen_handler = self._get_draft_gen_handler()
+        extraction_proto = self._get_extraction()
+        grading_proto = self._get_grading()
+        draft_gen_proto = self._get_draft_gen()
 
         # Step 1: extract
         try:
-            from omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request import (
-                ModelExtractionRequest,
-            )
-
-            extraction_req = ModelExtractionRequest(
-                documents=ingestion_result.documents,
+            extraction = await extraction_proto.extract(
+                ingestion=ingestion,
                 model_key=model.key,
                 model_id=model.model_id,
                 correlation_id=run_id,
             )
-            extraction_result = await extraction_handler.handle(extraction_req)
-            extraction_success = getattr(extraction_result, "success", False)
         except Exception as exc:
             logger.warning(
                 "Extraction failed (entry=%s, model=%s): %s", entry.id, model.key, exc
@@ -324,11 +330,10 @@ class HandlerCanaryOrchestrator:
             _write_evidence(evidence_entry_dir, model.key, record)
             return record
 
-        if not extraction_success:
-            err = getattr(extraction_result, "error_message", "extraction failed")
+        if not extraction.success:
             record = record.model_copy(
                 update={
-                    "extraction_error": err,
+                    "extraction_error": extraction.error_message or "extraction failed",
                     "latency_ms": int((time.monotonic() - t0) * 1000),
                 }
             )
@@ -338,28 +343,14 @@ class HandlerCanaryOrchestrator:
         record = record.model_copy(update={"extraction_success": True})
 
         # Step 2: grade
+        source_summary = "\n".join(d.source_path for d in ingestion.documents)
         try:
-            from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request import (
-                ModelGradingRequest,
-            )
-
-            extractions = getattr(extraction_result, "extractions", [])
-            extraction_dicts = [
-                e.model_dump() if hasattr(e, "model_dump") else dict(e)
-                for e in extractions
-            ]
-            grading_req = ModelGradingRequest(
+            scores = await grading_proto.grade(
                 ground_truth_adr=entry.ground_truth_adr,
-                extraction_output=extraction_dicts,
-                source_document="\n\n".join(
-                    getattr(doc, "source_path", "")
-                    for doc in ingestion_result.documents
-                ),
+                extraction=extraction,
+                source_summary=source_summary,
                 correlation_id=run_id,
-                model_key_under_test=model.key,
             )
-            grading_result = await grader_handler.handle(grading_req)
-            grading_success = getattr(grading_result, "success", False)
         except Exception as exc:
             logger.warning(
                 "Grading failed (entry=%s, model=%s): %s", entry.id, model.key, exc
@@ -373,46 +364,35 @@ class HandlerCanaryOrchestrator:
             _write_evidence(evidence_entry_dir, model.key, record)
             return record
 
-        if grading_success:
+        if scores.success:
             record = record.model_copy(
                 update={
                     "grading_success": True,
-                    "recall": getattr(grading_result, "recall", None),
-                    "precision": getattr(grading_result, "precision", None),
-                    "fidelity": getattr(grading_result, "fidelity", None),
-                    "format_compliance": getattr(
-                        grading_result, "format_compliance", None
-                    ),
+                    "recall": scores.recall,
+                    "precision": scores.precision,
+                    "fidelity": scores.fidelity,
+                    "format_compliance": scores.format_compliance,
                 }
             )
 
         # Step 3: generate ADR draft
-        try:
-            from omnimarket.nodes.node_adr_draft_generation_compute.models.model_generation_request import (
-                ModelADRGenerationRequest,
-            )
-
-            if extractions:
-                first_extraction = extractions[0]
-                draft_req = ModelADRGenerationRequest(
-                    extraction=first_extraction,
+        if extraction.extraction_count > 0:
+            try:
+                draft_md = await draft_gen_proto.generate(
+                    extraction=extraction,
                     run_id=run_id,
                 )
-                draft_result = await draft_gen_handler.handle(draft_req)
-                draft_ok = getattr(draft_result, "status", "error") == "ok"
-                if draft_ok:
+                if draft_md:
                     draft_path = evidence_entry_dir / f"{model.key}_draft.md"
-                    draft_path.write_text(
-                        getattr(draft_result, "markdown", ""), encoding="utf-8"
-                    )
+                    draft_path.write_text(draft_md, encoding="utf-8")
                     record = record.model_copy(update={"draft_generated": True})
-        except Exception as exc:
-            logger.warning(
-                "Draft generation failed (entry=%s, model=%s): %s",
-                entry.id,
-                model.key,
-                exc,
-            )
+            except Exception as exc:
+                logger.warning(
+                    "Draft generation failed (entry=%s, model=%s): %s",
+                    entry.id,
+                    model.key,
+                    exc,
+                )
 
         record = record.model_copy(
             update={"latency_ms": int((time.monotonic() - t0) * 1000)}
@@ -421,7 +401,7 @@ class HandlerCanaryOrchestrator:
         return record
 
     # ------------------------------------------------------------------
-    # Main handle
+    # Main entrypoint
     # ------------------------------------------------------------------
 
     async def handle(self, request: ModelCanaryCommandPayload) -> ModelCanaryReport:
@@ -431,7 +411,6 @@ class HandlerCanaryOrchestrator:
         )
 
         if request.dry_run:
-            logger.info("dry_run=True — loading manifest only, no LLM calls")
             try:
                 manifest = self._load_manifest(request.manifest_path)
             except Exception as exc:
@@ -455,7 +434,6 @@ class HandlerCanaryOrchestrator:
                 dry_run=True,
             )
 
-        # Load manifest
         try:
             manifest = self._load_manifest(request.manifest_path)
         except Exception as exc:
@@ -472,7 +450,7 @@ class HandlerCanaryOrchestrator:
         evidence_dir = Path(request.output_dir) / run_id
         evidence_dir.mkdir(parents=True, exist_ok=True)
 
-        ingestion_handler = self._get_ingestion_handler()
+        ingestion_proto = self._get_ingestion()
         sem = asyncio.Semaphore(self._max_concurrent_extractions)
 
         all_records: list[ModelEvidenceRecord] = []
@@ -483,43 +461,38 @@ class HandlerCanaryOrchestrator:
             evidence_entry_dir = evidence_dir / entry.id
             evidence_entry_dir.mkdir(parents=True, exist_ok=True)
 
-            # Step 1: ingest documents for this entry
+            # Ingest documents for this entry
             try:
-                from omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_request import (
-                    ModelIngestionRequest,
+                ingestion_result = await ingestion_proto.ingest(
+                    root_paths=entry.root_paths
                 )
-
-                ingest_req = ModelIngestionRequest(root_paths=entry.root_paths)
-                ingestion_result = await ingestion_handler.handle(request=ingest_req)
             except Exception as exc:
                 logger.error("Ingestion failed for entry %s: %s", entry.id, exc)
                 entries_failed += 1
                 continue
 
-            # Filter models by subset if specified
+            # Filter models by subset
             models_to_run = entry.models
             if request.model_subset:
                 models_to_run = [
                     m for m in entry.models if m.key in request.model_subset
                 ]
 
-            # Step 2-4: run models concurrently (bounded by semaphore)
-            async def _bounded_run(
-                _entry: ModelManifestEntry = entry,
-                _model: ModelManifestModel = None,  # type: ignore[assignment]
-                _ingestion: Any = ingestion_result,
-                _evidence_dir: Path = evidence_entry_dir,
+            # Run models concurrently (bounded by semaphore)
+            async def _bounded(
+                _entry: ModelAdrManifestEntry = entry,
+                _model: ModelAdrManifestModel = None,  # type: ignore[assignment]
+                _ing: ModelAdrIngestionResult = ingestion_result,
+                _edir: Path = evidence_entry_dir,
             ) -> ModelEvidenceRecord:
                 async with sem:
-                    return await self._run_model(
-                        _entry, _model, run_id, _ingestion, _evidence_dir
-                    )
+                    return await self._run_model(_entry, _model, run_id, _ing, _edir)
 
-            tasks = [asyncio.create_task(_bounded_run(_model=m)) for m in models_to_run]
-            entry_records = await asyncio.gather(*tasks, return_exceptions=True)
+            tasks = [asyncio.create_task(_bounded(_model=m)) for m in models_to_run]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
             entry_ok = True
-            for rec in entry_records:
+            for rec in results:
                 if isinstance(rec, BaseException):
                     logger.error("Model task raised: %s", rec)
                     entry_ok = False
@@ -531,10 +504,7 @@ class HandlerCanaryOrchestrator:
             else:
                 entries_failed += 1
 
-        # Aggregate per-model scores
         model_scores = _aggregate_scores(all_records)
-
-        # Write scorecard
         scorecard_path = _write_scorecard(
             run_id=run_id,
             manifest_path=request.manifest_path,
@@ -546,11 +516,10 @@ class HandlerCanaryOrchestrator:
         )
 
         logger.info(
-            "adr-canary complete (run_id=%s, entries=%d/%d, scorecard=%s)",
+            "adr-canary complete (run_id=%s, entries=%d/%d)",
             run_id,
             entries_completed,
             len(manifest.entries),
-            scorecard_path,
         )
 
         return ModelCanaryReport(
@@ -566,7 +535,11 @@ class HandlerCanaryOrchestrator:
 
     @classmethod
     def from_contract(cls, contract: dict[str, Any]) -> HandlerCanaryOrchestrator:
+        """Build from a loaded contract.yaml dict."""
         cfg = contract.get("config", {})
+        event_bus = contract.get("event_bus", {})
+        publish_topics: list[str] = event_bus.get("publish_topics", [])
+        topic_completed = next((t for t in publish_topics if "completed" in t), "")
         return cls(
             max_concurrent_extractions=int(
                 cfg.get("max_concurrent_extractions", {}).get("default", 4)
@@ -577,6 +550,7 @@ class HandlerCanaryOrchestrator:
             allow_external_providers=bool(
                 cfg.get("allow_external_providers", {}).get("default", False)
             ),
+            topic_completed=topic_completed,
         )
 
 

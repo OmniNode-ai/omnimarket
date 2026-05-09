@@ -12,11 +12,17 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
 
+from omnimarket.models.adr import (
+    ModelAdrDocumentRef,
+    ModelAdrExtractionSummary,
+    ModelAdrGradingScores,
+    ModelAdrIngestionResult,
+)
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
     ModelEvidenceRecord,
@@ -49,7 +55,7 @@ def minimal_manifest(tmp_path: Path) -> Path:
                     {
                         "key": "qwen3-coder",
                         "provider": "local",
-                        "model_id": "cyankiwi/Qwen3-Coder-30B",
+                        "model_id": "cyankiwi/Qwen3-Coder-30B",  # onex-allow-model-id OMN-10698 reason="test fixture model id exercises manifest parsing"
                         "external": False,
                     },
                 ],
@@ -62,37 +68,50 @@ def minimal_manifest(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def mock_ingestion_result() -> MagicMock:
-    doc = MagicMock()
-    doc.source_path = "docs/decisions/adr-001.md"
-    result = MagicMock()
-    result.documents = [doc]
-    return result
+def mock_ingestion_result() -> ModelAdrIngestionResult:
+    return ModelAdrIngestionResult(
+        documents=[
+            ModelAdrDocumentRef(
+                source_path="docs/decisions/adr-001.md",
+                source_content_sha256="abc123",
+            )
+        ],
+        root_paths=["docs/decisions"],
+    )
 
 
 @pytest.fixture
-def mock_extraction_result() -> MagicMock:
-    extraction = MagicMock()
-    extraction.model_dump.return_value = {
-        "decision_type": "architecture_decision",
-        "text": "Use Kafka",
-    }
-    result = MagicMock()
-    result.success = True
-    result.extractions = [extraction]
-    result.error_message = None
-    return result
+def mock_extraction_result() -> ModelAdrExtractionSummary:
+    return ModelAdrExtractionSummary(
+        success=True,
+        model_key="qwen3-coder",
+        extraction_count=1,
+        extractions_raw=[
+            {
+                "decision_type": "ARCHITECTURE",
+                "statement": "Use Kafka",
+                "evidence_quotes": ["Kafka provides durable event delivery."],
+            }
+        ],
+        first_extraction_json=json.dumps(
+            {
+                "decision_type": "ARCHITECTURE",
+                "statement": "Use Kafka",
+                "evidence_quotes": ["Kafka provides durable event delivery."],
+            }
+        ),
+    )
 
 
 @pytest.fixture
-def mock_grading_result() -> MagicMock:
-    result = MagicMock()
-    result.success = True
-    result.recall = 0.85
-    result.precision = 0.90
-    result.fidelity = 0.88
-    result.format_compliance = 0.95
-    return result
+def mock_grading_result() -> ModelAdrGradingScores:
+    return ModelAdrGradingScores(
+        success=True,
+        recall=0.85,
+        precision=0.90,
+        fidelity=0.88,
+        format_compliance=0.95,
+    )
 
 
 @pytest.fixture
@@ -111,16 +130,16 @@ def _make_handler(
     draft_result: Any,
 ) -> HandlerCanaryOrchestrator:
     ingestion_handler = AsyncMock()
-    ingestion_handler.handle = AsyncMock(return_value=ingestion_result)
+    ingestion_handler.ingest = AsyncMock(return_value=ingestion_result)
 
     extraction_handler = AsyncMock()
-    extraction_handler.handle = AsyncMock(return_value=extraction_result)
+    extraction_handler.extract = AsyncMock(return_value=extraction_result)
 
     grader_handler = AsyncMock()
-    grader_handler.handle = AsyncMock(return_value=grading_result)
+    grader_handler.grade = AsyncMock(return_value=grading_result)
 
     draft_gen_handler = AsyncMock()
-    draft_gen_handler.handle = AsyncMock(return_value=draft_result)
+    draft_gen_handler.generate = AsyncMock(return_value=draft_result.markdown)
 
     return HandlerCanaryOrchestrator(
         ingestion_handler=ingestion_handler,
@@ -341,28 +360,7 @@ class TestHandlerCanaryOrchestrator:
             output_dir=str(tmp_path / "runs"),
         )
 
-        # Models are imported lazily inside _run_model; patch at the source modules.
-        with (
-            patch(
-                "omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request.ModelExtractionRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request.ModelGradingRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_draft_generation_compute.models.model_generation_request.ModelADRGenerationRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-        ):
-            result = asyncio.get_event_loop().run_until_complete(
-                handler.handle(payload)
-            )
+        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
 
         assert isinstance(result, ModelCanaryReport)
         assert result.entries_total == 1
@@ -392,27 +390,22 @@ class TestHandlerCanaryOrchestrator:
         manifest_path.write_text(yaml.dump(manifest), encoding="utf-8")
 
         mock_ingest = AsyncMock()
-        mock_ingest_result = MagicMock()
-        mock_ingest_result.documents = []
-        mock_ingest.handle = AsyncMock(return_value=mock_ingest_result)
+        mock_ingest_result = ModelAdrIngestionResult(documents=[], root_paths=[])
+        mock_ingest.ingest = AsyncMock(return_value=mock_ingest_result)
 
         handler = HandlerCanaryOrchestrator(
             ingestion_handler=mock_ingest,
             allow_external_providers=False,
         )
 
-        with patch(
-            "omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest",
-            MagicMock(return_value=MagicMock()),
-        ):
-            result = asyncio.get_event_loop().run_until_complete(
-                handler.handle(
-                    ModelCanaryCommandPayload(
-                        manifest_path=str(manifest_path),
-                        output_dir=str(tmp_path / "runs"),
-                    )
+        result = asyncio.get_event_loop().run_until_complete(
+            handler.handle(
+                ModelCanaryCommandPayload(
+                    manifest_path=str(manifest_path),
+                    output_dir=str(tmp_path / "runs"),
                 )
             )
+        )
 
         assert isinstance(result, ModelCanaryReport)
         assert result.model_scores[0].entries_evaluated == 0
@@ -445,29 +438,37 @@ class TestHandlerCanaryOrchestrator:
         manifest_path.write_text(yaml.dump(manifest), encoding="utf-8")
 
         mock_ingest = AsyncMock()
-        mock_ingest_result = MagicMock()
-        mock_ingest_result.documents = []
-        mock_ingest.handle = AsyncMock(return_value=mock_ingest_result)
+        mock_ingest_result = ModelAdrIngestionResult(
+            documents=[
+                ModelAdrDocumentRef(
+                    source_path="docs/decisions/adr-001.md",
+                    source_content_sha256="abc123",
+                )
+            ],
+            root_paths=["docs/decisions"],
+        )
+        mock_ingest.ingest = AsyncMock(return_value=mock_ingest_result)
 
         mock_extract = AsyncMock()
-        mock_extract_result = MagicMock()
-        mock_extract_result.success = True
-        mock_extract_result.extractions = []
-        mock_extract.handle = AsyncMock(return_value=mock_extract_result)
+        mock_extract_result = ModelAdrExtractionSummary(
+            success=True,
+            model_key="model-a",
+            extraction_count=0,
+        )
+        mock_extract.extract = AsyncMock(return_value=mock_extract_result)
 
         mock_grader = AsyncMock()
-        mock_grader_result = MagicMock()
-        mock_grader_result.success = True
-        mock_grader_result.recall = 0.8
-        mock_grader_result.precision = 0.8
-        mock_grader_result.fidelity = 0.8
-        mock_grader_result.format_compliance = 0.8
-        mock_grader.handle = AsyncMock(return_value=mock_grader_result)
+        mock_grader_result = ModelAdrGradingScores(
+            success=True,
+            recall=0.8,
+            precision=0.8,
+            fidelity=0.8,
+            format_compliance=0.8,
+        )
+        mock_grader.grade = AsyncMock(return_value=mock_grader_result)
 
         mock_draft = AsyncMock()
-        mock_draft_result_obj = MagicMock()
-        mock_draft_result_obj.status = "error"
-        mock_draft.handle = AsyncMock(return_value=mock_draft_result_obj)
+        mock_draft.generate = AsyncMock(return_value="")
 
         handler = HandlerCanaryOrchestrator(
             ingestion_handler=mock_ingest,
@@ -476,29 +477,15 @@ class TestHandlerCanaryOrchestrator:
             draft_gen_handler=mock_draft,
         )
 
-        with (
-            patch(
-                "omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request.ModelExtractionRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request.ModelGradingRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-        ):
-            result = asyncio.get_event_loop().run_until_complete(
-                handler.handle(
-                    ModelCanaryCommandPayload(
-                        manifest_path=str(manifest_path),
-                        output_dir=str(tmp_path / "runs"),
-                        model_subset=["model-a"],
-                    )
+        result = asyncio.get_event_loop().run_until_complete(
+            handler.handle(
+                ModelCanaryCommandPayload(
+                    manifest_path=str(manifest_path),
+                    output_dir=str(tmp_path / "runs"),
+                    model_subset=["model-a"],
                 )
             )
+        )
 
         scored_models = {s.model_key for s in result.model_scores}
         assert "model-a" in scored_models
@@ -544,27 +531,7 @@ class TestHandlerCanaryOrchestrator:
             output_dir=str(tmp_path / "runs"),
         )
 
-        with (
-            patch(
-                "omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request.ModelExtractionRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request.ModelGradingRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-            patch(
-                "omnimarket.nodes.node_adr_draft_generation_compute.models.model_generation_request.ModelADRGenerationRequest",
-                MagicMock(return_value=MagicMock()),
-            ),
-        ):
-            result = asyncio.get_event_loop().run_until_complete(
-                handler.handle(payload)
-            )
+        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
 
         evidence_dir = Path(result.evidence_dir)
         entry_dir = evidence_dir / "test-entry-1"

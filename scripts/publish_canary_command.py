@@ -42,8 +42,6 @@ import yaml
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BOOTSTRAP = "192.168.86.201:19092"
-
 
 def _load_command_topic() -> str:
     """Load the subscribe topic from the canary orchestrator contract.yaml."""
@@ -80,7 +78,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--allow-external", action="store_true")
     p.add_argument(
         "--bootstrap",
-        default=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", _DEFAULT_BOOTSTRAP),
+        default=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""),
     )
     p.add_argument(
         "--topic",
@@ -92,6 +90,10 @@ def _parse_args() -> argparse.Namespace:
 
 async def _publish(args: argparse.Namespace) -> None:
     topic = args.topic or _load_command_topic()
+    if not args.bootstrap:
+        raise SystemExit(
+            "--bootstrap or KAFKA_BOOTSTRAP_SERVERS is required; no lab default is embedded."
+        )
 
     model_subset = None
     if args.model_subset:
