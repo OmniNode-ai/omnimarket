@@ -113,7 +113,9 @@ jobs:
         run: uv python install 3.12
 
       - name: Install pyyaml + pydantic (lightweight, no full sync needed)
-        run: uv pip install --system pyyaml pydantic
+        run: |
+          uv venv --python 3.12
+          uv pip install pyyaml pydantic
 
       - name: Compute changed files
         id: diff
@@ -133,6 +135,7 @@ jobs:
         env:
           FLAG: ${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}
         run: |
+          . .venv/bin/activate
           python -m scripts.ci.detect_test_paths \
             --changed-files-from changed.txt \
             --ref-name "${{ github.ref_name }}" \
