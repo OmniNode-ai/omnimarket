@@ -76,9 +76,9 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimarket.adr-canary-completed.v1"
     - "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"
-    - "onex.cmd.omnimarket.adr-extraction-requested.v1"
-    - "onex.cmd.omnimarket.adr-grading-requested.v1"
-    - "onex.cmd.omnimarket.adr-draft-generation-requested.v1"
+    - "onex.cmd.omnimarket.adr-decision-extraction-requested.v1"
+    - "onex.cmd.omnimarket.adr-extraction-grading-requested.v1"
+    - "onex.cmd.omnimarket.adr-draft-generation-start.v1"
 
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.adr-canary-requested.v1":
@@ -89,20 +89,36 @@ event_bus:
     "onex.evt.omnimarket.adr-canary-completed.v1":
       schema_ref: "omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_report.ModelCanaryReport"
       description: "Canary run completed — scorecard and evidence bundle paths."
+    "onex.cmd.omnimarket.adr-document-ingestion-requested.v1":
+      schema_ref: "omnimarket.nodes.node_adr_document_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest"
+      description: "Command emitted through the bus-backed ingestion protocol adapter."
+    "onex.cmd.omnimarket.adr-decision-extraction-requested.v1":
+      schema_ref: "omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request.ModelExtractionRequest"
+      description: "Command emitted through the bus-backed extraction protocol adapter."
+    "onex.cmd.omnimarket.adr-extraction-grading-requested.v1":
+      schema_ref: "omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request.ModelGradingRequest"
+      description: "Command emitted through the bus-backed grading protocol adapter."
+    "onex.cmd.omnimarket.adr-draft-generation-start.v1":
+      schema_ref: "omnimarket.nodes.node_adr_draft_generation_compute.models.model_generation_request.ModelADRGenerationRequest"
+      description: "Command emitted through the bus-backed draft-generation protocol adapter."
 
 # === SUB-HANDLER DEPENDENCIES ===
 sub_handler_dependencies:
   - name: ingestion
     protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrIngestion
+    default_impl: omnimarket.adapters.adr.AdapterBusAdrIngestion
     optional: false
   - name: extraction
     protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrExtraction
+    default_impl: omnimarket.adapters.adr.AdapterBusAdrExtraction
     optional: false
   - name: grading
     protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrGrading
+    default_impl: omnimarket.adapters.adr.AdapterBusAdrGrading
     optional: false
   - name: draft_gen
     protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrDraftGen
+    default_impl: omnimarket.adapters.adr.AdapterBusAdrDraftGen
     optional: false
 
 # === HANDLER ROUTING ===
