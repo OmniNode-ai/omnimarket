@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-7873
+title: "fix(omnimarket): unified ingestion contract.yaml uses wrong format — must match omnimarket schema"
+summary: "Fixes node_content_ingestion_effect/contract.yaml to use omnimarket handler block schema (handler.module/class) instead of omniintelligence routing-key format."
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "CI passes on PR #579"
+    command: "gh pr checks 579 --repo OmniNode-ai/omnimarket"
+  - kind: "manual"
+    description: "12 contract format tests pass"
+    command: "uv run pytest tests/nodes/node_content_ingestion_effect/ -v"
+  - kind: "manual"
+    description: "HandlerContentIngestion importable from installed package"
+    command: "uv run python -c 'from omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion import HandlerContentIngestion; print(HandlerContentIngestion.__name__)'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-ci"
+    description: "CI green on PR #579 — all required checks pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr checks 579 --repo OmniNode-ai/omnimarket"
+  - id: "dod-tests"
+    description: "12 contract format regression tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_content_ingestion_effect/ -v"
+  - id: "dod-deploy"
+    description: "No runtime deploy required — new skeleton node. HandlerContentIngestion importable from installed package; no container restart needed for a new entry-point registration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -c 'from omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion import HandlerContentIngestion; print(HandlerContentIngestion.__name__)' # deploy evidence: no live deploy required"

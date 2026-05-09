@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_content_ingestion_effect
+# EFFECT node — consumes content-discovered events and extracts content by type.
+# Content-type dispatch (python/markdown/yaml) is handled in handler code, not YAML.
+# [OMN-7873]
+
+name: node_content_ingestion_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: EFFECT
+
+handler:
+  module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion
+  class: HandlerContentIngestion
+  input_model: omnimarket.nodes.node_content_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest
+
+description: |
+  Consumes content-discovered events from the filesystem crawler and dispatches
+  to content-type-specific extraction handlers. Content-type routing (python →
+  AST extraction, markdown → text extraction, yaml → contract parse) is
+  implemented in handler_routing.py — not declared in YAML.
+
+  Emits content-extracted events for each file processed, then emits a
+  content-ingestion-completed terminal event.
+
+  Read-only invariants:
+    - No filesystem writes
+    - No LLM calls
+    - No direct database access — all persistence is downstream via projections
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.content-ingestion-start.v1"
+    - "onex.evt.omnimarket.content-discovered.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.content-extracted.v1"
+    - "onex.evt.omnimarket.content-ingestion-completed.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.content-ingestion-start.v1":
+      schema_ref: "omnimarket.nodes.node_content_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest"
+      description: "Command to start a content ingestion run."
+    "onex.evt.omnimarket.content-discovered.v1":
+      schema_ref: "omnimarket.nodes.node_filesystem_crawler_effect.models.model_content_discovered_event.ModelContentDiscoveredEvent"
+      description: "File discovered event from the filesystem crawler."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.content-extracted.v1":
+      schema_ref: "omnimarket.nodes.node_content_ingestion_effect.models.model_extraction_result.ModelExtractionResult"
+      description: "Extraction result event — one per discovered file."
+    "onex.evt.omnimarket.content-ingestion-completed.v1":
+      schema_ref: "omnimarket.nodes.node_content_ingestion_effect.models.model_ingestion_summary.ModelIngestionSummary"
+      description: "Terminal event emitted after all files in the batch are processed."
+
+terminal_event: onex.evt.omnimarket.content-ingestion-completed.v1
+
+metadata:
+  transport_type: kafka
