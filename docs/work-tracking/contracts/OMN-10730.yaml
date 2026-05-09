@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10730
+title: "Refactor handler_projection_overnight to inject sibling handler (DI)"
+summary: "Remove handler-constructs-handler pattern: HandlerProjectionOvernightPhaseEnd and HandlerProjectionOvernightSessionComplete both constructed HandlerProjectionOvernightSessionStart() internally. Both now accept session_start_handler via constructor. contract.yaml updated with sub_handler_dependencies. Tests updated to pass the handler explicitly."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Golden-chain projection_overnight tests pass"
+    command: "uv run pytest tests/test_golden_chain_projection_overnight.py -q"
+  - kind: "manual"
+    description: "Contract ownership validator passes for node_projection_overnight"
+    command: "uv run pytest tests/validation/test_runtime_profile_contract_ownership.py -k node_projection_overnight -q"
+  - kind: "manual"
+    description: "mypy strict passes"
+    command: "uv run mypy src/omnimarket/ --strict --no-error-summary 2>&1 | tail -3"
+  - kind: "manual"
+    description: "ruff check passes"
+    command: "uv run ruff check src/omnimarket/nodes/node_projection_overnight/ tests/test_golden_chain_projection_overnight.py"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-golden-chain"
+    description: "Golden-chain projection_overnight tests pass (14 tests)"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_projection_overnight.py -q"
+  - id: "dod-ownership-validator"
+    description: "Contract ownership validator passes for HandlerProjectionOvernightSessionComplete"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contract_ownership.py -k node_projection_overnight -q"
+  - id: "dod-mypy"
+    description: "mypy strict passes on src/omnimarket/"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/ --strict"
+  - id: "dod-ruff"
+    description: "ruff check passes on changed files"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_projection_overnight/ tests/test_golden_chain_projection_overnight.py"
+  - id: "dod-deploy"
+    description: "Post-merge deploy plan only; no live deploy or runtime restart performed in this PR. DI refactor is constructor-only; no runtime behavior change."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\\n' 'post-merge deploy smoke: verify projection_overnight handler boots in runtime profile with injected session_start_handler'"
