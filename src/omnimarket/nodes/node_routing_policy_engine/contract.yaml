@@ -48,9 +48,9 @@ inputs:
     nullable: true
   exploration_seed:
     type: float
-    description: "Uniform random value in [0, 1) for exploit/explore branching"
+    description: "Uniform random value in [0, 1) for exploit/explore branching. Omit or null to always exploit."
     required: false
-    default: 0.0
+    nullable: true
   exploration_rate:
     type: float
     description: "Fraction of traffic routed to exploration (default 0.15)"
@@ -67,9 +67,13 @@ outputs:
     enum: [ok, error]
   selected_model_key:
     type: str
+    required: false
+    nullable: true
   selection_mode:
     type: str
     enum: [exploit, explore]
+    required: false
+    nullable: true
   selection_reason:
     type: str
   alternative_candidates:

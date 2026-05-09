@@ -64,11 +64,12 @@ class ModelRoutingPolicyRequest(BaseModel):
     )
     # Seeded value in [0, 1) used to implement the exploit/explore split
     # deterministically. Callers supply this so the handler stays pure.
-    exploration_seed: float = Field(
-        default=0.0,
+    # None means "no seed provided" — handler falls back to exploit unconditionally.
+    exploration_seed: float | None = Field(
+        default=None,
         ge=0.0,
         lt=1.0,
-        description="Uniform random value in [0, 1) for exploit/explore branching.",
+        description="Uniform random value in [0, 1) for exploit/explore branching. None = always exploit.",
     )
     # Fraction of traffic sent to explore (minority tier). Default 0.15 = 15%.
     exploration_rate: float = Field(

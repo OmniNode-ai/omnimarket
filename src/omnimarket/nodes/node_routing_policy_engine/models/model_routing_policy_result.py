@@ -37,12 +37,12 @@ class ModelRoutingPolicyResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     status: EnumRoutingStatus = Field(..., description="ok or error.")
-    selected_model_key: str = Field(
-        default="", description="Key of the selected model."
+    selected_model_key: str | None = Field(
+        default=None, description="Key of the selected model. None when status=error."
     )
-    selection_mode: EnumSelectionMode = Field(
-        default=EnumSelectionMode.EXPLOIT,
-        description="Whether exploitation or exploration drove the selection.",
+    selection_mode: EnumSelectionMode | None = Field(
+        default=None,
+        description="Whether exploitation or exploration drove the selection. None when status=error.",
     )
     selection_reason: str = Field(
         default="", description="Human-readable reason for the selection."

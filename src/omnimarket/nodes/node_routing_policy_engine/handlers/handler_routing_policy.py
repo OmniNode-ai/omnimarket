@@ -58,7 +58,9 @@ class HandlerRoutingPolicy:
             )
 
         is_explore = (
-            len(ranked) >= 2 and request.exploration_seed < request.exploration_rate
+            len(ranked) >= 2
+            and request.exploration_seed is not None
+            and request.exploration_seed < request.exploration_rate
         )
 
         if is_explore:
