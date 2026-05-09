@@ -4,5 +4,5 @@
 set -euo pipefail
 
 exec python -m omnimarket.nodes.node_projection_llm_cost.consumer \
-    --bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}" \
+    --bootstrap-servers "${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required (e.g. 192.168.86.201:19092)}" \
     --group-id "local.omnimarket.projection-llm-cost.consume.v1"
