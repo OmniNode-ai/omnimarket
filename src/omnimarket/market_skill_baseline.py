@@ -699,7 +699,7 @@ exit 1
 
 def _smoke_local_review() -> ModelCommandResult:
     command = [sys.executable, "-m", "omnimarket.nodes.node_local_review", "--dry-run"]
-    completed = _run_command(command=command)
+    completed = _run_command(command=command, env={"OMNI_HOME": str(OMNI_HOME)})
     payload = _parse_json(completed.stdout)
     observed = _unwrap_cli_report_payload(payload)
     passed = completed.returncode == 0 and observed.get("current_phase") == "init"
@@ -877,7 +877,7 @@ def _smoke_ticket_pipeline() -> ModelCommandResult:
         "OMN-9360",
         "--dry-run",
     ]
-    completed = _run_command(command=command)
+    completed = _run_command(command=command, env={"OMNI_HOME": str(OMNI_HOME)})
     payload = _parse_json(completed.stdout)
     result_summary = payload.get("result_summary")
     if not isinstance(result_summary, dict):
