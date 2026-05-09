@@ -50,8 +50,14 @@ def test_contract_handler_block_is_omnimarket_format() -> None:
     assert isinstance(handler, dict), "handler must be a dict, not a list"
     assert "module" in handler
     assert "class" in handler
+    assert "input_model" in handler
     assert handler["module"].startswith(
         "omnimarket.nodes.node_content_ingestion_effect"
+    )
+    assert handler["class"] == "HandlerContentIngestion"
+    assert (
+        handler["input_model"]
+        == "omnimarket.nodes.node_content_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest"
     )
 
 
