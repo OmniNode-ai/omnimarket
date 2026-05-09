@@ -174,8 +174,13 @@ def test_main_profile_excludes_memory_and_intelligence_crashers() -> None:
     intelligence_orchestrator = _load_contract(
         NODES_ROOT / "node_intelligence_orchestrator" / "contract.yaml"
     )
+    adr_canary_orchestrator = _load_contract(
+        NODES_ROOT / "node_adr_canary_orchestrator" / "contract.yaml"
+    )
 
     assert not _owned_by_runtime_profile(intent_consumer, "main")
     assert _runtime_profiles(intent_consumer) == ("memory",)
     assert not _owned_by_runtime_profile(intelligence_orchestrator, "main")
     assert _runtime_profiles(intelligence_orchestrator) == ("intelligence",)
+    assert not _owned_by_runtime_profile(adr_canary_orchestrator, "main")
+    assert _runtime_profiles(adr_canary_orchestrator) == ("canary",)
