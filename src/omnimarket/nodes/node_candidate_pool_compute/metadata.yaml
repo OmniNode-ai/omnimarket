@@ -1,0 +1,20 @@
+name: node_candidate_pool_compute
+version: "1.0.0"
+description: "Bootstrap-grade multi-candidate selection — schema validity + LOC budget scoring, no LLM calls"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_candidate_pool_compute: "omnimarket.nodes.node_candidate_pool_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "jsonschema>=4.0.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "candidate", "scoring", "selection", "deterministic"]
+pack: "canary"
+display_name: "Candidate Pool Compute"
+node_role: "compute"
