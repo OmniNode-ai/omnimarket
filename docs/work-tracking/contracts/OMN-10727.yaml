@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10727
+title: "Align ADR grading mock signature with production interface"
+summary: >
+  Adds golden-chain inline proof-of-life test for HandlerCanaryOrchestrator that
+  exercises the full ingestion/extraction/grading/draft-gen pipeline with
+  protocol-compliant mocks. Fixes the source_summary kwarg mismatch that silently
+  blocked draft-gen in the ADR canary PoL run.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-golden-chain-tests-pass"
+    description: "Golden-chain inline PoL tests for ADR canary orchestrator pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_adr_canary_orchestrator/test_golden_chain_inline_pol.py -q"
+  - id: "dod-full-suite-pass"
+    description: "Full omnimarket test suite passes (unit + not kafka)"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m 'not kafka and not slow and not integration' -q"
+  - id: "dod-typecheck"
+    description: "mypy --strict passes on the new test file"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy tests/nodes/node_adr_canary_orchestrator/test_golden_chain_inline_pol.py --strict"
