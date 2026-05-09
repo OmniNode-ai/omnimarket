@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10695
+title: "Build decision extraction LLM effect node"
+summary: >
+  Adds node_adr_decision_extraction_llm_effect to omnimarket -- the core intelligence EFFECT node for
+  the ADR canary pipeline. Accepts segmented document content and a caller-specified model key, identifies
+  architectural decisions, pivots, doctrine, operational lessons, supersessions, and rejected approaches
+  via a six-type taxonomy. Called 19 times per document in the canary (once per model). Extraction IDs
+  are deterministically computed. This is a new omnimarket node -- no runtime deploy required.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests-pass"
+    description: "38/38 unit tests pass for node_adr_decision_extraction_llm_effect with mocked LLM responses."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_adr_decision_extraction_llm_effect/tests/ -v --tb=short"
+  - id: "dod-deploy"
+    description: >
+      No runtime deploy required -- node_adr_decision_extraction_llm_effect is a new omnimarket node loaded
+      dynamically from the package. No container rebuild or daemon restart needed.
+      deploy evidence: omnimarket PR #564 CI passes.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 564 --repo OmniNode-ai/omnimarket --json statusCheckRollup --jq '.statusCheckRollup[] | select(.name == \"CI Summary\") | .conclusion' | grep -q SUCCESS # deploy evidence: no container rebuild required, node loads dynamically from package"
+  - id: "dod-pr-564-head"
+    description: "omnimarket PR #564 carries the node_adr_decision_extraction_llm_effect implementation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 564 --repo OmniNode-ai/omnimarket --json state,baseRefName --jq '.state + \":\" + .baseRefName' | grep -q 'OPEN:main'"
