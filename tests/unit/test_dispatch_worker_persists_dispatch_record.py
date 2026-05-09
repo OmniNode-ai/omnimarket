@@ -40,6 +40,7 @@ def test_handler_persists_dispatch_record(
     """Handler writes a dispatch record YAML without importing omniclaude."""
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("ONEX_PARENT_SESSION_ID", "test-session-abc")
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     for mod_name in list(sys.modules):
         if mod_name == "omniclaude" or mod_name.startswith("omniclaude."):
             monkeypatch.delitem(sys.modules, mod_name, raising=False)

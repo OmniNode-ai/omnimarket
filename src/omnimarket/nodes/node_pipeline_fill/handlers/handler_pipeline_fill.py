@@ -57,11 +57,6 @@ _UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
 HANDLER_TYPE: HandlerType = "NODE_HANDLER"
 HANDLER_CATEGORY: HandlerCategory = "ORCHESTRATOR"
 
-# Topics read from contract — never hardcode in application logic
-_TOPIC_TICKET_PIPELINE_START = "onex.cmd.omnimarket.ticket-pipeline-start.v1"  # onex-topic-allow: pending contract auto-wiring
-_TOPIC_PIPELINE_FILL_COMPLETED = "onex.evt.omnimarket.pipeline-fill-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-
-
 _LINEAR_API_URL = "https://api.linear.app/graphql"
 
 _QUERY_ACTIVE_SPRINT_UNSTARTED = """
@@ -168,6 +163,19 @@ def _resolve_omni_home() -> Path:
     return Path(__file__).parents[8]
 
 
+def _topics_from_contract() -> dict[str, str]:
+    """Read publish topic names from contract.yaml."""
+    contract = _load_contract()
+    publish = contract.get("event_bus", {}).get("publish_topics", [])
+    result: dict[str, str] = {}
+    for topic in publish:
+        if "ticket-pipeline-start" in topic:
+            result["ticket_pipeline_start"] = topic
+        elif "pipeline-fill-completed" in topic:
+            result["pipeline_fill_completed"] = topic
+    return result
+
+
 class HandlerPipelineFill:
     """Orchestrates one RSD-driven pipeline fill cycle."""
 
@@ -184,6 +192,9 @@ class HandlerPipelineFill:
         self._event_bus = (
             event_bus  # injected in production; None => fire-and-forget log
         )
+        _topics = _topics_from_contract()
+        self._topic_ticket_pipeline_start = _topics.get("ticket_pipeline_start", "")
+        self._topic_pipeline_fill_completed = _topics.get("pipeline_fill_completed", "")
 
     @property
     def handler_type(self) -> HandlerType:
@@ -402,14 +413,14 @@ class HandlerPipelineFill:
 
         if self._event_bus is not None:
             await self._event_bus.publish(
-                topic=_TOPIC_TICKET_PIPELINE_START,
+                topic=self._topic_ticket_pipeline_start,
                 payload=payload,
             )
         else:
             # Standalone mode: log intent only (full runtime wires the bus)
             logger.info(
                 "pipeline_fill: [no-bus] would publish %s: %s",
-                _TOPIC_TICKET_PIPELINE_START,
+                self._topic_ticket_pipeline_start,
                 payload,
             )
 

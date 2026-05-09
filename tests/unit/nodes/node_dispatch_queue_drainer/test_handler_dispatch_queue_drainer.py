@@ -30,7 +30,9 @@ def _write_queue_item(path: Path, **overrides: object) -> None:
 
 
 @pytest.mark.unit
-def test_handler_compiles_one_queue_item_without_moving_it(tmp_path: Path) -> None:
+def test_handler_compiles_one_queue_item_without_moving_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     state_dir = tmp_path / "state"
     queue_dir = state_dir / "dispatch_queue"
     queue_dir.mkdir(parents=True)
@@ -40,6 +42,7 @@ def test_handler_compiles_one_queue_item_without_moving_it(tmp_path: Path) -> No
     (tasks_dir / "Omninode").mkdir(parents=True)
     omni_home = tmp_path / "omni_home"
     (omni_home / "omnimarket").mkdir(parents=True)
+    monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     result = HandlerDispatchQueueDrainer().handle(
         queue_item_path=queue_item,
@@ -123,7 +126,9 @@ def test_handler_blocks_malformed_yaml_as_typed_outcome(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_handler_scan_uses_oldest_queue_item(tmp_path: Path) -> None:
+def test_handler_scan_uses_oldest_queue_item(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     state_dir = tmp_path / "state"
     queue_dir = state_dir / "dispatch_queue"
     queue_dir.mkdir(parents=True)
@@ -139,6 +144,7 @@ def test_handler_scan_uses_oldest_queue_item(tmp_path: Path) -> None:
     (tasks_dir / "Omninode").mkdir(parents=True)
     omni_home = tmp_path / "omni_home"
     (omni_home / "omnimarket").mkdir(parents=True)
+    monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     result = HandlerDispatchQueueDrainer().handle(
         queue_dir=queue_dir,

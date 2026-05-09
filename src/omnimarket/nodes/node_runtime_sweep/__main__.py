@@ -96,8 +96,6 @@ def _collect_contracts(omni_home: str, scope: str) -> list[ModelContractInput]:
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     omni_home = os.environ.get("OMNI_HOME")
-    if not omni_home:
-        _log.warning("OMNI_HOME is not set — contract collection may be empty")
 
     parser = argparse.ArgumentParser(
         description="Runtime registration and wiring verification."
@@ -117,7 +115,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    contracts = _collect_contracts(omni_home, args.scope)
+    if not omni_home:
+        _log.warning("OMNI_HOME is not set — contract collection skipped")
+        contracts: list[ModelContractInput] = []
+    else:
+        contracts = _collect_contracts(omni_home, args.scope)
     if not contracts:
         _log.warning("no contract.yaml files found")
 

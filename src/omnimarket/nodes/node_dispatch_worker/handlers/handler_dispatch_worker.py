@@ -544,9 +544,12 @@ class HandlerDispatchWorker:
         target_pr = _extract_target_pr(command.targets)
         target_repo = repo
 
-        omni_home = os.environ["OMNI_HOME"]
+        omni_home = os.environ.get("OMNI_HOME", "")
         worktree_root = os.environ.get(
-            "OMNI_WORKTREES", os.path.join(os.path.dirname(omni_home), "omni_worktrees")
+            "OMNI_WORKTREES",
+            os.path.join(os.path.dirname(omni_home), "omni_worktrees")
+            if omni_home
+            else "",
         )
 
         ctx: dict[str, object] = defaultdict(
