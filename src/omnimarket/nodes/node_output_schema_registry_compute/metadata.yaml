@@ -11,6 +11,7 @@ capabilities:
   requires_network: false
 dependencies:
   - "omnibase_core>=0.40.0"
+  - "omnibase_infra>=0.34.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["compute", "schema", "registry", "deterministic", "pydantic"]
