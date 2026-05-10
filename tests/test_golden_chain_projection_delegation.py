@@ -111,3 +111,57 @@ class TestDelegationProjection:
             "onex.evt.omniclaude.task-delegated.v1"
             in contract["event_bus"]["subscribe_topics"]
         )
+
+
+class TestComplianceCounters:
+    """OMN-10793 — projection writes tokens_to_compliance and compliance_attempts
+    from the inbound event payload to the delegation_events row. The defaults
+    (0 tokens, 1 attempt) cover the legacy emitters that haven't yet wired
+    the counters into their payload."""
+
+    def test_event_carries_compliance_counters_to_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-compliance",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+            tokens_to_compliance=540,
+            compliance_attempts=2,
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["tokens_to_compliance"] == 540
+        assert rows[0]["compliance_attempts"] == 2
+
+    def test_compliance_counters_default_when_event_omits_them(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-defaults",
+            task_type="code-review",
+            delegated_to="agent-beta",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        # Defaults: zero tokens consumed, single attempt = first-try compliance.
+        assert rows[0]["tokens_to_compliance"] == 0
+        assert rows[0]["compliance_attempts"] == 1
+
+    def test_dict_payload_with_counters_via_handle_protocol(self) -> None:
+        # The runtime invokes handle(input_data) — confirm the protocol shim
+        # threads the compliance fields end-to-end (dict -> model -> row).
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "correlation_id": "corr-protocol",
+            "task_type": "summarize",
+            "delegated_to": "agent-gamma",
+            "tokens_to_compliance": 1280,
+            "compliance_attempts": 3,
+            "_db": db,
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        rows = db.query("delegation_events")
+        assert rows[0]["tokens_to_compliance"] == 1280
+        assert rows[0]["compliance_attempts"] == 3

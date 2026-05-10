@@ -1,0 +1,38 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10793
+title: "feat(OMN-10793): golden chain + projection — tokens_to_compliance + compliance_attempts"
+summary: >
+  Wave 2 / Task 6 of the tokens-to-compliance epic. Adds tokens_to_compliance
+  and compliance_attempts to the delegation golden chain's expected_fields and
+  threads them through HandlerProjectionDelegation so values from the
+  ModelTaskDelegatedEvent payload land in the delegation_events row instead of
+  being dropped on the floor by the model's extra="ignore" gate. omniclaude's
+  sqlite_adapter already wires both columns into the INSERT/UPSERT statement
+  (OMN-10789), so Task 6 is one omnimarket PR; no omniclaude change needed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-projection-tests
+    description: "All 10 unit tests for handler_projection_delegation pass — including 3 new TestComplianceCounters cases that prove tokens_to_compliance + compliance_attempts thread end-to-end (event -> model -> row)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_projection_delegation.py -v"
+  - id: dod-golden-chain-tests
+    description: "All 12 golden chain registry tests pass — including the canonical sweep that requires the delegation chain's projected row to carry both new compliance counters."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_sweep_registry.py -v"
+  - id: dod-deploy-compat
+    description: "Pure compute change — projection handler model gains two optional fields with safe defaults, golden_chains.yaml is static config consumed at sweep time. Backwards compatible: legacy emitters that omit the counters get defaults (0 tokens, 1 attempt)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy gate compat: defaults preserve old emitter behavior, no runtime restart needed'"

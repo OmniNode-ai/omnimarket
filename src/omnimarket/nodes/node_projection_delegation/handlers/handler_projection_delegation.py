@@ -57,6 +57,21 @@ class ModelTaskDelegatedEvent(BaseModel):
         description="Upstream LLM call ID for JOIN with llm_cost_aggregates.",
     )
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
+    tokens_to_compliance: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Total tokens consumed across all schema-compliance attempts (OMN-10793)."
+        ),
+    )
+    compliance_attempts: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Number of LLM invocations needed to produce contract-compliant output "
+            "(OMN-10793). 1 = first-try success."
+        ),
+    )
 
 
 class ModelProjectionResult(BaseModel):
@@ -106,6 +121,8 @@ class HandlerProjectionDelegation:
             "repo": event.repo,
             "is_shadow": event.is_shadow,
             "llm_call_id": event.llm_call_id or None,
+            "tokens_to_compliance": event.tokens_to_compliance,
+            "compliance_attempts": event.compliance_attempts,
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
