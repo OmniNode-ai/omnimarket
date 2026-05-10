@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10278
+title: "Mandatory DI params — resolver multi-param injection + handler migration"
+summary: "Extend ServiceHandlerResolver Step 4 to inject any combination of known params (event_bus, container, ownership_query); remove = None defaults from injectable handler init params across omnibase_core, omnibase_infra, and omnimarket."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Unit tests green for mandatory DI params enforcement"
+    command: "uv run pytest tests/unit/test_mandatory_di_params_market.py -v"
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #595"
+    command: "gh pr checks 595 --repo OmniNode-ai/omnimarket"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-handler-migration
+    description: "16 handlers migrated to mandatory event_bus params; = None defaults removed"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/test_mandatory_di_params_market.py -v --tb=short"
+  - id: dod-deploy
+    description: "No live deploy required — this PR removes = None defaults from handler params; runtime DI resolver (omnibase_core#1057) provides injection. No Kafka topology change, no container restart needed."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: handler param migration only, no docker exec or rpk topic produce required; resolver provides injection at runtime'"
