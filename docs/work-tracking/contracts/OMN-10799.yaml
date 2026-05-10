@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10799
+title: "fix: HandlerIntentQuery DI crash-loop — make container param optional"
+summary: >
+  HandlerIntentQuery required container: ModelONEXContainer in __init__, which the
+  declarative service_handler_resolver could not satisfy. This caused a crash-loop on
+  every runtime boot. Fix makes container optional (default None) so the resolver can
+  construct the handler zero-arg. initialize() raises RuntimeError if called without
+  a container, preserving the invariant for real Memgraph callers.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "omnimarket.nodes.node_intent_query_effect.handlers.handler_intent_query.HandlerIntentQuery"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-intent-query-tests-pass"
+    description: "All intent_query handler tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -k 'intent_query' -v --tb=short"
+  - id: "dod-unit-suite-pass"
+    description: "Full unit test suite passes (2253 tests)"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m unit --tb=short"
+  - id: "dod-runtime-boot"
+    description: "Runtime boots without crash-loop after image rebuild on .201"
+    source: "manual"
+    checks:
+      - check_type: "deploy"
+        check_value: "docker exec omninode-stability-test-runtime python3 -c \"from omnibase_infra.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop import HandlerComplianceLoop; print('OK')\""
+      - check_type: "deploy"
+        check_value: "docker logs omninode-stability-test-runtime 2>&1 | grep 'Plugin delegation consumers started'"
