@@ -1,10 +1,12 @@
 """HandlerPrLifecycleFix — routes PR remediation by block reason.
 
 Routes fix actions:
-  ci_failure        -> GitHub CI fix dispatch (re-run or targeted fix agent)
-  conflict          -> Conflict resolution (absorbed from pr_polish)
-  changes_requested -> Review-comment address (agent dispatch)
-  coderabbit        -> CodeRabbit auto-reply (absorbed from coderabbit_triage)
+  ci_failure        -> flaky/infra rerun via ``gh run rerun --failed``
+  code_failure      -> lint/type/test failure, delegate to pr_polish
+  receipt_failure   -> OCC/receipt-gate failure, delegate to pr_polish
+  conflict          -> ``gh pr update-branch``, then pr_polish if still failing
+  changes_requested -> review-comment fix via pr_polish
+  coderabbit        -> CodeRabbit thread auto-reply via pr_polish
 
 Protocol-injected adapters for GitHub operations and agent dispatch allow
 mock substitution in tests with zero infrastructure.
@@ -164,13 +166,19 @@ class HandlerPrLifecycleFix:
         pr = command.pr_number
 
         if reason == EnumPrBlockReason.CI_FAILURE:
+            # Flaky/infrastructure failure — rerun without code changes.
             return await self._github.rerun_failed_checks(repo, pr)
+
+        if reason in {
+            EnumPrBlockReason.CODE_FAILURE,
+            EnumPrBlockReason.RECEIPT_FAILURE,
+            EnumPrBlockReason.CHANGES_REQUESTED,
+        }:
+            # Code, receipt, or review-comment failure — delegate to pr_polish.
+            return await self._agent.dispatch_review_fix(repo, pr, command.ticket_id)
 
         if reason == EnumPrBlockReason.CONFLICT:
             return await self._github.resolve_conflicts(repo, pr)
-
-        if reason == EnumPrBlockReason.CHANGES_REQUESTED:
-            return await self._agent.dispatch_review_fix(repo, pr, command.ticket_id)
 
         if reason == EnumPrBlockReason.CODERABBIT:
             return await self._agent.dispatch_coderabbit_reply(repo, pr)
