@@ -58,6 +58,63 @@ class TestHandlerOutputSchemaRegistrySuccess:
         result = HandlerOutputSchemaRegistry().handle(request)
         assert isinstance(result.json_schema, dict)
 
+    def test_delegation_result_returns_ok(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.status == EnumSchemaRegistryStatus.OK
+
+    def test_delegation_result_schema_key_echoed(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.schema_key == "delegation_result"
+
+    def test_delegation_result_schema_is_dict(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert isinstance(result.json_schema, dict)
+
+    def test_delegation_result_schema_has_title(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.json_schema is not None
+        assert result.json_schema.get("title") == "ModelDelegationResult"
+
+    def test_delegation_result_schema_has_correlation_id(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.json_schema is not None
+        props = result.json_schema.get("properties", {})
+        assert "correlation_id" in props
+
+    def test_delegation_result_schema_has_task_type(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.json_schema is not None
+        props = result.json_schema.get("properties", {})
+        assert "task_type" in props
+
+    def test_delegation_result_schema_has_quality_fields(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.json_schema is not None
+        props = result.json_schema.get("properties", {})
+        assert "quality_passed" in props
+        assert "quality_score" in props
+
+    def test_delegation_result_schema_has_token_fields(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.json_schema is not None
+        props = result.json_schema.get("properties", {})
+        assert "prompt_tokens" in props
+        assert "completion_tokens" in props
+        assert "total_tokens" in props
+
+    def test_delegation_result_no_error(self) -> None:
+        request = ModelSchemaRegistryRequest(schema_key="delegation_result")
+        result = HandlerOutputSchemaRegistry().handle(request)
+        assert result.error is None
+
     def test_no_error_on_success(self) -> None:
         request = ModelSchemaRegistryRequest(schema_key="review_output")
         result = HandlerOutputSchemaRegistry().handle(request)
@@ -121,6 +178,9 @@ class TestKnownSchemaKeys:
 
     def test_known_keys_includes_plan_document(self) -> None:
         assert "plan_document" in known_schema_keys()
+
+    def test_known_keys_includes_delegation_result(self) -> None:
+        assert "delegation_result" in known_schema_keys()
 
     def test_known_keys_is_sorted(self) -> None:
         keys = known_schema_keys()

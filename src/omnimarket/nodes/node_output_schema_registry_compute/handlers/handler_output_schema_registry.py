@@ -24,7 +24,11 @@ _REGISTRY: dict[str, type[BaseModel]] = {}
 def _register() -> None:
     # Deferred imports to avoid circular deps at module load time
     from omnibase_core.models.plan.model_plan_document import ModelPlanDocument
+    from omnibase_infra.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+        ModelDelegationResult,
+    )
 
+    _REGISTRY["delegation_result"] = ModelDelegationResult
     _REGISTRY["review_output"] = ModelReviewOutput
     _REGISTRY["plan_document"] = ModelPlanDocument
 
