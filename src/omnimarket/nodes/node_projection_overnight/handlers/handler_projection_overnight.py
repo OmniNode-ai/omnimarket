@@ -136,7 +136,9 @@ class HandlerProjectionOvernightPhaseEnd:
         session_start_handler: HandlerProjectionOvernightSessionStart | None = None,
     ) -> None:
         self._session_start_handler = (
-            session_start_handler or HandlerProjectionOvernightSessionStart()
+            session_start_handler
+            if session_start_handler is not None
+            else HandlerProjectionOvernightSessionStart()
         )
         self._phase_sequence: dict[str, int] = {}
 
@@ -189,7 +191,9 @@ class HandlerProjectionOvernightSessionComplete:
         session_start_handler: HandlerProjectionOvernightSessionStart | None = None,
     ) -> None:
         self._session_start_handler = (
-            session_start_handler or HandlerProjectionOvernightSessionStart()
+            session_start_handler
+            if session_start_handler is not None
+            else HandlerProjectionOvernightSessionStart()
         )
 
     def project(
