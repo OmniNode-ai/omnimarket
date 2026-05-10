@@ -337,7 +337,7 @@ class HandlerPrLifecycleOrchestrator:
         reducer: ProtocolStateReducerHandler | None = None,
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -1404,8 +1404,6 @@ class HandlerPrLifecycleOrchestrator:
         to_state: str,
         correlation_id: UUID,
     ) -> None:
-        if self._event_bus is None:
-            return
         payload = json.dumps(
             {
                 "from_phase": from_state.lower(),
@@ -1429,7 +1427,7 @@ class HandlerPrLifecycleOrchestrator:
         Enables node_fixer_dispatcher to route each PR stall to the correct
         fixer node (ci_fix_effect, conflict_hunk_effect, rebase_effect).
         """
-        if self._event_bus is None or not self._topic_fixer_dispatch_start:
+        if not self._topic_fixer_dispatch_start:
             return
         for pr in fix_prs:
             payload = json.dumps(

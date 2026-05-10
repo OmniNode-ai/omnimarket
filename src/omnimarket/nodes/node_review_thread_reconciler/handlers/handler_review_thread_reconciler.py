@@ -71,8 +71,8 @@ class HandlerReviewThreadReconciler:
 
     def __init__(
         self,
+        event_bus: EventBusInmemory,
         github_client: ProtocolGitHubReviewClient | None = None,
-        event_bus: EventBusInmemory | None = None,
     ) -> None:
         self._client = github_client
         self._event_bus = event_bus

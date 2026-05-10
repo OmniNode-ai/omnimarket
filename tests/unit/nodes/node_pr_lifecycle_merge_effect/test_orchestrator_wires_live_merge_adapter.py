@@ -27,7 +27,9 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
 @pytest.mark.unit
 class TestOrchestratorWiresLiveMergeAdapter:
     def test_default_merge_handler_has_live_adapter_not_noop(self) -> None:
-        orch = HandlerPrLifecycleOrchestrator()
+        from unittest.mock import MagicMock
+
+        orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock())
         orch._ensure_sub_handlers()
 
         merge = orch._merge
@@ -50,8 +52,10 @@ class TestOrchestratorWiresLiveMergeAdapter:
 
                 return _Result()
 
+        from unittest.mock import MagicMock
+
         recorder = _RecordingMerge()
-        orch = HandlerPrLifecycleOrchestrator(merge=recorder)
+        orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock(), merge=recorder)
 
         result = await orch._call_merge_fanout(
             correlation_id=uuid4(),

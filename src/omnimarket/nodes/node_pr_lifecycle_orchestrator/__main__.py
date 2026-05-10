@@ -9,6 +9,7 @@ import asyncio
 import logging
 import sys
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.cli.args import (
@@ -42,7 +43,9 @@ def _parse_command(input_json: str) -> ModelPrLifecycleStartCommand:
 
 
 async def _run(command: ModelPrLifecycleStartCommand) -> ModelPrLifecycleResult:
-    handler = HandlerPrLifecycleOrchestrator()
+    bus = EventBusInmemory()
+    await bus.start()
+    handler = HandlerPrLifecycleOrchestrator(event_bus=bus)
     return await handler.handle(command)
 
 

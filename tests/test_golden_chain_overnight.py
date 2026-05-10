@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -73,7 +74,7 @@ class TestOvernightGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """dry_run mode should run all 5 phases and return COMPLETED."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="dry-001",
             dry_run=True,
@@ -89,7 +90,7 @@ class TestOvernightGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """Phases should execute in canonical order."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="order-test",
             dry_run=True,
@@ -109,7 +110,7 @@ class TestOvernightGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """skip_build_loop should exclude build_loop_orchestrator from phases_run."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="skip-build-test",
             skip_build_loop=True,
@@ -125,7 +126,7 @@ class TestOvernightGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """skip_merge_sweep should exclude merge_sweep from phases_run."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="skip-merge-test",
             skip_merge_sweep=True,
@@ -139,7 +140,7 @@ class TestOvernightGoldenChain:
 
     async def test_skip_both_optional_phases(self, event_bus: EventBusInmemory) -> None:
         """Skipping both optional phases still completes with nightly_loop, ci_watch, platform_readiness."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="skip-both",
             skip_build_loop=True,
@@ -158,7 +159,7 @@ class TestOvernightGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """A non-build-loop phase failing yields PARTIAL status."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="partial-test",
             dry_run=False,
@@ -181,7 +182,7 @@ class TestOvernightGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """build_loop failure should halt the pipeline immediately."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="halt-test",
             dry_run=False,
@@ -202,7 +203,7 @@ class TestOvernightGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """nightly_loop failing alone = FAILED (halts immediately, nothing else ran)."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="all-fail",
             dry_run=False,
@@ -219,7 +220,7 @@ class TestOvernightGoldenChain:
 
     async def test_correlation_id_preserved(self, event_bus: EventBusInmemory) -> None:
         """correlation_id should round-trip through the result."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="preserve-id-xyz",
             dry_run=True,
@@ -230,7 +231,7 @@ class TestOvernightGoldenChain:
 
     async def test_timestamps_set(self, event_bus: EventBusInmemory) -> None:
         """started_at and completed_at should both be set."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="ts-test",
             dry_run=True,
@@ -243,7 +244,7 @@ class TestOvernightGoldenChain:
 
     async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
         """Handler can be wired to event bus and process command events."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         results_captured: list[dict] = []  # type: ignore[type-arg]
 
         async def on_command(message: object) -> None:
@@ -281,7 +282,7 @@ class TestOvernightGoldenChain:
 
     async def test_result_serializes_to_json(self, event_bus: EventBusInmemory) -> None:
         """Result should serialize cleanly to JSON."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="json-test-overnight",
             dry_run=True,
@@ -303,7 +304,7 @@ class TestOvernightContractEnforcement:
         self, event_bus: EventBusInmemory
     ) -> None:
         """Without a contract, handler behaves exactly as before this change."""
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="no-contract",
             dry_run=True,
@@ -319,7 +320,7 @@ class TestOvernightContractEnforcement:
     ) -> None:
         """When accumulated cost stays below ceiling, pipeline completes normally."""
         contract = _make_contract(max_cost_usd=10.0)
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="cost-ok",
             dry_run=False,
@@ -341,7 +342,7 @@ class TestOvernightContractEnforcement:
     ) -> None:
         """When cost hits or exceeds ceiling after a phase, pipeline halts."""
         contract = _make_contract(max_cost_usd=1.5)
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="cost-halt",
             dry_run=False,
@@ -373,7 +374,7 @@ class TestOvernightContractEnforcement:
             ModelOvernightPhaseSpec(phase_name=EnumPhase.PLATFORM_READINESS.value),
         ]
         contract = _make_contract(phases=phases)
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="halt-on-fail",
             dry_run=False,
@@ -401,7 +402,7 @@ class TestOvernightContractEnforcement:
             ModelOvernightPhaseSpec(phase_name=EnumPhase.PLATFORM_READINESS.value),
         ]
         contract = _make_contract(phases=phases)
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="no-halt-on-fail",
             dry_run=False,
@@ -428,7 +429,7 @@ class TestOvernightContractEnforcement:
     ) -> None:
         """ModelOvernightResult with halt_reason serializes cleanly to JSON."""
         contract = _make_contract(max_cost_usd=0.01)
-        handler = HandlerOvernight()
+        handler = HandlerOvernight(event_bus=MagicMock())
         command = ModelOvernightCommand(
             correlation_id="serial-test",
             dry_run=False,

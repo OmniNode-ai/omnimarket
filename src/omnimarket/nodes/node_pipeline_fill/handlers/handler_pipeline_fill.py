@@ -188,17 +188,15 @@ class HandlerPipelineFill:
 
     def __init__(
         self,
+        event_bus: Any,
         rsd_handler: HandlerRsdFill | None = None,
         linear_client: Any | None = None,
-        event_bus: Any | None = None,
     ) -> None:
         self._rsd = rsd_handler or HandlerRsdFill()
         self._linear: Any = (
             linear_client if linear_client is not None else LinearHttpClient()
         )
-        self._event_bus = (
-            event_bus  # injected in production; None => fire-and-forget log
-        )
+        self._event_bus = event_bus
         _topics = _topics_from_contract()
         self._topic_ticket_pipeline_start = _topics["ticket_pipeline_start"]
         self._topic_pipeline_fill_completed = _topics["pipeline_fill_completed"]

@@ -39,7 +39,7 @@ class HandlerSessionCompose:
     topic via ``publish_envelope``.
     """
 
-    def __init__(self, event_bus: ProtocolEventBus | Any | None = None) -> None:
+    def __init__(self, event_bus: ProtocolEventBus | Any) -> None:
         self._bus = event_bus
 
     async def handle(

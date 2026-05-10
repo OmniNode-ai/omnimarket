@@ -117,7 +117,7 @@ class HandlerOverseerVerifierConsumer:
     the contract.yaml topic declarations.
     """
 
-    def __init__(self, event_bus: ProtocolEventBusPublisher | None = None) -> None:
+    def __init__(self, event_bus: ProtocolEventBusPublisher) -> None:
         self._verifier = HandlerOverseerVerifier()
         self._event_bus = event_bus
 
@@ -230,8 +230,6 @@ class HandlerOverseerVerifierConsumer:
         the publish is silently skipped and a warning is emitted — callers
         in pure sync contexts should use the async path directly.
         """
-        if self._event_bus is None:
-            return
         import asyncio
 
         payload: dict[str, Any] = {

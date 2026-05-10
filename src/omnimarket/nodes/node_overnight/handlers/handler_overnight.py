@@ -215,7 +215,7 @@ class HandlerBuildLoopExecutor:
         halt_action_handler: HaltActionHandler | None = None,
         state_root: Path | None = None,
         contract_path: Path | str | None = None,
-        event_bus: EventPublisher | None = None,
+        event_bus: EventPublisher,
         nightly_loop: ProtocolNightlyLoopHandler | None = None,
         build_loop: ProtocolBuildLoopPhaseHandler | None = None,
         merge_sweep: ProtocolMergeSweepHandler | None = None,
@@ -364,8 +364,6 @@ class HandlerBuildLoopExecutor:
         The overnight session must never be taken down by a bus outage. A
         publish failure is logged and execution continues.
         """
-        if self._event_bus is None:
-            return
         try:
             self._event_bus(topic, json.dumps(payload).encode())
         except Exception as exc:  # pragma: no cover - defensive

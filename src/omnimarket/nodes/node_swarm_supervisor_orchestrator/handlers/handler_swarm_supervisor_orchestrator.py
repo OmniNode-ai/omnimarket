@@ -67,7 +67,7 @@ class HandlerSwarmSupervisorOrchestrator:
     def __init__(
         self,
         *,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
         contract_path: Path | None = None,
         state_root: Path | None = None,
     ) -> None:
@@ -266,13 +266,6 @@ class HandlerSwarmSupervisorOrchestrator:
             )
             return
 
-        if self._event_bus is None:
-            logger.warning(
-                "[SWARM-SUPERVISOR] event_bus not wired — respawn dispatch skipped for %s",
-                worker.worker_id,
-            )
-            return
-
         if not self._topic_dispatch:
             logger.warning(
                 "[SWARM-SUPERVISOR] dispatch topic not configured — skipping respawn for %s",
@@ -359,7 +352,7 @@ class HandlerSwarmSupervisorOrchestrator:
         result: ModelSwarmSupervisorResult,
         correlation_id: UUID,
     ) -> None:
-        if self._event_bus is None or not self._topic_completed:
+        if not self._topic_completed:
             return
         payload = json.dumps(result.model_dump(mode="json")).encode()
         try:

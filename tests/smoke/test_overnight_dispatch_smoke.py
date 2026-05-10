@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -41,7 +42,7 @@ def test_overnight_dispatch_real_contract_dry_run() -> None:
         phase.pop("dispatch_items", None)
 
     contract = ModelOvernightContract.model_validate(data)
-    handler = HandlerOvernight()
+    handler = HandlerOvernight(event_bus=MagicMock())
     result = handler.handle(
         ModelOvernightCommand(
             correlation_id="smoke-2026-04-11",
