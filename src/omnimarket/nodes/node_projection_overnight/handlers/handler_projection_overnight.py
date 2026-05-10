@@ -133,9 +133,13 @@ class HandlerProjectionOvernightPhaseEnd:
 
     def __init__(
         self,
-        session_start_handler: HandlerProjectionOvernightSessionStart,
+        session_start_handler: HandlerProjectionOvernightSessionStart | None = None,
     ) -> None:
-        self._session_start_handler = session_start_handler
+        self._session_start_handler = (
+            session_start_handler
+            if session_start_handler is not None
+            else HandlerProjectionOvernightSessionStart()
+        )
         self._phase_sequence: dict[str, int] = {}
 
     def project(
@@ -184,9 +188,13 @@ class HandlerProjectionOvernightSessionComplete:
 
     def __init__(
         self,
-        session_start_handler: HandlerProjectionOvernightSessionStart,
+        session_start_handler: HandlerProjectionOvernightSessionStart | None = None,
     ) -> None:
-        self._session_start_handler = session_start_handler
+        self._session_start_handler = (
+            session_start_handler
+            if session_start_handler is not None
+            else HandlerProjectionOvernightSessionStart()
+        )
 
     def project(
         self,

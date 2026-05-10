@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10800
+title: "fix: HandlerProjectionOvernightPhaseEnd + SessionComplete DI crash-loop — make session_start_handler optional"
+summary: >
+  HandlerProjectionOvernightPhaseEnd and HandlerProjectionOvernightSessionComplete required
+  session_start_handler: HandlerProjectionOvernightSessionStart in __init__, which the declarative
+  service_handler_resolver cannot satisfy (no path exists for handler-type constructor deps).
+  This caused a TypeError crash-loop on every runtime boot. Fix makes session_start_handler
+  optional (default None); each handler instantiates HandlerProjectionOvernightSessionStart()
+  internally when no instance is provided. Callers that pass an instance explicitly are unaffected.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-projection-overnight-tests"
+    description: "13 golden-chain projection overnight handler tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -k 'projection_overnight' --tb=short -q"
+  - id: "dod-unit-suite-pass"
+    description: "Full unit test suite passes (2253 tests)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m unit --tb=short -q"
