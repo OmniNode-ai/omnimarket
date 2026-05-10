@@ -22,6 +22,8 @@ chains:
     tail_table: delegation_events
     expected_fields:
       - correlation_id
+      - tokens_to_compliance
+      - compliance_attempts
 
   - name: routing
     head_topic: onex.evt.omniclaude.llm-routing-decision.v1

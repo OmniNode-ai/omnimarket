@@ -136,6 +136,9 @@ class TestLoadRegistry:
         )
         assert chain_map["routing"].tail_table == "llm_routing_decisions"
         assert "correlation_id" in chain_map["delegation"].expected_fields
+        # OMN-10793 — compliance counters are first-class chain-validated fields.
+        assert "tokens_to_compliance" in chain_map["delegation"].expected_fields
+        assert "compliance_attempts" in chain_map["delegation"].expected_fields
 
     def test_empty_fallback_default(self, tmp_path: Path) -> None:
         missing = tmp_path / "no.yaml"
@@ -156,8 +159,11 @@ class TestRegistryIntegrationWithSweep:
 
         chains = load_registry()
         projected_rows = {c.name: {"correlation_id": f"test-{c.name}"} for c in chains}
-        # registration also expects selected_agent
+        # registration also expects selected_agent.
         projected_rows["registration"]["selected_agent"] = "agent-test"
+        # delegation expects compliance counters (OMN-10793).
+        projected_rows["delegation"]["tokens_to_compliance"] = 0
+        projected_rows["delegation"]["compliance_attempts"] = 1
 
         request = GoldenChainSweepRequest(chains=chains, projected_rows=projected_rows)
         result = NodeGoldenChainSweep().handle(request)
