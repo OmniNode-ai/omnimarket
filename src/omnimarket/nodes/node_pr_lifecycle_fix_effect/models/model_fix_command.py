@@ -17,7 +17,7 @@ class EnumPrBlockReason(StrEnum):
     receipt_failure  → OCC/receipt-gate failure, delegate to pr_polish
     conflict         → merge conflict, resolve via ``gh pr update-branch``
     changes_requested → review comment fix, delegate to pr_polish
-    coderabbit       → CR thread auto-reply, delegate to pr_polish
+    coderabbit       → CR thread auto-reply via dispatch_coderabbit_reply
     """
 
     CI_FAILURE = "ci_failure"

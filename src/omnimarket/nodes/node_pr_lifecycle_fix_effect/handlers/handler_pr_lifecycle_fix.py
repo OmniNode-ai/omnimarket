@@ -6,7 +6,7 @@ Routes fix actions:
   receipt_failure   -> OCC/receipt-gate failure, delegate to pr_polish
   conflict          -> ``gh pr update-branch``, then pr_polish if still failing
   changes_requested -> review-comment fix via pr_polish
-  coderabbit        -> CodeRabbit thread auto-reply via pr_polish
+  coderabbit        -> CodeRabbit thread auto-reply via dispatch_coderabbit_reply
 
 Protocol-injected adapters for GitHub operations and agent dispatch allow
 mock substitution in tests with zero infrastructure.
