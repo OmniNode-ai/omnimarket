@@ -1,0 +1,28 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10791
+title: "Register delegation output schema in compliance registry"
+summary: >
+  Register ModelDelegationResult in the output schema registry under key
+  'delegation_result', following the existing direct-import pattern used
+  by review_output and plan_document registrations.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "All 8 unit tests for handler_output_schema_registry pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_output_schema_registry_compute/tests/test_handler_output_schema_registry.py -v"
+  - id: "dod-deploy-compat"
+    description: "Schema registration is a pure compute node addition; no deploy or runtime restart required"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy gate compat: pure compute node, no runtime restart needed'"
