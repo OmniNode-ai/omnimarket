@@ -246,11 +246,14 @@ class HandlerIntentQuery:
         Refactored to container-driven pattern for OMN-1577.
     """
 
-    def __init__(self, container: ModelONEXContainer) -> None:
-        """Initialize the handler with a dependency injection container.
+    def __init__(self, container: ModelONEXContainer | None = None) -> None:
+        """Initialize the handler with an optional dependency injection container.
 
         Args:
-            container: The ONEX container for dependency injection.
+            container: The ONEX container for dependency injection. When None,
+                the handler can be wired by the declarative runtime resolver but
+                will raise RuntimeError if initialize() is called without a
+                container (OMNIMEMORY_MEMGRAPH_HOST must be set for that path).
         """
         self._container = container
         self._config: ModelHandlerIntentQueryConfig | None = None
@@ -259,7 +262,7 @@ class HandlerIntentQuery:
         self._init_lock = asyncio.Lock()
 
     @property
-    def container(self) -> ModelONEXContainer:
+    def container(self) -> ModelONEXContainer | None:
         """Get the dependency injection container."""
         return self._container
 
@@ -317,6 +320,12 @@ class HandlerIntentQuery:
             effective_adapter_config = adapter_config or ModelAdapterIntentGraphConfig(
                 timeout_seconds=self._config.timeout_seconds,
             )
+            if self._container is None:
+                raise RuntimeError(
+                    "HandlerIntentQuery.initialize() requires a container but none was provided. "
+                    "Ensure OMNIMEMORY_MEMGRAPH_HOST is set and the handler is constructed with "
+                    "a ModelONEXContainer before calling initialize()."
+                )
             self._adapter = AdapterIntentGraph(
                 config=effective_adapter_config,
                 container=self._container,
