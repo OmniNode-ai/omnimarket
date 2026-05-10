@@ -322,9 +322,9 @@ class HandlerIntentQuery:
             )
             if self._container is None:
                 raise RuntimeError(
-                    "HandlerIntentQuery.initialize() requires a container but none was provided. "
-                    "Ensure OMNIMEMORY_MEMGRAPH_HOST is set and the handler is constructed with "
-                    "a ModelONEXContainer before calling initialize()."
+                    "HandlerIntentQuery.initialize() requires a ModelONEXContainer but none was "
+                    "provided. Construct the handler with a ModelONEXContainer before calling "
+                    "initialize(), or skip initialize() for resolver-only wiring paths."
                 )
             self._adapter = AdapterIntentGraph(
                 config=effective_adapter_config,
