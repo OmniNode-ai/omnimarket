@@ -1,88 +1,174 @@
-# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
-# SPDX-License-Identifier: MIT
----
-
-# ADR Canary Ground Truth Manifest
+# Ground truth manifest for the ADR extraction canary benchmark.
+# canary_version: "1.0.0" (metadata only — kept as comment; ModelGroundTruthManifest only accepts `entries`)
 #
-# Each entry declares:
-#   - id: unique slug for the manifest entry
-#   - root_paths: list of repo-root-relative or absolute paths to ingest markdown from
-#   - ground_truth_adr: the authoritative ADR text used as grading reference
-#   - models: list of extraction models to evaluate
+# Each entry maps one human-authored ADR to:
+#   - root_paths: source documents the extractor should read to discover the decision
+#   - ground_truth_adr: the full text of the authoritative ADR (inline)
+#   - models: local model configs to evaluate in this canary run
 #
-# Model fields:
-#   - key: short identifier used in scores and evidence filenames
-#   - provider: "local" | "openrouter" | "anthropic"
-#   - model_id: exact model ID passed to the inference bridge
-#   - external: true = requires allow_external_providers=True to run
-#
-# [OMN-10698]
+# All root_paths are relative to OMNI_HOME (the omni_home repo root).
+# allow_external_providers defaults to false — only local models run unless
+# the canary command is published with allow_external_providers=true.
 
 entries:
-  - id: "kafka-bus-selection"
+  - id: kafka-required-infrastructure
     root_paths:
-      - "docs/"
+      - omnibase_infra/docs/architecture
+      - omnibase_infra/docs/event-bus
+      - omnibase_infra/src/omnibase_infra/event_bus
     ground_truth_adr: |
-      # ADR: Kafka/Redpanda as Primary Event Bus
+      # ADR: Kafka is Required Infrastructure (Rule #8)
 
-      ## Status
-      Accepted
+      **Status**: Accepted
+      **Date**: 2026-02-10
 
       ## Context
-      OmniNode requires a durable, replay-capable event bus for distributed node
-      coordination. Multiple transports were evaluated including Redis Streams,
-      NATS, and Kafka/Redpanda.
+
+      The platform originally operated under the rule "Never block on Kafka — Kafka is optional;
+      operations must succeed without it." This was encoded in the architecture handshake as a
+      constraint that all repos observed.
+
+      As the platform matured, Kafka became the sole event transport for inter-node communication,
+      projection publishing, DLQ routing, and wiring health monitoring. The "optional Kafka"
+      invariant was no longer accurate — every production deployment requires a running Kafka
+      cluster, and "graceful degradation" without Kafka meant silently dropping events.
 
       ## Decision
-      We selected Redpanda (Kafka-compatible) as the primary event bus.
-      EventBusInmemory is used as a local fallback for testing.
+
+      **Kafka is required infrastructure** (platform-wide rule #8). Specifically:
+
+      - Connection failures during `start()` raise and must be treated as fatal by callers.
+      - There is no "degraded mode" — if Kafka is unreachable, the node cannot operate.
+      - Async/non-blocking patterns are still required to avoid blocking the calling thread
+        while waiting for Kafka acks.
+      - Resilience patterns (circuit breaker, retry with backoff) protect against *transient*
+        broker failures, not permanent unavailability.
+
+      This replaces the previous rule "Never block on Kafka."
 
       ## Consequences
-      - All inter-node communication is routed through Redpanda topics
-      - Topics are declared in contract.yaml; no hardcoded strings in handlers
-      - Consumer groups enable horizontal scaling and replay
-      - Local development uses EventBusInmemory via ONEX_EVENT_BUS_TYPE=inmemory
+
+      - Callers of `EventBusKafka.start()` and `ProviderKafkaProducer.create()` must not
+        swallow connection errors.
+      - Integration tests that previously mocked Kafka away need explicit opt-in for
+        Kafka-less testing via markers (`@pytest.mark.no_kafka`).
+      - The `localhost:9092` defaults in config models remain as development conveniences but
+        must be overridden in deployed environments (per rule #7: no hardcoded configuration).
     models:
-      - key: "qwen3-coder"
-        provider: "local"
-        model_id: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit" # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
+      - key: qwen3-coder
+        provider: local_vllm
+        model_id: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
         external: false
-      - key: "deepseek-r1-14b"
-        provider: "local"
-        model_id: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ" # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
+      - key: deepseek-r1
+        provider: local_vllm
+        model_id: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ
         external: false
 
-  - id: "contract-first-topics"
+  - id: vault-to-infisical-migration
     root_paths:
-      - "docs/"
-      - "src/omnimarket/nodes/node_adr_document_ingestion_effect/"
+      - omnibase_infra/docs/decisions
+      - omnibase_infra/src/omnibase_infra/handlers
+      - omnibase_infra/src/omnibase_infra/runtime/config_discovery
     ground_truth_adr: |
-      # ADR: Contract-First Topic Definitions
+      # ADR-007: Vault to Infisical Migration
 
-      ## Status
-      Accepted
+      **Status**: Accepted
+      **Date**: 2026-02-19
 
       ## Context
-      Early node implementations hardcoded Kafka topic strings in Python handlers,
-      leading to drift between what nodes published and what consumers expected.
-      This caused invisible wiring bugs that only surfaced at runtime.
+
+      The ONEX infrastructure originally used HashiCorp Vault (via the `hvac` Python
+      client) as the secret management backend. `HandlerVault` implemented secret
+      read, write, list, delete, and token-renewal operations against Vault's KV v2
+      secrets engine.
+
+      Several pressures made Vault's continued use unsustainable in the ONEX
+      development environment:
+
+      - Operational complexity: Vault requires an external unsealing step after every
+        restart. For a development and CI environment where containers restart frequently,
+        this creates friction and manual intervention.
+      - Licensing trajectory: HashiCorp relicensed Vault under the Business Source License
+        in 2023.
+      - Developer experience: Vault's path convention and token lifecycle management added
+        ceremony around every secret read.
+      - Bootstrap integration: contract-driven config discovery needed a simpler secret
+        prefetch pattern.
 
       ## Decision
-      All Kafka topics MUST be declared in contract.yaml under event_bus.publish_topics
-      and event_bus.subscribe_topics. Handlers reference topics via config loading,
-      never as hardcoded string literals. CI enforces this via the aislop-sweep rule.
+
+      Replace HashiCorp Vault with Infisical as the sole secret management backend.
+
+      The Vault handler (`HandlerVault`), its models, its error types (`InfraVaultError`,
+      `error_vault`), and the Vault mixin family are removed without a compatibility shim.
+
+      HandlerInfisical supports three operations: `infisical.get_secret`,
+      `infisical.list_secrets`, and `infisical.get_secrets_batch`.
+
+      Config prefetch from Infisical is opt-in: only executes when `INFISICAL_ADDR` is
+      set. Without it, the runtime falls back to standard environment variable resolution.
 
       ## Consequences
-      - contract.yaml is the single source of truth for all topic names
-      - Topic naming convention: onex.{cmd|evt}.{service}.{event-name}.v{N}
-      - Pre-commit hook rejects hardcoded topic strings in Python source
-      - Handler tests mock the bus; topic strings come from loaded contracts
+
+      - Simpler bootstrap: Infisical starts unsealed; no post-restart manual steps.
+      - Reduced `.env` surface: the `.env.example` shrank from ~660 lines to ~30.
+      - Machine identity auth: no token renewal machinery required.
+      - New external dependency: Infisical must be healthy before runtime services start.
+      - No secret write operations: HandlerInfisical is read-only.
+      - `hvac` Python package removed from dependencies.
     models:
-      - key: "qwen3-coder"
-        provider: "local"
-        model_id: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit" # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
+      - key: qwen3-coder
+        provider: local_vllm
+        model_id: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
         external: false
-      - key: "deepseek-r1-14b"
-        provider: "local"
-        model_id: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ" # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
+      - key: deepseek-r1
+        provider: local_vllm
+        model_id: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ
+        external: false
+
+  - id: graceful-shutdown-drain-period
+    root_paths:
+      - omnibase_infra/src/omnibase_infra/runtime
+      - omnibase_infra/docs/decisions
+    ground_truth_adr: |
+      # ADR-001: Graceful Shutdown with Drain Period
+
+      **Status**: Accepted
+      **Date**: 2025-12-17
+
+      ## Context
+
+      The RuntimeHostProcess is the central coordinator for ONEX infrastructure runtime,
+      managing event bus subscriptions and routing incoming envelopes to protocol handlers.
+      When the process receives a shutdown signal, it must handle the transition from active
+      message processing to a stopped state.
+
+      Without graceful shutdown, stopping the runtime host could result in in-flight message
+      loss, data integrity issues, resource leaks, and inconsistent state in downstream systems.
+
+      ## Decision
+
+      Implement a graceful shutdown mechanism with:
+
+      - Configurable drain timeout (default 30 seconds, valid range 1-300 seconds).
+      - Polling-based completion detection with 100ms intervals.
+      - Lock-protected pending message counter (asyncio.Lock).
+      - Shutdown sequence: unsubscribe from topics then drain period then handler shutdown
+        then close event bus.
+      - Forced shutdown with warning log if drain timeout is exceeded.
+
+      The polling approach was chosen over asyncio.Event-based signaling for simpler state
+      management, better timeout handling, and easier correctness reasoning.
+
+      ## Consequences
+
+      - Clean shutdown: messages in flight are allowed to complete.
+      - Potential shutdown delay: up to `drain_timeout_seconds`.
+      - Potential message loss on timeout if drain period is exceeded.
+      - `pending_message_count` property and `shutdown_ready()` method provide
+        observability into drain state.
+    models:
+      - key: qwen3-coder
+        provider: local_vllm
+        model_id: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
         external: false
