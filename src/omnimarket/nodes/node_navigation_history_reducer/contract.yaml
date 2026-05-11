@@ -15,15 +15,17 @@ description: |
   Requires pg_dsn, qdrant, and embedding parameters at runtime.
 
 handler:
-  class: HandlerNavigationHistoryReducer
   module: omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer
+  class: HandlerNavigationHistoryReducer
+
+handler_config:
+  handler_class: "HandlerNavigationHistoryReducer"
+  handler_module: "omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer"
 
 env_dependencies:
   LLM_EMBEDDING_URL:
     required: false
     description: "Embedding model endpoint URL (OpenAI-compatible /v1/embeddings)"
-
-env_dependencies:
   QDRANT_HOST:
     required: false
     description: "Qdrant host for navigation history vector storage. Node is a no-op when unset."
