@@ -14,9 +14,14 @@ description: |
   Reduces navigation history events into aggregated session context.
   Requires pg_dsn, qdrant, and embedding parameters at runtime.
 
-handler_config:
-  handler_class: "HandlerNavigationHistoryReducer"
-  handler_module: "omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer"
+handler:
+  class: HandlerNavigationHistoryReducer
+  module: omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer
+
+env_dependencies:
+  LLM_EMBEDDING_URL:
+    required: false
+    description: "Embedding model endpoint URL (OpenAI-compatible /v1/embeddings)"
 
 tags:
   - memory

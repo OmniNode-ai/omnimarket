@@ -64,6 +64,23 @@ outputs:
     type: int
     description: "Total tickets dispatched across all cycles"
 
+env_dependencies:
+  LLM_CODER_URL:
+    required: false
+    description: "vLLM Qwen3-Coder-30B endpoint URL (primary coder model)"
+  LLM_CODER_FAST_URL:
+    required: false
+    description: "vLLM fast/reasoning model endpoint URL (used for ticket classification)"
+  LLM_GLM_URL:
+    required: false
+    description: "GLM cloud API base URL (cloud fallback)"
+  LLM_GLM_MODEL_NAME:
+    required: false
+    description: "GLM model name to use with LLM_GLM_URL"
+  LLM_DEEPSEEK_R1_URL:
+    required: false
+    description: "DeepSeek-R1 reasoning model endpoint URL (judge/reasoning tasks)"
+
 sub_handler_dependencies:
   - name: closeout
     protocol: omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers.ProtocolCloseoutHandler
@@ -104,7 +121,7 @@ event_bus:
     - onex.evt.omnimarket.build-loop-closeout-completed.v1
     - onex.evt.omnimarket.build-loop-build-completed.v1
     - onex.evt.omnimarket.build-loop-failed.v1
-    - onex.evt.build-loop.dod-checked.v1
+    - onex.evt.omnimarket.build-loop-dod-checked.v1
     # Canonical topic from node_overseer_verifier/contract.yaml (OMN-8025)
     - onex.cmd.omnimarket.overseer-verify.v1
 

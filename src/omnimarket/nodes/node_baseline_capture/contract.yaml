@@ -62,6 +62,17 @@ outputs:
     type: list[str]
     description: "Probes that failed (non-fatal)"
 
+env_dependencies:
+  LLM_CODER_URL:
+    required: false
+    description: "vLLM Qwen3-Coder-30B endpoint URL (probed during system_health check)"
+  LLM_CODER_FAST_URL:
+    required: false
+    description: "vLLM fast model endpoint URL (probed during system_health check)"
+  LLM_EMBEDDING_URL:
+    required: false
+    description: "Embedding model endpoint URL (probed during system_health check)"
+
 terminal_event: onex.evt.omnimarket.baseline-captured.v1
 
 event_bus:

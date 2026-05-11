@@ -15,6 +15,17 @@ handler:
   class: HandlerThreadReply
   input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelThreadReplyCommand
 
+env_dependencies:
+  LLM_CODER_URL:
+    required: false
+    description: "vLLM Qwen3-Coder-30B endpoint URL (primary model)"
+  LLM_GLM_URL:
+    required: false
+    description: "GLM cloud API base URL (fallback model)"
+  LLM_CODER_FAST_URL:
+    required: false
+    description: "vLLM fast model endpoint URL (secondary local option)"
+
 descriptor:
   node_archetype: effect
   purity: impure

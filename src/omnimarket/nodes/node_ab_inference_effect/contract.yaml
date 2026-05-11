@@ -13,6 +13,23 @@ handler:
   class: HandlerAbInferenceEffect
   input_model: omnimarket.nodes.node_ab_inference_effect.models.model_inference_request.ModelInferenceRequest
 
+env_dependencies:
+  LLM_CODER_URL:
+    required: false
+    description: "vLLM Qwen3-Coder-30B endpoint URL (allowlisted for inference calls)"
+  LLM_CODER_FAST_URL:
+    required: false
+    description: "vLLM fast model endpoint URL (allowlisted for inference calls)"
+  LLM_DEEPSEEK_R1_URL:
+    required: false
+    description: "DeepSeek-R1 reasoning model endpoint URL (allowlisted for inference calls)"
+  LLM_QWEN3_NEXT_URL:
+    required: false
+    description: "Qwen3-Next-80B endpoint URL (allowlisted for inference calls)"
+  LLM_GLM_URL:
+    required: false
+    description: "GLM cloud API base URL (allowlisted for inference calls)"
+
 descriptor:
   node_archetype: effect
   purity: effectful

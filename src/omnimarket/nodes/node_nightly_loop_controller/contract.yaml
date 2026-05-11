@@ -81,6 +81,14 @@ env_deps:
   - KAFKA_BOOTSTRAP_SERVERS
   - LINEAR_API_KEY
 
+env_dependencies:
+  LLM_CODER_URL:
+    required: false
+    description: "vLLM Qwen3-Coder-30B endpoint URL (local coder for dispatch decisions)"
+  LLM_CODER_FAST_URL:
+    required: false
+    description: "vLLM fast model endpoint URL (local fast model for lightweight decisions)"
+
 terminal_event: onex.evt.omnimarket.nightly-loop-completed.v1
 
 golden_path:
