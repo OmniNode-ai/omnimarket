@@ -3,7 +3,7 @@
 
 """Unit tests for HandlerCanaryScoreReducer.
 
-[OMN-10845]
+[OMN-10845] [OMN-10847]
 """
 
 from __future__ import annotations
@@ -150,10 +150,10 @@ def test_materialize_produces_capability_score_rows() -> None:
         ],
     )
     new_state = handler.accumulate(state, report)
-    rows = handler.materialize(new_state)
+    result = handler.materialize(new_state)
 
-    assert len(rows) == 1
-    row = rows[0]
+    assert len(result.capability_score_rows) == 1
+    row = result.capability_score_rows[0]
 
     # Required capability_scores table columns
     assert row["model_key"] == "qwen3-coder-30b"
@@ -212,10 +212,47 @@ def test_materialize_preserves_entries_failed() -> None:
         ],
     )
     new_state = handler.accumulate(state, report)
-    rows = handler.materialize(new_state)
+    result = handler.materialize(new_state)
 
-    assert len(rows) == 1
-    row = rows[0]
+    assert len(result.capability_score_rows) == 1
+    row = result.capability_score_rows[0]
     assert row["total_count"] == 10
     assert row["failure_count"] == 3
     assert row["success_count"] == 7
+
+
+@pytest.mark.unit
+def test_materialize_produces_routing_outcome_rows() -> None:
+    """materialize() produces routing_outcome_rows with quality_score == composite_score."""
+    handler = HandlerCanaryScoreReducer()
+    from omnimarket.nodes.node_canary_score_reducer.models.model_score_reducer_state import (
+        ModelCapabilityScoreRow,
+    )
+
+    state = ModelScoreReducerState(
+        scores={
+            "qwen3-coder-30b::adr_extraction": ModelCapabilityScoreRow(
+                model_key="qwen3-coder-30b",
+                task_type="adr_extraction",
+                avg_recall=0.94,
+                avg_precision=0.91,
+                avg_fidelity=0.88,
+                avg_format_compliance=0.95,
+                composite_score=0.92,
+                entries_evaluated=10,
+                estimated_cost_usd=0.12,
+                total_latency_ms=45000,
+                canary_run_id="canary-001",
+            ),
+        },
+    )
+
+    result = handler.materialize(state)
+
+    assert len(result.routing_outcome_rows) == 1
+    row = result.routing_outcome_rows[0]
+    assert row["quality_score"] == pytest.approx(0.92, abs=0.01)
+    assert row["model_key"] == "qwen3-coder-30b"
+    assert row["task_type"] == "adr_extraction"
+    assert row["correlation_id"] == "canary-001"
+    assert row["selected"] is True
