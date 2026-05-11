@@ -63,8 +63,11 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 logger = logging.getLogger(__name__)
 
 
-def _noop_event_bus(topic: str, payload: bytes) -> None:
+def _noop_event_bus(
+    topic: str, payload: bytes
+) -> None:  # stub-ok: intentional no-op for offline mode
     """No-op event bus used when Kafka is not configured."""
+    return
 
 
 def _build_kafka_publisher() -> EventPublisher | None:

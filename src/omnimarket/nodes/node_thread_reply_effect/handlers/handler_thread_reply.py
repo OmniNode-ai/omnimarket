@@ -100,7 +100,13 @@ async def _real_llm_call(
     """Route to best available endpoint and generate a thread reply."""
     policy = ModelRoutingPolicy.model_validate(routing_policy)
     registry = _build_registry(policy)
-    router = HandlerModelRouter(policy=policy, registry=registry, event_bus=None)
+    from omnibase_core.event_bus.event_bus_inmemory import (
+        EventBusInmemory,
+    )
+
+    router = HandlerModelRouter(
+        policy=policy, registry=registry, event_bus=EventBusInmemory()
+    )
 
     routing_result = await router.route_async(
         ModelRoutingRequest(
