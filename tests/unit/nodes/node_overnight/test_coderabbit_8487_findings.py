@@ -98,6 +98,7 @@ def test_consecutive_failures_counted_when_outcomes_gate_fails(
     # Probe always fails → build_loop fails via outcomes gate.
     # With the fix, consecutive_failures becomes 1 and triggers the halt condition.
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
     )
@@ -163,6 +164,7 @@ def test_process_halt_triggers_recovered_does_not_set_halt_reason(
         return True  # signals recovery
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
         halt_action_handler=recovering_action,
@@ -224,6 +226,7 @@ def test_process_halt_triggers_recovered_skips_legacy_halt_on_failure_gate(
         return True  # signals recovery — pipeline should continue past halt_on_failure
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
         halt_action_handler=recovering_action,
@@ -273,6 +276,7 @@ def test_process_halt_triggers_halt_sets_halt_reason(
         )
     )
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
     )
@@ -333,6 +337,7 @@ def test_process_halt_triggers_halt_wins_when_mixed_with_recovery(
         return cond.condition_id == "recoverable_cond"
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
         halt_action_handler=mixed_handler,

@@ -32,7 +32,9 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
 @pytest.mark.unit
 class TestOrchestratorWiresLiveAdapters:
     def test_default_fix_handler_has_live_adapters_not_noop(self) -> None:
-        orch = HandlerPrLifecycleOrchestrator()
+        from unittest.mock import MagicMock
+
+        orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock())
         orch._ensure_sub_handlers()
 
         fix = orch._fix

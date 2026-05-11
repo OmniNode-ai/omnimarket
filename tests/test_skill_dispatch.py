@@ -233,7 +233,11 @@ def test_aislop_sweep_parity(hermetic_omni_home: str) -> None:
         # Write a minimal Python file to scan
         (Path(tmpdir) / "test_module.py").write_text("x = 1\n")
 
-        handler = NodeAislopSweep()
+        from omnibase_core.event_bus.event_bus_inmemory import (
+            EventBusInmemory,
+        )
+
+        handler = NodeAislopSweep(event_bus=EventBusInmemory())  # type: ignore[arg-type]
         request = AislopSweepRequest(
             target_dirs=[tmpdir],
             dry_run=True,

@@ -16,6 +16,8 @@ contract_version:
   minor: 0
   patch: 0
 node_version: "1.0.0"
+dependency_ownership:
+  - event_bus
 description: >
   Pipeline fill orchestrator. Queries Linear for unstarted active-sprint tickets,
   scores them via node_rsd_fill_compute, dispatches top-N to ticket-pipeline,

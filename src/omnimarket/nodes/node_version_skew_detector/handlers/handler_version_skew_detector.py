@@ -118,7 +118,7 @@ class NodeVersionSkewDetector:
 
     def __init__(
         self,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
     ) -> None:
         self._event_bus = event_bus
         self._publish_topics = _load_publish_topics()
@@ -203,7 +203,7 @@ class NodeVersionSkewDetector:
         return self._last_result
 
     async def emit_skew_event(self, correlation_id: str) -> None:
-        if self._event_bus is None or not self._publish_topics:
+        if not self._publish_topics:
             return
         result = getattr(self, "_last_result", None)
         if result is None:

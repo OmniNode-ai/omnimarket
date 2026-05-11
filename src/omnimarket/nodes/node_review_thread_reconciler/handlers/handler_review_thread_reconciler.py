@@ -71,8 +71,8 @@ class HandlerReviewThreadReconciler:
 
     def __init__(
         self,
+        event_bus: EventBusInmemory,
         github_client: ProtocolGitHubReviewClient | None = None,
-        event_bus: EventBusInmemory | None = None,
     ) -> None:
         self._client = github_client
         self._event_bus = event_bus
@@ -172,7 +172,7 @@ class HandlerReviewThreadReconciler:
             "processed_at": result.processed_at.isoformat(),
         }
         try:
-            await self._event_bus.publish(  # type: ignore[union-attr]
+            await self._event_bus.publish(
                 TOPIC_EVT_THREAD_REOPENED, key=None, value=json.dumps(payload).encode()
             )
         except Exception:

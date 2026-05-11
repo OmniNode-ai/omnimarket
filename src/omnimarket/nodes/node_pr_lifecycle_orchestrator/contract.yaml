@@ -164,6 +164,7 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1
     - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1
     - onex.evt.omnimarket.pr-lifecycle-inventory-collected.v1
     - onex.evt.omnimarket.pr-lifecycle-triage-classified.v1
     - onex.evt.omnimarket.pr-lifecycle-merge-executed.v1

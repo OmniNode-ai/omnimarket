@@ -46,7 +46,7 @@ async def test_model_router_falls_back_to_claude_on_degradation() -> None:
         },
     }
 
-    router = HandlerModelRouter(policy=policy, registry=registry)
+    router = HandlerModelRouter(policy=policy, registry=registry, event_bus=None)
 
     with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
         mock_health.return_value = False

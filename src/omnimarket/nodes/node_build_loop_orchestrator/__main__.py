@@ -21,7 +21,13 @@ import asyncio
 import logging
 import sys
 from datetime import UTC, datetime
+from typing import cast
 from uuid import uuid4
+
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
@@ -31,6 +37,8 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_o
 )
 
 _log = logging.getLogger(__name__)
+
+_EVENT_BUS = cast(ProtocolEventBusPublisher, EventBusInmemory())
 
 
 def main() -> None:
@@ -81,7 +89,7 @@ def main() -> None:
         requested_at=datetime.now(UTC),
     )
 
-    handler = HandlerBuildLoopOrchestrator()
+    handler = HandlerBuildLoopOrchestrator(event_bus=_EVENT_BUS)
     result = asyncio.run(handler.handle(command))
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

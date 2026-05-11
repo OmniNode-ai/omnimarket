@@ -79,11 +79,13 @@ class TestPhaseResultValidation:
 class TestAllProtocolSlots:
     def test_all_5_protocol_slots_declared(self) -> None:
         """HandlerBuildLoopExecutor must declare all 5 protocol slot attributes."""
+        from unittest.mock import MagicMock
+
         from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
             HandlerBuildLoopExecutor,
         )
 
-        handler = HandlerBuildLoopExecutor()
+        handler = HandlerBuildLoopExecutor(event_bus=MagicMock())
         assert hasattr(handler, "_nightly_loop")
         assert hasattr(handler, "_build_loop")
         assert hasattr(handler, "_merge_sweep")

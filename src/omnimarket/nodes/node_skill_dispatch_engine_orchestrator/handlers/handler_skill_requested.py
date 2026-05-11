@@ -26,7 +26,7 @@ class HandlerSkillRequested:
           placeholder. Real dispatch wiring is follow-up.
     """
 
-    def __init__(self, event_bus: Any | None = None) -> None:
+    def __init__(self, event_bus: Any) -> None:
         self._event_bus = event_bus
 
     def handle_skill_requested(

@@ -13,6 +13,7 @@ Related:
 from __future__ import annotations
 
 import pytest
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_local_supervisor.handlers.handler_local_supervisor import (
     TOPIC_COMPLETED,
@@ -80,7 +81,9 @@ def test_local_supervisor_executes_routing_decision() -> None:
         invoker_calls.append((endpoint_url, model_key, prompt))
         return "def hello(): return 'world'"
 
-    handler = HandlerLocalSupervisor(model_invoker=stub_invoker)
+    handler = HandlerLocalSupervisor(
+        model_invoker=stub_invoker, event_bus=EventBusInmemory()
+    )
     request = _make_request()
     result = handler.handle(request)
 
@@ -123,7 +126,11 @@ def test_local_supervisor_retries_on_verifier_fail() -> None:
         # Fail on first call (error response), pass on second
         return not output.startswith("error:")
 
-    handler = HandlerLocalSupervisor(model_invoker=stub_invoker, verifier=stub_verifier)
+    handler = HandlerLocalSupervisor(
+        model_invoker=stub_invoker,
+        verifier=stub_verifier,
+        event_bus=EventBusInmemory(),
+    )
     request = _make_request(retry_budget=2)
     result = handler.handle(request)
 
@@ -150,7 +157,9 @@ def test_local_supervisor_escalates_after_budget_exhausted() -> None:
         return False
 
     handler = HandlerLocalSupervisor(
-        model_invoker=stub_invoker, verifier=always_fail_verifier
+        model_invoker=stub_invoker,
+        verifier=always_fail_verifier,
+        event_bus=EventBusInmemory(),
     )
     # budget=2 means attempts 1 and 2; attempt 2 hits TWO_STRIKE_THRESHOLD (>=3 skipped,
     # but budget=2 exhausts first)
@@ -183,7 +192,9 @@ def test_two_strike_escalates_at_threshold() -> None:
         return False
 
     handler = HandlerLocalSupervisor(
-        model_invoker=stub_invoker, verifier=always_fail_verifier
+        model_invoker=stub_invoker,
+        verifier=always_fail_verifier,
+        event_bus=EventBusInmemory(),
     )
     # budget=5, but Two-Strike threshold=3 should trigger on attempt 3
     request = _make_request(
@@ -216,7 +227,9 @@ def test_tier_escalation_strategy_escalates_immediately() -> None:
         return False
 
     handler = HandlerLocalSupervisor(
-        model_invoker=stub_invoker, verifier=always_fail_verifier
+        model_invoker=stub_invoker,
+        verifier=always_fail_verifier,
+        event_bus=EventBusInmemory(),
     )
     request = _make_request(
         retry_budget=5,
@@ -246,7 +259,9 @@ def test_invocation_exception_is_retried() -> None:
             raise RuntimeError("network timeout")
         return "def answer(): return 1"
 
-    handler = HandlerLocalSupervisor(model_invoker=flaky_invoker)
+    handler = HandlerLocalSupervisor(
+        model_invoker=flaky_invoker, event_bus=EventBusInmemory()
+    )
     request = _make_request(retry_budget=2)
     result = handler.handle(request)
 
@@ -267,7 +282,9 @@ def test_correlation_id_propagated() -> None:
     def stub_invoker(endpoint_url: str, model_key: str, prompt: str) -> str:
         return "valid output"
 
-    handler = HandlerLocalSupervisor(model_invoker=stub_invoker)
+    handler = HandlerLocalSupervisor(
+        model_invoker=stub_invoker, event_bus=EventBusInmemory()
+    )
     request = _make_request(correlation_id="unique-corr-abc-789")
     result = handler.handle(request)
 

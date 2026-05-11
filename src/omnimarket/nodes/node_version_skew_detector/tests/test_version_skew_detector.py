@@ -6,9 +6,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector import (
     NodeVersionInfo,
@@ -21,7 +26,9 @@ NODE_DIR = Path(__file__).resolve().parent.parent
 
 @pytest.fixture
 def handler() -> NodeVersionSkewDetector:
-    return NodeVersionSkewDetector()
+    return NodeVersionSkewDetector(
+        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+    )
 
 
 class TestVersionMatchNoSkew:

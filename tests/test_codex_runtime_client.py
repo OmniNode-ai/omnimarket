@@ -162,7 +162,7 @@ async def _install_aislop_sweep_adapter_worker(
         received_commands.append(envelope.payload)
         try:
             command = AislopSweepRequest.model_validate(envelope.payload.payload)
-            node_result = NodeAislopSweep().handle(command)
+            node_result = NodeAislopSweep(event_bus=bus).handle(command)
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,
                 status="completed",
@@ -296,6 +296,7 @@ async def _install_pr_lifecycle_adapter_worker(
                 inventory=_PatternBInventoryHandler(),
                 triage=_PatternBTriageHandler(),
                 reducer=_PatternBReducerHandler(),
+                event_bus=bus,
             ).handle(command)
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=envelope.payload.correlation_id,

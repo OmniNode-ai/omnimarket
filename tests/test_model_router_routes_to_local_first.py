@@ -46,7 +46,7 @@ async def test_model_router_routes_to_local_first() -> None:
         },
     }
 
-    router = HandlerModelRouter(policy=policy, registry=registry)
+    router = HandlerModelRouter(policy=policy, registry=registry, event_bus=None)
 
     with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
         mock_health.return_value = True

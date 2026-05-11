@@ -48,7 +48,7 @@ class TestGoldenChainDispatchEngine:
 
     @pytest.mark.unit
     def test_skill_path_must_end_with_skill_md(self) -> None:
-        handler = HandlerSkillRequested()
+        handler = HandlerSkillRequested(event_bus=EventBusInmemory())
         with pytest.raises(ValueError, match=r"SKILL\.md"):
             handler.handle_skill_requested(
                 skill_name="dispatch_engine",
@@ -59,7 +59,7 @@ class TestGoldenChainDispatchEngine:
 
     @pytest.mark.unit
     def test_blank_skill_name_rejected(self) -> None:
-        handler = HandlerSkillRequested()
+        handler = HandlerSkillRequested(event_bus=EventBusInmemory())
         with pytest.raises(ValueError, match="skill_name"):
             handler.handle_skill_requested(
                 skill_name="   ",

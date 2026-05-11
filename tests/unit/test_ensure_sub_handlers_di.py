@@ -11,6 +11,8 @@ import pytest
 class TestEnsureSubHandlersDI:
     def test_ensure_sub_handlers_resolves_all_5_slots(self) -> None:
         """After _ensure_sub_handlers(), all 5 protocol slots must be non-None."""
+        from unittest.mock import MagicMock
+
         from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
             HandlerBuildLoopExecutor,
         )
@@ -22,7 +24,7 @@ class TestEnsureSubHandlersDI:
             ProtocolPlatformReadinessHandler,
         )
 
-        handler = HandlerBuildLoopExecutor()
+        handler = HandlerBuildLoopExecutor(event_bus=MagicMock())
         handler._ensure_sub_handlers()
 
         assert handler._nightly_loop is not None
@@ -40,6 +42,8 @@ class TestEnsureSubHandlersDI:
 
     def test_ensure_sub_handlers_raises_on_missing_handler(self) -> None:
         """Explicitly passing a broken slot must raise DependencyResolutionError."""
+        from unittest.mock import MagicMock
+
         from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
             HandlerBuildLoopExecutor,
         )
@@ -48,7 +52,7 @@ class TestEnsureSubHandlersDI:
         )
 
         # Simulate missing handler by patching _resolve_nightly_loop to raise
-        handler = HandlerBuildLoopExecutor()
+        handler = HandlerBuildLoopExecutor(event_bus=MagicMock())
 
         def _raise() -> None:
             raise DependencyResolutionError("nightly_loop", "stub not available")

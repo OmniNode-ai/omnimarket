@@ -18,7 +18,13 @@ import argparse
 import asyncio
 import logging
 import sys
+from typing import cast
 from uuid import uuid4
+
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import (
     HandlerPipelineFill,
@@ -81,7 +87,9 @@ def main() -> None:
         state_dir=args.state_dir,
     )
 
-    handler = HandlerPipelineFill()
+    handler = HandlerPipelineFill(
+        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+    )
 
     try:
         result = asyncio.run(handler.handle(command))

@@ -37,7 +37,7 @@ Flags:
         it as the event_bus into HandlerOvernight. Phase-start, phase-end, and
         session-complete envelopes are published to the topics declared in
         contract.yaml (OMN-8403). Without this flag, event publishing is a no-op
-        (event_bus=None default).
+        (no-op by default).
 
 Outputs JSON to stdout: ModelOvernightResult model.
 """
@@ -61,6 +61,13 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _noop_event_bus(
+    topic: str, payload: bytes
+) -> None:  # stub-ok: intentional no-op for offline mode
+    """No-op event bus used when Kafka is not configured."""
+    return
 
 
 def _build_kafka_publisher() -> EventPublisher | None:
@@ -171,9 +178,9 @@ def main() -> None:
         data = yaml.safe_load(contract_path.read_text())
         overnight_contract = ModelOvernightContract.model_validate(data)
 
-    event_bus: EventPublisher | None = None
+    event_bus: EventPublisher = _noop_event_bus
     if args.publish_events:
-        event_bus = _build_kafka_publisher()
+        event_bus = _build_kafka_publisher() or _noop_event_bus
 
     command = ModelOvernightCommand(
         correlation_id=str(uuid.uuid4()),

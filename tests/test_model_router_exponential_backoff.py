@@ -51,7 +51,7 @@ async def test_model_router_exponential_backoff_between_retries() -> None:
         },
     }
 
-    router = HandlerModelRouter(policy=policy, registry=registry)
+    router = HandlerModelRouter(policy=policy, registry=registry, event_bus=None)
 
     sleep_calls: list[float] = []
 

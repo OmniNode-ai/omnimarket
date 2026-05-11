@@ -215,7 +215,7 @@ class HandlerBuildLoopExecutor:
         halt_action_handler: HaltActionHandler | None = None,
         state_root: Path | None = None,
         contract_path: Path | str | None = None,
-        event_bus: EventPublisher | None = None,
+        event_bus: EventPublisher,
         nightly_loop: ProtocolNightlyLoopHandler | None = None,
         build_loop: ProtocolBuildLoopPhaseHandler | None = None,
         merge_sweep: ProtocolMergeSweepHandler | None = None,
@@ -266,7 +266,7 @@ class HandlerBuildLoopExecutor:
         self._halt_action_handler = halt_action_handler or _default_halt_action
         self._state_root = state_root
         self._contract_path = contract_path
-        self._event_bus: EventPublisher | None = event_bus
+        self._event_bus: EventPublisher = event_bus
         # OMN-8449: 5 protocol DI slots — populated by _ensure_sub_handlers() (OMN-8450)
         self._nightly_loop: ProtocolNightlyLoopHandler | None = nightly_loop
         self._build_loop: ProtocolBuildLoopPhaseHandler | None = build_loop
@@ -364,8 +364,6 @@ class HandlerBuildLoopExecutor:
         The overnight session must never be taken down by a bus outage. A
         publish failure is logged and execution continues.
         """
-        if self._event_bus is None:
-            return
         try:
             self._event_bus(topic, json.dumps(payload).encode())
         except Exception as exc:  # pragma: no cover - defensive
@@ -741,7 +739,7 @@ class HandlerBuildLoopExecutor:
         # loop_delay_seconds. This creates a self-driving overseer loop on .201
         # without Claude Code crons. Only fires when enable_self_loop=True AND
         # an event_bus is wired — dry_run or no-bus callers are unaffected.
-        if command.enable_self_loop and self._event_bus is not None:
+        if command.enable_self_loop:
             import uuid
 
             self._publish(
@@ -1067,7 +1065,13 @@ def _dispatch_build_loop(
     """Dispatch the async build-loop orchestrator synchronously."""
     import asyncio
     from datetime import datetime as _dt
+    from typing import cast
     from uuid import uuid4
+
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
 
     from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
         ModelLoopStartCommand,
@@ -1076,7 +1080,9 @@ def _dispatch_build_loop(
         HandlerBuildLoopOrchestrator,
     )
 
-    handler = HandlerBuildLoopOrchestrator()
+    handler = HandlerBuildLoopOrchestrator(
+        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+    )
     build_cmd = ModelLoopStartCommand(
         correlation_id=uuid4(),
         max_cycles=max(command.max_cycles, 1),

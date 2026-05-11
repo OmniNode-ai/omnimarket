@@ -200,9 +200,18 @@ async def test_verifier_no_event_bus_uses_legacy_verify() -> None:
     mock_result.all_critical_passed = True
     mock_verify.handle = AsyncMock(return_value=mock_result)
 
-    orch = HandlerBuildLoopOrchestrator()
+    from typing import cast
+
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
+    orch = HandlerBuildLoopOrchestrator(
+        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+    )
     orch._verify = mock_verify  # noqa: SLF001
-    orch._event_bus = None  # noqa: SLF001
+    orch._event_bus = None  # type: ignore[assignment]  # noqa: SLF001
     correlation_id = uuid4()
 
     success, error, _ = await orch._run_overseer_verify(  # noqa: SLF001

@@ -67,12 +67,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-TOPIC_PHASE_TRANSITION = "onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_FIXER_DISPATCH_START = "onex.cmd.omnimarket.fixer-dispatch-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_PR_LIFECYCLE_START = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_PR_LIFECYCLE_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_PR_LIFECYCLE_FAILED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+# OMN-9806: no yaml/contract reads allowed here; topics declared inline.
+# onex-topic-allow: values match contract.yaml publish_topics exactly.
+TOPIC_PHASE_TRANSITION = "onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1"  # onex-topic-allow: OMN-9806
+TOPIC_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: OMN-9806
+TOPIC_FIXER_DISPATCH_START = (
+    "onex.cmd.omnimarket.fixer-dispatch-start.v1"  # onex-topic-allow: OMN-9806
+)
+TOPIC_PR_LIFECYCLE_START = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: OMN-9806
+TOPIC_PR_LIFECYCLE_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: OMN-9806
+TOPIC_PR_LIFECYCLE_FAILED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1"  # onex-topic-allow: OMN-9806
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +341,7 @@ class HandlerPrLifecycleOrchestrator:
         reducer: ProtocolStateReducerHandler | None = None,
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -1404,8 +1408,6 @@ class HandlerPrLifecycleOrchestrator:
         to_state: str,
         correlation_id: UUID,
     ) -> None:
-        if self._event_bus is None:
-            return
         payload = json.dumps(
             {
                 "from_phase": from_state.lower(),
@@ -1429,7 +1431,7 @@ class HandlerPrLifecycleOrchestrator:
         Enables node_fixer_dispatcher to route each PR stall to the correct
         fixer node (ci_fix_effect, conflict_hunk_effect, rebase_effect).
         """
-        if self._event_bus is None or not self._topic_fixer_dispatch_start:
+        if not self._topic_fixer_dispatch_start:
             return
         for pr in fix_prs:
             payload = json.dumps(

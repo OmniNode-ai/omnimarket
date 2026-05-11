@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -62,6 +63,7 @@ def test_overseer_flag_written_on_load_removed_on_completion(tmp_path: Path) -> 
     """Flag is written when a contract is loaded and removed at the end."""
     contract = _contract()
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         contract_path="tonight-2026-04-10-overseer-contract.yaml",
     )
@@ -95,6 +97,7 @@ def test_overseer_flag_written_with_contract_path_and_active_phase(
         captured_snapshots.append(data)
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         contract_path="/abs/path/overseer-contract.yaml",
         tick_emitter=tick_emitter,
@@ -129,6 +132,7 @@ def test_required_outcome_unresolvable_blocks_phase(tmp_path: Path) -> None:
     )
     # Probe always reports "not satisfied".
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
     )
@@ -161,6 +165,7 @@ def test_required_outcome_satisfied_allows_phase_advance(tmp_path: Path) -> None
         )
     )
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: True,
     )
@@ -202,6 +207,7 @@ def test_required_outcome_missing_halt_condition_stops_pipeline(
         )
     )
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
     )
@@ -252,6 +258,7 @@ def test_dispatch_skill_on_halt_invokes_custom_action_handler(
         return True  # "recovery succeeded, keep going"
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         outcome_probe=lambda _: False,
         halt_action_handler=action_handler,
@@ -274,7 +281,7 @@ def test_dispatch_skill_on_halt_invokes_custom_action_handler(
 def test_tick_log_appended_for_each_phase(tmp_path: Path) -> None:
     """Each phase produces one tick snapshot in the jsonl log."""
     contract = _contract()
-    handler = HandlerOvernight(state_root=tmp_path)
+    handler = HandlerOvernight(event_bus=MagicMock(), state_root=tmp_path)
     handler.handle(
         ModelOvernightCommand(
             correlation_id="test-tick-log",
@@ -297,6 +304,7 @@ def test_flag_removed_even_on_exception(tmp_path: Path, monkeypatch) -> None:
         raise RuntimeError("simulated")
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         state_root=tmp_path,
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: boom,

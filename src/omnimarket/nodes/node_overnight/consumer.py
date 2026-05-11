@@ -81,7 +81,9 @@ def _invoke_overnight(cmd: dict[str, Any]) -> dict[str, Any]:
         loop_delay_seconds=cmd["loop_delay_seconds"],
     )
 
-    handler = HandlerOvernight(event_bus=None, contract_path=None)
+    handler = HandlerOvernight(
+        event_bus=lambda _topic, _payload: None, contract_path=None
+    )
     result = handler.handle(command, dispatch_phases=True)
 
     return {

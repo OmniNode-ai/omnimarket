@@ -70,7 +70,7 @@ class HandlerModelRouter:
         self,
         policy: ModelRoutingPolicy,
         registry: Registry,
-        event_bus: Any | None = None,
+        event_bus: Any,
     ) -> None:
         self._policy = policy
         self._registry = registry

@@ -8,6 +8,7 @@ and unknown phases are reported as failures.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightContract,
@@ -68,13 +69,14 @@ def test_dispatch_phases_invokes_each_registered_dispatcher() -> None:
         return _d
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: make(EnumPhase.NIGHTLY_LOOP),
             EnumPhase.BUILD_LOOP: make(EnumPhase.BUILD_LOOP),
             EnumPhase.MERGE_SWEEP: make(EnumPhase.MERGE_SWEEP),
             EnumPhase.CI_WATCH: make(EnumPhase.CI_WATCH),
             EnumPhase.PLATFORM_READINESS: make(EnumPhase.PLATFORM_READINESS),
-        }
+        },
     )
 
     result = handler.handle(
@@ -112,13 +114,14 @@ def test_dispatch_phase_failure_on_critical_phase_halts_pipeline() -> None:
         return False, "simulated build loop failure"
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: ok(EnumPhase.NIGHTLY_LOOP),
             EnumPhase.BUILD_LOOP: boom,
             EnumPhase.MERGE_SWEEP: ok(EnumPhase.MERGE_SWEEP),
             EnumPhase.CI_WATCH: ok(EnumPhase.CI_WATCH),
             EnumPhase.PLATFORM_READINESS: ok(EnumPhase.PLATFORM_READINESS),
-        }
+        },
     )
 
     result = handler.handle(
@@ -145,13 +148,14 @@ def test_dispatch_phase_exception_is_captured_as_failure() -> None:
         return True, None
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: ok,
             EnumPhase.BUILD_LOOP: ok,
             EnumPhase.MERGE_SWEEP: kaboom,
             EnumPhase.CI_WATCH: ok,
             EnumPhase.PLATFORM_READINESS: ok,
-        }
+        },
     )
 
     result = handler.handle(
@@ -179,13 +183,14 @@ def test_overrides_take_precedence_over_dispatchers() -> None:
         return _d
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: never(EnumPhase.NIGHTLY_LOOP),
             EnumPhase.BUILD_LOOP: never(EnumPhase.BUILD_LOOP),
             EnumPhase.MERGE_SWEEP: never(EnumPhase.MERGE_SWEEP),
             EnumPhase.CI_WATCH: never(EnumPhase.CI_WATCH),
             EnumPhase.PLATFORM_READINESS: never(EnumPhase.PLATFORM_READINESS),
-        }
+        },
     )
 
     result = handler.handle(
@@ -212,7 +217,9 @@ def test_pure_fsm_mode_unchanged_when_dispatch_phases_false() -> None:
         called.append(EnumPhase.BUILD_LOOP)
         return True, None
 
-    handler = HandlerOvernight(dispatchers={EnumPhase.BUILD_LOOP: _d})
+    handler = HandlerOvernight(
+        event_bus=MagicMock(), dispatchers={EnumPhase.BUILD_LOOP: _d}
+    )
 
     result = handler.handle(
         ModelOvernightCommand(correlation_id="exec-test-5", dry_run=True)
@@ -236,13 +243,14 @@ def test_skipped_dispatcher_not_counted_as_failed() -> None:
         return True, None
 
     handler = HandlerOvernight(
+        event_bus=MagicMock(),
         dispatchers={
             EnumPhase.NIGHTLY_LOOP: ok,
             EnumPhase.BUILD_LOOP: ok,
             EnumPhase.MERGE_SWEEP: skip_dispatcher,
             EnumPhase.CI_WATCH: ok,
             EnumPhase.PLATFORM_READINESS: ok,
-        }
+        },
     )
 
     result = handler.handle(

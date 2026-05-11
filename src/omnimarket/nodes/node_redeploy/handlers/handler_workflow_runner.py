@@ -170,10 +170,7 @@ async def run_redeploy_workflow(
 class HandlerRedeployWorkflowRunner:
     """RuntimeLocal handler protocol wrapper for redeploy workflow runner."""
 
-    def __init__(self, event_bus: object | None = None) -> None:
-        self._event_bus = event_bus
-
-    def set_event_bus(self, event_bus: object) -> None:
+    def __init__(self, event_bus: object) -> None:
         self._event_bus = event_bus
 
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:

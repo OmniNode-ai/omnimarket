@@ -57,9 +57,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-TOPIC_AUTOPILOT_START = "onex.cmd.omnimarket.autopilot-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_AUTOPILOT_COMPLETED = "onex.evt.omnimarket.autopilot-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_AUTOPILOT_FAILED = "onex.evt.omnimarket.autopilot-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _topic_from_contract(fragment: str) -> str:
+    with open(_CONTRACT_PATH) as fh:
+        data = yaml.safe_load(fh) or {}
+    all_topics = (data.get("event_bus", {}) or {}).get("subscribe_topics", []) or []
+    all_topics += (data.get("event_bus", {}) or {}).get("publish_topics", []) or []
+    for topic in all_topics:
+        if isinstance(topic, str) and fragment in topic:
+            return topic
+    raise ValueError(f"No topic matching '{fragment}' in {_CONTRACT_PATH}")
+
+
+TOPIC_AUTOPILOT_START: str = _topic_from_contract("autopilot-orchestrator-start")
+TOPIC_AUTOPILOT_COMPLETED: str = _topic_from_contract(
+    "autopilot-orchestrator-completed"
+)
+TOPIC_AUTOPILOT_FAILED: str = _topic_from_contract("autopilot-orchestrator-failed")
 
 _CIRCUIT_BREAKER_THRESHOLD = 3
 
@@ -127,7 +143,7 @@ class HandlerAutopilotOrchestrator:
     def __init__(
         self,
         *,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
         contract_path: Path | None = None,
     ) -> None:
         contract = _load_contract(contract_path)
@@ -290,16 +306,6 @@ class HandlerAutopilotOrchestrator:
             command.correlation_id,
         )
 
-        if self._event_bus is None:
-            logger.warning(
-                "[AUTOPILOT-A] event_bus not wired — skipping dispatch (stub pass)"
-            )
-            return ModelAutopilotPhaseResult(
-                phase_id="A",
-                status=EnumAutopilotPhaseStatus.WARN,
-                detail="event_bus not wired; worktree dispatch skipped (standalone mode)",
-            )
-
         try:
             payload = self._envelope_bytes(
                 event_type="omnimarket.autopilot-worktree-sweep",
@@ -343,16 +349,6 @@ class HandlerAutopilotOrchestrator:
         logger.info(
             "[AUTOPILOT-B] merge sweep — correlation_id=%s", command.correlation_id
         )
-
-        if self._event_bus is None:
-            logger.warning(
-                "[AUTOPILOT-B] event_bus not wired — skipping dispatch (stub pass)"
-            )
-            return ModelAutopilotPhaseResult(
-                phase_id="B",
-                status=EnumAutopilotPhaseStatus.WARN,
-                detail="event_bus not wired; merge sweep skipped (standalone mode)",
-            )
 
         if not self._topic_pr_lifecycle:
             logger.warning("[AUTOPILOT-B] pr-lifecycle topic not configured — skipping")
@@ -407,16 +403,6 @@ class HandlerAutopilotOrchestrator:
             command.correlation_id,
         )
 
-        if self._event_bus is None:
-            logger.warning(
-                "[AUTOPILOT-C] event_bus not wired — skipping dispatch (stub warn)"
-            )
-            return ModelAutopilotPhaseResult(
-                phase_id="C",
-                status=EnumAutopilotPhaseStatus.WARN,
-                detail="event_bus not wired; infra gate skipped (standalone mode)",
-            )
-
         if not self._topic_platform_diagnostics:
             logger.warning(
                 "[AUTOPILOT-C] platform-diagnostics topic not configured — skipping"
@@ -468,16 +454,6 @@ class HandlerAutopilotOrchestrator:
         logger.info(
             "[AUTOPILOT-D] quality sweeps — correlation_id=%s", command.correlation_id
         )
-
-        if self._event_bus is None:
-            logger.warning(
-                "[AUTOPILOT-D] event_bus not wired — skipping dispatch (stub pass)"
-            )
-            return ModelAutopilotPhaseResult(
-                phase_id="D",
-                status=EnumAutopilotPhaseStatus.WARN,
-                detail="event_bus not wired; quality sweeps skipped (standalone mode)",
-            )
 
         sweep_errors: list[str] = []
 
@@ -608,7 +584,7 @@ class HandlerAutopilotOrchestrator:
         to_state: str,
         correlation_id: UUID,
     ) -> None:
-        if self._event_bus is None or not self._topic_phase_transition:
+        if not self._topic_phase_transition:
             return
         payload = self._envelope_bytes(
             event_type="omnimarket.autopilot-phase-transition",

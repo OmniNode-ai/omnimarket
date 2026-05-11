@@ -122,7 +122,7 @@ class HandlerBuildLoopOrchestrator:
         rsd_fill: ProtocolRsdFillHandler | None = None,
         classify: ProtocolTicketClassifyHandler | None = None,
         dispatch: ProtocolBuildDispatchHandler | None = None,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
         contract_path: Path | None = None,
         overseer_verifier: ProtocolOverseerVerifier | None = None,
     ) -> None:
@@ -573,7 +573,7 @@ class HandlerBuildLoopOrchestrator:
         path is only taken when event_bus is present AND no legacy verify handler was
         injected (i.e. the auto-wired default is in use).
         """
-        if self._event_bus is None or self._verify_explicitly_injected or dry_run:
+        if self._verify_explicitly_injected or dry_run:
             # No event bus: fall back to legacy verify handler for standalone/dry-run
             assert self._verify is not None
             result = await self._verify.handle(
@@ -666,8 +666,6 @@ class HandlerBuildLoopOrchestrator:
         correlation_id: UUID,
     ) -> None:
         """Publish a DoD verification event to the event bus."""
-        if self._event_bus is None:
-            return
         checks_passed = sum(
             1 for c in checks if isinstance(c, dict) and c.get("passed")
         )
@@ -692,9 +690,6 @@ class HandlerBuildLoopOrchestrator:
 
     async def _publish_phase_event(self, event: object) -> None:
         """Publish a phase transition event to the event bus."""
-        if self._event_bus is None:
-            return
-
         if isinstance(event, ModelPhaseTransitionEvent):
             payload = json.dumps(event.model_dump(mode="json")).encode()
             await self._event_bus.publish(

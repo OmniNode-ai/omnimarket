@@ -34,7 +34,7 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
     [
         # node_build_loop_orchestrator → node_build_loop (multiple tickets pending)
         "omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py:44",
-        "omnimarket/nodes/node_build_loop_orchestrator/__main__.py:26",
+        "omnimarket/nodes/node_build_loop_orchestrator/__main__.py:32",
         "omnimarket/nodes/node_build_loop_orchestrator/models/model_phase_command_intent.py:10",
         "omnimarket/nodes/node_build_loop_orchestrator/models/model_loop_cycle_summary.py:15",
         "omnimarket/nodes/node_build_loop_orchestrator/models/model_orchestrator_state.py:10",
@@ -67,12 +67,12 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket/nodes/node_ledger_append_effect/handlers/handler_ledger_append.py:25",
         # node_pr_lifecycle_orchestrator reach-ins (OMN-9806 keeps these as
         # temporary exceptions until shared lifecycle models move to events.*)
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:940",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1051",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1124",
-        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1187",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:944",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1055",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1128",
+        "omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py:1191",
         # node_overnight → node_build_loop
-        "omnimarket/nodes/node_overnight/handlers/handler_overnight.py:1072",
+        "omnimarket/nodes/node_overnight/handlers/handler_overnight.py:1076",
         # node_pipeline_fill → node_rsd_fill_compute
         "omnimarket/nodes/node_pipeline_fill/handlers/handler_pipeline_fill.py:40",
         # node_merge_sweep_state_reducer reach-ins

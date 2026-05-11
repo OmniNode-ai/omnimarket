@@ -115,7 +115,7 @@ class HandlerLocalSupervisor:
         *,
         model_invoker: ModelInvoker | None = None,
         verifier: VerifierFn | None = None,
-        event_bus: Any | None = None,
+        event_bus: Any,
     ) -> None:
         self._invoke = model_invoker if model_invoker is not None else _default_invoker
         self._verify = verifier if verifier is not None else _default_verifier

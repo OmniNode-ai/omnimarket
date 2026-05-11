@@ -38,7 +38,7 @@ class TestGoldenChainSessionCompose:
         assert all(r.status == "dry_run" for r in result.phase_results)
 
     async def test_live_dispatch_returns_placeholder(self) -> None:
-        handler = HandlerSessionCompose()
+        handler = HandlerSessionCompose(event_bus=None)
         cmd = ModelSessionComposeCommand(
             phases=["platform_readiness", "pipeline_fill", "ticket_pipeline"],
             dry_run=False,
@@ -62,7 +62,7 @@ class TestGoldenChainSessionCompose:
             )
 
     async def test_handler_without_event_bus(self) -> None:
-        handler = HandlerSessionCompose()
+        handler = HandlerSessionCompose(event_bus=None)
         cmd = ModelSessionComposeCommand(phases=["platform_readiness"], dry_run=True)
         result = await handler.handle(cmd)
         assert result.success is True

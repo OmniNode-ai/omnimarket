@@ -31,7 +31,7 @@ class TestAislopSweepGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """A repo with no anti-patterns should produce status=clean."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -49,7 +49,7 @@ class TestAislopSweepGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """Prohibited env var patterns should be flagged as CRITICAL."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -68,7 +68,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_hardcoded_topic_detected(self, event_bus: EventBusInmemory) -> None:
         """Hardcoded topic strings in src/ should be flagged as ERROR."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -85,7 +85,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
         """Handler can be wired to event bus and process command events."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
         results_captured: list[dict[str, object]] = []
 
         async def on_command(message: object) -> None:
@@ -130,7 +130,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_todo_detection(self, event_bus: EventBusInmemory) -> None:
         """TODO markers in src/ should be flagged."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -145,7 +145,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_selective_checks(self, event_bus: EventBusInmemory) -> None:
         """Only specified checks should run."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -163,7 +163,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_dry_run_flag_propagated(self, event_bus: EventBusInmemory) -> None:
         """dry_run flag should propagate from request to result."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -178,7 +178,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_compat_shims_detected(self, event_bus: EventBusInmemory) -> None:
         """Backwards-compat shims in src/ should be flagged as WARNING."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -193,7 +193,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_empty_impls_detected(self, event_bus: EventBusInmemory) -> None:
         """Empty pass statements in src/ should be flagged as WARNING."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -210,7 +210,7 @@ class TestAislopSweepGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """Abstract/Protocol files should be exempt from empty-impls check."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = Path(tmpdir) / "src"
@@ -262,7 +262,7 @@ class TestAislopSweepGoldenChain:
 
     async def test_multiple_repos(self, event_bus: EventBusInmemory) -> None:
         """Scanning multiple repos aggregates findings correctly."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_a = Path(tmpdir) / "repo_a"
@@ -286,7 +286,7 @@ class TestAislopSweepGoldenChain:
         self, event_bus: EventBusInmemory
     ) -> None:
         """Full golden chain: command -> scan -> finding events -> completion event."""
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=event_bus)
         finding_topic = "onex.evt.omnimarket.aislop-sweep-finding.v1"
         finding_events: list[dict[str, object]] = []
         completion_events: list[dict[str, object]] = []

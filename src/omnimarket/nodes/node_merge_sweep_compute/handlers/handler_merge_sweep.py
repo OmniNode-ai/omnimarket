@@ -446,12 +446,22 @@ class NodeMergeSweep:
                 self.merge_prs.append((repo, pr_number))
                 return MergeResult(prs_merged=0, prs_failed=0)
 
+        from typing import cast
+
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
         noop_merge = _NoopMerge()
         try:
+            _bus = EventBusInmemory()
+            await _bus.start()
             orch = HandlerPrLifecycleOrchestrator(
                 inventory=_PrebuiltInventory(),
                 triage=_PrebuiltTriage(),
                 merge=noop_merge,
+                event_bus=cast(ProtocolEventBusPublisher, _bus),
             )
             # merge_only=True, dry_run=False: reducer emits MERGE intents in priority order;
             # _NoopMerge absorbs the calls without touching GitHub.

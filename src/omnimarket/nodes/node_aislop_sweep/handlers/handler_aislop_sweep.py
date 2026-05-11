@@ -220,7 +220,7 @@ class NodeAislopSweep:
 
     def __init__(
         self,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
     ) -> None:
         self._event_bus = event_bus
         self._sweep_result_topic = _load_sweep_result_topic()
@@ -289,7 +289,7 @@ class NodeAislopSweep:
         Call this after handle() to publish sweep results to the dashboard topic.
         No-op when event_bus is None or sweep_result_topic is not configured.
         """
-        if self._event_bus is None or not self._sweep_result_topic:
+        if not self._sweep_result_topic:
             return
         result = getattr(self, "_last_result", None)
         elapsed = getattr(self, "_last_elapsed", 0.0)

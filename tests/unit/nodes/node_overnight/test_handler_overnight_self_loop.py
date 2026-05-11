@@ -114,8 +114,10 @@ class TestSelfLoopTrigger:
         start_calls = bus.by_topic(TOPIC_OVERNIGHT_START)
         assert len(start_calls) == 0, "enable_self_loop=False must not requeue"
 
-    def test_no_event_bus_no_self_loop_no_error(self) -> None:
-        handler = HandlerOvernight()  # event_bus=None
+    def test_event_bus_with_no_self_loop_no_error(self) -> None:
+        from unittest.mock import MagicMock
+
+        handler = HandlerOvernight(event_bus=MagicMock())
 
         result = handler.handle(_cmd())
         assert result.session_status.value == "completed"

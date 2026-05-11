@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
@@ -46,7 +47,8 @@ async def test_model_router_health_check_marks_endpoint_degraded() -> None:
         },
     }
 
-    router = HandlerModelRouter(policy=policy, registry=registry)
+    bus = EventBusInmemory()
+    router = HandlerModelRouter(policy=policy, registry=registry, event_bus=bus)
 
     with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
         mock_health.return_value = False

@@ -148,8 +148,10 @@ def test_complete_envelope_records_session_status_and_phase_totals() -> None:
     assert payload["halt_reason"] is None
 
 
-def test_no_event_bus_is_a_noop() -> None:
-    handler = HandlerOvernight()  # event_bus=None (default)
+def test_event_bus_mock_is_a_noop() -> None:
+    from unittest.mock import MagicMock
+
+    handler = HandlerOvernight(event_bus=MagicMock())
 
     # Must not raise; must still return a valid result.
     result = handler.handle(_cmd())

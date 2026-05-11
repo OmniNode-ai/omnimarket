@@ -10,7 +10,10 @@ follow-up work tracked under the OMN-8812 epic.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from ..models.model_phase_result import ModelPhaseResult
 from ..models.model_session_compose_command import ModelSessionComposeCommand
@@ -23,8 +26,20 @@ __all__ = ["HandlerSessionCompose"]
 
 logger = logging.getLogger(__name__)
 
-SUCCESS_TOPIC = "onex.evt.omnimarket.session-compose-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-FAILURE_TOPIC = "onex.evt.omnimarket.session-compose-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _load_topic(key: str) -> str:
+    with open(_CONTRACT_PATH) as fh:
+        data = yaml.safe_load(fh) or {}
+    topic = (data.get("event_bus", {}) or {}).get("publish", {}).get(key)
+    if not isinstance(topic, str):
+        raise ValueError(f"Missing event_bus.publish.{key} in {_CONTRACT_PATH}")
+    return topic
+
+
+SUCCESS_TOPIC: str = _load_topic("success_topic")
+FAILURE_TOPIC: str = _load_topic("failure_topic")
 
 
 class HandlerSessionCompose:
@@ -39,7 +54,7 @@ class HandlerSessionCompose:
     topic via ``publish_envelope``.
     """
 
-    def __init__(self, event_bus: ProtocolEventBus | Any | None = None) -> None:
+    def __init__(self, event_bus: ProtocolEventBus | Any) -> None:
         self._bus = event_bus
 
     async def handle(
@@ -76,8 +91,6 @@ class HandlerSessionCompose:
         Best-effort: logs and swallows publish failures so orchestration never
         fails solely due to bus unavailability.
         """
-        if self._bus is None:
-            return
         topic = SUCCESS_TOPIC if result.success else FAILURE_TOPIC
         publish_envelope = getattr(self._bus, "publish_envelope", None)
         if publish_envelope is None:
