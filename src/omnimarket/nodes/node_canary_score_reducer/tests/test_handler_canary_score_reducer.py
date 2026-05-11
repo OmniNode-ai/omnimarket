@@ -192,3 +192,30 @@ def test_accumulate_skips_failed_report() -> None:
 
     assert new_state is state
     assert len(new_state.scores) == 0
+
+
+@pytest.mark.unit
+def test_materialize_preserves_entries_failed() -> None:
+    """materialize() propagates entries_failed into failure_count and adjusts success_count."""
+    handler = HandlerCanaryScoreReducer()
+    state = ModelScoreReducerState()
+
+    report = _make_report(
+        model_scores=[
+            ModelModelScore(
+                model_key="qwen3-coder-30b",
+                entries_evaluated=10,
+                entries_failed=3,
+                avg_recall=0.90,
+                avg_precision=0.88,
+            ),
+        ],
+    )
+    new_state = handler.accumulate(state, report)
+    rows = handler.materialize(new_state)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["total_count"] == 10
+    assert row["failure_count"] == 3
+    assert row["success_count"] == 7

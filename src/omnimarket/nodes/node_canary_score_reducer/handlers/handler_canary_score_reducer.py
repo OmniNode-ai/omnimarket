@@ -55,6 +55,7 @@ class HandlerCanaryScoreReducer:
                 avg_format_compliance=ms.avg_format_compliance,
                 composite_score=composite,
                 entries_evaluated=ms.entries_evaluated,
+                entries_failed=ms.entries_failed,
                 estimated_cost_usd=ms.estimated_cost_usd,
                 total_latency_ms=ms.total_latency_ms,
                 canary_run_id=report.run_id,
@@ -65,6 +66,7 @@ class HandlerCanaryScoreReducer:
         """Produce rows matching the capability_scores table schema."""
         rows: list[dict[str, object]] = []
         for row in state.scores.values():
+            success_count = max(row.entries_evaluated - row.entries_failed, 0)
             rows.append(
                 {
                     "model_key": row.model_key,
@@ -74,8 +76,8 @@ class HandlerCanaryScoreReducer:
                     / max(row.entries_evaluated, 1),
                     "total_cost": row.estimated_cost_usd,
                     "total_count": row.entries_evaluated,
-                    "success_count": row.entries_evaluated,
-                    "failure_count": 0,
+                    "success_count": success_count,
+                    "failure_count": row.entries_failed,
                 }
             )
         return rows

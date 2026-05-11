@@ -10,6 +10,7 @@ class ModelCapabilityScoreRow(BaseModel, frozen=True):
     avg_format_compliance: float | None = Field(None, ge=0.0, le=1.0)
     composite_score: float | None = Field(None, ge=0.0, le=1.0)
     entries_evaluated: int = Field(0, ge=0)
+    entries_failed: int = Field(0, ge=0)
     estimated_cost_usd: float | None = Field(None, ge=0.0)
     total_latency_ms: int = Field(0, ge=0)
     canary_run_id: str = ""
