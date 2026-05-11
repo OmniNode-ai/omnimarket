@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10850
+title: "SQLite projection adapter includes prompt_text and response_text"
+summary: "Fix delegation projection rows showing empty content in dashboard — prompt_text and response_text were never written to SQLite. Adds both fields to ModelTaskDelegatedEvent, HandlerProjectionDelegation.project() upsert, and DelegationProjectionRunner Kafka consumer write path."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Projection tests confirm prompt_text and response_text land in DB row and default to None when absent"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/nodes/node_projection_delegation/ -v --tb=short"
+  - id: dod-golden-chain
+    description: "All 13 golden-chain delegation projection tests pass"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ -k 'delegation' -v --tb=short"
+  - id: dod-deploy
+    description: "No live deploy required — this PR writes to SQLite only; no new Kafka topic, no runtime topology change, no container restart needed. Projection runner picks up new fields on next event from existing deployed containers."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: SQLite-only column addition, no docker exec or rpk topic produce required; projection runner reads new fields from event payload on next delegation event'"

@@ -113,6 +113,54 @@ class TestDelegationProjection:
         )
 
 
+class TestPromptResponseText:
+    """OMN-10850 — prompt_text and response_text must be persisted to the row."""
+
+    def test_prompt_and_response_text_written_to_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-prompt-response",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+            prompt_text="test prompt",
+            response_text="test response",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["prompt_text"] == "test prompt"
+        assert rows[0]["response_text"] == "test response"
+
+    def test_prompt_response_text_default_none(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-no-text",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["prompt_text"] is None
+        assert rows[0]["response_text"] is None
+
+    def test_prompt_response_text_via_handle_protocol(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "correlation_id": "corr-handle-text",
+            "task_type": "summarize",
+            "delegated_to": "agent-beta",
+            "prompt_text": "test prompt",
+            "response_text": "test response",
+            "_db": db,
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        rows = db.query("delegation_events")
+        assert rows[0]["prompt_text"] == "test prompt"
+        assert rows[0]["response_text"] == "test response"
+
+
 class TestComplianceCounters:
     """OMN-10793 — projection writes tokens_to_compliance and compliance_attempts
     from the inbound event payload to the delegation_events row. The defaults
