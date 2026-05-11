@@ -77,8 +77,11 @@ async def _invoke_autopilot(cmd: dict[str, Any]) -> dict[str, Any]:
         autonomous=cmd["autonomous"],
     )
 
-    bus = cast(ProtocolEventBusPublisher, EventBusInmemory())
-    orchestrator = HandlerAutopilotOrchestrator(event_bus=bus)
+    bus = EventBusInmemory()
+    await bus.start()
+    orchestrator = HandlerAutopilotOrchestrator(
+        event_bus=cast(ProtocolEventBusPublisher, bus)
+    )
     result = await orchestrator.handle(command)
 
     return {

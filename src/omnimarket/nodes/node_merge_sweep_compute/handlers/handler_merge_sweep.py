@@ -455,11 +455,13 @@ class NodeMergeSweep:
 
         noop_merge = _NoopMerge()
         try:
+            _bus = EventBusInmemory()
+            await _bus.start()
             orch = HandlerPrLifecycleOrchestrator(
                 inventory=_PrebuiltInventory(),
                 triage=_PrebuiltTriage(),
                 merge=noop_merge,
-                event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory()),
+                event_bus=cast(ProtocolEventBusPublisher, _bus),
             )
             # merge_only=True, dry_run=False: reducer emits MERGE intents in priority order;
             # _NoopMerge absorbs the calls without touching GitHub.

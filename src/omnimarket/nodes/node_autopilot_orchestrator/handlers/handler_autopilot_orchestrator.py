@@ -57,9 +57,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-TOPIC_AUTOPILOT_START = "onex.cmd.omnimarket.autopilot-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_AUTOPILOT_COMPLETED = "onex.evt.omnimarket.autopilot-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_AUTOPILOT_FAILED = "onex.evt.omnimarket.autopilot-orchestrator-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _topic_from_contract(fragment: str) -> str:
+    with open(_CONTRACT_PATH) as fh:
+        data = yaml.safe_load(fh) or {}
+    all_topics = (data.get("event_bus", {}) or {}).get("subscribe_topics", []) or []
+    all_topics += (data.get("event_bus", {}) or {}).get("publish_topics", []) or []
+    for topic in all_topics:
+        if isinstance(topic, str) and fragment in topic:
+            return topic
+    raise ValueError(f"No topic matching '{fragment}' in {_CONTRACT_PATH}")
+
+
+TOPIC_AUTOPILOT_START: str = _topic_from_contract("autopilot-orchestrator-start")
+TOPIC_AUTOPILOT_COMPLETED: str = _topic_from_contract(
+    "autopilot-orchestrator-completed"
+)
+TOPIC_AUTOPILOT_FAILED: str = _topic_from_contract("autopilot-orchestrator-failed")
 
 _CIRCUIT_BREAKER_THRESHOLD = 3
 

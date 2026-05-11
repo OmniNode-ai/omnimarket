@@ -104,9 +104,9 @@ async def _real_llm_call(
         EventBusInmemory,
     )
 
-    router = HandlerModelRouter(
-        policy=policy, registry=registry, event_bus=EventBusInmemory()
-    )
+    _bus = EventBusInmemory()
+    await _bus.start()
+    router = HandlerModelRouter(policy=policy, registry=registry, event_bus=_bus)
 
     routing_result = await router.route_async(
         ModelRoutingRequest(

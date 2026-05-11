@@ -37,7 +37,7 @@ Flags:
         it as the event_bus into HandlerOvernight. Phase-start, phase-end, and
         session-complete envelopes are published to the topics declared in
         contract.yaml (OMN-8403). Without this flag, event publishing is a no-op
-        (event_bus=None default).
+        (no-op by default).
 
 Outputs JSON to stdout: ModelOvernightResult model.
 """

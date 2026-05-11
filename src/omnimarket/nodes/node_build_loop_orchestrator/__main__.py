@@ -89,9 +89,7 @@ def main() -> None:
         requested_at=datetime.now(UTC),
     )
 
-    handler = HandlerBuildLoopOrchestrator(
-        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
-    )
+    handler = HandlerBuildLoopOrchestrator(event_bus=_EVENT_BUS)
     result = asyncio.run(handler.handle(command))
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

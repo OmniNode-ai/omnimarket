@@ -92,8 +92,11 @@ async def _invoke_pr_lifecycle(cmd: dict[str, Any]) -> dict[str, Any]:
         use_dag_ordering=cmd["use_dag_ordering"],
     )
 
-    bus = cast(ProtocolEventBusPublisher, EventBusInmemory())
-    result = await HandlerPrLifecycleOrchestrator(event_bus=bus).handle(command)
+    bus = EventBusInmemory()
+    await bus.start()
+    result = await HandlerPrLifecycleOrchestrator(
+        event_bus=cast(ProtocolEventBusPublisher, bus)
+    ).handle(command)
 
     return {
         "correlation_id": str(cmd["correlation_id"]),
