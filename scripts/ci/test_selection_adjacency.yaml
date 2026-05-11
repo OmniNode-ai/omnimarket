@@ -20,6 +20,7 @@ shared_modules:
   - enums
   - routing
   - runtime
+  - events
 
 # Per-repo full-suite escalation threshold.
 thresholds:
@@ -58,7 +59,7 @@ adjacency:
   projection:
     reverse_deps: [nodes, runtime]
   events:
-    reverse_deps: [nodes, runtime, adapters]
+    reverse_deps: [nodes]
   registry:
     reverse_deps: [nodes, runtime]
 
