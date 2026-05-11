@@ -130,6 +130,11 @@ model_routing:
     context_window: 32000
     transport: "http"
 
+env_dependencies:
+  LLM_DEEPSEEK_R1_URL:
+    required: true
+    description: "DeepSeek-R1 judge model endpoint URL (mirrors model_routing.judge.endpoint_env)"
+
 descriptor:
   node_archetype: workflow
   purity: side_effect
