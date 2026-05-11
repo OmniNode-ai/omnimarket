@@ -132,7 +132,7 @@ model_routing:
 
 env_dependencies:
   LLM_DEEPSEEK_R1_URL:
-    required: true
+    required: false
     description: "DeepSeek-R1 judge model endpoint URL (mirrors model_routing.judge.endpoint_env)"
 
 descriptor:

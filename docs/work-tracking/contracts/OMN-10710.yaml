@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10710
+title: "Declare LLM URL env vars in node contract.yaml files"
+summary: "Add env_dependencies blocks to 7 ONEX nodes that read LLM endpoint env vars without contract-level declaration."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Contract compliance check passes on changed nodes"
+    command: "uv run python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - kind: "manual"
+    description: "Architectural lint passes on changed contracts"
+    command: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-compliance"
+    description: "Node drift gate passes for all 7 changed nodes"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - id: "dod-tests"
+    description: "Unit tests pass (contract-only change, no Python modified)"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -v -m 'not kafka and not slow'"
