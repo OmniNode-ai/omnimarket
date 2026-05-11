@@ -6,6 +6,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
@@ -13,7 +15,7 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
 
 
 def _run_check(py_content: str, checks: list[str] | None = None) -> list:
-    handler = NodeAislopSweep()
+    handler = NodeAislopSweep(event_bus=EventBusInmemory())
     with tempfile.TemporaryDirectory() as tmpdir:
         src = Path(tmpdir) / "src"
         src.mkdir()
@@ -108,7 +110,7 @@ class TestHardcodedDbName:
 
 class TestExclusions:
     def test_skips_test_files(self) -> None:
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(event_bus=EventBusInmemory())
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "src"
             src.mkdir()

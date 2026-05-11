@@ -45,11 +45,12 @@ def _make_command(
 class TestAutopilotOrchestratorGoldenChain:
     """Golden chain: start command -> 4 phases -> COMPLETE."""
 
-    async def test_no_event_bus_all_phases_warn(
+    async def test_with_started_bus_all_phases_complete(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """Without event_bus, all 4 phases return warn (standalone stub mode)."""
-        handler = HandlerAutopilotOrchestrator(event_bus=None)
+        """With a started event_bus, all 4 phases succeed and pipeline completes."""
+        await event_bus.start()
+        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
         command = _make_command()
 
         result = await handler.handle(command)
@@ -57,11 +58,9 @@ class TestAutopilotOrchestratorGoldenChain:
         assert result.overall_status == EnumAutopilotCycleStatus.COMPLETE
         assert result.phases_completed == 4
         assert result.phases_failed == 0
-        assert result.phase_a.status == EnumAutopilotPhaseStatus.WARN
-        assert result.phase_b.status == EnumAutopilotPhaseStatus.WARN
-        assert result.phase_c.status == EnumAutopilotPhaseStatus.WARN
-        assert result.phase_d.status == EnumAutopilotPhaseStatus.WARN
         assert result.halt_reason == ""
+
+        await event_bus.close()
 
     async def test_with_event_bus_all_phases_pass(
         self, event_bus: EventBusInmemory
@@ -257,24 +256,28 @@ class TestAutopilotOrchestratorGoldenChain:
         assert result.overall_status == EnumAutopilotCycleStatus.CIRCUIT_BREAKER
         assert result.consecutive_failures >= 3
 
-    async def test_phase_a_warn_does_not_halt(
+    async def test_phase_a_pass_does_not_halt(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """Phase A warn (non-halting) allows pipeline to continue to COMPLETE."""
-        handler = HandlerAutopilotOrchestrator(event_bus=None)
+        """Phase A success (non-halting) allows pipeline to continue to COMPLETE."""
+        await event_bus.start()
+        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
         command = _make_command()
 
         result = await handler.handle(command)
 
-        # All phases are warn in standalone mode but pipeline still completes
+        # Phase A publishes and passes; pipeline still completes
         assert result.overall_status == EnumAutopilotCycleStatus.COMPLETE
-        assert result.phase_a.status == EnumAutopilotPhaseStatus.WARN
+        assert result.phase_a.status == EnumAutopilotPhaseStatus.PASS
+
+        await event_bus.close()
 
     async def test_phase_d_halt_stops_pipeline(
         self, event_bus: EventBusInmemory
     ) -> None:
         """Phase D halt (dod hard gate) stops after D -> HALTED."""
-        handler = HandlerAutopilotOrchestrator(event_bus=None)
+        await event_bus.start()
+        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
         command = _make_command()
 
         from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_phase_result import (

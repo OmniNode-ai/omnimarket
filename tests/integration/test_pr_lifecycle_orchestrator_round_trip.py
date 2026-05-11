@@ -135,6 +135,7 @@ async def test_event_bus_round_trip_reaches_terminal_topic(
                 )
             ),
             fix=_MockFix(),
+            event_bus=integration_event_bus,
         )
         adapter = HandlerBusAdapter(
             handler=_TypedHandlerWrapper(orchestrator),
