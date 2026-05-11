@@ -31,7 +31,8 @@ def build_available_models_from_scores(
     models: list[ModelAvailableModel] = []
     for row in capability_rows:
         model_key = str(row["model_key"])
-        score = float(row.get("success_rate", 0.0) or 0.0)
+        raw_score = row.get("success_rate")
+        score = float(str(raw_score)) if raw_score is not None else 0.0
         cost = cost_map.get(model_key, 0.0)
         models.append(
             ModelAvailableModel(
