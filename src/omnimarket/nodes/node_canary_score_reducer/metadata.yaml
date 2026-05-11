@@ -1,0 +1,23 @@
+name: node_canary_score_reducer
+version: "1.0.0"
+description: "Canary score reducer node -- subscribes to adr-canary-completed events and materializes grading scores into capability_scores table"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_canary_score_reducer: "omnimarket.nodes.node_canary_score_reducer"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "canary", "routing", "feedback"]
+pack: "workflow"
+display_name: "Canary Score Reducer"
+node_role: "reducer"

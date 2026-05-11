@@ -1,0 +1,49 @@
+---
+name: canary_score_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Subscribes to canary-completed events and materializes grading scores
+  (recall, precision, fidelity, format_compliance) into the capability_scores
+  table, closing the feedback loop between canary runs and routing decisions.
+
+handler:
+  module: omnimarket.nodes.node_canary_score_reducer.handlers.handler_canary_score_reducer
+  class: HandlerCanaryScoreReducer
+  input_model: omnimarket.nodes.node_canary_score_reducer.models.model_score_reducer_state.ModelScoreReducerState
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.adr-canary-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.capability-scores-updated.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.capability-scores.v1"
+  table: "capability_scores"
+  schema: "public"
+  columns:
+    - "model_key"
+    - "task_type"
+    - "success_rate"
+    - "avg_latency_ms"
+    - "total_cost"
+    - "total_count"
+    - "success_count"
+    - "failure_count"
+    - "last_updated"
+  order_by: "last_updated DESC"
+  freshness_column: "last_updated"
+  limit: 100
+
+metadata:
+  transport_type: kafka
