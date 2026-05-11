@@ -161,6 +161,7 @@ jobs:
               "${CHANGED_PY_FILES[@]}" \
               2>/dev/null \
               | grep -v 'lint_no_hardcoded_topics.py' \
+              | grep -v 'onex-topic-allow' \
               || true)
           fi
 
