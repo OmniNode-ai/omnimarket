@@ -254,8 +254,42 @@ class TestPrLifecycleFixEffectGoldenChain:
 
         await event_bus.close()
 
+    async def test_code_failure_routes_to_review_fix(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """code_failure block reason -> agent dispatch_review_fix (pr_polish)."""
+        gh = _MockGitHubAdapter()
+        agent = _MockAgentDispatchAdapter()
+        handler = HandlerPrLifecycleFix(github_adapter=gh, agent_dispatch_adapter=agent)
+        command = _make_command(block_reason=EnumPrBlockReason.CODE_FAILURE)
+
+        result = await handler.handle(command)
+
+        assert result.fix_applied is True
+        assert result.block_reason == EnumPrBlockReason.CODE_FAILURE
+        assert "review-fix" in result.fix_action
+        assert agent.review_fix_calls == [("OmniNode-ai/omnimarket", 42, "OMN-8085")]
+        assert gh.rerun_calls == [], "code_failure must not trigger CI rerun"
+
+    async def test_receipt_failure_routes_to_review_fix(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """receipt_failure block reason -> agent dispatch_review_fix (pr_polish)."""
+        gh = _MockGitHubAdapter()
+        agent = _MockAgentDispatchAdapter()
+        handler = HandlerPrLifecycleFix(github_adapter=gh, agent_dispatch_adapter=agent)
+        command = _make_command(block_reason=EnumPrBlockReason.RECEIPT_FAILURE)
+
+        result = await handler.handle(command)
+
+        assert result.fix_applied is True
+        assert result.block_reason == EnumPrBlockReason.RECEIPT_FAILURE
+        assert "review-fix" in result.fix_action
+        assert agent.review_fix_calls == [("OmniNode-ai/omnimarket", 42, "OMN-8085")]
+        assert gh.rerun_calls == [], "receipt_failure must not trigger CI rerun"
+
     async def test_all_block_reasons_covered(self, event_bus: EventBusInmemory) -> None:
-        """All four EnumPrBlockReason values route without error."""
+        """All EnumPrBlockReason values route without error."""
         gh = _MockGitHubAdapter()
         agent = _MockAgentDispatchAdapter()
         handler = HandlerPrLifecycleFix(github_adapter=gh, agent_dispatch_adapter=agent)

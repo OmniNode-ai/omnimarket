@@ -156,8 +156,11 @@ exit 1
         {"phase": "resolve_conflicts", "status": "clean"},
         {
             "phase": "fix_ci",
-            "status": "deferred_to_required_checks",
-            "detail": "CI state is enforced by GitHub required checks before merge.",
+            "status": "requires_github_required_checks",
+            "detail": (
+                "Remote CI repair is not inferred locally; GitHub required checks "
+                "remain the merge proof."
+            ),
         },
         {
             "phase": "address_comments",
@@ -165,8 +168,8 @@ exit 1
         },
         {
             "phase": "local_review",
-            "status": "deferred_to_pre_push_gate",
-            "detail": "Push mode runs the full pre-commit gate once before publishing.",
+            "status": "pre_commit_passed",
+            "detail": "Ran uv run pre-commit run --all-files in the PR worktree.",
         },
     ]
     assert not (tmp_path / "state" / "claude-argv.txt").exists()
@@ -277,3 +280,101 @@ exit 1
         "detail": "Use push mode to run local review before publishing.",
     } in result["phase_results"]
     assert not (tmp_path / "state" / "claude-argv-no-push.txt").exists()
+
+
+@pytest.mark.unit
+def test_live_cli_fails_loud_when_local_review_fails(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    run_dir = tmp_path / "state" / "pr-polish" / "run-3"
+
+    _write_executable(
+        fake_bin / "gh",
+        """#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf '{"headRefName":"feature/failing-local-review"}'
+  exit 0
+fi
+if [[ "$1" == "api" && "$2" == "graphql" ]]; then
+  printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
+  exit 0
+fi
+echo "unexpected gh invocation: $*" >&2
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "git",
+        f"""#!/usr/bin/env bash
+if [[ "$1" == "worktree" && "$2" == "list" ]]; then
+  printf 'worktree {worktree}\\nbranch refs/heads/feature/failing-local-review\\n\\n'
+  exit 0
+fi
+if [[ "$1" == "-C" && "$3" == "rev-parse" ]]; then
+  printf 'feature/failing-local-review\\n'
+  exit 0
+fi
+if [[ "$1" == "-C" && "$3" == "diff" ]]; then
+  exit 0
+fi
+echo "unexpected git invocation: $*" >&2
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "uv",
+        """#!/usr/bin/env bash
+if [[ "$1" == "run" && "$2" == "pre-commit" ]]; then
+  echo "pre-commit failed on real local review" >&2
+  exit 2
+fi
+echo "unexpected uv invocation: $*" >&2
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "pre-commit",
+        """#!/usr/bin/env bash
+if [[ "$1" == "install" ]]; then
+  exit 0
+fi
+echo "unexpected pre-commit invocation: $*" >&2
+exit 1
+""",
+    )
+    env = {
+        **os.environ,
+        "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_pr_polish",
+            "--repo",
+            "OmniNode-ai/omnimarket",
+            "--pr-number",
+            "42",
+            "--run-dir",
+            str(run_dir),
+        ],
+        capture_output=True,
+        check=False,
+        cwd=_REPO_ROOT,
+        env=env,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["final_phase"] == "failed"
+
+    result = json.loads((run_dir / "result.json").read_text())
+    assert result["final_state"] == "FAILED"
+    assert "pre-commit failed" in result["error_message"]
+    assert result.get("push_status") != "pushed"

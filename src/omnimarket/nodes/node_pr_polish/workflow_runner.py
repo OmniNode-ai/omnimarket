@@ -114,12 +114,6 @@ def run_live_pr_polish(
             payload["push_status"] = "skipped"
             payload["auto_merge_status"] = "skipped"
         else:
-            _run_checked(
-                ["uv", "run", "pre-commit", "run", "--all-files"],
-                cwd=worktree,
-                timeout=1800,
-            )
-            payload["pre_push_pre_commit"] = "passed"
             push_branch = _resolve_pr_head_branch(command.repo, command.pr_number)
             _run_checked(
                 ["git", "-C", str(worktree), "push", "origin", f"HEAD:{push_branch}"],
@@ -261,8 +255,11 @@ def _run_market_polish_phases(
         results.append(
             {
                 "phase": "fix_ci",
-                "status": "deferred_to_required_checks",
-                "detail": "CI state is enforced by GitHub required checks before merge.",
+                "status": "requires_github_required_checks",
+                "detail": (
+                    "Remote CI repair is not inferred locally; GitHub required checks "
+                    "remain the merge proof."
+                ),
             }
         )
 
@@ -287,11 +284,16 @@ def _run_market_polish_phases(
             }
         )
     else:
+        _run_checked(
+            ["uv", "run", "pre-commit", "run", "--all-files"],
+            cwd=worktree,
+            timeout=1800,
+        )
         results.append(
             {
                 "phase": "local_review",
-                "status": "deferred_to_pre_push_gate",
-                "detail": "Push mode runs the full pre-commit gate once before publishing.",
+                "status": "pre_commit_passed",
+                "detail": "Ran uv run pre-commit run --all-files in the PR worktree.",
             }
         )
 

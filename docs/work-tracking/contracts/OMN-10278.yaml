@@ -8,25 +8,25 @@ interface_change: false
 interfaces_touched: []
 evidence_requirements:
   - kind: tests
-    description: "Unit tests green for mandatory DI params enforcement"
-    command: "uv run pytest tests/unit/test_mandatory_di_params_market.py -v"
+    description: "Unit tests green for fix-effect handler routing"
+    command: "uv run pytest tests/nodes/node_pr_lifecycle_fix_effect/ -v"
   - kind: ci
-    description: "CI pipeline green on omnimarket PR #595"
-    command: "gh pr checks 595 --repo OmniNode-ai/omnimarket"
+    description: "CI pipeline green on omnimarket PR #596"
+    command: "gh pr checks 596 --repo OmniNode-ai/omnimarket"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: dod-handler-migration
-    description: "16 handlers migrated to mandatory event_bus params; = None defaults removed"
+  - id: dod-pr-polish-delegation-wiring
+    description: "pr_polish delegation wiring — code_failure and receipt_failure now route to dispatch_review_fix instead of gh run rerun"
     source: manual
     checks:
       - check_type: command
-        check_value: "uv run pytest tests/unit/test_mandatory_di_params_market.py -v --tb=short"
+        check_value: "uv run pytest tests/nodes/node_pr_lifecycle_fix_effect/ -v --tb=short"
   - id: dod-deploy
-    description: "No live deploy required — this PR removes = None defaults from handler params; runtime DI resolver (omnibase_core#1057) provides injection. No Kafka topology change, no container restart needed."
+    description: "No live deploy required — this PR wires routing logic only; no runtime topology change, no Kafka topic addition, no container restart needed"
     source: manual
     checks:
       - check_type: command
-        check_value: "printf '%s\n' 'deploy gate: handler param migration only, no docker exec or rpk topic produce required; resolver provides injection at runtime'"
+        check_value: "printf '%s\n' 'deploy gate: routing-only change, no docker exec or rpk topic produce required; runtime picks up handler on next deploy cycle'"

@@ -10,9 +10,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnumPrBlockReason(StrEnum):
-    """Block reasons that drive fix routing."""
+    """Block reasons that drive fix routing.
+
+    ci_failure       → flaky/infra rerun via ``gh run rerun --failed``
+    code_failure     → lint/type/test failure, delegate to pr_polish
+    receipt_failure  → OCC/receipt-gate failure, delegate to pr_polish
+    conflict         → merge conflict, resolve via ``gh pr update-branch``
+    changes_requested → review comment fix, delegate to pr_polish
+    coderabbit       → CR thread auto-reply via dispatch_coderabbit_reply
+    """
 
     CI_FAILURE = "ci_failure"
+    CODE_FAILURE = "code_failure"
+    RECEIPT_FAILURE = "receipt_failure"
     CONFLICT = "conflict"
     CHANGES_REQUESTED = "changes_requested"
     CODERABBIT = "coderabbit"
