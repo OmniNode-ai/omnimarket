@@ -55,6 +55,13 @@ def _parse_command(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _invoke_autopilot(cmd: dict[str, Any]) -> dict[str, Any]:
+    from typing import cast
+
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
     from omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator import (
         HandlerAutopilotOrchestrator,
     )
@@ -70,7 +77,8 @@ async def _invoke_autopilot(cmd: dict[str, Any]) -> dict[str, Any]:
         autonomous=cmd["autonomous"],
     )
 
-    orchestrator = HandlerAutopilotOrchestrator()
+    bus = cast(ProtocolEventBusPublisher, EventBusInmemory())
+    orchestrator = HandlerAutopilotOrchestrator(event_bus=bus)
     result = await orchestrator.handle(command)
 
     return {

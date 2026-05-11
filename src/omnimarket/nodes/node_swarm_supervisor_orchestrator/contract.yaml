@@ -3,6 +3,8 @@ name: swarm_supervisor_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
+dependency_ownership:
+  - event_bus
 
 description: >
   Self-healing swarm supervisor for overnight autonomous agent sessions.

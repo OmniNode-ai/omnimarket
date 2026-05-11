@@ -172,7 +172,7 @@ class HandlerReviewThreadReconciler:
             "processed_at": result.processed_at.isoformat(),
         }
         try:
-            await self._event_bus.publish(  # type: ignore[union-attr]
+            await self._event_bus.publish(
                 TOPIC_EVT_THREAD_REOPENED, key=None, value=json.dumps(payload).encode()
             )
         except Exception:

@@ -119,12 +119,21 @@ class TestHandlerExecution:
 
     def test_handler_runs_with_empty_repos(self) -> None:
         """Handler returns empty findings when given no repos to scan."""
+        from typing import cast
+
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
         from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
             AislopSweepRequest,
             NodeAislopSweep,
         )
 
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(
+            event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+        )
         request = AislopSweepRequest(target_dirs=[], dry_run=True)
 
         result = handler.handle(request)
@@ -136,12 +145,21 @@ class TestHandlerExecution:
 
     def test_handler_scans_real_node(self, node_dir: Path) -> None:
         """Handler scans its own source directory without crashing."""
+        from typing import cast
+
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
         from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
             AislopSweepRequest,
             NodeAislopSweep,
         )
 
-        handler = NodeAislopSweep()
+        handler = NodeAislopSweep(
+            event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+        )
         # Scan the node's own source — should find some patterns or return empty
         request = AislopSweepRequest(
             target_dirs=[str(node_dir)],  # node_aislop_sweep/

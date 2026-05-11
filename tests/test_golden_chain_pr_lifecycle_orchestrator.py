@@ -287,7 +287,7 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
         return self.queue_stall_adapter
 
 
-def _make_orchestrator(
+async def _make_orchestrator(
     *,
     inventory: Any = None,
     triage: MockTriage | None = None,
@@ -296,9 +296,19 @@ def _make_orchestrator(
     fix: MockFix | None = None,
     event_bus: EventBusInmemory | None = None,
 ) -> _TestOrchestrator:
+    from typing import cast
+
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
     inv = inventory or MockInventory()
     # Retrieve pre-configured PrRecords from MockInventory for test enumeration.
     mock_prs: tuple[PrRecord, ...] = getattr(inv, "_prs", ())
+    raw_bus = event_bus or EventBusInmemory()
+    if not raw_bus._started:
+        await raw_bus.start()
+    bus = cast(ProtocolEventBusPublisher, raw_bus)
     return _TestOrchestrator(
         _mock_inventory_prs=mock_prs,
         inventory=inv,
@@ -306,7 +316,7 @@ def _make_orchestrator(
         reducer=reducer or MockReducer(),
         merge=merge or MockMerge(),
         fix=fix or MockFix(),
-        event_bus=event_bus,
+        event_bus=bus,
     )
 
 
@@ -316,7 +326,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
 
     async def test_empty_inventory_completes_cleanly(self) -> None:
         """Zero PRs in inventory -> COMPLETE with all counts zero."""
-        orch = _make_orchestrator(inventory=MockInventory(prs=()))
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
         result = await orch.handle(_make_command())
 
         assert isinstance(result, ModelPrLifecycleResult)
@@ -333,7 +343,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         merge = MockMerge(prs_merged=1)
         fix = MockFix(prs_dispatched=1)
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -363,7 +373,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         merge = MockMerge()
         fix = MockFix()
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -387,7 +397,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         merge = MockMerge()
         fix = MockFix()
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -417,7 +427,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         triage = MockTriage(classified=(_TRIAGE_GREEN,))
         reducer = MockReducer(intents=(_INTENT_MERGE,))
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -439,7 +449,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         triage = MockTriage(classified=(_TRIAGE_GREEN,))
         reducer = MockReducer(intents=())
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -457,7 +467,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         merge = MockMerge(prs_merged=1)
         fix = MockFix()
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -479,7 +489,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         merge = MockMerge()
         fix = MockFix(prs_dispatched=1)
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -505,7 +515,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         injected inventory reference is preserved.
         """
         inventory = MockInventory()
-        orch = _make_orchestrator(inventory=inventory)
+        orch = await _make_orchestrator(inventory=inventory)
 
         result = await orch.handle(
             _make_command(repos="OmniNode-ai/omnimarket,OmniNode-ai/omniclaude")
@@ -526,7 +536,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
                 msg = "GitHub API down"
                 raise RuntimeError(msg)
 
-        orch = _make_orchestrator(inventory=BrokenInventory())  # type: ignore[arg-type]
+        orch = await _make_orchestrator(inventory=BrokenInventory())  # type: ignore[arg-type]
         result = await orch.handle(_make_command())
 
         assert result.final_state == "FAILED"
@@ -548,7 +558,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         reducer = MockReducer(intents=(_INTENT_MERGE,))
         merge = MockMerge(fail=True)
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -572,7 +582,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         reducer = MockReducer(intents=(_INTENT_MERGE,))
         merge = MockMerge(prs_merged=1)
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -594,8 +604,16 @@ class TestPrLifecycleOrchestratorGoldenChain:
         await event_bus.close()
 
     def test_zero_arg_construction_succeeds(self) -> None:
-        """Auto-wiring runtime can construct orchestrator with zero args."""
-        orch = HandlerPrLifecycleOrchestrator()
+        """Auto-wiring runtime can construct orchestrator with event_bus only."""
+        from typing import cast
+
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
+        orch = HandlerPrLifecycleOrchestrator(
+            event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+        )
         assert orch._inventory is None
         assert orch._triage is None
         assert orch._reducer is None
@@ -604,6 +622,13 @@ class TestPrLifecycleOrchestratorGoldenChain:
 
     def test_explicit_injection_preserves_references(self) -> None:
         """Sub-handlers passed explicitly are stored and retrievable."""
+        from typing import cast
+
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
         inventory = MockInventory()
         triage = MockTriage()
         reducer = MockReducer()
@@ -616,6 +641,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
             reducer=reducer,
             merge=merge,
             fix=fix,
+            event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory()),
         )
         assert orch._inventory is inventory
         assert orch._triage is triage
@@ -708,7 +734,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
     async def test_correlation_id_preserved_in_result(self) -> None:
         """correlation_id from command appears unchanged in result."""
         cid = uuid4()
-        orch = _make_orchestrator()
+        orch = await _make_orchestrator()
         result = await orch.handle(_make_command(correlation_id=cid))
         assert result.correlation_id == cid
 
@@ -720,7 +746,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         merge = MockMerge(prs_merged=1)
         fix = MockFix()
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -766,7 +792,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         reducer = MockReducer(intents=fix_intents)
         fix = MockFix()  # prs_dispatched=None -> 1 per call via fix_applied=True
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -817,7 +843,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         reducer = MockReducer(intents=fix_intents)
         fix = MockFix()
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -847,7 +873,7 @@ class TestPrLifecycleOrchestratorResultFile:
     ) -> None:
         """Successful sweep writes a ModelSkillResult-shaped result.json."""
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
-        orch = _make_orchestrator(inventory=MockInventory(prs=()))
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
         cmd = _make_command(run_id="20260411-120000-abc123")
 
         result = await orch.handle(cmd)
@@ -878,7 +904,7 @@ class TestPrLifecycleOrchestratorResultFile:
             def handle(self, input_model: Any) -> Any:
                 raise RuntimeError("boom")
 
-        orch = _make_orchestrator(inventory=ExplodingInventory())  # type: ignore[arg-type]
+        orch = await _make_orchestrator(inventory=ExplodingInventory())  # type: ignore[arg-type]
         cmd = _make_command(run_id="20260411-120001-fail99")
 
         result = await orch.handle(cmd)
@@ -925,7 +951,7 @@ class TestPrLifecycleOrchestratorResultFile:
             ticket_ids=("OMN-10486",),
             reason="Receipt Gate is the only failing check.",
         )
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=MockInventory(prs=(pr,)),
             triage=MockTriage(classified=(triage_record,)),
             reducer=MockReducer(intents=(skip_intent,)),
@@ -963,7 +989,7 @@ class TestPrLifecycleOrchestratorVerifyWiring:
     ) -> None:
         """prs_verified appears in the persisted result.json payload."""
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
-        orch = _make_orchestrator(inventory=MockInventory(prs=()))
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
         cmd = _make_command(run_id="20260423-000000-verify1")
 
         await orch.handle(cmd)
@@ -988,7 +1014,7 @@ class TestPrLifecycleOrchestratorVerifyWiring:
         merge = MockMerge(prs_merged=1)
         fix = MockFix()
 
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             inventory=inventory,
             triage=triage,
             reducer=reducer,
@@ -1070,6 +1096,15 @@ class TestOrchestratorForwardsAdminMergeFallbackFlag:
     """
 
     async def _run_with_flag(self, *, enable_admin_merge_fallback: bool) -> MockFix:
+        from typing import cast
+
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
+        bus = EventBusInmemory()
+        await bus.start()
         fix_intents = (
             ReducerIntent(
                 pr_number=_PR_RED.pr_number,
@@ -1094,6 +1129,7 @@ class TestOrchestratorForwardsAdminMergeFallbackFlag:
             reducer=MockReducer(intents=fix_intents),
             merge=MockMerge(),
             fix=fix,
+            event_bus=cast(ProtocolEventBusPublisher, bus),
         )
         await node.handle(
             ModelPrLifecycleStartCommand(

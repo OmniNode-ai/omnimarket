@@ -18,6 +18,12 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import cast
+
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.cli.args import (
     add_output_args,
@@ -119,7 +125,9 @@ def main() -> None:
         severity_threshold=args.severity_threshold,
     )
 
-    handler = NodeAislopSweep()
+    handler = NodeAislopSweep(
+        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+    )
     result = handler.handle(request)
     if not report_output_requested():
         sys.stdout.write(result.model_dump_json(indent=2) + "\n")

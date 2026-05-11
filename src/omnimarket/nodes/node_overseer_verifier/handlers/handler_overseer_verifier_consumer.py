@@ -246,7 +246,7 @@ class HandlerOverseerVerifierConsumer:
         encoded = json.dumps(payload).encode()
 
         async def _publish() -> None:
-            await self._event_bus.publish(  # type: ignore[union-attr]
+            await self._event_bus.publish(
                 topic=TOPIC_VERIFICATION_RECEIPT_START,
                 key=None,
                 value=encoded,

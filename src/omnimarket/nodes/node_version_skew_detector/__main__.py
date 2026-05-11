@@ -17,6 +17,12 @@ import argparse
 import json
 import logging
 import sys
+from typing import cast
+
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector import (
     NodeVersionInfo,
@@ -65,7 +71,9 @@ def main() -> None:
         runtime_compat_range=args.runtime_compat_range,
     )
 
-    handler = NodeVersionSkewDetector()
+    handler = NodeVersionSkewDetector(
+        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+    )
     result = handler.handle(request)
     sys.stdout.write(json.dumps(result.model_dump(mode="json"), indent=2) + "\n")
 

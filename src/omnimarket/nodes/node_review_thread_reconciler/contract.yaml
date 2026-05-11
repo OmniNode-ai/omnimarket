@@ -3,6 +3,8 @@ name: review_thread_reconciler
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
+dependency_ownership:
+  - event_bus
 
 description: >
   Reconciler webhook handler. Consumes pull_request_review_thread.resolved events

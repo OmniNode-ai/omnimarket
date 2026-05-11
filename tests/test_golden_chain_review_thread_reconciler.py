@@ -69,7 +69,9 @@ class TestReviewThreadReconcilerGoldenChain:
     ) -> None:
         """Non-bot resolution triggers unresolve_thread + post_comment."""
         client = self._make_mock_client()
-        handler = HandlerReviewThreadReconciler(github_client=client)
+        handler = HandlerReviewThreadReconciler(
+            github_client=client, event_bus=event_bus
+        )
         command = _make_command(resolved_by="some-human-dev")
 
         result = handler.handle(command)
@@ -84,7 +86,9 @@ class TestReviewThreadReconcilerGoldenChain:
     ) -> None:
         """Bot resolution is allowed — no unresolve, no comment."""
         client = self._make_mock_client()
-        handler = HandlerReviewThreadReconciler(github_client=client)
+        handler = HandlerReviewThreadReconciler(
+            github_client=client, event_bus=event_bus
+        )
         command = _make_command(resolved_by=_ALLOWED_BOT)
 
         result = handler.handle(command)
@@ -99,7 +103,9 @@ class TestReviewThreadReconcilerGoldenChain:
     ) -> None:
         """Emergency-bypass actor in allow-list is allowed through."""
         client = self._make_mock_client()
-        handler = HandlerReviewThreadReconciler(github_client=client)
+        handler = HandlerReviewThreadReconciler(
+            github_client=client, event_bus=event_bus
+        )
         command = _make_command(resolved_by=_BYPASS_USER)
 
         result = handler.handle(command)
@@ -114,7 +120,9 @@ class TestReviewThreadReconcilerGoldenChain:
     ) -> None:
         """Re-open comment includes text directing user to push a fix commit."""
         client = self._make_mock_client()
-        handler = HandlerReviewThreadReconciler(github_client=client)
+        handler = HandlerReviewThreadReconciler(
+            github_client=client, event_bus=event_bus
+        )
         command = _make_command(resolved_by="unauthorized-human")
 
         handler.handle(command)
@@ -156,7 +164,9 @@ class TestReviewThreadReconcilerGoldenChain:
     ) -> None:
         """Actor login comparison is case-insensitive per ticket spec."""
         client = self._make_mock_client()
-        handler = HandlerReviewThreadReconciler(github_client=client)
+        handler = HandlerReviewThreadReconciler(
+            github_client=client, event_bus=event_bus
+        )
         # Bot login in uppercase — should still be allowed
         command = _make_command(resolved_by=_ALLOWED_BOT.upper())
 
@@ -171,7 +181,9 @@ class TestReviewThreadReconcilerGoldenChain:
     ) -> None:
         """Allow-list can be extended without code change; extra actor is not reopened."""
         client = self._make_mock_client()
-        handler = HandlerReviewThreadReconciler(github_client=client)
+        handler = HandlerReviewThreadReconciler(
+            github_client=client, event_bus=event_bus
+        )
         command = _make_command(
             resolved_by="emergency-admin",
             allowed_actors=[_ALLOWED_BOT, _BYPASS_USER, "emergency-admin"],

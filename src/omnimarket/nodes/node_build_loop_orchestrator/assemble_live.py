@@ -105,14 +105,16 @@ _MODEL_COST_PER_1K: dict[str, float] = {
 }
 
 
-def _build_event_bus() -> ProtocolEventBusPublisher | None:
-    """Build a live Kafka event bus if KAFKA_BOOTSTRAP_SERVERS is set."""
+def _build_event_bus() -> ProtocolEventBusPublisher:
+    """Build a live Kafka event bus if KAFKA_BOOTSTRAP_SERVERS is set, else inmemory."""
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
     if not bootstrap:
         logger.warning(
-            "[BUILD-LOOP] KAFKA_BOOTSTRAP_SERVERS not set — events will not be emitted"
+            "[BUILD-LOOP] KAFKA_BOOTSTRAP_SERVERS not set — using in-memory event bus"
         )
-        return None
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+        return cast(ProtocolEventBusPublisher, EventBusInmemory())
     try:
         from omnibase_infra.event_bus.event_bus_kafka import (
             EventBusKafka,
@@ -123,9 +125,12 @@ def _build_event_bus() -> ProtocolEventBusPublisher | None:
         return bus
     except Exception as exc:
         logger.warning(
-            "[BUILD-LOOP] EventBusKafka init failed: %s — running without Kafka", exc
+            "[BUILD-LOOP] EventBusKafka init failed: %s — using in-memory event bus",
+            exc,
         )
-        return None
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+        return cast(ProtocolEventBusPublisher, EventBusInmemory())
 
 
 def _estimate_cost(model: str, total_tokens: int) -> float:

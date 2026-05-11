@@ -93,6 +93,13 @@ def assemble_live_orchestrator(
     All parameters are optional — defaults come from environment variables.
     Frontier model availability is determined by API key presence in env.
     """
+    from typing import cast
+
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
     endpoint_configs = build_endpoint_configs()
 
     logger.info(
@@ -111,6 +118,7 @@ def assemble_live_orchestrator(
         ),
         classify=AdapterLlmClassify(llm_url=classify_url),
         dispatch=AdapterLlmDispatch(endpoint_configs=endpoint_configs),
+        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory()),
     )
 
 

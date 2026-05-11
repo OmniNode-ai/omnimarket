@@ -63,6 +63,10 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 logger = logging.getLogger(__name__)
 
 
+def _noop_event_bus(topic: str, payload: bytes) -> None:
+    """No-op event bus used when Kafka is not configured."""
+
+
 def _build_kafka_publisher() -> EventPublisher | None:
     """Construct a sync Kafka publisher from KAFKA_BOOTSTRAP_SERVERS.
 
@@ -171,9 +175,9 @@ def main() -> None:
         data = yaml.safe_load(contract_path.read_text())
         overnight_contract = ModelOvernightContract.model_validate(data)
 
-    event_bus: EventPublisher | None = None
+    event_bus: EventPublisher = _noop_event_bus
     if args.publish_events:
-        event_bus = _build_kafka_publisher()
+        event_bus = _build_kafka_publisher() or _noop_event_bus
 
     command = ModelOvernightCommand(
         correlation_id=str(uuid.uuid4()),

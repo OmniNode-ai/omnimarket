@@ -13,14 +13,21 @@ Related:
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import pytest
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer import (
     TOPIC_PUBLISH,
     TOPIC_SUBSCRIBE,
     HandlerOverseerVerifierConsumer,
 )
+
+_BUS = cast(ProtocolEventBusPublisher, EventBusInmemory())
 
 
 def _make_cmd(**overrides: object) -> bytes:
@@ -61,7 +68,7 @@ def test_topic_constants_match_contract() -> None:
 @pytest.mark.unit
 def test_consumer_pass_path() -> None:
     """Valid complete request produces a PASS completion event."""
-    consumer = HandlerOverseerVerifierConsumer()
+    consumer = HandlerOverseerVerifierConsumer(event_bus=_BUS)
     result = json.loads(consumer.process(_make_cmd()))
 
     assert result["passed"] is True
@@ -80,7 +87,7 @@ def test_consumer_pass_path() -> None:
 @pytest.mark.unit
 def test_consumer_fail_path_empty_task_id() -> None:
     """Empty task_id results in a FAIL completion event."""
-    consumer = HandlerOverseerVerifierConsumer()
+    consumer = HandlerOverseerVerifierConsumer(event_bus=_BUS)
     result = json.loads(consumer.process(_make_cmd(task_id="")))
 
     assert result["passed"] is False
@@ -97,7 +104,7 @@ def test_consumer_fail_path_empty_task_id() -> None:
 @pytest.mark.unit
 def test_consumer_escalate_path_negative_cost() -> None:
     """Negative cost_so_far triggers ESCALATE (INVARIANT_VIOLATION)."""
-    consumer = HandlerOverseerVerifierConsumer()
+    consumer = HandlerOverseerVerifierConsumer(event_bus=_BUS)
     result = json.loads(consumer.process(_make_cmd(cost_so_far=-5.0)))
 
     assert result["passed"] is False
@@ -113,7 +120,7 @@ def test_consumer_escalate_path_negative_cost() -> None:
 @pytest.mark.unit
 def test_consumer_malformed_payload_returns_fail() -> None:
     """Non-JSON bytes produce a FAIL response, not an exception."""
-    consumer = HandlerOverseerVerifierConsumer()
+    consumer = HandlerOverseerVerifierConsumer(event_bus=_BUS)
     result = json.loads(consumer.process(b"not json at all {{{"))
 
     assert result["passed"] is False
@@ -130,7 +137,7 @@ def test_consumer_malformed_payload_returns_fail() -> None:
 @pytest.mark.unit
 def test_consumer_propagates_correlation_id() -> None:
     """correlation_id from the command is echoed back in the response."""
-    consumer = HandlerOverseerVerifierConsumer()
+    consumer = HandlerOverseerVerifierConsumer(event_bus=_BUS)
     payload = _make_cmd()
     data = json.loads(payload)
     data["correlation_id"] = "my-unique-corr-id"
@@ -147,7 +154,7 @@ def test_consumer_propagates_correlation_id() -> None:
 @pytest.mark.unit
 def test_consumer_response_has_timestamp() -> None:
     """Completion event always includes a timestamp field."""
-    consumer = HandlerOverseerVerifierConsumer()
+    consumer = HandlerOverseerVerifierConsumer(event_bus=_BUS)
     result = json.loads(consumer.process(_make_cmd()))
 
     assert "timestamp" in result

@@ -100,7 +100,7 @@ async def _real_llm_call(
     """Route to best available endpoint and generate a thread reply."""
     policy = ModelRoutingPolicy.model_validate(routing_policy)
     registry = _build_registry(policy)
-    router = HandlerModelRouter(policy=policy, registry=registry)
+    router = HandlerModelRouter(policy=policy, registry=registry, event_bus=None)
 
     routing_result = await router.route_async(
         ModelRoutingRequest(

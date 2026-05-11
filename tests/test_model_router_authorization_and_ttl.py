@@ -43,7 +43,7 @@ async def test_model_router_unauthorized_role_raises_on_degradation() -> None:
         reason_for_fallback="local timeout or unavailable",
         fallback_allowed_roles=["fixer"],
     )
-    router = HandlerModelRouter(policy=policy, registry=_REGISTRY)
+    router = HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=None)
 
     with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
         mock_health.return_value = False
@@ -64,7 +64,7 @@ async def test_model_router_health_cache_expires_after_ttl() -> None:
     )
 
     policy = ModelRoutingPolicy(primary="qwen3-coder-30b")
-    router = HandlerModelRouter(policy=policy, registry=_REGISTRY)
+    router = HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=None)
 
     now = time.monotonic()
     expired_ts = now - (_HEALTH_CACHE_TTL_S + 1.0)
@@ -113,7 +113,7 @@ async def test_model_router_both_degraded_raises() -> None:
         reason_for_fallback="local timeout or unavailable",
         fallback_allowed_roles=["fixer"],
     )
-    router = HandlerModelRouter(policy=policy, registry=_REGISTRY)
+    router = HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=None)
 
     with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
         mock_health.return_value = False
@@ -130,7 +130,7 @@ async def test_model_router_both_degraded_raises() -> None:
 async def test_model_router_recovery_clears_health_cache() -> None:
     """_record_success must clear health cache so next call triggers fresh check."""
     policy = ModelRoutingPolicy(primary="qwen3-coder-30b")
-    router = HandlerModelRouter(policy=policy, registry=_REGISTRY)
+    router = HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=None)
 
     router._health_cache["qwen3-coder-30b"] = (False, time.monotonic())
     router._degraded.add("qwen3-coder-30b")
@@ -145,7 +145,7 @@ def test_model_router_missing_primary_in_registry_raises() -> None:
     """Constructor must raise ValueError when primary model_key is absent from registry."""
     policy = ModelRoutingPolicy(primary="nonexistent-model")
     with pytest.raises(ValueError, match="Registry missing required model keys"):
-        HandlerModelRouter(policy=policy, registry=_REGISTRY)
+        HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=None)
 
 
 def test_model_router_missing_fallback_in_registry_raises() -> None:
@@ -157,4 +157,4 @@ def test_model_router_missing_fallback_in_registry_raises() -> None:
         reason_for_fallback="test",
     )
     with pytest.raises(ValueError, match="Registry missing required model keys"):
-        HandlerModelRouter(policy=policy, registry=_REGISTRY)
+        HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=None)
