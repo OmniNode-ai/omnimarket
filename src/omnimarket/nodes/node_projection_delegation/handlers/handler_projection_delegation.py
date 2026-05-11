@@ -72,6 +72,14 @@ class ModelTaskDelegatedEvent(BaseModel):
             "(OMN-10793). 1 = first-try success."
         ),
     )
+    prompt_text: str | None = Field(
+        default=None,
+        description="Raw prompt sent to the delegated agent (OMN-10850).",
+    )
+    response_text: str | None = Field(
+        default=None,
+        description="Raw response received from the delegated agent (OMN-10850).",
+    )
 
 
 class ModelProjectionResult(BaseModel):
@@ -123,6 +131,8 @@ class HandlerProjectionDelegation:
             "llm_call_id": event.llm_call_id or None,
             "tokens_to_compliance": event.tokens_to_compliance,
             "compliance_attempts": event.compliance_attempts,
+            "prompt_text": event.prompt_text,
+            "response_text": event.response_text,
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)

@@ -171,6 +171,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             else data.get("isShadow") or False
         )
 
+        prompt_text = data.get("prompt_text") or data.get("promptText") or None
+        response_text = data.get("response_text") or data.get("responseText") or None
+
         await self.db.execute(
             f"""
             INSERT INTO {self._table_delegation} (
@@ -178,13 +181,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               delegated_to, delegated_by, quality_gate_passed,
               quality_gates_checked, quality_gates_failed,
               cost_usd, cost_savings_usd, delegation_latency_ms,
-              repo, is_shadow
+              repo, is_shadow, prompt_text, response_text
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8::jsonb, $9::jsonb,
               $10, $11, $12,
-              $13, $14
+              $13, $14, $15, $16
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -202,6 +205,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             delegation_latency_ms,
             str(repo) if repo else None,
             is_shadow,
+            str(prompt_text) if prompt_text else None,
+            str(response_text) if response_text else None,
         )
         return True
 
