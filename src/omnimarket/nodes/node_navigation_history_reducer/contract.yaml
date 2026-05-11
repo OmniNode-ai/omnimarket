@@ -23,6 +23,14 @@ env_dependencies:
     required: false
     description: "Embedding model endpoint URL (OpenAI-compatible /v1/embeddings)"
 
+env_dependencies:
+  QDRANT_HOST:
+    required: false
+    description: "Qdrant host for navigation history vector storage. Node is a no-op when unset."
+  QDRANT_PORT:
+    required: false
+    description: "Qdrant port (default 6333)."
+
 tags:
   - memory
   - reducer

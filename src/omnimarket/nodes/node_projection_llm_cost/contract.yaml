@@ -12,6 +12,14 @@ handler:
   module: omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost
   class: HandlerProjectionLlmCost
 
+env_dependencies:
+  POSTGRES_HOST:
+    required: false
+    description: "Postgres host for direct DB connection fallback in the consumer (OMNIBASE_INFRA_DB_URL preferred)."
+  POSTGRES_PORT:
+    required: false
+    description: "Postgres port for direct DB connection fallback (default 5436)."
+
 terminal_event: onex.evt.omnimarket.projection-llm-cost-applied.v1
 
 # Golden path: llm_cost chain (llm-call-completed -> llm_cost_aggregates table)

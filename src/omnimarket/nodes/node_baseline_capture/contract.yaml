@@ -72,6 +72,27 @@ env_dependencies:
   LLM_EMBEDDING_URL:
     required: false
     description: "Embedding model endpoint URL (probed during system_health check)"
+  OMNIBASE_INFRA_DB_URL:
+    required: false
+    description: "Postgres DSN for the db_row_counts probe. Probe is skipped when unset."
+  POSTGRES_HOST:
+    required: false
+    description: "Postgres host for the system_health probe connectivity check."
+  POSTGRES_PORT:
+    required: false
+    description: "Postgres port for the system_health probe (typically 5436 externally)."
+  VALKEY_HOST:
+    required: false
+    description: "Valkey host for the system_health probe connectivity check."
+  VALKEY_PORT:
+    required: false
+    description: "Valkey port for the system_health probe."
+  QDRANT_HOST:
+    required: false
+    description: "Qdrant host for the system_health probe connectivity check."
+  QDRANT_PORT:
+    required: false
+    description: "Qdrant port for the system_health probe."
 
 terminal_event: onex.evt.omnimarket.baseline-captured.v1
 

@@ -139,5 +139,10 @@ failure_isolation_enabled: true
 monitoring_enabled: true
 metrics_collection_enabled: true
 
+env_dependencies:
+  VALKEY_HOST:
+    required: true
+    description: "Valkey host for the AdapterValkey caching layer (required at runtime)."
+
 metadata:
   transport_type: kafka
