@@ -62,6 +62,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 [project.entry-points."onex.nodes"]
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_ab_compare_reducer = "omnimarket.nodes.node_ab_compare_reducer"
+node_canary_score_reducer = "omnimarket.nodes.node_canary_score_reducer"
 node_ab_inference_effect = "omnimarket.nodes.node_ab_inference_effect"
 node_adr_canary_orchestrator = "omnimarket.nodes.node_adr_canary_orchestrator"
 node_adr_document_ingestion_effect = "omnimarket.nodes.node_adr_document_ingestion_effect"

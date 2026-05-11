@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10844"
+title: "Scaffold node_canary_score_reducer contract and models"
+summary: >
+  Create the full node scaffold for node_canary_score_reducer: contract.yaml, metadata.yaml,
+  ModelCapabilityScoreRow, ModelScoreReducerState, and empty __init__ stubs. No handler
+  implementation or database writes in this PR — scaffold only.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - topics
+  - events
+evidence_requirements:
+  - kind: "tests"
+    description: "Full test suite passes with no regressions"
+    command: "uv run pytest tests/ -m 'not kafka' --tb=short -q"
+  - kind: "manual"
+    description: "Models import cleanly"
+    command: "uv run python -c \"from omnimarket.nodes.node_canary_score_reducer.models.model_score_reducer_state import ModelCapabilityScoreRow, ModelScoreReducerState; print('OK')\""
+  - kind: "ci"
+    description: "All CI gates green on omnimarket PR #602"
+    command: "gh pr checks 602 --repo OmniNode-ai/omnimarket"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-models-import"
+    description: "ModelCapabilityScoreRow and ModelScoreReducerState import cleanly"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -c \"from omnimarket.nodes.node_canary_score_reducer.models.model_score_reducer_state import ModelCapabilityScoreRow, ModelScoreReducerState; print('OK')\""
+  - id: "dod-contract-yaml-valid"
+    description: "contract.yaml subscribes to onex.evt.omnimarket.adr-canary-completed.v1"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'adr-canary-completed.v1' src/omnimarket/nodes/node_canary_score_reducer/contract.yaml"
+  - id: "dod-projection-table"
+    description: "Projection targets capability_scores table"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'capability_scores' src/omnimarket/nodes/node_canary_score_reducer/contract.yaml"
+  - id: "dod-test-suite"
+    description: "Full test suite passes with no regressions (3563 passed)"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m 'not kafka' --tb=short -q"
+  - id: "dod-deploy"
+    description: >
+      Scaffold-only PR: no handler implementation, no database writes, no Kafka consumer wired.
+      Node is not registered in any runtime profile. No live deploy or runtime restart required
+      or performed. Deploy evidence deferred to OMN-10845 (handler implementation).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\\n' 'deploy-deferred: scaffold-only PR, no runtime registration, handler in OMN-10845'"
