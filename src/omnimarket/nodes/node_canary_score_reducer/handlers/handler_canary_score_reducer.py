@@ -3,6 +3,9 @@
 
 """HandlerCanaryScoreReducer -- composite scoring for canary model reports.
 
+Consumes ModelCanaryReport events and accumulates weighted composite scores
+into ModelScoreReducerState for materialization to capability_scores table.
+
 [OMN-10845]
 """
 
