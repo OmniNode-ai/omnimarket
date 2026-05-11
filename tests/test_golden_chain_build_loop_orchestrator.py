@@ -153,7 +153,7 @@ def _make_command(
     )
 
 
-def _make_orchestrator(
+async def _make_orchestrator(
     *,
     closeout: MockCloseout | None = None,
     verify: MockVerify | None = None,
@@ -162,13 +162,16 @@ def _make_orchestrator(
     dispatch: MockDispatch | None = None,
     event_bus: EventBusInmemory | None = None,
 ) -> HandlerBuildLoopOrchestrator:
+    raw_bus = event_bus or EventBusInmemory()
+    if not raw_bus._started:
+        await raw_bus.start()
     return HandlerBuildLoopOrchestrator(
         closeout=closeout or MockCloseout(),
         verify=verify or MockVerify(),
         rsd_fill=rsd_fill or MockRsdFill(),
         classify=classify or MockClassify(),
         dispatch=dispatch or MockDispatch(),
-        event_bus=event_bus,
+        event_bus=raw_bus,
     )
 
 
@@ -184,7 +187,7 @@ class TestBuildLoopOrchestratorGoldenChain:
         targets = (
             BuildTarget(ticket_id="OMN-1", title="Test", buildability="auto_buildable"),
         )
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             rsd_fill=MockRsdFill(tickets=tickets),
             classify=MockClassify(targets=targets),
             dispatch=MockDispatch(dispatched=1),
@@ -211,7 +214,7 @@ class TestBuildLoopOrchestratorGoldenChain:
             dry_run=True,
             requested_at=datetime.now(tz=UTC),
         )
-        orch = _make_orchestrator()
+        orch = await _make_orchestrator()
 
         result = await orch.handle(command)
 
@@ -234,7 +237,7 @@ class TestBuildLoopOrchestratorGoldenChain:
     async def test_skip_closeout(self) -> None:
         """skip_closeout=True skips CLOSING_OUT, goes IDLE -> VERIFYING."""
         closeout = MockCloseout()
-        orch = _make_orchestrator(closeout=closeout)
+        orch = await _make_orchestrator(closeout=closeout)
         command = _make_command(skip_closeout=True)
 
         result = await orch.handle(command)
@@ -245,7 +248,7 @@ class TestBuildLoopOrchestratorGoldenChain:
     async def test_closeout_called_by_default(self) -> None:
         """Default flow calls closeout handler."""
         closeout = MockCloseout()
-        orch = _make_orchestrator(closeout=closeout)
+        orch = await _make_orchestrator(closeout=closeout)
         command = _make_command()
 
         result = await orch.handle(command)
@@ -256,7 +259,7 @@ class TestBuildLoopOrchestratorGoldenChain:
     async def test_verify_failure_causes_cycle_failure(self) -> None:
         """Verification failure -> cycle fails after circuit breaker."""
         verify = MockVerify(pass_checks=False)
-        orch = _make_orchestrator(verify=verify)
+        orch = await _make_orchestrator(verify=verify)
         command = _make_command()
 
         result = await orch.handle(command)
@@ -270,7 +273,7 @@ class TestBuildLoopOrchestratorGoldenChain:
     async def test_sub_handler_exception_causes_failure(self) -> None:
         """Exception in a sub-handler -> phase failure -> eventually FAILED."""
         closeout = MockCloseout(fail=True)
-        orch = _make_orchestrator(closeout=closeout)
+        orch = await _make_orchestrator(closeout=closeout)
         command = _make_command()
 
         result = await orch.handle(command)
@@ -281,7 +284,7 @@ class TestBuildLoopOrchestratorGoldenChain:
 
     async def test_dry_run_propagated(self) -> None:
         """dry_run flag propagates through to sub-handlers."""
-        orch = _make_orchestrator()
+        orch = await _make_orchestrator()
         command = _make_command(dry_run=True)
 
         result = await orch.handle(command)
@@ -294,7 +297,7 @@ class TestBuildLoopOrchestratorGoldenChain:
         """Phase transition events are published to event bus."""
         await event_bus.start()
 
-        orch = _make_orchestrator(event_bus=event_bus, verify=MockVerify())
+        orch = await _make_orchestrator(event_bus=event_bus, verify=MockVerify())
         command = _make_command()
 
         result = await orch.handle(command)
@@ -331,7 +334,7 @@ class TestBuildLoopOrchestratorGoldenChain:
         targets = (
             BuildTarget(ticket_id="OMN-1", title="T1", buildability="auto_buildable"),
         )
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             rsd_fill=MockRsdFill(tickets=tickets),
             classify=MockClassify(targets=targets),
             dispatch=MockDispatch(dispatched=1),
@@ -347,7 +350,7 @@ class TestBuildLoopOrchestratorGoldenChain:
 
     async def test_multiple_cycles(self) -> None:
         """Multiple cycles run sequentially when max_cycles > 1."""
-        orch = _make_orchestrator(dispatch=MockDispatch(dispatched=2))
+        orch = await _make_orchestrator(dispatch=MockDispatch(dispatched=2))
         command = _make_command(max_cycles=3)
 
         result = await orch.handle(command)
@@ -371,8 +374,16 @@ class TestBuildLoopOrchestratorGoldenChain:
         assert "import omnibase_infra" not in source
 
     def test_zero_arg_construction_succeeds(self) -> None:
-        """Auto-wiring runtime must be able to construct with zero args."""
-        orch = HandlerBuildLoopOrchestrator()
+        """Auto-wiring runtime must be able to construct with event_bus only."""
+        from typing import cast
+
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
+        orch = HandlerBuildLoopOrchestrator(
+            event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+        )
         assert orch._closeout is None
         assert orch._verify is None
         assert orch._rsd_fill is None
@@ -381,6 +392,12 @@ class TestBuildLoopOrchestratorGoldenChain:
 
     def test_explicit_injection_still_works(self) -> None:
         """Callers that pass sub-handlers explicitly must not be broken."""
+        from typing import cast
+
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
         closeout = MockCloseout()
         verify = MockVerify()
         rsd_fill = MockRsdFill()
@@ -392,6 +409,7 @@ class TestBuildLoopOrchestratorGoldenChain:
             rsd_fill=rsd_fill,
             classify=classify,
             dispatch=dispatch,
+            event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory()),
         )
         assert orch._closeout is closeout
         assert orch._verify is verify
@@ -415,7 +433,7 @@ class TestDoDVerificationGating:
         targets = (
             BuildTarget(ticket_id="OMN-100", title="T1", buildability="auto_buildable"),
         )
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             rsd_fill=MockRsdFill(
                 tickets=(
                     ScoredTicket(
@@ -439,7 +457,7 @@ class TestDoDVerificationGating:
         targets = (
             BuildTarget(ticket_id="OMN-200", title="T2", buildability="auto_buildable"),
         )
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             rsd_fill=MockRsdFill(
                 tickets=(
                     ScoredTicket(
@@ -478,7 +496,7 @@ class TestDoDVerificationGating:
         targets = (
             BuildTarget(ticket_id="OMN-300", title="T3", buildability="auto_buildable"),
         )
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             rsd_fill=MockRsdFill(
                 tickets=(
                     ScoredTicket(
@@ -517,7 +535,7 @@ class TestDoDVerificationGating:
         targets = (
             BuildTarget(ticket_id="OMN-400", title="T4", buildability="auto_buildable"),
         )
-        orch = _make_orchestrator(
+        orch = await _make_orchestrator(
             rsd_fill=MockRsdFill(
                 tickets=(
                     ScoredTicket(
