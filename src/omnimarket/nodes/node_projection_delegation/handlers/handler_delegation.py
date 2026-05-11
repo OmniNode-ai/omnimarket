@@ -171,8 +171,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             else data.get("isShadow") or False
         )
 
-        prompt_text = data.get("prompt_text") or data.get("promptText") or None
-        response_text = data.get("response_text") or data.get("responseText") or None
+        prompt_text = data.get("prompt_text")
+        if prompt_text is None:
+            prompt_text = data.get("promptText")
+
+        response_text = data.get("response_text")
+        if response_text is None:
+            response_text = data.get("responseText")
 
         await self.db.execute(
             f"""
@@ -205,8 +210,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             delegation_latency_ms,
             str(repo) if repo else None,
             is_shadow,
-            str(prompt_text) if prompt_text else None,
-            str(response_text) if response_text else None,
+            str(prompt_text) if prompt_text is not None else None,
+            str(response_text) if response_text is not None else None,
         )
         return True
 
