@@ -35,7 +35,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "OMNIBASE_INFRA_PATH=/Users/jonah/omni_home/omnibase_infra pre-commit run --all-files"
+        check_value: "OMNIBASE_INFRA_PATH=${OMNIBASE_INFRA_PATH:-../omnibase_infra} pre-commit run --all-files"
   - id: "dod-deploy"
     description: >
       Contract-only change (no Python modified). No live deploy required. Deploy-agent
