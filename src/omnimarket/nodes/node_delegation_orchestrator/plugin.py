@@ -284,7 +284,7 @@ class PluginDelegation:
                     plugin_id=self.plugin_id,
                     reason="Event bus does not support subscribe (not in container and config.event_bus lacks subscribe capability)",
                 )
-            subscriber_bus = config.event_bus  # type: ignore[assignment]
+            subscriber_bus = config.event_bus
 
         if config.node_identity is None:
             return ModelDomainPluginResult.skipped(
@@ -326,7 +326,7 @@ class PluginDelegation:
             # DispatchResultApplier uses config.event_bus for publish_envelope
             # (publisher-only path, compatible with ProtocolEventBusPublisher).
             result_applier = DispatchResultApplier(
-                event_bus=config.event_bus,  # type: ignore[arg-type]
+                event_bus=config.event_bus,
                 output_topic=config.output_topic,
                 topic_router=_TOPIC_ROUTER,
                 output_topic_map=published_events_map,
@@ -345,7 +345,7 @@ class PluginDelegation:
 
             # Use the container-resolved subscriber_bus for subscribe operations (OMN-9556).
             wiring = EventBusSubcontractWiring(
-                event_bus=subscriber_bus,  # type: ignore[arg-type]
+                event_bus=subscriber_bus,
                 dispatch_engine=config.dispatch_engine,
                 environment=config.node_identity.env,
                 node_name=config.node_identity.node_name,

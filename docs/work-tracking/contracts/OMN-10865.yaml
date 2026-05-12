@@ -1,0 +1,25 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10865
+title: "Migrate delegation nodes from omnibase_infra to omnimarket"
+summary: "Moves node_delegation_orchestrator, node_delegation_quality_gate_reducer, and node_delegation_routing_reducer from omnibase_infra to omnimarket. Copies adapter_llm_caller_delegation, bifrost config loader/model, and YAML config files. Updates all import paths and migrates 56 unit tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "All 56 delegation unit tests pass in omnimarket"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/delegation/ -v --tb=short"
+  - id: dod-deploy
+    description: "No live deploy required for this PR — omnimarket adds the nodes; the companion omnibase_infra PR (jonah/omn-10865-remove-delegation-nodes) removes them and updates service_kernel.py import. Runtime topology is unchanged; plugin registration picks up the new omnimarket import path on next deploy cycle."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: node migration only — no new Kafka topics, no container restart, no docker exec required; companion infra PR updates service_kernel.py import path on next deploy'"

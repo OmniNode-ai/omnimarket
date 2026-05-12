@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10865 reason="delegation e2e test fixture must reference exact local HF model IDs to verify routing decisions"
 """End-to-end delegation chain test using EventBusInmemory.
 
 Exercises the full delegation pipeline:

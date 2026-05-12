@@ -45,7 +45,7 @@ __all__ = ["DispatcherAgentTaskLifecycle"]
 logger = logging.getLogger(__name__)
 
 
-class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):
+class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[misc]
     """Dispatcher for agent lifecycle events from the remote-agent effect."""
 
     def __init__(

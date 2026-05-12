@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 TOPIC_ID_QUALITY_GATE_RESULT = "delegation.quality-gate-result"
 
 
-class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
+class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[misc]
     """Dispatcher for quality gate result events."""
 
     def __init__(

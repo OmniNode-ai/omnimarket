@@ -45,7 +45,7 @@ __all__ = ["DispatcherInvocationCommand"]
 logger = logging.getLogger(__name__)
 
 
-class DispatcherInvocationCommand(MixinAsyncCircuitBreaker):
+class DispatcherInvocationCommand(MixinAsyncCircuitBreaker):  # type: ignore[misc]
     """Dispatcher for typed invocation commands emitted by the reducer."""
 
     def __init__(

@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 TOPIC_ID_ROUTING_DECISION = "delegation.routing-decision"
 
 
-class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):
+class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):  # type: ignore[misc]
     """Dispatcher for routing decision events from the routing reducer."""
 
     def __init__(

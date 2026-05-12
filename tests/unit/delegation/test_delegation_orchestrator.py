@@ -89,7 +89,7 @@ def _make_routing_decision(
         selected_backend_id=uuid5(
             NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
         ),
-        endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip: delegation test fixture for local LLM endpoint
+        endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM endpoint"
         cost_tier="low",
         max_context_tokens=65536,
         system_prompt="You are a test generation assistant.",

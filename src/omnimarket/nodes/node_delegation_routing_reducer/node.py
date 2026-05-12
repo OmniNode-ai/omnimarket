@@ -16,16 +16,15 @@ Related:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from omnibase_core.nodes.node_reducer import NodeReducer
 
-if TYPE_CHECKING:
-    pass
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
+    ModelRoutingDecision,
+)
 
 
 class NodeDelegationRoutingReducer(
-    NodeReducer["ModelRoutingDecision", "ModelRoutingDecision"]
+    NodeReducer[ModelRoutingDecision, ModelRoutingDecision]
 ):
     """Delegation routing reducer -- all behavior driven by contract.yaml.
 
