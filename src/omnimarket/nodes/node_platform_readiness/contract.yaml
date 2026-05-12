@@ -26,7 +26,7 @@ descriptor:
 env_dependencies:
   ONEX_INFRA_SSH_TARGET:
     required: false
-    description: "SSH target string for .201 infrastructure checks (e.g. 'jonah@192.168.86.201'); module-level default used when no runtime override is provided"
+    description: "SSH target string for infrastructure checks; module-level default used when no runtime override is provided"
 
 terminal_event: onex.evt.omnimarket.platform-readiness-completed.v1
 

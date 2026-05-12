@@ -15,7 +15,7 @@ handler:
 env_dependencies:
   ONEX_INFRA_SSH_TARGET:
     required: false
-    description: "SSH target string for .201 infrastructure (e.g. 'jonah@192.168.86.201'); used when remote state capture is needed during handoff"
+    description: "SSH target string for infrastructure; used when remote state capture is needed during handoff"
 
 descriptor:
   node_archetype: effect
