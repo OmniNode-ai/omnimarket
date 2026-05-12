@@ -1,0 +1,30 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10708"
+title: "Replace omnimarket direct handler imports with node package public APIs"
+summary: >
+  Updates proof-of-life scripts and node package exports so scripts import through node package public APIs.
+  This is an import-boundary cleanup and does not change runtime wiring, topics, migrations, or deploy
+  behavior.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-import-boundary"
+    description: "omnimarket PR #609 imports proof-of-life dependencies through node package public APIs"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr checks 609 --repo OmniNode-ai/omnimarket"
+  - id: "dod-deploy"
+    description: >
+      Deploy verification: import-boundary-only package export and script changes. No docker exec action,
+      rpk topic produce, runtime restart, migration, topic change, or service wiring change is required.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: import-boundary-only package export/script change; no docker exec or rpk topic produce required'"
