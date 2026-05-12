@@ -224,6 +224,7 @@ node_adr_draft_generation_compute = "omnimarket.nodes.node_adr_draft_generation_
 node_schema_repair_compute = "omnimarket.nodes.node_schema_repair_compute"
 node_context_bundle_generator_compute = "omnimarket.nodes.node_context_bundle_generator_compute"
 node_adr_extraction_grader_llm_effect = "omnimarket.nodes.node_adr_extraction_grader_llm_effect"
+node_pr_semantic_grader_llm_effect = "omnimarket.nodes.node_pr_semantic_grader_llm_effect"
 node_adr_segmentation_llm_effect = "omnimarket.nodes.node_adr_segmentation_llm_effect"
 node_adr_decision_extraction_llm_effect = "omnimarket.nodes.node_adr_decision_extraction_llm_effect"
 node_candidate_pool_compute = "omnimarket.nodes.node_candidate_pool_compute"
