@@ -12,6 +12,11 @@ handler:
   module: omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect
   class: HandlerHandoffEffect
 
+env_dependencies:
+  ONEX_INFRA_SSH_TARGET:
+    required: false
+    description: "SSH target string for .201 infrastructure (e.g. 'jonah@192.168.86.201'); used when remote state capture is needed during handoff"
+
 descriptor:
   node_archetype: effect
   purity: impure

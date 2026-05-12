@@ -35,6 +35,11 @@ inputs:
     description: "SSH target for .201 infra checks"
     required: false
 
+env_dependencies:
+  ONEX_INFRA_SSH_TARGET:
+    required: false
+    description: "SSH target string for .201 infrastructure health checks (e.g. 'jonah@192.168.86.201'); used as fallback when ssh_target input is not provided"
+
 outputs:
   subsystem_results:
     type: list[SubsystemResult]

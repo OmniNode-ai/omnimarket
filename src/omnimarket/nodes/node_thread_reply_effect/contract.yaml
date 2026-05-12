@@ -25,6 +25,9 @@ env_dependencies:
   LLM_CODER_FAST_URL:
     required: false
     description: "vLLM fast model endpoint URL (secondary local option)"
+  ONEX_CI_MODE:
+    required: false
+    description: "When set to '1', 'true', or 'yes', forces draft-first posting regardless of ONEX_THREAD_REPLY_DIRECT_POST; disables live GitHub API calls in CI environments"
 
 descriptor:
   node_archetype: effect
