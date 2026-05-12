@@ -18,10 +18,8 @@ from __future__ import annotations
 import json
 import sys
 
-from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
+from omnimarket.nodes.node_overseer_verifier import (
     HandlerOverseerVerifier,
-)
-from omnimarket.nodes.node_overseer_verifier.models.model_verifier_request import (
     ModelVerifierRequest,
 )
 

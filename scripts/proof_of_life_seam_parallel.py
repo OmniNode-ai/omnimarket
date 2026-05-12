@@ -20,10 +20,8 @@ import sys
 from typing import Any
 from uuid import UUID
 
-from omnimarket.nodes.node_seam_parallel_executor.handlers.handler_seam_parallel_executor import (
+from omnimarket.nodes.node_seam_parallel_executor import (
     HandlerSeamParallelExecutor,
-)
-from omnimarket.nodes.node_seam_parallel_executor.models.model_seam_task import (
     ModelSeamParallelInput,
     ModelSeamParallelResult,
     ModelSeamTask,
