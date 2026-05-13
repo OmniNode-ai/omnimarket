@@ -25,9 +25,7 @@ def _register() -> None:
     # Deferred imports to avoid circular deps at module load time
     from omnibase_core.models.plan.model_plan_document import ModelPlanDocument
 
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
-        ModelDelegationResult,
-    )
+    from omnimarket.events.delegation import ModelDelegationResult
 
     _REGISTRY["delegation_result"] = ModelDelegationResult
     _REGISTRY["review_output"] = ModelReviewOutput
