@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10943"
+title: "Wire delegate skill runtime port"
+summary: "Make node_delegate_skill_orchestrator resolve through the runtime handler resolver and dispatch delegate-skill requests through the existing delegation orchestrator runtime port."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "public_api"
+  - "runtime"
+evidence_requirements:
+  - kind: "manual"
+    description: "Delegate skill handler and runtime dispatch port tests pass"
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_handler.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py tests/unit/nodes/node_delegate_skill_orchestrator/test_init.py -q"
+  - kind: "manual"
+    description: "Codex runtime client compatibility test passes"
+    command: "uv run pytest tests/test_codex_runtime_client.py -q"
+  - kind: "manual"
+    description: "Touched delegate skill runtime code passes lint"
+    command: "uv run ruff check src/omnimarket/nodes/node_delegate_skill_orchestrator tests/unit/nodes/node_delegate_skill_orchestrator"
+  - kind: "manual"
+    description: "Deploy smoke plan for runtime dispatch path; no live deploy or runtime restart was performed in this PR"
+    command: "printf '%s\n' 'post-merge deploy smoke: docker exec omninode-runtime-effects /app/.venv/bin/python -m omnimarket.adapters.codex.runtime_client --command-name delegate_skill --payload-file /tmp/omn-10943-delegate-skill-payload.json --timeout-ms 45000'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-delegate-skill-unit-tests"
+    description: "Delegate skill handler and runtime dispatch port tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_handler.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py tests/unit/nodes/node_delegate_skill_orchestrator/test_contract.py tests/unit/nodes/node_delegate_skill_orchestrator/test_init.py -q"
+  - id: "dod-codex-runtime-client"
+    description: "Codex runtime client compatibility test passes"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_codex_runtime_client.py -q"
+  - id: "dod-lint"
+    description: "Touched delegate skill runtime code passes lint"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_delegate_skill_orchestrator tests/unit/nodes/node_delegate_skill_orchestrator"
+  - id: "dod-deploy"
+    description: "Deploy smoke plan for runtime dispatch path; no live deploy or runtime restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec omninode-runtime-effects /app/.venv/bin/python -m omnimarket.adapters.codex.runtime_client --command-name delegate_skill --payload-file /tmp/omn-10943-delegate-skill-payload.json --timeout-ms 45000'"

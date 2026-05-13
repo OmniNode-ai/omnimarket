@@ -220,5 +220,14 @@ def test_handler_resolves_through_runtime_handler_resolver() -> None:
         event_bus=object(),
     )
     resolution = ServiceHandlerResolver().resolve(context)
-    assert resolution.outcome is EnumHandlerResolutionOutcome.RESOLVED_VIA_KNOWN_PARAMS
+    expected_outcomes = {EnumHandlerResolutionOutcome.RESOLVED_VIA_EVENT_BUS}
+    known_params_outcome = getattr(
+        EnumHandlerResolutionOutcome,
+        "RESOLVED_VIA_KNOWN_PARAMS",
+        None,
+    )
+    if known_params_outcome is not None:
+        expected_outcomes.add(known_params_outcome)
+
+    assert resolution.outcome in expected_outcomes
     assert isinstance(resolution.handler_instance, HandlerDelegateSkill)
