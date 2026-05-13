@@ -5,10 +5,18 @@
 from __future__ import annotations
 
 import inspect
+from inspect import Parameter
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from omnibase_core.enums.enum_handler_resolution_outcome import (
+    EnumHandlerResolutionOutcome,
+)
+from omnibase_core.models.resolver.model_handler_resolver_context import (
+    ModelHandlerResolverContext,
+)
+from omnibase_core.services.service_handler_resolver import ServiceHandlerResolver
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
@@ -34,11 +42,17 @@ def mock_dispatch_port() -> AsyncMock:
     return port
 
 
+@pytest.fixture
+def event_bus() -> object:
+    return object()
+
+
 @pytest.mark.unit
 async def test_handler_dispatches_and_returns_typed_response(
     mock_dispatch_port: AsyncMock,
+    event_bus: object,
 ) -> None:
-    handler = HandlerDelegateSkill(dispatch_port=mock_dispatch_port)
+    handler = HandlerDelegateSkill(event_bus, dispatch_port=mock_dispatch_port)
     request = ModelDelegateSkillRequest(
         prompt="Write tests for payment webhook",
         task_type="test",
@@ -60,9 +74,10 @@ async def test_handler_dispatches_and_returns_typed_response(
 @pytest.mark.unit
 async def test_handler_propagates_correlation_id(
     mock_dispatch_port: AsyncMock,
+    event_bus: object,
 ) -> None:
     cid = uuid4()
-    handler = HandlerDelegateSkill(dispatch_port=mock_dispatch_port)
+    handler = HandlerDelegateSkill(event_bus, dispatch_port=mock_dispatch_port)
     request = ModelDelegateSkillRequest(
         prompt="Document auth flow",
         task_type="document",
@@ -80,7 +95,7 @@ async def test_handler_propagates_correlation_id(
 async def test_handler_returns_failed_on_dispatch_error() -> None:
     port = AsyncMock()
     port.dispatch.side_effect = RuntimeError("Connection refused")
-    handler = HandlerDelegateSkill(dispatch_port=port)
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
     request = ModelDelegateSkillRequest(
         prompt="Test",
         task_type="test",
@@ -99,7 +114,7 @@ async def test_handler_maps_unknown_status_to_failed() -> None:
         "status": "weird-runtime-state",
         "content": "partial output",
     }
-    handler = HandlerDelegateSkill(dispatch_port=port)
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
     request = ModelDelegateSkillRequest(
         prompt="Test",
         task_type="test",
@@ -117,7 +132,7 @@ async def test_handler_propagates_runtime_error_message() -> None:
         "status": "failed",
         "error_message": "model unavailable",
     }
-    handler = HandlerDelegateSkill(dispatch_port=port)
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
     request = ModelDelegateSkillRequest(
         prompt="Test",
         task_type="test",
@@ -126,6 +141,36 @@ async def test_handler_propagates_runtime_error_message() -> None:
     response = await handler.handle(request)
     assert response.status == "failed"
     assert response.error_message == "model unavailable"
+
+
+@pytest.mark.unit
+async def test_handler_maps_internal_delegation_result_fields() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "internal result",
+        "endpoint_url": "http://qwen.local",
+        "model_used": "Qwen3-Coder-30B",
+        "quality_passed": True,
+        "latency_ms": 1234,
+        "prompt_tokens": 12,
+        "completion_tokens": 34,
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "completed"
+    assert response.provider == "http://qwen.local"
+    assert response.model_name == "Qwen3-Coder-30B"
+    assert response.response == "internal result"
+    assert response.quality_gate_passed is True
+    assert response.metrics.latency_ms == 1234
+    assert response.metrics.input_tokens == 12
+    assert response.metrics.output_tokens == 34
 
 
 @pytest.mark.unit
@@ -149,3 +194,31 @@ async def test_handler_does_not_reference_transport_internals(
         assert word not in lowered, (
             f"Handler module references transport detail: {word}"
         )
+
+
+@pytest.mark.unit
+def test_handler_constructor_matches_runtime_known_injection() -> None:
+    signature = inspect.signature(HandlerDelegateSkill)
+    required = {
+        name
+        for name, parameter in signature.parameters.items()
+        if name != "self"
+        and parameter.kind in {Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY}
+        and parameter.default is Parameter.empty
+    }
+    assert required == {"event_bus"}
+
+
+@pytest.mark.unit
+def test_handler_resolves_through_runtime_handler_resolver() -> None:
+    context = ModelHandlerResolverContext(
+        handler_cls=HandlerDelegateSkill,
+        handler_module=HandlerDelegateSkill.__module__,
+        handler_name="HandlerDelegateSkill",
+        contract_name="node_delegate_skill_orchestrator",
+        node_name="node_delegate_skill_orchestrator",
+        event_bus=object(),
+    )
+    resolution = ServiceHandlerResolver().resolve(context)
+    assert resolution.outcome is EnumHandlerResolutionOutcome.RESOLVED_VIA_KNOWN_PARAMS
+    assert isinstance(resolution.handler_instance, HandlerDelegateSkill)

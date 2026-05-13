@@ -47,7 +47,7 @@ descriptor:
 
 event_bus:
   version: {major: 1, minor: 0, patch: 0}
-  plugin_managed: true
+  plugin_managed: false
   subscribe_topics:
     - onex.cmd.omnimarket.delegate-skill.v1
   publish_topics:

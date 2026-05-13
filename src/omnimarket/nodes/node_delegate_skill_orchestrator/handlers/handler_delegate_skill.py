@@ -21,6 +21,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+    ProtocolDelegationEventBus,
+    RuntimeDelegationDispatchPort,
+)
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
@@ -84,17 +88,25 @@ def _response_from_result(
         status=status_value,
         correlation_id=request.correlation_id,
         task_type=request.task_type,
-        provider=str(result.get("delegated_to", "")),
-        model_name=str(result.get("model_name", "")),
+        provider=str(result.get("delegated_to") or result.get("endpoint_url") or ""),
+        model_name=str(result.get("model_name") or result.get("model_used") or ""),
         response=str(result.get("content", "")),
-        quality_gate_passed=bool(result.get("quality_gate_passed", False)),
+        quality_gate_passed=bool(
+            result.get("quality_gate_passed", result.get("quality_passed", False))
+        ),
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
-            input_tokens=_as_int(result.get("input_tokens")),
-            output_tokens=_as_int(result.get("output_tokens")),
+            input_tokens=_as_int(
+                result.get("input_tokens", result.get("prompt_tokens", 0))
+            ),
+            output_tokens=_as_int(
+                result.get("output_tokens", result.get("completion_tokens", 0))
+            ),
             cost_usd=_as_float(result.get("cost_usd")),
             cost_savings_usd=_as_float(result.get("cost_savings_usd")),
-            latency_ms=_as_int(result.get("delegation_latency_ms")),
+            latency_ms=_as_int(
+                result.get("delegation_latency_ms", result.get("latency_ms", 0))
+            ),
         ),
     )
 
@@ -102,8 +114,15 @@ def _response_from_result(
 class HandlerDelegateSkill:
     """Translate a typed delegation request to a runtime command via the port."""
 
-    def __init__(self, *, dispatch_port: ProtocolDelegationDispatchPort) -> None:
-        self._dispatch_port = dispatch_port
+    def __init__(
+        self,
+        event_bus: ProtocolDelegationEventBus,
+        *,
+        dispatch_port: ProtocolDelegationDispatchPort | None = None,
+    ) -> None:
+        self._dispatch_port = dispatch_port or RuntimeDelegationDispatchPort(
+            event_bus=event_bus
+        )
 
     async def handle(
         self, request: ModelDelegateSkillRequest
