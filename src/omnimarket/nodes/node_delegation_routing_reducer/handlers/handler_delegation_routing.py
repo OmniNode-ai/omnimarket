@@ -245,7 +245,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     """
     env_path = os.environ.get(
         "BIFROST_CONTRACT_PATH", ""
-    )  # ONEX_EXCLUDE: env_access - contract path configuration
+    )  # ONEX_EXCLUDE: env_access - contract path override for testing
     if env_path:
         contract_path = Path(env_path)
     elif _DEFAULT_BIFROST_CONTRACT_PATH.exists():
@@ -285,7 +285,7 @@ def _get_task_class_contract() -> dict[str, object] | None:
     """
     env_path = os.environ.get(
         "TASK_CLASS_CONTRACT_PATH", ""
-    )  # ONEX_EXCLUDE: env_access - contract path configuration
+    )  # ONEX_EXCLUDE: env_access - contract path override for testing
     contract_path = Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
 
     if not contract_path.exists():

@@ -64,6 +64,10 @@ jobs:
       # Prevents silent fallback to localhost defaults via os.getenv/os.environ.get
       - name: Validate no silent env fallbacks
         run: uv run python scripts/validation/validate_no_env_fallbacks.py
+      # SYNC: OMN-10926 — delegation env read scanner in enforce mode (Wave 2)
+      # Fails CI if any delegation/LLM/bifrost module adds a new os.environ/os.getenv read.
+      - name: Delegation env read scanner (enforce)
+        run: uv run python scripts/ci/check_delegation_env_reads.py --mode enforce
 
   typecheck:
     runs-on: ubuntu-latest

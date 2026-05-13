@@ -84,43 +84,68 @@ def _find_env_calls_in_source(source: str, filepath: str) -> list[str]:
 
     lines = source.splitlines()
 
-    # Map lineno -> (call_repr, specificity) — higher specificity wins
-    # specificity: os.environ.get=2, os.environ=1, os.getenv=1
-    best_per_line: dict[int, tuple[str, int]] = {}
+    # Map lineno -> (call_repr, specificity, end_lineno) — higher specificity wins
+    # Walk ast.Call (not ast.Attribute) so end_lineno covers the closing ) and any
+    # inline ONEX_EXCLUDE comment on the same line as the closing paren.
+    # specificity: os.environ.get=2, os.environ[...]=1, os.getenv=1
+    best_per_line: dict[int, tuple[str, int, int]] = {}
 
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Attribute):
-            continue
-
         lineno: int | None = None
         call_repr: str | None = None
         specificity: int = 1
+        end_lineno: int
 
-        if isinstance(node.value, ast.Name) and node.value.id == "os":
-            if node.attr in ("environ", "getenv"):
-                lineno = node.lineno
-                call_repr = f"os.{node.attr}"
-        elif (
-            isinstance(node.value, ast.Attribute)
-            and isinstance(node.value.value, ast.Name)
-            and node.value.value.id == "os"
-            and node.value.attr == "environ"
-            and node.attr == "get"
+        # os.getenv(...) or os.environ[...] (Subscript, not a Call)
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "os"
+            and node.attr in ("environ", "getenv")
         ):
             lineno = node.lineno
-            call_repr = "os.environ.get"
-            specificity = 2
+            call_repr = f"os.{node.attr}"
+            end_lineno = getattr(node, "end_lineno", node.lineno)
+
+        # os.environ.get(...) or os.getenv(...) — prefer Call for accurate end_lineno
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "getenv"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "os"
+            ):
+                lineno = node.lineno
+                call_repr = "os.getenv"
+                end_lineno = getattr(node, "end_lineno", node.lineno)
+            elif (
+                isinstance(func, ast.Attribute)
+                and func.attr == "get"
+                and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "environ"
+                and isinstance(func.value.value, ast.Name)
+                and func.value.value.id == "os"
+            ):
+                lineno = node.lineno
+                call_repr = "os.environ.get"
+                specificity = 2
+                end_lineno = getattr(node, "end_lineno", node.lineno)
 
         if lineno is not None and call_repr is not None:
             existing = best_per_line.get(lineno)
             if existing is None or specificity > existing[1]:
-                best_per_line[lineno] = (call_repr, specificity)
+                best_per_line[lineno] = (call_repr, specificity, end_lineno)
 
     violations: list[str] = []
     for lineno in sorted(best_per_line):
-        call_repr, _ = best_per_line[lineno]
+        call_repr, _, end_lineno = best_per_line[lineno]
         line_text = lines[lineno - 1] if lineno <= len(lines) else ""
-        if _has_skip_token(line_text):
+        # Check all lines of a multi-line call for skip tokens (handles formatter-wrapped calls)
+        call_lines = (
+            lines[lineno - 1 : end_lineno] if end_lineno > lineno else [line_text]
+        )
+        if any(_has_skip_token(ln) for ln in call_lines):
             continue
         violations.append(f"{filepath}:{lineno}: {call_repr} — {line_text.strip()}")
 

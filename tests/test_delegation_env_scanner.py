@@ -119,6 +119,17 @@ class TestFindEnvCallsInSource:
         violations = _find_env_calls_in_source(source, "test.py")
         assert len(violations) == 0
 
+    def test_skips_onex_exclude_on_closing_paren_line(self) -> None:
+        # Formatter wraps long calls; ONEX_EXCLUDE on closing ) must still suppress.
+        source = (
+            "import os\n"
+            "value = os.environ.get(\n"
+            '    "BIFROST_CONTRACT_PATH", ""\n'
+            ")  # ONEX_EXCLUDE: env_access - contract path override for testing\n"
+        )
+        violations = _find_env_calls_in_source(source, "test.py")
+        assert len(violations) == 0
+
     def test_no_false_positive_on_attribute_not_os(self) -> None:
         source = 'value = config.environ.get("KEY")\n'
         violations = _find_env_calls_in_source(source, "test.py")
@@ -148,13 +159,14 @@ class TestScanDelegationModules:
         assert result.scanned_files > 0
         assert result.report_generated
 
-    def test_scanner_finds_violations_in_repo(self) -> None:
-        """Known env reads exist in delegation modules — scanner must detect them."""
+    def test_scanner_clean_in_enforce_mode(self) -> None:
+        """After OMN-10926, enforce mode must return zero violations on current code."""
         repo_root = Path(__file__).parent.parent
-        result = scan_delegation_modules(repo_root=repo_root, mode="report")
-        assert len(result.violations) > 0, (
-            "Expected known env reads in delegation modules — "
-            "check node_delegation_routing_reducer and adapters/llm/bifrost/"
+        result = scan_delegation_modules(repo_root=repo_root, mode="enforce")
+        assert len(result.violations) == 0, (
+            "Unexpected env reads in delegation modules — add ONEX_FLAG_EXEMPT or "
+            "replace with contract-driven config (OMN-10915 Wave 2):\n"
+            + "\n".join(result.violations)
         )
 
     def test_report_mode_does_not_fail(self) -> None:
@@ -199,3 +211,43 @@ class TestScanDelegationModules:
         result = scan_delegation_modules(repo_root=tmp_path, mode="report")
         assert result.scanned_files == 0
         assert result.violations == []
+
+    def test_enforce_mode_catches_new_violation(self, tmp_path: Path) -> None:
+        """Enforce mode must exit non-zero when a bare env read appears in a delegation module."""
+        src = (
+            tmp_path
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_delegation_routing_reducer"
+            / "handlers"
+        )
+        src.mkdir(parents=True)
+        (src / "new_handler.py").write_text(
+            'import os\nendpoint = os.environ.get("LLM_URL", "")\n'
+        )
+        (tmp_path / ".git").mkdir()
+
+        result = scan_delegation_modules(repo_root=tmp_path, mode="enforce")
+        assert len(result.violations) == 1
+        assert "os.environ.get" in result.violations[0]
+
+    def test_enforce_mode_passes_when_exempt(self, tmp_path: Path) -> None:
+        """Enforce mode must not flag a line annotated with ONEX_FLAG_EXEMPT."""
+        src = (
+            tmp_path
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_delegation_routing_reducer"
+            / "handlers"
+        )
+        src.mkdir(parents=True)
+        (src / "new_handler.py").write_text(
+            "import os\n"
+            'endpoint = os.environ.get("LLM_URL", "")  # ONEX_FLAG_EXEMPT: test override\n'
+        )
+        (tmp_path / ".git").mkdir()
+
+        result = scan_delegation_modules(repo_root=tmp_path, mode="enforce")
+        assert len(result.violations) == 0
