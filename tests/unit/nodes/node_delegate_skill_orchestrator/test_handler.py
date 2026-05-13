@@ -57,6 +57,8 @@ async def test_handler_dispatches_and_returns_typed_response(
         prompt="Write tests for payment webhook",
         task_type="test",
         source="claude-code",
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=("exactly_two_sentences",),
     )
     response = await handler.handle(request)
     assert response.status == "completed"
@@ -69,6 +71,9 @@ async def test_handler_dispatches_and_returns_typed_response(
     assert response.metrics.cost_savings_usd == 0.15
     assert response.metrics.latency_ms == 2500
     mock_dispatch_port.dispatch.assert_awaited_once()
+    call_kwargs = mock_dispatch_port.dispatch.await_args.kwargs
+    assert call_kwargs["quality_contract_mode"] == "replace_task_class"
+    assert call_kwargs["acceptance_criteria"] == ("exactly_two_sentences",)
 
 
 @pytest.mark.unit
@@ -141,6 +146,30 @@ async def test_handler_propagates_runtime_error_message() -> None:
     response = await handler.handle(request)
     assert response.status == "failed"
     assert response.error_message == "model unavailable"
+
+
+@pytest.mark.unit
+async def test_handler_maps_quality_failure_reason() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "failed",
+        "failure_reason": "TASK_MISMATCH: expected exactly 2 sentences, found 5",
+        "quality_passed": False,
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="document",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "failed"
+    assert (
+        response.error_message == "TASK_MISMATCH: expected exactly 2 sentences, found 5"
+    )
+    assert response.quality_gates_failed == [
+        "TASK_MISMATCH: expected exactly 2 sentences, found 5"
+    ]
 
 
 @pytest.mark.unit

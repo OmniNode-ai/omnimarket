@@ -19,6 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits import (
     ModelBudgetLimits,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
+    EnumQualityContractMode,
+    validate_acceptance_criteria,
+)
 
 
 class ModelDelegationRequest(BaseModel):
@@ -39,6 +43,9 @@ class ModelDelegationRequest(BaseModel):
         compliance_budget: Token / cost / time ceilings the compliance loop
             enforces between attempts. Required when ``output_schema_key`` is
             set, ignored otherwise.
+        quality_contract_mode: Whether request-level acceptance criteria extend
+            or replace task-class DoD.
+        acceptance_criteria: Request-level quality checks to enforce at the gate.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
@@ -88,6 +95,16 @@ class ModelDelegationRequest(BaseModel):
             "``output_schema_key`` is set."
         ),
     )
+    quality_contract_mode: EnumQualityContractMode = Field(
+        default="extend_task_class",
+        description=(
+            "How request-level acceptance criteria interact with task-class DoD."
+        ),
+    )
+    acceptance_criteria: tuple[str, ...] = Field(
+        default=(),
+        description="Request-level quality checks enforced by the quality gate.",
+    )
 
     @model_validator(mode="after")
     def _validate_compliance_loop_config(self) -> Self:
@@ -104,6 +121,7 @@ class ModelDelegationRequest(BaseModel):
                 "token / cost / time ceilings)"
             )
             raise ValueError(msg)
+        validate_acceptance_criteria(self.acceptance_criteria)
         return self
 
 

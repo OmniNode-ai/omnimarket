@@ -14,6 +14,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
+    EnumQualityContractMode,
+)
+
 
 class ModelQualityGateInput(BaseModel):
     """Gate input: LLM response content and expected quality markers.
@@ -30,6 +34,9 @@ class ModelQualityGateInput(BaseModel):
         dod_heuristic: Heuristic DoD check names from the task-class contract
             (OMN-10614). These checks escalate per contract policy on failure.
             Supported: "no_refusal", "min_length_chars_N" (N is the threshold).
+        quality_contract_mode: Whether request-level acceptance criteria extend
+            or replace the task-class DoD.
+        acceptance_criteria: Request-level quality checks to enforce.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
@@ -67,6 +74,16 @@ class ModelQualityGateInput(BaseModel):
             "Heuristic DoD check names from the task-class contract (OMN-10614). "
             "These checks escalate per contract policy on failure."
         ),
+    )
+    quality_contract_mode: EnumQualityContractMode = Field(
+        default="extend_task_class",
+        description=(
+            "How request-level acceptance criteria interact with task-class DoD."
+        ),
+    )
+    acceptance_criteria: tuple[str, ...] = Field(
+        default=(),
+        description="Request-level quality checks enforced by the quality gate.",
     )
 
 

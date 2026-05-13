@@ -42,6 +42,8 @@ class ProtocolDelegationDispatchPort(Protocol):
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]: ...
 
 
@@ -71,6 +73,14 @@ def _as_float(value: object, default: float = 0.0) -> float:
     return default
 
 
+def _as_str_list(value: object) -> list[str]:
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value]
+    if isinstance(value, str) and value:
+        return [value]
+    return []
+
+
 def _response_from_result(
     request: ModelDelegateSkillRequest, result: dict[str, object]
 ) -> ModelDelegateSkillResponse:
@@ -81,9 +91,14 @@ def _response_from_result(
         if is_known_status
         else "failed"
     )
-    error_message = str(result.get("error_message", ""))
+    error_message = str(
+        result.get("error_message") or result.get("failure_reason") or ""
+    )
     if not is_known_status:
         error_message = f"runtime returned unknown terminal status {raw_status!r}"
+    quality_failures = _as_str_list(
+        result.get("quality_gates_failed", result.get("failure_reason", ""))
+    )
     return ModelDelegateSkillResponse(
         status=status_value,
         correlation_id=request.correlation_id,
@@ -94,6 +109,7 @@ def _response_from_result(
         quality_gate_passed=bool(
             result.get("quality_gate_passed", result.get("quality_passed", False))
         ),
+        quality_gates_failed=quality_failures,
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
             input_tokens=_as_int(
@@ -141,6 +157,8 @@ class HandlerDelegateSkill:
                 source_file_path=request.cwd,
                 source_session_id=request.metadata.get("session_id"),
                 wait=request.wait,
+                quality_contract_mode=request.quality_contract_mode,
+                acceptance_criteria=request.acceptance_criteria,
             )
         except Exception as exc:
             return ModelDelegateSkillResponse(

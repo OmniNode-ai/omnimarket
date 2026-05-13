@@ -4,6 +4,9 @@
 # Copyright (c) 2026 OmniNode Team
 """Models for the delegation quality gate reducer node."""
 
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
+    EnumQualityContractMode,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
@@ -13,6 +16,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 
 __all__: list[str] = [
+    "EnumQualityContractMode",
     "EnumQualityGateCategory",
     "ModelQualityGateInput",
     "ModelQualityGateResult",

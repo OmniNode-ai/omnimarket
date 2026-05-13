@@ -29,6 +29,9 @@ from __future__ import annotations
 import ast
 import re
 
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
+    MAX_WORDS_PER_SENTENCE_RE,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
@@ -69,6 +72,7 @@ _MIN_LENGTH_CHECK_RE = re.compile(r"^min_length_chars_(\d+)$")
 _LINE_CITATION_RE = re.compile(
     r"(?i)(?:\bline\s+\d+\b|\blines\s+\d+(?:-\d+)?\b|\bL\d+\b|:[1-9]\d*)"
 )
+_SENTENCE_RE = re.compile(r"[^.!?]+[.!?]")
 
 
 def _strip_markdown_code_fence(content: str) -> str:
@@ -147,6 +151,35 @@ def _check_response_non_empty(content: str) -> str | None:
     return None
 
 
+def _sentences(content: str) -> tuple[str, ...]:
+    """Return punctuation-delimited sentences from plain response content."""
+    return tuple(match.group(0).strip() for match in _SENTENCE_RE.finditer(content))
+
+
+def _check_exactly_two_sentences(content: str) -> str | None:
+    """Deterministic: response must contain exactly two sentences."""
+    count = len(_sentences(content))
+    if count != 2:
+        return f"TASK_MISMATCH: expected exactly 2 sentences, found {count}"
+    return None
+
+
+def _check_max_words_per_sentence(content: str, threshold: int) -> str | None:
+    """Deterministic: each sentence must stay below the configured word limit."""
+    sentences = _sentences(content)
+    if not sentences:
+        return "TASK_MISMATCH: no sentences found"
+    long_sentences = [
+        str(index)
+        for index, sentence in enumerate(sentences, start=1)
+        if len(sentence.split()) > threshold
+    ]
+    if long_sentences:
+        joined = ", ".join(long_sentences)
+        return f"TASK_MISMATCH: sentences exceed {threshold} words: {joined}"
+    return None
+
+
 def _check_contains_any(
     content: str,
     *,
@@ -194,10 +227,19 @@ def _run_contract_checks(
         elif check == "response_non_empty" or check == "task_completed":
             if reason := _check_response_non_empty(content):
                 det_failures.append(reason)
+        elif check == "exactly_two_sentences":
+            if reason := _check_exactly_two_sentences(content):
+                det_failures.append(reason)
         else:
-            det_failures.append(
-                f"MALFORMED: unsupported deterministic DoD check '{check}'"
-            )
+            m = MAX_WORDS_PER_SENTENCE_RE.match(check)
+            if m:
+                threshold = int(m.group(1))
+                if reason := _check_max_words_per_sentence(content, threshold):
+                    det_failures.append(reason)
+            else:
+                det_failures.append(
+                    f"MALFORMED: unsupported deterministic DoD check '{check}'"
+                )
 
     for check in dod_heuristic:
         if check == "no_refusal":
@@ -388,14 +430,23 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
     """
-    has_contract_dod = bool(gate_input.dod_deterministic or gate_input.dod_heuristic)
+    if gate_input.quality_contract_mode == "replace_task_class":
+        dod_deterministic = gate_input.acceptance_criteria
+        dod_heuristic: tuple[str, ...] = ()
+    else:
+        dod_deterministic = (
+            gate_input.dod_deterministic + gate_input.acceptance_criteria
+        )
+        dod_heuristic = gate_input.dod_heuristic
+
+    has_contract_dod = bool(dod_deterministic or dod_heuristic)
 
     if not has_contract_dod:
         return _run_legacy_checks(gate_input)
 
     content = gate_input.llm_response_content
     det_failures, heuristic_failures = _run_contract_checks(
-        content, gate_input.dod_deterministic, gate_input.dod_heuristic
+        content, dod_deterministic, dod_heuristic
     )
 
     all_failures = det_failures + heuristic_failures

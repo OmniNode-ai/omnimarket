@@ -186,6 +186,8 @@ def _evaluate_compliance(
                     llm_response_content=response.content,
                     dod_deterministic=workflow.routing_decision.dod_deterministic,
                     dod_heuristic=workflow.routing_decision.dod_heuristic,
+                    quality_contract_mode=workflow.request.quality_contract_mode,
+                    acceptance_criteria=workflow.request.acceptance_criteria,
                 )
             )
         ]
@@ -380,6 +382,8 @@ class HandlerDelegationWorkflow:
                         llm_response_content=response.content,
                         dod_deterministic=workflow.routing_decision.dod_deterministic,
                         dod_heuristic=workflow.routing_decision.dod_heuristic,
+                        quality_contract_mode=workflow.request.quality_contract_mode,
+                        acceptance_criteria=workflow.request.acceptance_criteria,
                     )
                 )
             ]

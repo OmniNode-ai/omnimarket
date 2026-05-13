@@ -14,7 +14,12 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
+    EnumQualityContractMode,
+    validate_acceptance_criteria,
+)
 
 
 class ModelDelegateSkillRequest(BaseModel):
@@ -39,3 +44,29 @@ class ModelDelegateSkillRequest(BaseModel):
     max_tokens: int = Field(default=2048, gt=0, le=16384)
     correlation_id: UUID = Field(default_factory=uuid4)
     metadata: dict[str, str] = Field(default_factory=dict)
+    quality_contract_mode: EnumQualityContractMode = Field(
+        default="extend_task_class",
+        description=(
+            "How request-level acceptance criteria interact with task-class DoD."
+        ),
+    )
+    acceptance_criteria: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Request-level quality criteria validated before dispatch and enforced "
+            "by the delegation quality gate."
+        ),
+    )
+
+    @field_validator("acceptance_criteria")
+    @classmethod
+    def _validate_supported_acceptance_criteria(
+        cls, criteria: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        return validate_acceptance_criteria(criteria)
+
+
+__all__: list[str] = [
+    "EnumQualityContractMode",
+    "ModelDelegateSkillRequest",
+]

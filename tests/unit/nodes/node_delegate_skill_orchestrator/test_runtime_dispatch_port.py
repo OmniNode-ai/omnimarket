@@ -102,6 +102,8 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             source_file_path="tests/fixtures/example.py",
             source_session_id="session-1",
             wait=True,
+            quality_contract_mode="replace_task_class",
+            acceptance_criteria=("exactly_two_sentences",),
         )
     finally:
         await bus.close()
@@ -119,6 +121,8 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     assert command.payload["source_file_path"] == "tests/fixtures/example.py"
     assert command.payload["source_session_id"] == "session-1"
     assert command.payload["max_tokens"] == 512
+    assert command.payload["quality_contract_mode"] == "replace_task_class"
+    assert command.payload["acceptance_criteria"] == ["exactly_two_sentences"]
     assert command.payload["emitted_at"]
 
 
@@ -169,6 +173,8 @@ async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
             source_file_path="tests/fixtures/example.py",
             source_session_id="session-1",
             wait=True,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
         )
     finally:
         await bus.close()

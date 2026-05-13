@@ -70,6 +70,8 @@ class RuntimeDelegationDispatchPort:
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]:
         dispatch_correlation_id = uuid4()
         request = ModelDelegationRequest(
@@ -80,6 +82,8 @@ class RuntimeDelegationDispatchPort:
             correlation_id=dispatch_correlation_id,
             max_tokens=max_tokens,
             emitted_at=datetime.now(UTC),
+            quality_contract_mode=cast("Any", quality_contract_mode),
+            acceptance_criteria=acceptance_criteria,
         )
         command = ModelDispatchBusCommand(
             command_name=_INTERNAL_COMMAND_NAME,

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-10865 reason="delegation routing fixture must include exact local HF model ID"
 """Contract-driven quality checks for delegation output."""
 
 from __future__ import annotations
@@ -137,6 +138,57 @@ def test_workflow_forwards_routing_dod_to_quality_gate_input() -> None:
 
 
 @pytest.mark.unit
+def test_workflow_forwards_request_acceptance_criteria() -> None:
+    handler = HandlerDelegationWorkflow()
+    correlation_id = uuid4()
+
+    handler.handle_delegation_request(
+        ModelDelegationRequest(
+            prompt="Return exactly two short sentences.",
+            task_type="document",
+            correlation_id=correlation_id,
+            emitted_at=datetime.now(UTC),
+            quality_contract_mode="replace_task_class",
+            acceptance_criteria=(
+                "exactly_two_sentences",
+                "max_words_per_sentence_20",
+            ),
+        )
+    )
+    handler.handle_routing_decision(
+        ModelRoutingDecision(
+            correlation_id=correlation_id,
+            task_type="document",
+            selected_model="deepseek-r1-14b",
+            selected_backend_id=_backend_id("deepseek-r1-14b"),
+            endpoint_url="http://test-llm:8000",
+            cost_tier="low",
+            max_context_tokens=24576,
+            system_prompt="Write documentation.",
+            rationale="test",
+            dod_deterministic=("docstring_present",),
+            dod_heuristic=("no_refusal",),
+        )
+    )
+
+    intents = handler.handle_inference_response(
+        ModelInferenceResponseData(
+            correlation_id=correlation_id,
+            content="One short sentence. Another short sentence.",
+            model_used="deepseek-r1-14b",
+        )
+    )
+
+    assert isinstance(intents[0], ModelQualityGateIntent)
+    gate_input = intents[0].payload
+    assert gate_input.quality_contract_mode == "replace_task_class"
+    assert gate_input.acceptance_criteria == (
+        "exactly_two_sentences",
+        "max_words_per_sentence_20",
+    )
+
+
+@pytest.mark.unit
 def test_document_quality_gate_rejects_prompt_mismatched_code_output() -> None:
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
@@ -174,3 +226,43 @@ def test_test_quality_gate_rejects_missing_pytest_unit_marker() -> None:
     assert result.passed is False
     assert result.fail_category == "fail_deterministic"
     assert "TASK_MISMATCH: missing @pytest.mark.unit" in result.failure_reasons
+
+
+@pytest.mark.unit
+def test_request_quality_contract_can_replace_task_class_dod() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="document",
+        llm_response_content="First sentence is short. Second sentence is short.",
+        dod_deterministic=("docstring_present",),
+        dod_heuristic=("no_refusal",),
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=("exactly_two_sentences", "max_words_per_sentence_20"),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is True
+
+
+@pytest.mark.unit
+def test_request_quality_contract_rejects_output_shape_mismatch() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="document",
+        llm_response_content=(
+            "```python\n"
+            "def validate_payload(payload):\n"
+            '    """Validate the payload. Args: payload. Returns: bool."""\n'
+            "    return True\n"
+            "```"
+        ),
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=("exactly_two_sentences", "max_words_per_sentence_20"),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
+    assert any("expected exactly 2 sentences" in r for r in result.failure_reasons)
