@@ -1,0 +1,46 @@
+---
+name: pr_semantic_grader_llm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  LLM-based grader that evaluates whether a PR diff semantically satisfies a
+  ticket's acceptance criteria. Scores four dimensions: criteria_coverage,
+  contract_alignment, anti_pattern_present, and overall_confidence.
+  Phase 1: advisory-only (anti_pattern_present >= 0.7 sets advisory=True but
+  does not block merge). Phase 2 adds hard-fail after calibration.
+
+handler:
+  module: omnimarket.nodes.node_pr_semantic_grader_llm_effect.handlers.handler_pr_semantic_grader
+  class: HandlerPrSemanticGrader
+  input_model: omnimarket.nodes.node_pr_semantic_grader_llm_effect.models.model_semantic_grading_request.ModelSemanticGradingRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-semantic-grading-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-semantic-grading-completed.v1
+
+config:
+  grader_model_key:
+    description: "Model key to use for grading (must be in AdapterInferenceBridge config)."
+    default: "opus"
+  grader_timeout_seconds:
+    description: "Per-call timeout in seconds for the grading LLM call."
+    default: 120.0
+  prompt_template_id:
+    description: "Identifier for the grading prompt template."
+    default: "pr_semantic_grading_v1"
+  prompt_template_version:
+    description: "Version of the grading prompt template."
+    default: "1.0.0"
+
+metadata:
+  transport_type: kafka
