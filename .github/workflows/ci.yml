@@ -49,6 +49,10 @@ jobs:
       # topics. This lint was added in OMN-7921 (branched from PR #76 / OMN-7918).
       - name: Topic-literal guardrail
         run: python scripts/lint_no_hardcoded_topics.py
+      # OMN-10909: stricter topic-literal gate — allowlist is topics.py, test_* files,
+      # and inline `# onex-topic-allow` annotations (delegation thin-shim plan, Task 8).
+      - name: Topic-literal guardrail (annotation allowlist)
+        run: uv run python scripts/ci/check_no_hardcoded_topics.py
       - name: Reject node-level topics.py files
         run: |
           FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)
