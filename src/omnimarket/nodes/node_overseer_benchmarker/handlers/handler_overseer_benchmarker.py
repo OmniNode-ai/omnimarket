@@ -111,8 +111,17 @@ class NodeOverseerBenchmarker:
     and never touching any active overseer run state.
     """
 
-    def __init__(self, client: ProtocolLlmClient | None = None) -> None:
-        self._harness = NodeLlmEvalHarness(client=client or FakeLlmClient())
+    def __init__(
+        self,
+        harness: NodeLlmEvalHarness | None = None,
+        client: ProtocolLlmClient | None = None,
+    ) -> None:
+        if harness is not None:
+            self._harness = harness
+        else:
+            self._harness = NodeLlmEvalHarness(
+                client=client if client is not None else FakeLlmClient()
+            )
 
     def handle(self, request: BenchmarkRequest) -> BenchmarkResult:
         if request.dry_run:

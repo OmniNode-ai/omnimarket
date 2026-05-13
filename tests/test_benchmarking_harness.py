@@ -58,17 +58,23 @@ class _MinimalCorpusHarness(NodeLlmEvalHarness):
         return super().handle(patched)
 
 
+def _make_minimal_benchmarker(client: object | None = None) -> NodeOverseerBenchmarker:
+    """Return a benchmarker with a one-task harness injected via DI."""
+    harness = _MinimalCorpusHarness(
+        client=client or FakeLlmClient(responses={"classify": "YES"})
+    )
+    return NodeOverseerBenchmarker(harness=harness)
+
+
+# Keep subclass for tests that need to call handle() directly on a typed instance.
 class _MinimalCorpusBenchmarker(NodeOverseerBenchmarker):
-    """Benchmarker that uses _MinimalCorpusHarness so no default corpus is hit."""
+    """Benchmarker that uses _MinimalCorpusHarness injected via DI."""
 
     def __init__(self, client: object | None = None) -> None:
-        from omnimarket.nodes.node_llm_eval_harness.handlers.handler_llm_eval_harness import (
-            FakeLlmClient,
-        )
-
-        self._harness = _MinimalCorpusHarness(
+        harness = _MinimalCorpusHarness(
             client=client or FakeLlmClient(responses={"classify": "YES"})
         )
+        super().__init__(harness=harness)
 
 
 @pytest.mark.unit
@@ -182,6 +188,46 @@ class TestBenchmarkUsesExistingEvalRunModel:
         benchmarker = _MinimalCorpusBenchmarker(client=client)
         result = benchmarker.handle(BenchmarkRequest(run_id="r1", models=["m1"]))
         assert isinstance(result, BenchmarkResult)
+
+    def test_harness_injected_directly_via_di(self, state_root: Path) -> None:
+        """NodeLlmEvalHarness can be injected directly; client param is ignored."""
+        harness = _MinimalCorpusHarness(
+            client=FakeLlmClient(responses={"classify": "YES"})
+        )
+        benchmarker = NodeOverseerBenchmarker(harness=harness)
+        result = benchmarker.handle(BenchmarkRequest(run_id="di-001", models=["m1"]))
+        assert isinstance(result, BenchmarkResult)
+        assert result.rows_appended == 1
+        assert result.run_id == "di-001"
+
+    def test_harness_param_takes_precedence_over_client(self, state_root: Path) -> None:
+        """When harness is injected, the client param is not used to build a new harness."""
+        sentinel_calls: list[str] = []
+
+        class _TrackingHarness(NodeLlmEvalHarness):
+            def handle(self, request):  # type: ignore[override]
+                sentinel_calls.append("harness_called")
+                patched = request.model_copy(
+                    update={
+                        "corpus": (
+                            ModelLlmEvalTask(
+                                task_id="t1",
+                                task_type=EnumLlmEvalTaskType.CLASSIFICATION,
+                                prompt="x",
+                                expected_substrings=("YES",),
+                            ),
+                        )
+                    }
+                )
+                return super().handle(patched)
+
+        injected = _TrackingHarness(client=FakeLlmClient(responses={"x": "YES"}))
+        benchmarker = NodeOverseerBenchmarker(
+            harness=injected,
+            client=FakeLlmClient(),  # should be ignored
+        )
+        benchmarker.handle(BenchmarkRequest(run_id="r1", models=["m1"]))
+        assert sentinel_calls == ["harness_called"]
 
 
 @pytest.mark.unit
