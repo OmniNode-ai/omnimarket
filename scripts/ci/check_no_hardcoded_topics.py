@@ -57,7 +57,7 @@ def _is_dynamic_fstring(line: str) -> bool:
 
 def _is_prefix_match_usage(line: str) -> bool:
     """A literal passed to ``str.startswith(...)`` / ``str.endswith(...)`` is a
-    prefix probe, not a topic name — e.g. ``topic.startswith("onex.evt.omniclaude.")``."""
+    prefix probe, not a topic name (e.g. a domain-prefix membership check)."""
     return ".startswith(" in line or ".endswith(" in line
 
 
