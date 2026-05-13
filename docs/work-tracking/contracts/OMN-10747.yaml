@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10747
+title: "Inject NodeLlmEvalHarness via DI in NodeOverseerBenchmarker"
+summary: >
+  NodeOverseerBenchmarker.__init__ always constructed NodeLlmEvalHarness internally
+  with no injectable path. Adds a harness: NodeLlmEvalHarness | None = None constructor
+  parameter so any harness implementation can be injected; when harness is None the
+  previous default behavior is preserved (construct from client or FakeLlmClient). The
+  _MinimalCorpusBenchmarker test helper now uses the DI path. Pure constructor-signature
+  change inside an offline benchmarking node — no new topology, no migration, no Kafka
+  topic changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "Full omnimarket unit test suite passes, including the two new DI tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m unit -q"
+  - id: "dod-lint"
+    description: "Ruff lint and format clean; pre-commit hooks pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/"
+  - id: "dod-deploy"
+    description: >
+      Deploy verification: change is a constructor-signature addition (new optional
+      harness param, default-None preserves prior behavior) inside the offline
+      NodeOverseerBenchmarker node. No handler routing change, no migration, no new
+      runtime service, no Kafka topic change. The running runtime on .201 continues to
+      operate identically; no restart required. Smoke check: import the handler module
+      in the runtime container.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.nodes.node_overseer_benchmarker.handlers.handler_overseer_benchmarker import NodeOverseerBenchmarker; NodeOverseerBenchmarker(); print(\"import + construct ok\")'"
