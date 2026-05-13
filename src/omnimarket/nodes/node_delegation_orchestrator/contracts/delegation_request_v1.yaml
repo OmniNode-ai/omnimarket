@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Ticket: OMN-7360
+#
+# Wire schema contract for delegation request command
+# Prior incident: silent data drops when field names mismatched between producer/consumer
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: "SCHEMA"
+topic: "onex.cmd.omnibase-infra.delegation-request.v1" # onex-topic-sot
+schema_version: "1.0.0"
+ticket: "OMN-7360"
+description: >
+  Delegation request command emitted by omniclaude to delegate tasks (test, document, research) to a local LLM via the ONEX runtime event bus. Prior incident: silent drops caused by field name mismatches between producer and consumer.
+
+producer:
+  repo: "omniclaude"
+  file: "plugins/onex/hooks/lib/delegation_wrapper.py"
+  function: "emit_delegation_request"
+consumer:
+  repo: "omnimarket"
+  file: "src/omnimarket/nodes/node_delegation_orchestrator/dispatchers/dispatcher_delegation_request.py"
+  model: "ModelDelegationRequest"
+required_fields:
+  - name: "prompt"
+    type: "string"
+    description: "The user prompt to delegate to the local LLM."
+  - name: "task_type"
+    type: "string"
+    description: "Classification of the delegation task (test, document, research)."
+    constraints:
+      enum: ["test", "document", "research"]
+  - name: "correlation_id"
+    type: "uuid"
+    description: "Unique identifier for tracking through the pipeline."
+  - name: "emitted_at"
+    type: "datetime"
+    description: "Timestamp when the request was created."
+optional_fields:
+  - name: "source_session_id"
+    type: "string"
+    nullable: true
+    description: "Session that originated the delegation request."
+  - name: "source_file_path"
+    type: "string"
+    nullable: true
+    description: "File context for the delegation, if any."
+  - name: "max_tokens"
+    type: "integer"
+    nullable: false
+    description: "Maximum tokens for the LLM response (default: 2048)."

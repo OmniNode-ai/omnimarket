@@ -1,0 +1,165 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 OmniNode Team
+#
+# task_class_contracts.v1.yaml — Task-class routing contracts.
+#
+# Loaded by node_delegation_routing_reducer to augment tier routing with
+# per-task-class pricing ceilings, cloud routing policies, and escalation order.
+#
+# cloud_routing_policy values:
+#   opt_in   — cloud routing requires explicit caller opt-in
+#   allowed  — cloud routing is permitted when local tiers are unavailable
+#   blocked  — cloud routing is never permitted for this task class
+#
+# pricing_ceiling_per_1k_tokens: maximum acceptable cost per 1000 tokens (USD).
+#   local tier ≈ $0.000, cheap_cloud ≈ $0.002, claude ≈ $0.015
+#
+# escalation_policy.tier_order: override the default tier iteration order
+#   (local → cheap_cloud → claude). Only tiers named here are tried first;
+#   remaining tiers from routing_tiers.yaml are appended in config order.
+#
+# Related Tickets:
+#   - OMN-10615: Wire routing reducer to read task-class contracts
+version: "1.0"
+task_classes:
+  code_generation:
+    required_capabilities:
+      - code_completion
+      - context_window_large
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 30000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - compiles_without_errors
+        - passes_existing_tests
+      heuristic:
+        - follows_codebase_conventions
+        - no_obvious_regressions
+    escalation_policy:
+      max_escalations: 2
+      tier_order:
+        - local
+        - cheap_cloud
+        - claude
+  documentation:
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 20000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - docstring_present
+      heuristic:
+        - follows_google_style
+        - covers_args_returns_raises
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
+  research:
+    required_capabilities:
+      - context_window_large
+      - reasoning
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - cites_specific_lines
+        - explains_tradeoffs
+    escalation_policy:
+      max_escalations: 2
+      tier_order:
+        - local
+        - cheap_cloud
+        - claude
+  test:
+    required_capabilities:
+      - code_completion
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 30000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - compiles_without_errors
+        - uses_pytest_mark_unit
+      heuristic:
+        - covers_edge_cases
+        - covers_error_paths
+    escalation_policy:
+      max_escalations: 2
+      tier_order:
+        - local
+        - cheap_cloud
+        - claude
+  reasoning:
+    required_capabilities:
+      - reasoning
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - step_by_step_explanation
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
+  summarization:
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 10000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - concise
+        - accurate
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
+  agent_delegation:
+    required_capabilities:
+      - agent_orchestration
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: opt_in
+    definition_of_done:
+      deterministic:
+        - task_completed
+      heuristic:
+        - sub_tasks_verified
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - cli_agents
+        - claude
+  escalation:
+    required_capabilities:
+      - reasoning
+      - context_window_large
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - methodical_analysis
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - claude

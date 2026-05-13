@@ -1,0 +1,181 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 OmniNode Team
+#
+# ONEX Node Contract
+# Node: NodeDelegationOrchestrator
+#
+# Coordinates the delegation workflow: receive request -> invoke
+# routing reducer -> dispatch to effect lane -> react to terminal
+# lifecycle or legacy inference/gate path -> emit completion or failure.
+#
+# FSM States: RECEIVED -> ROUTED -> EXECUTING -> COMPLETED | FAILED
+#
+# Related Tickets:
+#   - OMN-7040: Node-based delegation pipeline
+name: "node_delegation_orchestrator"
+contract_name: "node_delegation_orchestrator"
+node_name: "node_delegation_orchestrator"
+contract_version:
+  major: 0
+  minor: 3
+  patch: 0
+node_version:
+  major: 0
+  minor: 3
+  patch: 0
+node_type: "ORCHESTRATOR_GENERIC"
+terminal_event: "onex.evt.omnibase-infra.delegation-completed.v1"
+description: >
+  Orchestrator node that coordinates delegation through a correlation_id-keyed FSM: receive delegation request, invoke routing reducer, dispatch typed invocation commands to the selected effect lane, react to remote agent lifecycle events or the legacy inference and quality-gate path, then emit delegation-completed or delegation-failed. As of 0.2.0 (OMN-10792), exposes HandlerComplianceLoop as an in-process helper. As of 0.3.0 (OMN-10794), HandlerDelegationWorkflow invokes the loop per inference attempt when ModelDelegationRequest sets ``output_schema_key`` + ``compliance_budget``: validation failure with budget CONTINUE emits a fresh repair-prompt ModelInferenceIntent and stays in ROUTED (self-loop); compliant or budget ABORT forwards to the quality gate. tokens_to_compliance + compliance_attempts are accumulated across attempts and forwarded onto the terminal ModelDelegationResult and ModelTaskDelegatedEvent.
+
+input_model:
+  name: "ModelDelegationRequest"
+  module: "omnimarket.nodes.node_delegation_orchestrator.models"
+  description: "Delegation command with prompt, task_type, and context."
+output_model:
+  name: "ModelDelegationResult"
+  module: "omnimarket.nodes.node_delegation_orchestrator.models"
+  description: "Delegation outcome with content, quality assessment, and metrics."
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnibase-infra.delegation-request.v1"
+    - "onex.cmd.omnibase-infra.invocation.v1"
+    - "onex.evt.omnibase-infra.routing-decision.v1"
+    - "onex.evt.omnibase-infra.agent-task-lifecycle.v1"
+    - "onex.evt.omnibase-infra.quality-gate-result.v1"
+  publish_topics:
+    - "onex.evt.omnibase-infra.delegation-completed.v1"
+    - "onex.evt.omnibase-infra.delegation-failed.v1"
+    - "onex.cmd.omnibase-infra.delegation-routing-request.v1"
+    - "onex.cmd.omnibase-infra.remote-agent-invoke.v1"
+    - "onex.cmd.omnibase-infra.delegation-inference-request.v1"
+    - "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1"
+    - "onex.evt.omnibase-infra.inference-response.v1"
+    - "onex.evt.omniclaude.task-delegated.v1"
+    - "onex.cmd.omnibase-infra.baseline-comparison-request.v1"
+published_events:
+  - event_type: "RoutingIntent"
+    topic: "onex.cmd.omnibase-infra.delegation-routing-request.v1"
+    description: "Intent emitted by orchestrator to invoke the routing reducer for a delegation request."
+  - event_type: "InvocationCommand"
+    topic: "onex.cmd.omnibase-infra.remote-agent-invoke.v1"
+    description: "Typed invocation command dispatched by the orchestrator to the selected effect topic."
+  - event_type: "InferenceIntent"
+    topic: "onex.cmd.omnibase-infra.delegation-inference-request.v1"
+    description: "Intent emitted by orchestrator to invoke LLM inference via the inference effect."
+  - event_type: "QualityGateIntent"
+    topic: "onex.cmd.omnibase-infra.delegation-quality-gate-request.v1"
+    description: "Intent emitted by orchestrator to invoke the quality gate reducer."
+  - event_type: "DelegationEvent"
+    topic: "onex.evt.omnibase-infra.delegation-completed.v1"
+    description: "Delegation pipeline terminal event (completed or failed, topic set per-instance)."
+  - event_type: "TaskDelegatedEvent"
+    topic: "onex.evt.omniclaude.task-delegated.v1"
+    description: "Backward-compatible task-delegated event for omnidash projection."
+  - event_type: "BaselineIntent"
+    topic: "onex.cmd.omnibase-infra.baseline-comparison-request.v1"
+    description: "Intent to trigger baseline cost comparison for savings tracking."
+fsm:
+  states:
+    - RECEIVED
+    - ROUTED
+    - EXECUTING
+    - INFERENCE_COMPLETED
+    - GATE_EVALUATED
+    - COMPLETED
+    - FAILED
+  initial_state: RECEIVED
+  terminal_states:
+    - COMPLETED
+    - FAILED
+  transitions:
+    - from: RECEIVED
+      to: ROUTED
+      trigger: "invocation command accepted"
+    - from: ROUTED
+      to: ROUTED
+      trigger: "schema-compliance loop emits repair re-prompt (OMN-10794)"
+    - from: ROUTED
+      to: EXECUTING
+      trigger: "agent lifecycle progress received"
+    - from: ROUTED
+      to: INFERENCE_COMPLETED
+      trigger: "inference response received (loop accepted or budget aborted)"
+    - from: EXECUTING
+      to: COMPLETED
+      trigger: "agent lifecycle completed"
+    - from: EXECUTING
+      to: FAILED
+      trigger: "agent lifecycle failed"
+    - from: INFERENCE_COMPLETED
+      to: GATE_EVALUATED
+      trigger: "quality gate result received"
+    - from: GATE_EVALUATED
+      to: COMPLETED
+      trigger: "quality gate passed"
+    - from: GATE_EVALUATED
+      to: FAILED
+      trigger: "quality gate failed"
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "delegation.orchestrate"
+      handler_class: "HandlerDelegationWorkflow"
+      handler_module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      description: "Coordinate delegation through routing, inference, and quality gate"
+      input_model:
+        name: "ModelDelegationRequest"
+        module: "omnimarket.nodes.node_delegation_orchestrator.models"
+        description: "Delegation request to orchestrate."
+    - operation: "delegation.evaluate_compliance"
+      handler_class: "HandlerComplianceLoop"
+      handler_module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop"
+      description: "Per-attempt schema-compliance evaluator (OMN-10792). Composes omnimarket schema-registry, schema-repair, and budget-policy nodes; returns compliant=True, repair_prompt+CONTINUE, or ABORT. Invoked in-process by HandlerDelegationWorkflow per inference attempt — not routed via the bus."
+      input_model:
+        name: "ModelComplianceLoopResult"
+        module: "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result"
+        description: "Per-attempt directive emitted by the compliance loop."
+error_handling:
+  retry_policy:
+    max_retries: 1
+    initial_delay_ms: 1000
+    max_delay_ms: 5000
+    exponential_base: 2
+    retry_on:
+      - "InferenceTimeoutError"
+  error_types:
+    - name: "OrchestrationError"
+      description: "Unexpected error during delegation orchestration"
+      recoverable: false
+    - name: "InferenceTimeoutError"
+      description: "LLM inference did not respond within timeout"
+      recoverable: true
+    - name: "InvalidStateTransitionError"
+      description: "Attempted invalid FSM state transition"
+      recoverable: false
+health_check:
+  enabled: true
+  endpoint: "/health"
+  interval_seconds: 30
+  checks:
+    - name: "orchestrator_handler_loaded"
+      type: "handler"
+      critical: true
+metadata:
+  description: "Coordinates the full delegation workflow: routing, LLM inference, quality gate, and completion."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-03-30"
+  tags:
+    - orchestrator
+    - delegation
+    - fsm
+    - workflow
+    - llm
+  related_tickets:
+    - "OMN-7040"
