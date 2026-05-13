@@ -11,7 +11,7 @@ internal.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
@@ -21,6 +21,8 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
+
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
 
 class ProtocolDelegationDispatchPort(Protocol):
@@ -37,6 +39,59 @@ class ProtocolDelegationDispatchPort(Protocol):
         source_session_id: str | None,
         wait: bool,
     ) -> dict[str, object]: ...
+
+
+def _as_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(float(value))
+        except ValueError:
+            return default
+    return default
+
+
+def _as_float(value: object, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _response_from_result(
+    request: ModelDelegateSkillRequest, result: dict[str, object]
+) -> ModelDelegateSkillResponse:
+    raw_status = str(result.get("status", "completed"))
+    status_value: Literal["completed", "failed", "timeout"] = (
+        raw_status  # type: ignore[assignment]
+        if raw_status in _TERMINAL_STATUSES
+        else "completed"
+    )
+    return ModelDelegateSkillResponse(
+        status=status_value,
+        correlation_id=request.correlation_id,
+        task_type=request.task_type,
+        provider=str(result.get("delegated_to", "")),
+        model_name=str(result.get("model_name", "")),
+        response=str(result.get("content", "")),
+        quality_gate_passed=bool(result.get("quality_gate_passed", False)),
+        metrics=ModelDelegateSkillResponseMetrics(
+            input_tokens=_as_int(result.get("input_tokens")),
+            output_tokens=_as_int(result.get("output_tokens")),
+            cost_usd=_as_float(result.get("cost_usd")),
+            cost_savings_usd=_as_float(result.get("cost_savings_usd")),
+            latency_ms=_as_int(result.get("delegation_latency_ms")),
+        ),
+    )
 
 
 class HandlerDelegateSkill:
@@ -63,7 +118,7 @@ class HandlerDelegateSkill:
                 source_session_id=request.metadata.get("session_id"),
                 wait=request.wait,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — surface dispatch failure as typed result
             return ModelDelegateSkillResponse(
                 status="failed",
                 correlation_id=request.correlation_id,
@@ -71,23 +126,4 @@ class HandlerDelegateSkill:
                 error_message=str(exc),
             )
 
-        status_value = str(result.get("status", "completed"))
-        if status_value not in {"completed", "failed", "timeout"}:
-            status_value = "completed"
-
-        return ModelDelegateSkillResponse(
-            status=status_value,  # type: ignore[arg-type]
-            correlation_id=request.correlation_id,
-            task_type=request.task_type,
-            provider=str(result.get("delegated_to", "")),
-            model_name=str(result.get("model_name", "")),
-            response=str(result.get("content", "")),
-            quality_gate_passed=bool(result.get("quality_gate_passed", False)),
-            metrics=ModelDelegateSkillResponseMetrics(
-                input_tokens=int(result.get("input_tokens", 0) or 0),
-                output_tokens=int(result.get("output_tokens", 0) or 0),
-                cost_usd=float(result.get("cost_usd", 0.0) or 0.0),
-                cost_savings_usd=float(result.get("cost_savings_usd", 0.0) or 0.0),
-                latency_ms=int(result.get("delegation_latency_ms", 0) or 0),
-            ),
-        )
+        return _response_from_result(request, result)
