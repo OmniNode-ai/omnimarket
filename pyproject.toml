@@ -61,6 +61,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
+node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
 node_ab_compare_reducer = "omnimarket.nodes.node_ab_compare_reducer"
 node_canary_score_reducer = "omnimarket.nodes.node_canary_score_reducer"
 node_ab_inference_effect = "omnimarket.nodes.node_ab_inference_effect"
@@ -235,6 +236,7 @@ onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cl
 ab-compare = "omnimarket.cli.cli_ab_compare:main"
 ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
 delegation-cost-demo = "omnimarket.cli.cli_delegation_cost_demo:main"
+onex-delegate = "omnimarket.adapters.claude_code.delegate:main"
 market-skills-demo = "omnimarket.cli.cli_market_skills_demo:main"
 omnimarket-validate-config = "omnimarket.cli.validate_config:main"
 

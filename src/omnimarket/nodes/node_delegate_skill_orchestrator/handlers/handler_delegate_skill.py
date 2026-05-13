@@ -118,7 +118,7 @@ class HandlerDelegateSkill:
                 source_session_id=request.metadata.get("session_id"),
                 wait=request.wait,
             )
-        except Exception as exc:  # noqa: BLE001 — surface dispatch failure as typed result
+        except Exception as exc:
             return ModelDelegateSkillResponse(
                 status="failed",
                 correlation_id=request.correlation_id,

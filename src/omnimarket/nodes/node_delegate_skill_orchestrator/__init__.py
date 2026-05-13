@@ -9,6 +9,10 @@ runtime-internal commands through an injected dispatch port.
 
 from __future__ import annotations
 
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+    HandlerDelegateSkill,
+    ProtocolDelegationDispatchPort,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -18,7 +22,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 )
 
 __all__ = [
+    "HandlerDelegateSkill",
     "ModelDelegateSkillRequest",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "ProtocolDelegationDispatchPort",
 ]
