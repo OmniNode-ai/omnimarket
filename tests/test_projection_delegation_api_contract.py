@@ -45,5 +45,5 @@ def test_api_contract_endpoint_paths_are_valid():
         assert "path" in ep, f"Endpoint {name} missing 'path'"
         assert ep["path"].startswith("/"), f"Endpoint {name} path must start with /"
         assert "method" in ep, f"Endpoint {name} missing 'method'"
-        assert ep["method"] in {"GET", "POST", "PUT", "DELETE", "PATCH"}
+        assert ep["method"] == "GET", f"Endpoint {name} must use GET"
         assert "response_schema" in ep, f"Endpoint {name} missing 'response_schema'"
