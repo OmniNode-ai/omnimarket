@@ -8,9 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
-    ModelDelegationResult,
-)
+from omnimarket.events.delegation import ModelDelegationResult
 
 
 class ModelDelegationEvent(BaseModel):

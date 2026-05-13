@@ -65,20 +65,20 @@ published_events:
     description: Delegation failed with typed error.
 
 cross_repo_dependencies:
-  - repo: omnibase_infra
+  - repo: omnimarket
     node: node_delegation_orchestrator
     contract_name: node_delegation_orchestrator
     compatibility: ">=0.3.0"
     required_topics:
-      - onex.cmd.omnibase-infra.delegation-request.v1
+      - onex.cmd.omnimarket.delegation-request.v1
     terminal_events:
-      - onex.evt.omnibase-infra.delegation-completed.v1
-      - onex.evt.omnibase-infra.delegation-failed.v1
+      - onex.evt.omnimarket.delegation-completed.v1
+      - onex.evt.omnimarket.delegation-failed.v1
     required_models:
       - name: ModelDelegationRequest
-        module: omnibase_infra.nodes.node_delegation_orchestrator.models.model_delegation_request
+        module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request
       - name: ModelDelegationResult
-        module: omnibase_infra.nodes.node_delegation_orchestrator.models
+        module: omnimarket.nodes.node_delegation_orchestrator.models
 
 handler:
   name: HandlerDelegateSkill
