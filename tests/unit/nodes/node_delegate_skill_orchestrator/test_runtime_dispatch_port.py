@@ -22,6 +22,41 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
 )
 
 
+async def _publish_terminal_response(
+    bus: EventBusInmemory,
+    message: ModelEventMessage,
+    *,
+    status: str,
+    payload: dict[str, object],
+    error_message: str | None = None,
+    received_commands: list[ModelDispatchBusCommand] | None = None,
+) -> None:
+    envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+        message.value
+    )
+    if received_commands is not None:
+        received_commands.append(envelope.payload)
+    terminal = ModelDispatchBusTerminalResult(
+        correlation_id=envelope.payload.correlation_id,
+        status=status,
+        payload=payload,
+        error_message=error_message,
+    )
+    response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+        payload=terminal,
+        correlation_id=terminal.correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type=envelope.payload.response_topic,
+        source_tool="delegate-skill-port-test",
+    )
+    await bus.publish(
+        envelope.payload.response_topic,
+        None,
+        response.model_dump_json().encode("utf-8"),
+        None,
+    )
+
+
 @pytest.mark.unit
 async def test_runtime_dispatch_port_round_trips_internal_delegation_result() -> None:
     bus = EventBusInmemory(environment="test", group="delegate-skill-port")
@@ -30,18 +65,15 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     await bus.start()
 
     async def on_command(message: ModelEventMessage) -> None:
-        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
-            message.value
-        )
-        received_commands.append(envelope.payload)
-        terminal = ModelDispatchBusTerminalResult(
-            correlation_id=envelope.payload.correlation_id,
+        await _publish_terminal_response(
+            bus,
+            message,
             status="completed",
             payload={
                 "correlation_id": str(original_correlation_id),
                 "task_type": "test",
                 "model_used": "Qwen3-Coder-30B",
-                "endpoint_url": "http://qwen.local",
+                "endpoint_url": "https://qwen.local",
                 "content": "delegated content",
                 "quality_passed": True,
                 "quality_score": 1.0,
@@ -52,19 +84,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
                 "fallback_to_claude": False,
                 "failure_reason": "",
             },
-        )
-        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
-            payload=terminal,
-            correlation_id=terminal.correlation_id,
-            envelope_timestamp=datetime.now(UTC),
-            event_type=envelope.payload.response_topic,
-            source_tool="delegate-skill-port-test",
-        )
-        await bus.publish(
-            envelope.payload.response_topic,
-            None,
-            response.model_dump_json().encode("utf-8"),
-            None,
+            received_commands=received_commands,
         )
 
     try:
@@ -109,11 +129,9 @@ async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
     await bus.start()
 
     async def on_command(message: ModelEventMessage) -> None:
-        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
-            message.value
-        )
-        terminal = ModelDispatchBusTerminalResult(
-            correlation_id=envelope.payload.correlation_id,
+        await _publish_terminal_response(
+            bus,
+            message,
             status="failed",
             payload={
                 "topic": "onex.evt.omnibase-infra.delegation-failed.v1",
@@ -134,19 +152,6 @@ async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
                 },
             },
             error_message="configured endpoint missing",
-        )
-        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
-            payload=terminal,
-            correlation_id=terminal.correlation_id,
-            envelope_timestamp=datetime.now(UTC),
-            event_type=envelope.payload.response_topic,
-            source_tool="delegate-skill-port-test",
-        )
-        await bus.publish(
-            envelope.payload.response_topic,
-            None,
-            response.model_dump_json().encode("utf-8"),
-            None,
         )
 
     try:

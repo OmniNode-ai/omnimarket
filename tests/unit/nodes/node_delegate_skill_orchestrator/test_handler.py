@@ -149,7 +149,7 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     port.dispatch.return_value = {
         "status": "completed",
         "content": "internal result",
-        "endpoint_url": "http://qwen.local",
+        "endpoint_url": "https://qwen.local",
         "model_used": "Qwen3-Coder-30B",
         "quality_passed": True,
         "latency_ms": 1234,
@@ -164,7 +164,7 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     )
     response = await handler.handle(request)
     assert response.status == "completed"
-    assert response.provider == "http://qwen.local"
+    assert response.provider == "https://qwen.local"
     assert response.model_name == "Qwen3-Coder-30B"
     assert response.response == "internal result"
     assert response.quality_gate_passed is True
