@@ -161,6 +161,41 @@ class TestPromptResponseText:
         assert rows[0]["response_text"] == "test response"
 
 
+class TestCostFields:
+    """Cost fields from task-delegated events are dashboard-critical."""
+
+    def test_cost_fields_written_to_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-costs",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+            cost_usd=0.001,
+            cost_savings_usd=0.123,
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["cost_usd"] == 0.001
+        assert rows[0]["cost_savings_usd"] == 0.123
+
+    def test_cost_fields_via_handle_protocol(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "correlation_id": "corr-costs-handle",
+            "task_type": "summarize",
+            "delegated_to": "agent-beta",
+            "cost_usd": 0.0,
+            "cost_savings_usd": 0.456,
+            "_db": db,
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        rows = db.query("delegation_events")
+        assert rows[0]["cost_usd"] == 0.0
+        assert rows[0]["cost_savings_usd"] == 0.456
+
+
 class TestComplianceCounters:
     """OMN-10793 — projection writes tokens_to_compliance and compliance_attempts
     from the inbound event payload to the delegation_events row. The defaults
