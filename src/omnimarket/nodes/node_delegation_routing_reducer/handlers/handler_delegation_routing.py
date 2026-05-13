@@ -374,6 +374,28 @@ def _tier_order_from_contract(
     return tuple(ordered)
 
 
+def _definition_of_done_checks(
+    entry: dict[str, object] | None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return task-class DoD checks as deterministic and heuristic tuples."""
+    if entry is None:
+        return (), ()
+    dod = entry.get("definition_of_done")
+    if not isinstance(dod, dict):
+        return (), ()
+
+    deterministic = dod.get("deterministic")
+    heuristic = dod.get("heuristic")
+    return (
+        tuple(item for item in deterministic if isinstance(item, str))
+        if isinstance(deterministic, list)
+        else (),
+        tuple(item for item in heuristic if isinstance(item, str))
+        if isinstance(heuristic, list)
+        else (),
+    )
+
+
 def resolve_invocation_command(
     *,
     rules: tuple[ModelRoutingRule, ...],
@@ -436,6 +458,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
     tiers = _tier_order_from_contract(config, entry)
+    dod_deterministic, dod_heuristic = _definition_of_done_checks(entry)
 
     for tier in tiers:
         if not _tier_allowed_by_contract(tier, entry):
@@ -493,6 +516,8 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             max_context_tokens=selected.max_context_tokens,
             system_prompt=system_prompt,
             rationale=rationale,
+            dod_deterministic=dod_deterministic,
+            dod_heuristic=dod_heuristic,
         )
 
     context = ModelInfraErrorContext.with_correlation(

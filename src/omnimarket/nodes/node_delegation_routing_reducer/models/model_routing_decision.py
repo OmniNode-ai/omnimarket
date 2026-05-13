@@ -28,6 +28,8 @@ class ModelRoutingDecision(BaseModel):
         max_context_tokens: Maximum context window for the selected model.
         system_prompt: System prompt tailored to the task type.
         rationale: Human-readable explanation for the routing decision.
+        dod_deterministic: Deterministic quality checks from the task-class contract.
+        dod_heuristic: Heuristic quality checks from the task-class contract.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
@@ -67,6 +69,16 @@ class ModelRoutingDecision(BaseModel):
     rationale: str = Field(
         ...,
         description="Human-readable explanation for the routing decision.",
+    )
+    dod_deterministic: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Deterministic definition-of-done checks from the task-class contract."
+        ),
+    )
+    dod_heuristic: tuple[str, ...] = Field(
+        default=(),
+        description="Heuristic definition-of-done checks from the task-class contract.",
     )
 
 

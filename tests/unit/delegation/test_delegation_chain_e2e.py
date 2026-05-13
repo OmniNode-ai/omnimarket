@@ -133,10 +133,10 @@ class TestDelegationChainE2E:
 
         # Good response content that passes quality gate for "research" task
         good_content = (
-            "Based on my analysis of the codebase, the ticket OMN-9999 "
-            "requires changes to the delegation pipeline. The routing "
-            "reducer needs to handle the new task type. Here is a detailed "
-            "breakdown of the changes needed across the affected modules."
+            "Line 42 shows the runtime ingress boundary where validation should "
+            "happen before dispatch. The tradeoff is that strict validation can "
+            "reject more requests up front, but the benefit is clearer evidence "
+            "and lower risk of malformed payloads entering the event bus."
         )
         bridge = DelegationIntentBridge(
             event_bus=bus,
