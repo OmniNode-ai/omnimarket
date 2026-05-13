@@ -196,6 +196,64 @@ class TestCostFields:
         assert rows[0]["cost_savings_usd"] == 0.456
 
 
+class TestPricingManifestVersion:
+    """OMN-10949 — projection writes pricing_manifest_version; defaults to 0 for old events."""
+
+    def test_pricing_version_written_to_row(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-pricing-v",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+            pricing_manifest_version=3,
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["pricing_manifest_version"] == 3
+
+    def test_pricing_version_defaults_to_zero(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelTaskDelegatedEvent(
+            correlation_id="corr-pricing-default",
+            task_type="code-review",
+            delegated_to="agent-alpha",
+        )
+        HANDLER.project(event, db)
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["pricing_manifest_version"] == 0
+
+    def test_pricing_version_via_handle_protocol(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "correlation_id": "corr-pricing-handle",
+            "task_type": "summarize",
+            "delegated_to": "agent-beta",
+            "pricing_manifest_version": 5,
+            "_db": db,
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        rows = db.query("delegation_events")
+        assert rows[0]["pricing_manifest_version"] == 5
+
+    def test_old_event_without_field_defaults_to_zero(self) -> None:
+        """Events emitted before OMN-10949 (no pricing_manifest_version) default to 0."""
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "correlation_id": "corr-legacy",
+            "task_type": "code-review",
+            "delegated_to": "agent-gamma",
+            # pricing_manifest_version intentionally absent
+            "_db": db,
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        rows = db.query("delegation_events")
+        assert rows[0]["pricing_manifest_version"] == 0
+
+
 class TestComplianceCounters:
     """OMN-10793 — projection writes tokens_to_compliance and compliance_attempts
     from the inbound event payload to the delegation_events row. The defaults

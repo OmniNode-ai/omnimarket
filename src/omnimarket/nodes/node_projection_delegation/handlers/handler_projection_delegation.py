@@ -84,6 +84,11 @@ class ModelTaskDelegatedEvent(BaseModel):
         default=None,
         description="Raw response received from the delegated agent (OMN-10850).",
     )
+    pricing_manifest_version: int = Field(
+        default=0,
+        ge=0,
+        description="Version of the pricing manifest used to compute cost_savings_usd (OMN-10949).",
+    )
 
 
 class ModelProjectionResult(BaseModel):
@@ -139,6 +144,7 @@ class HandlerProjectionDelegation:
             "compliance_attempts": event.compliance_attempts,
             "prompt_text": event.prompt_text,
             "response_text": event.response_text,
+            "pricing_manifest_version": event.pricing_manifest_version,
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
