@@ -1,0 +1,27 @@
+name: node_delegate_skill_orchestrator
+version: "1.0.0"
+description: "Consumer-facing delegation entry point for Claude Code and Codex adapters"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegate_skill_orchestrator: "omnimarket.nodes.node_delegate_skill_orchestrator"
+  project.scripts:
+    onex-delegate: "omnimarket.adapters.claude_code.delegate:main"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.1.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["delegation", "orchestrator", "adapter", "claude-code", "codex", "OMN-10889", "OMN-10903"]
+pack: "delegation"
+display_name: "Delegate Skill Orchestrator"
+node_role: "orchestrator"

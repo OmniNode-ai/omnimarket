@@ -1,0 +1,130 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegate_skill_orchestrator
+contract_name: node_delegate_skill_orchestrator
+node_name: node_delegate_skill_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+description: >
+  Consumer-facing delegation entry point for Claude Code and Codex adapters.
+  Accepts typed delegation requests, validates task type, normalizes input,
+  dispatches to the omnibase_infra delegation runtime, and returns typed results.
+  Owns the user-facing delegation contract.
+
+input_model:
+  name: ModelDelegateSkillRequest
+  module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
+  description: Consumer-facing delegation request with prompt, task_type, source, and metadata.
+
+output_model:
+  name: ModelDelegateSkillResponse
+  module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response
+  description: Typed delegation result with provider, model, response, metrics, and quality gate.
+
+allowed_task_types:
+  - test
+  - document
+  - research
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegate-skill.v1
+  terminal_events:
+    success: onex.evt.omnimarket.delegate-skill-completed.v1
+    failure: onex.evt.omnimarket.delegate-skill-failed.v1
+  default_timeout_ms: 300000
+  max_timeout_ms: 900000
+
+runtime_profiles:
+  - main
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  plugin_managed: true
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegate-skill.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
+
+terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
+
+published_events:
+  - event_type: DelegateSkillCompleted
+    topic: onex.evt.omnimarket.delegate-skill-completed.v1
+    description: Delegation completed with typed result.
+  - event_type: DelegateSkillFailed
+    topic: onex.evt.omnimarket.delegate-skill-failed.v1
+    description: Delegation failed with typed error.
+
+cross_repo_dependencies:
+  - repo: omnibase_infra
+    node: node_delegation_orchestrator
+    contract_name: node_delegation_orchestrator
+    compatibility: ">=0.3.0"
+    required_topics:
+      - onex.cmd.omnibase-infra.delegation-request.v1
+    terminal_events:
+      - onex.evt.omnibase-infra.delegation-completed.v1
+      - onex.evt.omnibase-infra.delegation-failed.v1
+    required_models:
+      - name: ModelDelegationRequest
+        module: omnibase_infra.nodes.node_delegation_orchestrator.models.model_delegation_request
+      - name: ModelDelegationResult
+        module: omnibase_infra.nodes.node_delegation_orchestrator.models
+
+handler:
+  name: HandlerDelegateSkill
+  module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill
+  class: HandlerDelegateSkill
+  input_model: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request.ModelDelegateSkillRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: delegate_skill.orchestrate
+      handler_class: HandlerDelegateSkill
+      handler_module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill
+      input_model:
+        name: ModelDelegateSkillRequest
+        module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
+
+error_handling:
+  retry_policy:
+    max_retries: 1
+    initial_delay_ms: 1000
+    max_delay_ms: 5000
+    exponential_base: 2
+    retry_on:
+      - RuntimeDispatchTimeoutError
+  error_types:
+    - name: RuntimeDispatchTimeoutError
+      description: Runtime did not respond within timeout
+      recoverable: true
+    - name: InvalidTaskTypeError
+      description: Unsupported task type submitted
+      recoverable: false
+
+timeout_behavior:
+  default_ms: 300000
+  max_ms: 900000
+  terminal_response:
+    status: timeout
+    error_message: "Delegation timed out before runtime completion"
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-12"
+  tags: [orchestrator, delegation, adapter, claude-code, codex, OMN-10889, OMN-10903]
+  related_tickets:
+    - "OMN-10889"
+    - "OMN-10903"
