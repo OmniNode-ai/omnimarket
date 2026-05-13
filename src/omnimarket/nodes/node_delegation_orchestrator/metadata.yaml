@@ -1,0 +1,24 @@
+name: node_delegation_orchestrator
+version: "1.0.0"
+description: "Delegation domain orchestrator — routes tasks to local LLM via in-memory FSM per correlation_id"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_orchestrator: "omnimarket.nodes.node_delegation_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: stateful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.34.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["delegation", "orchestrator", "llm", "routing"]
+pack: "delegation"
+display_name: "Delegation Orchestrator"
+node_role: "orchestrator"

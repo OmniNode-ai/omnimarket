@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10714"
+title: "Declare miscellaneous env var reads in omnimarket node contracts"
+summary: >
+  Adds env_dependencies declarations for existing miscellaneous environment reads in omnimarket node
+  contracts. These declarations document optional reads and do not change handler code, runtime topology,
+  Kafka topics, migrations, or deploy behavior.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-schema"
+    description: "omnimarket contract env_dependencies declarations validate in CI"
+    source: "ci"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr checks 610 --repo OmniNode-ai/omnimarket"
+  - id: "dod-deploy"
+    description: >
+      Deploy verification: contract metadata only. No handler code, service wiring, migration, runtime
+      restart, docker exec action, or Redpanda topic change is required for these optional environment
+      declarations.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: metadata-only env_dependencies declarations; no docker exec or rpk topic produce required'"

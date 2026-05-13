@@ -1,0 +1,25 @@
+name: node_pr_semantic_grader_llm_effect
+version: "1.0.0"
+description: "LLM-based grader for PR semantic satisfaction of ticket acceptance criteria across criteria_coverage, contract_alignment, anti_pattern_present, and overall_confidence dimensions."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_semantic_grader_llm_effect: "omnimarket.nodes.node_pr_semantic_grader_llm_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+  - "anthropic>=0.25.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "pr", "semantic", "grading", "llm", "advisory", "acceptance-criteria"]
+pack: "workflow"
+display_name: "PR Semantic Grader LLM Effect"
+node_role: "effect"

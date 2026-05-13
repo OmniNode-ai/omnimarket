@@ -80,6 +80,21 @@ env_dependencies:
   LLM_DEEPSEEK_R1_URL:
     required: false
     description: "DeepSeek-R1 reasoning model endpoint URL (judge/reasoning tasks)"
+  BUILD_LOOP_OUTPUT_DIR:
+    required: false
+    description: "Directory path for build loop output artifacts (defaults to empty string)"
+  LINEAR_TEAM_ID:
+    required: false
+    description: "Linear team ID used by adapter_linear_fill for ticket queries"
+  LINEAR_TEAM_KEY:
+    required: false
+    description: "Linear team key used by adapter_linear_fill (defaults to 'OMN')"
+  LINEAR_ACTIVE_SPRINT_PROJECT_ID:
+    required: false
+    description: "Linear project ID for the active sprint; used to filter tickets"
+  OMNI_WORKTREES_ROOT:
+    required: false
+    description: "Root directory for git worktrees; used by assemble_live to locate per-ticket worktrees"
 
 sub_handler_dependencies:
   - name: closeout

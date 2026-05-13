@@ -43,6 +43,11 @@ dependencies:
     source: "model_registry.yaml"
     description: "Contract-owned model endpoint registry injected as HandlerModelRouter registry."
 
+env_dependencies:
+  ONEX_CI_MODE:
+    required: false
+    description: "When set to '1', 'true', or 'yes', activates CI override policy and uses ci_override.primary model instead of the default primary"
+
 model_routing:
   primary: qwen3-coder-30b
   fallback: claude-sonnet

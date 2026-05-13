@@ -32,6 +32,9 @@ env_dependencies:
   QDRANT_PORT:
     required: false
     description: "Qdrant port (default 6333)."
+  OMNIMEMORY_PG_DSN:
+    required: false
+    description: "PostgreSQL DSN for navigation history persistence; module-level default used when not provided via DI"
 
 tags:
   - memory

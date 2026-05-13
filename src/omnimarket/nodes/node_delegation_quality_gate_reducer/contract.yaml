@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 OmniNode Team
+#
+# ONEX Node Contract
+# Node: NodeDelegationQualityGateReducer
+#
+# Deterministic quality gate for the delegation pipeline.
+# Evaluates LLM output quality using heuristic checks: length,
+# refusal detection, task-type marker presence.
+#
+# Related Tickets:
+#   - OMN-7040: Node-based delegation pipeline
+name: "node_delegation_quality_gate_reducer"
+contract_name: "node_delegation_quality_gate_reducer"
+node_name: "node_delegation_quality_gate_reducer"
+contract_version:
+  major: 0
+  minor: 2
+  patch: 0
+node_version:
+  major: 0
+  minor: 2
+  patch: 0
+node_type: "REDUCER_GENERIC"
+description: >
+  Deterministic quality gate reducer for the delegation pipeline. Evaluates LLM output quality using DoD checks declared in the task-class contract: deterministic checks (output_parses, signature_preserved) BLOCK delegation result injection on failure (fail_category="fail_deterministic"); heuristic checks (no_refusal, min_length_chars, etc.) carry the legacy semantics. Reads dod_deterministic and dod_heuristic from ModelQualityGateInput (OMN-10616). Pure function, no I/O.
+
+  Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH, FAIL_DETERMINISTIC.
+
+input_model:
+  name: "ModelQualityGateInput"
+  module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
+  description: "LLM response content and expected quality markers."
+output_model:
+  name: "ModelQualityGateResult"
+  module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
+  description: "Pass/fail verdict, quality score, and failure reasons."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "delegation.quality_gate"
+      handler_class: "HandlerQualityGate"
+      handler_module: "omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate"
+      description: "Evaluate LLM output quality with heuristic checks"
+      input_model:
+        name: "ModelQualityGateInput"
+        module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
+        description: "Quality gate evaluation input."
+error_handling:
+  retry_policy:
+    max_retries: 0
+    initial_delay_ms: 0
+    max_delay_ms: 0
+    exponential_base: 1
+    retry_on: []
+  error_types:
+    - name: "QualityGateError"
+      description: "Unexpected error during quality gate evaluation"
+      recoverable: false
+health_check:
+  enabled: true
+  endpoint: "/health"
+  interval_seconds: 30
+  checks:
+    - name: "quality_gate_handler_loaded"
+      type: "handler"
+      critical: true
+metadata:
+  description: "Deterministic quality gate that evaluates LLM output using heuristic checks for length, refusal detection, and task-type markers."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-03-30"
+  tags:
+    - reducer
+    - quality-gate
+    - delegation
+    - validation
+  related_tickets:
+    - "OMN-7040"

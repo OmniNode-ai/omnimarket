@@ -258,7 +258,7 @@ jobs:
           CONTRACT_TOPIC_VIOLATIONS=""
           if [ "${#CHANGED_CONTRACT_FILES[@]}" -gt 0 ]; then
             CONTRACT_TOPIC_VIOLATIONS=$(grep -Hn 'onex\.' "${CHANGED_CONTRACT_FILES[@]}" 2>/dev/null \
-              | grep -vE 'onex\.(cmd|evt|dlq)\.[a-z_]+\.[a-z_-]+\.v[0-9]+' \
+              | grep -vE 'onex\.(cmd|evt|dlq)\.[a-z_-]+\.[a-z_-]+\.v[0-9]+' \
               | grep -v '#' \
               || true)
           fi

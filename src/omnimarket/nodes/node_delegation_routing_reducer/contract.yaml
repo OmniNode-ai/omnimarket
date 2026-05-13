@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 OmniNode Team
+#
+# ONEX Node Contract
+# Node: NodeDelegationRoutingReducer
+#
+# Deterministic routing reducer for the delegation pipeline.
+# Maps (task_type, prompt_length) to a routing decision using
+# the local LLM endpoint topology.
+#
+# Related Tickets:
+#   - OMN-7040: Node-based delegation pipeline
+name: "node_delegation_routing_reducer"
+contract_name: "node_delegation_routing_reducer"
+node_name: "node_delegation_routing_reducer"
+contract_version:
+  major: 0
+  minor: 3
+  patch: 0
+node_version:
+  major: 0
+  minor: 3
+  patch: 0
+node_type: "REDUCER_GENERIC"
+description: >
+  Deterministic routing reducer for the delegation pipeline. Maps task type and prompt token count to a routing decision: which model, endpoint, cost tier, and system prompt to use. Performs read-only configuration I/O to load on-disk contracts (overrideable via BIFROST_CONTRACT_PATH and TASK_CLASS_CONTRACT_PATH). Resolves endpoint URLs from the deployed bifrost contract at ~/.omninode/delegation/bifrost_delegation.yaml (overrideable via BIFROST_CONTRACT_PATH) — not from environment variables (OMN-10657). Loads task-class contracts from configs/task_class_contracts.v1.yaml (overrideable via TASK_CLASS_CONTRACT_PATH) and enforces per-task-class cloud_routing_policy, pricing_ceiling_per_1k_tokens, and escalation_policy.tier_order constraints (OMN-10615).
+
+input_model:
+  name: "ModelDelegationRequest"
+  module: "omnimarket.nodes.node_delegation_orchestrator.models"
+  description: "Delegation command with prompt, task_type, and context."
+output_model:
+  name: "ModelRoutingDecision"
+  module: "omnimarket.nodes.node_delegation_routing_reducer.models"
+  description: "Routing output with selected model, endpoint, cost tier."
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnibase-infra.delegation-routing-request.v1"
+  publish_topics:
+    - "onex.cmd.omnibase-infra.invocation.v1"
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "delegation.route"
+      handler_class: "HandlerDelegationRouting"
+      handler_module: "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing"
+      description: "Map task type and prompt length to routing decision"
+      input_model:
+        name: "ModelDelegationRequest"
+        module: "omnimarket.nodes.node_delegation_orchestrator.models"
+        description: "Delegation request to route."
+routing_rules:
+  - capability: tech_debt_triage
+    invocation_kind: agent
+    agent_protocol: A2A
+    target_ref: adk-type-debt-scout
+    fallbacks: []
+target_agents:
+  - target_ref: adk-type-debt-scout
+    protocol: A2A
+    base_url: ${DEBT_SCOUT_BASE_URL}
+    protocol_version: "0.3"
+config_dependencies:
+  - key: "DEBT_SCOUT_BASE_URL"
+    description: "A2A endpoint URL for the ADK type debt scout agent"
+    required: true
+  - key: "BIFROST_CONTRACT_PATH"
+    description: "Override path for the deployed bifrost delegation contract (default: ~/.omninode/delegation/bifrost_delegation.yaml). Used in tests and staging environments."
+    required: false
+error_handling:
+  retry_policy:
+    max_retries: 0
+    initial_delay_ms: 0
+    max_delay_ms: 0
+    exponential_base: 1
+    retry_on: []
+  error_types:
+    - name: "RoutingError"
+      description: "Failed to determine routing decision for delegation request"
+      recoverable: false
+    - name: "MissingEndpointError"
+      description: "Required LLM endpoint URL not configured"
+      recoverable: false
+health_check:
+  enabled: true
+  endpoint: "/health"
+  interval_seconds: 30
+  checks:
+    - name: "routing_handler_loaded"
+      type: "handler"
+      critical: true
+metadata:
+  description: "Deterministic routing reducer that maps delegation requests to LLM endpoints based on task type and prompt length."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-03-30"
+  tags:
+    - reducer
+    - routing
+    - delegation
+    - llm
+  related_tickets:
+    - "OMN-7040"
+    - "OMN-10615"
+    - "OMN-10657"

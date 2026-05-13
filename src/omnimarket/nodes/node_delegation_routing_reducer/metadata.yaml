@@ -1,0 +1,24 @@
+name: node_delegation_routing_reducer
+version: "1.0.0"
+description: "Delegation routing reducer — resolves optimal LLM backend from routing tier config given a delegation request"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_routing_reducer: "omnimarket.nodes.node_delegation_routing_reducer"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.34.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["delegation", "routing", "reducer", "llm"]
+pack: "delegation"
+display_name: "Delegation Routing Reducer"
+node_role: "reducer"

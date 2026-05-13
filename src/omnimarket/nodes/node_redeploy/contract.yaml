@@ -134,6 +134,11 @@ dependencies:
   packages:
     - "omnibase_core>=0.39.0"
 
+env_dependencies:
+  KAFKA_ENVIRONMENT:
+    required: false
+    description: "Kafka environment label (e.g. 'production', 'staging') passed to rebuild command envelope; defaults to 'production'"
+
 metadata:
   transport_type: kafka
   description: "Full post-release runtime redeploy WorkflowPackage"

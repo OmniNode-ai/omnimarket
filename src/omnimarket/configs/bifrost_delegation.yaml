@@ -1,0 +1,199 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# bifrost_delegation.yaml — Delegation routing rules for Claude Code task classes.
+#
+# Maps task-class contracts to bifrost backend routing policies.
+# Every gateway response MUST include the selected rule_id and config_version
+# to make provenance auditable (OMN-10637 requirement R1).
+#
+# Backend endpoint URLs are declared here and populated by the installer
+# (install-delegation.sh --apply). The source version has empty endpoint_url
+# fields; the deployed copy at ~/.omninode/delegation/bifrost_delegation.yaml
+# has actual URLs written by the installer.
+#
+# See routing_tiers.yaml for tier escalation ladder.
+#
+# Tickets: OMN-10637, OMN-10638, OMN-10657
+config_version: "1.1.0"
+schema_version: "bifrost_delegation.v1"
+# Backend definitions — endpoint_url populated by installer at deploy time.
+backends:
+  # Local backends (AIPC)
+  - backend_id: local-qwen-coder-30b
+    endpoint_url: ""
+    # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    tier: local
+    timeout_ms: 30000
+    capabilities:
+      - code_generation
+      - refactoring
+      - documentation
+  - backend_id: local-deepseek-r1-14b
+    endpoint_url: ""
+    # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    tier: local
+    timeout_ms: 30000
+    capabilities:
+      - deep_reasoning
+      - research
+      - classification
+  # Cloud fallback backends
+  - backend_id: cloud-sonnet
+    endpoint_url: ""
+    # Claude Sonnet via OAuth — no API key required (Claude Code uses OAuth)
+    model_name: claude-sonnet-4-6
+    tier: frontier_api
+    timeout_ms: 60000
+    capabilities:
+      - code_generation
+      - reasoning
+      - documentation
+      - research
+  - backend_id: cloud-haiku
+    endpoint_url: ""
+    # Claude Haiku — cheapest frontier model for documentation/simple tasks
+    model_name: claude-haiku-4-5-20251001
+    tier: frontier_api
+    timeout_ms: 30000
+    capabilities:
+      - documentation
+      - summarization
+      - simple_tasks
+  - backend_id: cloud-glm
+    endpoint_url: ""
+    model_name: glm-z-ai
+    tier: cheap_cloud
+    timeout_ms: 60000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+  - backend_id: cloud-gemini-flash
+    endpoint_url: ""
+    model_name: gemini-flash
+    tier: cheap_cloud
+    timeout_ms: 60000
+    capabilities:
+      - summarization
+      - simple_tasks
+      - document
+  # CLI agent backends — dispatched via subprocess, not HTTP.
+  - backend_id: cli-claude
+    endpoint_url: ""
+    model_name: claude-cli
+    tier: cli_agents
+    timeout_ms: 300000
+    capabilities:
+      - agent_delegation
+      - complex_reasoning
+  - backend_id: cli-opencode
+    endpoint_url: ""
+    model_name: opencode-cli
+    tier: cli_agents
+    timeout_ms: 300000
+    capabilities:
+      - agent_delegation
+      - code_generation
+# Routing rules — evaluated in ascending priority order.
+# First matching rule wins. Each rule maps a task_class to an ordered
+# list of backends to try.
+#
+# Required fields per rule (OMN-10637):
+#   rule_id: stable UUID for audit provenance
+#   task_class_contract_version: version of the contract this rule targets
+#   backend_policy_version: version of the backend policy applied
+#   fallback_policy: what to do when all backends in backend_ids fail
+#   shadow_policy_id: UUID of the shadow policy used for A/B evaluation
+routing_rules:
+  # ── code_generation ──────────────────────────────────────────────────────
+  # Route code generation to local Qwen coder first (zero API cost),
+  # fall back to cloud Sonnet for reliability.
+  - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+    priority: 10
+    task_class: code_generation
+    task_class_contract_version: "1.0.0"
+    backend_policy_version: "1.0.0"
+    match_operation_types:
+      - chat_completion
+      - completion
+    match_capabilities:
+      - code_generation
+    latency_sla_ms: 30000
+    backend_ids:
+      - local-qwen-coder-30b
+      - cloud-sonnet
+    fallback_policy:
+      action: escalate_to_next_tier
+      max_retries: 2
+      on_exhaust: return_error
+    shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
+  # ── documentation ────────────────────────────────────────────────────────
+  # Documentation tasks: local Qwen coder is capable; haiku is cheaper
+  # cloud fallback for cost-sensitive runs.
+  - rule_id: "d4e5f6a7-0002-4000-8000-000000000002"
+    priority: 20
+    task_class: documentation
+    task_class_contract_version: "1.0.0"
+    backend_policy_version: "1.0.0"
+    match_operation_types:
+      - chat_completion
+      - completion
+    match_capabilities:
+      - documentation
+    cost_ceiling_usd_per_1k_tokens: 0.004
+    backend_ids:
+      - local-qwen-coder-30b
+      - cloud-haiku
+    fallback_policy:
+      action: escalate_to_next_tier
+      max_retries: 1
+      on_exhaust: return_error
+    shadow_policy_id: "e5f6a7b8-0002-4000-8000-000000000002"
+  # ── research ─────────────────────────────────────────────────────────────
+  # Research tasks require deep reasoning; route to DeepSeek-R1 locally
+  # (reasoning-optimized), fall back to Sonnet for complex analysis.
+  - rule_id: "d4e5f6a7-0003-4000-8000-000000000003"
+    priority: 30
+    task_class: research
+    task_class_contract_version: "1.0.0"
+    backend_policy_version: "1.0.0"
+    match_operation_types:
+      - chat_completion
+      - reasoning
+    match_capabilities:
+      - deep_reasoning
+    backend_ids:
+      - local-deepseek-r1-14b
+      - cloud-sonnet
+    fallback_policy:
+      action: escalate_to_next_tier
+      max_retries: 2
+      on_exhaust: return_error
+    shadow_policy_id: "e5f6a7b8-0003-4000-8000-000000000003"
+# Default fallback when no routing rule matches.
+# Attempts backends in order.
+default_backends:
+  - local-qwen-coder-30b
+  - cloud-sonnet
+# Gateway-level circuit breaker settings (apply to all backends).
+circuit_breaker:
+  failure_threshold: 5
+  window_seconds: 30
+# Gateway-level failover settings.
+failover:
+  max_attempts: 3
+  backoff_base_ms: 500
+# Shadow mode for delegation A/B testing (OMN-10638).
+# Disabled by default — prevents accidental learned-policy activation during demo.
+# To enable: set enabled: true and provide a policy_version identifier.
+# Shadow decisions are emitted as comparison events only and NEVER affect
+# live routing output. Dashboard/eval must label them SHADOW (shadow_label field).
+shadow_mode:
+  enabled: false
+  policy_version: "unknown"
+  log_sample_rate: 1.0
+  comparison_logging_enabled: true
+  max_shadow_latency_ms: 5.0
