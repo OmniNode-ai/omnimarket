@@ -5,7 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 overrides = [
     { name = "omnibase-compat", url = "https://github.com/OmniNode-ai/omnibase_compat/archive/ea4239d357fe07bb7c45afee9edceaa5c428bf32.zip" },
-    { name = "omnibase-core", specifier = "==0.40.1" },
+    { name = "omnibase-core", specifier = ">=0.40.1,<0.41.0" },
     { name = "omnibase-infra", specifier = "==0.34.2" },
     { name = "omnibase-spi", specifier = "==0.20.6" },
 ]
@@ -1329,7 +1329,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "omnibase-compat", url = "https://github.com/OmniNode-ai/omnibase_compat/archive/ea4239d357fe07bb7c45afee9edceaa5c428bf32.zip" },
-    { name = "omnibase-core", specifier = "==0.40.1" },
+    { name = "omnibase-core", specifier = ">=0.40.1,<0.41.0" },
     { name = "omnibase-infra", specifier = "==0.34.2" },
     { name = "omnibase-spi", specifier = "==0.20.6" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=9843dd18cedaa4f5939289ba527532262b87003c" },
