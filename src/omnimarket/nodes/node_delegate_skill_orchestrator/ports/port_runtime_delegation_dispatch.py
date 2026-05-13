@@ -43,7 +43,7 @@ class ProtocolDelegationEventBus(Protocol):
         node_identity: object | None = None,
         on_message: Callable[[object], Awaitable[None]] | None = None,
         **kwargs: object,
-    ) -> object: ...
+    ) -> Callable[[], Awaitable[None]]: ...
 
 
 class RuntimeDelegationDispatchPort:
@@ -117,7 +117,10 @@ class RuntimeDelegationDispatchPort:
         finally:
             await _unsubscribe(unsubscribe)
 
-        result: dict[str, object] = {"status": terminal.status}
+        result: dict[str, object] = {
+            "status": terminal.status,
+            "correlation_id": str(correlation_id),
+        }
         if terminal.error_message:
             result["error_message"] = terminal.error_message
         if terminal.payload:
@@ -141,7 +144,9 @@ class RuntimeDelegationDispatchPort:
 
     async def _subscribe_for_result(
         self, dispatch_correlation_id: UUID
-    ) -> tuple[object, asyncio.Queue[ModelDispatchBusTerminalResult]]:
+    ) -> tuple[
+        Callable[[], Awaitable[None]], asyncio.Queue[ModelDispatchBusTerminalResult]
+    ]:
         queue: asyncio.Queue[ModelDispatchBusTerminalResult] = asyncio.Queue()
 
         async def on_message(message: object) -> None:
@@ -187,9 +192,5 @@ def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
     return payload
 
 
-async def _unsubscribe(unsubscribe: object) -> None:
-    if not callable(unsubscribe):
-        return
-    result = unsubscribe()
-    if asyncio.iscoroutine(result):
-        await result
+async def _unsubscribe(unsubscribe: Callable[[], Awaitable[None]]) -> None:
+    await unsubscribe()

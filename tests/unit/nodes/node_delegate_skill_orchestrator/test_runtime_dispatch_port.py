@@ -79,7 +79,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             task_type="test",
             correlation_id=original_correlation_id,
             max_tokens=512,
-            source_file_path="/tmp/example.py",
+            source_file_path="tests/fixtures/example.py",
             source_session_id="session-1",
             wait=True,
         )
@@ -96,7 +96,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     assert command.correlation_id != original_correlation_id
     assert UUID(str(command.payload["correlation_id"])) == command.correlation_id
     assert command.payload["task_type"] == "test"
-    assert command.payload["source_file_path"] == "/tmp/example.py"
+    assert command.payload["source_file_path"] == "tests/fixtures/example.py"
     assert command.payload["source_session_id"] == "session-1"
     assert command.payload["max_tokens"] == 512
     assert command.payload["emitted_at"]
@@ -161,7 +161,7 @@ async def test_runtime_dispatch_port_unwraps_delegation_event_payload() -> None:
             task_type="test",
             correlation_id=original_correlation_id,
             max_tokens=512,
-            source_file_path="/tmp/example.py",
+            source_file_path="tests/fixtures/example.py",
             source_session_id="session-1",
             wait=True,
         )
