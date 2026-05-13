@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10926"
+title: "Enforce delegation environment scanner"
+summary: "Switch the delegation environment-read scanner to enforce mode in CI and keep multiline ONEX_EXCLUDE handling correct."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Delegation environment scanner enforce mode passes on current code"
+    command: "uv run python scripts/ci/check_delegation_env_reads.py --mode enforce --verbose"
+  - kind: "manual"
+    description: "Delegation environment scanner tests pass"
+    command: "uv run pytest tests/test_delegation_env_scanner.py -q"
+  - kind: "manual"
+    description: "Deploy smoke plan for scanner-enforced delegation routing; no live deploy or runtime restart was performed in this PR"
+    command: "printf '%s\n' 'post-merge deploy smoke: docker exec omninode-runtime-effects /app/.venv/bin/python -m omnimarket.adapters.codex.runtime_client --command-name delegation_route --payload-file /tmp/omn-10926-delegation-route-payload.json --timeout-ms 45000'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-scanner-enforce-mode"
+    description: "Delegation environment scanner enforce mode passes on current code"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_delegation_env_reads.py --mode enforce --verbose"
+  - id: "dod-scanner-tests"
+    description: "Delegation environment scanner tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_delegation_env_scanner.py -q"
+  - id: "dod-deploy"
+    description: "Deploy smoke plan for scanner-enforced delegation routing; no live deploy or runtime restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec omninode-runtime-effects /app/.venv/bin/python -m omnimarket.adapters.codex.runtime_client --command-name delegation_route --payload-file /tmp/omn-10926-delegation-route-payload.json --timeout-ms 45000'"
