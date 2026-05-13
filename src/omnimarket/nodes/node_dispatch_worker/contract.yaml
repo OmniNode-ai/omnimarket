@@ -87,6 +87,11 @@ outputs:
     type: str
     description: "Non-empty string if the node rejected the request"
 
+env_dependencies:
+  CLAUDE_TASKS_DIR:
+    required: false
+    description: "Directory path for Claude Code task files; used to read active task list when compiling collision fences (defaults to '~/.claude/tasks')"
+
 terminal_event: onex.evt.omnimarket.dispatch-worker-compiled.v1
 
 event_bus:

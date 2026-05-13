@@ -32,8 +32,13 @@ inputs:
     required: false
   ssh_target:
     type: str
-    description: "SSH target for .201 infra checks"
+    description: "SSH target for infrastructure checks"
     required: false
+
+env_dependencies:
+  ONEX_INFRA_SSH_TARGET:
+    required: false
+    description: "SSH target string for infrastructure health checks; used as fallback when ssh_target input is not provided"
 
 outputs:
   subsystem_results:
