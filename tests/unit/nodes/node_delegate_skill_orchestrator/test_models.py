@@ -40,7 +40,11 @@ def test_valid_request_full() -> None:
         max_tokens=1200,
         metadata={"repo": "omnimarket", "issue": "OMN-1234"},
         quality_contract_mode="replace_task_class",
-        acceptance_criteria=("exactly_two_sentences", "max_words_per_sentence_20"),
+        acceptance_criteria=(
+            "exactly_two_sentences",
+            "max_words_per_sentence_20",
+            "plain_text_only",
+        ),
     )
     assert req.wait is True
     assert req.max_tokens == 1200
@@ -49,6 +53,7 @@ def test_valid_request_full() -> None:
     assert req.acceptance_criteria == (
         "exactly_two_sentences",
         "max_words_per_sentence_20",
+        "plain_text_only",
     )
 
 

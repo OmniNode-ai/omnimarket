@@ -152,6 +152,7 @@ def test_workflow_forwards_request_acceptance_criteria() -> None:
             acceptance_criteria=(
                 "exactly_two_sentences",
                 "max_words_per_sentence_20",
+                "plain_text_only",
             ),
         )
     )
@@ -185,6 +186,7 @@ def test_workflow_forwards_request_acceptance_criteria() -> None:
     assert gate_input.acceptance_criteria == (
         "exactly_two_sentences",
         "max_words_per_sentence_20",
+        "plain_text_only",
     )
 
 
@@ -237,7 +239,11 @@ def test_request_quality_contract_can_replace_task_class_dod() -> None:
         dod_deterministic=("docstring_present",),
         dod_heuristic=("no_refusal",),
         quality_contract_mode="replace_task_class",
-        acceptance_criteria=("exactly_two_sentences", "max_words_per_sentence_20"),
+        acceptance_criteria=(
+            "exactly_two_sentences",
+            "max_words_per_sentence_20",
+            "plain_text_only",
+        ),
     )
 
     result = quality_gate_delta(gate_input)
@@ -258,11 +264,15 @@ def test_request_quality_contract_rejects_output_shape_mismatch() -> None:
             "```"
         ),
         quality_contract_mode="replace_task_class",
-        acceptance_criteria=("exactly_two_sentences", "max_words_per_sentence_20"),
+        acceptance_criteria=(
+            "exactly_two_sentences",
+            "max_words_per_sentence_20",
+            "plain_text_only",
+        ),
     )
 
     result = quality_gate_delta(gate_input)
 
     assert result.passed is False
     assert result.fail_category == "fail_deterministic"
-    assert any("expected exactly 2 sentences" in r for r in result.failure_reasons)
+    assert any("expected plain text" in r for r in result.failure_reasons)

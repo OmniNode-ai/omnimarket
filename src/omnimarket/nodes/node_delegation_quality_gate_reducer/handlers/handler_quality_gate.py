@@ -151,6 +151,14 @@ def _check_response_non_empty(content: str) -> str | None:
     return None
 
 
+def _check_plain_text_only(content: str) -> str | None:
+    """Deterministic: response must not be code or a markdown code block."""
+    lowered = content.lower()
+    if "```" in content or lowered.lstrip().startswith(("def ", "class ")):
+        return "TASK_MISMATCH: expected plain text, found code"
+    return None
+
+
 def _sentences(content: str) -> tuple[str, ...]:
     """Return punctuation-delimited sentences from plain response content."""
     return tuple(match.group(0).strip() for match in _SENTENCE_RE.finditer(content))
@@ -229,6 +237,9 @@ def _run_contract_checks(
                 det_failures.append(reason)
         elif check == "exactly_two_sentences":
             if reason := _check_exactly_two_sentences(content):
+                det_failures.append(reason)
+        elif check == "plain_text_only":
+            if reason := _check_plain_text_only(content):
                 det_failures.append(reason)
         else:
             m = MAX_WORDS_PER_SENTENCE_RE.match(check)

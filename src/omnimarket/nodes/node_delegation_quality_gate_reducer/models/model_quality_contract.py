@@ -12,6 +12,7 @@ EnumQualityContractMode = Literal["extend_task_class", "replace_task_class"]
 SUPPORTED_ACCEPTANCE_CRITERIA = frozenset(
     {
         "exactly_two_sentences",
+        "plain_text_only",
         "response_non_empty",
     }
 )
