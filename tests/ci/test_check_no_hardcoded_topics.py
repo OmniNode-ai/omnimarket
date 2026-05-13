@@ -74,6 +74,18 @@ def test_scan_allows_dynamic_fstring(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_scan_only_allows_braces_inside_the_fstring_token(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "node_x/handlers/handler_x.py",
+        'PATTERN = "{}"\nTOPIC = f"onex.' + 'evt.omnimarket.static.v1"\n',
+    )
+    violations = scan(tmp_path)
+    assert len(violations) == 1
+    assert "static.v1" in violations[0]
+
+
+@pytest.mark.unit
 def test_scan_allows_startswith_prefix_probe(tmp_path: Path) -> None:
     _write(
         tmp_path,

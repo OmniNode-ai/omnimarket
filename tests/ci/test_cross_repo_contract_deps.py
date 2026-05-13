@@ -22,6 +22,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import os
+import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,6 +31,7 @@ import yaml
 
 _OMNI_HOME_RAW = os.environ.get("OMNI_HOME", "")
 _OMNI_HOME = Path(_OMNI_HOME_RAW) if _OMNI_HOME_RAW else None
+_SAFE_CONTRACT_SEGMENT = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _omnimarket_package_root() -> Path:
@@ -52,9 +55,65 @@ def _delegate_skill_contract() -> dict[str, object]:
     return loaded
 
 
+def _safe_contract_segment(value: str, field_name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} must be a non-empty string")
+    if Path(value).is_absolute():
+        raise ValueError(f"{field_name} must be relative: {value!r}")
+    if "/" in value or "\\" in value:
+        raise ValueError(f"{field_name} must not contain path separators: {value!r}")
+    if value in {".", ".."} or ".." in Path(value).parts:
+        raise ValueError(f"{field_name} must not contain parent refs: {value!r}")
+    if not _SAFE_CONTRACT_SEGMENT.fullmatch(value):
+        raise ValueError(
+            f"{field_name} must match letters/numbers/underscore/hyphen: {value!r}"
+        )
+    return value
+
+
 def _cross_repo_contract_path(repo: str, node: str) -> Path:
     assert _OMNI_HOME is not None
+    repo = _safe_contract_segment(repo, "repo")
+    node = _safe_contract_segment(node, "node")
     return _OMNI_HOME / repo / "src" / repo / "nodes" / node / "contract.yaml"
+
+
+@pytest.mark.unit
+def test_cross_repo_contract_path_accepts_safe_segments(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys.modules[__name__], "_OMNI_HOME", tmp_path)
+    assert _cross_repo_contract_path("omnibase_infra", "node-delegation_1") == (
+        tmp_path
+        / "omnibase_infra"
+        / "src"
+        / "omnibase_infra"
+        / "nodes"
+        / "node-delegation_1"
+        / "contract.yaml"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("repo", "node"),
+    [
+        ("/tmp/evil", "node_ok"),
+        ("omnibase_infra", "/tmp/evil"),
+        ("../omnibase_infra", "node_ok"),
+        ("omnibase_infra", "../node"),
+        ("omni/infra", "node_ok"),
+        ("omnibase_infra", "node\\evil"),
+        ("omnibase.infra", "node_ok"),
+        ("omnibase_infra", "node.delegation"),
+    ],
+)
+def test_cross_repo_contract_path_rejects_unsafe_segments(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, repo: str, node: str
+) -> None:
+    monkeypatch.setattr(sys.modules[__name__], "_OMNI_HOME", tmp_path)
+    with pytest.raises(ValueError, match=r"must"):
+        _cross_repo_contract_path(repo, node)
 
 
 @pytest.mark.integration

@@ -85,7 +85,7 @@ repos:
       - id: no-hardcoded-topics-annotated
         name: Topic-literal guardrail (annotation allowlist)
         language: system
-        entry: python scripts/ci/check_no_hardcoded_topics.py
+        entry: uv run python scripts/ci/check_no_hardcoded_topics.py
         files: ^src/omnimarket/.*\.py$
         pass_filenames: false
         stages: [pre-commit]

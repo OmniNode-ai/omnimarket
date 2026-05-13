@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import tokenize
+from io import StringIO
 
 # Built via join so this script does not self-trigger any topic-literal grep guard.
 _ONEX_LITERAL_FORMS = (
@@ -49,10 +51,51 @@ def _is_allowed_file(path: pathlib.Path) -> bool:
     return any(path.name.startswith(p) for p in _ALLOWED_PREFIXES)
 
 
+def _is_fstring_token(token_text: str) -> bool:
+    quote_start = next(
+        (
+            idx
+            for idx, char in enumerate(token_text)
+            if char in _QUOTES or token_text[idx : idx + 3] in ('"""', "'''")
+        ),
+        len(token_text),
+    )
+    return "f" in token_text[:quote_start].lower()
+
+
 def _is_dynamic_fstring(line: str) -> bool:
-    if "{" not in line or "}" not in line:
+    try:
+        tokens = tokenize.generate_tokens(StringIO(line).readline)
+        active_fstring_parts: list[str] | None = None
+        for token in tokens:
+            token_name = tokenize.tok_name.get(token.type)
+            if token.type == tokenize.STRING:
+                if (
+                    _is_fstring_token(token.string)
+                    and any(form in token.string for form in _ONEX_LITERAL_FORMS)
+                    and "{" in token.string
+                    and "}" in token.string
+                ):
+                    return True
+                continue
+            if token_name == "FSTRING_START":
+                active_fstring_parts = [token.string]
+                continue
+            if active_fstring_parts is None:
+                continue
+            active_fstring_parts.append(token.string)
+            if token_name == "FSTRING_END":
+                token_text = "".join(active_fstring_parts)
+                if (
+                    any(form in token_text for form in _ONEX_LITERAL_FORMS)
+                    and "{" in token_text
+                    and "}" in token_text
+                ):
+                    return True
+                active_fstring_parts = None
         return False
-    return any(marker in line for marker in ('f"onex.', "f'onex."))
+    except tokenize.TokenError:
+        return False
 
 
 def _is_prefix_match_usage(line: str) -> bool:
