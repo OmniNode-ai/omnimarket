@@ -54,7 +54,7 @@ async def test_handler_dispatches_and_returns_typed_response(
     assert response.metrics.cost_usd == 0.001
     assert response.metrics.cost_savings_usd == 0.15
     assert response.metrics.latency_ms == 2500
-    mock_dispatch_port.dispatch.assert_called_once()
+    mock_dispatch_port.dispatch.assert_awaited_once()
 
 
 @pytest.mark.unit
@@ -71,7 +71,8 @@ async def test_handler_propagates_correlation_id(
     )
     response = await handler.handle(request)
     assert response.correlation_id == cid
-    call_kwargs = mock_dispatch_port.dispatch.call_args.kwargs
+    mock_dispatch_port.dispatch.assert_awaited_once()
+    call_kwargs = mock_dispatch_port.dispatch.await_args.kwargs
     assert call_kwargs["correlation_id"] == cid
 
 

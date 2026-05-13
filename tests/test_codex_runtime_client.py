@@ -774,23 +774,26 @@ async def test_dispatch_async_receives_terminal_on_additional_failure_topic() ->
             None,
         )
 
-    await bus.subscribe(
-        default_command_topic(), group_id=f"adapter-{uuid4()}", on_message=on_command
-    )
+    try:
+        await bus.subscribe(
+            default_command_topic(),
+            group_id=f"adapter-{uuid4()}",
+            on_message=on_command,
+        )
 
-    client = CodexRuntimeRequestAdapter(
-        event_bus_factory=lambda: _AdapterTestTransport(bus),
-        requester="codex-test",
-    )
-    result = await client.dispatch_async(
-        command_name="delegate_skill.orchestrate",
-        payload={"prompt": "x"},
-        timeout_ms=2000,
-        response_topic="onex.evt.omnibase-infra.pattern-b-dispatch-success.v1",
-        additional_response_topics=(failure_topic,),
-    )
-
-    await bus.close()
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="delegate_skill.orchestrate",
+            payload={"prompt": "x"},
+            timeout_ms=2000,
+            response_topic="onex.evt.omnibase-infra.pattern-b-dispatch-success.v1",
+            additional_response_topics=(failure_topic,),
+        )
+    finally:
+        await bus.close()
 
     assert result.ok is False
     assert result.error is not None
