@@ -129,6 +129,60 @@ task_classes:
       tier_order:
         - local
         - cheap_cloud
+  complex_reasoning:
+    required_capabilities:
+      - reasoning
+      - context_window_large
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - step_by_step_explanation
+        - methodical_analysis
+    escalation_policy:
+      max_escalations: 2
+      tier_order:
+        - local
+        - claude
+  planning:
+    required_capabilities:
+      - reasoning
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - structured_output
+        - covers_dependencies
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
+  review:
+    required_capabilities:
+      - reasoning
+      - code_completion
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - cites_specific_lines
+        - explains_tradeoffs
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
   summarization:
     required_capabilities:
       - natural_language_generation

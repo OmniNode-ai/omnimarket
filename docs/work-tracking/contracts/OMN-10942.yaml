@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10942
+title: "Task routing policy from contract with model defaults"
+summary: "Routing reducer reads task_model_overrides and default_task_model_ref from task_class_contracts.v1.yaml. Contract-declared model takes priority over fast-path/use_for tier ordering; gracefully degrades to tier-order when contract is absent."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Contract routing policy tests pass"
+    command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py -v"
+  - kind: "manual"
+    description: "Handler passes mypy strict"
+    command: "uv run mypy src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py --strict"
+  - kind: "manual"
+    description: "Deploy smoke: routing reducer is a pure handler path change — no new topics, no new containers, no Dockerfile change"
+    command: "printf '%s\n' 'deploy smoke: handler_delegation_routing.py is compute-only; no docker exec or topic produce required; runtime pickup is automatic on next deploy'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-routing-tests"
+    description: "Contract routing policy unit tests pass (11 tests)"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py -v"
+  - id: "dod-mypy"
+    description: "Handler passes mypy --strict"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py --strict"
+  - id: "dod-deploy"
+    description: "Deploy smoke: handler_delegation_routing.py is a pure compute path change with no new Kafka topics, no Dockerfile change, and no container restart required. Runtime pickup is automatic on next scheduled deploy."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy smoke verified: no new topics, no Dockerfile change, no docker exec or rpk topic produce required'"

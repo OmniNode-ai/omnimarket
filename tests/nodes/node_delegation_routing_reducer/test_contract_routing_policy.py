@@ -32,14 +32,14 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-qwen-coder-30b
-        endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip: test fixture for local AIPC routing
-        model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit
+        endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10942 reason="test fixture for contract-driven routing to lab AIPC endpoint"
+        model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit  # onex-allow-model-id OMN-10942 reason="test fixture verifying contract-driven routing to lab AIPC model"
         tier: local
         timeout_ms: 30000
         capabilities: []
       - backend_id: local-deepseek-r1-14b
-        endpoint_url: "http://192.168.86.201:8001"  # onex-allow-internal-ip: test fixture for local AIPC routing
-        model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ
+        endpoint_url: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10942 reason="test fixture for contract-driven routing to lab AIPC endpoint"
+        model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ  # onex-allow-model-id OMN-10942 reason="test fixture verifying contract-driven routing to lab AIPC model"
         tier: local
         timeout_ms: 30000
         capabilities: []

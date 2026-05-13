@@ -320,6 +320,7 @@ def _get_task_class_contract() -> dict[str, object] | None:
 def _get_contract_model_ref(
     task_type: str,
     contract_path: Path | None = None,
+    contract: dict[str, object] | None = None,
 ) -> str | None:
     """Return the contract-declared model ref for task_type, or None.
 
@@ -333,22 +334,28 @@ def _get_contract_model_ref(
         task_type: The task classification string (e.g. "reasoning", "code_generation").
         contract_path: Override path for the contract file; defaults to the
             module-level TASK_CLASS_CONTRACT_PATH env var or the default location.
+        contract: Pre-loaded contract dict; when provided, skips disk read entirely.
 
     Returns:
         Model ID string (e.g. "deepseek-r1-14b") or None.
     """
-    if contract_path is None:
-        env_path = os.environ.get(
-            "TASK_CLASS_CONTRACT_PATH", ""
-        )  # ONEX_EXCLUDE: env_access - contract path override for testing
-        contract_path = (
-            Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
-        )
+    if contract is not None:
+        raw: dict[str, object] | None = contract
+    else:
+        if contract_path is None:
+            env_path = os.environ.get(
+                "TASK_CLASS_CONTRACT_PATH", ""
+            )  # ONEX_EXCLUDE: env_access - contract path override for testing
+            contract_path = (
+                Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
+            )
 
-    if not contract_path.exists():
-        return None
+        if not contract_path.exists():
+            return None
 
-    raw = yaml.safe_load(contract_path.read_text())
+        loaded = yaml.safe_load(contract_path.read_text())
+        raw = loaded if isinstance(loaded, dict) else None
+
     if not isinstance(raw, dict):
         return None
 
@@ -508,7 +515,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     tiers = _tier_order_from_contract(config, entry)
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
-    contract_model_ref = _get_contract_model_ref(task_type)
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
 
     for tier in tiers:
         if not _tier_allowed_by_contract(tier, entry):
