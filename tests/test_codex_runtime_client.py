@@ -744,6 +744,64 @@ async def test_dispatch_async_round_trip() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_async_receives_terminal_on_additional_failure_topic() -> None:
+    """A failure published on a distinct topic is still received when subscribed."""
+    failure_topic = "onex.evt.omnibase-infra.pattern-b-dispatch-failure.v1"
+    bus = EventBusInmemory(environment="test", group="codex-pattern-b-failure-topic")
+    await bus.start()
+
+    async def on_command(message: ModelEventMessage) -> None:
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            message.value
+        )
+        terminal = ModelDispatchBusTerminalResult(
+            correlation_id=envelope.payload.correlation_id,
+            status=cast("object", "failed"),
+            error_message="runtime rejected the request",
+        )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=failure_topic,
+            source_tool="pattern-b-adapter",
+        )
+        # Publish only on the failure topic, never the success/response topic.
+        await bus.publish(
+            failure_topic,
+            None,
+            response.model_dump_json().encode("utf-8"),
+            None,
+        )
+
+    try:
+        await bus.subscribe(
+            default_command_topic(),
+            group_id=f"adapter-{uuid4()}",
+            on_message=on_command,
+        )
+
+        client = CodexRuntimeRequestAdapter(
+            event_bus_factory=lambda: _AdapterTestTransport(bus),
+            requester="codex-test",
+        )
+        result = await client.dispatch_async(
+            command_name="delegate_skill.orchestrate",
+            payload={"prompt": "x"},
+            timeout_ms=2000,
+            response_topic="onex.evt.omnibase-infra.pattern-b-dispatch-success.v1",
+            additional_response_topics=(failure_topic,),
+        )
+    finally:
+        await bus.close()
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "runtime_failed"
+    assert "runtime rejected" in result.error.message
+
+
+@pytest.mark.asyncio
 async def test_dispatch_async_uses_env_target_runtime_address(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

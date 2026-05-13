@@ -127,6 +127,7 @@ class _CodexDispatchBusAdapter:
         route: ModelDispatchBusRoute,
         *,
         correlation_id: str,
+        additional_terminal_topics: tuple[str, ...] = (),
     ) -> tuple[
         Callable[[], Awaitable[None]], asyncio.Queue[ModelDispatchBusTerminalResult]
     ]:
@@ -144,21 +145,31 @@ class _CodexDispatchBusAdapter:
             if str(envelope.payload.correlation_id) == correlation_id:
                 await q.put(envelope.payload)
 
-        unsub = await self._transport.subscribe(
-            route.terminal_topic,
-            None,
-            on_message,
-            group_id=f"codex-adapter-{correlation_id}",
-        )
+        topics: list[str] = [route.terminal_topic]
+        for extra in additional_terminal_topics:
+            if extra and extra not in topics:
+                topics.append(extra)
+
+        unsubs: list[object] = []
+        for topic in topics:
+            unsubs.append(
+                await self._transport.subscribe(
+                    topic,
+                    None,
+                    on_message,
+                    group_id=f"codex-adapter-{correlation_id}",
+                )
+            )
 
         async def _unsubscribe() -> None:
-            if callable(unsub):
-                try:
-                    result = unsub()
-                    if asyncio.iscoroutine(result):
-                        await result
-                except Exception:
-                    pass
+            for unsub in unsubs:
+                if callable(unsub):
+                    try:
+                        result = unsub()
+                        if asyncio.iscoroutine(result):
+                            await result
+                    except Exception:
+                        pass
 
         return _unsubscribe, q
 
@@ -400,6 +411,7 @@ class CodexRuntimeRequestAdapter:
         correlation_id: UUID | str | None = None,
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
+        additional_response_topics: tuple[str, ...] = (),
         target_runtime_address: str | None = None,
     ) -> ModelCodexRuntimeRequestAdapterResponse:
         request = _build_client_request(
@@ -426,6 +438,7 @@ class CodexRuntimeRequestAdapter:
             unsubscribe, result_queue = await dispatch_adapter.wait_for_result(
                 route,
                 correlation_id=str(command.correlation_id),
+                additional_terminal_topics=additional_response_topics,
             )
             try:
                 await dispatch_adapter.publish_command(route, command)
@@ -483,6 +496,7 @@ class CodexRuntimeRequestAdapter:
         correlation_id: UUID | str | None = None,
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
+        additional_response_topics: tuple[str, ...] = (),
         target_runtime_address: str | None = None,
     ) -> ModelCodexRuntimeRequestAdapterResponse:
         return asyncio.run(
@@ -492,6 +506,7 @@ class CodexRuntimeRequestAdapter:
                 correlation_id=correlation_id,
                 timeout_ms=timeout_ms,
                 response_topic=response_topic,
+                additional_response_topics=additional_response_topics,
                 target_runtime_address=target_runtime_address,
             )
         )
