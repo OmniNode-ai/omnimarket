@@ -119,7 +119,9 @@ class NodeOverseerBenchmarker:
         if harness is not None:
             self._harness = harness
         else:
-            self._harness = NodeLlmEvalHarness(client=client or FakeLlmClient())
+            self._harness = NodeLlmEvalHarness(
+                client=client if client is not None else FakeLlmClient()
+            )
 
     def handle(self, request: BenchmarkRequest) -> BenchmarkResult:
         if request.dry_run:
