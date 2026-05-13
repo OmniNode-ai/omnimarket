@@ -79,6 +79,17 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # OMN-10909: stricter topic-literal gate (delegation thin-shim plan, Task 8).
+      # Allowlist: topics.py, test_*/conftest* files, inline `# onex-topic-allow`
+      # annotations. SYNC with ci.yml step "Topic-literal guardrail (annotation allowlist)".
+      - id: no-hardcoded-topics-annotated
+        name: Topic-literal guardrail (annotation allowlist)
+        language: system
+        entry: python scripts/ci/check_no_hardcoded_topics.py
+        files: ^src/omnimarket/.*\.py$
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Ruff — standalone pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
   # because uv.sources relative paths (../omnibase_core) resolve against the worktree
