@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import textwrap
+from collections.abc import Generator
 from datetime import UTC
 from pathlib import Path
 from uuid import uuid4
@@ -124,7 +125,7 @@ _CONTRACT_NO_OVERRIDES = textwrap.dedent("""\
 
 
 @pytest.fixture(autouse=True)
-def _clear_lru_caches() -> None:
+def _clear_lru_caches() -> Generator[None, None, None]:
     """Clear module-level LRU caches between tests."""
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as h,
