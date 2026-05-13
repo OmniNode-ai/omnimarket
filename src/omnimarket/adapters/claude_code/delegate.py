@@ -110,6 +110,12 @@ def build_delegation_payload(
     """Build the payload object carried inside the delegation command envelope."""
     if not prompt:
         raise ValueError("prompt must be a non-empty string")
+    if (
+        not isinstance(max_tokens, int)
+        or isinstance(max_tokens, bool)
+        or max_tokens < 1
+    ):
+        raise ValueError("max_tokens must be a positive integer")
     cid = _coerce_correlation_id(correlation_id)
     payload: dict[str, Any] = {
         "prompt": prompt,
@@ -241,6 +247,7 @@ class DelegationDispatchAdapter:
             correlation_id=envelope["correlation_id"],
             timeout_ms=effective_timeout,
             response_topic=self._topics.success_topic,
+            additional_response_topics=(self._topics.failure_topic,),
         )
         result: dict[str, Any] = response.model_dump(mode="json", exclude_none=True)
         result["command_topic"] = self._topics.command_topic

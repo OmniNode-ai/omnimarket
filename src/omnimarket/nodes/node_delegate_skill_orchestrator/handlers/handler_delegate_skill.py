@@ -71,11 +71,15 @@ def _response_from_result(
     request: ModelDelegateSkillRequest, result: dict[str, object]
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
+    is_known_status = raw_status in _TERMINAL_STATUSES
     status_value: Literal["completed", "failed", "timeout"] = (
         raw_status  # type: ignore[assignment]
-        if raw_status in _TERMINAL_STATUSES
-        else "completed"
+        if is_known_status
+        else "failed"
     )
+    error_message = str(result.get("error_message", ""))
+    if not is_known_status:
+        error_message = f"runtime returned unknown terminal status {raw_status!r}"
     return ModelDelegateSkillResponse(
         status=status_value,
         correlation_id=request.correlation_id,
@@ -84,6 +88,7 @@ def _response_from_result(
         model_name=str(result.get("model_name", "")),
         response=str(result.get("content", "")),
         quality_gate_passed=bool(result.get("quality_gate_passed", False)),
+        error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
             input_tokens=_as_int(result.get("input_tokens")),
             output_tokens=_as_int(result.get("output_tokens")),

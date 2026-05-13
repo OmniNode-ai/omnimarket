@@ -92,6 +92,42 @@ async def test_handler_returns_failed_on_dispatch_error() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_maps_unknown_status_to_failed() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "weird-runtime-state",
+        "content": "partial output",
+    }
+    handler = HandlerDelegateSkill(dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "failed"
+    assert "weird-runtime-state" in response.error_message
+
+
+@pytest.mark.unit
+async def test_handler_propagates_runtime_error_message() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "failed",
+        "error_message": "model unavailable",
+    }
+    handler = HandlerDelegateSkill(dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "failed"
+    assert response.error_message == "model unavailable"
+
+
+@pytest.mark.unit
 async def test_handler_does_not_reference_transport_internals(
     mock_dispatch_port: AsyncMock,
 ) -> None:

@@ -67,6 +67,68 @@ def test_build_delegation_payload_rejects_invalid_task_type() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("bad_max_tokens", [0, -1, -2048])
+def test_build_delegation_payload_rejects_non_positive_max_tokens(
+    bad_max_tokens: int,
+) -> None:
+    with pytest.raises(ValueError, match="max_tokens"):
+        build_delegation_payload(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+            max_tokens=bad_max_tokens,
+        )
+
+
+@pytest.mark.unit
+def test_build_delegation_payload_rejects_bool_max_tokens() -> None:
+    with pytest.raises(ValueError, match="max_tokens"):
+        build_delegation_payload(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+            max_tokens=True,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.unit
+def test_dispatch_sync_subscribes_to_failure_topic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The adapter must pass the failure topic alongside the success topic."""
+    captured: dict[str, object] = {}
+
+    class _FakeRuntimeAdapter:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def dispatch_sync(self, **kwargs: object) -> object:
+            captured.update(kwargs)
+
+            class _Resp:
+                def model_dump(self, **__: object) -> dict[str, object]:
+                    return {"ok": True}
+
+            return _Resp()
+
+    import omnimarket.adapters.codex.runtime_client as runtime_client
+
+    monkeypatch.setattr(
+        runtime_client, "CodexRuntimeRequestAdapter", _FakeRuntimeAdapter
+    )
+
+    adapter = DelegationDispatchAdapter()
+    adapter.dispatch_sync(prompt="Test", task_type="test", source="claude-code")
+
+    assert captured["response_topic"] == (
+        "onex.evt.omnimarket.delegate-skill-completed.v1"
+    )
+    assert captured["additional_response_topics"] == (
+        ("onex.evt.omnimarket.delegate-skill-failed.v1",)
+    )
+
+
+@pytest.mark.unit
 def test_compile_only_does_not_publish() -> None:
     adapter = DelegationDispatchAdapter()
     result = adapter.compile_request(
