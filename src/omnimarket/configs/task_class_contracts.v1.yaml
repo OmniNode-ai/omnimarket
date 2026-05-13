@@ -19,9 +19,24 @@
 #   (local → cheap_cloud → claude). Only tiers named here are tried first;
 #   remaining tiers from routing_tiers.yaml are appended in config order.
 #
+# default_task_model_ref: model ID used when no per-task override is declared.
+#   Maps to the model `id` field in routing_tiers.yaml (e.g. "qwen3-coder-30b").
+#
+# task_model_overrides: per-task-type model ID overrides. The routing reducer
+#   prioritizes the declared model over tier-order selection when the model is
+#   available in the tier with a configured bifrost endpoint (OMN-10942).
+#
 # Related Tickets:
 #   - OMN-10615: Wire routing reducer to read task-class contracts
+#   - OMN-10942: Task routing policy from contract with model defaults
 version: "1.0"
+default_task_model_ref: "qwen3-coder-30b"
+task_model_overrides:
+  reasoning: "deepseek-r1-14b"
+  complex_reasoning: "deepseek-r1-14b"
+  planning: "deepseek-r1-14b"
+  review: "deepseek-r1-14b"
+  research: "deepseek-r1-14b"
 task_classes:
   code_generation:
     required_capabilities:
