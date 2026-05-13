@@ -63,6 +63,14 @@ def _is_fstring_token(token_text: str) -> bool:
     return "f" in token_text[:quote_start].lower()
 
 
+def _is_dynamic_onex_fstring(token_text: str) -> bool:
+    return (
+        any(form in token_text for form in _ONEX_LITERAL_FORMS)
+        and "{" in token_text
+        and "}" in token_text
+    )
+
+
 def _is_dynamic_fstring(line: str) -> bool:
     try:
         tokens = tokenize.generate_tokens(StringIO(line).readline)
@@ -70,11 +78,8 @@ def _is_dynamic_fstring(line: str) -> bool:
         for token in tokens:
             token_name = tokenize.tok_name.get(token.type)
             if token.type == tokenize.STRING:
-                if (
-                    _is_fstring_token(token.string)
-                    and any(form in token.string for form in _ONEX_LITERAL_FORMS)
-                    and "{" in token.string
-                    and "}" in token.string
+                if _is_fstring_token(token.string) and _is_dynamic_onex_fstring(
+                    token.string
                 ):
                     return True
                 continue
@@ -86,11 +91,7 @@ def _is_dynamic_fstring(line: str) -> bool:
             active_fstring_parts.append(token.string)
             if token_name == "FSTRING_END":
                 token_text = "".join(active_fstring_parts)
-                if (
-                    any(form in token_text for form in _ONEX_LITERAL_FORMS)
-                    and "{" in token_text
-                    and "}" in token_text
-                ):
+                if _is_dynamic_onex_fstring(token_text):
                     return True
                 active_fstring_parts = None
         return False

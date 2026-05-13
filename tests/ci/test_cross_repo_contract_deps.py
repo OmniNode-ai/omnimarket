@@ -98,8 +98,8 @@ def test_cross_repo_contract_path_accepts_safe_segments(
 @pytest.mark.parametrize(
     ("repo", "node"),
     [
-        ("/tmp/evil", "node_ok"),
-        ("omnibase_infra", "/tmp/evil"),
+        ("/evil", "node_ok"),
+        ("omnibase_infra", "/evil"),
         ("../omnibase_infra", "node_ok"),
         ("omnibase_infra", "../node"),
         ("omni/infra", "node_ok"),
