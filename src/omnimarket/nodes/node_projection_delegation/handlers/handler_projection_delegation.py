@@ -15,6 +15,8 @@ Target table schema (from omnidash, OMN-2284):
   quality_gate_passed BOOLEAN DEFAULT false
   quality_gates_checked JSONB
   quality_gates_failed JSONB
+  cost_usd NUMERIC DEFAULT 0
+  cost_savings_usd NUMERIC DEFAULT 0
   delegation_latency_ms INT
   repo TEXT
   is_shadow BOOLEAN DEFAULT false
@@ -49,6 +51,8 @@ class ModelTaskDelegatedEvent(BaseModel):
     quality_gate_passed: bool = Field(default=False)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
+    cost_usd: float = Field(default=0.0)
+    cost_savings_usd: float = Field(default=0.0)
     delegation_latency_ms: int | None = Field(default=None, ge=0)
     repo: str | None = Field(default=None)
     is_shadow: bool = Field(default=False)
@@ -125,6 +129,8 @@ class HandlerProjectionDelegation:
             "quality_gate_passed": event.quality_gate_passed,
             "quality_gates_checked": event.quality_gates_checked,
             "quality_gates_failed": event.quality_gates_failed,
+            "cost_usd": event.cost_usd,
+            "cost_savings_usd": event.cost_savings_usd,
             "delegation_latency_ms": event.delegation_latency_ms,
             "repo": event.repo,
             "is_shadow": event.is_shadow,
