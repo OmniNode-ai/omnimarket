@@ -11,6 +11,11 @@ handler:
   class: HandlerDodSweepOrchestrator
   input_model: omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request.ModelDodSweepOrchestratorRequest
 
+env_dependencies:
+  ONEX_CC_REPO_PATH:
+    required: false
+    description: "Path to the omni_home repo registry; used as fallback root when not resolvable from the process environment"
+
 descriptor:
   node_archetype: orchestrator
   purity: impure

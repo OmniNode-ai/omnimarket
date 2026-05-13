@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10859"
+title: "Semantic ticket verification gate — Phase 1 advisory"
+summary: >
+  Add node_pr_semantic_grader_llm_effect to omnimarket: LLM-based advisory grader for
+  PR acceptance criteria coverage. Phase 1: advisory-only, auto-sets advisory flag when
+  anti_pattern_present >= 0.7. No live runtime deployment required for Phase 1 advisory mode.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - topics
+  - events
+evidence_requirements:
+  - kind: "tests"
+    description: "16 unit tests for HandlerPrSemanticGrader pass"
+    command: "uv run pytest src/omnimarket/nodes/node_pr_semantic_grader_llm_effect/tests/ -v"
+  - kind: "ci"
+    description: "All CI gates green on omnimarket PR #608"
+    command: "gh pr checks 608 --repo OmniNode-ai/omnimarket"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-node-exists"
+    description: "node_pr_semantic_grader_llm_effect exists with contract, handler, models, tests"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'pr-semantic-grading-requested.v1' src/omnimarket/nodes/node_pr_semantic_grader_llm_effect/contract.yaml"
+  - id: "dod-grader-tests"
+    description: "16 unit tests for HandlerPrSemanticGrader pass including OMN-10834 anti-pattern fixture"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_pr_semantic_grader_llm_effect/tests/ -q"
+  - id: "dod-deploy"
+    description: >
+      Phase 1 advisory node: no runtime registration, no Kafka consumer wired to live runtime.
+      Node is scaffold + handler + tests only. Advisory mode requires no live deployment.
+      Runtime wiring deferred to Phase 2 (calibrated threshold, hard-fail mode).
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\\n' 'deploy-deferred: Phase 1 advisory-only node, no runtime registration required, live deployment deferred to Phase 2'"

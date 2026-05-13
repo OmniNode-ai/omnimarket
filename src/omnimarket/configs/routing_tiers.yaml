@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 OmniNode Team
+#
+# routing_tiers.yaml — Declarative delegation escalation ladder.
+#
+# Loaded by node_delegation_routing_reducer at startup.
+# To change tier order, model assignments, or retry counts, edit this file only.
+# No handler changes are needed for operational tuning.
+#
+# Tier evaluation order: local → cheap_cloud → claude
+# The handler iterates tiers top-to-bottom, stopping at the first accepted result.
+#
+# Endpoint URLs are resolved from the deployed bifrost contract at
+# ~/.omninode/delegation/bifrost_delegation.yaml. The backend_id field maps
+# each model to a backend entry in the bifrost contract. See OMN-10657.
+#
+# Related Tickets:
+#   - OMN-8029: Delegation pipeline — local→cheap-cloud→claude routing
+#   - OMN-10657: Endpoint resolution from deployed contract, not env vars
+tiers:
+  - name: local
+    models:
+      - id: qwen3-coder-30b
+        backend_id: local-qwen-coder-30b
+        max_context_tokens: 65536
+        use_for:
+          - code_generation
+          - code_review
+          - refactor
+          - test
+          - research
+      - id: deepseek-r1-14b
+        backend_id: local-deepseek-r1-14b
+        max_context_tokens: 24576
+        use_for:
+          - test
+          - research
+          - reasoning
+          - planning
+          - review
+          - document
+        fast_path_threshold_tokens: 24576
+    eval_before_accept: true
+    eval_model: deepseek-r1-14b
+    max_retries: 2
+  - name: cheap_cloud
+    models:
+      - id: glm-z-ai
+        backend_id: cloud-glm
+        max_context_tokens: 128000
+        use_for:
+          - code_generation
+          - reasoning
+          - research
+      - id: gemini-flash
+        backend_id: cloud-gemini-flash
+        max_context_tokens: 1000000
+        use_for:
+          - summarization
+          - simple_tasks
+          - document
+    eval_before_accept: true
+    eval_model: deepseek-r1-14b
+    max_retries: 1
+  - name: claude
+    models:
+      - id: claude-sonnet-4-6
+        backend_id: cloud-sonnet
+        max_context_tokens: 200000
+        use_for:
+          - escalation
+          - complex_reasoning
+          - agent_orchestration
+          - code_generation
+          - reasoning
+          - planning
+          - test
+          - document
+          - research
+    eval_before_accept: false
+    max_retries: 0
+  # CLI agent delegation tier (OMN-10137)
+  # Models dispatched via subprocess rather than HTTP API.
+  # Availability confirmed at dispatch time via shutil.which inside HandlerLlmCliSubprocess.
+  - name: cli_agents
+    models:
+      - id: claude-cli
+        backend_id: cli-claude
+        max_context_tokens: 200000
+        use_for:
+          - agent_delegation
+          - complex_reasoning
+      - id: opencode-cli
+        backend_id: cli-opencode
+        max_context_tokens: 200000
+        use_for:
+          - agent_delegation
+          - code_generation
+    eval_before_accept: false
+    max_retries: 0

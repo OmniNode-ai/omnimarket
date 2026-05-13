@@ -23,6 +23,11 @@ descriptor:
   idempotent: true
   timeout_ms: 60000
 
+env_dependencies:
+  ONEX_INFRA_SSH_TARGET:
+    required: false
+    description: "SSH target string for infrastructure checks; module-level default used when no runtime override is provided"
+
 terminal_event: onex.evt.omnimarket.platform-readiness-completed.v1
 
 event_bus:
