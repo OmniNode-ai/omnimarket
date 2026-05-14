@@ -149,3 +149,22 @@ async def test_handler_does_not_reference_transport_internals(
         assert word not in lowered, (
             f"Handler module references transport detail: {word}"
         )
+
+
+@pytest.mark.unit
+def test_handler_constructs_without_dispatch_port() -> None:
+    handler = HandlerDelegateSkill()
+    assert handler is not None
+
+
+@pytest.mark.unit
+async def test_handler_with_no_port_fails_closed_on_dispatch() -> None:
+    handler = HandlerDelegateSkill()
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "failed"
+    assert "no dispatch port wired" in response.error_message.lower()
