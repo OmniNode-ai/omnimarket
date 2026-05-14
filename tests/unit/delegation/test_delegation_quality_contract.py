@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-file OMN-10865 reason="delegation routing fixture must include exact local HF model ID"
 """Contract-driven quality checks for delegation output."""
 
 from __future__ import annotations
@@ -53,7 +52,7 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "backends:\n"
         "  - backend_id: local-deepseek-r1-14b\n"
         '    endpoint_url: "http://test-document:8001"\n'
-        '    model_name: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"\n'
+        '    model_name: "test-model-placeholder"\n'
         "    tier: local\n"
         "    timeout_ms: 30000\n"
         "    capabilities: []\n",

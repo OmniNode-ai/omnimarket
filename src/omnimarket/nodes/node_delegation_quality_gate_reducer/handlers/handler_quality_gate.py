@@ -297,7 +297,18 @@ def _run_contract_checks(
             ):
                 heuristic_failures.append(reason)
         elif check == "no_obvious_regressions":
-            if reason := _check_no_refusal(content):
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=(
+                    "regression",
+                    "backward",
+                    "compatib",
+                    "existing tests",
+                    "no break",
+                ),
+            ):
                 heuristic_failures.append(reason)
         elif check == "covers_edge_cases":
             if reason := _check_contains_any(
@@ -327,7 +338,18 @@ def _run_contract_checks(
             if len(content.split()) > 250:
                 heuristic_failures.append("WEAK_OUTPUT: response is not concise")
         elif check == "accurate":
-            if reason := _check_no_refusal(content):
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=(
+                    "evidence",
+                    "verified",
+                    "based on",
+                    "according to",
+                    "line ",
+                ),
+            ):
                 heuristic_failures.append(reason)
         elif check == "methodical_analysis":
             if reason := _check_contains_any(

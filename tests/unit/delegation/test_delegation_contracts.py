@@ -86,11 +86,17 @@ class TestOrchestratorContract:
         assert "onex.evt.omnibase-infra.delegation-failed.v1" in topics
         assert "onex.cmd.omnibase-infra.remote-agent-invoke.v1" in topics
 
-    def test_terminal_event_declared(self) -> None:
+    def test_terminal_events_declared(self) -> None:
         data = self._load()
+        terminal_events = data.get("terminal_events")
+        assert isinstance(terminal_events, dict)
         assert (
-            data.get("terminal_event")
+            terminal_events.get("success")
             == "onex.evt.omnibase-infra.delegation-completed.v1"
+        )
+        assert (
+            terminal_events.get("failure")
+            == "onex.evt.omnibase-infra.delegation-failed.v1"
         )
 
 

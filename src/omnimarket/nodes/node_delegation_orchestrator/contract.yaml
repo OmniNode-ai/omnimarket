@@ -25,7 +25,6 @@ node_version:
   minor: 3
   patch: 0
 node_type: "ORCHESTRATOR_GENERIC"
-terminal_event: "onex.evt.omnibase-infra.delegation-completed.v1"
 terminal_events:
   success: "onex.evt.omnibase-infra.delegation-completed.v1"
   failure: "onex.evt.omnibase-infra.delegation-failed.v1"
