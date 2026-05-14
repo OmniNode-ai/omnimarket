@@ -260,22 +260,30 @@ class TestDeltaContractRouting:
         )
 
         contract_file, bifrost_file = self._write_files(tmp_path)
+        prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
+        prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
         os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
 
         try:
             # "test" has no task_model_overrides entry → uses default_task_model_ref (qwen3-coder-30b)
             decision = delta(self._make_request("test"))
-            assert (
-                "qwen" in decision.selected_model.lower()
-                or "qwen3-coder" in decision.rationale.lower()
-            ), (
+            assert "qwen" in decision.selected_model.lower(), (
                 f"Expected qwen3-coder for test task, got: {decision.selected_model!r} "
                 f"rationale: {decision.rationale!r}"
             )
+            assert "deepseek" not in decision.selected_model.lower(), (
+                f"Did not expect deepseek for test task, got: {decision.selected_model!r}"
+            )
         finally:
-            os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
-            os.environ.pop("BIFROST_CONTRACT_PATH", None)
+            if prev_task_contract_path is None:
+                os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
+            else:
+                os.environ["TASK_CLASS_CONTRACT_PATH"] = prev_task_contract_path
+            if prev_bifrost_contract_path is None:
+                os.environ.pop("BIFROST_CONTRACT_PATH", None)
+            else:
+                os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
 
     def test_reasoning_tasks_route_to_deepseek(self, tmp_path: Path) -> None:
         """research task_type routes to deepseek-r1 via task_model_overrides."""
@@ -284,22 +292,30 @@ class TestDeltaContractRouting:
         )
 
         contract_file, bifrost_file = self._write_files(tmp_path)
+        prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
+        prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
         os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
 
         try:
             # "research" is in task_model_overrides → deepseek-r1-14b
             decision = delta(self._make_request("research"))
-            assert (
-                "deepseek" in decision.selected_model.lower()
-                or "deepseek" in decision.rationale.lower()
-            ), (
+            assert "deepseek" in decision.selected_model.lower(), (
                 f"Expected deepseek for research task, got: {decision.selected_model!r} "
                 f"rationale: {decision.rationale!r}"
             )
+            assert "coder" not in decision.selected_model.lower(), (
+                f"Did not expect qwen3-coder for research task, got: {decision.selected_model!r}"
+            )
         finally:
-            os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
-            os.environ.pop("BIFROST_CONTRACT_PATH", None)
+            if prev_task_contract_path is None:
+                os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
+            else:
+                os.environ["TASK_CLASS_CONTRACT_PATH"] = prev_task_contract_path
+            if prev_bifrost_contract_path is None:
+                os.environ.pop("BIFROST_CONTRACT_PATH", None)
+            else:
+                os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
 
     def test_routing_falls_back_to_default_for_unknown_task_types(
         self, tmp_path: Path
