@@ -1,0 +1,39 @@
+name: dashboard-projection-api
+schema_version: "1.0.0"
+freshness_sla_ms: 5000
+description: >
+  Delegation projection API endpoints consumed by omnidash.
+  All data comes from the delegation_events projection table.
+  The dashboard must read delegation data through these declared
+  endpoints, not through Vite middleware or hardcoded ports.
+
+endpoints:
+  delegation-summary:
+    path: /api/delegation/summary
+    method: GET
+    description: Aggregate delegation count, savings, quality gate pass rate
+    response_schema: DelegationSummaryProjection
+
+  recent-delegations:
+    path: /api/delegation/recent
+    method: GET
+    description: Recent delegation events with full detail
+    response_schema: DelegationEventsProjection
+
+  model-routing:
+    path: /api/delegation/model-routing
+    method: GET
+    description: Model routing distribution with per-model metrics
+    response_schema: DelegationModelRoutingProjection
+
+  quality-gate:
+    path: /api/delegation/quality-gate
+    method: GET
+    description: Quality gate pass/fail rates and failure categories
+    response_schema: DelegationQualityGateProjection
+
+  savings:
+    path: /api/delegation/savings
+    method: GET
+    description: Cost savings per session and aggregate
+    response_schema: DelegationSavingsProjection

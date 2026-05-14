@@ -47,6 +47,35 @@ class ProtocolDelegationDispatchPort(Protocol):
     ) -> dict[str, object]: ...
 
 
+class _UnwiredDelegationDispatchPort:
+    """Fail-closed default port used when the runtime has not wired a real port.
+
+    The auto-wiring resolver constructs handlers zero-arg when no explicit
+    dependency map is provided. A handler that crashed on construction would
+    break runtime boot for every other co-located node, so this default lets
+    the handler load but raises a clear error on first dispatch attempt.
+    """
+
+    async def dispatch(
+        self,
+        *,
+        prompt: str,
+        task_type: str,
+        correlation_id: UUID,
+        max_tokens: int,
+        source_file_path: str | None,
+        source_session_id: str | None,
+        wait: bool,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
+    ) -> dict[str, object]:
+        raise RuntimeError(
+            "HandlerDelegateSkill has no dispatch port wired. Construct the "
+            "handler with dispatch_port=<ProtocolDelegationDispatchPort impl> "
+            "or register one in the runtime DI container before invoking."
+        )
+
+
 def _as_int(value: object, default: int = 0) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -132,12 +161,16 @@ class HandlerDelegateSkill:
 
     def __init__(
         self,
-        event_bus: ProtocolDelegationEventBus,
+        event_bus: ProtocolDelegationEventBus | None = None,
         *,
         dispatch_port: ProtocolDelegationDispatchPort | None = None,
     ) -> None:
-        self._dispatch_port = dispatch_port or RuntimeDelegationDispatchPort(
-            event_bus=event_bus
+        self._dispatch_port: ProtocolDelegationDispatchPort = (
+            dispatch_port
+            if dispatch_port is not None
+            else RuntimeDelegationDispatchPort(event_bus=event_bus)
+            if event_bus is not None
+            else _UnwiredDelegationDispatchPort()
         )
 
     async def handle(

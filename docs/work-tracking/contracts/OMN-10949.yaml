@@ -1,0 +1,21 @@
+# OMN-10949 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+schema_version: "1.0.0"
+ticket_id: "OMN-10949"
+title: "Project delegation cost fields — pricing_manifest_version projection"
+summary: "Persists pricing_manifest_version in delegation_events projection for savings audit."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "deploy-additive-schema"
+    description: "pricing_manifest_version is an additive field with default=0. No deploy restart required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo 'deploy: pricing_manifest_version is backward-compatible additive field; old events default to 0 via extra=ignore'"

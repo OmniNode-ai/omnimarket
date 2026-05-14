@@ -226,7 +226,7 @@ async def test_handler_does_not_reference_transport_internals(
 
 
 @pytest.mark.unit
-def test_handler_constructor_matches_runtime_known_injection() -> None:
+def test_handler_constructor_allows_runtime_event_bus_and_zero_arg_default() -> None:
     signature = inspect.signature(HandlerDelegateSkill)
     required = {
         name
@@ -235,11 +235,12 @@ def test_handler_constructor_matches_runtime_known_injection() -> None:
         and parameter.kind in {Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY}
         and parameter.default is Parameter.empty
     }
-    assert required == {"event_bus"}
+    assert required == set()
+    assert signature.parameters["event_bus"].default is None
 
 
 @pytest.mark.unit
-def test_handler_resolves_through_runtime_handler_resolver() -> None:
+def test_handler_resolves_through_runtime_handler_resolver_zero_arg_default() -> None:
     context = ModelHandlerResolverContext(
         handler_cls=HandlerDelegateSkill,
         handler_module=HandlerDelegateSkill.__module__,
@@ -249,14 +250,24 @@ def test_handler_resolves_through_runtime_handler_resolver() -> None:
         event_bus=object(),
     )
     resolution = ServiceHandlerResolver().resolve(context)
-    expected_outcomes = {EnumHandlerResolutionOutcome.RESOLVED_VIA_EVENT_BUS}
-    known_params_outcome = getattr(
-        EnumHandlerResolutionOutcome,
-        "RESOLVED_VIA_KNOWN_PARAMS",
-        None,
-    )
-    if known_params_outcome is not None:
-        expected_outcomes.add(known_params_outcome)
-
-    assert resolution.outcome in expected_outcomes
+    assert resolution.outcome is EnumHandlerResolutionOutcome.RESOLVED_VIA_ZERO_ARG
     assert isinstance(resolution.handler_instance, HandlerDelegateSkill)
+
+
+@pytest.mark.unit
+def test_handler_constructs_without_dispatch_port() -> None:
+    handler = HandlerDelegateSkill()
+    assert handler is not None
+
+
+@pytest.mark.unit
+async def test_handler_with_no_port_fails_closed_on_dispatch() -> None:
+    handler = HandlerDelegateSkill()
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "failed"
+    assert "no dispatch port wired" in response.error_message.lower()
