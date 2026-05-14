@@ -85,7 +85,7 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # move to omnimarket.events.delegation.* in a follow-up ticket.
         "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:55",
         "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:61",
-        "omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py:56",
+        "omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py:60",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_compliance_loop_result.py:22",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_delegation_request.py:19",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_quality_gate_intent.py:11",

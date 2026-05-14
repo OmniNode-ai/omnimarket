@@ -24,12 +24,16 @@ additionally enforces:
     are skipped (local=low, cheap_cloud=medium, claude=high)
   - escalation_policy.tier_order: when present, overrides the default tier
     iteration order declared in routing_tiers.yaml
+  - task_model_overrides: per-task-type model ID overrides; takes priority over
+    tier-order-based model selection (OMN-10942)
+  - default_task_model_ref: fallback model ID for tasks with no explicit override
 
 Related:
     - OMN-7040: Node-based delegation pipeline
     - OMN-8029: Delegation pipeline — local→cheap-cloud→claude routing
     - OMN-10615: Wire routing reducer to read task-class contracts
     - OMN-10657: Endpoint resolution from deployed contract, not env vars
+    - OMN-10942: Task routing policy from contract with model defaults
 """
 
 from __future__ import annotations
@@ -161,13 +165,31 @@ def _select_model_for_task(
     task_type: str,
     estimated_tokens: int,
     bifrost_backends: dict[str, BifrostBackendRef],
+    contract_model_ref: str | None = None,
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
+
+    When contract_model_ref is provided (from task_model_overrides or
+    default_task_model_ref in the task-class contract), the matching model is
+    preferred over tier-order-based selection, provided it has an available
+    backend and fits within the token budget. Falls back to tier-order selection
+    when the contract-declared model is unavailable in this tier.
 
     Prefers fast-path models when prompt fits within their threshold.
     Falls back to any model that declares the task type in use_for.
     Endpoint availability is checked via the bifrost_backends dict (keyed by backend_id).
     """
+    # Contract-declared model takes priority — find it by model ID in this tier.
+    if contract_model_ref is not None:
+        for model in tier_models:
+            backend = bifrost_backends.get(model.backend_ref)
+            if (
+                model.id == contract_model_ref
+                and backend
+                and estimated_tokens <= model.max_context_tokens
+            ):
+                return model
+
     for model in tier_models:
         backend = bifrost_backends.get(model.backend_ref)
         if (
@@ -293,6 +315,61 @@ def _get_task_class_contract() -> dict[str, object] | None:
 
     raw = yaml.safe_load(contract_path.read_text())
     return raw if isinstance(raw, dict) else None
+
+
+def _get_contract_model_ref(
+    task_type: str,
+    contract_path: Path | None = None,
+    contract: dict[str, object] | None = None,
+) -> str | None:
+    """Return the contract-declared model ref for task_type, or None.
+
+    Reads task_model_overrides and default_task_model_ref from the task-class
+    contract YAML (OMN-10942). Override map is checked first; falls back to
+    default_task_model_ref when no per-task override is declared. Returns None
+    when the contract file is absent or declares neither field, allowing the
+    caller to degrade gracefully to tier-order selection.
+
+    Args:
+        task_type: The task classification string (e.g. "reasoning", "code_generation").
+        contract_path: Override path for the contract file; defaults to the
+            module-level TASK_CLASS_CONTRACT_PATH env var or the default location.
+        contract: Pre-loaded contract dict; when provided, skips disk read entirely.
+
+    Returns:
+        Model ID string (e.g. "deepseek-r1-14b") or None.
+    """
+    if contract is not None:
+        raw: dict[str, object] | None = contract
+    else:
+        if contract_path is None:
+            env_path = os.environ.get(
+                "TASK_CLASS_CONTRACT_PATH", ""
+            )  # ONEX_EXCLUDE: env_access - contract path override for testing
+            contract_path = (
+                Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
+            )
+
+        if not contract_path.exists():
+            return None
+
+        loaded = yaml.safe_load(contract_path.read_text())
+        raw = loaded if isinstance(loaded, dict) else None
+
+    if not isinstance(raw, dict):
+        return None
+
+    overrides = raw.get("task_model_overrides")
+    if isinstance(overrides, dict):
+        override = overrides.get(task_type)
+        if isinstance(override, str) and override:
+            return override
+
+    default = raw.get("default_task_model_ref")
+    if isinstance(default, str) and default:
+        return default
+
+    return None
 
 
 def _task_class_entry(
@@ -437,6 +514,9 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     entry = _task_class_entry(contract, task_type)
     tiers = _tier_order_from_contract(config, entry)
 
+    # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+
     for tier in tiers:
         if not _tier_allowed_by_contract(tier, entry):
             continue
@@ -446,6 +526,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             task_type,
             estimated_tokens,
             bifrost_backends,
+            contract_model_ref=contract_model_ref,
         )
         if selected is None:
             continue
@@ -473,6 +554,8 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             and estimated_tokens <= selected.fast_path_threshold_tokens
         ):
             rationale += f" Fast-path: tokens within {selected.fast_path_threshold_tokens} threshold."
+        if contract_model_ref is not None and selected.id == contract_model_ref:
+            rationale += f" Contract-override: model='{contract_model_ref}'."
         if entry is not None:
             policy_val = entry.get("cloud_routing_policy")
             policy_str = policy_val if isinstance(policy_val, str) else "allowed"
@@ -508,4 +591,4 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     raise ProtocolConfigurationError(msg, context=context)
 
 
-__all__: list[str] = ["delta", "resolve_invocation_command"]
+__all__: list[str] = ["_get_contract_model_ref", "delta", "resolve_invocation_command"]
