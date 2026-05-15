@@ -24,6 +24,8 @@ descriptor:
   purity: impure
   idempotent: false  # appending N times creates N lines
   timeout_ms: 5000
+  runtime_profiles:
+    - effects
 
 event_bus:
   subscribe_topics:

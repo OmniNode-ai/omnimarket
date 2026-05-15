@@ -32,6 +32,8 @@ descriptor:
   purity: impure
   idempotent: false
   timeout_ms: 60000
+  runtime_profiles:
+    - effects
 
 terminal_event: onex.evt.omnimarket.build-dispatch-completed.v1
 

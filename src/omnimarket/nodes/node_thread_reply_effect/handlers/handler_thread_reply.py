@@ -13,11 +13,11 @@ Wave 2 wires real HandlerModelRouter + AdapterLlmProviderOpenai (OMN-8990).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import re
-import subprocess
 from collections.abc import Callable
 from typing import Any, Literal
 from uuid import UUID
@@ -28,6 +28,7 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
 )
 from omnibase_infra.adapters.llm.model_llm_adapter_request import ModelLlmAdapterRequest
 
+from omnimarket.github_api import GitHubApiError, rest_json
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
 )
@@ -142,9 +143,44 @@ async def _real_llm_call(
     return reply_text, routing_result.used_fallback
 
 
-def _default_gh_run(cmd: list[str]) -> tuple[int, str, str]:
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    return result.returncode, result.stdout, result.stderr
+def _default_post_comment(repo: str, pr_number: int, body: str) -> dict[str, Any]:
+    try:
+        return rest_json(
+            "POST",
+            f"/repos/{repo}/issues/{pr_number}/comments",
+            body={"body": body},
+        )
+    except GitHubApiError as exc:
+        raise RuntimeError(f"GitHub post-comment failed: {exc}") from exc
+
+
+def _wrap_gh_run(
+    gh_run_fn: Callable[[list[str]], tuple[int, str, str]],
+) -> Callable[[str, int, str], dict[str, Any]]:
+    def _post_comment(repo: str, pr_number: int, body: str) -> dict[str, Any]:
+        cmd = [
+            "gh",
+            "api",
+            f"repos/{repo}/issues/{pr_number}/comments",
+            "--method",
+            "POST",
+            "--field",
+            f"body={body}",
+        ]
+        rc, stdout, stderr = gh_run_fn(cmd)
+        if rc != 0:
+            raise RuntimeError(
+                f"gh api post-comment failed (exit {rc}): {stderr.strip()}"
+            )
+        try:
+            data = json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"invalid gh api response: {exc}") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("invalid gh api response type")
+        return data
+
+    return _post_comment
 
 
 class HandlerThreadReply:
@@ -160,9 +196,12 @@ class HandlerThreadReply:
     def __init__(
         self,
         gh_run_fn: Callable[[list[str]], tuple[int, str, str]] | None = None,
+        post_comment_fn: Callable[[str, int, str], dict[str, Any]] | None = None,
         llm_call_fn: Callable[[str, dict[str, Any]], tuple[str, bool]] | None = None,
     ) -> None:
-        self._gh_run = gh_run_fn or _default_gh_run
+        self._post_comment = post_comment_fn or (
+            _wrap_gh_run(gh_run_fn) if gh_run_fn is not None else _default_post_comment
+        )
         self._llm_call_fn = llm_call_fn
 
     def _is_draft_mode(self) -> bool:
@@ -202,7 +241,7 @@ class HandlerThreadReply:
         Raises:
             ValueError: If head_ref_name matches a protected branch pattern.
             RuntimeError: If the LLM call fails (no bare except — fail-loud).
-            RuntimeError: On gh api non-zero exit.
+            RuntimeError: On GitHub post-comment failure.
         """
         if head_ref_name and _PROTECTED_BRANCH_RE.match(head_ref_name):
             raise ValueError(
@@ -219,26 +258,8 @@ class HandlerThreadReply:
         is_draft = self._is_draft_mode()
         body = f"{_DRAFT_TAG}\n\n{reply_text}" if is_draft else reply_text
 
-        cmd = [
-            "gh",
-            "api",
-            f"repos/{repo}/issues/{pr_number}/comments",
-            "--method",
-            "POST",
-            "--field",
-            f"body={body}",
-        ]
-        rc, stdout, stderr = self._gh_run(cmd)
-        if rc != 0:
-            raise RuntimeError(
-                f"gh api post-comment failed (exit {rc}): {stderr.strip()}"
-            )
-
-        try:
-            data: dict[str, Any] = json.loads(stdout)
-            comment_id: str | None = str(data.get("id")) if data.get("id") else None
-        except (json.JSONDecodeError, KeyError):
-            comment_id = None
+        data = await asyncio.to_thread(self._post_comment, repo, pr_number, body)
+        comment_id: str | None = str(data.get("id")) if data.get("id") else None
 
         _log.info(
             "thread reply posted: repo=%s pr=%d draft=%s fallback=%s comment_id=%s",

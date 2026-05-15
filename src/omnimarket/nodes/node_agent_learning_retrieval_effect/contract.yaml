@@ -122,6 +122,10 @@ handler_routing:
   default_handler: "HandlerAgentLearningRetrieval"
 
 # === EVENT BUS SUBCONTRACT ===
+descriptor:
+  runtime_profiles:
+    - effects
+
 event_bus:
   version:
     major: 1

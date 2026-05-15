@@ -3,17 +3,19 @@
 """Handler for node_ci_rerun_effect [OMN-8962].
 
 EFFECT node. Serial-in-handler execution per Phase 1 audit.
-Triggers `gh run rerun --failed` for the PR's most recent failed workflow run.
-Only reruns FAILED checks; does not retrigger successful ones.
-Idempotent: repeated rerun calls on the same run ID are handled by gh.
+Triggers GitHub's rerun-failed-jobs API for the PR's most recent failed workflow
+run. Only reruns failed jobs; does not retrigger successful ones.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import json
 import logging
+import os
 import time
+import urllib.error
+import urllib.request
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
@@ -26,10 +28,12 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
 )
 
 _log = logging.getLogger(__name__)
+_GITHUB_API_VERSION = "2026-03-10"
+_REQUEST_TIMEOUT = 30.0
 
 
 class HandlerCiRerunEffect:
-    """EFFECT: trigger gh run rerun --failed on a PR's failing run."""
+    """EFFECT: trigger the GitHub rerun-failed-jobs API on a PR's failing run."""
 
     async def handle(self, request: ModelCiRerunCommand) -> ModelHandlerOutput:  # type: ignore[type-arg]
         """Trigger CI rerun. Real work runs inline before returning."""
@@ -74,26 +78,39 @@ class HandlerCiRerunEffect:
         )
 
     async def _rerun(self, run_id_github: str, repo: str) -> tuple[bool, str | None]:
-        """Trigger gh run rerun --failed. Only reruns failed jobs."""
-        proc = await asyncio.create_subprocess_exec(
-            "gh",
-            "run",
-            "rerun",
-            run_id_github,
-            "--failed",
-            "--repo",
-            repo,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        """Trigger GitHub's rerun-failed-jobs workflow-run API."""
+        return await asyncio.to_thread(self._rerun_sync, run_id_github, repo)
+
+    def _rerun_sync(self, run_id_github: str, repo: str) -> tuple[bool, str | None]:
+        token = os.environ.get("GH_PAT", "")
+        if not token:
+            return False, "GH_PAT environment variable is not set"
+        owner, _, repo_name = repo.partition("/")
+        if not owner or not repo_name:
+            return False, f"invalid repo slug: {repo!r}"
+
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{owner}/{repo_name}/actions/runs/{run_id_github}/rerun-failed-jobs",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": _GITHUB_API_VERSION,
+            },
+            method="POST",
         )
         try:
-            _stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
-        except TimeoutError:
-            with contextlib.suppress(ProcessLookupError):
-                proc.kill()
-            return False, "gh run rerun timed out after 30s"
-        except Exception as exc:
-            return False, f"subprocess error: {exc}"
-        if proc.returncode == 0:
-            return True, None
-        return False, stderr.decode(errors="replace")
+            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT):
+                return True, None
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace").strip()
+            if detail:
+                try:
+                    body = json.loads(detail)
+                    message = body.get("message")
+                    if isinstance(message, str) and message:
+                        return False, message
+                except json.JSONDecodeError:
+                    pass
+            return False, detail or str(exc)
+        except (urllib.error.URLError, OSError) as exc:
+            return False, str(exc)

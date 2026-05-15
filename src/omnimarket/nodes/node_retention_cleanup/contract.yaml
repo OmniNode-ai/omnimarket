@@ -23,6 +23,8 @@ descriptor:
   purity: impure
   idempotent: false
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 terminal_event: onex.evt.omnimarket.retention-cleanup-completed.v1
 event_bus:
   subscribe_topics:

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -34,18 +34,10 @@ def _cmd(run_id_github: str = "99887766") -> ModelCiRerunCommand:
     )
 
 
-def _mock_proc(returncode: int = 0, stderr: bytes = b"") -> MagicMock:
-    proc = MagicMock()
-    proc.returncode = returncode
-    proc.communicate = AsyncMock(return_value=(b"", stderr))
-    return proc
-
-
 @pytest.mark.asyncio
 async def test_successful_rerun_returns_triggered_true() -> None:
-    """gh run rerun --failed succeeds → rerun_triggered=True."""
-    mock_proc = _mock_proc(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    """GitHub rerun-failed-jobs API succeeds → rerun_triggered=True."""
+    with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
         handler = HandlerCiRerunEffect()
         output = await handler.handle(_cmd())
 
@@ -60,9 +52,12 @@ async def test_successful_rerun_returns_triggered_true() -> None:
 
 @pytest.mark.asyncio
 async def test_failed_rerun_returns_triggered_false_with_error() -> None:
-    """gh run rerun fails → rerun_triggered=False, error set."""
-    mock_proc = _mock_proc(returncode=1, stderr=b"run not found")
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    """GitHub rerun-failed-jobs API fails → rerun_triggered=False, error set."""
+    with patch.object(
+        HandlerCiRerunEffect,
+        "_rerun_sync",
+        return_value=(False, "run not found"),
+    ):
         handler = HandlerCiRerunEffect()
         output = await handler.handle(_cmd())
 
@@ -75,8 +70,7 @@ async def test_failed_rerun_returns_triggered_false_with_error() -> None:
 @pytest.mark.asyncio
 async def test_elapsed_seconds_recorded() -> None:
     """Elapsed time is non-negative."""
-    mock_proc = _mock_proc(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
         handler = HandlerCiRerunEffect()
         output = await handler.handle(_cmd())
 
@@ -88,8 +82,7 @@ async def test_elapsed_seconds_recorded() -> None:
 @pytest.mark.asyncio
 async def test_completion_event_carries_correct_metadata() -> None:
     """Completion event carries pr_number, repo, correlation_id, run_id, total_prs."""
-    mock_proc = _mock_proc(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
         handler = HandlerCiRerunEffect()
         output = await handler.handle(_cmd("12345678"))
 

@@ -27,6 +27,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 
 inputs:
   ticket_id:

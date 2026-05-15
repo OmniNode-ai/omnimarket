@@ -196,6 +196,10 @@ handler_routing:
 #   - kind=evt for events/outputs
 #   - Internal runtime events use onex.internal.* namespace
 # =============================================================================
+descriptor:
+  runtime_profiles:
+    - effects
+
 event_bus:
   version:
     major: 1

@@ -25,6 +25,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 15000
+  runtime_profiles:
+    - effects
 
 event_bus:
   consumer_group: omnimarket.ci_rerun_effect.consume.v1

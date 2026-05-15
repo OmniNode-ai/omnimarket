@@ -27,6 +27,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 600000
+  runtime_profiles:
+    - effects
 
 inputs:
   correlation_id:

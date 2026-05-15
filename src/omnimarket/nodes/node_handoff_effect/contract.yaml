@@ -22,6 +22,8 @@ descriptor:
   purity: impure
   idempotent: false
   timeout_ms: 15000
+  runtime_profiles:
+    - effects
 
 inputs:
   session_id:

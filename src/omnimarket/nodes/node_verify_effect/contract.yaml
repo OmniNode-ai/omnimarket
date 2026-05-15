@@ -20,6 +20,8 @@ descriptor:
   purity: side_effect
   idempotent: true
   timeout_ms: 60000
+  runtime_profiles:
+    - effects
 
 terminal_event: onex.evt.omnimarket.build-loop-verify-completed.v1
 

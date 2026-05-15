@@ -1,96 +1,143 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Live GitHub CLI adapter for pr_lifecycle_fix_effect.
-
-Implements ``ProtocolGitHubAdapter`` against the local ``gh`` CLI so the
-orchestrator's Track B (FIXING phase) causes real external state changes
-instead of the ``_NoopGitHubAdapter`` default. Related: OMN-9284.
-"""
+"""Live GitHub API adapter for pr_lifecycle_fix_effect."""
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import json
 import logging
+
+from omnimarket.github_api import (
+    graphql,
+    rest_json,
+    rest_no_content,
+    split_repo,
+)
 
 logger = logging.getLogger(__name__)
 
+_PR_STATUS_QUERY = """
+query($owner: String!, $repo: String!, $prNumber: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $prNumber) {
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              contexts(first: 100) {
+                nodes {
+                  __typename
+                  ... on StatusContext {
+                    targetUrl
+                    state
+                  }
+                  ... on CheckRun {
+                    detailsUrl
+                    conclusion
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 
 class GitHubCliAdapter:
-    """Shell out to ``gh`` to rerun failed checks and resolve BEHIND branches.
-
-    * ``rerun_failed_checks`` calls ``gh pr view`` to enumerate failed check
-      runs for the PR and invokes ``gh run rerun --failed`` for each unique
-      run id. Re-runs are per-run because ``gh pr checks`` does not expose a
-      PR-level ``--rerun`` flag.
-    * ``resolve_conflicts`` calls ``gh pr update-branch`` which resolves the
-      common case (PR merely behind base). Structural conflicts that
-      ``update-branch`` cannot resolve fall through and are surfaced to a
-      human-agent dispatch path.
-    """
+    """Call GitHub APIs to rerun failed checks and update BEHIND branches."""
 
     async def rerun_failed_checks(self, repo: str, pr_number: int) -> str:
-        run_ids = await self._failed_run_ids(repo, pr_number)
+        run_ids = await asyncio.to_thread(self._failed_run_ids_sync, repo, pr_number)
         if not run_ids:
             return f"no failed checks on {repo}#{pr_number}"
         for run_id in run_ids:
-            await self._run(
-                ["gh", "run", "rerun", run_id, "--failed", "--repo", repo],
-                context=f"rerun {repo} run_id={run_id}",
+            owner, repo_name = split_repo(repo)
+            await asyncio.to_thread(
+                rest_no_content,
+                "POST",
+                f"/repos/{owner}/{repo_name}/actions/runs/{run_id}/rerun-failed-jobs",
             )
         return f"rerequested {len(run_ids)} failed run(s) on {repo}#{pr_number}"
 
     async def resolve_conflicts(self, repo: str, pr_number: int) -> str:
-        rc, stdout, stderr = await self._run(
-            [
-                "gh",
-                "pr",
-                "update-branch",
-                str(pr_number),
-                "--repo",
-                repo,
-            ],
-            context=f"update-branch {repo}#{pr_number}",
-            check=False,
-        )
-        if rc == 0:
-            return f"update-branch succeeded on {repo}#{pr_number}"
-        detail = (stderr or stdout or "unknown error").strip().splitlines()[0]
-        msg = (
-            f"update-branch failed on {repo}#{pr_number} (exit {rc}): {detail} "
-            "— falling back to manual resolution"
-        )
-        raise RuntimeError(msg)
+        return await asyncio.to_thread(self._resolve_conflicts_sync, repo, pr_number)
 
-    async def _failed_run_ids(self, repo: str, pr_number: int) -> list[str]:
-        rc, stdout, _ = await self._run(
-            [
-                "gh",
-                "pr",
-                "view",
-                str(pr_number),
-                "--repo",
-                repo,
-                "--json",
-                "statusCheckRollup",
-            ],
-            context=f"pr view {repo}#{pr_number}",
-        )
-        if rc != 0 or not stdout.strip():
-            return []
-        try:
-            payload = json.loads(stdout)
-        except json.JSONDecodeError as exc:
-            logger.warning(
-                "pr view returned non-JSON for %s#%s: %s", repo, pr_number, exc
+    def _resolve_conflicts_sync(self, repo: str, pr_number: int) -> str:
+        owner, repo_name = split_repo(repo)
+        pr = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        head = pr.get("head") or {}
+        head_sha = head.get("sha")
+        if not isinstance(head_sha, str) or not head_sha:
+            raise RuntimeError(
+                f"update-branch failed on {repo}#{pr_number}: missing head sha"
             )
+        try:
+            rest_json(
+                "PUT",
+                f"/repos/{owner}/{repo_name}/pulls/{pr_number}/update-branch",
+                body={"expected_head_sha": head_sha},
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"update-branch failed on {repo}#{pr_number}: {exc} — falling back to manual resolution"
+            ) from exc
+
+        refreshed = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        refreshed_head = refreshed.get("head") or {}
+        new_sha = refreshed_head.get("sha")
+        if isinstance(new_sha, str) and new_sha:
+            return new_sha
+        return f"update-branch succeeded on {repo}#{pr_number}"
+
+    def _failed_run_ids_sync(self, repo: str, pr_number: int) -> list[str]:
+        owner, repo_name = split_repo(repo)
+        data = graphql(
+            _PR_STATUS_QUERY,
+            {"owner": owner, "repo": repo_name, "prNumber": pr_number},
+        )
+        checks = (
+            ((((data.get("repository") or {}).get("pullRequest")) or {}).get("commits"))
+            or {}
+        ).get("nodes", [])
+        if not checks:
             return []
-        checks = payload.get("statusCheckRollup") or []
+        rollup_nodes = (
+            (
+                (
+                    (
+                        (
+                            (checks[0] if isinstance(checks[0], dict) else {}).get(
+                                "commit"
+                            )
+                        )
+                        or {}
+                    ).get("statusCheckRollup")
+                )
+                or {}
+            )
+            .get("contexts", {})
+            .get("nodes", [])
+        )
         ids: list[str] = []
         seen: set[str] = set()
-        for check in checks:
-            conclusion = (check.get("conclusion") or "").upper()
+        for check in rollup_nodes:
+            if not isinstance(check, dict):
+                continue
+            typename = check.get("__typename", "")
+            if typename == "StatusContext":
+                conclusion = (
+                    "SUCCESS"
+                    if (check.get("state") or "").upper() == "SUCCESS"
+                    else (check.get("state") or "").upper()
+                )
+                details = check.get("targetUrl") or ""
+            else:
+                conclusion = (check.get("conclusion") or "").upper()
+                details = check.get("detailsUrl") or ""
             if conclusion not in {
                 "FAILURE",
                 "TIMED_OUT",
@@ -98,52 +145,11 @@ class GitHubCliAdapter:
                 "ACTION_REQUIRED",
             }:
                 continue
-            details = check.get("detailsUrl") or ""
             run_id = _run_id_from_details_url(details)
             if run_id and run_id not in seen:
                 seen.add(run_id)
                 ids.append(run_id)
         return ids
-
-    async def _run(
-        self,
-        argv: list[str],
-        *,
-        context: str,
-        check: bool = True,
-        timeout_s: float = 30.0,
-    ) -> tuple[int, str, str]:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *argv,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-        except OSError as exc:
-            raise RuntimeError(f"{context} failed to start gh: {exc}") from exc
-        try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_s
-            )
-        except TimeoutError as exc:
-            # ProcessLookupError is possible if the child exited between the
-            # timeout firing and the kill call — suppress it rather than
-            # masking the original timeout.
-            with contextlib.suppress(ProcessLookupError):
-                proc.kill()
-            # Best-effort drain with its own bounded timeout; we already know
-            # the child is dead and only need to reap the zombie.
-            with contextlib.suppress(Exception):
-                await asyncio.wait_for(proc.communicate(), timeout=1.0)
-            raise RuntimeError(f"{context} timed out after {timeout_s:.0f}s") from exc
-        stdout = stdout_b.decode("utf-8", errors="replace")
-        stderr = stderr_b.decode("utf-8", errors="replace")
-        rc = proc.returncode if proc.returncode is not None else -1
-        if check and rc != 0:
-            detail = (stderr or stdout or "no output").strip().splitlines()[:1]
-            msg = f"{context} failed (exit {rc}): {detail[0] if detail else ''}"
-            raise RuntimeError(msg)
-        return rc, stdout, stderr
 
 
 def _run_id_from_details_url(details_url: str) -> str | None:

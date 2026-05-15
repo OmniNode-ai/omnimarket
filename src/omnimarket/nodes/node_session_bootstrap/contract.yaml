@@ -24,6 +24,8 @@ descriptor:
   # (.onex_state/session-crons-*.json) are overwritten, not appended.
   idempotent: true
   timeout_ms: 30000
+  runtime_profiles:
+    - effects
 
 inputs:
   session_id:

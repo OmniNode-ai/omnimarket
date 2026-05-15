@@ -26,6 +26,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 30000
+  runtime_profiles:
+    - effects
 
 inputs:
   thread_id:

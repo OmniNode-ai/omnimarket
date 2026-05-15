@@ -43,6 +43,7 @@ query($owner: String!, $name: String!, $after: String) {
         endCursor
       }
       nodes {
+        id
         number
         title
         isDraft
@@ -52,6 +53,21 @@ query($owner: String!, $name: String!, $after: String) {
         headRefName
         baseRefName
         headRefOid
+        reviewThreads(first: 50) {
+          nodes {
+            isResolved
+            comments(first: 20) {
+              nodes {
+                id
+              }
+            }
+          }
+        }
+        files(first: 100) {
+          nodes {
+            path
+          }
+        }
         labels(first: 20) {
           nodes { name }
         }
@@ -66,11 +82,13 @@ query($owner: String!, $name: String!, $after: String) {
                       context
                       state
                       description
+                      targetUrl
                     }
                     ... on CheckRun {
                       name
                       status
                       conclusion
+                      detailsUrl
                     }
                   }
                 }
@@ -212,6 +230,7 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
                                 "name": ctx.get("name", ""),
                                 "conclusion": (ctx.get("conclusion") or "").upper(),
                                 "status": ctx.get("status", ""),
+                                "detailsUrl": ctx.get("detailsUrl", ""),
                             }
                         )
                     elif typename == "StatusContext":
@@ -223,6 +242,7 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
                                 if state == "SUCCESS"
                                 else state,
                                 "state": ctx.get("state", ""),
+                                "detailsUrl": ctx.get("targetUrl", ""),
                             }
                         )
                 # Mark isRequired — GitHub GraphQL doesn't expose this directly
@@ -231,6 +251,31 @@ class GitHubHttpClient(GitHubPrFetchProtocol):
                 for ctx in normalized_rollup:
                     ctx["isRequired"] = True
                 node["statusCheckRollup"] = normalized_rollup
+
+                # Normalize reviewThreads to the same simple shape used by the
+                # triage orchestrator tests and gh JSON-based fallback.
+                raw_threads = (node.get("reviewThreads") or {}).get("nodes") or []
+                normalized_threads: list[dict[str, Any]] = []
+                for thread in raw_threads:
+                    comment_nodes = ((thread.get("comments") or {}).get("nodes")) or []
+                    normalized_threads.append(
+                        {
+                            "isResolved": bool(thread.get("isResolved", False)),
+                            "comments": [
+                                {"id": comment["id"]}
+                                for comment in comment_nodes
+                                if isinstance(comment, dict) and comment.get("id")
+                            ],
+                        }
+                    )
+                node["reviewThreads"] = normalized_threads
+
+                raw_files = (node.get("files") or {}).get("nodes") or []
+                node["files"] = [
+                    {"path": file_node["path"]}
+                    for file_node in raw_files
+                    if isinstance(file_node, dict) and file_node.get("path")
+                ]
                 all_prs.append(node)
 
             page_info = pr_conn.get("pageInfo", {})

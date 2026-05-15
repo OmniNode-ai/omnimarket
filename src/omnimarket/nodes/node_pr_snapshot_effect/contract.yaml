@@ -20,6 +20,8 @@ descriptor:
   purity: side_effect
   idempotent: true
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 
 terminal_event: onex.evt.omnimarket.pr-snapshot-completed.v1
 
