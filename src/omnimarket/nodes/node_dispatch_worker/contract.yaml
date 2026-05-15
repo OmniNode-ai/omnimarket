@@ -87,6 +87,23 @@ outputs:
     type: str
     description: "Non-empty string if the node rejected the request"
 
+dependencies:
+  - name: "onex_parent_session_id"
+    type: "environment"
+    env_var: "ONEX_PARENT_SESSION_ID"
+    required: false
+    description: "Parent session identifier stamped into compiled dispatch records when present"
+  - name: "claude_tasks_dir"
+    type: "environment"
+    env_var: "CLAUDE_TASKS_DIR"
+    required: false
+    description: "Directory path for Claude Code task files used to read active task state"
+  - name: "omni_worktrees"
+    type: "environment"
+    env_var: "OMNI_WORKTREES"
+    required: false
+    description: "Root directory for canonical OmniNode ticket worktrees"
+
 env_dependencies:
   CLAUDE_TASKS_DIR:
     required: false

@@ -134,6 +134,13 @@ outputs:
     type: int
     description: "PRs skipped (not green, not fixable)"
 
+dependencies:
+  - name: "onex_occ_merge_sha"
+    type: "environment"
+    env_var: "ONEX_OCC_MERGE_SHA"
+    required: false
+    description: "OCC merge SHA override used to stamp lifecycle merge evidence when present"
+
 sub_handler_dependencies:
   - name: inventory
     protocol: omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers.ProtocolInventoryHandler

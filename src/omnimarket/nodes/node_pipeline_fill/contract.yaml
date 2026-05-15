@@ -38,6 +38,12 @@ handler_routing:
       handler:
         name: "HandlerPipelineFill"
         module: "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill"
+dependencies:
+  - name: "linear_active_sprint_project_id"
+    type: "environment"
+    env_var: "LINEAR_ACTIVE_SPRINT_PROJECT_ID"
+    required: false
+    description: "Linear project ID for the active sprint filter used by pipeline fill"
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pipeline-fill-start.v1

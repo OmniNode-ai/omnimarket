@@ -28,6 +28,18 @@ descriptor:
   idempotent: true
   timeout_ms: 60000
 
+dependencies:
+  - name: "onex_rebase_source_clone_root"
+    type: "environment"
+    env_var: "ONEX_REBASE_SOURCE_CLONE_ROOT"
+    required: false
+    description: "Directory containing full source repository clones for rebase worktrees"
+  - name: "onex_rebase_worktree_root"
+    type: "environment"
+    env_var: "ONEX_REBASE_WORKTREE_ROOT"
+    required: false
+    description: "Root directory for ephemeral rebase git worktrees"
+
 event_bus:
   consumer_group: omnimarket.rebase_effect.consume.v1
   subscribe_topics:

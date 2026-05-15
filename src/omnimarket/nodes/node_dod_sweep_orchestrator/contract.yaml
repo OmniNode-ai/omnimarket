@@ -16,6 +16,13 @@ env_dependencies:
     required: false
     description: "Path to the omni_home repo registry; used as fallback root when not resolvable from the process environment"
 
+dependencies:
+  - name: "onex_cc_repo_path"
+    type: "environment"
+    env_var: "ONEX_CC_REPO_PATH"
+    required: false
+    description: "Path to the onex_change_control repo root used for DoD evidence and contract lookup fallback"
+
 descriptor:
   node_archetype: orchestrator
   purity: impure

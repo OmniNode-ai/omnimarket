@@ -48,6 +48,13 @@ outputs:
     type: str
     description: "Final phase reached"
 
+dependencies:
+  - name: "omni_worktrees"
+    type: "environment"
+    env_var: "OMNI_WORKTREES"
+    required: false
+    description: "Root directory for canonical OmniNode ticket worktrees"
+
 terminal_event: onex.evt.omnimarket.ticket-work-completed.v1
 
 event_bus:

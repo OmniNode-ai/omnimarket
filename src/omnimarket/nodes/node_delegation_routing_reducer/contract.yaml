@@ -72,6 +72,20 @@ config_dependencies:
   - key: "BIFROST_CONTRACT_PATH"
     description: "Override path for the deployed bifrost delegation contract (default: ~/.omninode/delegation/bifrost_delegation.yaml). Used in tests and staging environments."
     required: false
+  - key: "TASK_CLASS_CONTRACT_PATH"
+    description: "Override path for task-class contract routing policies; defaults to configs/task_class_contracts.v1.yaml."
+    required: false
+dependencies:
+  - name: "bifrost_contract_path"
+    type: "environment"
+    env_var: "BIFROST_CONTRACT_PATH"
+    required: false
+    description: "Override path for the deployed bifrost delegation contract loaded by the routing reducer"
+  - name: "task_class_contract_path"
+    type: "environment"
+    env_var: "TASK_CLASS_CONTRACT_PATH"
+    required: false
+    description: "Override path for task-class contract routing policies loaded by the delegation routing reducer"
 error_handling:
   retry_policy:
     max_retries: 0

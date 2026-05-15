@@ -19,6 +19,16 @@ env_dependencies:
   POSTGRES_PORT:
     required: false
     description: "Postgres port for direct DB connection fallback (default 5436)."
+  OMNI_PRICING_MANIFEST_PATH:
+    required: false
+    description: "Path to the pricing manifest used to version LLM cost projection rows"
+
+dependencies:
+  - name: "omni_pricing_manifest_path"
+    type: "environment"
+    env_var: "OMNI_PRICING_MANIFEST_PATH"
+    required: false
+    description: "Path to the pricing manifest used to version LLM cost projection rows"
 
 terminal_event: onex.evt.omnimarket.projection-llm-cost-applied.v1
 

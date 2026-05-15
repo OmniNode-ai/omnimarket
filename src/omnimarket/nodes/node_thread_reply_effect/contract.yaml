@@ -28,6 +28,36 @@ env_dependencies:
   ONEX_CI_MODE:
     required: false
     description: "When set to '1', 'true', or 'yes', forces draft-first posting regardless of ONEX_THREAD_REPLY_DIRECT_POST; disables live GitHub API calls in CI environments"
+  ONEX_THREAD_REPLY_DIRECT_POST:
+    required: false
+    description: "When true/1/yes, posts review-thread replies directly instead of draft-first mode outside CI"
+
+dependencies:
+  - name: "llm_coder_url"
+    type: "environment"
+    env_var: "LLM_CODER_URL"
+    required: false
+    description: "vLLM Qwen3-Coder endpoint URL used as the primary reply model"
+  - name: "llm_glm_url"
+    type: "environment"
+    env_var: "LLM_GLM_URL"
+    required: false
+    description: "GLM cloud API base URL used as the fallback reply model"
+  - name: "llm_coder_fast_url"
+    type: "environment"
+    env_var: "LLM_CODER_FAST_URL"
+    required: false
+    description: "Fast local coder model endpoint URL used as a secondary reply option"
+  - name: "onex_ci_mode"
+    type: "environment"
+    env_var: "ONEX_CI_MODE"
+    required: false
+    description: "CI-mode flag that forces draft-first review-thread replies"
+  - name: "onex_thread_reply_direct_post"
+    type: "environment"
+    env_var: "ONEX_THREAD_REPLY_DIRECT_POST"
+    required: false
+    description: "Opt-in flag for direct review-thread posting outside CI"
 
 descriptor:
   node_archetype: effect

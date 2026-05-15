@@ -138,6 +138,18 @@ env_requirements:
     - name: LINEAR_API_KEY
       description: "Linear API key (linear_sync probe)"
 
+dependencies:
+  - name: "ssh_strict_host_key_checking"
+    type: "environment"
+    env_var: "SSH_STRICT_HOST_KEY_CHECKING"
+    required: false
+    description: "SSH strict host key checking override used by session health probes"
+  - name: "onex_session_orchestrator_linear_fixture"
+    type: "environment"
+    env_var: "ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE"
+    required: false
+    description: "Optional Linear fixture path used by session orchestrator tests and offline runs"
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.session-orchestrator-start.v1

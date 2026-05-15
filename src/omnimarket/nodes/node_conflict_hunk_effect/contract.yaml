@@ -28,6 +28,18 @@ descriptor:
   idempotent: false
   timeout_ms: 300000
 
+dependencies:
+  - name: "onex_conflict_source_clone_root"
+    type: "environment"
+    env_var: "ONEX_CONFLICT_SOURCE_CLONE_ROOT"
+    required: false
+    description: "Directory containing full source repository clones for conflict hunk worktrees"
+  - name: "onex_conflict_worktree_root"
+    type: "environment"
+    env_var: "ONEX_CONFLICT_WORKTREE_ROOT"
+    required: false
+    description: "Root directory for ephemeral conflict-resolution git worktrees"
+
 model_routing:
   conflict_resolver:
     primary: "qwen3-coder-30b"

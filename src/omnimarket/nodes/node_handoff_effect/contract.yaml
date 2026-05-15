@@ -16,6 +16,21 @@ env_dependencies:
   ONEX_INFRA_SSH_TARGET:
     required: false
     description: "SSH target string for infrastructure; used when remote state capture is needed during handoff"
+  ONEX_INFRA_BLOCKER_TICKETS:
+    required: false
+    description: "Comma-separated or display string for open infrastructure blocker tickets included in handoff health"
+
+dependencies:
+  - name: "onex_infra_ssh_target"
+    type: "environment"
+    env_var: "ONEX_INFRA_SSH_TARGET"
+    required: false
+    description: "SSH target string for infrastructure state capture during handoff"
+  - name: "onex_infra_blocker_tickets"
+    type: "environment"
+    env_var: "ONEX_INFRA_BLOCKER_TICKETS"
+    required: false
+    description: "Open infrastructure blocker ticket summary included in handoff health"
 
 descriptor:
   node_archetype: effect

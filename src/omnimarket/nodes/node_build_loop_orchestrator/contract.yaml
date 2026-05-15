@@ -64,6 +64,18 @@ outputs:
     type: int
     description: "Total tickets dispatched across all cycles"
 
+dependencies:
+  - name: "linear_team_id"
+    type: "environment"
+    env_var: "LINEAR_TEAM_ID"
+    required: false
+    description: "Linear team ID used by adapter_linear_fill for ticket queries"
+  - name: "linear_team_key"
+    type: "environment"
+    env_var: "LINEAR_TEAM_KEY"
+    required: false
+    description: "Linear team key used by adapter_linear_fill; defaults to OMN"
+
 env_dependencies:
   LLM_CODER_URL:
     required: false
