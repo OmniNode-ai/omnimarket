@@ -343,3 +343,75 @@ def test_non_orphan_topic_not_in_topic_sources(tmp_path: Path) -> None:
     # Paired — not an orphan — topic_sources MAY or MAY NOT contain it.
     # The key requirement: it must NOT appear in orphan_topics.
     assert "onex.evt.omnimarket.paired.v1" not in graph.orphan_topics
+
+
+# ---------------------------------------------------------------------------
+# Fixture 12: Topic literals in test files are NOT flagged as undeclared (OMN-11061)
+# ---------------------------------------------------------------------------
+
+
+def test_topic_literal_in_test_file_not_undeclared(tmp_path: Path) -> None:
+    """Topic literals inside test_*.py files are excluded from undeclared_topics.
+
+    Test files routinely use placeholder or fixture-local topics that are not
+    production-declared. Flagging them as UNDECLARED_TOPIC is noise.
+    """
+    _write_contract(
+        tmp_path / "node_a" / "contract.yaml",
+        """
+        name: node_a
+        event_bus:
+          publish_topics: []
+          subscribe_topics: []
+        """,
+    )
+    # Synthetic test file with an undeclared topic literal
+    test_file = tmp_path / "node_a" / "tests" / "test_handler.py"
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.write_text('FAKE_TOPIC = "onex.cmd.omnimarket.foo-requested.v1"\n')
+
+    parser = ContractTopologyParser()
+    graph = parser.parse(search_roots=[tmp_path])
+
+    # The topic must NOT appear as undeclared — it lives in a test file
+    assert "onex.cmd.omnimarket.foo-requested.v1" not in graph.undeclared_topics
+
+
+def test_topic_literal_in_test_named_file_not_undeclared(tmp_path: Path) -> None:
+    """Topic literals in *_test.py files are excluded from undeclared_topics."""
+    _write_contract(
+        tmp_path / "node_a" / "contract.yaml",
+        """
+        name: node_a
+        event_bus:
+          publish_topics: []
+          subscribe_topics: []
+        """,
+    )
+    test_file = tmp_path / "node_a" / "handler_test.py"
+    test_file.write_text('FAKE_TOPIC = "onex.evt.omnimarket.bar-completed.v1"\n')
+
+    parser = ContractTopologyParser()
+    graph = parser.parse(search_roots=[tmp_path])
+
+    assert "onex.evt.omnimarket.bar-completed.v1" not in graph.undeclared_topics
+
+
+def test_topic_literal_in_production_file_still_undeclared(tmp_path: Path) -> None:
+    """Topic literals in non-test production files ARE flagged when undeclared."""
+    _write_contract(
+        tmp_path / "node_a" / "contract.yaml",
+        """
+        name: node_a
+        event_bus:
+          publish_topics: []
+          subscribe_topics: []
+        """,
+    )
+    prod_file = tmp_path / "node_a" / "handler_prod.py"
+    prod_file.write_text('TOPIC = "onex.cmd.omnimarket.prod-undeclared.v1"\n')
+
+    parser = ContractTopologyParser()
+    graph = parser.parse(search_roots=[tmp_path])
+
+    assert "onex.cmd.omnimarket.prod-undeclared.v1" in graph.undeclared_topics

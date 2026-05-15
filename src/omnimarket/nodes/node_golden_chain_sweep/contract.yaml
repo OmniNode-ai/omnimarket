@@ -44,6 +44,9 @@ terminal_event: onex.evt.omnimarket.golden-chain-sweep-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.golden-chain-sweep-start.v1
+    # Monitored golden-chain head topics — swept for Kafka-to-DB-projection health
+    - onex.evt.omniintelligence.pattern-stored.v1
+    - onex.evt.omniintelligence.run-evaluated.v1
   publish_topics:
     - onex.evt.omnimarket.golden-chain-sweep-result.v1
     - onex.evt.omnimarket.golden-chain-sweep-completed.v1

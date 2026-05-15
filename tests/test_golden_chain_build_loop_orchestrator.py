@@ -44,7 +44,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 TOPIC_PHASE_TRANSITION = (
     "onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1"
 )
-TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"
+TOPIC_DOD_CHECKED = "onex.evt.omnimarket.build-loop-dod-checked.v1"
 
 # --- Mock sub-handlers ---
 
@@ -451,7 +451,7 @@ class TestDoDVerificationGating:
         assert result.cycle_summaries[0].final_phase == EnumBuildLoopPhase.COMPLETE
 
     async def test_dod_emits_event_on_pass(self) -> None:
-        """DoD PASS emits onex.evt.build-loop.dod-checked.v1 for each target."""
+        """DoD PASS emits onex.evt.omnimarket.build-loop-dod-checked.v1 for each target."""
         event_bus = EventBusInmemory()
         await event_bus.start()
         targets = (

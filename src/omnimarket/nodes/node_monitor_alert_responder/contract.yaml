@@ -5,8 +5,8 @@ node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Subscribes to onex.evt.monitor.alert-detected.v1, classifies alerts into
-  RECOVERABLE / UNKNOWN / ESCALATE tiers, and routes accordingly:
+  Subscribes to onex.evt.omnibase-infra.monitor-alert-detected.v1, classifies
+  alerts into RECOVERABLE / UNKNOWN / ESCALATE tiers, and routes accordingly:
   RECOVERABLE → dispatches fix agent via playbook; UNKNOWN → emits
   alert-unhandled event for Slack escalation; ESCALATE → P0 Slack + Linear
   ticket. Closes the loop on monitor_logs.py dual-emit (OMN-8885).
@@ -22,7 +22,7 @@ handler_routing:
 input_model:
   name: ModelAlertEvent
   module: omnimarket.nodes.node_monitor_alert_responder.models.model_alert_event
-  description: "Inbound monitor alert event from onex.evt.monitor.alert-detected.v1"
+  description: "Inbound monitor alert event from onex.evt.omnibase-infra.monitor-alert-detected.v1"
 
 output_model:
   name: ModelAlertResponse
@@ -44,6 +44,8 @@ event_bus:
     - onex.evt.omnimarket.monitor-alert-unhandled.v1
     - onex.cmd.omnimarket.alert-fix-requested.v1
     - onex.evt.omnimarket.alert-response-completed.v1
+    # Cross-service: deploy agent rebuild command dispatched by RECOVERABLE playbooks
+    - onex.cmd.deploy.rebuild-requested.v1
 
 metadata:
   transport_type: kafka

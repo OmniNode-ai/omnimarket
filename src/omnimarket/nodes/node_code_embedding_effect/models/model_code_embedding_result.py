@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ModelCodeEmbeddingResult(BaseModel):
     """Result of a code entity embedding batch.
 
-    Published to onex.evt.omniintelligence.code-embedded.v1.
+    Published to onex.evt.omnimarket.code-embedded.v1.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)

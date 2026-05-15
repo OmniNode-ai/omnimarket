@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ModelCodeEnrichmentResult(BaseModel):
     """Result of a code entity LLM enrichment batch.
 
-    Published to onex.evt.omniintelligence.code-enriched.v1.
+    Published to onex.evt.omnimarket.code-enriched.v1.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)

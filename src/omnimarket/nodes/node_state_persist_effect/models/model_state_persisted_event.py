@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelStatePersistedEvent(BaseModel):
-    """Confirmation event published to onex.evt.state.persisted.v1.
+    """Confirmation event published to onex.evt.omnimarket.state-persisted.v1.
 
     Emitted by HandlerStatePersistEffect after calling ProtocolStateStore.put().
     Consumers (e.g. HandlerLedgerStateReducer) can use this to confirm that

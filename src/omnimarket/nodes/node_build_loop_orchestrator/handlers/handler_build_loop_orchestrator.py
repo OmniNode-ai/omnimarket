@@ -83,12 +83,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-TOPIC_DOD_CHECKED = "onex.evt.build-loop.dod-checked.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERSEER_VERIFICATION_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_BUILD_LOOP_START = "onex.cmd.omnimarket.build-loop-orchestrator-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_BUILD_LOOP_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_BUILD_LOOP_FAILED = "onex.evt.omnimarket.build-loop-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_DOD_CHECKED = "onex.evt.omnimarket.build-loop-dod-checked.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
+TOPIC_OVERSEER_VERIFICATION_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml subscribe_topics
+TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
+TOPIC_BUILD_LOOP_START = "onex.cmd.omnimarket.build-loop-orchestrator-start.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml subscribe_topics
+TOPIC_BUILD_LOOP_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
+TOPIC_BUILD_LOOP_FAILED = "onex.evt.omnimarket.build-loop-failed.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
 
 _VERIFIER_TIMEOUT_SECONDS = 120
 
@@ -562,8 +562,8 @@ class HandlerBuildLoopOrchestrator:
     ) -> tuple[bool, str | None, dict[str, int]]:
         """VERIFYING phase: publish verify command, await correlated verdict.
 
-        1. Publish onex.cmd.overseer.verify-requested.v1 with correlation_id
-        2. Await onex.evt.overseer.verification-completed.v1 filtered by correlation_id
+        1. Publish onex.cmd.omnimarket.overseer-verify.v1 with correlation_id
+        2. Await onex.evt.omnimarket.overseer-verifier-completed.v1 filtered by correlation_id
         3. Timeout after _VERIFIER_TIMEOUT_SECONDS → FAILED
         4. passed=False → FAILED with failed_criteria surfaced
         5. passed=True → advance to FILLING

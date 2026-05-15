@@ -9,11 +9,12 @@ and returns the first tier that has a configured endpoint for the given task typ
 All tier order, model assignments, and retry counts come from the YAML config —
 no constants are hardcoded here.
 
-Endpoint URLs are resolved from the deployed bifrost contract at
-~/.omninode/delegation/bifrost_delegation.yaml — NOT from environment variables.
-The installer (install-delegation.sh --apply) populates endpoint_url fields in
-the deployed contract. Each model in routing_tiers.yaml has a backend_id that
-maps to a backend entry in the bifrost contract.
+Endpoint URLs are resolved from the bifrost contract. Resolution order:
+  1. BIFROST_CONTRACT_PATH env var (test/override)
+  2. ~/.omninode/delegation/bifrost_delegation.yaml (deployed override)
+  3. Source configs/bifrost_delegation.yaml (default — URLs populated directly)
+Each model in routing_tiers.yaml has a backend_id that maps to a backend
+entry in the bifrost contract.
 
 Task-class contracts (task_class_contracts.v1.yaml) augment tier routing with
 per-class pricing ceilings and cloud routing policies. When the contract file is
@@ -611,7 +612,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     )
     msg = (
         f"No tier has a configured endpoint for task_type='{task_type}'. "
-        f"Deploy a bifrost contract with endpoint URLs via install-delegation.sh --apply, "
+        f"Populate endpoint_url fields in configs/bifrost_delegation.yaml, "
         f"or set BIFROST_CONTRACT_PATH to a contract with populated endpoint_url fields."
     )
     raise ProtocolConfigurationError(msg, context=context)

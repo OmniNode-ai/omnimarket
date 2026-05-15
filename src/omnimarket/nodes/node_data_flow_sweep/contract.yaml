@@ -44,6 +44,8 @@ terminal_event: onex.evt.omnimarket.data-flow-sweep-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.data-flow-sweep-start.v1
+    # Monitored topics — swept for producer/consumer/projection health
+    - onex.evt.omniintelligence.pattern-learned.v1
   publish_topics:
     - onex.evt.omnimarket.data-flow-sweep-result.v1
     - onex.evt.omnimarket.data-flow-sweep-completed.v1

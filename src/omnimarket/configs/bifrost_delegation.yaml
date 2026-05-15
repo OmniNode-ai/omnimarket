@@ -7,21 +7,23 @@
 # Every gateway response MUST include the selected rule_id and config_version
 # to make provenance auditable (OMN-10637 requirement R1).
 #
-# Backend endpoint URLs are declared here and populated by the installer
-# (install-delegation.sh --apply). The source version has empty endpoint_url
-# fields; the deployed copy at ~/.omninode/delegation/bifrost_delegation.yaml
-# has actual URLs written by the installer.
+# Backend endpoint URLs are declared directly in this file.
+# Local backends point to vLLM on the AIPC (.201).
+# Cloud backends point to their public API endpoints.
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657
-config_version: "1.1.0"
+config_version: "1.2.0"
 schema_version: "bifrost_delegation.v1"
-# Backend definitions — endpoint_url populated by installer at deploy time.
+# Backend definitions — endpoint URLs populated directly.
+# Local backends use the AIPC at 192.168.86.201 (vLLM). # onex-allow-internal-ip
+# Cloud backends use their public API endpoints.
+# CLI backends use subprocess dispatch (endpoint_url is a marker, not called via HTTP).
 backends:
   # Local backends (AIPC)
   - backend_id: local-qwen-coder-30b
-    endpoint_url: ""
+    endpoint_url: "http://192.168.86.201:8000/v1" # onex-allow-internal-ip
     # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     tier: local
@@ -31,7 +33,7 @@ backends:
       - refactoring
       - documentation
   - backend_id: local-deepseek-r1-14b
-    endpoint_url: ""
+    endpoint_url: "http://192.168.86.201:8001/v1" # onex-allow-internal-ip
     # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     tier: local
@@ -42,7 +44,7 @@ backends:
       - classification
   # Cloud fallback backends
   - backend_id: cloud-sonnet
-    endpoint_url: ""
+    endpoint_url: "https://api.anthropic.com/v1"
     # Claude Sonnet via OAuth — no API key required (Claude Code uses OAuth)
     model_name: claude-sonnet-4-6
     tier: frontier_api
@@ -53,7 +55,7 @@ backends:
       - documentation
       - research
   - backend_id: cloud-haiku
-    endpoint_url: ""
+    endpoint_url: "https://api.anthropic.com/v1"
     # Claude Haiku — cheapest frontier model for documentation/simple tasks
     model_name: claude-haiku-4-5-20251001
     tier: frontier_api
@@ -63,7 +65,7 @@ backends:
       - summarization
       - simple_tasks
   - backend_id: cloud-glm
-    endpoint_url: ""
+    endpoint_url: "https://api.z.ai/v1"
     model_name: glm-z-ai
     tier: cheap_cloud
     timeout_ms: 60000
@@ -72,7 +74,7 @@ backends:
       - reasoning
       - research
   - backend_id: cloud-gemini-flash
-    endpoint_url: ""
+    endpoint_url: "https://generativelanguage.googleapis.com/v1beta"
     model_name: gemini-flash
     tier: cheap_cloud
     timeout_ms: 60000
@@ -82,7 +84,7 @@ backends:
       - document
   # CLI agent backends — dispatched via subprocess, not HTTP.
   - backend_id: cli-claude
-    endpoint_url: ""
+    endpoint_url: "cli://claude"
     model_name: claude-cli
     tier: cli_agents
     timeout_ms: 300000
@@ -90,7 +92,7 @@ backends:
       - agent_delegation
       - complex_reasoning
   - backend_id: cli-opencode
-    endpoint_url: ""
+    endpoint_url: "cli://opencode"
     model_name: opencode-cli
     tier: cli_agents
     timeout_ms: 300000

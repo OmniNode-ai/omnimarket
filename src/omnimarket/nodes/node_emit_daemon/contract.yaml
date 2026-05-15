@@ -49,4 +49,85 @@ self_healing:
 
 event_bus:
   subscribe_topics: []
-  publish_topics: []  # topics are dynamic, driven by the event registry YAML
+  # Topics are driven by the event registry YAML (registries/topics.yaml).
+  # This list mirrors the fan-out targets declared there so the dep-health
+  # sweep can verify they are contract-declared (OMN-11061).
+  publish_topics:
+    # Session events
+    - onex.evt.omniclaude.session-started.v1
+    - onex.evt.omniclaude.session-ended.v1
+    - onex.cmd.omniintelligence.session-outcome.v1
+    - onex.cmd.omniintelligence.utilization-scoring.v1
+    # Prompt events
+    - onex.cmd.omniintelligence.claude-hook-event.v1
+    - onex.evt.omniclaude.prompt-submitted.v1
+    # Tool events
+    - onex.evt.omniclaude.tool-executed.v1
+    # Routing events
+    - onex.evt.omniclaude.routing-feedback.v1
+    - onex.evt.omniclaude.routing-decision.v1
+    - onex.evt.omniclaude.llm-routing-decision.v1
+    - onex.evt.omniclaude.llm-routing-fallback.v1
+    # Injection and context events
+    - onex.evt.omniclaude.injection-recorded.v1
+    - onex.evt.omniclaude.context-utilization.v1
+    - onex.evt.omniclaude.context-enrichment.v1
+    # Agent events
+    - onex.evt.omniclaude.agent-match.v1
+    - onex.evt.omniclaude.agent-status.v1
+    - onex.evt.omniclaude.agent-chat-broadcast.v1
+    # Latency and phase metrics
+    - onex.evt.omniclaude.latency-breakdown.v1
+    - onex.evt.omniclaude.phase-metrics.v1
+    # Notification events
+    - onex.evt.omniclaude.notification-blocked.v1
+    - onex.evt.omniclaude.notification-completed.v1
+    # Compliance and enforcement
+    - onex.cmd.omniintelligence.compliance-evaluate.v1
+    - onex.evt.omniclaude.pattern-enforcement.v1
+    # Static context edit detection
+    - onex.evt.omniclaude.static-context-edit-detected.v1
+    # Intent binding
+    - onex.evt.omniclaude.intent-commit-bound.v1
+    # ChangeFrame events
+    - onex.evt.omniclaude.change-frame.v1
+    # Skill lifecycle events
+    - onex.evt.omniclaude.skill-started.v1
+    - onex.evt.omniclaude.skill-completed.v1
+    - onex.evt.omniclaude.skill-invoked.v1
+    - onex.evt.omniclaude.friction-observed.v1
+    # Pipeline observability events
+    - onex.evt.omniclaude.epic-run-updated.v1
+    - onex.evt.omniclaude.pr-watch-updated.v1
+    - onex.evt.omniclaude.gate-decision.v1
+    - onex.evt.omniclaude.budget-cap-hit.v1
+    - onex.evt.omniclaude.circuit-breaker-tripped.v1
+    # PR validation
+    - onex.evt.omniclaude.pr-validation-rollup.v1
+    # DoD telemetry
+    - onex.evt.omniclaude.dod-verify-completed.v1
+    - onex.evt.omniclaude.dod-guard-fired.v1
+    - onex.evt.omniclaude.dod-sweep-completed.v1
+    # Correlation trace
+    - onex.evt.omniclaude.correlation-trace.v1
+    # Context integrity audit
+    - onex.evt.omniclaude.audit-dispatch-validated.v1
+    - onex.evt.omniclaude.audit-scope-violation.v1
+    # Plan and review events
+    - onex.evt.omniclaude.plan-review-completed.v1
+    - onex.evt.omniclaude.hostile-reviewer-completed.v1
+    - onex.evt.omniclaude.hostile-reviewer-failed.v1
+    # Coordination events
+    - onex.evt.omniclaude.session-coordination-signal.v1
+    # Team lifecycle events
+    - onex.evt.omniclaude.team-task-assigned.v1
+    - onex.evt.omniclaude.team-task-progress.v1
+    - onex.evt.omniclaude.team-task-completed.v1
+    - onex.evt.omniclaude.team-evidence-written.v1
+    # Hook health
+    - onex.evt.omniclaude.hook-health-error.v1
+    # Runtime diagnostics
+    # Note: onex.evt.diagnostic.daemon-health.v1 uses non-standard service name 'diagnostic'
+    # and cannot be listed here without failing the topic-naming lint. It is allowlisted
+    # in dep_health_allowlist.yaml for UNDECLARED_TOPIC suppression (OMN-11061).
+    - onex.evt.omniclaude.diagnostic-daemon-health.v1

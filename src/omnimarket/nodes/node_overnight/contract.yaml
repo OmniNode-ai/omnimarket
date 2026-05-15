@@ -103,6 +103,8 @@ event_bus:
     # without external cron jobs. Fires only when enable_self_loop=True and an
     # event_bus is wired.
     - onex.cmd.omnimarket.overnight-start.v1
+    # Session failure event emitted by consumer on unhandled exception
+    - onex.evt.omnimarket.overnight-session-failed.v1
 
 metadata:
   transport_type: kafka
