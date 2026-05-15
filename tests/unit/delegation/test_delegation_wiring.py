@@ -81,7 +81,7 @@ def _make_routing_decision(correlation_id: object) -> ModelRoutingDecision:
         selected_backend_id=uuid5(
             NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
         ),
-        endpoint_url="http://delegation-llm.test:8000",
+        endpoint_url="https://delegation-llm.test:8000",
         cost_tier="low",
         max_context_tokens=65536,
         system_prompt="You are a delegation test assistant.",
