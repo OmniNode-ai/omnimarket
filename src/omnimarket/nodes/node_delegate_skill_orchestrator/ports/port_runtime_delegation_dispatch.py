@@ -18,9 +18,7 @@ from omnimarket.adapters.codex.runtime_client import (
     default_command_topic,
     default_response_topic,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
-    ModelDelegationRequest,
-)
+from omnimarket.events.delegation import ModelDelegationRequest
 
 _INTERNAL_COMMAND_NAME = "node_delegation_orchestrator"
 _REQUESTER = "delegate-skill-runtime-port"
