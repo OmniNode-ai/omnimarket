@@ -427,9 +427,24 @@ async def test_golden_chain_runs_in_under_5s() -> None:
         run_id=_RUN_ID,
         correlation_id=_CORR_ID,
     )
+
+    def _stub_subprocess(*args: Any, **_kwargs: Any) -> MagicMock:
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(
+            return_value=(
+                json.dumps(
+                    {"id": "PR_kwTIMING100", "headRefName": "feat/100"}
+                ).encode(),
+                b"",
+            )
+        )
+        return proc
+
     t0 = time.monotonic()
     handler = HandlerTriageOrchestrator()
-    output = await handler.handle(request)
+    with patch("asyncio.create_subprocess_exec", side_effect=_stub_subprocess):
+        output = await handler.handle(request)
     elapsed = time.monotonic() - t0
     assert len(output.events) == 1
     assert elapsed < 5.0, f"Golden chain took {elapsed:.2f}s — real I/O may have leaked"

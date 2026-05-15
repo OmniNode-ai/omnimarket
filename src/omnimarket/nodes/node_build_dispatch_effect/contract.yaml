@@ -9,6 +9,11 @@ description: >
   Builds ModelDelegationPayload objects for the orchestrator to publish to Kafka.
   Filesystem fallback intentionally removed — Kafka is the canonical transport.
 
+handler:
+  module: omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch
+  class: HandlerBuildDispatch
+  input_model: omnimarket.nodes.node_build_dispatch_effect.models.model_build_dispatch_input.ModelBuildDispatchInput
+
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -34,6 +39,12 @@ descriptor:
   timeout_ms: 60000
   runtime_profiles:
     - effects
+
+dod_evidence:
+  ticket: "OMN-9889"
+  check_type: "local_test"
+  check_value: "uv run pytest tests/ -m 'not kafka' -q passed"
+  verified_by: "pre-push CI + runtime profile validation suite"
 
 terminal_event: onex.evt.omnimarket.build-dispatch-completed.v1
 
