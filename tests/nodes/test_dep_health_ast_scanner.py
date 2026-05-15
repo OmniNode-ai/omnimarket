@@ -224,3 +224,31 @@ class TestRepoLabel:
                 f"Expected 'myrepo', got {label!r}"
             )
             assert label == "myrepo", f"Expected 'myrepo', got {label!r}"
+
+    def test_contract_handler_paths_do_not_duplicate_src(self, tmp_path: Path) -> None:
+        """Passing a /src repo root must not produce a src/src handler path."""
+        from omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep import (
+            HandlerDepHealthSweep,
+        )
+
+        src_dir = tmp_path / "myrepo" / "src"
+        contract_dir = src_dir / "omnimarket" / "nodes" / "node_example"
+        contract_dir.mkdir(parents=True)
+        (contract_dir / "contract.yaml").write_text(
+            "\n".join(
+                [
+                    "handler_routing:",
+                    "  handlers:",
+                    "    - handler_module: omnimarket.nodes.node_example.handlers.handler_example",
+                    "",
+                ]
+            )
+        )
+
+        handler = HandlerDepHealthSweep()
+        paths = handler._collect_contract_handler_paths([str(src_dir)])
+
+        assert paths == [
+            str(src_dir / "omnimarket/nodes/node_example/handlers/handler_example.py")
+        ]
+        assert all("/src/src/" not in path for path in paths)

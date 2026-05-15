@@ -1,0 +1,30 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11047"
+title: "Fix dependency health repo labels for src roots"
+summary: >
+  Ensures dependency health sweep labels a repo root ending in /src by its
+  parent repository name instead of the literal src directory name.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused dependency health scanner tests cover /src repo label handling."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/test_dep_health_ast_scanner.py -q"
+  - id: "dod-deploy"
+    description: >
+      Runtime-path change is dependency health sweep labeling logic only. No
+      live deploy or runtime restart was performed in this PR; post-merge
+      validation should import the sweep handler in the deployed runtime.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy && uv run python -c \"from omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep import HandlerDepHealthSweep; print(HandlerDepHealthSweep.__name__)\""

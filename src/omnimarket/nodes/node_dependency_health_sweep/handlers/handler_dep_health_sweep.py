@@ -238,7 +238,8 @@ class HandlerDepHealthSweep:
 
                     for module in modules:
                         module_path = module.replace(".", "/") + ".py"
-                        handler_paths.append(str(root / "src" / module_path))
+                        base = root if root.name == "src" else root / "src"
+                        handler_paths.append(str(base / module_path))
                 except Exception:
                     continue
         return handler_paths
