@@ -164,6 +164,12 @@ dogfood_gate:
   log_bypass_as_dogfood_available: WARNING
   log_bypass_as_dogfood_unavailable: INFO
 
+dod_evidence:
+  ticket: "OMN-9877"
+  check_type: "local_test"
+  check_value: "uv run pytest tests/ -m 'not kafka' -q passed"
+  verified_by: "pre-push CI + golden-chain suite"
+
 terminal_event: onex.evt.omnimarket.session-bootstrap-completed.v2
 
 event_bus:
