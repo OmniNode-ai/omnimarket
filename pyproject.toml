@@ -339,6 +339,10 @@ module = "omnimemory.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["omniclaude", "omniclaude.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*"]
 ignore_missing_imports = true
 
