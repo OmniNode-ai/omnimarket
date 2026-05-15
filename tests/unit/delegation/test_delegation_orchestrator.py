@@ -330,7 +330,7 @@ class TestGateFailure:
 class TestIdempotency:
     """Test duplicate event handling: same correlation_id twice -> no double processing."""
 
-    def test_duplicate_request_is_ignored(self) -> None:
+    def test_pending_duplicate_request_replays_routing_once(self) -> None:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
         request = _make_request(correlation_id=cid)
@@ -339,7 +339,21 @@ class TestIdempotency:
         assert len(intents1) == 1
 
         intents2 = handler.handle_delegation_request(request)
-        assert len(intents2) == 0
+        assert len(intents2) == 1
+
+        intents3 = handler.handle_delegation_request(request)
+        assert len(intents3) == 0
+
+    def test_duplicate_request_after_routing_is_ignored(self) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        request = _make_request(correlation_id=cid)
+
+        handler.handle_delegation_request(request)
+        handler.handle_routing_decision(_make_routing_decision(cid))
+
+        intents = handler.handle_delegation_request(request)
+        assert len(intents) == 0
 
     def test_duplicate_routing_decision_is_ignored(self) -> None:
         handler = HandlerDelegationWorkflow()

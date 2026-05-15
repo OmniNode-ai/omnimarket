@@ -308,12 +308,12 @@ class TestDelegationChainE2E:
         await bus.close()
 
     @pytest.mark.asyncio
-    async def test_chain_idempotent_duplicate_request(
+    async def test_chain_pending_duplicate_request_replays_routing_once(
         self,
         handler: HandlerDelegationWorkflow,
         delegation_request: ModelDelegationRequest,
     ) -> None:
-        """Duplicate delegation request returns empty (idempotent)."""
+        """Duplicate pending delegation request replays routing once."""
         bus = EventBusInmemory(environment="test", group="delegation-test")
         await bus.start()
 
@@ -327,9 +327,12 @@ class TestDelegationChainE2E:
         intents1 = handler.handle_delegation_request(delegation_request)
         assert len(intents1) == 1
 
-        # Duplicate request returns empty
+        # Duplicate pending request replays routing once, then suppresses repeats.
         intents2 = handler.handle_delegation_request(delegation_request)
-        assert len(intents2) == 0
+        assert len(intents2) == 1
+
+        intents3 = handler.handle_delegation_request(delegation_request)
+        assert len(intents3) == 0
 
         await bus.close()
 
