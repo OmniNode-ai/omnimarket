@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9889
+title: "Backfill runtime ownership profiles"
+summary: "Backfills runtime_profiles declarations across omnimarket command/effect contracts. Adds validation test to assert all EFFECT nodes subscribing to cmd topics declare the effects runtime profile."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Full omnimarket test suite passes (non-kafka)"
+    command: "uv run pytest tests/ -m 'not kafka' -q"
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #649"
+    command: "gh pr checks 649 --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: "Runtime profile backfill — contract metadata only, no deploy restart required"
+    command: "printf '%s\n' 'deploy gate: runtime ownership profile backfill — contract metadata change only; no docker exec or rpk topic produce required'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Full omnimarket test suite passes (non-kafka)"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ -m 'not kafka' -q"
+  - id: dod-deploy
+    description: "Contract metadata backfill only — no runtime restart or Kafka topic change required"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: runtime ownership profile backfill — contract metadata only; no docker exec or rpk topic produce required'"
