@@ -115,6 +115,16 @@ repos:
         language: system
         pass_filenames: false
 
+      # OMN-11040: Dependency health gate — blocks new CRITICAL/MAJOR dependency
+      # health findings from being committed. Baseline-first: set
+      # --severity-threshold to INFO to observe all findings without blocking.
+      - id: dep-health-gate
+        name: Dependency health gate
+        language: system
+        entry: bash scripts/validation/run_dep_health_gate.sh
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-10738: Blocks silent localhost/hardcoded-endpoint fallbacks in env reads
       - id: validate-no-env-fallbacks
         name: Validate no silent env fallbacks
