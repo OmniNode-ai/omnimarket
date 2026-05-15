@@ -12,9 +12,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_sweep_completed_event import (
-    ModelDepHealthSweepCompletedEvent,
-)
+from omnimarket.events.dep_health import ModelDepHealthSweepCompletedEvent
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "dep_health_findings"

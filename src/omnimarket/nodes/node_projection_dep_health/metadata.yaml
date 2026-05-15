@@ -1,0 +1,22 @@
+name: node_projection_dep_health
+version: "0.1.0"
+description: >
+  Projects dep-health-sweep-completed events into dep_health_findings table.
+  Dedup by (run_id, finding_type, file_path, symbol). Idempotent UPSERT.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+  requires_repo: false
+  requires_docker: false
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["projection", "dependency-health", "reducer"]
+pack: "data"
+display_name: "Projection: Dependency Health"
+node_role: "effect"
