@@ -29,6 +29,12 @@ class ModelTopologyGraph(BaseModel):
     sub_edges: list[tuple[str, str, str]]
     orphan_topics: list[str]
     undeclared_topics: list[str]
+    # Maps topic → absolute path of the contract.yaml where it was published.
+    # Used by CrossReferenceEngine to populate file_path on MISSING_TOPIC_EDGE findings.
+    topic_sources: dict[str, str] = {}
+    # Maps topic literal → absolute path of the source file where the literal appears.
+    # Used by CrossReferenceEngine to populate file_path on UNDECLARED_TOPIC findings.
+    undeclared_topic_sources: dict[str, str] = {}
 
 
 class ModelBaselineSnapshot(BaseModel):

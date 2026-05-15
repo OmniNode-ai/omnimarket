@@ -129,7 +129,11 @@ class HandlerDepHealthSweep:
                 continue
 
             repo_root = repo_root.resolve()
-            repo_label = repo_root.name
+            # OMN-11047: if the path ends with /src, use the parent directory name
+            # so the label is "omnimarket" rather than "src".
+            repo_label = (
+                repo_root.parent.name if repo_root.name == "src" else repo_root.name
+            )
 
             import_graph = self._graphify_runner.run(root=repo_root)
             topology = self._topology_parser.parse(search_roots=[repo_root])
@@ -192,7 +196,15 @@ class HandlerDepHealthSweep:
         return result
 
     def _collect_contract_handler_paths(self, repo_roots: list[str]) -> list[str]:
-        """Collect handler_path values declared in contract.yaml files across all roots."""
+        """Collect handler file paths declared in contract.yaml files across all roots.
+
+        Reads from two contract layouts:
+        - ``handler.module`` — the simple single-handler form used by most nodes.
+        - ``handler_routing.handlers[].handler_module`` — the multi-handler routing form.
+
+        Each module dotted-path is converted to a filesystem path using the conventional
+        ``<root>/src/<module/as/path>.py`` layout.
+        """
         handler_paths: list[str] = []
         for root_str in repo_roots:
             root = Path(root_str)
@@ -204,12 +216,30 @@ class HandlerDepHealthSweep:
                         data: dict[str, Any] = yaml.safe_load(f)
                     if not isinstance(data, dict):
                         continue
+
+                    modules: list[str] = []
+
+                    # Layout 1: handler.module (most nodes)
                     handler = data.get("handler") or {}
-                    module = handler.get("module", "")
-                    if module:
-                        # Convert module path to file path relative to root
+                    simple_module = str(handler.get("module", "") or "").strip()
+                    if simple_module:
+                        modules.append(simple_module)
+
+                    # Layout 2: handler_routing.handlers[].handler_module
+                    handler_routing = data.get("handler_routing") or {}
+                    for entry in handler_routing.get("handlers", []) or []:
+                        if not isinstance(entry, dict):
+                            continue
+                        routing_module = str(
+                            entry.get("handler_module", "") or ""
+                        ).strip()
+                        if routing_module:
+                            modules.append(routing_module)
+
+                    for module in modules:
                         module_path = module.replace(".", "/") + ".py"
-                        handler_paths.append(str(root / "src" / module_path))
+                        base = root if root.name == "src" else root / "src"
+                        handler_paths.append(str(base / module_path))
                 except Exception:
                     continue
         return handler_paths
