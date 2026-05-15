@@ -53,6 +53,8 @@ class ContractTopologyParser:
             and undeclared topics.
         """
         all_contracts: list[dict[str, Any]] = []
+        # Track which contract.yaml each published topic came from (topic → path)
+        all_contracts_with_paths: list[tuple[dict[str, Any], Path]] = []
         all_known_topics: set[str] = set()
         externally_consumed: set[str] = set()
         allowlisted: set[str] = set()
@@ -69,6 +71,7 @@ class ContractTopologyParser:
                 if data is None:
                     continue
                 all_contracts.append(data)
+                all_contracts_with_paths.append((data, contract_path))
 
                 # Collect externally_consumed_topics declared at contract level
                 for topic in data.get("externally_consumed_topics", []):
@@ -81,15 +84,18 @@ class ContractTopologyParser:
                 for topic in event_bus.get("subscribe_topics", []) or []:
                     all_known_topics.add(str(topic))
 
-        # Build node list, pub/sub edge lists from parsed contracts
+        # Build node list, pub/sub edge lists from parsed contracts.
+        # Also track which contract.yaml each published topic came from.
         nodes: list[str] = []
         pub_edges: list[tuple[str, str, str]] = []
         sub_edges: list[tuple[str, str, str]] = []
 
         published: set[str] = set()
         subscribed: set[str] = set()
+        # topic_sources: maps topic → absolute path of the contract that declares it
+        topic_sources: dict[str, str] = {}
 
-        for data in all_contracts:
+        for data, contract_path in all_contracts_with_paths:
             node_name: str = str(data.get("name", ""))
             if node_name and node_name not in nodes:
                 nodes.append(node_name)
@@ -100,6 +106,8 @@ class ContractTopologyParser:
                 topic_str = str(topic)
                 pub_edges.append((node_name, topic_str, "pub"))
                 published.add(topic_str)
+                # First-publisher wins; keeps the map stable
+                topic_sources.setdefault(topic_str, str(contract_path.resolve()))
 
             for topic in event_bus.get("subscribe_topics", []) or []:
                 topic_str = str(topic)
@@ -116,7 +124,9 @@ class ContractTopologyParser:
         ]
 
         # Scan source files for hardcoded topic literals not in any contract
-        undeclared_topics = self._find_undeclared_topics(search_roots, all_known_topics)
+        undeclared_topics, undeclared_topic_sources = self._find_undeclared_topics(
+            search_roots, all_known_topics
+        )
 
         # Best-effort TopicBase cross-validation (INFO only — does not affect graph)
         self._cross_check_topic_base(all_known_topics)
@@ -127,6 +137,8 @@ class ContractTopologyParser:
             sub_edges=sub_edges,
             orphan_topics=sorted(orphan_topics),
             undeclared_topics=sorted(undeclared_topics),
+            topic_sources=topic_sources,
+            undeclared_topic_sources=undeclared_topic_sources,
         )
 
     # ------------------------------------------------------------------
@@ -154,9 +166,15 @@ class ContractTopologyParser:
 
     def _find_undeclared_topics(
         self, search_roots: list[Path], known_topics: set[str]
-    ) -> set[str]:
-        """Scan source files for topic string literals not declared in any contract."""
+    ) -> tuple[set[str], dict[str, str]]:
+        """Scan source files for topic string literals not declared in any contract.
+
+        Returns:
+            Tuple of (undeclared_topics set, undeclared_topic_sources dict mapping
+            topic literal → absolute path of the first source file where it appears).
+        """
         undeclared: set[str] = set()
+        undeclared_sources: dict[str, str] = {}
         for root in search_roots:
             for ext in _SOURCE_EXTENSIONS:
                 for src_file in root.rglob(f"*{ext}"):
@@ -170,7 +188,11 @@ class ContractTopologyParser:
                         topic = match.group(0)
                         if topic not in known_topics:
                             undeclared.add(topic)
-        return undeclared
+                            # First-occurrence file wins; keeps the map stable
+                            undeclared_sources.setdefault(
+                                topic, str(src_file.resolve())
+                            )
+        return undeclared, undeclared_sources
 
     def _cross_check_topic_base(self, known_topics: set[str]) -> None:
         """Cross-validate contract topics against TopicBase enum (INFO only)."""
