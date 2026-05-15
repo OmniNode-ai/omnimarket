@@ -220,7 +220,7 @@ class CrossReferenceEngine:
                     finding_type=EnumDepHealthFindingType.MISSING_TOPIC_EDGE,
                     severity=severity,
                     repo=repo_label,
-                    file_path=None,
+                    file_path=topology.topic_sources.get(topic),
                     symbol=topic,
                     detail=(
                         f"Topic '{topic}' is published but has no subscriber "
@@ -305,7 +305,7 @@ class CrossReferenceEngine:
                     finding_type=EnumDepHealthFindingType.UNDECLARED_TOPIC,
                     severity=EnumDepHealthSeverity.MAJOR,
                     repo=repo_label,
-                    file_path=None,
+                    file_path=topology.undeclared_topic_sources.get(topic),
                     symbol=topic,
                     detail=(
                         f"Topic literal '{topic}' appears in source code but is not "
