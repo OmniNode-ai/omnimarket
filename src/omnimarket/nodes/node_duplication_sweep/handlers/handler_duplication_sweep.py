@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from collections import defaultdict
 from pathlib import Path
@@ -26,6 +27,15 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 _ALL_CHECKS = ["D1", "D2", "D3", "D4"]
+_KAFKA_BOUNDARY_RELATIVE_PATHS = (
+    Path("onex_change_control")
+    / "src"
+    / "onex_change_control"
+    / "boundaries"
+    / "kafka_boundaries.yaml",
+    Path("onex_change_control") / "boundaries" / "kafka_boundaries.yaml",
+)
+_EXCLUDED_MIGRATION_REPO_DIRS = {"omni_worktrees"}
 
 
 class ModelDuplicationFinding(BaseModel):
@@ -66,6 +76,73 @@ class DuplicationSweepResult(BaseModel):
 
     check_results: list[ModelDuplicationCheckResult] = Field(default_factory=list)
     overall_status: str = "PASS"  # PASS | FAIL
+
+
+# ---------------------------------------------------------------------------
+# Resolvers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_kafka_boundaries_yaml(omni_home: str) -> Path | None:
+    """Locate OCC Kafka boundaries across current and legacy layouts."""
+    root = Path(omni_home)
+    for relative_path in _KAFKA_BOUNDARY_RELATIVE_PATHS:
+        candidate = root / relative_path
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _migration_conflict_command(omni_home: str) -> tuple[list[str], Path] | None:
+    """Resolve check-migration-conflicts from OCC before falling back to PATH."""
+    occ_root = Path(omni_home) / "onex_change_control"
+    repos = _migration_conflict_repos(omni_home)
+    repo_args = ["--repos", *repos] if repos else []
+    direct_executable = occ_root / ".venv" / "bin" / "check-migration-conflicts"
+    if direct_executable.is_file() and os.access(direct_executable, os.X_OK):
+        return (
+            [str(direct_executable), "--repos-root", omni_home, *repo_args],
+            occ_root,
+        )
+
+    path_executable = shutil.which("check-migration-conflicts")
+    if path_executable:
+        return ([path_executable, "--repos-root", omni_home, *repo_args], occ_root)
+
+    uv_executable = shutil.which("uv")
+    if uv_executable:
+        return (
+            [
+                uv_executable,
+                "run",
+                "check-migration-conflicts",
+                "--repos-root",
+                omni_home,
+                *repo_args,
+            ],
+            occ_root,
+        )
+
+    return None
+
+
+def _migration_conflict_repos(omni_home: str) -> list[str]:
+    """List canonical repo dirs so OCC does not recurse generated worktrees."""
+    root = Path(omni_home)
+    if not root.is_dir():
+        return []
+
+    repos: list[str] = []
+    for child in sorted(root.iterdir()):
+        if (
+            child.name.startswith(".")
+            or child.name in _EXCLUDED_MIGRATION_REPO_DIRS
+            or not child.is_dir()
+            or not (child / ".git").exists()
+        ):
+            continue
+        repos.append(child.name)
+    return repos
 
 
 # ---------------------------------------------------------------------------
@@ -123,16 +200,16 @@ def _check_d2_kafka_topics(omni_home: str) -> ModelDuplicationCheckResult:
     topics_py = (
         Path(omni_home) / "omniclaude" / "src" / "omniclaude" / "hooks" / "topics.py"
     )
-    boundaries_yaml = (
-        Path(omni_home) / "onex_change_control" / "boundaries" / "kafka_boundaries.yaml"
-    )
+    boundaries_yaml = _resolve_kafka_boundaries_yaml(omni_home)
 
-    if not topics_py.exists() or not boundaries_yaml.exists():
+    if not topics_py.exists() or boundaries_yaml is None:
         missing = []
         if not topics_py.exists():
             missing.append("omniclaude/src/omniclaude/hooks/topics.py")
-        if not boundaries_yaml.exists():
-            missing.append("onex_change_control/boundaries/kafka_boundaries.yaml")
+        if boundaries_yaml is None:
+            missing.append(
+                " or ".join(str(path) for path in _KAFKA_BOUNDARY_RELATIVE_PATHS)
+            )
         return ModelDuplicationCheckResult(
             check_id="D2",
             status="WARN",
@@ -206,21 +283,36 @@ def _check_d2_kafka_topics(omni_home: str) -> ModelDuplicationCheckResult:
 
 def _check_d3_migration_prefixes(omni_home: str) -> ModelDuplicationCheckResult:
     """D3: Detect migration prefix collisions via check-migration-conflicts."""
-    try:
-        result = subprocess.run(
-            ["uv", "run", "check-migration-conflicts", "--repos-root", omni_home],
-            capture_output=True,
-            text=True,
-            cwd=str(Path(omni_home) / "onex_change_control"),
-            timeout=60,
-            check=False,
-        )
-        output = result.stdout + result.stderr
-    except (subprocess.TimeoutExpired, OSError, FileNotFoundError):
+    resolved = _migration_conflict_command(omni_home)
+    if resolved is None:
         return ModelDuplicationCheckResult(
             check_id="D3",
             status="WARN",
             detail="check-migration-conflicts not available",
+        )
+
+    command, cwd = resolved
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            cwd=str(cwd),
+            timeout=60,
+            check=False,
+        )
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        return ModelDuplicationCheckResult(
+            check_id="D3",
+            status="WARN",
+            detail="check-migration-conflicts timed out",
+        )
+    except (OSError, FileNotFoundError) as exc:
+        return ModelDuplicationCheckResult(
+            check_id="D3",
+            status="WARN",
+            detail=f"check-migration-conflicts not available: {exc}",
         )
 
     conflict_lines = [

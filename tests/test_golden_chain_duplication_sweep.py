@@ -16,7 +16,9 @@ from omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep 
     NodeDuplicationSweep,
     _check_d1_drizzle_tables,
     _check_d2_kafka_topics,
+    _check_d3_migration_prefixes,
     _check_d4_model_names,
+    _migration_conflict_repos,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.duplication-sweep-start.v1"
@@ -112,6 +114,79 @@ class TestDuplicationSweepGoldenChain:
         result = _check_d2_kafka_topics(str(tmp_path))
         assert result.status == "FAIL"
         assert result.finding_count >= 1
+
+    async def test_d2_reads_current_occ_boundaries_layout(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """D2 should find kafka_boundaries.yaml in the current OCC src layout."""
+        topics_py = (
+            tmp_path / "omniclaude" / "src" / "omniclaude" / "hooks" / "topics.py"
+        )
+        topics_py.parent.mkdir(parents=True)
+        topics_py.write_text(
+            'class TopicBase:\n    FOO = "onex.evt.omniclaude.foo.v1"\n'
+        )
+
+        boundaries_dir = (
+            tmp_path
+            / "onex_change_control"
+            / "src"
+            / "onex_change_control"
+            / "boundaries"
+        )
+        boundaries_dir.mkdir(parents=True)
+        (boundaries_dir / "kafka_boundaries.yaml").write_text(
+            "topics:\n"
+            "  - topic_name: 'onex.evt.omniclaude.foo.v1'\n"
+            "    producer_repo: 'omniclaude'\n"
+        )
+
+        result = _check_d2_kafka_topics(str(tmp_path))
+        assert result.status == "PASS"
+
+    async def test_d3_uses_occ_venv_command(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """D3 should invoke OCC's local check-migration-conflicts executable."""
+        command = (
+            tmp_path
+            / "onex_change_control"
+            / ".venv"
+            / "bin"
+            / "check-migration-conflicts"
+        )
+        command.parent.mkdir(parents=True)
+        command.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "assert '--repos-root' in sys.argv\n"
+            "print('NAME_CONFLICT migration conflict from fake OCC command')\n"
+        )
+        command.chmod(0o755)
+
+        result = _check_d3_migration_prefixes(str(tmp_path))
+        assert result.status == "FAIL"
+        assert result.finding_count == 1
+        assert result.findings[0].name == (
+            "NAME_CONFLICT migration conflict from fake OCC command"
+        )
+
+    async def test_d3_repo_resolution_excludes_generated_worktrees(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """D3 should pass canonical repos instead of scanning generated worktrees."""
+        for repo in ("omnimarket", "onex_change_control"):
+            git_dir = tmp_path / repo / ".git"
+            git_dir.mkdir(parents=True)
+        generated_git_dir = (
+            tmp_path / "omni_worktrees" / "OMN-1" / "omnimarket" / ".git"
+        )
+        generated_git_dir.mkdir(parents=True)
+
+        assert _migration_conflict_repos(str(tmp_path)) == [
+            "omnimarket",
+            "onex_change_control",
+        ]
 
     async def test_d4_no_collisions(
         self, event_bus: EventBusInmemory, tmp_path: Path
