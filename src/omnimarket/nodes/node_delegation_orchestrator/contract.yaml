@@ -142,6 +142,16 @@ handler_routing:
         name: "ModelComplianceLoopResult"
         module: "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result"
         description: "Per-attempt directive emitted by the compliance loop."
+# Cross-repo topic ownership declarations.
+# Topics published by this node that are consumed by nodes in other repos.
+# The dependency-health sweep runs per-repo-root; these declarations suppress
+# false-positive MISSING_TOPIC_EDGE findings for legitimate cross-repo wiring.
+externally_consumed_topics:
+  - "onex.cmd.omnibase-infra.remote-agent-invoke.v1"
+  # Owner: omnibase_infra/node_remote_agent_invoke_effect
+  # Runtime profile: runtime (A2A delegation bridge effect node)
+  # OMN-11058: verified subscriber exists; classified intentionally_external
+
 error_handling:
   retry_policy:
     max_retries: 1
