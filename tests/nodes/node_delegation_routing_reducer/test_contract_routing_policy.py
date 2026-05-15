@@ -152,8 +152,23 @@ class TestParseDelegationConfigYaml:
         with pytest.raises(ValueError, match="top-level 'tiers' key"):
             parse_delegation_config_yaml("")
 
-    def test_rejects_scalar_use_for(self) -> None:
-        with pytest.raises(ValueError, match="'use_for' must be a list"):
+    def test_scalar_use_for_is_single_value(self) -> None:
+        config = parse_delegation_config_yaml(
+            textwrap.dedent("""\
+                tiers:
+                  - name: local
+                    models:
+                      - id: qwen
+                        backend_id: local-qwen-coder-30b
+                        max_context_tokens: 32768
+                        use_for: reasoning
+            """)
+        )
+
+        assert config.tiers[0].models[0].use_for == ("reasoning",)
+
+    def test_rejects_invalid_use_for_type(self) -> None:
+        with pytest.raises(ValueError, match="'use_for' must be a string or list"):
             parse_delegation_config_yaml(
                 textwrap.dedent("""\
                     tiers:
@@ -162,7 +177,8 @@ class TestParseDelegationConfigYaml:
                           - id: qwen
                             backend_id: local-qwen-coder-30b
                             max_context_tokens: 32768
-                            use_for: reasoning
+                            use_for:
+                              nested: value
                 """)
             )
 

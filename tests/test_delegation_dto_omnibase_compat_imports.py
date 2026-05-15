@@ -88,12 +88,15 @@ def test_delegation_contract_model_refs_keep_compatibility_paths(
         resources.files("omnimarket.nodes") / node_name / "contract.yaml"  # type: ignore[arg-type]
     )
     contract = yaml.safe_load(contract_path.read_text())
-    model_refs = [
+    omnimarket_refs = [
         ref
         for ref in _model_refs(contract)
-        if ref in DTO_IMPORTS and not ref.endswith(".ModelRoutingDecision")
+        if ref.startswith("omnimarket.") and not ref.endswith(".ModelRoutingDecision")
     ]
+    unmapped_refs = sorted({ref for ref in omnimarket_refs if ref not in DTO_IMPORTS})
 
+    assert not unmapped_refs
+    model_refs = [ref for ref in omnimarket_refs if ref in DTO_IMPORTS]
     assert model_refs
     assert all(
         _resolve(model_ref).__module__.startswith("omnibase_compat.")

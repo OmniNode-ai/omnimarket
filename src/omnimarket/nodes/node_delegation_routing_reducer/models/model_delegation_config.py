@@ -46,16 +46,22 @@ def parse_delegation_config_yaml(yaml_text: str) -> ModelDelegationConfig:
             if not isinstance(m, dict):
                 raise ValueError("routing_tiers.yaml model entries must be mappings")
 
-            use_for = m.get("use_for", [])
-            if not isinstance(use_for, list):
-                raise ValueError("routing_tiers.yaml model 'use_for' must be a list")
+            raw_use_for = m.get("use_for", [])
+            if isinstance(raw_use_for, str):
+                use_for = (raw_use_for,)
+            elif isinstance(raw_use_for, list):
+                use_for = tuple(raw_use_for)
+            else:
+                raise ValueError(
+                    "routing_tiers.yaml model 'use_for' must be a string or list"
+                )
 
             models.append(
                 ModelTierModel(
                     id=m["id"],
                     backend_ref=m["backend_id"],
                     max_context_tokens=m["max_context_tokens"],
-                    use_for=tuple(use_for),
+                    use_for=use_for,
                     fast_path_threshold_tokens=m.get("fast_path_threshold_tokens"),
                 )
             )
