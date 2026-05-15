@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 # Copyright (c) 2025 OmniNode Team
-"""Models for agent learning retrieval node."""
+"""Compatibility exports for agent learning retrieval DTOs."""
 
-from omnimemory.nodes.node_agent_learning_retrieval_effect.models.model_request import (
+from .model_request import (
     EnumRetrievalMatchType,
     ModelAgentLearningRetrievalRequest,
 )
-from omnimemory.nodes.node_agent_learning_retrieval_effect.models.model_response import (
+from .model_response import (
     EnumRetrievalTaskType,
     ModelAgentLearningRetrievalResponse,
     ModelRetrievedLearning,

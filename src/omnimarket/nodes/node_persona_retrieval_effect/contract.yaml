@@ -11,6 +11,10 @@ description: >
 node_type: "EFFECT"
 input_model: "ModelPersonaRetrievalRequest"
 output_model: "ModelPersonaRetrievalResponse"
+handler:
+  module: omnimarket.nodes.node_persona_retrieval_effect
+  class: NodePersonaRetrievalEffect
+  input_model: omnimarket.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_request.ModelPersonaRetrievalRequest
 
 io_operations:
   - operation_type: "database_read"

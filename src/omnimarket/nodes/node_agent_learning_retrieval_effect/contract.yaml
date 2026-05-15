@@ -15,6 +15,10 @@ description: "Retrieves agent learning records from Qdrant vector collections. S
 node_type: "EFFECT"
 input_model: "ModelAgentLearningRetrievalRequest"
 output_model: "ModelAgentLearningRetrievalResponse"
+handler:
+  module: omnimarket.nodes.node_agent_learning_retrieval_effect
+  class: NodeAgentLearningRetrievalEffect
+  input_model: omnimarket.nodes.node_agent_learning_retrieval_effect.models.model_request.ModelAgentLearningRetrievalRequest
 
 # === IO OPERATIONS (Required for EFFECT nodes) ===
 io_operations:

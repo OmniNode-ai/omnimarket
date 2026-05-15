@@ -1,0 +1,45 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11022"
+title: "Migrate omnimarket persona navigation learning DTOs to omnimemory"
+summary: >
+  Replaces duplicate omnimarket persona, navigation, and agent-learning DTO
+  definitions with compatibility imports from canonical omnimemory models while
+  preserving existing omnimarket module paths and schema refs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-import-tests"
+    description: "Focused import, schema-ref compatibility, and golden-chain tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_persona_navigation_learning_dto_omnimemory_imports.py tests/test_golden_chain_navigation_history_reducer.py tests/test_golden_chain_persona_builder_compute.py tests/test_golden_chain_persona_lifecycle_orchestrator.py tests/test_golden_chain_wave2_storage_retrieval.py -q"
+  - id: "dod-d4-delta"
+    description: >
+      Scoped D4 mini-workspace check confirms the migrated omnimarket node slices
+      no longer define colliding Model* DTO classes against canonical omnimemory.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_duplication_sweep --omni-home <tmp-mini-workspace> --check D4"
+  - id: "dod-deploy-gate"
+    description: >
+      Runtime-path change is model import only; no live deploy, restart, or .201
+      mutation required pre-merge. Deploy validation is post-merge import smoke
+      through the affected node entry points.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          echo deploy && uv run python - <<'PY'
+          from omnimarket.nodes.node_navigation_history_reducer import ModelNavigationSession
+          from omnimarket.nodes.node_persona_storage_effect import ModelPersonaStorageRequest
+          assert ModelNavigationSession.__module__.startswith("omnimemory.")
+          assert ModelPersonaStorageRequest.__module__.startswith("omnimemory.")
+          PY

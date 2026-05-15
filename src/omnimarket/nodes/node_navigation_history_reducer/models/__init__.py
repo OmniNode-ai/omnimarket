@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # Copyright (c) 2025 OmniNode Team
-"""Navigation History Reducer - models package."""
+"""Compatibility exports for navigation history reducer DTOs."""
 
 from .model_navigation_history_request import ModelNavigationHistoryRequest
 from .model_navigation_history_response import ModelNavigationHistoryResponse

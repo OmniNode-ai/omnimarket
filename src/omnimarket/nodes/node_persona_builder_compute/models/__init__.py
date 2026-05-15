@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models for the persona builder compute node."""
+"""Compatibility exports for persona builder compute DTOs."""
 
 from omnimarket.nodes.node_persona_builder_compute.models.model_classify_request import (
     ModelPersonaClassifyRequest,
