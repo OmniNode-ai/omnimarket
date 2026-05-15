@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11031"
+title: "Dependency health sweep foundation (Tasks 1-3)"
+summary: >
+  Introduces the node_dependency_health_sweep EFFECT node foundation:
+  contract.yaml with subscribe topic onex.cmd.omnimarket.dep-health-sweep-start.v1
+  and publish topics onex.evt.omnimarket.dep-health-finding.v1 and
+  onex.evt.omnimarket.dep-health-sweep-completed.v1; Pydantic models
+  (ModelDepHealthSweepRequest, ModelDepHealthFinding,
+  ModelDepHealthSweepResult, ModelImportGraph, ModelTopologyGraph,
+  ModelBaselineSnapshot, ModelDiffResult, ModelDepHealthSweepCompletedEvent);
+  and HandlerDepHealthSweep skeleton with __main__.py CLI. All models
+  frozen=True, extra=forbid, PEP 604 unions. Runtime sweep passes
+  174/174 entry points.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-model-tests"
+    description: "11 TDD model tests cover all new Pydantic models, enums, frozen invariant, extra-forbid, and package re-exports."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/test_dep_health_models.py -q"
+  - id: "dod-handler-tests"
+    description: "4 TDD handler tests verify HandlerDepHealthSweep instantiation, stub result, clean status, and run_id passthrough."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/test_dep_health_handler_stub.py -q"
+  - id: "dod-runtime-sweep"
+    description: "Runtime sweep confirms new entry point is registered and importable (174/174)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"
+  - id: "dod-mypy"
+    description: "mypy --strict passes on the full node_dependency_health_sweep package (10 source files)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/nodes/node_dependency_health_sweep/ --strict"
+  - id: "dod-deploy"
+    description: >
+      Deploy evidence: this is a new node skeleton with no live Kafka wiring,
+      no runtime restart, no migration, and no service topology change.
+      The stub handler returns a static result. Runtime pickup occurs on
+      next normal omnimarket deployment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: new node skeleton only; no live deploy or runtime restart required; runtime pickup occurs on next normal deployment'"
