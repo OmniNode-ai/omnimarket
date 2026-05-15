@@ -92,6 +92,18 @@ dependencies:
     dependency_type: "protocol"
     description: "Adapter for cold/archive storage operations."
 
+  - name: "omnimemory_archive_compression_level"
+    type: "environment"
+    env_var: "OMNIMEMORY_ARCHIVE_COMPRESSION_LEVEL"
+    required: false
+    description: "zlib compression level (0-9) for archive files; overrides the default in handler_memory_archive when set"
+
+  - name: "omnimemory_archive_path"
+    type: "environment"
+    env_var: "OMNIMEMORY_ARCHIVE_PATH"
+    required: false
+    description: "Filesystem path for cold-storage archive files; overrides the default archive destination path when set"
+
 env_dependencies:
   OMNIMEMORY_ARCHIVE_COMPRESSION_LEVEL:
     required: false

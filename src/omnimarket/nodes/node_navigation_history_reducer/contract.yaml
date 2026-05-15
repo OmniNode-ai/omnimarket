@@ -22,6 +22,13 @@ handler_config:
   handler_class: "HandlerNavigationHistoryReducer"
   handler_module: "omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer"
 
+dependencies:
+  - name: "omnimemory_pg_dsn"
+    type: "environment"
+    env_var: "OMNIMEMORY_PG_DSN"
+    required: false
+    description: "PostgreSQL DSN for navigation history persistence; module-level default used when not provided via DI"
+
 env_dependencies:
   LLM_EMBEDDING_URL:
     required: false
