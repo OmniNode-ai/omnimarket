@@ -4,8 +4,9 @@
 
 Migrated from omnimemory (OMN-8298, Wave 2).
 Adapters (HandlerFileSystemAdapter, etc.) remain in omnimemory and are
-injected at runtime via the DI container. Omnimarket owns the contract,
-the models, and the entry point.
+injected at runtime via the DI container. Omnimarket owns the contract and
+entry point; memory DTO imports are compatibility shims to canonical
+omnimemory models.
 """
 
 from omnimarket.nodes.node_memory_storage_effect.models import (
