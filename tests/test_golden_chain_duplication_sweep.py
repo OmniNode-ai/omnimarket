@@ -188,6 +188,82 @@ class TestDuplicationSweepGoldenChain:
             "onex_change_control",
         ]
 
+    async def test_d3_passes_suppressions_file_when_present(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """OMN-11013: D3 must pass --suppressions-file to check-migration-conflicts
+        when onex_change_control/migration_conflict_suppressions.yaml exists, so
+        official sweep output distinguishes true unsuppressed conflicts from known
+        historical ones."""
+        occ_root = tmp_path / "onex_change_control"
+        suppressions_path = occ_root / "migration_conflict_suppressions.yaml"
+        suppressions_path.parent.mkdir(parents=True)
+        suppressions_path.write_text(
+            "suppressions:\n  - {table: nightly_loop_decisions}\n"
+        )
+        command = occ_root / ".venv" / "bin" / "check-migration-conflicts"
+        command.parent.mkdir(parents=True)
+        # Fake CLI writes its argv to a sidecar file so the test can assert
+        # what was passed. If `--suppressions-file` is missing, surface that
+        # as a synthetic NAME_CONFLICT line so the result is non-PASS.
+        argv_log = tmp_path / "d3-argv.json"
+        command.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, sys\n"
+            f"with open({str(argv_log)!r}, 'w') as f:\n"
+            "    json.dump(sys.argv[1:], f)\n"
+            "if '--suppressions-file' not in sys.argv:\n"
+            "    print('NAME_CONFLICT --suppressions-file not wired')\n"
+            "else:\n"
+            "    print('No migration prefix conflicts')\n"
+        )
+        command.chmod(0o755)
+
+        result = _check_d3_migration_prefixes(str(tmp_path))
+
+        assert argv_log.exists(), "Fake CLI was not invoked"
+        argv = json.loads(argv_log.read_text())
+        assert "--suppressions-file" in argv, (
+            f"D3 must pass --suppressions-file when "
+            f"migration_conflict_suppressions.yaml exists; got argv={argv}"
+        )
+        idx = argv.index("--suppressions-file")
+        assert argv[idx + 1].endswith("migration_conflict_suppressions.yaml"), (
+            f"D3 must point --suppressions-file at the OCC suppressions yaml; "
+            f"got {argv[idx + 1]}"
+        )
+        assert result.status == "PASS"
+
+    async def test_d3_omits_suppressions_file_when_absent(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """When no suppressions file exists, D3 must not pass the flag.
+
+        Guards against a regression where the wiring unconditionally sets the
+        flag with a nonexistent path.
+        """
+        occ_root = tmp_path / "onex_change_control"
+        command = occ_root / ".venv" / "bin" / "check-migration-conflicts"
+        command.parent.mkdir(parents=True)
+        argv_log = tmp_path / "d3-argv.json"
+        command.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, sys\n"
+            f"with open({str(argv_log)!r}, 'w') as f:\n"
+            "    json.dump(sys.argv[1:], f)\n"
+            "print('No migration prefix conflicts')\n"
+        )
+        command.chmod(0o755)
+
+        result = _check_d3_migration_prefixes(str(tmp_path))
+
+        assert argv_log.exists(), "Fake CLI was not invoked"
+        argv = json.loads(argv_log.read_text())
+        assert "--suppressions-file" not in argv, (
+            f"D3 must omit --suppressions-file when the yaml is absent; got argv={argv}"
+        )
+        assert result.status == "PASS"
+
     async def test_d4_no_collisions(
         self, event_bus: EventBusInmemory, tmp_path: Path
     ) -> None:
