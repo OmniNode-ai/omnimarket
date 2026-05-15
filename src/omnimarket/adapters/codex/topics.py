@@ -7,3 +7,4 @@ TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND = "onex.cmd.omnimarket.pattern-b-dispatch
 TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED = (
     "onex.evt.omnimarket.pattern-b-dispatch-completed.v1"
 )
+TOPIC_CODEX_DELEGATE_SKILL_COMMAND = "onex.cmd.omnimarket.delegate-skill.v1"
