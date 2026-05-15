@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import ClassVar
 from uuid import UUID
 
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
@@ -245,11 +246,16 @@ class HandlerDelegationWorkflow:
     the FSM. Duplicate or out-of-order events are handled safely.
     """
 
-    def __init__(self) -> None:
-        self._workflows: dict[UUID, DelegationWorkflowState] = {}
+    _shared_workflows: ClassVar[dict[UUID, DelegationWorkflowState]] = {}
+
+    def __init__(
+        self,
+        workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
+    ) -> None:
+        self._workflows = workflows if workflows is not None else self._shared_workflows
 
     @property
-    def workflows(self) -> dict[UUID, DelegationWorkflowState]:
+    def workflows(self) -> MutableMapping[UUID, DelegationWorkflowState]:
         """Expose workflows for testing/observability."""
         return self._workflows
 
