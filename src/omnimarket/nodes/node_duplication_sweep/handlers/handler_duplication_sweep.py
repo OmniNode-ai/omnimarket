@@ -99,7 +99,7 @@ def _migration_conflict_command(omni_home: str) -> tuple[list[str], Path] | None
     repos = _migration_conflict_repos(omni_home)
     repo_args = ["--repos", *repos] if repos else []
     direct_executable = occ_root / ".venv" / "bin" / "check-migration-conflicts"
-    if direct_executable.exists():
+    if direct_executable.is_file() and os.access(direct_executable, os.X_OK):
         return (
             [str(direct_executable), "--repos-root", omni_home, *repo_args],
             occ_root,
