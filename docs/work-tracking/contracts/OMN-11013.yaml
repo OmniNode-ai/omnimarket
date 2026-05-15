@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11013"
+title: "Wire migration suppressions into duplication sweep D3"
+summary: >
+  The duplication sweep D3 handler now passes
+  onex_change_control/migration_conflict_suppressions.yaml to
+  check-migration-conflicts when that suppressions file exists, and omits the
+  flag when it does not. This makes the official D3 sweep honor the same
+  suppressions used during OMN-11001 migration-conflict classification without
+  changing runtime topology, Kafka topics, Dockerfiles, or service startup.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-d3-suppressions-tests"
+    description: "Duplication sweep golden-chain tests prove D3 passes the suppressions file when present and omits it when absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_duplication_sweep.py -q"
+  - id: "dod-lint"
+    description: "Ruff validates the touched duplication sweep handler and golden-chain tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py tests/test_golden_chain_duplication_sweep.py"
+  - id: "dod-deploy"
+    description: >
+      Deploy evidence: this is handler-only D3 argument wiring. No live deploy,
+      runtime restart, new topic, Dockerfile change, migration, or service wiring
+      change is required for PR validation. Runtime picks up the handler update
+      on the next normal omnimarket deployment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: handler-only duplication sweep D3 suppressions wiring; no live deploy or runtime restart required; runtime pickup occurs on next normal deployment'"
