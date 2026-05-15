@@ -60,7 +60,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 # Helpers
 # ---------------------------------------------------------------------------
 
-TEST_ENDPOINT_URL = "http://delegation-llm.test:8000"
+TEST_ENDPOINT_URL = "delegation-llm-test-endpoint"
 
 
 def _make_mock_bus() -> MagicMock:

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4, uuid5
+from uuid import uuid4
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -30,8 +30,11 @@ from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envel
     extract_envelope_fields,
 )
 from omnibase_infra.utils import sanitize_error_message
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers._util_direct_publish import (
+    publish_events_direct,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
@@ -66,45 +69,6 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[mis
             service_name="dispatcher.delegation.quality-gate-result",
             transport_type=EnumInfraTransportType.KAFKA,
         )
-
-    async def _publish_events_direct(
-        self,
-        events: list[BaseModel],
-        correlation_id: UUID,
-    ) -> list[BaseModel]:
-        """Publish events with a .topic attribute directly to the event bus.
-
-        Returns the subset of events NOT published (to pass to output_events for
-        the DispatchResultApplier when no direct bus is available). When the bus
-        is wired, all routable events are published here and output_events is
-        returned empty to prevent double-publish.
-        """
-        if self._event_bus is None:
-            return events
-
-        unpublished: list[BaseModel] = []
-        for idx, event in enumerate(events):
-            topic = getattr(event, "topic", None)
-            if topic is None:
-                unpublished.append(event)
-                continue
-            envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
-                envelope_id=uuid5(correlation_id, f"{type(event).__name__}:{idx}"),
-                payload=event,
-                correlation_id=correlation_id,
-                envelope_timestamp=datetime.now(UTC),
-            )
-            await self._event_bus.publish_envelope(
-                envelope,  # type: ignore[arg-type]
-                topic=topic,
-            )
-            logger.debug(
-                "DispatcherQualityGateResult published %s to %s (correlation_id=%s)",
-                type(event).__name__,
-                topic,
-                str(correlation_id),
-            )
-        return unpublished
 
     @property
     def dispatcher_id(self) -> str:
@@ -154,8 +118,12 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[mis
             assert isinstance(payload, ModelQualityGateResult)
 
             events = self._handler.handle_gate_result(payload)
-            unpublished = await self._publish_events_direct(
-                list(events), correlation_id
+            unpublished = await publish_events_direct(
+                list(events),
+                correlation_id,
+                self._event_bus,
+                logger,
+                "DispatcherQualityGateResult",
             )
 
             completed_at = datetime.now(UTC)
