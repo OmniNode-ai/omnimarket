@@ -73,9 +73,9 @@ def test_contract_declares_cross_repo_dependencies() -> None:
     assert dep["repo"] == "omnimarket"
     assert dep["node"] == "node_delegation_orchestrator"
     assert dep["contract_name"] == "node_delegation_orchestrator"
-    assert "onex.cmd.omnimarket.delegation-request.v1" in dep["required_topics"]
-    assert "onex.evt.omnimarket.delegation-completed.v1" in dep["terminal_events"]
-    assert "onex.evt.omnimarket.delegation-failed.v1" in dep["terminal_events"]
+    assert "onex.cmd.omnibase-infra.delegation-request.v1" in dep["required_topics"]
+    assert "onex.evt.omnibase-infra.delegation-completed.v1" in dep["terminal_events"]
+    assert "onex.evt.omnibase-infra.delegation-failed.v1" in dep["terminal_events"]
     model_names = {m["name"] for m in dep["required_models"]}
     assert "ModelDelegationRequest" in model_names
 

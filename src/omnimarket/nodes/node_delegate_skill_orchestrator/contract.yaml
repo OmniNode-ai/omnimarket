@@ -70,10 +70,10 @@ cross_repo_dependencies:
     contract_name: node_delegation_orchestrator
     compatibility: ">=0.3.0"
     required_topics:
-      - onex.cmd.omnimarket.delegation-request.v1
+      - onex.cmd.omnibase-infra.delegation-request.v1
     terminal_events:
-      - onex.evt.omnimarket.delegation-completed.v1
-      - onex.evt.omnimarket.delegation-failed.v1
+      - onex.evt.omnibase-infra.delegation-completed.v1
+      - onex.evt.omnibase-infra.delegation-failed.v1
     required_models:
       - name: ModelDelegationRequest
         module: omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request

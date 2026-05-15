@@ -113,14 +113,25 @@ def test_response_includes_provider_and_metrics() -> None:
         provider="qwen-coder",
         model_name="Qwen3-Coder-30B",
         quality_gate_passed=True,
-        metrics=ModelDelegateSkillResponseMetrics(cost_usd=0.001, latency_ms=2500),
+        quality_score=0.9,
+        metrics=ModelDelegateSkillResponseMetrics(
+            cost_usd=0.001,
+            latency_ms=2500,
+            total_tokens=85,
+            tokens_to_compliance=85,
+            compliance_attempts=1,
+        ),
     )
     assert resp.correlation_id == cid
     assert resp.provider == "qwen-coder"
     assert resp.model_name == "Qwen3-Coder-30B"
     assert resp.quality_gate_passed is True
+    assert resp.quality_score == 0.9
     assert resp.metrics.cost_usd == 0.001
     assert resp.metrics.latency_ms == 2500
+    assert resp.metrics.total_tokens == 85
+    assert resp.metrics.tokens_to_compliance == 85
+    assert resp.metrics.compliance_attempts == 1
 
 
 def test_response_defaults() -> None:
@@ -133,5 +144,9 @@ def test_response_defaults() -> None:
     assert resp.provider == ""
     assert resp.model_name == ""
     assert resp.quality_gate_passed is False
+    assert resp.quality_score == 0.0
     assert resp.metrics.cost_usd == 0.0
+    assert resp.metrics.total_tokens == 0
+    assert resp.metrics.tokens_to_compliance == 0
+    assert resp.metrics.compliance_attempts == 0
     assert resp.error_message == "boom"

@@ -35,6 +35,7 @@ def mock_dispatch_port() -> AsyncMock:
         "delegated_to": "qwen-coder",
         "model_name": "Qwen3-Coder-30B",
         "quality_gate_passed": True,
+        "quality_score": 0.95,
         "cost_usd": 0.001,
         "cost_savings_usd": 0.15,
         "delegation_latency_ms": 2500,
@@ -66,6 +67,7 @@ async def test_handler_dispatches_and_returns_typed_response(
     assert response.provider == "qwen-coder"
     assert response.model_name == "Qwen3-Coder-30B"
     assert response.quality_gate_passed is True
+    assert response.quality_score == 0.95
     assert response.response == "Generated test code..."
     assert response.metrics.cost_usd == 0.001
     assert response.metrics.cost_savings_usd == 0.15
@@ -184,6 +186,9 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
         "latency_ms": 1234,
         "prompt_tokens": 12,
         "completion_tokens": 34,
+        "total_tokens": 46,
+        "tokens_to_compliance": 46,
+        "compliance_attempts": 1,
     }
     handler = HandlerDelegateSkill(object(), dispatch_port=port)
     request = ModelDelegateSkillRequest(
@@ -200,6 +205,44 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     assert response.metrics.latency_ms == 1234
     assert response.metrics.input_tokens == 12
     assert response.metrics.output_tokens == 34
+    assert response.metrics.total_tokens == 46
+    assert response.metrics.tokens_to_compliance == 46
+    assert response.metrics.compliance_attempts == 1
+    assert response.metrics.cost_savings_usd == 0.000546
+
+
+@pytest.mark.unit
+async def test_handler_maps_scored_failed_delegation_terminal() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "failed",
+        "content": "scored failure content",
+        "model_used": "Qwen3-Coder-30B",
+        "quality_passed": False,
+        "quality_score": 0.0,
+        "prompt_tokens": 68,
+        "completion_tokens": 17,
+        "total_tokens": 85,
+        "tokens_to_compliance": 85,
+        "compliance_attempts": 1,
+        "failure_reason": "TASK_MISMATCH",
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+    assert response.status == "failed"
+    assert response.response == "scored failure content"
+    assert response.quality_score == 0.0
+    assert response.metrics.input_tokens == 68
+    assert response.metrics.output_tokens == 17
+    assert response.metrics.total_tokens == 85
+    assert response.metrics.tokens_to_compliance == 85
+    assert response.metrics.compliance_attempts == 1
+    assert response.metrics.cost_savings_usd == 0.000459
 
 
 @pytest.mark.unit
