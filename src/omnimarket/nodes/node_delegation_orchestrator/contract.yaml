@@ -25,7 +25,9 @@ node_version:
   minor: 3
   patch: 0
 node_type: "ORCHESTRATOR_GENERIC"
-terminal_event: "onex.evt.omnibase-infra.delegation-completed.v1"
+terminal_events:
+  success: "onex.evt.omnibase-infra.delegation-completed.v1"
+  failure: "onex.evt.omnibase-infra.delegation-failed.v1"
 description: >
   Orchestrator node that coordinates delegation through a correlation_id-keyed FSM: receive delegation request, invoke routing reducer, dispatch typed invocation commands to the selected effect lane, react to remote agent lifecycle events or the legacy inference and quality-gate path, then emit delegation-completed or delegation-failed. As of 0.2.0 (OMN-10792), exposes HandlerComplianceLoop as an in-process helper. As of 0.3.0 (OMN-10794), HandlerDelegationWorkflow invokes the loop per inference attempt when ModelDelegationRequest sets ``output_schema_key`` + ``compliance_budget``: validation failure with budget CONTINUE emits a fresh repair-prompt ModelInferenceIntent and stays in ROUTED (self-loop); compliant or budget ABORT forwards to the quality gate. tokens_to_compliance + compliance_attempts are accumulated across attempts and forwarded onto the terminal ModelDelegationResult and ModelTaskDelegatedEvent.
 

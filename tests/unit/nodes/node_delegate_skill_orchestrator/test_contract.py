@@ -96,6 +96,7 @@ def test_contract_event_bus_topics_match_runtime_dispatch() -> None:
     contract = _load_contract()
     rd = contract["runtime_dispatch"]
     eb = contract["event_bus"]
+    assert eb["plugin_managed"] is False
     assert rd["command_topic"] in eb["subscribe_topics"]
     assert rd["terminal_events"]["success"] in eb["publish_topics"]
     assert rd["terminal_events"]["failure"] in eb["publish_topics"]

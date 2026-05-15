@@ -39,10 +39,22 @@ def test_valid_request_full() -> None:
         wait=True,
         max_tokens=1200,
         metadata={"repo": "omnimarket", "issue": "OMN-1234"},
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=(
+            "exactly_two_sentences",
+            "max_words_per_sentence_20",
+            "plain_text_only",
+        ),
     )
     assert req.wait is True
     assert req.max_tokens == 1200
     assert req.metadata["repo"] == "omnimarket"
+    assert req.quality_contract_mode == "replace_task_class"
+    assert req.acceptance_criteria == (
+        "exactly_two_sentences",
+        "max_words_per_sentence_20",
+        "plain_text_only",
+    )
 
 
 def test_invalid_task_type_rejected() -> None:
@@ -79,6 +91,16 @@ def test_non_uuid_correlation_id_rejected() -> None:
             task_type="test",
             source="claude-code",
             correlation_id="not-a-uuid",  # type: ignore[arg-type]
+        )
+
+
+def test_unsupported_acceptance_criterion_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillRequest(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+            acceptance_criteria=("semantic_magic",),
         )
 
 

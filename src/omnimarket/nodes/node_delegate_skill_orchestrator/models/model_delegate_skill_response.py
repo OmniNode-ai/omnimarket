@@ -38,6 +38,7 @@ class ModelDelegateSkillResponse(BaseModel):
     model_name: str = Field(default="")
     response: str = Field(default="")
     quality_gate_passed: bool = Field(default=False)
+    quality_gates_failed: list[str] = Field(default_factory=list)
     metrics: ModelDelegateSkillResponseMetrics = Field(
         default_factory=ModelDelegateSkillResponseMetrics,
     )

@@ -50,6 +50,7 @@ task_classes:
         - compiles_without_errors
         - passes_existing_tests
       heuristic:
+        - no_refusal
         - follows_codebase_conventions
         - no_obvious_regressions
     escalation_policy:
@@ -68,6 +69,25 @@ task_classes:
       deterministic:
         - docstring_present
       heuristic:
+        - no_refusal
+        - follows_google_style
+        - covers_args_returns_raises
+    escalation_policy:
+      max_escalations: 1
+      tier_order:
+        - local
+        - cheap_cloud
+  document:
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 20000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - docstring_present
+      heuristic:
+        - no_refusal
         - follows_google_style
         - covers_args_returns_raises
     escalation_policy:
@@ -86,6 +106,7 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        - no_refusal
         - cites_specific_lines
         - explains_tradeoffs
     escalation_policy:
@@ -105,6 +126,7 @@ task_classes:
         - compiles_without_errors
         - uses_pytest_mark_unit
       heuristic:
+        - no_refusal
         - covers_edge_cases
         - covers_error_paths
     escalation_policy:
@@ -123,6 +145,7 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        - no_refusal
         - step_by_step_explanation
     escalation_policy:
       max_escalations: 1
@@ -193,6 +216,7 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        - no_refusal
         - concise
         - accurate
     escalation_policy:
@@ -210,6 +234,7 @@ task_classes:
       deterministic:
         - task_completed
       heuristic:
+        - no_refusal
         - sub_tasks_verified
     escalation_policy:
       max_escalations: 1
@@ -227,6 +252,7 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        - no_refusal
         - methodical_analysis
     escalation_policy:
       max_escalations: 1

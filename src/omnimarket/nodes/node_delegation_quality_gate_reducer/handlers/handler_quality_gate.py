@@ -9,9 +9,10 @@ Evaluates LLM output quality using checks declared in the task-class contract
 
 Check semantics:
   - Deterministic checks (dod_deterministic): BLOCK delegation result injection on failure.
-    Supported: "output_parses", "signature_preserved".
+    Supported: the DoD names declared in task_class_contracts.v1.yaml.
   - Heuristic checks (dod_heuristic): escalate per contract policy on failure.
-    Supported: "no_refusal", "min_length_chars_N" (N is the char threshold).
+    Supported: "no_refusal", "min_length_chars_N" (N is the char threshold)
+    and the task-class heuristic checks declared in task_class_contracts.v1.yaml.
 
 When no contract DoD is provided (both dod_deterministic and dod_heuristic are empty),
 falls back to the legacy hardcoded checks: length, refusal detection, marker presence.
@@ -25,8 +26,12 @@ Related:
 
 from __future__ import annotations
 
+import ast
 import re
 
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
+    MAX_WORDS_PER_SENTENCE_RE,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
@@ -64,6 +69,21 @@ _WEIGHT_NO_REFUSAL: float = 0.3
 _WEIGHT_MARKERS: float = 0.3
 
 _MIN_LENGTH_CHECK_RE = re.compile(r"^min_length_chars_(\d+)$")
+_LINE_CITATION_RE = re.compile(
+    r"(?i)(?:\bline\s+\d+\b|\blines\s+\d+(?:-\d+)?\b|\bL\d+\b|:[1-9]\d*)"
+)
+_SENTENCE_RE = re.compile(r"[^.!?]+[.!?]")
+
+
+def _strip_markdown_code_fence(content: str) -> str:
+    """Return fenced code body when content is a single markdown code block."""
+    stripped = content.strip()
+    if not stripped.startswith("```"):
+        return content
+    lines = stripped.splitlines()
+    if len(lines) >= 2 and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1])
+    return content
 
 
 def _check_output_parses(content: str) -> str | None:
@@ -100,6 +120,88 @@ def _check_min_length(content: str, threshold: int) -> str | None:
     return None
 
 
+def _check_compiles_without_errors(content: str) -> str | None:
+    """Deterministic: Python-like delegated code must parse successfully."""
+    candidate = _strip_markdown_code_fence(content)
+    try:
+        ast.parse(candidate)
+    except SyntaxError as exc:
+        return f"MALFORMED: response does not compile as Python: {exc.msg}"
+    return None
+
+
+def _check_uses_pytest_mark_unit(content: str) -> str | None:
+    """Deterministic: delegated tests must carry the unit-test marker."""
+    if "@pytest.mark.unit" not in content:
+        return "TASK_MISMATCH: missing @pytest.mark.unit"
+    return None
+
+
+def _check_docstring_present(content: str) -> str | None:
+    """Deterministic: documentation output must include a docstring body."""
+    if '"""' not in content and "'''" not in content:
+        return "TASK_MISMATCH: missing docstring"
+    return None
+
+
+def _check_response_non_empty(content: str) -> str | None:
+    """Deterministic: output must contain non-whitespace text."""
+    if not content.strip():
+        return "MALFORMED: empty response"
+    return None
+
+
+def _check_plain_text_only(content: str) -> str | None:
+    """Deterministic: response must not be code or a markdown code block."""
+    lowered = content.lower()
+    if "```" in content or lowered.lstrip().startswith(("def ", "class ")):
+        return "TASK_MISMATCH: expected plain text, found code"
+    return None
+
+
+def _sentences(content: str) -> tuple[str, ...]:
+    """Return punctuation-delimited sentences from plain response content."""
+    return tuple(match.group(0).strip() for match in _SENTENCE_RE.finditer(content))
+
+
+def _check_exactly_two_sentences(content: str) -> str | None:
+    """Deterministic: response must contain exactly two sentences."""
+    count = len(_sentences(content))
+    if count != 2:
+        return f"TASK_MISMATCH: expected exactly 2 sentences, found {count}"
+    return None
+
+
+def _check_max_words_per_sentence(content: str, threshold: int) -> str | None:
+    """Deterministic: each sentence must stay below the configured word limit."""
+    sentences = _sentences(content)
+    if not sentences:
+        return "TASK_MISMATCH: no sentences found"
+    long_sentences = [
+        str(index)
+        for index, sentence in enumerate(sentences, start=1)
+        if len(sentence.split()) > threshold
+    ]
+    if long_sentences:
+        joined = ", ".join(long_sentences)
+        return f"TASK_MISMATCH: sentences exceed {threshold} words: {joined}"
+    return None
+
+
+def _check_contains_any(
+    content: str,
+    *,
+    check_name: str,
+    category: str,
+    markers: tuple[str, ...],
+) -> str | None:
+    """Heuristic: content must contain at least one marker from a contract check."""
+    lowered = content.lower()
+    if any(marker in lowered for marker in markers):
+        return None
+    return f"{category}: failed {check_name}"
+
+
 def _run_contract_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
@@ -121,14 +223,149 @@ def _run_contract_checks(
         elif check == "signature_preserved":
             if reason := _check_signature_preserved(content):
                 det_failures.append(reason)
+        elif check == "compiles_without_errors":
+            if reason := _check_compiles_without_errors(content):
+                det_failures.append(reason)
+        elif check == "uses_pytest_mark_unit":
+            if reason := _check_uses_pytest_mark_unit(content):
+                det_failures.append(reason)
+        elif check == "docstring_present":
+            if reason := _check_docstring_present(content):
+                det_failures.append(reason)
+        elif check == "response_non_empty" or check == "task_completed":
+            if reason := _check_response_non_empty(content):
+                det_failures.append(reason)
+        elif check == "exactly_two_sentences":
+            if reason := _check_exactly_two_sentences(content):
+                det_failures.append(reason)
+        elif check == "plain_text_only":
+            if reason := _check_plain_text_only(content):
+                det_failures.append(reason)
         else:
-            det_failures.append(
-                f"MALFORMED: unsupported deterministic DoD check '{check}'"
-            )
+            m = MAX_WORDS_PER_SENTENCE_RE.match(check)
+            if m:
+                threshold = int(m.group(1))
+                if reason := _check_max_words_per_sentence(content, threshold):
+                    det_failures.append(reason)
+            else:
+                det_failures.append(
+                    f"MALFORMED: unsupported deterministic DoD check '{check}'"
+                )
 
     for check in dod_heuristic:
         if check == "no_refusal":
             if reason := _check_no_refusal(content):
+                heuristic_failures.append(reason)
+        elif check == "follows_google_style":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("args:", "returns:"),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "covers_args_returns_raises":
+            missing = [
+                marker
+                for marker in ("args:", "returns:", "raises:")
+                if marker not in content.lower()
+            ]
+            if missing:
+                heuristic_failures.append(
+                    "TASK_MISMATCH: missing documentation sections: "
+                    + ", ".join(missing)
+                )
+        elif check == "cites_specific_lines":
+            if not _LINE_CITATION_RE.search(content):
+                heuristic_failures.append(
+                    "TASK_MISMATCH: missing specific line citations"
+                )
+        elif check == "explains_tradeoffs":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("tradeoff", "trade-off", "risk", "benefit", "cost"),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "follows_codebase_conventions":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("pytest", "ruff", "typing", "typed", "contract"),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "no_obvious_regressions":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=(
+                    "regression",
+                    "backward",
+                    "compatib",
+                    "existing tests",
+                    "no break",
+                ),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "covers_edge_cases":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("edge", "boundary", "empty", "none", "invalid"),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "covers_error_paths":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("error", "exception", "raises", "failure"),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "step_by_step_explanation":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("step", "1.", "first", "then"),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "concise":
+            if len(content.split()) > 250:
+                heuristic_failures.append("WEAK_OUTPUT: response is not concise")
+        elif check == "accurate":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=(
+                    "evidence",
+                    "verified",
+                    "based on",
+                    "according to",
+                    "line ",
+                ),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "methodical_analysis":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("because", "therefore", "evidence", "risk"),
+            ):
+                heuristic_failures.append(reason)
+        elif check == "sub_tasks_verified":
+            if reason := _check_contains_any(
+                content,
+                check_name=check,
+                category="TASK_MISMATCH",
+                markers=("verified", "passed", "evidence", "check"),
+            ):
                 heuristic_failures.append(reason)
         else:
             m = _MIN_LENGTH_CHECK_RE.match(check)
@@ -226,14 +463,23 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
     """
-    has_contract_dod = bool(gate_input.dod_deterministic or gate_input.dod_heuristic)
+    if gate_input.quality_contract_mode == "replace_task_class":
+        dod_deterministic = gate_input.acceptance_criteria
+        dod_heuristic: tuple[str, ...] = ()
+    else:
+        dod_deterministic = (
+            gate_input.dod_deterministic + gate_input.acceptance_criteria
+        )
+        dod_heuristic = gate_input.dod_heuristic
+
+    has_contract_dod = bool(dod_deterministic or dod_heuristic)
 
     if not has_contract_dod:
         return _run_legacy_checks(gate_input)
 
     content = gate_input.llm_response_content
     det_failures, heuristic_failures = _run_contract_checks(
-        content, gate_input.dod_deterministic, gate_input.dod_heuristic
+        content, dod_deterministic, dod_heuristic
     )
 
     all_failures = det_failures + heuristic_failures

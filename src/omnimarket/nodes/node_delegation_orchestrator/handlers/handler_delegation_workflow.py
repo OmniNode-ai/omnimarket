@@ -184,6 +184,10 @@ def _evaluate_compliance(
                     correlation_id=response.correlation_id,
                     task_type=workflow.request.task_type,
                     llm_response_content=response.content,
+                    dod_deterministic=workflow.routing_decision.dod_deterministic,
+                    dod_heuristic=workflow.routing_decision.dod_heuristic,
+                    quality_contract_mode=workflow.request.quality_contract_mode,
+                    acceptance_criteria=workflow.request.acceptance_criteria,
                 )
             )
         ]
@@ -376,6 +380,10 @@ class HandlerDelegationWorkflow:
                         correlation_id=response.correlation_id,
                         task_type=workflow.request.task_type,
                         llm_response_content=response.content,
+                        dod_deterministic=workflow.routing_decision.dod_deterministic,
+                        dod_heuristic=workflow.routing_decision.dod_heuristic,
+                        quality_contract_mode=workflow.request.quality_contract_mode,
+                        acceptance_criteria=workflow.request.acceptance_criteria,
                     )
                 )
             ]
