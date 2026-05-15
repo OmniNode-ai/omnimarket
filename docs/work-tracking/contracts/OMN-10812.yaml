@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10812
+title: "Wire event bus in delegation dispatchers"
+summary: >
+  Fixes delegation dispatcher event delivery by publishing routable terminal
+  events directly to the configured event bus while leaving topicless events
+  for the DispatchResultApplier fallback path. Adds regression coverage for
+  direct publish behavior and bus-outage circuit-breaker accounting.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-unit-tests
+    description: "Delegation dispatcher event-bus unit tests pass."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/delegation/test_dispatcher_event_bus.py -q"
+  - id: dod-deploy
+    description: >
+      Runtime-path change is dispatcher-only and does not add topics, migrations,
+      or runtime configuration. Deploy validation is the next normal runtime
+      image cycle: import the delegation dispatchers in the runtime container
+      and verify direct event-bus publish behavior remains covered by tests.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy: post-merge runtime image validation should docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_quality_gate_result import DispatcherQualityGateResult; from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_agent_task_lifecycle import DispatcherAgentTaskLifecycle; print(DispatcherQualityGateResult.__name__, DispatcherAgentTaskLifecycle.__name__)\"'"

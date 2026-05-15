@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4, uuid5
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -30,7 +30,7 @@ from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envel
     extract_envelope_fields,
 )
 from omnibase_infra.utils import sanitize_error_message
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
@@ -66,6 +66,45 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[mis
             service_name="dispatcher.delegation.quality-gate-result",
             transport_type=EnumInfraTransportType.KAFKA,
         )
+
+    async def _publish_events_direct(
+        self,
+        events: list[BaseModel],
+        correlation_id: UUID,
+    ) -> list[BaseModel]:
+        """Publish events with a .topic attribute directly to the event bus.
+
+        Returns the subset of events NOT published (to pass to output_events for
+        the DispatchResultApplier when no direct bus is available). When the bus
+        is wired, all routable events are published here and output_events is
+        returned empty to prevent double-publish.
+        """
+        if self._event_bus is None:
+            return events
+
+        unpublished: list[BaseModel] = []
+        for idx, event in enumerate(events):
+            topic = getattr(event, "topic", None)
+            if topic is None:
+                unpublished.append(event)
+                continue
+            envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
+                envelope_id=uuid5(correlation_id, f"{type(event).__name__}:{idx}"),
+                payload=event,
+                correlation_id=correlation_id,
+                envelope_timestamp=datetime.now(UTC),
+            )
+            await self._event_bus.publish_envelope(
+                envelope,  # type: ignore[arg-type]
+                topic=topic,
+            )
+            logger.debug(
+                "DispatcherQualityGateResult published %s to %s (correlation_id=%s)",
+                type(event).__name__,
+                topic,
+                str(correlation_id),
+            )
+        return unpublished
 
     @property
     def dispatcher_id(self) -> str:
@@ -115,6 +154,9 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[mis
             assert isinstance(payload, ModelQualityGateResult)
 
             events = self._handler.handle_gate_result(payload)
+            unpublished = await self._publish_events_direct(
+                list(events), correlation_id
+            )
 
             completed_at = datetime.now(UTC)
             duration_ms = (completed_at - started_at).total_seconds() * 1000
@@ -141,12 +183,14 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[mis
                 completed_at=completed_at,
                 duration_ms=duration_ms,
                 correlation_id=correlation_id,
-                output_events=list(events),
+                output_events=unpublished,
             )
 
         except InfraUnavailableError as e:
             completed_at = datetime.now(UTC)
             duration_ms = (completed_at - started_at).total_seconds() * 1000
+            async with self._circuit_breaker_lock:
+                await self._record_circuit_failure("handle")
             logger.error(
                 "DispatcherQualityGateResult circuit open: %s",
                 sanitize_error_message(e),

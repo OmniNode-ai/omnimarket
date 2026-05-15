@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
-from uuid import uuid4
+from uuid import UUID, uuid4, uuid5
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
@@ -27,7 +27,7 @@ from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envel
     extract_envelope_fields,
 )
 from omnibase_infra.utils import sanitize_error_message
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_AGENT_TASK_LIFECYCLE,
@@ -61,6 +61,44 @@ class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[mi
             service_name="dispatcher.delegation.agent-task-lifecycle",
             transport_type=EnumInfraTransportType.KAFKA,
         )
+
+    async def _publish_events_direct(
+        self,
+        events: list[BaseModel],
+        correlation_id: UUID,
+    ) -> list[BaseModel]:
+        """Publish events with a .topic attribute directly to the event bus.
+
+        Returns the subset of events NOT published (passed to output_events when
+        no bus is wired). When the bus is available, all routable events are
+        published here and output_events is empty to prevent double-publish.
+        """
+        if self._event_bus is None:
+            return events
+
+        unpublished: list[BaseModel] = []
+        for idx, event in enumerate(events):
+            topic = getattr(event, "topic", None)
+            if topic is None:
+                unpublished.append(event)
+                continue
+            envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
+                envelope_id=uuid5(correlation_id, f"{type(event).__name__}:{idx}"),
+                payload=event,
+                correlation_id=correlation_id,
+                envelope_timestamp=datetime.now(UTC),
+            )
+            await self._event_bus.publish_envelope(
+                envelope,  # type: ignore[arg-type]
+                topic=topic,
+            )
+            logger.debug(
+                "DispatcherAgentTaskLifecycle published %s to %s (correlation_id=%s)",
+                type(event).__name__,
+                topic,
+                str(correlation_id),
+            )
+        return unpublished
 
     @property
     def dispatcher_id(self) -> str:
@@ -130,6 +168,9 @@ class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[mi
 
             assert isinstance(payload, ModelAgentTaskLifecycleEvent)
             events = self._handler.handle_agent_task_lifecycle(payload)
+            unpublished = await self._publish_events_direct(
+                list(events), correlation_id
+            )
             completed_at = datetime.now(UTC)
             duration_ms = (completed_at - started_at).total_seconds() * 1000
 
@@ -145,7 +186,7 @@ class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[mi
                 completed_at=completed_at,
                 duration_ms=duration_ms,
                 correlation_id=correlation_id,
-                output_events=list(events),
+                output_events=unpublished,
             )
         except InfraUnavailableError as e:
             completed_at = datetime.now(UTC)
