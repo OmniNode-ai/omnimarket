@@ -1,0 +1,30 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11048"
+title: "Propagate dependency health topology file paths"
+summary: >
+  Carries topology source file paths into dependency health findings and
+  recognizes handler_routing handler modules during untested-handler analysis.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused topology and cross-reference tests cover file_path propagation and handler_routing paths."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/test_dep_health_contract_topology.py tests/nodes/test_dep_health_cross_reference.py -q"
+  - id: "dod-deploy"
+    description: >
+      Runtime-path change is dependency health topology analysis only. No live
+      deploy or runtime restart was performed in this PR; post-merge validation
+      should import the affected parser and handler in the deployed runtime.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy && uv run python -c \"from omnimarket.nodes.node_dependency_health_sweep.engine.contract_topology import ContractTopologyParser; from omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep import HandlerDepHealthSweep; print(ContractTopologyParser.__name__, HandlerDepHealthSweep.__name__)\""
