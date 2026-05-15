@@ -1254,6 +1254,7 @@ async def test_session_bootstrap_pattern_b_runs_node_end_to_end(
         "model_routing_preference": "local-first",
         "state_dir": str(state_dir),
         "dry_run": False,
+        "enable_cron_shim": True,
         "contract": {
             "session_id": session_id,
             "session_label": "Pattern B bootstrap proof",
