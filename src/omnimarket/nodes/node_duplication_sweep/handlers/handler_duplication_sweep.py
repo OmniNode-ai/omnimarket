@@ -94,20 +94,30 @@ def _resolve_kafka_boundaries_yaml(omni_home: str) -> Path | None:
 
 
 def _migration_conflict_command(omni_home: str) -> tuple[list[str], Path] | None:
-    """Resolve check-migration-conflicts from OCC before falling back to PATH."""
+    """Resolve check-migration-conflicts from OCC before falling back to PATH.
+
+    OMN-11013: when ``onex_change_control/migration_conflict_suppressions.yaml``
+    exists, append ``--suppressions-file <path>`` so the official D3 invocation
+    matches the suppressions-aware substitute and distinguishes true
+    unsuppressed conflicts from known historical ones.
+    """
     occ_root = Path(omni_home) / "onex_change_control"
     repos = _migration_conflict_repos(omni_home)
     repo_args = ["--repos", *repos] if repos else []
+    suppressions_path = occ_root / "migration_conflict_suppressions.yaml"
+    suppression_args = (
+        ["--suppressions-file", str(suppressions_path)]
+        if suppressions_path.is_file()
+        else []
+    )
+    common_args = ["--repos-root", omni_home, *repo_args, *suppression_args]
     direct_executable = occ_root / ".venv" / "bin" / "check-migration-conflicts"
     if direct_executable.is_file() and os.access(direct_executable, os.X_OK):
-        return (
-            [str(direct_executable), "--repos-root", omni_home, *repo_args],
-            occ_root,
-        )
+        return ([str(direct_executable), *common_args], occ_root)
 
     path_executable = shutil.which("check-migration-conflicts")
     if path_executable:
-        return ([path_executable, "--repos-root", omni_home, *repo_args], occ_root)
+        return ([path_executable, *common_args], occ_root)
 
     uv_executable = shutil.which("uv")
     if uv_executable:
@@ -116,9 +126,7 @@ def _migration_conflict_command(omni_home: str) -> tuple[list[str], Path] | None
                 uv_executable,
                 "run",
                 "check-migration-conflicts",
-                "--repos-root",
-                omni_home,
-                *repo_args,
+                *common_args,
             ],
             occ_root,
         )
