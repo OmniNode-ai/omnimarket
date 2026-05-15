@@ -21,6 +21,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -64,6 +65,18 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+
+
+class CountingLlmCaller(MockLlmCaller):
+    """Mock caller that records how many real inference calls were made."""
+
+    def __init__(self, response_content: str = "") -> None:
+        super().__init__(response_content=response_content)
+        self.call_count = 0
+
+    async def call(self, intent: ModelInferenceIntent) -> ModelInferenceResponseData:
+        self.call_count += 1
+        return await super().call(intent)
 
 
 @pytest.mark.unit
@@ -300,6 +313,36 @@ class TestDelegationChainE2E:
         await bridge.handle_inference_intent(inference_intents[0])
 
         # Check inference response was published
+        inference_history = await bus.get_event_history(
+            topic=TOPIC_DELEGATION_INFERENCE_RESPONSE
+        )
+        assert len(inference_history) == 1
+
+        await bus.close()
+
+    @pytest.mark.asyncio
+    async def test_bridge_reuses_duplicate_inference_intent_result(
+        self,
+        handler: HandlerDelegationWorkflow,
+        delegation_request: ModelDelegationRequest,
+    ) -> None:
+        """Duplicate inference intent deliveries do not double-call the LLM."""
+        bus = EventBusInmemory(environment="test", group="delegation-test")
+        await bus.start()
+        caller = CountingLlmCaller()
+        bridge = DelegationIntentBridge(event_bus=bus, llm_caller=caller)
+
+        routing_intents = handler.handle_delegation_request(delegation_request)
+        decision = await bridge.handle_routing_intent(routing_intents[0])
+        inference_intent = handler.handle_routing_decision(decision)[0]
+
+        response1, response2 = await asyncio.gather(
+            bridge.handle_inference_intent(inference_intent),
+            bridge.handle_inference_intent(inference_intent),
+        )
+
+        assert response1 == response2
+        assert caller.call_count == 1
         inference_history = await bus.get_event_history(
             topic=TOPIC_DELEGATION_INFERENCE_RESPONSE
         )
