@@ -1,8 +1,6 @@
-# OMN-11058: CRITICAL Topic Triage — Runtime Ownership Verification
+# CRITICAL Topic Triage — Runtime Ownership Verification
 
 **Date:** 2026-05-15
-**Ticket:** OMN-11058
-**Author:** jonahgabriel
 
 ## Summary
 
@@ -147,16 +145,16 @@ The sweep's per-repo isolation causes this to appear as an orphan when scanning 
 
 ## Verification
 
-```
+```text
 Before: 9 CRITICAL MISSING_TOPIC_EDGE findings
 After:  0 CRITICAL findings (status: clean)
 
 Command:
 uv run python -m omnimarket.nodes.node_dependency_health_sweep \
-  --repo-roots .../omni_worktrees/OMN-11058/omnimarket/src \
-  --repo-roots .../omniclaude/src \
-  --repo-roots .../omni_worktrees/OMN-11058/omnibase_infra/src \
-  --repo-roots .../omnibase_core/src \
+  --repo-roots <OMNI_HOME>/omnimarket/src \
+  --repo-roots <OMNI_HOME>/omniclaude/src \
+  --repo-roots <OMNI_HOME>/omnibase_infra/src \
+  --repo-roots <OMNI_HOME>/omnibase_core/src \
   --severity-threshold CRITICAL --dry-run
 Result: {"status": "clean", "findings": [], "summary": {}}
 ```

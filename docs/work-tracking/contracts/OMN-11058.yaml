@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11058"
+title: "Triage CRITICAL command topics — runtime ownership annotations"
+summary: >
+  Resolve 9 CRITICAL MISSING_TOPIC_EDGE findings from the dependency health sweep.
+  1 topic annotated as intentionally_external (cross-repo consumer in omnibase_infra);
+  7 topics allowlisted with expiry 2026-08-15 in src/dep_health_allowlist.yaml;
+  1 topic handled in companion omnibase_infra PR.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Sweep re-run returns status=clean with 0 CRITICAL findings."
+    command: "See docs/evidence/dep-health-sweep/critical-topic-triage.md"
+  - kind: "ci"
+    description: "No live deploy required — this PR adds contract annotations and an allowlist file only; no Kafka topic creation, no container restart, no runtime topology change."
+    command: "See dod-deploy evidence item"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-sweep-clean"
+    description: "Dependency health sweep returns status=clean with 0 CRITICAL findings after applying externally_consumed_topics annotation and allowlist."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m 'not kafka and not slow and not integration' -q --tb=short"
+  - id: "dod-deploy"
+    description: "No live deploy required — this PR adds a contract annotation (externally_consumed_topics) and a static allowlist file only. No Kafka topic is created, no container is restarted, and no runtime topology changes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: annotation-only + allowlist change; no docker exec or rpk topic produce required; sweep reads contract YAML statically'"
