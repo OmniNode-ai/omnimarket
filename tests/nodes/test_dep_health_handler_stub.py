@@ -14,7 +14,7 @@ def test_handler_instantiates_without_event_bus() -> None:
     )
 
     handler = HandlerDepHealthSweep()
-    assert handler is not None
+    assert isinstance(handler, HandlerDepHealthSweep)
 
 
 @pytest.mark.unit

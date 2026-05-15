@@ -1,7 +1,7 @@
 name: node_dependency_health_sweep
 version: "0.1.0"
 description: "Analyzes dependency health across ONEX delegation pipeline repos via static import analysis and contract topology parsing"
-omnibase_core_compat: ">=0.39.0,<1.0.0"
+omnibase_core_compat: ">=0.40.1,<0.41.0"
 entry_points:
   onex.nodes:
     node_dependency_health_sweep: "omnimarket.nodes.node_dependency_health_sweep"
@@ -14,7 +14,7 @@ capabilities:
   requires_docker: false
   side_effect_class: read_only
 dependencies:
-  - "omnibase_core>=0.39.0"
+  - "omnibase_core>=0.40.1,<0.41.0"
   - "omniclaude"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
