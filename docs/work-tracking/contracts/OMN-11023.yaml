@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11023"
+title: "Migrate crawler parse intent similarity DTOs to omnimemory"
+summary: >
+  Replaces omnimarket's duplicate node_similarity_compute DTO definitions with
+  compatibility imports from canonical omnimemory DTO modules while preserving
+  omnimarket contract module paths for existing node schema references.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-similarity-dto-imports"
+    description: "Focused DTO compatibility tests prove omnimarket paths resolve canonical omnimemory classes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_similarity_dto_omnimemory_imports.py tests/test_golden_chain_similarity_compute.py -q"
+  - id: "dod-lint"
+    description: "Ruff validates changed compatibility shims and tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_similarity_compute/models tests/test_similarity_dto_omnimemory_imports.py"
+  - id: "dod-contract-parse"
+    description: "Repo-local OMN-11023 evidence contract parses as YAML."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "python - <<'PY'\nfrom pathlib import Path\nimport yaml\np=Path('docs/work-tracking/contracts/OMN-11023.yaml')\ndata=yaml.safe_load(p.read_text())\nassert data['ticket_id'] == 'OMN-11023'\nprint('contract ok')\nPY"
+  - id: "dod-d4-targeted-collision"
+    description: "D4 model collision scan no longer reports the migrated similarity DTO class names."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "D4_TMP=<temp omni_home containing this omnimarket worktree plus omnimemory> uv run python - <<'PY'\nimport os\nfrom omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep import _check_d4_model_names\nresult = _check_d4_model_names(os.environ['D4_TMP'])\ntargets = {'ModelSimilarityComputeRequest', 'ModelSimilarityComputeResponse', 'ModelHandlerSimilarityComputeConfig'}\nfound = {finding.name for finding in result.findings or []}\nassert not (targets & found)\nprint('targeted D4 ok')\nPY"
+  - id: "dod-deploy"
+    description: >
+      No live deploy or runtime restart is required for this DTO-only migration.
+      Post-merge runtime validation should import the omnimarket compatibility
+      modules in the deployed runtime before promotion.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy && python -c \"from omnimarket.nodes.node_similarity_compute.models import ModelSimilarityComputeRequest; print(ModelSimilarityComputeRequest.__module__)\""
