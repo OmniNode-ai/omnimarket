@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: node_projection_dep_health
+# Projects dep-health-sweep-completed events into the dep_health_findings table.
+
+name: node_projection_dep_health
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: REDUCER
+description: >
+  Projects dep-health-sweep-completed events into the dep_health_findings table.
+  Upsert keyed by (run_id, finding_type, file_path, symbol). Idempotent.
+
+handler:
+  module: omnimarket.nodes.node_projection_dep_health.handlers.handler_projection_dep_health
+  class: HandlerProjectionDepHealth
+
+db_io:
+  db_tables:
+    - name: dep_health_findings
+      migration: "001_create_dep_health_findings.sql"
+      access: write
+      database: omnidash_analytics
+      role: findings
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.dep-health-sweep-completed.v1
+  publish_topics: []
+
+metadata:
+  transport_type: kafka
