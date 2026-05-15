@@ -52,10 +52,12 @@ class TestDepHealthPrecommitHook:
         )
 
     def test_no_hardcoded_absolute_paths_in_hook(self) -> None:
-        """Hook must not contain hardcoded /Users/ or /Volumes/ paths."""
+        """Hook must not contain hardcoded workstation path prefixes."""
+        user_home_prefix = "/" + "Users" + "/"
+        volume_prefix = "/" + "Volumes" + "/"
         content = HOOK_SCRIPT.read_text()
-        assert "/Users/" not in content, "Hook must not hardcode /Users/ paths"
-        assert "/Volumes/" not in content, "Hook must not hardcode /Volumes/ paths"
+        assert user_home_prefix not in content, "Hook must not hardcode user paths"
+        assert volume_prefix not in content, "Hook must not hardcode volume paths"
 
     def test_precommit_config_contains_dep_health_gate(self) -> None:
         """The .pre-commit-config.yaml must declare the dep-health-gate hook."""

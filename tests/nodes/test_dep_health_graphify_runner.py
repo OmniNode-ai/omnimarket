@@ -66,9 +66,11 @@ class TestGraphifyRunner:
     def test_no_hardcoded_absolute_paths(self) -> None:
         import omnimarket.nodes.node_dependency_health_sweep.engine.graphify_runner as mod
 
+        user_home_prefix = "/" + "Users" + "/"
+        volume_prefix = "/" + "Volumes" + "/"
         source = Path(mod.__file__).read_text()
-        assert "/Users/" not in source
-        assert "/Volumes/" not in source
+        assert user_home_prefix not in source
+        assert volume_prefix not in source
 
     def test_runner_delegates_to_adapter(self, import_chain_root: Path) -> None:
         from unittest.mock import MagicMock

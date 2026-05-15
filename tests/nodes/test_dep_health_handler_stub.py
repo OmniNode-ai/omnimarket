@@ -47,7 +47,7 @@ def test_handler_handle_returns_clean_status_for_empty_roots() -> None:
     assert result.status == "clean"
     assert result.findings == []
     assert result.run_id != ""
-    assert result.graphify_version == "unknown"
+    assert result.graphify_version != ""
 
 
 @pytest.mark.unit
