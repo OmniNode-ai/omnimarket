@@ -19,6 +19,7 @@ from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumDispatchStatus
+from omnibase_infra.errors import InfraUnavailableError
 from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_COMPLETED,
     TOPIC_DELEGATION_FAILED,
@@ -267,6 +268,23 @@ class TestDispatcherQualityGateResultBusPublish:
             topic_to_payload_type.get(TOPIC_DELEGATION_TASK_DELEGATED)
             == "ModelTaskDelegatedEvent"
         )
+
+    async def test_direct_publish_infra_failure_records_circuit_failure(
+        self,
+    ) -> None:
+        """Direct bus outages must advance the dispatcher's circuit breaker."""
+        bus = _make_mock_bus()
+        bus.publish_envelope.side_effect = InfraUnavailableError(
+            "event bus unavailable"
+        )
+        handler = HandlerDelegationWorkflow()
+        dispatcher = DispatcherQualityGateResult(handler, event_bus=bus)  # type: ignore[arg-type]
+
+        _cid, gate_envelope = _run_workflow_to_gate(handler)
+        result = await dispatcher.handle(gate_envelope)
+
+        assert result.status == EnumDispatchStatus.HANDLER_ERROR
+        assert dispatcher._circuit_breaker_failures == 1
 
 
 # ---------------------------------------------------------------------------

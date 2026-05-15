@@ -189,6 +189,8 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[mis
         except InfraUnavailableError as e:
             completed_at = datetime.now(UTC)
             duration_ms = (completed_at - started_at).total_seconds() * 1000
+            async with self._circuit_breaker_lock:
+                await self._record_circuit_failure("handle")
             logger.error(
                 "DispatcherQualityGateResult circuit open: %s",
                 sanitize_error_message(e),
