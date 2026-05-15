@@ -113,18 +113,13 @@ class TestRoutingReducerContract:
         data = self._load()
         assert data["node_type"] == "REDUCER_GENERIC"
 
-    def test_config_dependencies_include_bifrost_contract_path(self) -> None:
+    def test_config_dependencies_do_not_include_legacy_contract_path_overrides(
+        self,
+    ) -> None:
         data = self._load()
         dep_keys = {d["key"] for d in data["config_dependencies"]}
-        assert "BIFROST_CONTRACT_PATH" in dep_keys
-
-    def test_bifrost_contract_path_is_optional(self) -> None:
-        data = self._load()
-        deps = {d["key"]: d for d in data["config_dependencies"]}
-        assert "BIFROST_CONTRACT_PATH" in deps, (
-            "BIFROST_CONTRACT_PATH missing from config_dependencies"
-        )
-        assert deps["BIFROST_CONTRACT_PATH"]["required"] is False
+        assert "BIFROST" + "_CONTRACT_PATH" not in dep_keys
+        assert "TASK_CLASS" + "_CONTRACT_PATH" not in dep_keys
 
 
 @pytest.mark.unit

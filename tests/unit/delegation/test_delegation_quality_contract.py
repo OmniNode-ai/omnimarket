@@ -58,7 +58,9 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "    capabilities: []\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+    monkeypatch.setattr(
+        handler_delegation_routing, "_DEFAULT_BIFROST_DEPLOYED_PATH", contract_path
+    )
     yield
     handler_delegation_routing._config = None
     handler_delegation_routing._load_bifrost_endpoints.cache_clear()

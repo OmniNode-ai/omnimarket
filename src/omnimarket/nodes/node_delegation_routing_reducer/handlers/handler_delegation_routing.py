@@ -17,7 +17,7 @@ maps to a backend entry in the bifrost contract.
 
 Task-class contracts (task_class_contracts.v1.yaml) augment tier routing with
 per-class pricing ceilings and cloud routing policies. When the contract file is
-present (via TASK_CLASS_CONTRACT_PATH env var or the default location), routing
+present at the default location, routing
 additionally enforces:
   - cloud_routing_policy: "blocked" skips non-local tiers for that task class
   - pricing_ceiling_per_1k_tokens: tiers whose cost tier exceeds the ceiling
@@ -38,7 +38,6 @@ Related:
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -218,17 +217,17 @@ _DEFAULT_CONFIG_PATH = (
     Path(__file__).parent.parent.parent.parent / "configs" / "routing_tiers.yaml"
 )
 
-_DEFAULT_TASK_CLASS_CONTRACT_PATH = (
+_DEFAULT_TASK_CLASS_CONFIG_PATH = (
     Path(__file__).parent.parent.parent.parent
     / "configs"
     / "task_class_contracts.v1.yaml"
 )
 
-_DEFAULT_BIFROST_CONTRACT_PATH = (
+_DEFAULT_BIFROST_DEPLOYED_PATH = (
     Path.home() / ".omninode" / "delegation" / "bifrost_delegation.yaml"
 )
 
-_SOURCE_BIFROST_CONTRACT_PATH = (
+_SOURCE_BIFROST_CONFIG_PATH = (
     Path(__file__).parent.parent.parent.parent / "configs" / "bifrost_delegation.yaml"
 )
 
@@ -260,21 +259,15 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     """Load backend info from the deployed bifrost contract.
 
     Resolution order:
-      1. BIFROST_CONTRACT_PATH env var (test/override)
-      2. ~/.omninode/delegation/bifrost_delegation.yaml (installed by installer)
-      3. Source configs/bifrost_delegation.yaml (development fallback)
+      1. ~/.omninode/delegation/bifrost_delegation.yaml (installed by installer)
+      2. Source configs/bifrost_delegation.yaml (development fallback)
 
     Returns a dict mapping backend_id → BifrostBackendRef (endpoint_url + model_name).
     """
-    env_path = os.environ.get(
-        "BIFROST_CONTRACT_PATH", ""
-    )  # ONEX_EXCLUDE: env_access - contract path override for testing
-    if env_path:
-        contract_path = Path(env_path)
-    elif _DEFAULT_BIFROST_CONTRACT_PATH.exists():
-        contract_path = _DEFAULT_BIFROST_CONTRACT_PATH
+    if _DEFAULT_BIFROST_DEPLOYED_PATH.exists():
+        contract_path = _DEFAULT_BIFROST_DEPLOYED_PATH
     else:
-        contract_path = _SOURCE_BIFROST_CONTRACT_PATH
+        contract_path = _SOURCE_BIFROST_CONFIG_PATH
 
     if not contract_path.exists():
         return {}
@@ -300,16 +293,12 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
 def _get_task_class_contract() -> dict[str, object] | None:
     """Load task-class contracts from YAML, returning None if not available.
 
-    Reads from TASK_CLASS_CONTRACT_PATH env var, or the default location in
-    configs/task_class_contracts.v1.yaml. Returns None when the file is absent
-    so that callers can gracefully degrade to tier-only routing. The loaded
-    value is cached for the process lifetime; tests clear the cache explicitly
-    when changing environment overrides.
+    Reads from configs/task_class_contracts.v1.yaml. Returns None when the file
+    is absent so that callers can gracefully degrade to tier-only routing. The
+    loaded value is cached for the process lifetime; tests monkeypatch
+    _DEFAULT_TASK_CLASS_CONFIG_PATH and clear the cache explicitly.
     """
-    env_path = os.environ.get(
-        "TASK_CLASS_CONTRACT_PATH", ""
-    )  # ONEX_EXCLUDE: env_access - contract path override for testing
-    contract_path = Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
+    contract_path = _DEFAULT_TASK_CLASS_CONFIG_PATH
 
     if not contract_path.exists():
         return None
@@ -334,7 +323,7 @@ def _get_contract_model_ref(
     Args:
         task_type: The task classification string (e.g. "reasoning", "code_generation").
         contract_path: Override path for the contract file; defaults to the
-            module-level TASK_CLASS_CONTRACT_PATH env var or the default location.
+            module-level default contract location.
         contract: Pre-loaded contract dict; when provided, skips disk read entirely.
 
     Returns:
@@ -344,12 +333,7 @@ def _get_contract_model_ref(
         raw: dict[str, object] | None = contract
     else:
         if contract_path is None:
-            env_path = os.environ.get(
-                "TASK_CLASS_CONTRACT_PATH", ""
-            )  # ONEX_EXCLUDE: env_access - contract path override for testing
-            contract_path = (
-                Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
-            )
+            contract_path = _DEFAULT_TASK_CLASS_CONFIG_PATH
 
         if not contract_path.exists():
             return None
@@ -611,8 +595,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     )
     msg = (
         f"No tier has a configured endpoint for task_type='{task_type}'. "
-        f"Deploy a bifrost contract with endpoint URLs via install-delegation.sh --apply, "
-        f"or set BIFROST_CONTRACT_PATH to a contract with populated endpoint_url fields."
+        f"Deploy a bifrost contract with endpoint URLs via install-delegation.sh --apply."
     )
     raise ProtocolConfigurationError(msg, context=context)
 

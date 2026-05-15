@@ -124,7 +124,7 @@ class TestFindEnvCallsInSource:
         source = (
             "import os\n"
             "value = os.environ.get(\n"
-            '    "BIFROST_CONTRACT_PATH", ""\n'
+            '    "LEGACY_CONTRACT_PATH", ""\n'
             ")  # ONEX_EXCLUDE: env_access - contract path override for testing\n"
         )
         violations = _find_env_calls_in_source(source, "test.py")

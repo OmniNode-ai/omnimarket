@@ -98,7 +98,7 @@ class TestDelegationChainE2E:
             "    capabilities: []\n",
             encoding="utf-8",
         )
-        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+        monkeypatch.setattr(_h, "_DEFAULT_BIFROST_DEPLOYED_PATH", contract_path)
         yield
         _h._config = None
         _h._load_bifrost_endpoints.cache_clear()

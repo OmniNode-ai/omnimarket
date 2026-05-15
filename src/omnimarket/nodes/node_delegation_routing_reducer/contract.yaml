@@ -24,7 +24,7 @@ node_version:
   patch: 0
 node_type: "REDUCER_GENERIC"
 description: >
-  Deterministic routing reducer for the delegation pipeline. Maps task type and prompt token count to a routing decision: which model, endpoint, cost tier, and system prompt to use. Performs read-only configuration I/O to load on-disk contracts (overrideable via BIFROST_CONTRACT_PATH and TASK_CLASS_CONTRACT_PATH). Resolves endpoint URLs from the deployed bifrost contract at ~/.omninode/delegation/bifrost_delegation.yaml (overrideable via BIFROST_CONTRACT_PATH) — not from environment variables (OMN-10657). Loads task-class contracts from configs/task_class_contracts.v1.yaml (overrideable via TASK_CLASS_CONTRACT_PATH) and enforces per-task-class cloud_routing_policy, pricing_ceiling_per_1k_tokens, and escalation_policy.tier_order constraints (OMN-10615).
+  Deterministic routing reducer for the delegation pipeline. Maps task type and prompt token count to a routing decision: which model, endpoint, cost tier, and system prompt to use. Performs read-only configuration I/O to load typed on-disk contracts from canonical contract locations. Resolves endpoint URLs from the deployed bifrost contract at ~/.omninode/delegation/bifrost_delegation.yaml, falling back to the source fixture for development — not from environment variables (OMN-10657). Loads task-class contracts from configs/task_class_contracts.v1.yaml and enforces per-task-class cloud_routing_policy, pricing_ceiling_per_1k_tokens, and escalation_policy.tier_order constraints (OMN-10615).
 
 input_model:
   name: "ModelDelegationRequest"
@@ -69,9 +69,6 @@ config_dependencies:
   - key: "DEBT_SCOUT_BASE_URL"
     description: "A2A endpoint URL for the ADK type debt scout agent"
     required: true
-  - key: "BIFROST_CONTRACT_PATH"
-    description: "Override path for the deployed bifrost delegation contract (default: ~/.omninode/delegation/bifrost_delegation.yaml). Used in tests and staging environments."
-    required: false
 error_handling:
   retry_policy:
     max_retries: 0

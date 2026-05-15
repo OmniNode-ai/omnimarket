@@ -11,7 +11,6 @@ Reasoning tasks → deepseek-r1 (task_model_overrides).
 
 from __future__ import annotations
 
-import os
 import textwrap
 from collections.abc import Generator
 from datetime import UTC
@@ -20,6 +19,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+    handler_delegation_routing,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     _get_contract_model_ref,
 )
@@ -293,69 +295,69 @@ class TestDeltaContractRouting:
             emitted_at=datetime.now(tz=UTC),
         )
 
-    def test_code_tasks_route_to_qwen3_coder(self, tmp_path: Path) -> None:
+    def test_code_tasks_route_to_qwen3_coder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """test task_type routes to qwen3-coder (default_task_model_ref), not deepseek-r1."""
         from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
             delta,
         )
 
         contract_file, bifrost_file = self._write_files(tmp_path)
-        prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
-        prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
-        os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
-        os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
+        monkeypatch.setattr(
+            handler_delegation_routing,
+            "_DEFAULT_TASK_CLASS_CONFIG_PATH",
+            contract_file,
+        )
+        monkeypatch.setattr(
+            handler_delegation_routing,
+            "_DEFAULT_BIFROST_DEPLOYED_PATH",
+            bifrost_file,
+        )
+        handler_delegation_routing._get_task_class_contract.cache_clear()
+        handler_delegation_routing._load_bifrost_endpoints.cache_clear()
 
-        try:
-            # "test" has no task_model_overrides entry → uses default_task_model_ref (qwen3-coder-30b)
-            decision = delta(self._make_request("test"))
-            assert "qwen" in decision.selected_model.lower(), (
-                f"Expected qwen3-coder for test task, got: {decision.selected_model!r} "
-                f"rationale: {decision.rationale!r}"
-            )
-            assert "deepseek" not in decision.selected_model.lower(), (
-                f"Did not expect deepseek for test task, got: {decision.selected_model!r}"
-            )
-        finally:
-            if prev_task_contract_path is None:
-                os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
-            else:
-                os.environ["TASK_CLASS_CONTRACT_PATH"] = prev_task_contract_path
-            if prev_bifrost_contract_path is None:
-                os.environ.pop("BIFROST_CONTRACT_PATH", None)
-            else:
-                os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
+        # "test" has no task_model_overrides entry -> uses default_task_model_ref (qwen3-coder-30b)
+        decision = delta(self._make_request("test"))
+        assert "qwen" in decision.selected_model.lower(), (
+            f"Expected qwen3-coder for test task, got: {decision.selected_model!r} "
+            f"rationale: {decision.rationale!r}"
+        )
+        assert "deepseek" not in decision.selected_model.lower(), (
+            f"Did not expect deepseek for test task, got: {decision.selected_model!r}"
+        )
 
-    def test_reasoning_tasks_route_to_deepseek(self, tmp_path: Path) -> None:
+    def test_reasoning_tasks_route_to_deepseek(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """research task_type routes to deepseek-r1 via task_model_overrides."""
         from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
             delta,
         )
 
         contract_file, bifrost_file = self._write_files(tmp_path)
-        prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
-        prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
-        os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
-        os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
+        monkeypatch.setattr(
+            handler_delegation_routing,
+            "_DEFAULT_TASK_CLASS_CONFIG_PATH",
+            contract_file,
+        )
+        monkeypatch.setattr(
+            handler_delegation_routing,
+            "_DEFAULT_BIFROST_DEPLOYED_PATH",
+            bifrost_file,
+        )
+        handler_delegation_routing._get_task_class_contract.cache_clear()
+        handler_delegation_routing._load_bifrost_endpoints.cache_clear()
 
-        try:
-            # "research" is in task_model_overrides → deepseek-r1-14b
-            decision = delta(self._make_request("research"))
-            assert "deepseek" in decision.selected_model.lower(), (
-                f"Expected deepseek for research task, got: {decision.selected_model!r} "
-                f"rationale: {decision.rationale!r}"
-            )
-            assert "coder" not in decision.selected_model.lower(), (
-                f"Did not expect qwen3-coder for research task, got: {decision.selected_model!r}"
-            )
-        finally:
-            if prev_task_contract_path is None:
-                os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
-            else:
-                os.environ["TASK_CLASS_CONTRACT_PATH"] = prev_task_contract_path
-            if prev_bifrost_contract_path is None:
-                os.environ.pop("BIFROST_CONTRACT_PATH", None)
-            else:
-                os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
+        # "research" is in task_model_overrides -> deepseek-r1-14b
+        decision = delta(self._make_request("research"))
+        assert "deepseek" in decision.selected_model.lower(), (
+            f"Expected deepseek for research task, got: {decision.selected_model!r} "
+            f"rationale: {decision.rationale!r}"
+        )
+        assert "coder" not in decision.selected_model.lower(), (
+            f"Did not expect qwen3-coder for research task, got: {decision.selected_model!r}"
+        )
 
     def test_routing_falls_back_to_default_for_unknown_task_types(
         self, tmp_path: Path
