@@ -21,6 +21,11 @@ from omnimarket.nodes.node_onboarding.models.model_onboarding_start_command impo
 class TestHandlerOnboarding:
     """Unit tests for HandlerOnboarding."""
 
+    def test_default_policy_is_setup(self) -> None:
+        """ModelOnboardingStartCommand() with no args defaults to setup policy (OMN-11053)."""
+        cmd = ModelOnboardingStartCommand()
+        assert cmd.policy_name == "setup"
+
     def test_policy_lookup_called_when_no_target_capabilities(self) -> None:
         """load_builtin_policies() is called when target_capabilities is empty."""
         mock_policy_data = {
