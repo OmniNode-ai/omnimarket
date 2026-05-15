@@ -4,8 +4,8 @@
 
 Migrated from omnimemory (OMN-8298, Wave 2).
 Adapters (Qdrant, DB, graph) remain in omnimemory and are injected at
-runtime via DI. Omnimarket owns the contract, the models, the clients,
-and the entry point. The handler class is re-exported from omnimemory.
+runtime via DI. Omnimarket owns the contract, clients, and entry point;
+memory DTO imports are compatibility shims to canonical omnimemory models.
 """
 
 from omnimarket.nodes.node_memory_retrieval_effect.models import (

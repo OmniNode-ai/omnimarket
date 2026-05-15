@@ -14,6 +14,10 @@ description: "Memory retrieval effect node for search operations. P2A: Qdrant se
 node_type: "EFFECT"
 input_model: "ModelMemoryRetrievalRequest"
 output_model: "ModelMemoryRetrievalResponse"
+handler:
+  module: omnimemory.nodes.node_memory_retrieval_effect.handlers.handler_memory_retrieval
+  class: HandlerMemoryRetrieval
+  input_model: omnimemory.nodes.node_memory_retrieval_effect.models.model_memory_retrieval_request.ModelMemoryRetrievalRequest
 
 # === IO OPERATIONS (Required for EFFECT nodes) ===
 # All operations are read-only searches - no atomicity required
