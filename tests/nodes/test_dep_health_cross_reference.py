@@ -383,3 +383,132 @@ def test_findings_have_required_fields(tmp_path: Path) -> None:
         assert f.detail != ""
         assert f.rule_id != ""
         assert f.rule_version != ""
+
+
+# ---------------------------------------------------------------------------
+# file_path propagation (OMN-11048)
+# ---------------------------------------------------------------------------
+
+
+def test_missing_topic_edge_file_path_from_topic_sources(tmp_path: Path) -> None:
+    """MISSING_TOPIC_EDGE finding gets file_path from topology.topic_sources."""
+    contract_file = str(tmp_path / "node_a" / "contract.yaml")
+    topology = ModelTopologyGraph(
+        nodes=["node_a"],
+        pub_edges=[("node_a", "onex.cmd.test.orphan.v1", "pub")],
+        sub_edges=[],
+        orphan_topics=["onex.cmd.test.orphan.v1"],
+        undeclared_topics=[],
+        topic_sources={"onex.cmd.test.orphan.v1": contract_file},
+    )
+
+    engine = CrossReferenceEngine()
+    findings = engine.analyze(
+        import_graph=_make_empty_graph(),
+        topology=topology,
+        repo_label="my_repo",
+        repo_root=tmp_path,
+        contract_handler_paths=[],
+    )
+
+    missing = [
+        f
+        for f in findings
+        if f.finding_type == EnumDepHealthFindingType.MISSING_TOPIC_EDGE
+    ]
+    assert len(missing) == 1
+    assert missing[0].file_path == contract_file
+
+
+def test_missing_topic_edge_file_path_null_when_no_source(tmp_path: Path) -> None:
+    """MISSING_TOPIC_EDGE file_path is None when topic_sources has no entry."""
+    topology = ModelTopologyGraph(
+        nodes=["node_a"],
+        pub_edges=[("node_a", "onex.cmd.test.nosource.v1", "pub")],
+        sub_edges=[],
+        orphan_topics=["onex.cmd.test.nosource.v1"],
+        undeclared_topics=[],
+        topic_sources={},  # no source recorded
+    )
+
+    engine = CrossReferenceEngine()
+    findings = engine.analyze(
+        import_graph=_make_empty_graph(),
+        topology=topology,
+        repo_label="my_repo",
+        repo_root=tmp_path,
+        contract_handler_paths=[],
+    )
+
+    missing = [
+        f
+        for f in findings
+        if f.finding_type == EnumDepHealthFindingType.MISSING_TOPIC_EDGE
+    ]
+    assert len(missing) == 1
+    assert missing[0].file_path is None
+
+
+def test_undeclared_topic_file_path_from_undeclared_topic_sources(
+    tmp_path: Path,
+) -> None:
+    """UNDECLARED_TOPIC finding gets file_path from topology.undeclared_topic_sources."""
+    src_file = str(tmp_path / "node_a" / "handler.py")
+    topology = ModelTopologyGraph(
+        nodes=[],
+        pub_edges=[],
+        sub_edges=[],
+        orphan_topics=[],
+        undeclared_topics=["onex.cmd.test.undeclared.v1"],
+        undeclared_topic_sources={"onex.cmd.test.undeclared.v1": src_file},
+    )
+
+    engine = CrossReferenceEngine()
+    findings = engine.analyze(
+        import_graph=_make_empty_graph(),
+        topology=topology,
+        repo_label="my_repo",
+        repo_root=tmp_path,
+        contract_handler_paths=[],
+    )
+
+    undeclared = [
+        f
+        for f in findings
+        if f.finding_type == EnumDepHealthFindingType.UNDECLARED_TOPIC
+    ]
+    assert len(undeclared) == 1
+    assert undeclared[0].file_path == src_file
+
+
+# ---------------------------------------------------------------------------
+# UNTESTED_HANDLER via handler_routing.handlers[].handler_module (OMN-11048)
+# ---------------------------------------------------------------------------
+
+
+def test_untested_handler_fires_for_routing_contract_handler(tmp_path: Path) -> None:
+    """UNTESTED_HANDLER fires for a handler declared via handler_routing.handlers[].handler_module."""
+    # Create the handler file that a routing contract would reference
+    handler_dir = tmp_path / "src" / "mynode" / "handlers"
+    handler_dir.mkdir(parents=True)
+    handler_file = handler_dir / "handler_workflow.py"
+    handler_file.write_text("class HandlerWorkflow:\n    def handle(self, req): ...\n")
+
+    engine = CrossReferenceEngine()
+    findings = engine.analyze(
+        import_graph=_make_empty_graph(),
+        topology=_make_empty_topology(),
+        repo_label="test_repo",
+        repo_root=tmp_path,
+        # Path as resolved by _collect_contract_handler_paths for handler_routing form
+        contract_handler_paths=[str(handler_file)],
+    )
+
+    untested = [
+        f
+        for f in findings
+        if f.finding_type == EnumDepHealthFindingType.UNTESTED_HANDLER
+    ]
+    assert len(untested) >= 1
+    assert untested[0].severity == EnumDepHealthSeverity.MAJOR
+    assert untested[0].file_path == str(handler_file)
