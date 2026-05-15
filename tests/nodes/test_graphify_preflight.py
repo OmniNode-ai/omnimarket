@@ -127,5 +127,9 @@ class TestGraphifyAdapterGetImportGraph:
         import omnimarket.nodes.node_dependency_health_sweep.engine.graphify_adapter as mod
 
         source = Path(mod.__file__).read_text()
-        assert "/Users/" not in source
-        assert "/Volumes/" not in source
+        forbidden = [
+            "/Users/",  # test-literal-ok: asserting source is free of hardcoded paths
+            "/Volumes/",  # test-literal-ok: asserting source is free of hardcoded paths
+        ]
+        for pattern in forbidden:
+            assert pattern not in source
