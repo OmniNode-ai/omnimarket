@@ -1,0 +1,60 @@
+# To register as required status check after merging:
+#   gh api repos/OmniNode-ai/omnimarket/branches/main/protection \
+#     --method PUT \
+#     --field required_status_checks='{"strict":false,"contexts":["dep-health / scan"]}'
+#
+# Phased rollout:
+#   Phase 1 (advisory): no baseline file → run sweep, upload artifact, exit 0
+#   Phase 2 (blocking): baseline committed → delta-mode, block on new MAJOR+ findings
+#
+# Baseline-first: commit .onex_state/dep_health_baseline.json to enable Phase 2.
+---
+name: dep-health-gate
+
+"on":
+  pull_request:
+  merge_group:
+
+jobs:
+  dep-health:
+    name: dep-health / scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dep-health
+
+      # Phase 1 — Advisory run (always runs, uploads artifact for baseline generation)
+      - name: Dep health sweep (advisory)
+        id: advisory
+        continue-on-error: true
+        run: |
+          uv run python scripts/ci/run_dep_health_sweep.py \
+            --repo-roots src/ \
+            --severity-threshold MAJOR \
+            > dep-health-advisory.json 2>&1 || true
+          echo "Advisory run complete"
+
+      - name: Upload advisory artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dep-health-baseline
+          path: dep-health-advisory.json
+          retention-days: 30
+
+      # Phase 2 — Delta-blocking run (only when baseline file exists)
+      - name: Dep health sweep (delta-blocking)
+        if: hashFiles('.onex_state/dep_health_baseline.json') != ''
+        run: |
+          uv run python scripts/ci/run_dep_health_sweep.py \
+            --repo-roots src/ \
+            --severity-threshold MAJOR \
+            --baseline-path .onex_state/dep_health_baseline.json \
+            --exit-nonzero-on-findings
