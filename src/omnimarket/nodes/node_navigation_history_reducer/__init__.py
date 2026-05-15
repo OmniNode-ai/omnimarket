@@ -25,8 +25,8 @@ Fire-and-forget pattern::
     )
 
 .. note::
-    Local type definitions (ModelNavigationSession, ModelPlanStep, NavigationOutcome) will
-    be replaced by imports from omnibase_core once OMN-2540 and OMN-2561 land.
+    DTO module paths are kept for compatibility, but navigation DTO objects are
+    re-exported from omnimemory.
 
 .. versionadded:: 0.4.0
     Initial implementation for OMN-2584 Navigation History Storage.

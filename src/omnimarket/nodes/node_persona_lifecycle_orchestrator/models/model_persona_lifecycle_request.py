@@ -1,23 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Request model for persona lifecycle orchestration."""
+"""Compatibility import for canonical omnimemory persona lifecycle request DTO."""
 
-from typing import Literal
+from omnimemory.nodes.node_persona_lifecycle_orchestrator.models.model_persona_lifecycle_request import (
+    ModelPersonaLifecycleRequest,
+)
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class ModelPersonaLifecycleRequest(BaseModel):
-    """Request for persona lifecycle operations (tick or on-demand)."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    operation: Literal["on_tick", "on_demand"] = Field(
-        ...,
-        description="Tick-driven fan-out or single-user on-demand rebuild",
-    )
-    user_id: str | None = Field(
-        default=None,
-        description="User ID for on-demand rebuild (required when operation='on_demand')",
-    )
+__all__ = ["ModelPersonaLifecycleRequest"]
