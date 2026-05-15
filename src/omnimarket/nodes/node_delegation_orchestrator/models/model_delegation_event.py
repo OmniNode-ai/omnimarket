@@ -6,9 +6,8 @@
 
 from __future__ import annotations
 
+from omnibase_compat.contracts.delegation.wire import ModelDelegationResult
 from pydantic import BaseModel, ConfigDict
-
-from omnimarket.events.delegation import ModelDelegationResult
 
 
 class ModelDelegationEvent(BaseModel):

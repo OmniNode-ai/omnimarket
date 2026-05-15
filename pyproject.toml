@@ -251,7 +251,7 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-omnibase-compat = { url = "https://github.com/OmniNode-ai/omnibase_compat/archive/ea4239d357fe07bb7c45afee9edceaa5c428bf32.zip" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "3e34ab94fad0a9db1c3b59f0e100c5da659b0792" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
 
@@ -260,7 +260,7 @@ override-dependencies = [
     "omnibase-core>=0.40.1,<0.41.0",
     "omnibase-spi==0.20.6",
     "omnibase-infra==0.34.2",
-    "omnibase-compat @ https://github.com/OmniNode-ai/omnibase_compat/archive/ea4239d357fe07bb7c45afee9edceaa5c428bf32.zip",
+    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@3e34ab94fad0a9db1c3b59f0e100c5da659b0792",
 ]
 
 [tool.hatch.build.targets.wheel]
