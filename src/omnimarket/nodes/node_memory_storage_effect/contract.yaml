@@ -14,6 +14,10 @@ description: "Memory storage effect node for CRUD operations. P1A: FileSystem ba
 node_type: "EFFECT"
 input_model: "ModelMemoryStorageRequest"
 output_model: "ModelMemoryStorageResponse"
+handler:
+  module: omnimemory.nodes.node_memory_storage_effect.adapters.adapter_filesystem
+  class: HandlerFileSystemAdapter
+  input_model: omnimemory.nodes.node_memory_storage_effect.models.model_memory_storage_request.ModelMemoryStorageRequest
 
 # === IO OPERATIONS (Required for EFFECT nodes) ===
 io_operations:

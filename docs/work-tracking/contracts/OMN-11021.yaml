@@ -1,0 +1,40 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11021"
+title: "Migrate omnimarket memory retrieval and storage DTOs to omnimemory"
+summary: >
+  Replaces duplicate omnimarket memory retrieval and storage DTO definitions
+  with compatibility imports from canonical omnimemory models while preserving
+  existing omnimarket module paths for callers and schema refs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-import-tests"
+    description: "Focused import and schema-ref compatibility tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_memory_dto_omnimemory_imports.py tests/test_golden_chain_wave2_storage_retrieval.py -q"
+  - id: "dod-d4-delta"
+    description: >
+      D4 overlay check with the OMN-11021 worktree removes targeted omnimarket
+      retrieval/storage DTO collisions; unrelated residual non-omnimarket
+      collisions remain outside this ticket scope.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "D4 overlay check: targeted omnimarket retrieval/storage DTO collisions=0"
+  - id: "dod-deploy-gate"
+    description: >
+      Runtime-path change is model import only; no live deploy, restart, or
+      .201 mutation required pre-merge. Deploy validation is post-merge import
+      smoke through the affected node entry points.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy && uv run python - <<'PY'\nfrom omnimarket.nodes.node_memory_retrieval_effect import ModelMemoryRetrievalRequest\nfrom omnimarket.nodes.node_memory_storage_effect import ModelMemoryStorageRequest\nassert ModelMemoryRetrievalRequest.__module__.startswith('omnimemory.')\nassert ModelMemoryStorageRequest.__module__.startswith('omnimemory.')\nPY"
