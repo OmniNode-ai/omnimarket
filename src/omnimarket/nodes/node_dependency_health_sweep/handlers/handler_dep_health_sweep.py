@@ -129,7 +129,11 @@ class HandlerDepHealthSweep:
                 continue
 
             repo_root = repo_root.resolve()
-            repo_label = repo_root.name
+            # OMN-11047: if the path ends with /src, use the parent directory name
+            # so the label is "omnimarket" rather than "src".
+            repo_label = (
+                repo_root.parent.name if repo_root.name == "src" else repo_root.name
+            )
 
             import_graph = self._graphify_runner.run(root=repo_root)
             topology = self._topology_parser.parse(search_roots=[repo_root])
