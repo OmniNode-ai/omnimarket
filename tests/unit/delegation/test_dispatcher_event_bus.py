@@ -11,11 +11,19 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import NAMESPACE_DNS, uuid4, uuid5
 
 import pytest
+from omnibase_core.enums import EnumInvocationKind
+from omnibase_core.enums.enum_agent_protocol import EnumAgentProtocol
+from omnibase_core.enums.enum_agent_task_lifecycle_type import (
+    EnumAgentTaskLifecycleType,
+)
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
     ModelAgentTaskLifecycleEvent,
+)
+from omnibase_core.models.delegation.model_invocation_command import (
+    ModelInvocationCommand,
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumDispatchStatus
@@ -38,6 +46,9 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
+    ModelInferenceResponseData,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
@@ -48,6 +59,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+TEST_ENDPOINT_URL = "http://delegation-llm.test:8000"
 
 
 def _make_mock_bus() -> MagicMock:
@@ -69,28 +82,57 @@ def _make_envelope(
 
 def _run_workflow_to_gate(
     handler: HandlerDelegationWorkflow,
+    *,
+    passed: bool = True,
 ) -> tuple[object, object]:
     """Drive FSM to INFERENCE_COMPLETED, return (cid, gate_result_envelope)."""
-    from uuid import NAMESPACE_DNS, uuid5
-
     cid = uuid4()
 
+    _start_delegation(handler, cid)
+
+    response = ModelInferenceResponseData(
+        correlation_id=cid,
+        content="def test_x(): pass" if passed else "I cannot help.",
+        model_used="Qwen3-Coder-30B-A3B",
+        llm_call_id="chatcmpl-test" if passed else "chatcmpl-fail",
+        latency_ms=100 if passed else 50,
+        prompt_tokens=50 if passed else 30,
+        completion_tokens=20 if passed else 10,
+        total_tokens=70 if passed else 40,
+    )
+    handler.handle_inference_response(response)
+
+    gate_result = ModelQualityGateResult(
+        correlation_id=cid,
+        passed=passed,
+        quality_score=0.9 if passed else 0.1,
+        failure_reasons=() if passed else ("REFUSAL",),
+        fallback_recommended=not passed,
+    )
+    gate_envelope = _make_envelope(gate_result, cid)
+    return cid, gate_envelope
+
+
+def _start_delegation(
+    handler: HandlerDelegationWorkflow,
+    cid: object,
+) -> None:
     request = ModelDelegationRequest(
         prompt="Write tests",
         task_type="test",  # type: ignore[arg-type]
-        correlation_id=cid,
+        correlation_id=cid,  # type: ignore[arg-type]
         emitted_at=datetime.now(UTC),
     )
     handler.handle_delegation_request(request)
 
     decision = ModelRoutingDecision(
-        correlation_id=cid,
+        correlation_id=cid,  # type: ignore[arg-type]
         task_type="test",
         selected_model="qwen3-coder-30b",
         selected_backend_id=uuid5(
             NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
         ),
-        endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10812 reason="delegation test fixture for local AIPC LLM endpoint"
+        endpoint_url=TEST_ENDPOINT_URL,
         cost_tier="low",
         max_context_tokens=65536,
         system_prompt="You are an assistant.",
@@ -98,29 +140,27 @@ def _run_workflow_to_gate(
     )
     handler.handle_routing_decision(decision)
 
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
-        ModelInferenceResponseData,
-    )
 
-    response = ModelInferenceResponseData(
-        correlation_id=cid,
-        content="def test_x(): pass",
-        model_used="Qwen3-Coder-30B-A3B",
-        llm_call_id="chatcmpl-test",
-        latency_ms=100,
-        prompt_tokens=50,
-        completion_tokens=20,
-        total_tokens=70,
+def _start_agent_invocation(
+    handler: HandlerDelegationWorkflow,
+    cid: object,
+) -> None:
+    request = ModelDelegationRequest(
+        prompt="Write tests",
+        task_type="test",  # type: ignore[arg-type]
+        correlation_id=cid,  # type: ignore[arg-type]
+        emitted_at=datetime.now(UTC),
     )
-    handler.handle_inference_response(response)
+    handler.handle_delegation_request(request)
 
-    gate_result = ModelQualityGateResult(
-        correlation_id=cid,
-        passed=True,
-        quality_score=0.9,
+    command = ModelInvocationCommand(
+        task_id=uuid4(),
+        correlation_id=cid,  # type: ignore[arg-type]
+        target_ref="agent://remote",
+        invocation_kind=EnumInvocationKind.AGENT,
+        agent_protocol=EnumAgentProtocol.A2A,
     )
-    gate_envelope = _make_envelope(gate_result, cid)
-    return cid, gate_envelope
+    handler.handle_invocation_command(command)
 
 
 # ---------------------------------------------------------------------------
@@ -185,57 +225,7 @@ class TestDispatcherQualityGateResultBusPublish:
         handler = HandlerDelegationWorkflow()
         dispatcher = DispatcherQualityGateResult(handler, event_bus=bus)  # type: ignore[arg-type]
 
-        from uuid import NAMESPACE_DNS, uuid5
-
-        cid = uuid4()
-        request = ModelDelegationRequest(
-            prompt="Write tests",
-            task_type="test",  # type: ignore[arg-type]
-            correlation_id=cid,
-            emitted_at=datetime.now(UTC),
-        )
-        handler.handle_delegation_request(request)
-
-        decision = ModelRoutingDecision(
-            correlation_id=cid,
-            task_type="test",
-            selected_model="qwen3-coder-30b",
-            selected_backend_id=uuid5(
-                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
-            ),
-            endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10812 reason="delegation test fixture for local AIPC LLM endpoint"
-            cost_tier="low",
-            max_context_tokens=65536,
-            system_prompt="You are an assistant.",
-            rationale="Routing test.",
-        )
-        handler.handle_routing_decision(decision)
-
-        from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
-            ModelInferenceResponseData,
-        )
-
-        handler.handle_inference_response(
-            ModelInferenceResponseData(
-                correlation_id=cid,
-                content="I cannot help.",
-                model_used="Qwen3-Coder-30B-A3B",
-                llm_call_id="chatcmpl-fail",
-                latency_ms=50,
-                prompt_tokens=30,
-                completion_tokens=10,
-                total_tokens=40,
-            )
-        )
-
-        gate_result = ModelQualityGateResult(
-            correlation_id=cid,
-            passed=False,
-            quality_score=0.1,
-            failure_reasons=("REFUSAL",),
-            fallback_recommended=True,
-        )
-        gate_envelope = _make_envelope(gate_result, cid)
+        _cid, gate_envelope = _run_workflow_to_gate(handler, passed=False)
         result = await dispatcher.handle(gate_envelope)
 
         assert result.status == EnumDispatchStatus.SUCCESS
@@ -300,10 +290,6 @@ class TestDispatcherAgentTaskLifecycleBusPublish:
     def _make_completed_lifecycle_envelope(
         self, cid: object
     ) -> ModelEventEnvelope[object]:
-        from omnibase_core.enums.enum_agent_task_lifecycle_type import (
-            EnumAgentTaskLifecycleType,
-        )
-
         lifecycle_event = ModelAgentTaskLifecycleEvent(
             task_id=uuid4(),
             correlation_id=cid,  # type: ignore[arg-type]
@@ -319,28 +305,7 @@ class TestDispatcherAgentTaskLifecycleBusPublish:
         dispatcher = DispatcherAgentTaskLifecycle(handler, event_bus=bus)  # type: ignore[arg-type]
 
         cid = uuid4()
-        request = ModelDelegationRequest(
-            prompt="Write tests",
-            task_type="test",  # type: ignore[arg-type]
-            correlation_id=cid,
-            emitted_at=datetime.now(UTC),
-        )
-        handler.handle_delegation_request(request)
-
-        from omnibase_core.enums import EnumInvocationKind
-        from omnibase_core.enums.enum_agent_protocol import EnumAgentProtocol
-        from omnibase_core.models.delegation.model_invocation_command import (
-            ModelInvocationCommand,
-        )
-
-        command = ModelInvocationCommand(
-            task_id=uuid4(),
-            correlation_id=cid,
-            target_ref="agent://remote",
-            invocation_kind=EnumInvocationKind.AGENT,
-            agent_protocol=EnumAgentProtocol.A2A,
-        )
-        handler.handle_invocation_command(command)
+        _start_agent_invocation(handler, cid)
 
         envelope = self._make_completed_lifecycle_envelope(cid)
         result = await dispatcher.handle(envelope)
@@ -363,28 +328,7 @@ class TestDispatcherAgentTaskLifecycleBusPublish:
         dispatcher = DispatcherAgentTaskLifecycle(handler, event_bus=bus)  # type: ignore[arg-type]
 
         cid = uuid4()
-        request = ModelDelegationRequest(
-            prompt="Write tests",
-            task_type="test",  # type: ignore[arg-type]
-            correlation_id=cid,
-            emitted_at=datetime.now(UTC),
-        )
-        handler.handle_delegation_request(request)
-
-        from omnibase_core.enums import EnumInvocationKind
-        from omnibase_core.enums.enum_agent_protocol import EnumAgentProtocol
-        from omnibase_core.models.delegation.model_invocation_command import (
-            ModelInvocationCommand,
-        )
-
-        command = ModelInvocationCommand(
-            task_id=uuid4(),
-            correlation_id=cid,
-            target_ref="agent://remote",
-            invocation_kind=EnumInvocationKind.AGENT,
-            agent_protocol=EnumAgentProtocol.A2A,
-        )
-        handler.handle_invocation_command(command)
+        _start_agent_invocation(handler, cid)
 
         envelope = self._make_completed_lifecycle_envelope(cid)
         result = await dispatcher.handle(envelope)
