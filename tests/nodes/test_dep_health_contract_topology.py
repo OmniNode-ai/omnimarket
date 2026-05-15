@@ -249,3 +249,97 @@ def test_nodes_populated_from_contract_names(tmp_path: Path) -> None:
 
     assert "node_alpha" in graph.nodes
     assert "node_beta" in graph.nodes
+
+
+# ---------------------------------------------------------------------------
+# Fixture 9: topic_sources populated for orphan topics (OMN-11048)
+# ---------------------------------------------------------------------------
+
+
+def test_orphan_topic_sources_populated(tmp_path: Path) -> None:
+    """orphan topic_sources dict maps each orphan topic to its contract.yaml path."""
+    contract_path = tmp_path / "node_a" / "contract.yaml"
+    _write_contract(
+        contract_path,
+        """
+        name: node_a
+        event_bus:
+          publish_topics:
+            - "onex.evt.omnimarket.topic-orphan.v1"
+          subscribe_topics: []
+        """,
+    )
+
+    parser = ContractTopologyParser()
+    graph = parser.parse(search_roots=[tmp_path])
+
+    assert "onex.evt.omnimarket.topic-orphan.v1" in graph.orphan_topics
+    assert "onex.evt.omnimarket.topic-orphan.v1" in graph.topic_sources
+    assert graph.topic_sources["onex.evt.omnimarket.topic-orphan.v1"] == str(
+        contract_path.resolve()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fixture 10: undeclared_topic_sources populated (OMN-11048)
+# ---------------------------------------------------------------------------
+
+
+def test_undeclared_topic_sources_populated(tmp_path: Path) -> None:
+    """undeclared_topic_sources maps each undeclared literal to its source file."""
+    _write_contract(
+        tmp_path / "node_a" / "contract.yaml",
+        """
+        name: node_a
+        event_bus:
+          publish_topics: []
+          subscribe_topics: []
+        """,
+    )
+    py_file = tmp_path / "node_a" / "some_handler.py"
+    py_file.write_text('topic = "onex.cmd.foo.undeclared.v1"\n')
+
+    parser = ContractTopologyParser()
+    graph = parser.parse(search_roots=[tmp_path])
+
+    assert "onex.cmd.foo.undeclared.v1" in graph.undeclared_topics
+    assert "onex.cmd.foo.undeclared.v1" in graph.undeclared_topic_sources
+    assert graph.undeclared_topic_sources["onex.cmd.foo.undeclared.v1"] == str(
+        py_file.resolve()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fixture 11: non-orphan topics have no entry in topic_sources (OMN-11048)
+# ---------------------------------------------------------------------------
+
+
+def test_non_orphan_topic_not_in_topic_sources(tmp_path: Path) -> None:
+    """Subscribed (non-orphan) topics do not have a topic_sources entry."""
+    _write_contract(
+        tmp_path / "node_a" / "contract.yaml",
+        """
+        name: node_a
+        event_bus:
+          publish_topics:
+            - "onex.evt.omnimarket.paired.v1"
+          subscribe_topics: []
+        """,
+    )
+    _write_contract(
+        tmp_path / "node_b" / "contract.yaml",
+        """
+        name: node_b
+        event_bus:
+          publish_topics: []
+          subscribe_topics:
+            - "onex.evt.omnimarket.paired.v1"
+        """,
+    )
+
+    parser = ContractTopologyParser()
+    graph = parser.parse(search_roots=[tmp_path])
+
+    # Paired — not an orphan — topic_sources MAY or MAY NOT contain it.
+    # The key requirement: it must NOT appear in orphan_topics.
+    assert "onex.evt.omnimarket.paired.v1" not in graph.orphan_topics

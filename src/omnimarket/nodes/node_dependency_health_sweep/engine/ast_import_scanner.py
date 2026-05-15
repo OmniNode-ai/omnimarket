@@ -29,7 +29,13 @@ def _module_name(path: Path, root: Path) -> str:
 
 
 def _extract_imports(source: str) -> list[str]:
-    """Return top-level module names referenced in import statements."""
+    """Return full dotted module names referenced in import statements.
+
+    For ``import foo.bar``, returns ``"foo.bar"``.
+    For ``from foo.bar import baz``, returns ``"foo.bar"``.
+    Unlike the previous implementation, the top-level-only truncation is removed
+    so callers can perform exact path resolution instead of prefix matching.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -38,10 +44,31 @@ def _extract_imports(source: str) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                names.append(alias.name.split(".")[0])
+                names.append(alias.name)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            names.append(node.module.split(".")[0])
+            names.append(node.module)
     return names
+
+
+def _resolve_import(dotted_name: str, root: Path) -> str | None:
+    """Return the dotted module name for *dotted_name* if it resolves to a local file.
+
+    Checks (in order):
+    1. ``<root>/<parts...>.py``        — plain module
+    2. ``<root>/<parts...>/__init__.py`` — package
+
+    Returns ``None`` when neither candidate exists under *root*.
+    """
+    parts = dotted_name.split(".")
+    # Candidate 1: foo/bar.py → dotted mod "foo.bar"
+    candidate_file = root.joinpath(*parts).with_suffix(".py")
+    if candidate_file.is_file():
+        return dotted_name
+    # Candidate 2: foo/bar/__init__.py → dotted mod "foo.bar"
+    candidate_pkg = root.joinpath(*parts) / "__init__.py"
+    if candidate_pkg.is_file():
+        return dotted_name
+    return None
 
 
 class ASTImportScanner:
@@ -55,7 +82,9 @@ class ASTImportScanner:
             mod = _module_name(f, root)
             module_paths[mod] = str(f.relative_to(root))
 
-        # Build edge list: (importer_mod, importee_mod) where importee is local
+        # Build edge list: (importer_mod, importee_mod) where importee is local.
+        # OMN-11046: use exact Path-based resolution instead of prefix matching to
+        # avoid the O(files x imports x modules) cross-product that produced ~2M edges.
         edges: list[tuple[str, str]] = []
         # Track which modules have at least one inbound edge
         has_inbound: set[str] = set()
@@ -66,12 +95,11 @@ class ASTImportScanner:
                 source = f.read_text(encoding="utf-8")
             except OSError:
                 continue
-            for imported_top in _extract_imports(source):
-                # Only record edges to modules that exist in this tree
-                for mod in module_paths:
-                    if mod == imported_top or mod.startswith(imported_top + "."):
-                        edges.append((importer, mod))
-                        has_inbound.add(mod)
+            for dotted_name in _extract_imports(source):
+                resolved = _resolve_import(dotted_name, root)
+                if resolved is not None and resolved in module_paths:
+                    edges.append((importer, resolved))
+                    has_inbound.add(resolved)
 
         all_mods = list(module_paths.keys())
         # Orphan: no inbound edges and not __main__
