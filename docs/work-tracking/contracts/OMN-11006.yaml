@@ -1,0 +1,38 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11006
+title: "Remove residual delegation contract path env reads"
+summary: >
+  Routing reducer resolves delegation contract configuration from canonical
+  package and deployed paths instead of legacy path override environment
+  variables. No Kafka topic, container topology, migration, or live runtime
+  restart is required before merge.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-routing-cleanup-tests"
+    description: "Focused delegation routing and env scanner tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py
+          tests/unit/delegation/test_delegation_contracts.py
+          tests/unit/delegation/test_delegation_chain_e2e.py
+          tests/unit/delegation/test_delegation_quality_contract.py
+          tests/test_delegation_env_scanner.py -q
+  - id: "dod-deploy"
+    description: >
+      Deploy posture: compute-only path cleanup in handler_delegation_routing.py.
+      No new topics, Dockerfile changes, migrations, service wiring, live deploy,
+      or runtime restart were performed or required pre-merge.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          printf '%s\n' 'deploy gate: delegation path config cleanup only; no docker exec or rpk topic produce required'
