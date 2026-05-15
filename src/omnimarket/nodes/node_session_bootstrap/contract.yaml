@@ -6,8 +6,9 @@ node_version: {major: 2, minor: 0, patch: 0}
 
 description: >
   Session bootstrapper. Reads session inputs, writes contract snapshot to
-  .onex_state/, creates required CronCreate jobs, registers post-tick verifier,
-  and emits session-bootstrap-completed. Runs FIRST each session.
+  .onex_state/, writes the desired launchd scheduler plan, optionally installs
+  Claude cron compatibility shims, and emits session-bootstrap-completed.
+  Runs FIRST each session.
 
 handler:
   module: omnimarket.nodes.node_session_bootstrap.handlers.handler_session_bootstrap
@@ -19,9 +20,8 @@ descriptor:
   purity: impure
   runtime_profiles:
     - effects
-  # idempotent with respect to cron registration: handler checks CronList before
-  # calling CronCreate -- does not create duplicate crons on re-run. State files
-  # (.onex_state/session-crons-*.json) are overwritten, not appended.
+  # idempotent with respect to scheduler-plan emission and optional cron shim
+  # registration. State files are overwritten, not appended.
   idempotent: true
   timeout_ms: 30000
 
@@ -61,6 +61,11 @@ inputs:
     type: bool
     required: false
     default: false
+  enable_cron_shim:
+    type: bool
+    required: false
+    default: false
+    description: "Best-effort Claude cron compatibility shim. Launchd remains the primary scheduler surface."
 
 outputs:
   session_id:
@@ -72,7 +77,7 @@ outputs:
     type: str
   crons_registered:
     type: list
-    description: "List of CronJob IDs created by bootstrap"
+    description: "List of optional cron shim IDs created or confirmed by bootstrap"
   warnings:
     type: list
 

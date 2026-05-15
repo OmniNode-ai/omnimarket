@@ -80,6 +80,12 @@ def main() -> None:
         default=False,
         help="Skip filesystem writes",
     )
+    parser.add_argument(
+        "--enable-cron-shim",
+        action="store_true",
+        default=False,
+        help="Best-effort Claude cron compatibility shim; launchd remains primary",
+    )
     add_output_args(parser)
 
     args = parser.parse_args()
@@ -101,6 +107,7 @@ def main() -> None:
         contract=contract,
         state_dir=os.path.abspath(args.state_dir),
         dry_run=args.dry_run,
+        enable_cron_shim=args.enable_cron_shim,
     )
 
     handler = HandlerSessionBootstrap()

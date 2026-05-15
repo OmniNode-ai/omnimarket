@@ -49,6 +49,7 @@ def _make_command(
     state_dir: str = ".onex_state",
     dry_run: bool = True,
     session_mode: str = "build",
+    enable_cron_shim: bool = False,
 ) -> ModelBootstrapCommand:
     return ModelBootstrapCommand(
         session_id=session_id or str(uuid.uuid4()),
@@ -56,6 +57,7 @@ def _make_command(
         state_dir=state_dir,
         dry_run=dry_run,
         session_mode=session_mode,
+        enable_cron_shim=enable_cron_shim,
     )
 
 
@@ -161,10 +163,24 @@ class TestGoldenChainSessionBootstrap:
     # Rev 7 / Phase 1 tests (preserved)
     # ------------------------------------------------------------------
 
-    def test_dry_run_build_mode_records_cron_placeholder(self) -> None:
-        """dry_run=True in build mode -> crons_registered contains dry-run placeholder."""
+    def test_dry_run_build_mode_does_not_register_cron_shims_by_default(self) -> None:
+        """dry_run=True in build mode keeps cron shims disabled by default."""
         handler = HandlerSessionBootstrap()
         cmd = _make_command(dry_run=True, session_mode="build")
+        result = handler.handle(cmd)
+
+        assert result.crons_registered == []
+
+    def test_dry_run_build_mode_records_cron_placeholder_when_shim_enabled(
+        self,
+    ) -> None:
+        """dry_run=True in build mode records placeholders only when cron shim is enabled."""
+        handler = HandlerSessionBootstrap()
+        cmd = _make_command(
+            dry_run=True,
+            session_mode="build",
+            enable_cron_shim=True,
+        )
         result = handler.handle(cmd)
 
         assert any("dry-run" in c for c in result.crons_registered)
@@ -206,6 +222,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             result = handler.handle(cmd)
 
@@ -214,8 +231,8 @@ class TestGoldenChainSessionBootstrap:
         )
         assert "existing-pulse-42" in result.crons_registered
 
-    def test_all_crons_fail_produces_failed_status(self) -> None:
-        """If phase-1 cron (build-dispatch-pulse) fails to register, status == FAILED."""
+    def test_all_crons_fail_does_not_produce_failed_status(self) -> None:
+        """Cron shim failure is advisory and must not fail bootstrap."""
 
         def fake_list() -> list[dict[str, str]]:
             return []
@@ -233,10 +250,12 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             result = handler.handle(cmd)
 
-        assert result.status == EnumBootstrapStatus.FAILED
+        assert result.status == EnumBootstrapStatus.READY
+        assert any("CronCreate failed" in w for w in result.warnings)
 
     def test_cron_ids_written_to_disk(self) -> None:
         """Registered cron IDs are persisted to session-crons-{session_id}.json."""
@@ -258,6 +277,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             result = handler.handle(cmd)
 
@@ -318,6 +338,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             result = handler.handle(cmd)
 
@@ -356,6 +377,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             result = handler.handle(cmd)
 
@@ -388,6 +410,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="reporting",
+                enable_cron_shim=True,
             )
             result = handler.handle(cmd)
 
@@ -407,9 +430,13 @@ class TestGoldenChainSessionBootstrap:
         assert "build-dispatch-pulse" not in _CRONS_FOR_MODE["reporting"]
 
     def test_dry_run_reporting_mode_records_placeholders_for_active_crons(self) -> None:
-        """Phase 2: dry_run reporting mode -> placeholders for overseer + contract crons."""
+        """Phase 2: dry_run reporting mode -> placeholders only when cron shim is enabled."""
         handler = HandlerSessionBootstrap()
-        cmd = _make_command(dry_run=True, session_mode="reporting")
+        cmd = _make_command(
+            dry_run=True,
+            session_mode="reporting",
+            enable_cron_shim=True,
+        )
         result = handler.handle(cmd)
 
         expected_count = len(_CRONS_FOR_MODE["reporting"])
@@ -439,6 +466,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             handler.handle(cmd)
 
@@ -466,6 +494,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             handler.handle(cmd)
 
@@ -493,6 +522,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             handler.handle(cmd)
 
@@ -520,6 +550,7 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             handler.handle(cmd)
 
@@ -527,7 +558,7 @@ class TestGoldenChainSessionBootstrap:
         assert len(contract_calls) == 1, "contract-verify must use 7,22,37,52 * * * *"
 
     def test_phase2_cron_failure_does_not_produce_failed_status(self) -> None:
-        """Phase 2: if only phase-2 crons fail (pulse succeeds), status is DEGRADED not FAILED."""
+        """Phase 2: if only phase-2 cron shims fail, bootstrap still stays READY."""
         pulse_cron = "*/30 * * * *"
 
         def fake_list() -> list[dict[str, str]]:
@@ -549,10 +580,33 @@ class TestGoldenChainSessionBootstrap:
                 state_dir=tmp,
                 dry_run=False,
                 session_mode="build",
+                enable_cron_shim=True,
             )
             result = handler.handle(cmd)
 
-        assert result.status == EnumBootstrapStatus.DEGRADED, (
-            "Phase-2 cron failures should degrade, not fail"
-        )
+        assert result.status == EnumBootstrapStatus.READY
         assert "pulse-job-ok" in result.crons_registered
+
+    def test_scheduler_plan_written_to_disk(self) -> None:
+        """Not dry_run -> launchd-first scheduler plan is persisted to disk."""
+        session_id = str(uuid.uuid4())
+        handler = HandlerSessionBootstrap()
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd = ModelBootstrapCommand(
+                session_id=session_id,
+                contract=_VALID_CONTRACT,  # type: ignore[arg-type]
+                state_dir=tmp,
+                dry_run=False,
+                session_mode="build",
+            )
+            handler.handle(cmd)
+
+            scheduler_file = os.path.join(tmp, f"session-scheduler-{session_id}.json")
+            assert os.path.isfile(scheduler_file), "session-scheduler JSON not written"
+            with open(scheduler_file) as f:
+                payload = json.load(f)
+
+        assert payload["session_id"] == session_id
+        assert payload["scheduler"] == "launchd"
+        assert payload["cron_shim_enabled"] is False
+        assert len(payload["tasks"]) == len(_CRONS_FOR_MODE["build"])
