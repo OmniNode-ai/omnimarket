@@ -28,4 +28,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "printf '%s\n' 'post-merge deploy smoke: OMNI_HOME=$PWD uv run python -m omnimarket.nodes.node_duplication_sweep --omni-home $PWD --check D2,D3'"
+        check_value: "OMNI_HOME=$PWD uv run python -m omnimarket.nodes.node_duplication_sweep --omni-home $PWD --check D2,D3"
