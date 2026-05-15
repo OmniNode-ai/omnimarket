@@ -37,4 +37,10 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "echo deploy && uv run python - <<'PY'\nfrom omnimarket.nodes.node_memory_retrieval_effect import ModelMemoryRetrievalRequest\nfrom omnimarket.nodes.node_memory_storage_effect import ModelMemoryStorageRequest\nassert ModelMemoryRetrievalRequest.__module__.startswith('omnimemory.')\nassert ModelMemoryStorageRequest.__module__.startswith('omnimemory.')\nPY"
+        check_value: |
+          echo deploy && uv run python - <<'PY'
+          from omnimarket.nodes.node_memory_retrieval_effect import ModelMemoryRetrievalRequest
+          from omnimarket.nodes.node_memory_storage_effect import ModelMemoryStorageRequest
+          assert ModelMemoryRetrievalRequest.__module__.startswith('omnimemory.')
+          assert ModelMemoryStorageRequest.__module__.startswith('omnimemory.')
+          PY
