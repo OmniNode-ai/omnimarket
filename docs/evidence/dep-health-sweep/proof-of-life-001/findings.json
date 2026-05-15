@@ -3,7 +3,7 @@
     "finding_type": "UNTESTED_HANDLER",
     "severity": "MAJOR",
     "repo": "test_b_finding_fixture0",
-    "file_path": "/private/var/folders/fs/2g88nd297b7787lch6_stdl40000gn/T/pytest-of-jonah/pytest-893/test_b_finding_fixture0/src/omnimarket/nodes/node_orphan_handler/handlers/handler_orphan_handler.py",
+    "file_path": "src/omnimarket/nodes/node_orphan_handler/handlers/handler_orphan_handler.py",
     "symbol": "handler_orphan_handler",
     "detail": "Contract-referenced handler 'handler_orphan_handler' has no test file and no golden-chain fixture coverage.",
     "rule_id": "UNTESTED_HANDLER",

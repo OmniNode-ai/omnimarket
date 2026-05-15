@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (
     EnumDepHealthFindingType,
@@ -20,6 +21,7 @@ from omnimarket.nodes.node_projection_dep_health.handlers.handler_projection_dep
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionDepHealth()
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 _NOW = datetime(2025, 5, 15, 12, 0, 0, tzinfo=UTC)
 
@@ -112,8 +114,10 @@ class TestProjectionDepHealth:
     def test_contract_topic_wired(self) -> None:
         import yaml
 
-        contract_path = "src/omnimarket/nodes/node_projection_dep_health/contract.yaml"
-        with open(contract_path) as f:
+        contract_path = (
+            REPO_ROOT / "src/omnimarket/nodes/node_projection_dep_health/contract.yaml"
+        )
+        with contract_path.open() as f:
             contract = yaml.safe_load(f)
         assert (
             "onex.evt.omnimarket.dep-health-sweep-completed.v1"

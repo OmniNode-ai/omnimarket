@@ -1,7 +1,7 @@
 # Dep-Health Sweep Proof-of-Life Evidence
 
-run_id: proof-of-life-001
-timestamp: 2026-05-15T14:30:55.580005+00:00
+This proof fixture captures the expected dep-health sweep outcomes for a clean
+fixture, a fixture with findings, event emission, and projection upserts.
 
 ## Subtest Outcomes
 
@@ -10,5 +10,7 @@ timestamp: 2026-05-15T14:30:55.580005+00:00
 - **C: event_emission**: PASS — topic='onex.evt.omnimarket.dep-health-sweep-completed.v1', events=1
 - **D: projection**: PASS — rows_upserted=2
 
-## Findings count: 2
-## Projection rows: 2
+## Evidence Summary
+
+- Findings count: 2
+- Projection rows: 2
