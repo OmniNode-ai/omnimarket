@@ -4,7 +4,7 @@ requires-python = "==3.12.*"
 
 [manifest]
 overrides = [
-    { name = "omnibase-compat", url = "https://github.com/OmniNode-ai/omnibase_compat/archive/3e34ab94fad0a9db1c3b59f0e100c5da659b0792.zip" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=3e34ab94fad0a9db1c3b59f0e100c5da659b0792" },
     { name = "omnibase-core", specifier = ">=0.40.1,<0.41.0" },
     { name = "omnibase-infra", specifier = "==0.34.2" },
     { name = "omnibase-spi", specifier = "==0.20.6" },
@@ -1166,24 +1166,11 @@ wheels = [
 [[package]]
 name = "omnibase-compat"
 version = "0.3.1"
-source = { url = "https://github.com/OmniNode-ai/omnibase_compat/archive/3e34ab94fad0a9db1c3b59f0e100c5da659b0792.zip" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=3e34ab94fad0a9db1c3b59f0e100c5da659b0792#3e34ab94fad0a9db1c3b59f0e100c5da659b0792" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { hash = "sha256:ca39991c89377f0bfb0eb8154eee914407189b3511cf503f865eda0fd6069b00" }
-
-[package.metadata]
-requires-dist = [
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "pydantic", specifier = ">=2.11.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
-    { name = "typing-extensions", specifier = ">=4.5.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "omnibase-core"
@@ -1330,7 +1317,7 @@ requires-dist = [
     { name = "docker", specifier = ">=7.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", url = "https://github.com/OmniNode-ai/omnibase_compat/archive/3e34ab94fad0a9db1c3b59f0e100c5da659b0792.zip" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=3e34ab94fad0a9db1c3b59f0e100c5da659b0792" },
     { name = "omnibase-core", specifier = ">=0.40.1,<0.41.0" },
     { name = "omnibase-infra", specifier = "==0.34.2" },
     { name = "omnibase-spi", specifier = "==0.20.6" },
