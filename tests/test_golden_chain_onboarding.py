@@ -34,10 +34,11 @@ class TestGoldenChainOnboarding:
         result = handler.handle(cmd)
         assert result["dry_run"] is True
         assert result["total_steps"] > 0
-        # standalone_quickstart targets first_node_running
-        # which requires: check_python -> install_uv -> install_core -> create_first_node -> run_standalone_node
+        # standalone_quickstart targets core_installed
+        # which requires: check_python -> install_uv -> install_core
         assert "check_python" in result["resolved_steps"]
-        assert "run_standalone_node" in result["resolved_steps"]
+        assert "install_core" in result["resolved_steps"]
+        assert "run_standalone_node" not in result["resolved_steps"]
 
     def test_dry_run_new_employee(self) -> None:
         """new_employee policy resolves all expected steps.
