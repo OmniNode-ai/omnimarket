@@ -55,6 +55,11 @@ dependencies = [
     "rich>=13.0.0",
 ]
 
+[project.optional-dependencies]
+dep-health = [
+    "graphifyy==0.8.2",
+]
+
 [project.urls]
 Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
@@ -107,6 +112,7 @@ node_projection_delegation = "omnimarket.nodes.node_projection_delegation"
 node_projection_overnight = "omnimarket.nodes.node_projection_overnight"
 node_projection_baselines = "omnimarket.nodes.node_projection_baselines"
 node_projection_registration = "omnimarket.nodes.node_projection_registration"
+node_projection_dep_health = "omnimarket.nodes.node_projection_dep_health"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
 node_verify_effect = "omnimarket.nodes.node_verify_effect"
 node_build_loop_orchestrator = "omnimarket.nodes.node_build_loop_orchestrator"
@@ -198,6 +204,7 @@ node_conflict_hunk_effect = "omnimarket.nodes.node_conflict_hunk_effect"
 node_content_ingestion_effect = "omnimarket.nodes.node_content_ingestion_effect"
 node_sweep_outcome_classify = "omnimarket.nodes.node_sweep_outcome_classify"
 node_merge_sweep_state_reducer = "omnimarket.nodes.node_merge_sweep_state_reducer"
+node_dependency_health_sweep = "omnimarket.nodes.node_dependency_health_sweep"
 node_projection_query = "omnimarket.nodes.node_projection_query"
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_polish_task_classifier = "omnimarket.nodes.node_polish_task_classifier"
@@ -335,6 +342,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnimemory.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["omniclaude", "omniclaude.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

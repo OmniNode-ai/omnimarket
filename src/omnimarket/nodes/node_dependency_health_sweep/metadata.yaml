@@ -1,0 +1,24 @@
+name: node_dependency_health_sweep
+version: "0.1.0"
+description: "Analyzes dependency health across ONEX delegation pipeline repos via static import analysis and contract topology parsing"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dependency_health_sweep: "omnimarket.nodes.node_dependency_health_sweep"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omniclaude"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["sweep", "dependency-health", "static-analysis", "effect"]
+pack: "diagnostics"
+display_name: "Dependency Health Sweep"
+node_role: "probe"

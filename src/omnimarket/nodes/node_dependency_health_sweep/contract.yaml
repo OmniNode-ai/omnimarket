@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: node_dependency_health_sweep
+# Analyzes dependency health across the delegation pipeline repos via static
+# import analysis and contract topology parsing.
+
+name: node_dependency_health_sweep
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+node_type: EFFECT
+input_model: "ModelDepHealthSweepRequest"
+output_model: "ModelDepHealthSweepResult"
+handler:
+  module: omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep
+  class: HandlerDepHealthSweep
+  input_model: ModelDepHealthSweepRequest
+description: |
+  DepHealthSweep analyzes static import graphs and contract topology across
+  the ONEX delegation pipeline repos. It detects orphan imports, missing topic
+  edges, dead code, untested handlers, and contract drift. Findings are emitted
+  as structured events for projection and dashboard display.
+
+# =============================================================================
+# PUBLISHED EVENTS (Kafka) - Documentation Layer
+# =============================================================================
+published_events:
+  - topic_suffix: "onex.evt.omnimarket.dep-health-finding.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimarket.dep-health-finding.v1"
+    event_type: "DepHealthFinding"
+    trigger: "Per-finding event emitted during dependency health sweep"
+    description: "Emitted for each dependency health finding discovered."
+
+  - topic_suffix: "onex.evt.omnimarket.dep-health-sweep-completed.v1"
+    full_topic_pattern: "{env}.onex.evt.omnimarket.dep-health-sweep-completed.v1"
+    event_type: "DepHealthSweepCompleted"
+    trigger: "Terminal event emitted when sweep finishes"
+    description: "Emitted once per sweep run with aggregated findings and summary."
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events:
+    - "dep_health_finding"
+    - "dep_health_sweep_completed"
+  event_categories: ["sweep", "dependency-health", "static-analysis", "effect"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "dep_health_sweep"
+  invocation_mode: "subscription"
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.dep-health-sweep-start.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.dep-health-finding.v1"
+    - "onex.evt.omnimarket.dep-health-sweep-completed.v1"
+
+  terminal_event: "onex.evt.omnimarket.dep-health-sweep-completed.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.dep-health-sweep-start.v1":
+      schema_ref: "omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_sweep_request.ModelDepHealthSweepRequest"
+      description: "Dependency health sweep command with repo roots and sweep configuration."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.dep-health-finding.v1":
+      schema_ref: "omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding.ModelDepHealthFinding"
+      description: "Individual dependency health finding."
+
+    "onex.evt.omnimarket.dep-health-sweep-completed.v1":
+      schema_ref: "omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_sweep_completed_event.ModelDepHealthSweepCompletedEvent"
+      description: "Sweep completed event with full findings and summary."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "dep_health_sweep"
+      handler:
+        name: "HandlerDepHealthSweep"
+        module: "omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep"
+
+metadata:
+  transport_type: kafka

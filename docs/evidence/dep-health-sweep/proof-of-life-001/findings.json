@@ -1,0 +1,22 @@
+[
+  {
+    "finding_type": "UNTESTED_HANDLER",
+    "severity": "MAJOR",
+    "repo": "test_b_finding_fixture0",
+    "file_path": "src/omnimarket/nodes/node_orphan_handler/handlers/handler_orphan_handler.py",
+    "symbol": "handler_orphan_handler",
+    "detail": "Contract-referenced handler 'handler_orphan_handler' has no test file and no golden-chain fixture coverage.",
+    "rule_id": "UNTESTED_HANDLER",
+    "rule_version": "v1"
+  },
+  {
+    "finding_type": "MISSING_TOPIC_EDGE",
+    "severity": "CRITICAL",
+    "repo": "test_b_finding_fixture0",
+    "file_path": null,
+    "symbol": "onex.cmd.test.orphan-cmd.v1",
+    "detail": "Topic 'onex.cmd.test.orphan-cmd.v1' is published but has no subscriber and is not declared as externally consumed.",
+    "rule_id": "MISSING_TOPIC_EDGE",
+    "rule_version": "v1"
+  }
+]
