@@ -62,6 +62,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
+    parse_delegation_config_yaml,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -240,7 +241,7 @@ def _get_config() -> ModelDelegationConfig:
     global _config
     if _config is None:
         yaml_text = _DEFAULT_CONFIG_PATH.read_text()
-        _config = ModelDelegationConfig.from_yaml_text(yaml_text)
+        _config = parse_delegation_config_yaml(yaml_text)
     return _config
 
 

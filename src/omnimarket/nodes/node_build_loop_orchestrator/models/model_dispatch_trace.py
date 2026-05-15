@@ -20,7 +20,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ModelQualityGateResult(BaseModel):
+class ModelDispatchQualityGateResult(BaseModel):
     """Result of the structural quality gate (ruff + import + syntax checks)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -69,6 +69,9 @@ class ModelReviewResult(BaseModel):
         ge=0,
         description="Tokens consumed by the review call.",
     )
+
+
+ModelQualityGateResult = ModelDispatchQualityGateResult
 
 
 class ModelDispatchTrace(BaseModel):
@@ -138,6 +141,7 @@ class ModelDispatchTrace(BaseModel):
 
 
 __all__: list[str] = [
+    "ModelDispatchQualityGateResult",
     "ModelDispatchTrace",
     "ModelQualityGateResult",
     "ModelReviewIssue",

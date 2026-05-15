@@ -35,7 +35,7 @@ TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
 
 
-class ModelTaskDelegatedEvent(BaseModel):
+class ModelProjectionTaskDelegatedEvent(BaseModel):
     """Inbound event from onex.evt.omniclaude.task-delegated.v1."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
@@ -98,6 +98,9 @@ class ModelProjectionResult(BaseModel):
 
     rows_upserted: int = Field(default=0, ge=0)
     table: str = Field(default=TABLE)
+
+
+ModelTaskDelegatedEvent = ModelProjectionTaskDelegatedEvent
 
 
 class HandlerProjectionDelegation:
@@ -165,5 +168,6 @@ class HandlerProjectionDelegation:
 __all__: list[str] = [
     "HandlerProjectionDelegation",
     "ModelProjectionResult",
+    "ModelProjectionTaskDelegatedEvent",
     "ModelTaskDelegatedEvent",
 ]
