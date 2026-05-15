@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (
@@ -35,7 +37,7 @@ class ModelBaselineSnapshot(BaseModel):
     findings: list[ModelDepHealthFinding]
     graphify_version: str
     rule_version: str
-    captured_at: str
+    captured_at: datetime
 
 
 class ModelDiffResult(BaseModel):

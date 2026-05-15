@@ -163,6 +163,32 @@ def test_handler_summary_counts_by_finding_type(tmp_path: Path) -> None:
         assert count >= 0
 
 
+def test_handler_applies_severity_threshold_before_result(tmp_path: Path) -> None:
+    """A CRITICAL threshold suppresses lower-severity findings in the result."""
+    _write(
+        tmp_path / "node_a" / "contract.yaml",
+        """
+        name: node_a
+        event_bus:
+          publish_topics:
+            - "onex.evt.test.orphan-event.v1"
+          subscribe_topics: []
+        """,
+    )
+
+    handler = HandlerDepHealthSweep()
+    request = ModelDepHealthSweepRequest(
+        repo_roots=[str(tmp_path)],
+        severity_threshold="CRITICAL",
+        dry_run=True,
+    )
+    result = handler.handle(request)
+
+    assert result.status == "clean"
+    assert result.findings == []
+    assert result.summary == {}
+
+
 # ---------------------------------------------------------------------------
 # Baseline delta
 # ---------------------------------------------------------------------------
@@ -196,9 +222,28 @@ def test_handler_emits_event_to_bus_if_injected(tmp_path: Path) -> None:
     handler = HandlerDepHealthSweep(event_bus=bus)  # type: ignore[arg-type]
     request = ModelDepHealthSweepRequest(
         repo_roots=[str(tmp_path)],
-        dry_run=True,
+        dry_run=False,
     )
     handler.handle(request)
 
     published = asyncio.run(bus.get_event_history())
     assert len(published) >= 1
+
+
+def test_handler_dry_run_does_not_emit_event(tmp_path: Path) -> None:
+    """dry_run=True must suppress event publication even when a bus is wired."""
+    import asyncio
+
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+    bus = EventBusInmemory()
+    asyncio.run(bus.start())
+    handler = HandlerDepHealthSweep(event_bus=bus)  # type: ignore[arg-type]
+    request = ModelDepHealthSweepRequest(
+        repo_roots=[str(tmp_path)],
+        dry_run=True,
+    )
+    handler.handle(request)
+
+    published = asyncio.run(bus.get_event_history())
+    assert published == []

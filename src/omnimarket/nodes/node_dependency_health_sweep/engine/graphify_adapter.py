@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Graphify adapter — wraps the graphify CLI and owns its output format.
 
-graphify CLI (package: graphifyy==0.8.2, pinned SHA da4ec1d5e713e9a98358601b23662762bf946e36):
+graphify CLI (package: graphifyy==0.8.2):
   Usage: graphify <path>  OR  python -m graphify <path>
   Output: writes graphify-out/graph.json (configurable via GRAPHIFY_OUT env var)
   Version flag: graphify --version  (prints "graphify <version>")

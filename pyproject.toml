@@ -56,7 +56,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# pinned to commit da4ec1d5e713e9a98358601b23662762bf946e36 (graphifyy 0.8.2)
 dep-health = [
     "graphifyy==0.8.2",
 ]

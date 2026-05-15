@@ -37,6 +37,7 @@ from omnimarket.nodes.node_dependency_health_sweep.engine.graphify_runner import
     GraphifyRunner,
 )
 from omnimarket.nodes.node_dependency_health_sweep.models import (
+    EnumDepHealthSeverity,
     ModelDepHealthSweepCompletedEvent,
     ModelDepHealthSweepRequest,
     ModelDepHealthSweepResult,
@@ -63,6 +64,28 @@ def _load_completed_topic() -> str:
 
 
 _SWEEP_COMPLETED_TOPIC = _load_completed_topic()
+_SEVERITY_ORDER = {
+    EnumDepHealthSeverity.INFO: 0,
+    EnumDepHealthSeverity.MINOR: 1,
+    EnumDepHealthSeverity.MAJOR: 2,
+    EnumDepHealthSeverity.CRITICAL: 3,
+}
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _severity_at_or_above(severity: EnumDepHealthSeverity, threshold: str) -> bool:
+    try:
+        threshold_severity = EnumDepHealthSeverity(threshold.upper())
+    except ValueError:
+        threshold_severity = EnumDepHealthSeverity.MAJOR
+    return _SEVERITY_ORDER[severity] >= _SEVERITY_ORDER[threshold_severity]
 
 
 class HandlerDepHealthSweep:
@@ -105,6 +128,7 @@ class HandlerDepHealthSweep:
                 logger.warning("Repo root does not exist: %s — skipping", repo_root)
                 continue
 
+            repo_root = repo_root.resolve()
             repo_label = repo_root.name
 
             import_graph = self._graphify_runner.run(root=repo_root)
@@ -112,7 +136,7 @@ class HandlerDepHealthSweep:
 
             # Cross-reference: filter contract_handler_paths to this repo
             repo_handler_paths = [
-                p for p in contract_handler_paths if p.startswith(str(repo_root))
+                p for p in contract_handler_paths if _is_relative_to(Path(p), repo_root)
             ]
             findings = self._cross_ref_engine.analyze(
                 import_graph=import_graph,
@@ -123,9 +147,15 @@ class HandlerDepHealthSweep:
             )
             all_findings.extend(findings)
 
+        filtered_findings = [
+            finding
+            for finding in all_findings
+            if _severity_at_or_above(finding.severity, request.severity_threshold)
+        ]
+
         # Compute summary by finding type
         summary: dict[str, int] = {}
-        for finding in all_findings:
+        for finding in filtered_findings:
             key = finding.finding_type.value
             summary[key] = summary.get(key, 0) + 1
 
@@ -133,26 +163,30 @@ class HandlerDepHealthSweep:
         baseline_delta: int | None = None
         if request.baseline_path is not None:
             diff_result = self._baseline_engine.diff(
-                current=all_findings,
+                current=filtered_findings,
                 baseline_path=Path(request.baseline_path),
                 current_graphify_version=graphify_version,
             )
             if diff_result is not None:
                 baseline_delta = diff_result.delta
 
-        status = "findings" if all_findings else "clean"
+        status = "findings" if filtered_findings else "clean"
 
         result = ModelDepHealthSweepResult(
             status=status,
             run_id=run_id,
-            findings=all_findings,
+            findings=filtered_findings,
             summary=summary,
             baseline_delta=baseline_delta,
             graphify_version=graphify_version,
         )
 
         # Publish completed event if event bus is wired
-        if self._event_bus is not None and _SWEEP_COMPLETED_TOPIC:
+        if (
+            not request.dry_run
+            and self._event_bus is not None
+            and _SWEEP_COMPLETED_TOPIC
+        ):
             self._emit_completed_event(run_id=run_id, result=result)
 
         return result
