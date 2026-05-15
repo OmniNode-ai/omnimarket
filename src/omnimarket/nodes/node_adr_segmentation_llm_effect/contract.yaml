@@ -19,6 +19,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 
 io_operations:
   - operation_type: llm_call

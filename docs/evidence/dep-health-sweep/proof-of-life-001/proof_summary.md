@@ -1,16 +1,14 @@
 # Dep-Health Sweep Proof-of-Life Evidence
 
-This proof fixture defines the dependency-health sweep scenarios covered by the
-evidence artifacts in this directory.
+run_id: proof-of-life-001
+timestamp: 2026-05-15T19:53:31.294121+00:00
 
-## Covered Scenarios
+## Subtest Outcomes
 
-- Clean fixture
-- Finding fixture
-- Completion event emission
-- Projection upsert
+- **A: clean_fixture**: PASS — status=clean
+- **B: finding_fixture**: PASS — status=findings, findings=2, types=['MISSING_TOPIC_EDGE', 'UNTESTED_HANDLER']
+- **C: event_emission**: PASS — topic='onex.evt.omnimarket.dep-health-sweep-completed.v1', events=1
+- **D: projection**: PASS — rows_upserted=2
 
-## Evidence Summary
-
-- Findings count: 2
-- Projection rows: 2
+## Findings count: 2
+## Projection rows: 2

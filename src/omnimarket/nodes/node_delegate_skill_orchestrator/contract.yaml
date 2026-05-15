@@ -44,6 +44,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 300000
+  runtime_profiles:
+    - effects
 
 event_bus:
   version: {major: 1, minor: 0, patch: 0}

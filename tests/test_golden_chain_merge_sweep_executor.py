@@ -148,8 +148,62 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     )
 
     # --- Node 1: Orchestrator ---
+    # HEAD handler resolves PR refs and failing run IDs via gh CLI subprocess calls.
+    # Mock subprocess to return fixture data for PR 200 (refs) and PR 300 (statusCheckRollup).
+    def _orch_subprocess(*args: Any, **_kwargs: Any) -> MagicMock:
+        cmd = list(args)
+        pr_num_idx = cmd.index("view") + 1 if "view" in cmd else -1
+        pr_num = cmd[pr_num_idx] if pr_num_idx >= 0 else ""
+        proc = MagicMock()
+        proc.returncode = 0
+        if "id,headRefName" in cmd:
+            proc.communicate = AsyncMock(
+                return_value=(
+                    json.dumps(
+                        {
+                            "id": f"PR_kwGOLDEN{pr_num}",
+                            "headRefName": f"feat/pr{pr_num}",
+                        }
+                    ).encode(),
+                    b"",
+                )
+            )
+        elif "headRefName,baseRefName,headRefOid" in cmd:
+            proc.communicate = AsyncMock(
+                return_value=(
+                    json.dumps(
+                        {
+                            "headRefName": f"feat/{pr_num}",
+                            "baseRefName": "main",
+                            "headRefOid": f"sha{pr_num}abc",
+                        }
+                    ).encode(),
+                    b"",
+                )
+            )
+        elif "statusCheckRollup" in cmd:
+            proc.communicate = AsyncMock(
+                return_value=(
+                    json.dumps(
+                        {
+                            "statusCheckRollup": [
+                                {
+                                    "conclusion": "FAILURE",
+                                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887700/job/1",
+                                }
+                            ]
+                        }
+                    ).encode(),
+                    b"",
+                )
+            )
+        else:
+            proc.communicate = AsyncMock(return_value=(b"{}", b""))
+        return proc
+
     orchestrator = HandlerTriageOrchestrator()
-    orch_output = await orchestrator.handle(request)
+    with patch("asyncio.create_subprocess_exec", side_effect=_orch_subprocess):
+        orch_output = await orchestrator.handle(request)
 
     assert len(orch_output.events) == 3
     event_types = {type(e).__name__ for e in orch_output.events}

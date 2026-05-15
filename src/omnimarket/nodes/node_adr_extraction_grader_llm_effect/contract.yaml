@@ -20,6 +20,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 
 event_bus:
   subscribe_topics:

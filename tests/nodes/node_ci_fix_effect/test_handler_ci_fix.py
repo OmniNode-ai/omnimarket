@@ -288,41 +288,6 @@ class TestApplyPatch:
         assert "Hunk FAILED" in str(exc.value)
 
 
-class TestApplyPatch:
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    async def test_apply_patch_preflights_before_mutating(self) -> None:
-        """Failed git-apply and patch dry-run reports diagnostics without apply."""
-        calls: list[list[str]] = []
-
-        async def fake_run(args: list[str], **_kwargs: Any) -> tuple[int, str, str]:
-            calls.append(args)
-            if args[:3] == ["git", "apply", "--check"]:
-                return 1, "", "bad context"
-            if args[:4] == ["patch", "-t", "-C", "-p1"]:
-                return 1, "checking file Oops", "Hunk FAILED"
-            if args[:4] == ["patch", "-t", "-C", "-p0"]:
-                return 1, "checking file Oops", "Hunk FAILED"
-            raise AssertionError(f"unexpected subprocess call: {args}")
-
-        with (
-            patch(
-                "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._run_subprocess",
-                side_effect=fake_run,
-            ),
-            pytest.raises(ValueError, match="patch preflight failed") as exc,
-        ):
-            await _apply_patch(_VALID_PATCH, "/tmp/worktree")
-
-        assert calls == [
-            ["git", "apply", "--check", calls[0][3]],
-            ["patch", "-t", "-C", "-p1", "-i", calls[1][5]],
-            ["patch", "-t", "-C", "-p0", "-i", calls[2][5]],
-        ]
-        assert "bad context" in str(exc.value)
-        assert "Hunk FAILED" in str(exc.value)
-
-
 # ---------------------------------------------------------------------------
 # HandlerCiFixEffect Wave 2 integration tests (mocked I/O)
 # ---------------------------------------------------------------------------
