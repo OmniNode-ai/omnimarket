@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: effectful
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omninode-memory>=0.1.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["persona", "lifecycle", "orchestrator"]
