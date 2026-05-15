@@ -23,6 +23,9 @@ import pytest
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     _get_contract_model_ref,
 )
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
+    parse_delegation_config_yaml,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -141,6 +144,27 @@ def _clear_lru_caches() -> Generator[None, None, None]:
 # ---------------------------------------------------------------------------
 # _get_contract_model_ref — unit tests on the new helper
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestParseDelegationConfigYaml:
+    def test_rejects_empty_yaml(self) -> None:
+        with pytest.raises(ValueError, match="top-level 'tiers' key"):
+            parse_delegation_config_yaml("")
+
+    def test_rejects_scalar_use_for(self) -> None:
+        with pytest.raises(ValueError, match="'use_for' must be a list"):
+            parse_delegation_config_yaml(
+                textwrap.dedent("""\
+                    tiers:
+                      - name: local
+                        models:
+                          - id: qwen
+                            backend_id: local-qwen-coder-30b
+                            max_context_tokens: 32768
+                            use_for: reasoning
+                """)
+            )
 
 
 @pytest.mark.unit
