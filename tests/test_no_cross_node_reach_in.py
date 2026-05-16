@@ -83,17 +83,19 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # OMN-10865: delegation pipeline migrated from omnibase_infra; the orchestrator
         # coordinates routing and quality-gate reducers by design. Shared models should
         # move to omnimarket.events.delegation.* in a follow-up ticket.
-        "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:55",
-        "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:61",
+        # OMN-11076: workflow state sharing added imports above these lines, shifting
+        # line numbers by 1 in delegation_intent_bridge.py and handler_delegation_workflow.py.
+        "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:56",
+        "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:62",
         "omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py:60",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_compliance_loop_result.py:22",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_delegation_request.py:19",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_quality_gate_intent.py:11",
         "omnimarket/nodes/node_delegation_orchestrator/dispatchers/dispatcher_routing_decision.py:35",
         "omnimarket/nodes/node_delegation_orchestrator/dispatchers/dispatcher_quality_gate_result.py:35",
-        "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:76",
-        "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:79",
-        "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:82",
+        "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:77",
+        "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:80",
+        "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:83",
         "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_compliance_loop.py:28",
         "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_compliance_loop.py:31",
         "omnimarket/nodes/node_delegation_orchestrator/handlers/handler_compliance_loop.py:35",

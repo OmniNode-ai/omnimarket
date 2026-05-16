@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import ClassVar
 from uuid import UUID
 
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
@@ -130,6 +131,7 @@ def _record_inference_response(
     response: ModelInferenceResponseData,
 ) -> None:
     """Persist a single inference attempt's data onto the workflow."""
+    workflow.inference_intent_in_flight = False
     workflow.inference_content = response.content
     workflow.inference_model_used = response.model_used
     workflow.inference_latency_ms = response.latency_ms
@@ -196,6 +198,7 @@ def _evaluate_compliance(
     # ROUTED -> ROUTED self-loop: stay in ROUTED, increment attempt counter.
     transition(workflow, EnumDelegationState.ROUTED)
     workflow.compliance_attempts += 1
+    workflow.inference_intent_in_flight = True
     temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
     return [
         ModelInferenceIntent(
@@ -235,6 +238,8 @@ class DelegationWorkflowState:
     # ModelDelegationResult / ModelTaskDelegatedEvent.
     compliance_attempts: int = 0
     accumulated_tokens: int = 0
+    inference_intent_in_flight: bool = False
+    routing_intent_replayed: bool = False
 
 
 class HandlerDelegationWorkflow:
@@ -245,11 +250,16 @@ class HandlerDelegationWorkflow:
     the FSM. Duplicate or out-of-order events are handled safely.
     """
 
-    def __init__(self) -> None:
-        self._workflows: dict[UUID, DelegationWorkflowState] = {}
+    _shared_workflows: ClassVar[dict[UUID, DelegationWorkflowState]] = {}
+
+    def __init__(
+        self,
+        workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
+    ) -> None:
+        self._workflows = workflows if workflows is not None else self._shared_workflows
 
     @property
-    def workflows(self) -> dict[UUID, DelegationWorkflowState]:
+    def workflows(self) -> MutableMapping[UUID, DelegationWorkflowState]:
         """Expose workflows for testing/observability."""
         return self._workflows
 
@@ -280,6 +290,14 @@ class HandlerDelegationWorkflow:
         cid = request.correlation_id
 
         if cid in self._workflows:
+            workflow = self._workflows[cid]
+            if (
+                workflow.state == EnumDelegationState.RECEIVED
+                and workflow.routing_decision is None
+                and not workflow.routing_intent_replayed
+            ):
+                workflow.routing_intent_replayed = True
+                return [ModelRoutingIntent(payload=workflow.request or request)]
             return []
 
         workflow = DelegationWorkflowState(
@@ -319,12 +337,24 @@ class HandlerDelegationWorkflow:
         if workflow is None:
             return []
 
-        if workflow.state != EnumDelegationState.RECEIVED:
+        if workflow.state == EnumDelegationState.RECEIVED:
+            self._transition(workflow, EnumDelegationState.ROUTED)
+            workflow.routing_decision = decision
+            workflow.compliance_attempts = 1
+        elif (
+            workflow.state == EnumDelegationState.ROUTED
+            and workflow.routing_decision is not None
+            and workflow.inference_content is None
+        ):
+            if workflow.inference_intent_in_flight:
+                return []
+        else:
             return []
 
-        self._transition(workflow, EnumDelegationState.ROUTED)
-        workflow.routing_decision = decision
-        workflow.compliance_attempts = 1
+        if workflow.inference_intent_in_flight:
+            return []
+
+        workflow.inference_intent_in_flight = True
 
         assert workflow.request is not None
         temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)

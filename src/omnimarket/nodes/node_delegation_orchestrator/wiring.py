@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     )
     from omnibase_infra.runtime import MessageDispatchEngine
 
+    from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+        HandlerDelegationWorkflow,
+    )
+
 logger = logging.getLogger(__name__)
 
 # Route IDs for delegation dispatchers
@@ -39,10 +43,25 @@ ROUTE_ID_ROUTING_DECISION = "route.delegation.routing-decision"
 ROUTE_ID_QUALITY_GATE_RESULT = "route.delegation.quality-gate-result"
 ROUTE_ID_AGENT_TASK_LIFECYCLE = "route.delegation.agent-task-lifecycle"
 
+_SHARED_WORKFLOW_HANDLER: HandlerDelegationWorkflow | None = None
+
 
 class WiringResult(TypedDict):
     services: list[str]
     status: str
+
+
+def get_shared_delegation_workflow_handler() -> HandlerDelegationWorkflow:
+    """Return the process-local delegation workflow FSM used by live dispatchers."""
+    global _SHARED_WORKFLOW_HANDLER
+
+    if _SHARED_WORKFLOW_HANDLER is None:
+        from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+            HandlerDelegationWorkflow,
+        )
+
+        _SHARED_WORKFLOW_HANDLER = HandlerDelegationWorkflow()
+    return _SHARED_WORKFLOW_HANDLER
 
 
 async def wire_delegation_handlers(
@@ -66,7 +85,7 @@ async def wire_delegation_handlers(
     services_registered: list[str] = []
 
     # HandlerDelegationWorkflow — stateful orchestrator FSM
-    workflow_handler = HandlerDelegationWorkflow()
+    workflow_handler = get_shared_delegation_workflow_handler()
     if container.service_registry is not None:
         await container.service_registry.register_instance(
             interface=HandlerDelegationWorkflow,
