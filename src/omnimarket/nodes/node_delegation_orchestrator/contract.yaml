@@ -48,6 +48,7 @@ event_bus:
     - "onex.cmd.omnibase-infra.delegation-request.v1"
     - "onex.cmd.omnibase-infra.invocation.v1"
     - "onex.evt.omnibase-infra.routing-decision.v1"
+    - "onex.evt.omnibase-infra.inference-response.v1"
     - "onex.evt.omnibase-infra.agent-task-lifecycle.v1"
     - "onex.evt.omnibase-infra.quality-gate-result.v1"
   publish_topics:
