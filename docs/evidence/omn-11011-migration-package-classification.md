@@ -19,8 +19,8 @@ The three OMN-11011 tables are package-owned omnimarket migrations and do not re
 Raw standard-repo scan:
 
 ```bash
-/Users/jonah/Code/omni_home/onex_change_control/.venv/bin/check-migration-conflicts \
-  --repos-root /Users/jonah/Code/omni_home \
+"$OMNI_HOME/onex_change_control/.venv/bin/check-migration-conflicts" \
+  --repos-root "$OMNI_HOME" \
   --repos omnibase_core omnibase_infra omniclaude omnidash omniintelligence omnimarket omnimemory onex_change_control
 ```
 
@@ -29,10 +29,10 @@ The raw scan reported 31 historical conflicts, none for the three OMN-11011 tabl
 Suppressions-aware standard-repo scan:
 
 ```bash
-/Users/jonah/Code/omni_home/onex_change_control/.venv/bin/check-migration-conflicts \
-  --repos-root /Users/jonah/Code/omni_home \
+"$OMNI_HOME/onex_change_control/.venv/bin/check-migration-conflicts" \
+  --repos-root "$OMNI_HOME" \
   --repos omnibase_core omnibase_infra omniclaude omnidash omniintelligence omnimarket omnimemory onex_change_control \
-  --suppressions-file /Users/jonah/Code/omni_home/onex_change_control/migration_conflict_suppressions.yaml
+  --suppressions-file "$OMNI_HOME/onex_change_control/migration_conflict_suppressions.yaml"
 ```
 
 Output:
@@ -43,14 +43,15 @@ Suppressed 31 known conflict(s) via suppressions file.
 ```
 
 Suppressions-aware scan using the full canonical `.git` repo list that
-omnimarket D3 resolves from `/Users/jonah/Code/omni_home`:
+omnimarket D3 resolves from `$OMNI_HOME`:
 
 ```bash
 python - <<'PY'
 from pathlib import Path
+import os
 import subprocess
 
-root = Path("/Users/jonah/Code/omni_home")
+root = Path(os.environ["OMNI_HOME"])
 repos = [
     p.name
     for p in sorted(root.iterdir())
@@ -60,13 +61,13 @@ repos = [
     and (p / ".git").exists()
 ]
 cmd = [
-    "/Users/jonah/Code/omni_home/onex_change_control/.venv/bin/check-migration-conflicts",
+    str(root / "onex_change_control" / ".venv" / "bin" / "check-migration-conflicts"),
     "--repos-root",
     str(root),
     "--repos",
     *repos,
     "--suppressions-file",
-    "/Users/jonah/Code/omni_home/onex_change_control/migration_conflict_suppressions.yaml",
+    str(root / "onex_change_control" / "migration_conflict_suppressions.yaml"),
 ]
 result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=120)
 print(result.stdout, end="")
@@ -102,15 +103,16 @@ Target-table scan using the OCC scanner implementation:
 uv run python - <<'PY'
 from pathlib import Path
 import importlib.util, sys
+import os
 
-module_path = Path("/Users/jonah/Code/omni_home/onex_change_control/src/onex_change_control/scripts/check_migration_conflicts.py")
+root = Path(os.environ["OMNI_HOME"])
+module_path = root / "onex_change_control/src/onex_change_control/scripts/check_migration_conflicts.py"
 spec = importlib.util.spec_from_file_location("check_migration_conflicts", module_path)
 mod = importlib.util.module_from_spec(spec)
 sys.modules["check_migration_conflicts"] = mod
 assert spec.loader is not None
 spec.loader.exec_module(mod)
 
-root = Path("/Users/jonah/Code/omni_home")
 repos = [
     p.name
     for p in sorted(root.iterdir())
