@@ -87,9 +87,10 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # move to omnimarket.events.delegation.* in a follow-up ticket.
         # OMN-11076: workflow state sharing added imports above these lines, shifting
         # line numbers by 1 in delegation_intent_bridge.py and handler_delegation_workflow.py.
+        # OMN-11061: topic-literal wiring added an import in handler_delegation_routing.py, shifting line 60→61.
         "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:56",
         "omnimarket/nodes/node_delegation_orchestrator/delegation_intent_bridge.py:62",
-        "omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py:60",
+        "omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py:61",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_compliance_loop_result.py:22",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_delegation_request.py:19",
         "omnimarket/nodes/node_delegation_orchestrator/models/model_quality_gate_intent.py:11",

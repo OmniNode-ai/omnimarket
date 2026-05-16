@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Inbound alert event model — mirrors onex.evt.monitor.alert-detected.v1 payload."""
+"""Inbound alert event model — mirrors onex.evt.omnibase-infra.monitor-alert-detected.v1 payload."""
 
 from __future__ import annotations
 

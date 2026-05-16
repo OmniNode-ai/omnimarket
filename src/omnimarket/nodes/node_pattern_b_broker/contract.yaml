@@ -90,9 +90,11 @@ outputs:
 event_bus:
   subscribe_topics:
     - onex.cmd.omniclaude.delegate-task.v1
+    - onex.evt.omnimarket.pattern-b-dispatch-completed.v1
   publish_topics:
     - onex.evt.omniclaude.delegation-completed.v1
     - onex.evt.omniclaude.delegation-failed.v1
+    - onex.cmd.omnimarket.pattern-b-dispatch.v1
 
 terminal_event: onex.evt.omniclaude.delegation-completed.v1
 

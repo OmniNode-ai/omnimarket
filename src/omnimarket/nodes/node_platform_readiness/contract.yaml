@@ -33,6 +33,11 @@ terminal_event: onex.evt.omnimarket.platform-readiness-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.platform-readiness-start.v1
+    # SOW Phase 2 monitored topics — checked for producer/consumer health
+    - onex.evt.savings.estimation-completed.v1
+    - onex.evt.model-router.routing-decision.v1
+    - onex.evt.baselines.computation-completed.v1
+    - onex.evt.omnimarket.build-loop-dod-checked.v1
   publish_topics:
     - onex.evt.omnimarket.platform-readiness-completed.v1
 

@@ -61,6 +61,11 @@ event_bus:
 
   publish_topics:
     - "onex.evt.omnimarket.content-discovered.v1"
+    # Omnimemory-backed lifecycle crawler topics (available in code, configurable)
+    - "onex.evt.omnimemory.document-removed.v1"
+    - "onex.evt.omnimemory.document-changed.v1"
+    - "onex.evt.omnimemory.document-discovered.v1"
+    - "onex.evt.omnimemory.document-indexed.v1"
 
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.filesystem-crawl-start.v1":

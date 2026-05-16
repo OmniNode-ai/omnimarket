@@ -38,6 +38,16 @@ _SOURCE_EXTENSIONS = {".py", ".ts", ".tsx", ".yaml", ".yml"}
 # system (these are the contracts themselves — exclude to avoid self-reporting).
 _SKIP_FILENAMES = {"contract.yaml", "dep_health_allowlist.yaml"}
 
+# Path components that indicate a test or fixture context.  Topic literals in
+# these files may be synthetic / placeholder values and are exempt from the
+# UNDECLARED_TOPIC check.  Use "test-literal-ok" inline comments as the
+# preferred per-line escape hatch when a test genuinely exercises a real topic
+# that happens to be undeclared.
+_SKIP_UNDECLARED_PATH_PARTS = frozenset({"tests", "test", "fixtures", "fixture"})
+
+# File name patterns for test modules (matched against the file stem).
+_TEST_FILE_RE = re.compile(r"^(test_.+|.+_test)$")
+
 
 class ContractTopologyParser:
     """Parse contract.yaml files under search_roots and build a topology graph."""
@@ -123,9 +133,12 @@ class ContractTopologyParser:
             and t not in allowlisted
         ]
 
-        # Scan source files for hardcoded topic literals not in any contract
+        # Scan source files for hardcoded topic literals not in any contract.
+        # Allowlisted topics (from dep_health_allowlist.yaml) are also excluded —
+        # they may use non-standard service names that the topic-naming lint rejects
+        # but are still legitimate runtime topics.
         undeclared_topics, undeclared_topic_sources = self._find_undeclared_topics(
-            search_roots, all_known_topics
+            search_roots, all_known_topics, allowlisted
         )
 
         # Best-effort TopicBase cross-validation (INFO only — does not affect graph)
@@ -165,14 +178,26 @@ class ContractTopologyParser:
                 allowlisted.add(str(entry["topic"]))
 
     def _find_undeclared_topics(
-        self, search_roots: list[Path], known_topics: set[str]
+        self,
+        search_roots: list[Path],
+        known_topics: set[str],
+        allowlisted: set[str] | None = None,
     ) -> tuple[set[str], dict[str, str]]:
         """Scan source files for topic string literals not declared in any contract.
+
+        Test files (test_*.py / *_test.py) and files under tests/fixtures
+        directories are excluded: their topic literals are often synthetic
+        placeholders that should not require contract declarations.
+
+        Allowlisted topics (from dep_health_allowlist.yaml) are also excluded:
+        they may use non-standard service names that the topic-naming lint rejects
+        but are still legitimate runtime topics (e.g. onex.evt.diagnostic.*).
 
         Returns:
             Tuple of (undeclared_topics set, undeclared_topic_sources dict mapping
             topic literal → absolute path of the first source file where it appears).
         """
+        effective_known = known_topics | (allowlisted or set())
         undeclared: set[str] = set()
         undeclared_sources: dict[str, str] = {}
         for root in search_roots:
@@ -180,13 +205,19 @@ class ContractTopologyParser:
                 for src_file in root.rglob(f"*{ext}"):
                     if src_file.name in _SKIP_FILENAMES:
                         continue
+                    # Skip test modules and files under test/fixture directories
+                    parts_lower = {p.lower() for p in src_file.parts}
+                    if parts_lower & _SKIP_UNDECLARED_PATH_PARTS:
+                        continue
+                    if _TEST_FILE_RE.match(src_file.stem):
+                        continue
                     try:
                         text = src_file.read_text(errors="replace")
                     except Exception:
                         continue
                     for match in _TOPIC_LITERAL_RE.finditer(text):
                         topic = match.group(0)
-                        if topic not in known_topics:
+                        if topic not in effective_known:
                             undeclared.add(topic)
                             # First-occurrence file wins; keeps the map stable
                             undeclared_sources.setdefault(

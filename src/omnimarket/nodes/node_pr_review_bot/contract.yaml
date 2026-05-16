@@ -220,6 +220,8 @@ event_bus:
     - onex.evt.omnimarket.thread_verified.v1
     - onex.evt.omnimarket.thread_resolve_failed.v1
     - onex.evt.omnimarket.thread_resolved.v1
+    - onex.evt.omnimarket.review-bot-thread-resolved.v1
+    - onex.evt.omnimarket.review-bot-thread-reopened.v1
 
 runtime_config:
   review_bot.emergency_bypass_actor:

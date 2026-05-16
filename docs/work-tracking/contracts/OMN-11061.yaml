@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11061"
+title: "Wire undeclared topic literals to contract constants"
+summary: >
+  Reduces UNDECLARED_TOPIC findings from 75 to 0 by declaring 49 fan-out topics
+  in node_emit_daemon/contract.yaml, adding missing topics to 11 additional node
+  contracts, extending ContractTopologyParser to skip test files and respect the
+  dep_health_allowlist for UNDECLARED_TOPIC suppression, adding a dep_health_allowlist
+  for the non-standard-named diagnostic daemon-health topic, and expanding the
+  no-hardcoded-topics pre-commit exclude to cover both singular contract.yaml and
+  plural contracts/ directory forms.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-undeclared-topic-sweep"
+    description: "Dependency health sweep reports 0 UNDECLARED_TOPIC findings after wiring."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_dependency_health_sweep --repo-roots src/ --severity-threshold MAJOR --dry-run"
+  - id: "dod-tests"
+    description: "Full test suite passes (excluding kafka-marked tests) after contract and topology changes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m 'not kafka' -q"
+  - id: "dod-deploy"
+    description: >
+      Deploy evidence: this PR is a contract YAML + topic wiring change only. No
+      live deploy, runtime restart, new service, Dockerfile change, or Kafka
+      migration is required for PR validation. Runtime picks up the contract
+      updates on the next normal omnimarket deployment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: contract YAML + topic wiring change only; no live deploy or runtime restart required; runtime pickup occurs on next normal deployment'"

@@ -95,5 +95,7 @@ def test_runtime_contract_uses_market_command_topic() -> None:
     assert event_bus["subscribe_topics"] == [
         "onex.cmd.omnimarket.filesystem-crawl-start.v1"
     ]
-    assert event_bus["publish_topics"] == ["onex.evt.omnimarket.content-discovered.v1"]
+    # Primary market topic is declared; omnimemory lifecycle topics are also
+    # declared as configurable publish topics (OMN-11061: wire undeclared literals).
+    assert "onex.evt.omnimarket.content-discovered.v1" in event_bus["publish_topics"]
     assert "onex.cmd.omnimemory.crawl-tick.v1" not in event_bus["subscribe_topics"]

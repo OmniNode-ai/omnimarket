@@ -124,13 +124,13 @@ terminal_event: onex.evt.omnimarket.redeploy-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.redeploy-start.v1
+    # Cross-service subscribe: deploy agent completion event
+    - onex.evt.deploy.rebuild-completed.v1
   publish_topics:
     - onex.evt.omnimarket.redeploy-phase-transition.v1
     - onex.evt.omnimarket.redeploy-completed.v1
-  # External topics routed to the deploy agent (not omnimarket-namespaced)
-  external_topics:
+    # Cross-service publish: deploy agent rebuild command
     - onex.cmd.deploy.rebuild-requested.v1
-    - onex.evt.deploy.rebuild-completed.v1
 
 dependencies:
   packages:
