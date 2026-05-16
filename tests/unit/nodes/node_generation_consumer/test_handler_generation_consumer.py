@@ -9,6 +9,8 @@ The fake satisfies the HandlerLlmOpenaiCompatible interface:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import pytest
@@ -310,3 +312,98 @@ async def test_emits_failed_topic_on_failure() -> None:
 
     assert any("generation-failed" in t for t, _ in published)
     assert not any("generation-completed" in t for t, _ in published)
+
+
+# ---------------------------------------------------------------------------
+# Deploy event tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_emits_deploy_event_on_success() -> None:
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-deploy-emit-1",
+        )
+    )
+
+    topics = [t for t, _ in published]
+    assert any("node-deploy" in t for t in topics)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_deploy_event_on_failure() -> None:
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_INVALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-deploy-fail-1",
+            max_attempts=1,
+        )
+    )
+
+    topics = [t for t, _ in published]
+    assert not any("node-deploy" in t for t in topics)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deploy_event_payload_has_hashes_and_source() -> None:
+
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-deploy-hash-1",
+        )
+    )
+
+    deploy_events = [(t, p) for t, p in published if "node-deploy" in t]
+    assert len(deploy_events) == 1
+
+    payload = json.loads(deploy_events[0][1])
+    assert payload["node_name"] == "node_stub_compute"
+    assert "contract_yaml" in payload
+    assert "handler_source" in payload
+    assert payload["generated_contract_hash"].startswith("sha256:")
+    assert payload["generated_handler_hash"].startswith("sha256:")
+
+    # Verify hashes are correct
+    expected_contract_hash = (
+        "sha256:" + hashlib.sha256(payload["contract_yaml"].encode()).hexdigest()
+    )
+    expected_handler_hash = (
+        "sha256:" + hashlib.sha256(payload["handler_source"].encode()).hexdigest()
+    )
+    assert payload["generated_contract_hash"] == expected_contract_hash
+    assert payload["generated_handler_hash"] == expected_handler_hash
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deploy_event_emitted_before_registration() -> None:
+    """Deploy must arrive before registration so executor is ready when MCP tool fires."""
+    published: list[tuple[str, bytes]] = []
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-order-1",
+        )
+    )
+
+    topics = [t for t, _ in published]
+    deploy_idx = next(i for i, t in enumerate(topics) if "node-deploy" in t)
+    registered_idx = next(i for i, t in enumerate(topics) if "node-registered" in t)
+    assert deploy_idx < registered_idx

@@ -9,7 +9,10 @@ Flow per invocation:
   4. Validate: schema (required contract fields) + syntax (ast.parse) + security (no hardcoded paths/topics)
   5. Retry on failure (up to max_attempts)
   6. Emit completed/failed benchmark event
-  7. On success: emit registration event with MCP tags so ServiceMCPToolSync picks it up
+  7. On success:
+     a. Emit deploy event (onex.cmd.runtime.node-deploy.v1) with contract + handler source
+        → HandlerGeneratedExecutor receives this, writes to sandbox, registers for execution
+     b. Emit registration event so ServiceMCPToolSync picks up the new MCP tool
 
 All LLM I/O is delegated to the injected effect_handler; this class never imports httpx.
 Topics are read from contract.yaml; never hardcoded.
@@ -18,6 +21,7 @@ Topics are read from contract.yaml; never hardcoded.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import logging
 import re
@@ -169,6 +173,7 @@ class HandlerGenerationConsumer:
         self._topic_registered = next(
             (t for t in publish_topics if "node-registered" in t), ""
         )
+        self._topic_deploy = next((t for t in publish_topics if "node-deploy" in t), "")
 
     def _ensure_effect(self) -> None:
         if self._effect is not None:
@@ -335,6 +340,7 @@ class HandlerGenerationConsumer:
 
         self._emit_benchmark(benchmark)
         if final_contract_passed:
+            self._emit_deploy(benchmark)
             self._emit_registration(benchmark)
 
         return benchmark
@@ -355,6 +361,36 @@ class HandlerGenerationConsumer:
         except Exception as exc:
             logger.warning(
                 "[generation-consumer] emit benchmark to %s failed: %s", topic, exc
+            )
+
+    def _emit_deploy(self, benchmark: ModelGenerationBenchmark) -> None:
+        if not self._topic_deploy:
+            logger.debug("[generation-consumer] no deploy topic configured; skipping")
+            return
+        try:
+            contract_hash = (
+                "sha256:" + hashlib.sha256(benchmark.contract_yaml.encode()).hexdigest()
+            )
+            handler_hash = (
+                "sha256:"
+                + hashlib.sha256(benchmark.handler_source.encode()).hexdigest()
+            )
+            payload = json.dumps(
+                {
+                    "node_name": _extract_node_name(benchmark.contract_yaml),
+                    "contract_yaml": benchmark.contract_yaml,
+                    "handler_source": benchmark.handler_source,
+                    "correlation_id": benchmark.correlation_id,
+                    "generated_contract_hash": contract_hash,
+                    "generated_handler_hash": handler_hash,
+                }
+            ).encode()
+            self._event_publisher(self._topic_deploy, payload)
+        except Exception as exc:
+            logger.warning(
+                "[generation-consumer] emit deploy to %s failed: %s",
+                self._topic_deploy,
+                exc,
             )
 
     def _emit_registration(self, benchmark: ModelGenerationBenchmark) -> None:

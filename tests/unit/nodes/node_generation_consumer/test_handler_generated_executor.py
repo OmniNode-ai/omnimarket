@@ -142,3 +142,132 @@ def test_default_sandbox_path_is_relative() -> None:
     """Default sandbox must not be an absolute machine-specific path."""
     executor = HandlerGeneratedExecutor()
     assert not executor.sandbox_dir.is_absolute()
+
+
+# ---------------------------------------------------------------------------
+# deploy() tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_deploy_writes_handler_and_contract_to_sandbox() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sandbox = Path(tmp)
+        executor = HandlerGeneratedExecutor(sandbox_dir=sandbox)
+
+        result = executor.deploy(
+            {
+                "node_name": "node_sentiment",
+                "contract_yaml": "name: node_sentiment\n",
+                "handler_source": _VALID_HANDLER,
+                "correlation_id": "corr-deploy-1",
+                "generated_contract_hash": "sha256:abc",
+                "generated_handler_hash": "sha256:def",
+            }
+        )
+
+        assert result["status"] == "ok"
+        assert result["node_name"] == "node_sentiment"
+        assert (sandbox / "node_sentiment" / "handler.py").read_text() == _VALID_HANDLER
+        assert (sandbox / "node_sentiment" / "contract.yaml").exists()
+
+
+@pytest.mark.unit
+def test_deploy_registers_node_for_execution() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sandbox = Path(tmp)
+        executor = HandlerGeneratedExecutor(sandbox_dir=sandbox)
+
+        executor.deploy(
+            {
+                "node_name": "node_echo2",
+                "contract_yaml": "",
+                "handler_source": _VALID_HANDLER,
+                "correlation_id": "corr-deploy-2",
+                "generated_contract_hash": "sha256:abc",
+                "generated_handler_hash": "sha256:def",
+            }
+        )
+
+        assert "node_echo2" in executor._registry
+        assert executor._registry["node_echo2"] == sandbox / "node_echo2" / "handler.py"
+
+
+@pytest.mark.unit
+def test_deploy_then_execute_runs_generated_handler() -> None:
+    """Full deploy→execute round-trip without any pre-written files."""
+    with tempfile.TemporaryDirectory() as tmp:
+        sandbox = Path(tmp)
+        executor = HandlerGeneratedExecutor(sandbox_dir=sandbox)
+
+        executor.deploy(
+            {
+                "node_name": "node_round_trip",
+                "contract_yaml": "",
+                "handler_source": _VALID_HANDLER,
+                "correlation_id": "corr-rt-1",
+                "generated_contract_hash": "sha256:abc",
+                "generated_handler_hash": "sha256:def",
+            }
+        )
+
+        result = executor.execute("node_round_trip", {"value": "deployed"})
+
+    assert result == {"echo": "deployed"}
+
+
+@pytest.mark.unit
+def test_deploy_accepts_json_bytes_payload() -> None:
+    import json
+
+    with tempfile.TemporaryDirectory() as tmp:
+        sandbox = Path(tmp)
+        executor = HandlerGeneratedExecutor(sandbox_dir=sandbox)
+
+        raw = json.dumps(
+            {
+                "node_name": "node_bytes",
+                "contract_yaml": "",
+                "handler_source": _VALID_HANDLER,
+                "correlation_id": "corr-bytes-1",
+                "generated_contract_hash": "sha256:abc",
+                "generated_handler_hash": "sha256:def",
+            }
+        ).encode()
+
+        result = executor.deploy(raw)
+
+    assert result["status"] == "ok"
+    assert result["node_name"] == "node_bytes"
+
+
+@pytest.mark.unit
+def test_deploy_returns_error_on_missing_node_name() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.deploy(
+            {"handler_source": _VALID_HANDLER, "contract_yaml": ""}
+        )
+
+    assert "error" in result
+    assert "missing node_name" in result["error"]
+
+
+@pytest.mark.unit
+def test_deploy_returns_error_on_missing_handler_source() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.deploy({"node_name": "node_no_src", "contract_yaml": ""})
+
+    assert "error" in result
+    assert "missing handler_source" in result["error"]
+
+
+@pytest.mark.unit
+def test_deploy_returns_error_on_invalid_json_bytes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.deploy(b"not valid json {")
+
+    assert "error" in result
+    assert "Invalid deploy payload JSON" in result["error"]

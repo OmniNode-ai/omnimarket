@@ -69,3 +69,24 @@ class ModelGenerationBenchmark(BaseModel):
     handler_source: str = Field(
         default="", description="Generated handler source (populated on success)"
     )
+
+
+class ModelNodeDeploy(BaseModel):
+    """Payload for the runtime hot-deploy event.
+
+    Consumed by HandlerGeneratedExecutor, which writes the source files to the
+    sandbox so the tool is executable without a runtime restart.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node_name: str = Field(description="Logical node name (matches sandbox directory)")
+    contract_yaml: str = Field(description="Full contract.yaml content")
+    handler_source: str = Field(description="Full handler.py content")
+    correlation_id: str = Field(description="Correlation ID from the generation run")
+    generated_contract_hash: str = Field(
+        description="SHA-256 hex digest of contract_yaml (sha256:<hex>)"
+    )
+    generated_handler_hash: str = Field(
+        description="SHA-256 hex digest of handler_source (sha256:<hex>)"
+    )
