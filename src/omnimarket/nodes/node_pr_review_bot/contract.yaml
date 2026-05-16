@@ -21,6 +21,8 @@ description: >
   before it can be resolved. Phases: INIT -> FETCH_DIFF -> REVIEW ->
   POST_THREADS -> WATCH -> JUDGE_VERIFY -> REPORT -> DONE.
   Circuit breaker trips after 3 consecutive failures.
+runtime_profiles:
+  - workers
 
 handler_routing:
   routing_strategy: "phase_dispatch"

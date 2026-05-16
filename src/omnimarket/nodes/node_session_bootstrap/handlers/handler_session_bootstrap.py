@@ -10,12 +10,12 @@ Rev 7 changes (from hostile review C3-C6):
   C3: Dispatch-event files include task_id — verifier uses IDs not scalar count.
   C6: check_command: str replaced by EnumDodCheckType — no command injection.
 
-Phase 2 additions: merge_sweep, overseer_verify, and contract_verify crons are
-now created automatically on session start alongside build_dispatch_pulse.
+Phase 2 additions: merge_sweep, overseer_verify, and contract_verify schedules
+are recorded automatically on session start alongside build_dispatch_pulse.
 
 Reads ModelBootstrapCommand, validates the session contract, writes a snapshot
-to .onex_state/, creates required CronCreate jobs (idempotent), writes cron IDs
-to disk, and returns a structured result.
+to .onex_state/, writes the desired launchd scheduler plan, optionally creates
+best-effort cron shims, and returns a structured result.
 
 DI injection point: cron_list_fn and cron_create_fn are injected via constructor.
 In production Claude Code sessions, the session runner must inject real CronList
@@ -93,6 +93,13 @@ class ModelBootstrapCommand(BaseModel):
     contract: ModelSessionContract
     state_dir: str = ".onex_state"
     dry_run: bool = False
+    enable_cron_shim: bool = Field(
+        default=False,
+        description=(
+            "Best-effort compatibility shim for Claude cron runners. "
+            "Launchd remains the primary scheduler surface."
+        ),
+    )
 
 
 class EnumBootstrapStatus(StrEnum):
@@ -132,6 +139,19 @@ class ModelCronSpec(BaseModel):
     timeout_budget_ms: int
     description: str
     is_phase1: bool = False
+
+
+class ModelSchedulerPlan(BaseModel):
+    """Launchd-first scheduler plan written by session bootstrap."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    session_mode: str
+    scheduler: str = "launchd"
+    cron_shim_enabled: bool = False
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
+    tasks: list[dict[str, object]] = Field(default_factory=list)
 
 
 # All required crons — Phase 1 (build_dispatch_pulse) and Phase 2 additions.
@@ -314,14 +334,14 @@ def build_pulse_prompt(
 class HandlerSessionBootstrap:
     """Session bootstrap orchestrator (Rev 7, Phase 2).
 
-    Validates session contract, writes contract snapshot, creates all required
-    CronCreate jobs (C5: idempotent via CronList pre-check), writes cron IDs
-    to disk, and returns ModelBootstrapResult.
+    Validates session contract, writes contract snapshot, writes the desired
+    launchd scheduler plan, optionally creates CronCreate compatibility shims,
+    and returns ModelBootstrapResult.
 
-    Phase 2 crons (merge_sweep, overseer_verify, contract_verify) are now
-    created automatically alongside the Phase 1 build_dispatch_pulse cron.
+    Phase 2 schedules (merge_sweep, overseer_verify, contract_verify) are now
+    recorded automatically alongside the Phase 1 build_dispatch_pulse schedule.
 
-    CronCreate calls are skipped when dry_run=True.  CronList and CronCreate
+    CronCreate calls are optional and best-effort. CronList and CronCreate
     callables are injected at construction time for testability.
 
     DI injection point: pass real CronList/CronCreate tool wrappers via
@@ -402,32 +422,33 @@ class HandlerSessionBootstrap:
                     f"Failed to write contract snapshot: {exc}",
                 )
 
-        # CronCreate for all required crons (C5: idempotent via CronList pre-check)
-        crons_registered: list[str] = []
-        failed_phase1_count = 0
+        active_cron_specs = [
+            spec
+            for spec in _REQUIRED_CRONS
+            if command.session_mode in spec.active_modes
+        ]
 
-        if command.session_mode in _CRON_ELIGIBLE_MODES:
-            existing_crons = self._list_existing_crons()
-            if existing_crons is None:
-                # CronList failed — skip registration entirely to avoid creating duplicates.
+        if not command.dry_run:
+            try:
+                self._write_scheduler_plan(command, active_cron_specs)
+            except OSError as exc:
                 _bump_status(
                     EnumBootstrapStatus.DEGRADED,
-                    "CronList unavailable — skipping cron registration to avoid duplicates",
+                    f"Failed to write scheduler plan: {exc}",
+                )
+
+        crons_registered: list[str] = []
+        if command.session_mode in _CRON_ELIGIBLE_MODES and command.enable_cron_shim:
+            existing_crons = self._list_existing_crons()
+            if existing_crons is None:
+                warnings.append(
+                    "CronList unavailable — skipping optional cron shim registration",
                 )
             else:
                 existing_names: set[str] = {c.get("name", "") for c in existing_crons}
 
-                for spec in _REQUIRED_CRONS:
-                    if command.session_mode not in spec.active_modes:
-                        logger.debug(
-                            "Cron %s not active in mode %s -- skipping",
-                            spec.cron_name,
-                            command.session_mode,
-                        )
-                        continue
-
+                for spec in active_cron_specs:
                     if spec.cron_name in existing_names:
-                        # C5: cron already registered -- skip, record existing ID
                         existing_id = next(
                             (
                                 c.get("id", spec.cron_name)
@@ -449,7 +470,6 @@ class HandlerSessionBootstrap:
                         crons_registered.append(f"(dry-run:{spec.cron_name})")
                         continue
 
-                    # Create the cron
                     prompt = build_pulse_prompt(
                         cron_name=spec.cron_name,
                         timeout_budget_ms=spec.timeout_budget_ms,
@@ -467,21 +487,12 @@ class HandlerSessionBootstrap:
                         )
                         crons_registered.append(job_id)
                     else:
-                        if spec.is_phase1:
-                            failed_phase1_count += 1
-                        _bump_status(
-                            EnumBootstrapStatus.DEGRADED,
-                            f"CronCreate failed for {spec.cron_name}",
-                        )
-
-                # If all phase-1 crons failed, mark as FAILED
-                phase1_required = sum(
-                    1
-                    for s in _REQUIRED_CRONS
-                    if s.is_phase1 and command.session_mode in s.active_modes
-                )
-                if phase1_required > 0 and failed_phase1_count >= phase1_required:
-                    current_status = EnumBootstrapStatus.FAILED
+                        warnings.append(f"CronCreate failed for {spec.cron_name}")
+        elif command.session_mode in _CRON_ELIGIBLE_MODES:
+            logger.info(
+                "Launchd-first bootstrap: cron shim disabled for session %s",
+                command.session_id,
+            )
 
         # Write cron IDs to disk
         if not command.dry_run and crons_registered:
@@ -578,6 +589,36 @@ class HandlerSessionBootstrap:
             fh.write(json.dumps(payload, indent=2))
         logger.info("Cron IDs written: %s", path)
 
+    def _write_scheduler_plan(
+        self,
+        command: ModelBootstrapCommand,
+        active_cron_specs: list[ModelCronSpec],
+    ) -> str:
+        """Write the launchd-first scheduler plan to disk."""
+        state_dir = os.path.abspath(command.state_dir)
+        os.makedirs(state_dir, exist_ok=True)
+        filename = f"session-scheduler-{command.session_id}.json"
+        path = os.path.join(state_dir, filename)
+        payload = ModelSchedulerPlan(
+            session_id=command.session_id,
+            session_mode=command.session_mode,
+            cron_shim_enabled=command.enable_cron_shim,
+            tasks=[
+                {
+                    "name": spec.cron_name,
+                    "schedule": spec.cron_expression,
+                    "timeout_budget_ms": spec.timeout_budget_ms,
+                    "description": spec.description,
+                    "prompt_template_key": spec.prompt_template_key,
+                }
+                for spec in active_cron_specs
+            ],
+        )
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(payload.model_dump_json(indent=2))
+        logger.info("Scheduler plan written: %s", path)
+        return path
+
 
 # ------------------------------------------------------------------
 # Default no-op CronList / CronCreate stubs.
@@ -614,5 +655,6 @@ __all__: list[str] = [
     "ModelBootstrapCommand",
     "ModelBootstrapResult",
     "ModelCronSpec",
+    "ModelSchedulerPlan",
     "build_pulse_prompt",
 ]
