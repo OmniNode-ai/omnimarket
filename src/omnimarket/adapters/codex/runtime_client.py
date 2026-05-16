@@ -209,7 +209,7 @@ class _CodexDispatchBusAdapter:
         )
 
         payload = dict(command.payload)
-        payload.setdefault("correlation_id", str(command.correlation_id))
+        payload["correlation_id"] = str(command.correlation_id)
         request = ModelDelegateSkillRequest.model_validate(payload)
         envelope = ModelEventEnvelope[ModelDelegateSkillRequest](
             payload=request,

@@ -934,6 +934,42 @@ async def test_delegate_skill_direct_dispatch_publishes_contract_payload() -> No
 
 
 @pytest.mark.asyncio
+async def test_delegate_skill_direct_dispatch_overrides_payload_correlation_id() -> (
+    None
+):
+    command_cid = uuid4()
+    stale_cid = uuid4()
+    assert command_cid != stale_cid
+    transport = _DirectDelegateSkillTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex",
+        command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+    )
+
+    result = await client.dispatch_async(
+        command_name="delegate_skill.orchestrate",
+        payload={
+            "prompt": "Override correlation id",
+            "task_type": "test",
+            "source": "codex",
+            "correlation_id": str(stale_cid),
+        },
+        correlation_id=command_cid,
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+        additional_response_topics=("onex.evt.omnimarket.delegate-skill-failed.v1",),
+    )
+
+    assert result.ok is True
+    assert len(transport.published) == 1
+    _, _, value = transport.published[0]
+    raw = json.loads(value)
+    assert raw["payload"]["correlation_id"] == str(command_cid)
+    assert raw["correlation_id"] == str(command_cid)
+
+
+@pytest.mark.asyncio
 async def test_delegate_skill_direct_dispatch_subscribes_to_terminal_topics_before_publish() -> (
     None
 ):
