@@ -43,89 +43,17 @@ Related Tickets:
 
 from __future__ import annotations
 
-from types import MappingProxyType
-
 from omnimemory.enums import EnumLifecycleState
-from pydantic import BaseModel, ConfigDict, Field
+from omnimemory.nodes.node_memory_lifecycle_orchestrator.validators.validator_lifecycle_transition import (
+    VALID_TRANSITIONS,
+    ModelTransitionValidationResult,
+)
 
 __all__ = [
     "VALID_TRANSITIONS",
     "ModelTransitionValidationResult",
     "ValidatorLifecycleTransition",
 ]
-
-# ---------------------------------------------------------------------------
-# Valid transitions map
-# Key: source state, Value: set of valid destination states
-# ---------------------------------------------------------------------------
-
-VALID_TRANSITIONS: MappingProxyType[
-    EnumLifecycleState, frozenset[EnumLifecycleState]
-] = MappingProxyType(
-    {
-        EnumLifecycleState.ACTIVE: frozenset(
-            {
-                EnumLifecycleState.STALE,
-                EnumLifecycleState.EXPIRED,
-                EnumLifecycleState.DELETED,
-            }
-        ),
-        EnumLifecycleState.STALE: frozenset(
-            {
-                EnumLifecycleState.ACTIVE,  # refreshed / promoted
-                EnumLifecycleState.EXPIRED,
-                EnumLifecycleState.DELETED,
-            }
-        ),
-        EnumLifecycleState.EXPIRED: frozenset(
-            {
-                EnumLifecycleState.ARCHIVED,
-                EnumLifecycleState.DELETED,
-            }
-        ),
-        EnumLifecycleState.ARCHIVED: frozenset(
-            {
-                EnumLifecycleState.ACTIVE,  # promoted / restored
-                EnumLifecycleState.DELETED,
-            }
-        ),
-        # DELETED is a terminal state - no outbound transitions.
-        EnumLifecycleState.DELETED: frozenset(),
-    }
-)
-
-
-class ModelTransitionValidationResult(
-    BaseModel
-):  # omnimemory-model-exempt: validator result
-    """Result of a lifecycle state transition validation.
-
-    Attributes:
-        valid: Whether the transition is permitted by the state machine.
-        from_state: The source lifecycle state.
-        to_state: The target lifecycle state.
-        reason: Human-readable explanation if the transition is invalid.
-            None when valid=True.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    valid: bool = Field(
-        ...,
-        description="Whether the transition is permitted by the state machine",
-    )
-    from_state: EnumLifecycleState = Field(
-        ...,
-        description="The source lifecycle state",
-    )
-    to_state: EnumLifecycleState = Field(
-        ...,
-        description="The target lifecycle state",
-    )
-    reason: str | None = Field(
-        default=None,
-        description="Human-readable explanation if the transition is invalid",
-    )
 
 
 class ValidatorLifecycleTransition:

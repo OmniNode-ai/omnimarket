@@ -1,0 +1,84 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11015"
+title: "Canonicalize memory lifecycle DTOs to omnimemory"
+summary: >
+  Replaces duplicate omnimarket memory lifecycle DTO definitions with
+  compatibility imports from canonical omnimemory classes while preserving
+  existing omnimarket module paths and contract schema refs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-lifecycle-import-tests"
+    description: "Focused import and schema-ref compatibility tests pass for lifecycle DTOs."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_memory_lifecycle_dto_omnimemory_imports.py tests/test_golden_chain_memory_lifecycle_orchestrator.py -q"
+  - id: "dod-lint"
+    description: "Ruff validates changed lifecycle compatibility modules and tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_memory_lifecycle_orchestrator tests/test_memory_lifecycle_dto_omnimemory_imports.py"
+  - id: "dod-d4-targeted-collision"
+    description: >
+      D4 overlay check with the OMN-11015 worktrees removes targeted omnimarket
+      memory lifecycle DTO collisions; unrelated residual findings remain
+      outside this ticket scope.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          OMNI_HOME=/Users/jonah/Code/omni_home/omni_worktrees/OMN-11015 uv run python - <<'PY'
+          from omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep import _check_d4_model_names
+
+          result = _check_d4_model_names("/Users/jonah/Code/omni_home/omni_worktrees/OMN-11015")
+          targets = {
+              "ModelArchiveMemoryCommand",
+              "ModelMemoryArchiveResult",
+              "ModelArchiveRecord",
+              "ModelMemoryRow",
+              "ModelCircuitBreakerConfigInfo",
+              "ModelMemoryArchiveHealth",
+              "ModelMemoryArchiveMetadata",
+              "ModelMemoryExpiredEvent",
+              "ModelMemoryArchiveInitiated",
+              "ModelMemoryTickResult",
+              "ModelMemoryTickHealth",
+              "ModelMemoryTickMetadata",
+              "ModelMemoryLifecycleProjection",
+              "ModelExpireMemoryCommand",
+              "ModelMemoryExpireResult",
+              "ModelMemoryCurrentState",
+              "ModelMemoryExpireHealth",
+              "ModelMemoryExpireMetadata",
+              "ModelTransitionValidationResult",
+          }
+          found = {finding.name for finding in result.findings or []}
+          assert not (targets & found), sorted(targets & found)
+          print("targeted D4 ok")
+          PY
+  - id: "dod-deploy-gate"
+    description: >
+      Runtime-path change is model import only; no live deploy, restart, or
+      .201 mutation required pre-merge. Deploy validation is post-merge import
+      smoke through the affected node entry points.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          echo deploy && uv run python - <<'PY'
+          from omnimarket.nodes.node_memory_lifecycle_orchestrator import ModelArchiveMemoryCommand
+          from omnimarket.nodes.node_memory_lifecycle_orchestrator import ModelExpireMemoryCommand
+          from omnimarket.nodes.node_memory_lifecycle_orchestrator import ModelMemoryTickResult
+
+          assert ModelArchiveMemoryCommand.__module__.startswith("omnimemory.")
+          assert ModelExpireMemoryCommand.__module__.startswith("omnimemory.")
+          assert ModelMemoryTickResult.__module__.startswith("omnimemory.")
+          PY
