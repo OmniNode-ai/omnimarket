@@ -28,8 +28,8 @@ removing the local class definition that D4 counted as a cross-repo collision.
 
 ## D4 Evidence
 
-Baseline scan against canonical `/Users/jonah/Code/omni_home` before applying
-the worktree overlay:
+Baseline scan against canonical `$OMNI_HOME` before applying the worktree
+overlay:
 
 ```text
 D4 status=FAIL finding_count=183
