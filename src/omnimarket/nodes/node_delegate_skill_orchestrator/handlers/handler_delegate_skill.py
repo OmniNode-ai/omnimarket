@@ -110,6 +110,18 @@ def _as_str_list(value: object) -> list[str]:
     return []
 
 
+def _estimate_claude_cost_savings(result: dict[str, object]) -> float:
+    prompt_tokens = _as_int(result.get("input_tokens", result.get("prompt_tokens", 0)))
+    completion_tokens = _as_int(
+        result.get("output_tokens", result.get("completion_tokens", 0))
+    )
+    # Matches the delegation workflow's baseline comparison estimate.
+    return round(
+        prompt_tokens * (3.0 / 1_000_000) + completion_tokens * (15.0 / 1_000_000),
+        6,
+    )
+
+
 def _response_from_result(
     request: ModelDelegateSkillRequest, result: dict[str, object]
 ) -> ModelDelegateSkillResponse:
@@ -138,6 +150,7 @@ def _response_from_result(
         quality_gate_passed=bool(
             result.get("quality_gate_passed", result.get("quality_passed", False))
         ),
+        quality_score=_as_float(result.get("quality_score")),
         quality_gates_failed=quality_failures,
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
@@ -147,8 +160,14 @@ def _response_from_result(
             output_tokens=_as_int(
                 result.get("output_tokens", result.get("completion_tokens", 0))
             ),
+            total_tokens=_as_int(result.get("total_tokens")),
+            tokens_to_compliance=_as_int(result.get("tokens_to_compliance")),
+            compliance_attempts=_as_int(result.get("compliance_attempts")),
             cost_usd=_as_float(result.get("cost_usd")),
-            cost_savings_usd=_as_float(result.get("cost_savings_usd")),
+            cost_savings_usd=_as_float(
+                result.get("cost_savings_usd"),
+                default=_estimate_claude_cost_savings(result),
+            ),
             latency_ms=_as_int(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),

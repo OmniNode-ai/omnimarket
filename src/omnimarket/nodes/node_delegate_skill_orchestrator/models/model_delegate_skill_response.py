@@ -21,6 +21,9 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
 
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    tokens_to_compliance: int = Field(default=0, ge=0)
+    compliance_attempts: int = Field(default=0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0.0)
     cost_savings_usd: float = Field(default=0.0, ge=0.0)
     latency_ms: int = Field(default=0, ge=0)
@@ -38,6 +41,7 @@ class ModelDelegateSkillResponse(BaseModel):
     model_name: str = Field(default="")
     response: str = Field(default="")
     quality_gate_passed: bool = Field(default=False)
+    quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
     quality_gates_failed: list[str] = Field(default_factory=list)
     metrics: ModelDelegateSkillResponseMetrics = Field(
         default_factory=ModelDelegateSkillResponseMetrics,

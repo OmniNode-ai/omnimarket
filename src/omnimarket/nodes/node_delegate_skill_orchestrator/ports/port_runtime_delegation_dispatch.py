@@ -5,22 +5,24 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.topic_constants import (
+    TOPIC_DELEGATION_COMPLETED,
+    TOPIC_DELEGATION_FAILED,
+    TOPIC_DELEGATION_REQUEST,
+)
 
 from omnimarket.adapters.codex.runtime_client import (
-    ModelDispatchBusCommand,
     ModelDispatchBusTerminalResult,
-    default_command_topic,
-    default_response_topic,
 )
 from omnimarket.events.delegation import ModelDelegationRequest
 
-_INTERNAL_COMMAND_NAME = "node_delegation_orchestrator"
 _REQUESTER = "delegate-skill-runtime-port"
 
 
@@ -52,11 +54,16 @@ class RuntimeDelegationDispatchPort:
         *,
         event_bus: ProtocolDelegationEventBus,
         command_topic: str | None = None,
+        completed_topic: str | None = None,
+        failed_topic: str | None = None,
         response_topic: str | None = None,
     ) -> None:
         self._event_bus = event_bus
-        self._command_topic = command_topic or default_command_topic()
-        self._response_topic = response_topic or default_response_topic()
+        self._command_topic = command_topic or TOPIC_DELEGATION_REQUEST
+        self._completed_topic = (
+            completed_topic or response_topic or TOPIC_DELEGATION_COMPLETED
+        )
+        self._failed_topic = failed_topic or TOPIC_DELEGATION_FAILED
 
     async def dispatch(
         self,
@@ -71,29 +78,20 @@ class RuntimeDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
     ) -> dict[str, object]:
-        dispatch_correlation_id = uuid4()
         request = ModelDelegationRequest(
             prompt=prompt,
             task_type=cast("Any", task_type),
             source_session_id=source_session_id,
             source_file_path=source_file_path,
-            correlation_id=dispatch_correlation_id,
+            correlation_id=correlation_id,
             max_tokens=max_tokens,
             emitted_at=datetime.now(UTC),
             quality_contract_mode=cast("Any", quality_contract_mode),
             acceptance_criteria=acceptance_criteria,
         )
-        command = ModelDispatchBusCommand(
-            command_name=_INTERNAL_COMMAND_NAME,
-            requester=_REQUESTER,
-            payload=request.model_dump(mode="json"),
-            correlation_id=dispatch_correlation_id,
-            response_topic=self._response_topic,
-            timeout_seconds=300.0,
-        )
 
         if not wait:
-            await self._publish_command(command)
+            await self._publish_request(request)
             return {
                 "status": "completed",
                 "content": "",
@@ -102,19 +100,14 @@ class RuntimeDelegationDispatchPort:
                 "quality_gate_passed": False,
             }
 
-        unsubscribe, queue = await self._subscribe_for_result(dispatch_correlation_id)
+        unsubscribe, queue = await self._subscribe_for_result(correlation_id)
         try:
-            await self._publish_command(command)
-            terminal = await asyncio.wait_for(
-                queue.get(), timeout=command.timeout_seconds
-            )
+            await self._publish_request(request)
+            terminal = await asyncio.wait_for(queue.get(), timeout=300.0)
         except TimeoutError:
             return {
                 "status": "timeout",
-                "error_message": (
-                    f"timed out after {command.timeout_seconds:g}s waiting for "
-                    "delegation result"
-                ),
+                "error_message": "timed out after 300s waiting for delegation result",
             }
         finally:
             await _unsubscribe(unsubscribe)
@@ -129,10 +122,10 @@ class RuntimeDelegationDispatchPort:
             result.update(_flatten_terminal_payload(terminal.payload))
         return result
 
-    async def _publish_command(self, command: ModelDispatchBusCommand) -> None:
-        envelope = ModelEventEnvelope[ModelDispatchBusCommand](
-            payload=command,
-            correlation_id=command.correlation_id,
+    async def _publish_request(self, request: ModelDelegationRequest) -> None:
+        envelope = ModelEventEnvelope[ModelDelegationRequest](
+            payload=request,
+            correlation_id=request.correlation_id,
             envelope_timestamp=datetime.now(UTC),
             event_type=self._command_topic,
             source_tool=_REQUESTER,
@@ -155,22 +148,31 @@ class RuntimeDelegationDispatchPort:
             value = _message_value(message)
             if value is None:
                 return
-            try:
-                envelope = ModelEventEnvelope[
-                    ModelDispatchBusTerminalResult
-                ].model_validate_json(value)
-            except ValueError:
+            terminal = _parse_delegation_terminal(
+                value,
+                expected_correlation_id=dispatch_correlation_id,
+            )
+            if terminal is None:
                 return
-            if envelope.payload.correlation_id != dispatch_correlation_id:
-                return
-            await queue.put(envelope.payload)
+            await queue.put(terminal)
 
-        unsubscribe = await self._event_bus.subscribe(
-            self._response_topic,
+        unsubscribe_completed = await self._event_bus.subscribe(
+            self._completed_topic,
             None,
             on_message,
             group_id=f"delegate-skill-runtime-port-{dispatch_correlation_id.hex}",
         )
+        unsubscribe_failed = await self._event_bus.subscribe(
+            self._failed_topic,
+            None,
+            on_message,
+            group_id=f"delegate-skill-runtime-port-{dispatch_correlation_id.hex}",
+        )
+
+        async def unsubscribe() -> None:
+            await unsubscribe_completed()
+            await unsubscribe_failed()
+
         return unsubscribe, queue
 
 
@@ -192,6 +194,46 @@ def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
             flattened["terminal_topic"] = topic
         return flattened
     return payload
+
+
+def _parse_delegation_terminal(
+    value: bytes | str,
+    *,
+    expected_correlation_id: UUID,
+) -> ModelDispatchBusTerminalResult | None:
+    try:
+        raw = json.loads(value.decode("utf-8") if isinstance(value, bytes) else value)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+
+    envelope_payload = raw.get("payload", raw)
+    if not isinstance(envelope_payload, dict):
+        return None
+
+    terminal_payload = _flatten_terminal_payload(
+        cast(dict[str, object], envelope_payload)
+    )
+    raw_correlation_id = terminal_payload.get("correlation_id")
+    try:
+        correlation_id = UUID(str(raw_correlation_id))
+    except (TypeError, ValueError):
+        return None
+    if correlation_id != expected_correlation_id:
+        return None
+
+    topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
+    is_failed = topic == TOPIC_DELEGATION_FAILED or bool(
+        terminal_payload.get("failure_reason")
+    )
+    error_message = str(terminal_payload.get("failure_reason") or "") or None
+    return ModelDispatchBusTerminalResult(
+        correlation_id=correlation_id,
+        status="failed" if is_failed else "completed",
+        payload=cast(dict[str, object], envelope_payload),
+        error_message=error_message,
+    )
 
 
 async def _unsubscribe(unsubscribe: Callable[[], Awaitable[None]]) -> None:
