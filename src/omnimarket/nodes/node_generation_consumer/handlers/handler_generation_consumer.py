@@ -28,7 +28,7 @@ import re
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import yaml
 
@@ -38,9 +38,6 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelNodeGenerationRequest,
 )
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
 # Loaded from contract.yaml at construction time — never hardcoded inline.
@@ -48,7 +45,9 @@ _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 
 _YAML_BLOCK_RE = re.compile(r"```ya?ml\s*(.*?)```", re.DOTALL)
 _PYTHON_BLOCK_RE = re.compile(r"```python\s*(.*?)```", re.DOTALL)
-_HARDCODED_PATH_RE = re.compile(r'["\']/(Users|Volumes|home)/[^"\']*["\']')
+_HARDCODED_PATH_RE = re.compile(
+    r'["\'](?:/(?:Users|Volumes|home|tmp|etc|var|opt|usr)|[A-Za-z]:\\)[^"\']*["\']'
+)
 _HARDCODED_TOPIC_RE = re.compile(r'["\']onex\.(cmd|evt)\.[a-z0-9._-]+\.v\d+["\']')
 
 _REQUIRED_CONTRACT_FIELDS = [
@@ -58,6 +57,8 @@ _REQUIRED_CONTRACT_FIELDS = [
     "input_model",
     "output_model",
 ]
+
+_DEFAULT_MODEL_ID = "Qwen/Qwen3-Coder-480B-A35B-Instruct"
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
@@ -110,11 +111,24 @@ def _validate_generation(contract_yaml: str, handler_source: str) -> dict[str, A
     except yaml.YAMLError as exc:
         errors.append(f"yaml parse error: {exc}")
 
-    try:
-        ast.parse(handler_source)
-        checks_passed.append("syntax")
-    except SyntaxError as exc:
-        errors.append(f"syntax error: {exc}")
+    if not handler_source.strip():
+        errors.append("syntax: handler source is empty")
+    else:
+        try:
+            tree = ast.parse(handler_source)
+            checks_passed.append("syntax")
+            # Require a top-level handle() function.
+            has_handle = any(
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "handle"
+                for node in tree.body
+            )
+            if not has_handle:
+                errors.append(
+                    "schema: handler source missing top-level handle() function"
+                )
+        except SyntaxError as exc:
+            errors.append(f"syntax error: {exc}")
 
     security_errors: list[str] = []
     if _HARDCODED_PATH_RE.search(handler_source):
@@ -178,7 +192,6 @@ class HandlerGenerationConsumer:
     def _ensure_effect(self) -> None:
         if self._effect is not None:
             return
-        import os
 
         from omnibase_infra.mixins.mixin_llm_http_transport import MixinLlmHttpTransport
         from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
@@ -190,13 +203,6 @@ class HandlerGenerationConsumer:
                 self._init_llm_http_transport(target_name="generation-consumer")
 
         self._effect = HandlerLlmOpenaiCompatible(transport=_Transport())
-        self._provider = os.environ.get("GENERATION_CONSUMER_PROVIDER", "local")
-        self._model_id = os.environ.get(
-            "GENERATION_CONSUMER_MODEL_ID", "Qwen/Qwen3-Coder-480B-A35B-Instruct"
-        )
-        self._endpoint_class = os.environ.get(
-            "GENERATION_CONSUMER_ENDPOINT_CLASS", "local"
-        )
 
     async def _call_llm(
         self,
@@ -220,7 +226,7 @@ class HandlerGenerationConsumer:
             )
 
         if self._injected_effect:
-            # Fast path for tests — fake ignores the request object.
+            assert self._effect is not None
             response = await self._effect.handle(None)
         else:
             from omnibase_infra.enums import EnumLlmOperationType
@@ -229,10 +235,9 @@ class HandlerGenerationConsumer:
             )
 
             endpoint = os.environ["GENERATION_CONSUMER_ENDPOINT"]
-            model_id = os.environ.get(
-                "GENERATION_CONSUMER_MODEL_ID", "Qwen/Qwen3-Coder-480B-A35B-Instruct"
-            )
+            model_id = os.environ.get("GENERATION_CONSUMER_MODEL_ID", _DEFAULT_MODEL_ID)
             api_key = os.environ.get("GENERATION_CONSUMER_API_KEY")
+            assert self._effect is not None
 
             request = ModelLlmInferenceRequest(
                 base_url=endpoint,
@@ -260,9 +265,7 @@ class HandlerGenerationConsumer:
         import os
 
         provider = os.environ.get("GENERATION_CONSUMER_PROVIDER", "local")
-        model_id = os.environ.get(
-            "GENERATION_CONSUMER_MODEL_ID", "Qwen/Qwen3-Coder-480B-A35B-Instruct"
-        )
+        model_id = os.environ.get("GENERATION_CONSUMER_MODEL_ID", _DEFAULT_MODEL_ID)
         endpoint_class = os.environ.get("GENERATION_CONSUMER_ENDPOINT_CLASS", "local")
 
         attempts: list[ModelGenerationAttempt] = []
@@ -340,8 +343,9 @@ class HandlerGenerationConsumer:
 
         self._emit_benchmark(benchmark)
         if final_contract_passed:
-            self._emit_deploy(benchmark)
-            self._emit_registration(benchmark)
+            deploy_ok = self._emit_deploy(benchmark)
+            if deploy_ok:
+                self._emit_registration(benchmark)
 
         return benchmark
 
@@ -363,10 +367,10 @@ class HandlerGenerationConsumer:
                 "[generation-consumer] emit benchmark to %s failed: %s", topic, exc
             )
 
-    def _emit_deploy(self, benchmark: ModelGenerationBenchmark) -> None:
+    def _emit_deploy(self, benchmark: ModelGenerationBenchmark) -> bool:
         if not self._topic_deploy:
             logger.debug("[generation-consumer] no deploy topic configured; skipping")
-            return
+            return False
         try:
             contract_hash = (
                 "sha256:" + hashlib.sha256(benchmark.contract_yaml.encode()).hexdigest()
@@ -386,12 +390,14 @@ class HandlerGenerationConsumer:
                 }
             ).encode()
             self._event_publisher(self._topic_deploy, payload)
+            return True
         except Exception as exc:
             logger.warning(
                 "[generation-consumer] emit deploy to %s failed: %s",
                 self._topic_deploy,
                 exc,
             )
+            return False
 
     def _emit_registration(self, benchmark: ModelGenerationBenchmark) -> None:
         if not self._topic_registered:

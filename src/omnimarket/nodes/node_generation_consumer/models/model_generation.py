@@ -31,7 +31,7 @@ class ModelNodeGenerationRequest(BaseModel):
     )
     correlation_id: str = Field(description="Unique run ID for event tracing")
     max_attempts: int = Field(
-        default=2, description="Maximum LLM retry attempts on validation failure"
+        default=2, gt=0, description="Maximum LLM retry attempts on validation failure"
     )
 
 

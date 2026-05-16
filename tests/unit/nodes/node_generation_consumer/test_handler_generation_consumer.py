@@ -155,7 +155,7 @@ def test_validate_generation_fails_on_syntax_error() -> None:
 
 @pytest.mark.unit
 def test_validate_generation_fails_on_hardcoded_path() -> None:
-    handler_with_path = 'def handle(x):\n    return "/Users/foo/bar"\n'
+    handler_with_path = 'def handle(x):\n    return "/Users/foo/bar"\n'  # test-literal-ok: testing validator rejects hardcoded paths
     result = _validate_generation(_VALID_CONTRACT_YAML, handler_with_path)
     assert result["valid"] is False
     assert any("hardcoded absolute path" in e for e in result["errors"])
@@ -407,3 +407,43 @@ async def test_deploy_event_emitted_before_registration() -> None:
     deploy_idx = next(i for i, t in enumerate(topics) if "node-deploy" in t)
     registered_idx = next(i for i, t in enumerate(topics) if "node-registered" in t)
     assert deploy_idx < registered_idx
+
+
+@pytest.mark.unit
+def test_validate_generation_fails_on_empty_handler() -> None:
+    result = _validate_generation(_VALID_CONTRACT_YAML, "")
+    assert result["valid"] is False
+    assert any("empty" in e for e in result["errors"])
+
+
+@pytest.mark.unit
+def test_validate_generation_fails_when_handle_function_missing() -> None:
+    handler_no_handle = "def process(x):\n    return x\n"
+    result = _validate_generation(_VALID_CONTRACT_YAML, handler_no_handle)
+    assert result["valid"] is False
+    assert any("handle()" in e for e in result["errors"])
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_registration_not_emitted_when_deploy_publisher_raises() -> None:
+    """Registration must be suppressed when deploy publish fails."""
+    published: list[tuple[str, bytes]] = []
+
+    def _failing_publisher(topic: str, payload: bytes) -> None:
+        if "node-deploy" in topic:
+            raise RuntimeError("broker down")
+        published.append((topic, payload))
+
+    handler = _make_handler([_VALID_LLM_RESPONSE], published=None)
+    handler._event_publisher = _failing_publisher
+
+    await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="corr-deploy-fail-gate-1",
+        )
+    )
+
+    topics = [t for t, _ in published]
+    assert not any("node-registered" in t for t in topics)

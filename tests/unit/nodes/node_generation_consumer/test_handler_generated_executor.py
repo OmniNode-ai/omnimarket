@@ -271,3 +271,35 @@ def test_deploy_returns_error_on_invalid_json_bytes() -> None:
 
     assert "error" in result
     assert "Invalid deploy payload JSON" in result["error"]
+
+
+@pytest.mark.unit
+def test_deploy_rejects_path_traversal_in_node_name() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.deploy(
+            {
+                "node_name": "../../etc/passwd",
+                "handler_source": _VALID_HANDLER,
+                "contract_yaml": "",
+            }
+        )
+
+    assert "error" in result
+    assert "unsafe" in result["error"]
+
+
+@pytest.mark.unit
+def test_deploy_rejects_absolute_node_name() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
+        result = executor.deploy(
+            {
+                "node_name": "/tmp/pwned",
+                "handler_source": _VALID_HANDLER,
+                "contract_yaml": "",
+            }
+        )
+
+    assert "error" in result
+    assert "unsafe" in result["error"]

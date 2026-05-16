@@ -7,7 +7,7 @@ Pre-wired at runtime startup. Owns two responsibilities:
 deploy(payload):
     Receives a node-deploy event payload, writes contract.yaml + handler.py to
     the sandbox directory, and registers the node in the internal dispatch table.
-    Called by the Kafka consumer when onex.cmd.runtime.node-deploy.v1 arrives.
+    Called by the Kafka consumer when onex.cmd.omnimarket.node-deploy.v1 arrives.
 
 execute(node_name, input_data):
     Loads the generated handler.py from sandbox at invocation time via importlib.
@@ -15,7 +15,7 @@ execute(node_name, input_data):
     Called when an MCP tool (exposed by ServiceMCPToolSync) is invoked.
 
 Full flow (no runtime restart):
-  1. node_generation_consumer emits onex.cmd.runtime.node-deploy.v1
+  1. node_generation_consumer emits onex.cmd.omnimarket.node-deploy.v1
   2. deploy() writes source to sandbox + registers node
   3. ServiceMCPToolSync receives node-registered event, hot-reloads tool metadata
   4. Next MCP call to that tool → execute() loads handler from disk → runs it
@@ -68,6 +68,15 @@ class HandlerGeneratedExecutor:
         if not handler_source:
             return {"error": f"deploy payload missing handler_source for {node_name}"}
 
+        # Reject path traversal: no "..", no absolute paths, no path separators.
+        if (
+            ".." in node_name
+            or node_name.startswith("/")
+            or "/" in node_name
+            or "\\" in node_name
+        ):
+            return {"error": f"deploy payload node_name is unsafe: {node_name!r}"}
+
         node_dir = self.sandbox_dir / node_name
         try:
             node_dir.mkdir(parents=True, exist_ok=True)
@@ -106,7 +115,7 @@ class HandlerGeneratedExecutor:
                 return {"error": f"Could not create module spec for {handler_path}"}
 
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)  # type: ignore[union-attr]
+            spec.loader.exec_module(module)
         except Exception as exc:
             logger.warning(
                 "[generated-executor] failed to load %s: %s", handler_path, exc

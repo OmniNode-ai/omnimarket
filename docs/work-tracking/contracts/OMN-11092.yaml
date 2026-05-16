@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11092
+title: "Wire generation consumer as real ONEX node in omnimarket"
+summary: "Port hackathon generation consumer into omnimarket as a proper ONEX node with contract.yaml, handler, models, and tests. Includes HandlerGeneratedExecutor for hot-deploy of generated nodes via Kafka event."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "event_bus"
+evidence_requirements:
+  - kind: "automated"
+    description: "Unit tests pass (33 tests)"
+    command: "uv run pytest tests/unit/nodes/node_generation_consumer/ -v"
+  - kind: "automated"
+    description: "Lint and format clean"
+    command: "uv run ruff format src/ tests/ && uv run ruff check src/ tests/"
+  - kind: "automated"
+    description: "Node registered in pyproject.toml entry-points"
+    command: "grep node_generation_consumer pyproject.toml"
+  - kind: "manual"
+    description: "Deploy event emitted and picked up by HandlerGeneratedExecutor on target runtime"
+    command: "rpk topic produce onex.cmd.omnimarket.node-deploy.v1 --brokers 192.168.86.201:19092"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "All 33 unit tests pass"
+    source: "automated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_generation_consumer/ -v"
+  - id: "dod-lint"
+    description: "Lint and format clean"
+    source: "automated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff format src/ tests/ && uv run ruff check src/ tests/"
+  - id: "dod-entry-point"
+    description: "Node registered in pyproject.toml"
+    source: "automated"
+    checks:
+      - check_type: "command"
+        check_value: "grep node_generation_consumer pyproject.toml"
+  - id: "dod-deploy-event"
+    description: "Hot-deploy event topic wired in contract.yaml and handler emits deploy event payload on success"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "rpk topic produce onex.cmd.omnimarket.node-deploy.v1 --brokers 192.168.86.201:19092"  # onex-allow-internal-ip OMN-11092 reason="runtime host reference in contract evidence"
