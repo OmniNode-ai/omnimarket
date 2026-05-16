@@ -4,14 +4,19 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+import omnimarket.nodes.node_overnight.consumer as consumer_mod
 from omnimarket.nodes.node_overnight.consumer import (
+    _CONTRACT_PATH,
     _DEFAULT_GROUP,
     TOPIC_OVERNIGHT_COMPLETED,
     TOPIC_OVERNIGHT_FAILED,
     TOPIC_OVERNIGHT_START,
     _build_failure_payload,
+    _invoke_overnight,
     _parse_command,
 )
 
@@ -94,3 +99,68 @@ class TestOvernightParseCommand:
         assert "phase" in failure
         assert "failed_at" in failure
         assert failure["phase"] == "overnight"
+
+
+@pytest.mark.unit
+class TestOvernightInvokeWiring:
+    """_invoke_overnight wires the runtime event bus and contract path."""
+
+    def test_handler_receives_kafka_publisher_and_contract_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        constructed: dict[str, object] = {}
+
+        class FakePublisher:
+            closed = False
+
+            def __call__(self, topic: str, payload: bytes) -> None:
+                constructed["published"] = (topic, payload)
+
+            def close(self) -> None:
+                self.closed = True
+                constructed["publisher_closed"] = True
+
+        publisher = FakePublisher()
+        monkeypatch.setattr(
+            consumer_mod,
+            "_build_event_publisher",
+            lambda: publisher,
+        )
+
+        class FakeHandler:
+            def __init__(self, *, event_bus: object, contract_path: object) -> None:
+                constructed["event_bus"] = event_bus
+                constructed["contract_path"] = contract_path
+
+            def handle(self, command: object, *, dispatch_phases: bool) -> object:
+                constructed["dispatch_phases"] = dispatch_phases
+                return SimpleNamespace(
+                    session_status=SimpleNamespace(value="completed"),
+                    phases_run=["nightly_loop_controller"],
+                    phases_failed=[],
+                )
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_overnight.handlers.handler_overnight.HandlerOvernight",
+            FakeHandler,
+        )
+
+        result = _invoke_overnight(
+            {
+                "correlation_id": "night-corr-001",
+                "max_cycles": 1,
+                "skip_nightly_loop": False,
+                "skip_build_loop": True,
+                "skip_merge_sweep": True,
+                "dry_run": True,
+                "enable_self_loop": False,
+                "loop_delay_seconds": 60,
+            }
+        )
+
+        assert constructed["event_bus"] is publisher
+        assert constructed["contract_path"] == _CONTRACT_PATH
+        assert constructed["dispatch_phases"] is True
+        assert constructed["publisher_closed"] is True
+        assert result["session_status"] == "completed"
+        assert result["phases_run"] == ["nightly_loop_controller"]
