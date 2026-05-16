@@ -12,12 +12,13 @@ capabilities:
   requires_repo: false
   requires_secrets: true
   requires_docker: false
-  side_effect_class: write
+  side_effect_class: effect
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.1.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["generation", "llm", "node-creation", "hackathon", "mcp"]
 pack: "generation"
 display_name: "Node Generation Consumer"
-node_role: "consumer"
+node_role: "orchestrator"

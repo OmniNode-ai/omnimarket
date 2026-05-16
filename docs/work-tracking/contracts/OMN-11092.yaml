@@ -19,7 +19,7 @@ evidence_requirements:
     command: "grep node_generation_consumer pyproject.toml"
   - kind: "manual"
     description: "Deploy event emitted and picked up by HandlerGeneratedExecutor on target runtime"
-    command: "rpk topic produce onex.cmd.omnimarket.node-deploy.v1 --brokers 192.168.86.201:19092"
+    command: "rpk topic produce onex.cmd.omnimarket.node-deploy.v1 --brokers 192.168.86.201:19092"  # onex-allow-internal-ip OMN-11092 reason="runtime host in deploy evidence command"
 emergency_bypass:
   enabled: false
   justification: ""
