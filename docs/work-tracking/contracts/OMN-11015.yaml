@@ -35,10 +35,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |
-          OMNI_HOME=/Users/jonah/Code/omni_home/omni_worktrees/OMN-11015 uv run python - <<'PY'
+          D4_TMP=<temp omni_home containing this omnimarket worktree plus omnimemory> uv run python - <<'PY'
+          import os
           from omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep import _check_d4_model_names
 
-          result = _check_d4_model_names("/Users/jonah/Code/omni_home/omni_worktrees/OMN-11015")
+          result = _check_d4_model_names(os.environ["D4_TMP"])
           targets = {
               "ModelArchiveMemoryCommand",
               "ModelMemoryArchiveResult",
