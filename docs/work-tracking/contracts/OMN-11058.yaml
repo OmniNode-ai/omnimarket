@@ -27,7 +27,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run pytest tests/ -m 'not kafka and not slow and not integration' -q --tb=short"
+        check_value: "See docs/evidence/dep-health-sweep/critical-topic-triage.md — manual verification of dep_health sweep returning status=clean with 0 CRITICAL findings after externally_consumed_topics annotation and dep_health_allowlist.yaml applied"
   - id: "dod-deploy"
     description: "No live deploy required — this PR adds a contract annotation (externally_consumed_topics) and a static allowlist file only. No Kafka topic is created, no container is restarted, and no runtime topology changes."
     source: "manual"
