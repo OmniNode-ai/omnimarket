@@ -53,6 +53,24 @@ def test_test_file_change_included() -> None:
     assert "tests/inference/" in paths
 
 
+def test_nonexistent_test_dirs_filtered_out(tmp_path: Path) -> None:
+    """Mapped test dirs that do not exist on disk must be dropped.
+
+    Why: adapter source changes map to tests/adapters/, but adapter tests
+    currently live as flat tests/test_adapter_*.py files. Passing a missing
+    directory to pytest exits with collection error 4.
+    """
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "inference").mkdir()
+    paths = resolve_test_paths(
+        ["src/omnimarket/adapters/codex/runtime_client.py"],
+        ADJACENCY_PATH,
+        repo_root=tmp_path,
+    )
+    assert "tests/adapters/" not in paths
+    assert all((tmp_path / p).exists() for p in paths)
+
+
 def test_shared_module_triggers_full_suite() -> None:
     sel = compute_selection(
         changed_files=["src/omnimarket/models/some_model.py"],
