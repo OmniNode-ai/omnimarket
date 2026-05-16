@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11053"
+title: "Change default onboarding policy_name from new_employee to setup"
+summary: >
+  ModelOnboardingStartCommand now defaults policy_name to "setup". No existing
+  tests relied on the old default; all 5 focused handler tests pass with the change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused handler_onboarding tests pass with default policy_name=setup."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_onboarding/ -q"
+  - id: "dod-deploy"
+    description: >
+      Runtime-path change is the default value of a Pydantic field in
+      ModelOnboardingStartCommand. No live deploy or runtime restart was
+      performed in this PR; post-merge validation should import the affected
+      model in the deployed runtime.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy && uv run python -c \"from omnimarket.nodes.node_onboarding.models.model_onboarding_start_command import ModelOnboardingStartCommand; assert ModelOnboardingStartCommand().policy_name == 'setup'\""
