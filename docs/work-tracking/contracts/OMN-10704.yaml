@@ -14,7 +14,7 @@ evidence_requirements:
     command: "uv run pytest tests/ci/test_run_dep_health_sweep_script.py -q"
   - kind: "ci"
     description: "Contract-config validator passes for the touched CI script."
-    command: "uv run python -m omnibase_core.validators.contract_config_compliance /Users/jonah/Code/omni_home/omni_worktrees/OMN-10704/omnimarket/scripts/ci/run_dep_health_sweep.py"
+    command: "cd ${OMNI_HOME}/omnibase_core && uv run python -m omnibase_core.validators.contract_config_compliance ${OMNI_HOME}/omni_worktrees/OMN-10704/omnimarket/scripts/ci/run_dep_health_sweep.py"
   - kind: "ci"
     description: "Touched files pass ruff."
     command: "uv run ruff check scripts/ci/run_dep_health_sweep.py src/omnimarket/nodes/node_dependency_health_sweep/__init__.py tests/ci/test_run_dep_health_sweep_script.py"
@@ -37,7 +37,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run python -m omnibase_core.validators.contract_config_compliance /Users/jonah/Code/omni_home/omni_worktrees/OMN-10704/omnimarket/scripts/ci/run_dep_health_sweep.py"
+        check_value: "cd ${OMNI_HOME}/omnibase_core && uv run python -m omnibase_core.validators.contract_config_compliance ${OMNI_HOME}/omni_worktrees/OMN-10704/omnimarket/scripts/ci/run_dep_health_sweep.py"
   - id: "dod-lint"
     description: "Ruff check passed for touched files."
     source: "manual"
