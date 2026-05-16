@@ -40,6 +40,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
 
+from omnimarket.config.settings import Settings, get_settings
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
@@ -105,32 +106,33 @@ _MODEL_COST_PER_1K: dict[str, float] = {
 }
 
 
-def _build_event_bus() -> ProtocolEventBusPublisher:
-    """Build a live Kafka event bus if KAFKA_BOOTSTRAP_SERVERS is set, else inmemory."""
-    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
+def _build_event_bus(settings: Settings | None = None) -> ProtocolEventBusPublisher:
+    """Build the live Kafka event bus, failing closed when bootstrap config is absent."""
+    runtime_settings = settings or get_settings()
+    bootstrap = runtime_settings.get_effective_kafka_bootstrap_servers()
     if not bootstrap:
-        logger.warning(
-            "[BUILD-LOOP] KAFKA_BOOTSTRAP_SERVERS not set — using in-memory event bus"
+        raise RuntimeError(
+            "KAFKA_BOOTSTRAP_SERVERS (or KAFKA_BROKER) is required for the live "
+            "build loop event bus. Refusing to downgrade to EventBusInmemory."
         )
-        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
-        return cast(ProtocolEventBusPublisher, EventBusInmemory())
     try:
         from omnibase_infra.event_bus.event_bus_kafka import (
             EventBusKafka,
         )
+        from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
-        bus = cast(ProtocolEventBusPublisher, EventBusKafka())
+        bus_config = ModelKafkaEventBusConfig(
+            bootstrap_servers=bootstrap,
+            environment=runtime_settings.kafka_environment or "local",
+        )
+        bus = cast(ProtocolEventBusPublisher, EventBusKafka(config=bus_config))
         logger.info("[BUILD-LOOP] EventBusKafka connected to %s", bootstrap)
         return bus
     except Exception as exc:
-        logger.warning(
-            "[BUILD-LOOP] EventBusKafka init failed: %s — using in-memory event bus",
-            exc,
-        )
-        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
-        return cast(ProtocolEventBusPublisher, EventBusInmemory())
+        raise RuntimeError(
+            "Failed to initialize EventBusKafka for the live build loop. "
+            "Refusing to downgrade to EventBusInmemory."
+        ) from exc
 
 
 def _estimate_cost(model: str, total_tokens: int) -> float:
