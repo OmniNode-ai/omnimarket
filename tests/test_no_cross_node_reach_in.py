@@ -46,7 +46,8 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket/nodes/node_build_loop_orchestrator/handlers/handler_build_loop_orchestrator.py:75",
         "omnimarket/nodes/node_build_loop_orchestrator/handlers/handler_build_loop_orchestrator.py:652",
         # node_pr_lifecycle_fix_effect → node_pr_lifecycle_inventory_compute
-        "omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_admin_merge.py:26",
+        # OMN-9889: line shift from runtime ownership imports
+        "omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_admin_merge.py:27",
         # node_baseline_compare → node_baseline_capture
         "omnimarket/nodes/node_baseline_compare/models/__init__.py:3",
         "omnimarket/nodes/node_baseline_compare/handlers/handler_baseline_compare.py:23",
@@ -55,9 +56,10 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # node_pr_review_bot → node_hostile_reviewer
         "omnimarket/nodes/node_pr_review_bot/models/models.py:20",
         # merge_sweep cluster reach-ins
-        "omnimarket/nodes/node_merge_sweep_auto_merge_arm_effect/handlers/handler_auto_merge_arm.py:25",
-        "omnimarket/nodes/node_ci_rerun_effect/handlers/handler_ci_rerun.py:24",
-        "omnimarket/nodes/node_thread_reply_effect/handlers/handler_thread_reply.py:34",
+        # OMN-9889: line shift from runtime ownership imports
+        "omnimarket/nodes/node_merge_sweep_auto_merge_arm_effect/handlers/handler_auto_merge_arm.py:29",
+        "omnimarket/nodes/node_ci_rerun_effect/handlers/handler_ci_rerun.py:26",
+        "omnimarket/nodes/node_thread_reply_effect/handlers/handler_thread_reply.py:35",
         "omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py:33",
         "omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py:36",
         # OMN-10400: orchestrated merge-sweep workflow emits the existing
