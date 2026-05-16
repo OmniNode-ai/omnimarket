@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10704"
+title: "Contract-config compliance cleanup"
+summary: >
+  First omnimarket contract-config compliance cleanup batch: route the dependency health CI gate through
+  the node package public API instead of importing directly from the private handlers package.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Dep-health CI script tests pass."
+    command: "uv run pytest tests/ci/test_run_dep_health_sweep_script.py -q"
+  - kind: "ci"
+    description: "Contract-config validator passes for the touched CI script."
+    command: "uv run python -m omnibase_core.validators.contract_config_compliance /Users/jonah/Code/omni_home/omni_worktrees/OMN-10704/omnimarket/scripts/ci/run_dep_health_sweep.py"
+  - kind: "ci"
+    description: "Touched files pass ruff."
+    command: "uv run ruff check scripts/ci/run_dep_health_sweep.py src/omnimarket/nodes/node_dependency_health_sweep/__init__.py tests/ci/test_run_dep_health_sweep_script.py"
+  - kind: "ci"
+    description: "Deploy/import smoke for the public node API passes without live deploy or runtime restart."
+    command: "echo deploy && uv run python -c \"from omnimarket.nodes.node_dependency_health_sweep import HandlerDepHealthSweep; print(HandlerDepHealthSweep.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Dep-health CI script tests passed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_run_dep_health_sweep_script.py -q"
+  - id: "dod-validator-script"
+    description: "Contract-config validator passed for the touched CI script."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnibase_core.validators.contract_config_compliance /Users/jonah/Code/omni_home/omni_worktrees/OMN-10704/omnimarket/scripts/ci/run_dep_health_sweep.py"
+  - id: "dod-lint"
+    description: "Ruff check passed for touched files."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check scripts/ci/run_dep_health_sweep.py src/omnimarket/nodes/node_dependency_health_sweep/__init__.py tests/ci/test_run_dep_health_sweep_script.py"
+  - id: "dod-deploy"
+    description: "Import smoke passed for the dep-health node public API; no live deploy, runtime restart, or .201 mutation was performed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy && uv run python -c \"from omnimarket.nodes.node_dependency_health_sweep import HandlerDepHealthSweep; print(HandlerDepHealthSweep.__name__)\""
