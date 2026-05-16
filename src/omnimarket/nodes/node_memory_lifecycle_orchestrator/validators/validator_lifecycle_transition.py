@@ -43,6 +43,9 @@ Related Tickets:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import cast
+
 from omnimemory.enums import EnumLifecycleState
 from omnimemory.nodes.node_memory_lifecycle_orchestrator.validators.validator_lifecycle_transition import (
     VALID_TRANSITIONS,
@@ -54,6 +57,11 @@ __all__ = [
     "ModelTransitionValidationResult",
     "ValidatorLifecycleTransition",
 ]
+
+_VALID_TRANSITIONS = cast(
+    Mapping[EnumLifecycleState, frozenset[EnumLifecycleState]],
+    VALID_TRANSITIONS,
+)
 
 
 class ValidatorLifecycleTransition:
@@ -124,7 +132,7 @@ class ValidatorLifecycleTransition:
                 ),
             )
 
-        allowed = VALID_TRANSITIONS[from_state]
+        allowed = _VALID_TRANSITIONS[from_state]
 
         if to_state in allowed:
             return ModelTransitionValidationResult(
@@ -171,7 +179,7 @@ class ValidatorLifecycleTransition:
         Returns:
             True if the transition is allowed by the state machine.
         """
-        return self.validate(from_state, to_state).valid
+        return bool(self.validate(from_state, to_state).valid)
 
     def get_valid_transitions(
         self,
@@ -186,4 +194,4 @@ class ValidatorLifecycleTransition:
             Frozenset of valid destination states. Empty if from_state
             is terminal (DELETED).
         """
-        return VALID_TRANSITIONS[from_state]
+        return _VALID_TRANSITIONS[from_state]
