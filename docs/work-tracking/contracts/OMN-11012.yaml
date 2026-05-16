@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11012"
+title: "Settle node_service_registry migration ownership"
+summary: >
+  node_service_registry DDL ownership is explicit in the omnimarket
+  node_projection_registration metadata and create migration. The current
+  omnibase_infra main branch no longer carries the duplicate
+  docker/migrations/forward/079_create_node_service_registry.sql migration, so
+  the table is owned by omnimarket as a projection/API read model.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-ownership-tests"
+    description: "Focused tests prove the omnimarket metadata, migration, and docs declare node_service_registry ownership."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_node_service_registry_migration_ownership.py -q"
+  - id: "dod-projection-regression"
+    description: "Existing registration projection golden-chain tests still pass after the contract metadata correction."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_projection_registration.py -q"
+  - id: "dod-owner-scan"
+    description: "Targeted scan proves the infra duplicate migration is absent and the only remaining CREATE TABLE statement is the omnimarket projection migration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "test ! -e ../omnibase_infra/docker/migrations/forward/079_create_node_service_registry.sql && rg -n \"CREATE TABLE(?: IF NOT EXISTS)? node_service_registry|CREATE TABLE(?: IF NOT EXISTS)? \\\"node_service_registry\\\"\" ../omnibase_infra/docker/migrations src/omnimarket/nodes/node_projection_registration/migrations"
+  - id: "dod-deploy"
+    description: >
+      Deploy evidence: this is node metadata, migration comment, and docs/test
+      ownership classification only. No live deploy, runtime restart, topic
+      change, Dockerfile change, migration execution, or service wiring change is
+      required for PR validation.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: OMN-11012 is ownership metadata/docs/tests only; no live deploy or runtime restart required'"
