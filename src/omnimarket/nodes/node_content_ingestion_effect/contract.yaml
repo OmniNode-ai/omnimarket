@@ -17,6 +17,12 @@ handler:
   class: HandlerContentIngestion
   input_model: omnimarket.nodes.node_content_ingestion_effect.models.model_ingestion_request.ModelIngestionRequest
 
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  runtime_profiles:
+    - effects
 description: |
   Consumes content-discovered events from the filesystem crawler and dispatches
   to content-type-specific extraction handlers. Content-type routing (python →

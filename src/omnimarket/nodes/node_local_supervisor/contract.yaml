@@ -33,6 +33,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 300000
+  runtime_profiles:
+    - effects
 
 model_routing:
   primary: qwen3-coder-30b

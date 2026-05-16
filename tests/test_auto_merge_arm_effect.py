@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -35,18 +35,12 @@ def _cmd(pr_node_id: str = "PR_kwXXXXXX") -> ModelAutoMergeArmCommand:
     )
 
 
-def _mock_proc(returncode: int = 0, stderr: bytes = b"") -> MagicMock:
-    proc = MagicMock()
-    proc.returncode = returncode
-    proc.communicate = AsyncMock(return_value=(b'{"data": {}}', stderr))
-    return proc
-
-
 @pytest.mark.asyncio
 async def test_successful_arm_returns_for_effect_with_completion() -> None:
     """Happy path: GraphQL succeeds → armed=True completion event in output."""
-    mock_proc = _mock_proc(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    ):
         handler = HandlerAutoMergeArmEffect()
         output = await handler.handle(_cmd())
 
@@ -64,8 +58,11 @@ async def test_successful_arm_returns_for_effect_with_completion() -> None:
 @pytest.mark.asyncio
 async def test_failed_arm_returns_armed_false_with_error() -> None:
     """GraphQL fails → armed=False, error set."""
-    mock_proc = _mock_proc(returncode=1, stderr=b"auth error")
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    with patch.object(
+        HandlerAutoMergeArmEffect,
+        "_arm_sync",
+        return_value=(False, "auth error"),
+    ):
         handler = HandlerAutoMergeArmEffect()
         output = await handler.handle(_cmd())
 
@@ -79,8 +76,9 @@ async def test_failed_arm_returns_armed_false_with_error() -> None:
 @pytest.mark.asyncio
 async def test_elapsed_seconds_recorded() -> None:
     """Elapsed time is recorded in completion event (non-negative)."""
-    mock_proc = _mock_proc(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    ):
         handler = HandlerAutoMergeArmEffect()
         output = await handler.handle(_cmd())
 
@@ -92,9 +90,9 @@ async def test_elapsed_seconds_recorded() -> None:
 @pytest.mark.asyncio
 async def test_idempotent_already_armed_succeeds() -> None:
     """Re-arming an already-armed PR: GitHub GraphQL returns success (idempotent)."""
-    # GitHub returns exit 0 even when already armed — simulate that
-    mock_proc = _mock_proc(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    ):
         handler = HandlerAutoMergeArmEffect()
         output1 = await handler.handle(_cmd())
         output2 = await handler.handle(_cmd())

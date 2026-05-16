@@ -46,6 +46,10 @@ event_type:
 # =============================================================================
 # EVENT BUS SUBCONTRACT - Runtime Routing Layer
 # =============================================================================
+descriptor:
+  runtime_profiles:
+    - effects
+
 event_bus:
   version:
     major: 1

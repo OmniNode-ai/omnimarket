@@ -26,6 +26,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 60000
+  runtime_profiles:
+    - effects
 
 inputs:
   repo_path:

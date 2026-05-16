@@ -115,6 +115,62 @@ class ModelPRInfo(BaseModel):
             "from a genuinely frozen PR (same sha across consecutive snapshots). [OMN-9404]"
         ),
     )
+    pr_node_id: str | None = Field(
+        default=None,
+        description=(
+            "GitHub GraphQL node ID for the pull request. "
+            "Lets the triage orchestrator emit auto-merge commands without "
+            "performing its own GitHub lookup."
+        ),
+    )
+    head_ref_name: str | None = Field(
+        default=None,
+        description=(
+            "GitHub head ref name for this PR. "
+            "Lets the triage orchestrator emit rebase/auto-merge commands "
+            "without performing its own GitHub lookup."
+        ),
+    )
+    base_ref_name: str | None = Field(
+        default=None,
+        description=(
+            "GitHub base ref name for this PR. "
+            "Lets the triage orchestrator emit rebase/conflict commands "
+            "without performing its own GitHub lookup."
+        ),
+    )
+    failing_run_id_github: str | None = Field(
+        default=None,
+        description=(
+            "Most recent failing GitHub Actions run ID derived from status checks. "
+            "Lets the triage orchestrator emit CI rerun/fix commands without "
+            "performing its own GitHub lookup."
+        ),
+    )
+    failing_job_name: str | None = Field(
+        default=None,
+        description=(
+            "First failing check/job name derived from status checks. "
+            "Lets the triage orchestrator emit CI fix commands without "
+            "performing its own GitHub lookup."
+        ),
+    )
+    open_thread_comment_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Open review-thread comment GraphQL IDs. "
+            "Lets the triage orchestrator emit thread-reply commands without "
+            "performing its own GitHub lookup."
+        ),
+    )
+    changed_file_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Changed file paths for the PR. "
+            "Lets the triage orchestrator emit conflict-hunk commands without "
+            "performing its own GitHub lookup."
+        ),
+    )
 
 
 class ModelClassifiedPR(BaseModel):

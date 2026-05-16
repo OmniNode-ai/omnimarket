@@ -16,6 +16,12 @@ handler:
   module: omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep
   class: HandlerDepHealthSweep
   input_model: ModelDepHealthSweepRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  runtime_profiles:
+    - effects
 description: |
   DepHealthSweep analyzes static import graphs and contract topology across
   the ONEX delegation pipeline repos. It detects orphan imports, missing topic

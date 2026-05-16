@@ -1,17 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for GitHubCliAdapter (OMN-9284).
-
-Replaces ``asyncio.create_subprocess_exec`` with a recorder so we can assert
-on the exact ``gh`` argv invoked for each block-reason path without spawning
-any real processes.
-"""
 
 from __future__ import annotations
-
-import asyncio
-import json
-from collections.abc import Awaitable, Callable
 
 import pytest
 
@@ -21,199 +11,173 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli i
 )
 
 
-class _FakeProc:
-    def __init__(self, stdout: bytes = b"", stderr: bytes = b"", rc: int = 0) -> None:
-        self._stdout = stdout
-        self._stderr = stderr
-        self.returncode = rc
-
-    async def communicate(self) -> tuple[bytes, bytes]:
-        return self._stdout, self._stderr
-
-
-@pytest.fixture
-def subprocess_recorder(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Callable[[list[_FakeProc]], list[list[str]]]:
-    """Return a helper that installs a fake ``create_subprocess_exec``.
-
-    Each call pops one _FakeProc from the supplied queue; the argv is
-    appended to a shared list the test can assert on.
-    """
-
-    def install(queue: list[_FakeProc]) -> list[list[str]]:
-        calls: list[list[str]] = []
-
-        async def fake_exec(*argv: str, **_kwargs: object) -> _FakeProc:
-            calls.append(list(argv))
-            if not queue:
-                return _FakeProc()
-            return queue.pop(0)
-
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
-        return calls
-
-    return install
-
-
 @pytest.mark.unit
 class TestGitHubCliAdapter:
     async def test_rerun_failed_checks_enumerates_and_reruns_each(
-        self, subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]]
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """rerun_failed_checks: one `gh pr view` + one `gh run rerun` per failed run."""
-        pr_view_payload = {
-            "statusCheckRollup": [
-                {
-                    "conclusion": "FAILURE",
-                    "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/111/job/1",
-                },
-                {
-                    "conclusion": "SUCCESS",
-                    "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/222/job/2",
-                },
-                {
-                    "conclusion": "TIMED_OUT",
-                    "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/333/job/3",
-                },
-                {
-                    "conclusion": "FAILURE",
-                    "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/111/job/4",
-                },  # dedup
-            ]
-        }
-        calls = subprocess_recorder(
-            [
-                _FakeProc(stdout=json.dumps(pr_view_payload).encode()),
-                _FakeProc(),
-                _FakeProc(),
-            ]
+        graphql_calls: list[tuple[str, dict[str, object]]] = []
+        rerun_calls: list[tuple[str, str]] = []
+
+        def fake_graphql(query: str, variables: dict[str, object]) -> dict[str, object]:
+            graphql_calls.append((query, variables))
+            return {
+                "repository": {
+                    "pullRequest": {
+                        "commits": {
+                            "nodes": [
+                                {
+                                    "commit": {
+                                        "statusCheckRollup": {
+                                            "contexts": {
+                                                "nodes": [
+                                                    {
+                                                        "__typename": "CheckRun",
+                                                        "conclusion": "FAILURE",
+                                                        "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/111/job/1",
+                                                    },
+                                                    {
+                                                        "__typename": "CheckRun",
+                                                        "conclusion": "SUCCESS",
+                                                        "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/222/job/2",
+                                                    },
+                                                    {
+                                                        "__typename": "CheckRun",
+                                                        "conclusion": "TIMED_OUT",
+                                                        "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/333/job/3",
+                                                    },
+                                                    {
+                                                        "__typename": "CheckRun",
+                                                        "conclusion": "FAILURE",
+                                                        "detailsUrl": "https://github.com/OmniNode-ai/omnimarket/actions/runs/111/job/4",
+                                                    },
+                                                ]
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+
+        def fake_rest_no_content(
+            method: str, path: str, *, body: dict[str, object] | None = None
+        ) -> None:
+            del body
+            rerun_calls.append((method, path))
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.graphql",
+            fake_graphql,
+        )
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_no_content",
+            fake_rest_no_content,
         )
 
         adapter = GitHubCliAdapter()
         result = await adapter.rerun_failed_checks("OmniNode-ai/omnimarket", 42)
 
         assert "rerequested 2 failed run(s)" in result
-        assert calls[0][:4] == ["gh", "pr", "view", "42"]
-        assert calls[1] == [
-            "gh",
-            "run",
-            "rerun",
-            "111",
-            "--failed",
-            "--repo",
-            "OmniNode-ai/omnimarket",
-        ]
-        assert calls[2] == [
-            "gh",
-            "run",
-            "rerun",
-            "333",
-            "--failed",
-            "--repo",
-            "OmniNode-ai/omnimarket",
+        assert len(graphql_calls) == 1
+        assert rerun_calls == [
+            (
+                "POST",
+                "/repos/OmniNode-ai/omnimarket/actions/runs/111/rerun-failed-jobs",
+            ),
+            (
+                "POST",
+                "/repos/OmniNode-ai/omnimarket/actions/runs/333/rerun-failed-jobs",
+            ),
         ]
 
     async def test_rerun_failed_checks_no_failed_runs(
-        self, subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]]
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        pr_view_payload = {
-            "statusCheckRollup": [
-                {
-                    "conclusion": "SUCCESS",
-                    "detailsUrl": "https://github.com/x/y/actions/runs/1/job/1",
+        def fake_graphql(query: str, variables: dict[str, object]) -> dict[str, object]:
+            del query, variables
+            return {
+                "repository": {
+                    "pullRequest": {
+                        "commits": {
+                            "nodes": [
+                                {
+                                    "commit": {
+                                        "statusCheckRollup": {"contexts": {"nodes": []}}
+                                    }
+                                }
+                            ]
+                        }
+                    }
                 }
-            ]
-        }
-        calls = subprocess_recorder(
-            [_FakeProc(stdout=json.dumps(pr_view_payload).encode())]
+            }
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.graphql",
+            fake_graphql,
         )
 
         adapter = GitHubCliAdapter()
         result = await adapter.rerun_failed_checks("OmniNode-ai/omnimarket", 42)
 
         assert "no failed checks" in result
-        assert len(calls) == 1  # only pr view, no rerun
 
     async def test_resolve_conflicts_calls_update_branch(
-        self, subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]]
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        calls = subprocess_recorder([_FakeProc(rc=0)])
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_rest_json(
+            method: str, path: str, *, body: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            calls.append((method, path, body))
+            if method == "GET":
+                return {"head": {"sha": "deadbeef"}}
+            return {"message": "Updating pull request branch."}
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_json",
+            fake_rest_json,
+        )
+
         adapter = GitHubCliAdapter()
         result = await adapter.resolve_conflicts("OmniNode-ai/omnimarket", 42)
 
-        assert "update-branch succeeded" in result
-        assert calls[0] == [
-            "gh",
-            "pr",
-            "update-branch",
-            "42",
-            "--repo",
-            "OmniNode-ai/omnimarket",
+        assert result == "deadbeef"
+        assert calls == [
+            ("GET", "/repos/OmniNode-ai/omnimarket/pulls/42", None),
+            (
+                "PUT",
+                "/repos/OmniNode-ai/omnimarket/pulls/42/update-branch",
+                {"expected_head_sha": "deadbeef"},
+            ),
+            ("GET", "/repos/OmniNode-ai/omnimarket/pulls/42", None),
         ]
 
     async def test_resolve_conflicts_raises_on_failure(
-        self, subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]]
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        subprocess_recorder(
-            [_FakeProc(rc=1, stderr=b"structural conflict - manual merge required")]
-        )
-        adapter = GitHubCliAdapter()
+        class _BoomError(RuntimeError):
+            pass
 
+        def fake_rest_json(
+            method: str, path: str, *, body: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            del path, body
+            if method == "GET":
+                return {"head": {"sha": "deadbeef"}}
+            raise _BoomError("structural conflict - manual merge required")
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli.rest_json",
+            fake_rest_json,
+        )
+
+        adapter = GitHubCliAdapter()
         with pytest.raises(RuntimeError, match="manual resolution"):
             await adapter.resolve_conflicts("OmniNode-ai/omnimarket", 42)
-
-    async def test_run_times_out_and_kills_hung_process(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """`_run` must kill the child and raise RuntimeError if communicate hangs.
-
-        Regression lock for OMN-9284 follow-up: an unbounded `gh` call can stall
-        the entire FIX phase. Same false-positive class the OMN-9284 fix is meant
-        to eliminate.
-        """
-        kill_calls: list[int] = []
-
-        class _HangingProc:
-            returncode: int | None = None
-
-            async def communicate(self) -> tuple[bytes, bytes]:
-                if self.returncode is not None:
-                    return b"", b""
-                await asyncio.sleep(10)  # Simulate a hang longer than timeout.
-                return b"", b""
-
-            def kill(self) -> None:
-                kill_calls.append(1)
-                self.returncode = -9
-
-        async def fake_exec(*_argv: str, **_kwargs: object) -> _HangingProc:
-            return _HangingProc()
-
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
-
-        adapter = GitHubCliAdapter()
-        with pytest.raises(RuntimeError, match="timed out"):
-            await adapter._run(
-                ["gh", "pr", "view", "1"],
-                context="hang test",
-                timeout_s=0.05,
-            )
-        assert kill_calls == [1], "hung child must be killed on timeout"
-
-    async def test_run_raises_runtime_error_when_gh_binary_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """`_run` must raise RuntimeError (not bare OSError) if gh is missing."""
-
-        async def fake_exec(*_argv: str, **_kwargs: object) -> object:
-            raise FileNotFoundError("gh: command not found")
-
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
-
-        adapter = GitHubCliAdapter()
-        with pytest.raises(RuntimeError, match="failed to start gh"):
-            await adapter._run(["gh", "pr", "view", "1"], context="missing-gh test")
 
     def test_run_id_parser_handles_standard_urls(self) -> None:
         assert (
@@ -230,7 +194,3 @@ class TestGitHubCliAdapter:
         )
         assert _run_id_from_details_url("https://example.com/whatever") is None
         assert _run_id_from_details_url("") is None
-
-
-def _unused(x: Awaitable[object]) -> None:  # keep import useful for type checker
-    del x

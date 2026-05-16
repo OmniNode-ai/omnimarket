@@ -18,6 +18,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 300000
+  runtime_profiles:
+    - effects
 
 inputs:
   correlation_id:

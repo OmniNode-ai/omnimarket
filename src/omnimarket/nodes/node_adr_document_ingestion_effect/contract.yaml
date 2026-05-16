@@ -18,6 +18,12 @@ handler:
   module: omnimarket.nodes.node_adr_document_ingestion_effect.handlers.handler_document_ingestion
   class: HandlerDocumentIngestion
   input_model: ModelIngestionRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  runtime_profiles:
+    - effects
 description: |
   Consumes adr-document-ingestion-requested.v1 commands, walks each root_path
   recursively for .md files (excluding node_modules/, .git/, omni_worktrees/,

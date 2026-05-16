@@ -14,7 +14,6 @@ Focused adversarial tests on failure modes:
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -72,15 +71,6 @@ def _event(
 
 def _initial_state(run_id: UUID = _RUN_ID, total_prs: int = 3) -> ModelMergeSweepState:
     return ModelMergeSweepState(run_id=run_id, total_prs=total_prs)
-
-
-def _mock_gh(returncode: int = 0) -> MagicMock:
-    proc = MagicMock()
-    proc.returncode = returncode
-    proc.communicate = AsyncMock(
-        return_value=(json.dumps({}).encode(), b"" if returncode == 0 else b"error")
-    )
-    return proc
 
 
 # --- Test 1: Duplicate events → no double-count, terminal fires once ---
@@ -255,7 +245,7 @@ def test_concurrent_runs_different_scope_no_collision() -> None:
 
 @pytest.mark.asyncio
 async def test_re_arm_already_armed_pr_returns_success() -> None:
-    """Re-arming an already-armed PR: gh returns 0 → handler reports armed=True (idempotent)."""
+    """Re-arming an already-armed PR: API success → handler reports armed=True (idempotent)."""
     cmd = ModelAutoMergeArmCommand(
         pr_number=101,
         repo=_REPO,
@@ -265,9 +255,9 @@ async def test_re_arm_already_armed_pr_returns_success() -> None:
         run_id=_RUN_ID,
         total_prs=1,
     )
-    # gh returns 0 even for already-armed PRs (GraphQL enablePullRequestAutoMerge is idempotent)
-    mock_proc = _mock_gh(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    ):
         handler = HandlerAutoMergeArmEffect()
         output = await handler.handle(cmd)
 

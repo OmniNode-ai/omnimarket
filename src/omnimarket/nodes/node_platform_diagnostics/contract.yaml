@@ -22,6 +22,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 
 terminal_event: onex.evt.omnimarket.platform-diagnostics-completed.v1
 

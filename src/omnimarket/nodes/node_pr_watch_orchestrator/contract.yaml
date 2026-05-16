@@ -21,6 +21,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 30000
+  runtime_profiles:
+    - effects
 
 event_bus:
   consumer_group: omnimarket.pr_watch_orchestrator.consume.v1

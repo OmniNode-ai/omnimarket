@@ -14,14 +14,15 @@ Related:
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import re
-import subprocess
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+
+from omnimarket.github_api import GitHubApiError, graphql, split_repo
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,48 @@ _TRIVIAL_BOT_PATTERNS = re.compile(
 )
 
 # Bot login names to detect
-_BOT_LOGINS = frozenset({"coderabbitai", "github-actions[bot]", "dependabot[bot]"})
+_BOT_LOGINS = frozenset(
+    {
+        "coderabbitai",
+        "coderabbitai[bot]",
+        "github-actions[bot]",
+        "dependabot[bot]",
+    }
+)
+
+_REVIEW_THREADS_QUERY = """
+query($owner: String!, $repo: String!, $prNumber: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $prNumber) {
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          comments(first: 20) {
+            nodes {
+              body
+              author {
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+_RESOLVE_THREAD_MUTATION = """
+mutation($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -64,16 +106,18 @@ class ProtocolCommentAdapter(Protocol):
     async def list_review_comments(
         self, repo: str, pr_number: int
     ) -> list[dict[str, object]]:
-        """Return raw review comment dicts from the GitHub API."""
+        """Return unresolved review-thread summaries from the GitHub API."""
         ...
 
-    async def resolve_thread(self, repo: str, pr_number: int, comment_id: int) -> None:
-        """Mark a review comment thread resolved."""
+    async def resolve_thread(
+        self, repo: str, pr_number: int, thread_id: str | int
+    ) -> None:
+        """Mark a review thread resolved."""
         ...
 
 
 # ---------------------------------------------------------------------------
-# Default live adapter (gh CLI + gh api)
+# Default live adapter (GitHub GraphQL)
 # ---------------------------------------------------------------------------
 
 
@@ -81,31 +125,70 @@ class _LiveCommentAdapter:
     async def list_review_comments(
         self, repo: str, pr_number: int
     ) -> list[dict[str, object]]:
-        result = subprocess.run(
-            ["gh", "api", f"repos/{repo}/pulls/{pr_number}/comments"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            logger.debug("gh api review_comments failed: %s", result.stderr.strip())
-            return []
-        data: list[dict[str, object]] = json.loads(result.stdout)
-        return data
+        return await asyncio.to_thread(self._list_review_comments_sync, repo, pr_number)
 
-    async def resolve_thread(self, repo: str, pr_number: int, comment_id: int) -> None:
-        subprocess.run(
-            [
-                "gh",
-                "api",
-                "--method",
-                "PATCH",
-                f"repos/{repo}/pulls/comments/{comment_id}",
-                "-f",
-                "body=[resolved by omninode merge-sweep]",
-            ],
-            capture_output=True,
-            text=True,
+    def _list_review_comments_sync(
+        self, repo: str, pr_number: int
+    ) -> list[dict[str, object]]:
+        owner, repo_name = split_repo(repo)
+        data = graphql(
+            _REVIEW_THREADS_QUERY,
+            {"owner": owner, "repo": repo_name, "prNumber": pr_number},
         )
+        thread_nodes = (
+            (
+                (((data.get("repository") or {}).get("pullRequest")) or {}).get(
+                    "reviewThreads"
+                )
+            )
+            or {}
+        ).get("nodes", [])
+        results: list[dict[str, object]] = []
+        for thread in thread_nodes:
+            if not isinstance(thread, dict) or thread.get("isResolved"):
+                continue
+            comments = ((thread.get("comments") or {}).get("nodes")) or []
+            if not comments:
+                continue
+            first = comments[0] if isinstance(comments[0], dict) else {}
+            author = first.get("author") or {}
+            login = str(author.get("login", "")) if isinstance(author, dict) else ""
+            body = str(first.get("body", ""))
+            has_human_reply = any(
+                isinstance(comment, dict)
+                and isinstance(comment.get("author"), dict)
+                and str((comment.get("author") or {}).get("login", ""))
+                not in _BOT_LOGINS
+                and not str((comment.get("author") or {}).get("login", "")).endswith(
+                    "[bot]"
+                )
+                for comment in comments[1:]
+            )
+            thread_id = thread.get("id")
+            if isinstance(thread_id, str) and thread_id:
+                results.append(
+                    {
+                        "id": thread_id,
+                        "user": {"login": login},
+                        "body": body,
+                        "has_human_reply": has_human_reply,
+                    }
+                )
+        return results
+
+    async def resolve_thread(
+        self, repo: str, pr_number: int, thread_id: str | int
+    ) -> None:
+        del repo, pr_number
+        await asyncio.to_thread(self._resolve_thread_sync, thread_id)
+
+    def _resolve_thread_sync(self, thread_id: str | int) -> None:
+        try:
+            graphql(_RESOLVE_THREAD_MUTATION, {"threadId": str(thread_id)})
+        except GitHubApiError as exc:
+            raise RuntimeError(
+                f"resolveReviewThread failed for {thread_id}: {exc}"
+            ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +225,8 @@ class HandlerCommentResolution:
         body = str(comment.get("body", ""))
         is_bot = login in _BOT_LOGINS or login.endswith("[bot]")
         is_trivial = bool(_TRIVIAL_BOT_PATTERNS.search(body))
-        return is_bot and is_trivial
+        has_human_reply = bool(comment.get("has_human_reply"))
+        return is_bot and is_trivial and not has_human_reply
 
     def _is_human_comment(self, comment: dict[str, object]) -> bool:
         """Return True if comment is from a human (not a bot)."""
@@ -175,12 +259,12 @@ class HandlerCommentResolution:
         preserved_count = 0
 
         for comment in comments:
-            comment_id = int(comment.get("id", 0))  # type: ignore[call-overload]
+            thread_id = comment.get("id")
+            if not isinstance(thread_id, (str, int)):
+                continue
             if self._is_trivial_bot_comment(comment):
                 if not dry_run:
-                    await self._adapter.resolve_thread(
-                        repo=repo, pr_number=pr_number, comment_id=comment_id
-                    )
+                    await self._adapter.resolve_thread(repo, pr_number, thread_id)
                 resolved_count += 1
             elif self._is_human_comment(comment):
                 preserved_count += 1

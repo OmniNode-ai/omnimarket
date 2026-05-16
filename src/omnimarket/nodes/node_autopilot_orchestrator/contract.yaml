@@ -33,6 +33,8 @@ descriptor:
     - effects
   idempotent: false
   timeout_ms: 3600000
+  runtime_profiles:
+    - effects
 
 inputs:
   correlation_id:

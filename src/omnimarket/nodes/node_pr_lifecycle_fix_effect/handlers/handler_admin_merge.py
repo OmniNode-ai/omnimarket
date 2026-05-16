@@ -16,13 +16,14 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import subprocess
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.github_api import rest_json, split_repo
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelStuckQueueEntry,
 )
@@ -56,7 +57,7 @@ class ProtocolAdminMergeAdapter(Protocol):
     """Minimal GitHub merge operations for admin merge fallback."""
 
     async def admin_merge(self, repo: str, pr_number: int) -> None:
-        """Admin-merge a PR via gh pr merge --admin --squash."""
+        """Merge a PR immediately via GitHub's pull-request merge API."""
         ...
 
 
@@ -67,26 +68,15 @@ class ProtocolAdminMergeAdapter(Protocol):
 
 class _LiveAdminMergeAdapter:
     async def admin_merge(self, repo: str, pr_number: int) -> None:
-        result = subprocess.run(
-            [
-                "gh",
-                "pr",
-                "merge",
-                str(pr_number),
-                "--admin",
-                "--squash",
-                "--repo",
-                repo,
-            ],
-            capture_output=True,
-            text=True,
+        await asyncio.to_thread(self._admin_merge_sync, repo, pr_number)
+
+    def _admin_merge_sync(self, repo: str, pr_number: int) -> None:
+        owner, repo_name = split_repo(repo)
+        rest_json(
+            "PUT",
+            f"/repos/{owner}/{repo_name}/pulls/{pr_number}/merge",
+            body={"merge_method": "squash"},
         )
-        if result.returncode != 0:
-            msg = (
-                f"gh pr merge --admin failed for {repo}#{pr_number} "
-                f"(exit {result.returncode}): {result.stderr.strip()}"
-            )
-            raise RuntimeError(msg)
 
 
 # ---------------------------------------------------------------------------

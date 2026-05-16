@@ -33,6 +33,8 @@ descriptor:
   purity: side_effect
   idempotent: false
   timeout_ms: 300000
+  runtime_profiles:
+    - effects
 
 inputs:
   pr_number:

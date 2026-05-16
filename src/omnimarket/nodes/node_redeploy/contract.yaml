@@ -59,6 +59,8 @@ descriptor:
   purity: side_effect
   idempotent: false
   timeout_ms: 660000
+  runtime_profiles:
+    - effects
 
 inputs:
   scope:

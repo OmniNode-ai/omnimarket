@@ -13,8 +13,12 @@ Idempotent: re-arming an already-armed PR returns success.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import time
+import urllib.error
+import urllib.request
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
@@ -35,6 +39,9 @@ _GRAPHQL_MUTATION = (
     "  }"
     "}"
 )
+_GITHUB_GRAPHQL = "https://api.github.com/graphql"
+_GITHUB_API_VERSION = "2026-03-10"
+_REQUEST_TIMEOUT = 30.0
 
 
 class HandlerAutoMergeArmEffect:
@@ -81,20 +88,39 @@ class HandlerAutoMergeArmEffect:
 
     async def _arm(self, pr_node_id: str, repo: str) -> tuple[bool, str | None]:
         """Enable auto-merge via GraphQL. Idempotent per GitHub API contract."""
-        proc = await asyncio.create_subprocess_exec(
-            "gh",
-            "api",
-            "graphql",
-            "-F",
-            f"id={pr_node_id}",
-            "-F",
-            "method=SQUASH",
-            "-f",
-            f"query={_GRAPHQL_MUTATION}",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        return await asyncio.to_thread(self._arm_sync, pr_node_id, repo)
+
+    def _arm_sync(self, pr_node_id: str, repo: str) -> tuple[bool, str | None]:
+        token = os.environ.get("GH_PAT", "")
+        if not token:
+            return False, "GH_PAT environment variable is not set"
+
+        payload = json.dumps(
+            {
+                "query": _GRAPHQL_MUTATION,
+                "variables": {"id": pr_node_id, "method": "SQUASH"},
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            _GITHUB_GRAPHQL,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json",
+                "X-GitHub-Api-Version": _GITHUB_API_VERSION,
+            },
+            method="POST",
         )
-        _stdout, stderr = await proc.communicate()
-        if proc.returncode == 0:
-            return True, None
-        return False, stderr.decode(errors="replace")
+        try:
+            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace").strip()
+            return False, detail or str(exc)
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            return False, str(exc)
+
+        if body.get("errors"):
+            return False, json.dumps(body["errors"])
+        return True, None

@@ -27,6 +27,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 5000
+  runtime_profiles:
+    - effects
 
 terminal_event: onex.evt.omnimarket.ledger-state-reduced.v1
 

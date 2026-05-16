@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerAutoRebase — auto-rebase stale PR branches via `gh pr update-branch`.
+"""HandlerAutoRebase — auto-rebase stale PR branches via GitHub's update-branch API.
 
 Targets Track A-update PRs (merge_state_status=BEHIND or UNKNOWN).
 Protocol-injected adapter allows mock substitution in tests with zero infra.
@@ -11,12 +11,14 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import subprocess
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+
+from omnimarket.github_api import rest_json, split_repo
 
 logger = logging.getLogger(__name__)
 
@@ -53,43 +55,36 @@ class ProtocolRebaseAdapter(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Default live adapter (calls gh CLI)
+# Default live adapter (GitHub REST API)
 # ---------------------------------------------------------------------------
 
 
 class _LiveRebaseAdapter:
-    """Live adapter that calls `gh pr update-branch`."""
+    """Live adapter that calls GitHub's update-branch API."""
 
     async def update_branch(self, repo: str, pr_number: int) -> str:
-        result = subprocess.run(
-            ["gh", "pr", "update-branch", str(pr_number), "--repo", repo],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            msg = f"gh pr update-branch failed (exit {result.returncode}): {result.stderr.strip()}"
-            raise RuntimeError(msg)
+        return await asyncio.to_thread(self._update_branch_sync, repo, pr_number)
 
-        # Try to capture the new HEAD SHA for observability
-        sha_result = subprocess.run(
-            [
-                "gh",
-                "pr",
-                "view",
-                str(pr_number),
-                "--repo",
-                repo,
-                "--json",
-                "headRefOid",
-                "--jq",
-                ".headRefOid",
-            ],
-            capture_output=True,
-            text=True,
+    def _update_branch_sync(self, repo: str, pr_number: int) -> str:
+        owner, repo_name = split_repo(repo)
+        pr = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        head = pr.get("head") or {}
+        head_sha = head.get("sha")
+        if not isinstance(head_sha, str) or not head_sha:
+            raise RuntimeError(
+                f"update-branch failed for {repo}#{pr_number}: missing head sha"
+            )
+        rest_json(
+            "PUT",
+            f"/repos/{owner}/{repo_name}/pulls/{pr_number}/update-branch",
+            body={"expected_head_sha": head_sha},
         )
-        if sha_result.returncode == 0 and sha_result.stdout.strip():
-            return sha_result.stdout.strip()
-        return result.stdout.strip() or f"rebased {repo}#{pr_number}"
+        refreshed = rest_json("GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}")
+        refreshed_head = refreshed.get("head") or {}
+        new_sha = refreshed_head.get("sha")
+        if isinstance(new_sha, str) and new_sha:
+            return new_sha
+        return f"rebased {repo}#{pr_number}"
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +93,7 @@ class _LiveRebaseAdapter:
 
 
 class HandlerAutoRebase:
-    """Auto-rebase stale PR branches via `gh pr update-branch`.
+    """Auto-rebase stale PR branches via the GitHub update-branch API.
 
     In dry_run=True: logs intent, returns ModelRebaseResult(success=True) without
     calling gh.
@@ -141,7 +136,7 @@ class HandlerAutoRebase:
 
         if dry_run:
             logger.info(
-                "[noop] would rebase branch for %s#%s via gh pr update-branch",
+                "[noop] would rebase branch for %s#%s via update-branch API",
                 repo,
                 pr_number,
             )

@@ -25,6 +25,8 @@ descriptor:
   # 8 sequential probes x ~15s each = up to 120s before orchestrator logic runs.
   # Raised to 300s to accommodate slow SSH timeouts + orchestrator overhead.
   timeout_ms: 300000
+  runtime_profiles:
+    - effects
 
 inputs:
   correlation_id:

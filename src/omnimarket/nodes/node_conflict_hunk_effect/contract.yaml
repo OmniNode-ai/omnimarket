@@ -27,6 +27,8 @@ descriptor:
   purity: impure
   idempotent: false
   timeout_ms: 300000
+  runtime_profiles:
+    - effects
 
 model_routing:
   conflict_resolver:

@@ -67,6 +67,11 @@ def _pr(
     review_decision: str | None = "APPROVED",
     required_checks_pass: bool = True,
     is_draft: bool = False,
+    pr_node_id: str | None = None,
+    head_ref_name: str | None = None,
+    base_ref_name: str | None = None,
+    head_sha: str | None = None,
+    failing_run_id_github: str | None = None,
 ) -> ModelPRInfo:
     return ModelPRInfo(
         number=number,
@@ -77,6 +82,15 @@ def _pr(
         review_decision=review_decision,
         required_checks_pass=required_checks_pass,
         is_draft=is_draft,
+        pr_node_id=pr_node_id if pr_node_id is not None else f"PR_kw{number}",
+        head_ref_name=head_ref_name if head_ref_name is not None else f"feat/{number}",
+        base_ref_name=base_ref_name if base_ref_name is not None else "main",
+        head_sha=head_sha if head_sha is not None else f"sha{number}",
+        failing_run_id_github=(
+            failing_run_id_github
+            if failing_run_id_github is not None
+            else f"{number}{number}{number}"
+        ),
     )
 
 
@@ -99,9 +113,27 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     PR 200: A_UPDATE + BEHIND + APPROVED → Rebase (mocked success) → REBASED
     PR 300: B_POLISH + MERGEABLE + BLOCKED + checks_fail → CiRerun → CI_RERUN_TRIGGERED
     """
-    pr1 = _pr(100, merge_state_status="CLEAN", review_decision="APPROVED")
-    pr2 = _pr(200, merge_state_status="BEHIND", review_decision="APPROVED")
-    pr3 = _pr(300, merge_state_status="BLOCKED", required_checks_pass=False)
+    pr1 = _pr(
+        100,
+        merge_state_status="CLEAN",
+        review_decision="APPROVED",
+        pr_node_id="PR_kwGOLDEN100",
+        head_ref_name="feat/pr100",
+    )
+    pr2 = _pr(
+        200,
+        merge_state_status="BEHIND",
+        review_decision="APPROVED",
+        head_ref_name="feat/pr200",
+        base_ref_name="main",
+        head_sha="sha200abc",
+    )
+    pr3 = _pr(
+        300,
+        merge_state_status="BLOCKED",
+        required_checks_pass=False,
+        failing_run_id_github="99887700",
+    )
 
     classified = [
         _classified(pr1, EnumPRTrack.A_UPDATE),
@@ -116,39 +148,61 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     )
 
     # --- Node 1: Orchestrator ---
-    call_count = 0
-
-    async def fake_subprocess(*args: Any, **kwargs: Any) -> MagicMock:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            # PR 100: resolve GraphQL node ID
-            return _mock_subprocess(
-                {"id": "PR_kwGOLDEN100", "headRefName": "feat/pr100"}
+    # HEAD handler resolves PR refs and failing run IDs via gh CLI subprocess calls.
+    # Mock subprocess to return fixture data for PR 200 (refs) and PR 300 (statusCheckRollup).
+    def _orch_subprocess(*args: Any, **_kwargs: Any) -> MagicMock:
+        cmd = list(args)
+        pr_num_idx = cmd.index("view") + 1 if "view" in cmd else -1
+        pr_num = cmd[pr_num_idx] if pr_num_idx >= 0 else ""
+        proc = MagicMock()
+        proc.returncode = 0
+        if "id,headRefName" in cmd:
+            proc.communicate = AsyncMock(
+                return_value=(
+                    json.dumps(
+                        {
+                            "id": f"PR_kwGOLDEN{pr_num}",
+                            "headRefName": f"feat/pr{pr_num}",
+                        }
+                    ).encode(),
+                    b"",
+                )
             )
-        if call_count == 2:
-            # PR 200: resolve refs for rebase
-            return _mock_subprocess(
-                {
-                    "headRefName": "feat/pr200",
-                    "baseRefName": "main",
-                    "headRefOid": "sha200abc",
-                }
+        elif "headRefName,baseRefName,headRefOid" in cmd:
+            proc.communicate = AsyncMock(
+                return_value=(
+                    json.dumps(
+                        {
+                            "headRefName": f"feat/{pr_num}",
+                            "baseRefName": "main",
+                            "headRefOid": f"sha{pr_num}abc",
+                        }
+                    ).encode(),
+                    b"",
+                )
             )
-        # PR 300: statusCheckRollup for CI rerun
-        return _mock_subprocess(
-            {
-                "statusCheckRollup": [
-                    {
-                        "conclusion": "FAILURE",
-                        "detailsUrl": f"https://github.com/{_REPO}/actions/runs/99887700",
-                    }
-                ]
-            }
-        )
+        elif "statusCheckRollup" in cmd:
+            proc.communicate = AsyncMock(
+                return_value=(
+                    json.dumps(
+                        {
+                            "statusCheckRollup": [
+                                {
+                                    "conclusion": "FAILURE",
+                                    "detailsUrl": "https://github.com/OmniNode-ai/omni_home/actions/runs/99887700/job/1",
+                                }
+                            ]
+                        }
+                    ).encode(),
+                    b"",
+                )
+            )
+        else:
+            proc.communicate = AsyncMock(return_value=(b"{}", b""))
+        return proc
 
-    with patch("asyncio.create_subprocess_exec", side_effect=fake_subprocess):
-        orchestrator = HandlerTriageOrchestrator()
+    orchestrator = HandlerTriageOrchestrator()
+    with patch("asyncio.create_subprocess_exec", side_effect=_orch_subprocess):
         orch_output = await orchestrator.handle(request)
 
     assert len(orch_output.events) == 3
@@ -162,8 +216,9 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     arm_cmd = next(
         e for e in orch_output.events if isinstance(e, ModelAutoMergeArmCommand)
     )
-    mock_gh_arm = _mock_subprocess({})  # GraphQL returns empty body on success
-    with patch("asyncio.create_subprocess_exec", return_value=mock_gh_arm):
+    with patch.object(
+        HandlerAutoMergeArmEffect, "_arm_sync", return_value=(True, None)
+    ):
         auto_merge_handler = HandlerAutoMergeArmEffect()
         arm_output = await auto_merge_handler.handle(arm_cmd)
 
@@ -211,10 +266,7 @@ async def test_golden_chain_3_prs_full_pipeline() -> None:
     # --- Node 4: CI rerun effect ---
     ci_cmd = next(e for e in orch_output.events if isinstance(e, ModelCiRerunCommand))
     assert ci_cmd.run_id_github == "99887700"
-    mock_gh_rerun = MagicMock()
-    mock_gh_rerun.returncode = 0
-    mock_gh_rerun.communicate = AsyncMock(return_value=(b"", b""))
-    with patch("asyncio.create_subprocess_exec", return_value=mock_gh_rerun):
+    with patch.object(HandlerCiRerunEffect, "_rerun_sync", return_value=(True, None)):
         ci_handler = HandlerCiRerunEffect()
         ci_output = await ci_handler.handle(ci_cmd)
 
@@ -338,10 +390,8 @@ async def test_golden_chain_orchestrator_result_is_none() -> None:
         run_id=_RUN_ID,
         correlation_id=_CORR_ID,
     )
-    mock_proc = _mock_subprocess({"id": "PR_kwGOLDEN100", "headRefName": "feat/x"})
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-        handler = HandlerTriageOrchestrator()
-        output = await handler.handle(request)
+    handler = HandlerTriageOrchestrator()
+    output = await handler.handle(request)
     assert output.result is None
 
 
@@ -362,10 +412,10 @@ async def test_golden_chain_all_skip_produces_empty_orchestrator_output() -> Non
 
 @pytest.mark.asyncio
 async def test_golden_chain_runs_in_under_5s() -> None:
-    """Timing guard: golden chain with mocked subprocesses must complete < 5s.
+    """Timing guard: enriched-data golden chain must complete < 5s.
 
-    This is a structural guard — if this test becomes slow it means real I/O
-    leaked into the mocked path.
+    This is a structural guard — if this test becomes slow it means unexpected
+    I/O leaked into the orchestrator path.
     """
     import time
 
@@ -377,10 +427,23 @@ async def test_golden_chain_runs_in_under_5s() -> None:
         run_id=_RUN_ID,
         correlation_id=_CORR_ID,
     )
-    mock_proc = _mock_subprocess({"id": "PR_kwBENCH", "headRefName": "feat/bench"})
+
+    def _stub_subprocess(*args: Any, **_kwargs: Any) -> MagicMock:
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(
+            return_value=(
+                json.dumps(
+                    {"id": "PR_kwTIMING100", "headRefName": "feat/100"}
+                ).encode(),
+                b"",
+            )
+        )
+        return proc
+
     t0 = time.monotonic()
-    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-        handler = HandlerTriageOrchestrator()
+    handler = HandlerTriageOrchestrator()
+    with patch("asyncio.create_subprocess_exec", side_effect=_stub_subprocess):
         output = await handler.handle(request)
     elapsed = time.monotonic() - t0
     assert len(output.events) == 1
