@@ -33,12 +33,17 @@ class TestGoldenChainOnboarding:
         )
         result = handler.handle(cmd)
         assert result["dry_run"] is True
+        assert result["execution_mode"] == "verify-only"
+        assert isinstance(result["requested_capabilities"], list)
+        assert len(result["requested_capabilities"]) > 0
+        assert isinstance(result["produced_capabilities_per_step"], dict)
         assert result["total_steps"] > 0
         # standalone_quickstart targets core_installed
         # which requires: check_python -> install_uv -> install_core
         assert "check_python" in result["resolved_steps"]
         assert "install_core" in result["resolved_steps"]
         assert "run_standalone_node" not in result["resolved_steps"]
+        assert "check_python" in result["produced_capabilities_per_step"]
 
     def test_dry_run_new_employee(self) -> None:
         """new_employee policy resolves all expected steps.
@@ -58,8 +63,12 @@ class TestGoldenChainOnboarding:
         )
         result = handler.handle(cmd)
         assert result["dry_run"] is True
+        assert result["execution_mode"] == "verify-only"
+        assert isinstance(result["requested_capabilities"], list)
+        assert isinstance(result["produced_capabilities_per_step"], dict)
         assert result["total_steps"] >= 5
         assert "check_python" in result["resolved_steps"]
+        assert "check_python" in result["produced_capabilities_per_step"]
         # new_employee targets all 4 capabilities (10 steps); full_platform targets 2 (6 steps)
         min_steps = 8 if policy_name == "new_employee" else 6
         assert result["total_steps"] >= min_steps
@@ -80,8 +89,12 @@ class TestGoldenChainOnboarding:
         )
         result = handler.handle(cmd)
         assert result["dry_run"] is True
+        assert result["execution_mode"] == "verify-only"
+        assert result["requested_capabilities"] == ["python_installed"]
+        assert isinstance(result["produced_capabilities_per_step"], dict)
         # check_python produces python_installed
         assert "check_python" in result["resolved_steps"]
+        assert "check_python" in result["produced_capabilities_per_step"]
 
     def test_dry_run_returns_rendered_output(self) -> None:
         """Dry run returns a non-empty rendered_output string."""

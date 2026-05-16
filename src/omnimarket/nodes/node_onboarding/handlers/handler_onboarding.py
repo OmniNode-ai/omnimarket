@@ -112,7 +112,12 @@ class HandlerOnboarding:
             return {
                 "success": True,
                 "dry_run": True,
+                "execution_mode": "verify-only",
+                "requested_capabilities": target_capabilities,
                 "resolved_steps": plan,
+                "produced_capabilities_per_step": {
+                    s.step_key: s.produces_capabilities for s in steps
+                },
                 "total_steps": len(plan),
                 "completed_steps": 0,
                 "rendered_output": f"Dry run — would execute {len(plan)} steps: {plan}",

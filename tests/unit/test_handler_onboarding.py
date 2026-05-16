@@ -31,17 +31,24 @@ class TestHandlerOnboarding:
         mock_policy_data = {
             "target_capabilities": ["python_installed"],
         }
+        mock_step = MagicMock(
+            step_key="check_python", produces_capabilities=["python_installed"]
+        )
         with (
             patch(
                 "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.load_builtin_policies",
                 return_value={"new_employee": mock_policy_data},
             ) as mock_load,
             patch(
+                "omnimarket.nodes.node_onboarding.handlers.handler_onboarding._load_local_policies",
+                return_value={},
+            ),
+            patch(
                 "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.load_canonical_graph"
             ),
             patch(
                 "omnimarket.nodes.node_onboarding.handlers.handler_onboarding.resolve_policy",
-                return_value=[MagicMock(step_key="check_python")],
+                return_value=[mock_step],
             ),
         ):
             handler = HandlerOnboarding()
@@ -49,6 +56,11 @@ class TestHandlerOnboarding:
             result = handler.handle(cmd)
             mock_load.assert_called_once()
             assert result["dry_run"] is True
+            assert result["execution_mode"] == "verify-only"
+            assert result["requested_capabilities"] == ["python_installed"]
+            assert result["produced_capabilities_per_step"] == {
+                "check_python": ["python_installed"]
+            }
 
     def test_asyncio_run_called_with_model_onboarding_input(self) -> None:
         """asyncio.run() is called with a ModelOnboardingInput instance."""
