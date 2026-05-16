@@ -22,6 +22,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
@@ -98,6 +99,9 @@ class DelegationIntentBridge:
     ) -> None:
         self._event_bus: ProtocolEventBusLike = event_bus
         self._llm_caller = llm_caller
+        self._inference_tasks: dict[
+            tuple[UUID, str, str], asyncio.Task[ModelInferenceResponseData]
+        ] = {}
 
     @property
     def llm_caller(self) -> ProtocolLlmCaller | None:
@@ -131,6 +135,24 @@ class DelegationIntentBridge:
         Calls the LLM caller with the inference intent, then publishes
         the response data to the inference-response topic.
         """
+        key = (intent.correlation_id, intent.model, intent.prompt)
+        task = self._inference_tasks.get(key)
+        if task is not None:
+            logger.info(
+                "Inference intent already in flight; reusing result: "
+                "model=%s correlation_id=%s",
+                intent.model,
+                intent.correlation_id,
+            )
+            return await task
+
+        task = asyncio.create_task(self._execute_inference_intent(intent))
+        self._inference_tasks[key] = task
+        return await task
+
+    async def _execute_inference_intent(
+        self, intent: ModelInferenceIntent
+    ) -> ModelInferenceResponseData:
         if self._llm_caller is None:
             msg = "No LLM caller configured — cannot execute inference intent"
             raise RuntimeError(msg)

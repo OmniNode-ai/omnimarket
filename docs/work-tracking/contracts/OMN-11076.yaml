@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11076"
+title: "Share delegation workflow state across live routing decision"
+summary: >
+  Share delegation orchestrator workflow state across live dispatcher/handler
+  wiring so a delegation request that reaches routing-decision emits the
+  same-correlation inference request. Duplicate pending requests replay routing
+  once, and duplicate in-flight inference intents reuse the active LLM call.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused delegation wiring, dispatcher, orchestrator, and chain tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_wiring.py tests/unit/delegation/test_dispatcher_event_bus.py tests/unit/delegation/test_delegation_orchestrator.py tests/unit/delegation/test_delegation_chain_e2e.py -q"
+  - id: "dod-deploy"
+    description: >
+      Runtime-path change is delegation workflow state and in-flight intent
+      idempotency only. No live deploy or runtime restart was performed in this
+      PR; post-merge validation should import the touched delegation handler,
+      wiring helper, and intent bridge in the deployed runtime.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy && uv run python -c \"from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import HandlerDelegationWorkflow; from omnimarket.nodes.node_delegation_orchestrator.wiring import get_shared_delegation_workflow_handler; from omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge import DelegationIntentBridge; print(HandlerDelegationWorkflow.__name__, get_shared_delegation_workflow_handler.__name__, DelegationIntentBridge.__name__)\""

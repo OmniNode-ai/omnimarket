@@ -62,12 +62,22 @@ class TestStandaloneQuickstartPolicy:
         infra_found = steps & _INFRA_STEPS
         assert not infra_found, f"Infra steps must not appear: {infra_found}"
 
-    def test_first_node_running_capability_achieved(self) -> None:
-        """Resolved plan includes run_standalone_node (produces first_node_running)."""
+    def test_core_installed_capability_achieved(self) -> None:
+        """Resolved plan includes install_core (produces core_installed)."""
         handler = HandlerOnboarding()
         cmd = ModelOnboardingStartCommand(
             policy_name="standalone_quickstart",
             dry_run=True,
         )
         result = handler.handle(cmd)
-        assert "run_standalone_node" in result["resolved_steps"]
+        assert "install_core" in result["resolved_steps"]
+
+    def test_run_standalone_node_not_included(self) -> None:
+        """Standalone quickstart now targets core_installed, not first_node_running."""
+        handler = HandlerOnboarding()
+        cmd = ModelOnboardingStartCommand(
+            policy_name="standalone_quickstart",
+            dry_run=True,
+        )
+        result = handler.handle(cmd)
+        assert "run_standalone_node" not in result["resolved_steps"]
