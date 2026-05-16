@@ -22,6 +22,7 @@ from omnibase_infra.event_bus.models.model_event_message import ModelEventMessag
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from omnimarket.adapters.codex.topics import (
+    TOPIC_CODEX_DELEGATE_SKILL_COMMAND,
     TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND,
     TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED,
 )
@@ -37,6 +38,11 @@ from omnimarket.adapters.wrapper_base import (
 _DEFAULT_COMMAND_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND
 _DEFAULT_RESPONSE_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED
 _DEFAULT_REQUESTER = "codex"
+_DELEGATE_SKILL_COMMAND_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_COMMAND
+_DELEGATE_SKILL_EVENT_TYPE = "omnimarket.delegate-skill"
+_DELEGATE_SKILL_COMMAND_NAMES = frozenset(
+    {"delegate_skill", "delegate_skill.orchestrate"}
+)
 
 
 class ModelDispatchBusRoute(BaseModel):
@@ -136,14 +142,11 @@ class _CodexDispatchBusAdapter:
         async def on_message(msg: object) -> None:
             if not isinstance(msg, ModelEventMessage):
                 return
-            try:
-                envelope = ModelEventEnvelope[
-                    ModelDispatchBusTerminalResult
-                ].model_validate_json(msg.value)
-            except Exception:
+            result = _parse_terminal_result(msg.value)
+            if result is None:
                 return
-            if str(envelope.payload.correlation_id) == correlation_id:
-                await q.put(envelope.payload)
+            if str(result.correlation_id) == correlation_id:
+                await q.put(result)
 
         topics: list[str] = [route.terminal_topic]
         for extra in additional_terminal_topics:
@@ -178,11 +181,41 @@ class _CodexDispatchBusAdapter:
         route: ModelDispatchBusRoute,
         command: ModelDispatchBusCommand,
     ) -> None:
+        if _uses_direct_delegate_skill_contract(route, command):
+            await self._publish_delegate_skill_command(route, command)
+            return
+
         envelope = ModelEventEnvelope[ModelDispatchBusCommand](
             payload=command,
             correlation_id=command.correlation_id,
             envelope_timestamp=datetime.now(UTC),
             event_type=route.command_topic,
+            source_tool=self._source,
+        )
+        await self._transport.publish(
+            route.command_topic,
+            None,
+            envelope.model_dump_json(exclude_none=True).encode("utf-8"),
+            None,
+        )
+
+    async def _publish_delegate_skill_command(
+        self,
+        route: ModelDispatchBusRoute,
+        command: ModelDispatchBusCommand,
+    ) -> None:
+        from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+            ModelDelegateSkillRequest,
+        )
+
+        payload = dict(command.payload)
+        payload["correlation_id"] = str(command.correlation_id)
+        request = ModelDelegateSkillRequest.model_validate(payload)
+        envelope = ModelEventEnvelope[ModelDelegateSkillRequest](
+            payload=request,
+            correlation_id=request.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=_DELEGATE_SKILL_EVENT_TYPE,
             source_tool=self._source,
         )
         await self._transport.publish(
@@ -328,6 +361,49 @@ def _dispatch_result(
     result: ModelDispatchBusTerminalResult,
 ) -> dict[str, object]:
     return cast(dict[str, object], result.model_dump(mode="json", exclude_none=True))
+
+
+def _uses_direct_delegate_skill_contract(
+    route: ModelDispatchBusRoute,
+    command: ModelDispatchBusCommand,
+) -> bool:
+    return (
+        route.command_topic == _DELEGATE_SKILL_COMMAND_TOPIC
+        and command.command_name in _DELEGATE_SKILL_COMMAND_NAMES
+    )
+
+
+def _parse_terminal_result(value: bytes) -> ModelDispatchBusTerminalResult | None:
+    try:
+        from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+            ModelDelegateSkillResponse,
+        )
+
+        delegate_envelope = ModelEventEnvelope[
+            ModelDelegateSkillResponse
+        ].model_validate_json(value)
+        payload = delegate_envelope.payload
+        dumped = cast(
+            dict[str, object],
+            payload.model_dump(mode="json", exclude_none=True),
+        )
+        error_message = payload.error_message or None
+        return ModelDispatchBusTerminalResult(
+            correlation_id=payload.correlation_id,
+            status=payload.status,
+            payload=dumped,
+            error_message=error_message,
+        )
+    except Exception:
+        pass
+
+    try:
+        envelope = ModelEventEnvelope[
+            ModelDispatchBusTerminalResult
+        ].model_validate_json(value)
+        return envelope.payload
+    except Exception:
+        return None
 
 
 def _build_dispatch_command(

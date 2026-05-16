@@ -30,6 +30,7 @@ FULL_SUITE_BRANCHES = {"main"}
 def resolve_test_paths(
     changed_files: list[str],
     adjacency_path: Path,
+    repo_root: Path | None = None,
 ) -> list[str]:
     """Map changed file paths to deterministic test directories.
 
@@ -37,12 +38,18 @@ def resolve_test_paths(
       - Source changes under src/omnimarket/<module>: include tests/<module>/.
       - Test-only changes under tests/: include the changed test directory.
       - Files outside src/ and tests/: no contribution.
+      - Mapped paths that do not exist on disk are dropped, so pytest never
+        receives a non-existent test directory.
     """
     config = load_adjacency_map(adjacency_path)
-    return _resolve(changed_files, config)
+    return _resolve(changed_files, config, repo_root=repo_root or REPO_ROOT)
 
 
-def _resolve(changed_files: list[str], config: ModelAdjacencyMap) -> list[str]:
+def _resolve(
+    changed_files: list[str],
+    config: ModelAdjacencyMap,
+    repo_root: Path,
+) -> list[str]:
     direct_modules: set[str] = set()
     selected: set[str] = set()
 
@@ -63,7 +70,7 @@ def _resolve(changed_files: list[str], config: ModelAdjacencyMap) -> list[str]:
     for module in expanded:
         selected.add(f"{TEST_PREFIX}{module}/")
 
-    return sorted(selected)
+    return sorted(p for p in selected if (repo_root / p).exists())
 
 
 def compute_selection(
@@ -72,8 +79,10 @@ def compute_selection(
     ref_name: str,
     event_name: str = "pull_request",
     feature_flag_enabled: bool = True,
+    repo_root: Path | None = None,
 ) -> ModelTestSelection:
     config = load_adjacency_map(adjacency_path)
+    root = repo_root or REPO_ROOT
 
     if not feature_flag_enabled:
         return _full_suite(EnumFullSuiteReason.FEATURE_FLAG_OFF)
@@ -103,7 +112,7 @@ def compute_selection(
     if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
         return _full_suite(EnumFullSuiteReason.THRESHOLD_MODULES)
 
-    selected = _resolve(changed_files, config)
+    selected = _resolve(changed_files, config, repo_root=root)
     if not selected:
         selected = ["tests/"]
     split_count = _split_count_for(selected)

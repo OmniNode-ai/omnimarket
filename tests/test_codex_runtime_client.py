@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.models.model_event_headers import ModelEventHeaders
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from omnimarket.adapters.codex import runtime_client
@@ -32,6 +33,12 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
 from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage import (
     HandlerCoderabbitTriage,
     ModelCoderabbitTriageCommand,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
 )
 from omnimarket.nodes.node_local_review.handlers.handler_local_review import (
     HandlerLocalReview,
@@ -107,6 +114,83 @@ class _AdapterTestTransport:
             on_message=on_message,
             group_id=group_id,  # type: ignore[arg-type]
         )
+
+
+class _DirectDelegateSkillTransport:
+    def __init__(self) -> None:
+        self.subscribe_topics: list[str] = []
+        self.callbacks: dict[str, object] = {}
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+        self.started = False
+        self.closed = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        assert self.subscribe_topics == [
+            "onex.evt.omnimarket.delegate-skill-completed.v1",
+            "onex.evt.omnimarket.delegate-skill-failed.v1",
+        ]
+        assert headers is None
+        self.published.append((topic, key, value))
+
+        envelope = ModelEventEnvelope[ModelDelegateSkillRequest].model_validate_json(
+            value
+        )
+        response = ModelDelegateSkillResponse(
+            status="completed",
+            correlation_id=envelope.payload.correlation_id,
+            task_type=envelope.payload.task_type,
+            provider="claude-code",
+            model_name="test-model",
+            response="delegated",
+            quality_gate_passed=True,
+        )
+        response_envelope = ModelEventEnvelope[ModelDelegateSkillResponse](
+            payload=response,
+            correlation_id=response.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type="omnimarket.delegate-skill-completed",
+            source_tool="delegate-skill-test",
+        )
+        message = ModelEventMessage(
+            topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+            key=None,
+            value=response_envelope.model_dump_json().encode("utf-8"),
+            headers=ModelEventHeaders(
+                timestamp=datetime.now(UTC),
+                source="delegate-skill-test",
+                event_type="omnimarket.delegate-skill-completed",
+                correlation_id=response.correlation_id,
+            ),
+        )
+        callback = self.callbacks["onex.evt.omnimarket.delegate-skill-completed.v1"]
+        await callback(message)  # type: ignore[misc]
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        self.subscribe_topics.append(topic)
+        self.callbacks[topic] = on_message
+
+        async def _unsubscribe() -> None:
+            return None
+
+        return _unsubscribe
 
 
 async def _install_adapter_worker(
@@ -799,6 +883,121 @@ async def test_dispatch_async_receives_terminal_on_additional_failure_topic() ->
     assert result.error is not None
     assert result.error.code == "runtime_failed"
     assert "runtime rejected" in result.error.message
+
+
+@pytest.mark.asyncio
+async def test_delegate_skill_direct_dispatch_publishes_contract_payload() -> None:
+    cid = uuid4()
+    transport = _DirectDelegateSkillTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex",
+        command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+    )
+
+    result = await client.dispatch_async(
+        command_name="delegate_skill.orchestrate",
+        payload={
+            "prompt": "Write a regression test",
+            "task_type": "test",
+            "source": "codex",
+            "correlation_id": str(cid),
+            "metadata": {"ticket": "OMN-11074"},
+        },
+        correlation_id=cid,
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+        additional_response_topics=("onex.evt.omnimarket.delegate-skill-failed.v1",),
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is True
+    assert result.output_payloads is not None
+    assert result.output_payloads[0]["response"] == "delegated"
+    assert len(transport.published) == 1
+    topic, key, value = transport.published[0]
+    assert topic == "onex.cmd.omnimarket.delegate-skill.v1"
+    assert key is None
+
+    raw = json.loads(value)
+    assert raw["event_type"] == "omnimarket.delegate-skill"
+    assert raw["payload"]["prompt"] == "Write a regression test"
+    assert raw["payload"]["task_type"] == "test"
+    assert raw["payload"]["source"] == "codex"
+    assert raw["payload"]["correlation_id"] == str(cid)
+    assert "command_name" not in raw["payload"]
+    assert "response_topic" not in raw["payload"]
+    assert (
+        ModelDelegateSkillRequest.model_validate(raw["payload"]).correlation_id == cid
+    )
+
+
+@pytest.mark.asyncio
+async def test_delegate_skill_direct_dispatch_overrides_payload_correlation_id() -> (
+    None
+):
+    command_cid = uuid4()
+    stale_cid = uuid4()
+    assert command_cid != stale_cid
+    transport = _DirectDelegateSkillTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex",
+        command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+    )
+
+    result = await client.dispatch_async(
+        command_name="delegate_skill.orchestrate",
+        payload={
+            "prompt": "Override correlation id",
+            "task_type": "test",
+            "source": "codex",
+            "correlation_id": str(stale_cid),
+        },
+        correlation_id=command_cid,
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+        additional_response_topics=("onex.evt.omnimarket.delegate-skill-failed.v1",),
+    )
+
+    assert result.ok is True
+    assert len(transport.published) == 1
+    _, _, value = transport.published[0]
+    raw = json.loads(value)
+    assert raw["payload"]["correlation_id"] == str(command_cid)
+    assert raw["correlation_id"] == str(command_cid)
+
+
+@pytest.mark.asyncio
+async def test_delegate_skill_direct_dispatch_subscribes_to_terminal_topics_before_publish() -> (
+    None
+):
+    transport = _DirectDelegateSkillTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="claude-code",
+        command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+    )
+
+    result = await client.dispatch_async(
+        command_name="delegate_skill.orchestrate",
+        payload={
+            "prompt": "Run docs check",
+            "task_type": "document",
+            "source": "claude-code",
+        },
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+        additional_response_topics=("onex.evt.omnimarket.delegate-skill-failed.v1",),
+    )
+
+    assert result.ok is True
+    assert transport.subscribe_topics == [
+        "onex.evt.omnimarket.delegate-skill-completed.v1",
+        "onex.evt.omnimarket.delegate-skill-failed.v1",
+    ]
+    assert len(transport.published) == 1
 
 
 @pytest.mark.asyncio
