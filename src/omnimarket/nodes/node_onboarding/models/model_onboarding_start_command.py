@@ -13,7 +13,7 @@ class ModelOnboardingStartCommand(BaseModel):
     When both are provided, target_capabilities takes precedence.
     """
 
-    policy_name: str = Field(default="new_employee")
+    policy_name: str = Field(default="setup")
     target_capabilities: list[str] = Field(default_factory=list)
     skip_steps: list[str] = Field(default_factory=list)
     continue_on_failure: bool = Field(default=False)
