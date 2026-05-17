@@ -259,7 +259,7 @@ class TestDelegationHandler:
         assert result is True
         mock_db.execute.assert_called_once()
         args = mock_db.execute.call_args[0]
-        assert False in args  # contract_passed=False projected
+        assert any(a is False for a in args)  # contract_passed=False projected
 
     @pytest.mark.asyncio
     async def test_unknown_topic_returns_false(self, mock_db: AsyncMock) -> None:

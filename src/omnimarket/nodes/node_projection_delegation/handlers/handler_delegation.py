@@ -72,6 +72,19 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._table_shadow: str = _by_role["shadow_comparisons"]
         self._table_generation: str = _by_role["generation_events"]
 
+        _topics: list[str] = self._contract.get("event_bus", {}).get(
+            "subscribe_topics", []
+        )
+        self._topic_delegated: str = next(
+            (t for t in _topics if "task-delegated" in t), ""
+        )
+        self._topic_shadow: str = next(
+            (t for t in _topics if "delegation-shadow-comparison" in t), ""
+        )
+        self._topic_generation: str = next(
+            (t for t in _topics if "node-generation-completed" in t), ""
+        )
+
     @property
     def subscribe_topics(self) -> list[str]:
         return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
@@ -98,12 +111,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        subscribe = set(self.subscribe_topics)
-        if "task-delegated" in topic and topic in subscribe:
+        if topic == self._topic_delegated:
             return await self._project_task_delegated(data, meta)
-        if "delegation-shadow-comparison" in topic and topic in subscribe:
+        if topic == self._topic_shadow:
             return await self._project_shadow_comparison(data, meta)
-        if "node-generation-completed" in topic and topic in subscribe:
+        if topic == self._topic_generation:
             return await self._project_generation_completed(data, meta)
         return False
 
@@ -322,8 +334,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if data.get("contract_passed") is not None
             else data.get("contractPassed") or False
         )
-        cost_inference_usd = _safe_numeric_str(
-            data.get("cost_inference_usd") or data.get("costInferenceUsd")
+        cost_inference_usd = (
+            _safe_numeric_str(
+                data.get("cost_inference_usd") or data.get("costInferenceUsd")
+            )
+            or "0"
         )
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
 
