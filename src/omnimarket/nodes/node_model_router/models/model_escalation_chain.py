@@ -27,10 +27,19 @@ class EscalationTier(IntEnum):
 
     @classmethod
     def from_str(cls, value: str) -> EscalationTier:
+        """Parse tier from string.
+
+        Absent tier key (empty string) defaults to local.
+        An explicitly provided but unrecognised value raises ValueError
+        to surface registry misconfiguration.
+        """
+        if not value:
+            return cls.local
         try:
             return cls[value]
-        except KeyError:
-            return cls.local
+        except KeyError as exc:
+            msg = f"Unknown escalation tier '{value}'. Valid values: {[t.name for t in cls]}"
+            raise ValueError(msg) from exc
 
 
 class ModelEscalationLevel(BaseModel):
@@ -62,14 +71,15 @@ class ModelEscalationChain(BaseModel):
         """Build escalation chain from registry entries.
 
         Registry entries with a 'tier' key are grouped. Entries without a tier
-        key default to 'local'.
+        key default to 'local'. Entries with an unrecognised tier value raise
+        ValueError so misconfigurations are visible immediately.
         """
         grouped: dict[EscalationTier, list[str]] = {}
         for tier in EscalationTier:
             grouped[tier] = []
 
         for model_key, entry in registry.items():
-            tier = EscalationTier.from_str(entry.get("tier", "local"))
+            tier = EscalationTier.from_str(entry.get("tier", ""))
             grouped[tier].append(model_key)
 
         levels: dict[EscalationTier, ModelEscalationLevel] = {}

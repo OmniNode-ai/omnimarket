@@ -18,7 +18,7 @@ Routing semantics:
 
 Escalation chain (route_with_escalation):
 - Tiered: local -> cheap_cloud -> mid_frontier (expensive_frontier excluded).
-- Exhausts all models within a tier before escalating.
+- Exhausts all models within a tier, retrying each up to level.max_attempts.
 - Skips models with missing env_key (logs INFO, tries next).
 - Logs every escalation transition to escalation_log_dir.
 - Raises RuntimeError("exhausted ...") when all tiers fail.
@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -64,6 +65,7 @@ _BACKOFF_MAX_S: float = 30.0
 _BACKOFF_JITTER: float = 0.2
 _HEALTH_CHECK_TIMEOUT_S: float = 2.0
 _DEFAULT_ESCALATION_LOG_DIR: str = ".onex_state/escalation-events"
+_SAFE_CORRELATION_ID_RE = re.compile(r"[^A-Za-z0-9_\-]")
 
 RegistryEntry = dict[str, str]
 Registry = dict[str, RegistryEntry]
@@ -161,9 +163,10 @@ class HandlerModelRouter:
     ) -> ModelRoutingResult:
         """Route request using tiered escalation chain.
 
-        Tries all models in each tier before escalating. expensive_frontier is
-        never auto-selected. Logs every tier transition to escalation_log_dir.
-        Raises RuntimeError when all eligible tiers are exhausted.
+        For each tier, retries every model up to level.max_attempts before
+        escalating. expensive_frontier is never auto-selected. Logs every tier
+        transition to escalation_log_dir. Raises RuntimeError when all eligible
+        tiers are exhausted.
         """
         chain = ModelEscalationChain.from_registry(
             self._registry,
@@ -186,16 +189,25 @@ class HandlerModelRouter:
                     )
                     continue
 
-                if await self._check_health(model_key):
-                    self._record_success(model_key)
-                    return ModelRoutingResult(
-                        model_key=model_key,
-                        endpoint_url=self._registry[model_key]["base_url"],
-                        used_fallback=tier != EscalationTier.local,
-                        correlation_id=request.correlation_id,
-                        escalation_tier=tier,
-                    )
-                await self._record_failure(model_key, request.correlation_id)
+                for attempt in range(level.max_attempts):
+                    if await self._check_health(model_key):
+                        self._record_success(model_key)
+                        return ModelRoutingResult(
+                            model_key=model_key,
+                            endpoint_url=self._registry[model_key]["base_url"],
+                            used_fallback=tier != EscalationTier.local,
+                            correlation_id=request.correlation_id,
+                            escalation_tier=tier,
+                        )
+                    await self._record_failure(model_key, request.correlation_id)
+                    if attempt + 1 < level.max_attempts:
+                        logger.info(
+                            "Model '%s' attempt %d/%d failed, retrying within tier '%s'",
+                            model_key,
+                            attempt + 1,
+                            level.max_attempts,
+                            tier.name,
+                        )
 
             # Tier exhausted — log escalation event before moving to next
             next_tier = chain.next_tier(tier)
@@ -299,7 +311,8 @@ class HandlerModelRouter:
             log_dir = Path(self._escalation_log_dir)
             log_dir.mkdir(parents=True, exist_ok=True)
             ts = int(time.time() * 1000)
-            filename = f"escalation-{ts}-{correlation_id[:16]}.json"
+            safe_correlation = _SAFE_CORRELATION_ID_RE.sub("_", correlation_id)[:16]
+            filename = f"escalation-{ts}-{safe_correlation}.json"
             payload = {
                 "ts_ms": ts,
                 "from_tier": from_tier.name,

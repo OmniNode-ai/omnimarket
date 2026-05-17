@@ -358,3 +358,125 @@ class TestHandlerEscalationBehavior:
 
         assert result.model_key == "qwen3-coder-30b"
         assert result.used_fallback is False
+
+
+# ---------------------------------------------------------------------------
+# Additional tests for CR feedback (3 actionable findings)
+# ---------------------------------------------------------------------------
+
+
+class TestFromStrFailFast:
+    def test_from_str_known_value(self) -> None:
+        """from_str returns correct tier for known string values."""
+        assert EscalationTier.from_str("local") == EscalationTier.local
+        assert EscalationTier.from_str("cheap_cloud") == EscalationTier.cheap_cloud
+        assert EscalationTier.from_str("mid_frontier") == EscalationTier.mid_frontier
+        assert (
+            EscalationTier.from_str("expensive_frontier")
+            == EscalationTier.expensive_frontier
+        )
+
+    def test_from_str_empty_defaults_to_local(self) -> None:
+        """Absent tier key (empty string) defaults to local without raising."""
+        assert EscalationTier.from_str("") == EscalationTier.local
+
+    def test_from_str_unknown_value_raises(self) -> None:
+        """Explicitly provided unknown tier string raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown escalation tier"):
+            EscalationTier.from_str("super_cheap_cloud")
+
+    def test_from_registry_unknown_tier_raises(self) -> None:
+        """Registry entry with invalid tier value propagates ValueError."""
+        bad_registry = {
+            "bad-model": {
+                "base_url": "http://localhost:9000",
+                "health_path": "",
+                "tier": "not_a_tier",
+                "env_key": "",
+            }
+        }
+        with pytest.raises(ValueError, match="Unknown escalation tier"):
+            ModelEscalationChain.from_registry(bad_registry, max_attempts_per_tier=2)
+
+
+class TestMaxAttemptsEnforcement:
+    @pytest.mark.asyncio
+    async def test_max_attempts_per_tier_retries_each_model(self) -> None:
+        """Each model is retried up to max_attempts times within a tier before escalating."""
+        policy = ModelRoutingPolicy(
+            primary="qwen3-coder-30b",
+            fallback="claude-sonnet",
+            timeout_per_attempt_s=60.0,
+            max_retries=3,
+            reason_for_fallback="local timeout or unavailable",
+            fallback_allowed_roles=["fixer"],
+        )
+        registry = {
+            "qwen3-coder-30b": {
+                "base_url": "http://localhost:8000",
+                "health_path": "/health",
+                "ci_override_url": "",
+                "tier": "local",
+                "env_key": "",
+            },
+            "claude-sonnet": {
+                "base_url": "https://api.anthropic.com",
+                "health_path": "",
+                "ci_override_url": "",
+                "tier": "mid_frontier",
+                "env_key": "",
+            },
+        }
+        router = HandlerModelRouter(policy=policy, registry=registry, event_bus=None)
+        call_counts: dict[str, int] = {}
+
+        async def count_health(model_key: str) -> bool:
+            call_counts[model_key] = call_counts.get(model_key, 0) + 1
+            if model_key == "qwen3-coder-30b":
+                return False
+            return True
+
+        with patch.object(router, "_check_health", side_effect=count_health):
+            request = ModelRoutingRequest(
+                prompt="test", role="fixer", correlation_id="retry-test"
+            )
+            result = await router.route_with_escalation(request)
+
+        assert call_counts.get("qwen3-coder-30b", 0) == 3, (
+            "Expected max_retries=3 attempts on local model before escalating"
+        )
+        assert result.model_key == "claude-sonnet"
+
+    @pytest.mark.asyncio
+    async def test_correlation_id_sanitized_in_filename(self) -> None:
+        """correlation_id with special characters is sanitized before use in filenames."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            router = HandlerModelRouter(
+                policy=BASE_POLICY,
+                registry=FULL_REGISTRY,
+                event_bus=None,
+                escalation_log_dir=tmpdir,
+            )
+
+            async def local_fails(model_key: str) -> bool:
+                if model_key in ("qwen3-coder-30b", "deepseek-r1-14b"):
+                    return False
+                return True
+
+            unsafe_corr_id = "test/corr/../../../etc/passwd"
+            with (
+                patch.object(router, "_check_health", side_effect=local_fails),
+                patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}),
+            ):
+                request = ModelRoutingRequest(
+                    prompt="test",
+                    role="fixer",
+                    correlation_id=unsafe_corr_id,
+                )
+                await router.route_with_escalation(request)
+
+            log_files = list(os.scandir(tmpdir))
+            assert len(log_files) >= 1
+            for f in log_files:
+                assert "/" not in f.name
+                assert ".." not in f.name
