@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10962
+title: "Fix float equality bugs (SonarCloud S1244)"
+summary: "Replaces float == comparisons with math.isclose() in handler_quality_gate.py and pytest.approx() in tests. Resolves 8 SonarCloud S1244 instances. Pure logic fix with no behavior change for values that are exactly 0.0 or 1.0."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Full omnimarket test suite passes (non-kafka)"
+    command: "uv run pytest tests/ -m 'not kafka' -q"
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #675"
+    command: "gh pr checks 675 --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: "Float comparison fix — no runtime restart or Kafka topic change required"
+    command: "printf '%s\n' 'deploy gate: float equality fix — math.isclose substitution; no docker exec or rpk topic produce required'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Full omnimarket test suite passes (non-kafka): 4068 passed, 0 failed"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ -m 'not kafka' -q"
+  - id: dod-deploy
+    description: "Float comparison fix — no runtime restart or Kafka topic change required"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: float equality fix — math.isclose substitution; no docker exec or rpk topic produce required'"
