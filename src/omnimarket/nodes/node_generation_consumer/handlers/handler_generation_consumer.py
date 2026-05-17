@@ -43,8 +43,9 @@ logger = logging.getLogger(__name__)
 # Loaded from contract.yaml at construction time — never hardcoded inline.
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 
-_YAML_BLOCK_RE = re.compile(r"```ya?ml\s*(.*?)```", re.DOTALL)
-_PYTHON_BLOCK_RE = re.compile(r"```python\s*(.*?)```", re.DOTALL)
+_FENCE = "```"
+_YAML_FENCE_LANGS = ("yaml", "yml")
+_PYTHON_FENCE_LANG = "python"
 _HARDCODED_PATH_RE = re.compile(
     r'["\'](?:/(?:Users|Volumes|home|tmp|etc|var|opt|usr)|[A-Za-z]:\\)[^"\']*["\']'
 )
@@ -86,11 +87,31 @@ def _load_contract(path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+def _extract_fenced_block(raw: str, langs: tuple[str, ...]) -> str | None:
+    """Find the first ```<lang>\n...\n``` block. Linear scan, no regex backtracking."""
+    cursor = 0
+    while True:
+        start = raw.find(_FENCE, cursor)
+        if start == -1:
+            return None
+        lang_end = raw.find("\n", start + len(_FENCE))
+        if lang_end == -1:
+            return None
+        lang = raw[start + len(_FENCE) : lang_end].strip().lower()
+        body_start = lang_end + 1
+        close = raw.find(_FENCE, body_start)
+        if close == -1:
+            return None
+        if lang in langs:
+            return raw[body_start:close]
+        cursor = close + len(_FENCE)
+
+
 def _extract_blocks(raw: str) -> tuple[str, str]:
-    yaml_match = _YAML_BLOCK_RE.search(raw)
-    py_match = _PYTHON_BLOCK_RE.search(raw)
-    contract_yaml = yaml_match.group(1).strip() if yaml_match else raw
-    handler_source = py_match.group(1).strip() if py_match else ""
+    yaml_block = _extract_fenced_block(raw, _YAML_FENCE_LANGS)
+    py_block = _extract_fenced_block(raw, (_PYTHON_FENCE_LANG,))
+    contract_yaml = yaml_block.strip() if yaml_block is not None else raw
+    handler_source = py_block.strip() if py_block is not None else ""
     return contract_yaml, handler_source
 
 
