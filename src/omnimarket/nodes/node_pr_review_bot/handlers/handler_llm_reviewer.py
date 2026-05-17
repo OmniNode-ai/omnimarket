@@ -77,9 +77,18 @@ class HandlerLlmReviewer(ProtocolReviewer):
     reviewer_models argument (from contract inputs) — never hardcoded here.
     """
 
-    def __init__(self, config: LlmReviewerConfig) -> None:
+    def __init__(
+        self,
+        config: LlmReviewerConfig,
+        bridge: AdapterInferenceBridge | None = None,
+    ) -> None:
         self._config = config
-        self._bridge = AdapterInferenceBridge(config.inference_bridge_config)
+        self._bridge = (
+            bridge
+            if bridge is not None
+            else AdapterInferenceBridge(config.inference_bridge_config)
+        )
+        # lifecycle-ok: optional-di-fallback
 
     def review(
         self,
