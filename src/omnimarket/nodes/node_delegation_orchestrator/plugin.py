@@ -96,7 +96,7 @@ class PluginDelegation:
         """
         return True
 
-    async def initialize(
+    async def initialize(  # NOSONAR S7503: protocol-required async (ProtocolDomainPlugin); no await needed in no-op implementation
         self,
         config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
@@ -109,7 +109,7 @@ class PluginDelegation:
             duration_seconds=0.0,
         )
 
-    async def validate_handshake(
+    async def validate_handshake(  # NOSONAR S7503: protocol-required async (ProtocolDomainPlugin); no await needed in no-op implementation
         self,
         config: ModelDomainPluginConfig,
     ) -> ModelHandshakeResult:

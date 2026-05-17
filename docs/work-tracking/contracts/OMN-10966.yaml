@@ -1,0 +1,38 @@
+ticket: OMN-10966
+title: Fix remaining SonarCloud findings + review security hotspots on #1581
+status: done
+
+dod_evidence:
+  - type: code_change
+    description: >
+      Added # NOSONAR S7503 to initialize and validate_handshake in plugin.py —
+      both are protocol-required async methods implementing ProtocolDomainPlugin.
+    file: src/omnimarket/nodes/node_delegation_orchestrator/plugin.py
+  - type: security_review
+    description: >
+      Security hotspot review document written with per-hotspot rationale:
+      S7503 (2 instances), S2245 (2 instances), S2076 (1 instance). All reviewed
+      as SAFE with written justification.
+    file: docs/evidence/security-hotspots/omn-10966-hotspot-review.md
+  - type: test_run
+    description: "4040 tests passed, 0 failures (uv run pytest tests/ -m 'not kafka and not integration and not slow')"
+
+findings:
+  s7503:
+    count: 2
+    files:
+      - src/omnimarket/nodes/node_delegation_orchestrator/plugin.py
+    resolution: NOSONAR with rationale — protocol-required async interface methods
+  security_hotspots:
+    s7503_async:
+      decision: safe
+      rationale: protocol interface mandates async signature
+    s2245_random_jitter:
+      decision: safe
+      rationale: performance-only backoff jitter, not security context
+    s2245_random_run_id:
+      decision: safe
+      rationale: internal evidence file naming, not authentication or session
+    s2076_shell_true:
+      decision: safe_accepted_risk
+      rationale: developer-tooling executing contract YAML commands under version control
