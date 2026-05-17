@@ -32,21 +32,21 @@ from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage 
     ModelCoderabbitTriageCommand,
     ModelCoderabbitTriageResult,
 )
-from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
-    HandlerDispatchWorker,
-)
-from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command import (
+from omnimarket.nodes.node_dispatch_worker import (
     EnumWorkerRole,
     ModelDispatchWorkerCommand,
 )
-from omnimarket.nodes.node_dispatch_worker_execution_effect.handlers.handler_dispatch_worker_execution import (
-    HandlerDispatchWorkerExecution,
+from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
+    HandlerDispatchWorker,
 )
-from omnimarket.nodes.node_dispatch_worker_execution_effect.models import (
+from omnimarket.nodes.node_dispatch_worker_execution_effect import (
     ModelCompiledDispatchWorker,
     ModelDispatchWorkerDelegationPayload,
     ModelDispatchWorkerExecutionInput,
     ModelDispatchWorkerSpecArtifact,
+)
+from omnimarket.nodes.node_dispatch_worker_execution_effect.handlers.handler_dispatch_worker_execution import (
+    HandlerDispatchWorkerExecution,
 )
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_completed_event import (
     ModelPrPolishCompletedEvent,
