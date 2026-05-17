@@ -52,9 +52,16 @@ from uuid import UUID, uuid4
 
 from omnibase_core.enums import EnumMessageCategory, EnumNodeKind
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnimemory.enums import EnumLifecycleState
+from omnimemory.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_tick import (
+    ModelMemoryArchiveInitiated,
+    ModelMemoryExpiredEvent,
+    ModelMemoryLifecycleProjection,
+    ModelMemoryTickHealth,
+    ModelMemoryTickMetadata,
+    ModelMemoryTickResult,
+)
 from omnimemory.utils.concurrency import CircuitBreaker, CircuitBreakerOpenError
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
@@ -65,187 +72,6 @@ logger = logging.getLogger(__name__)
 
 # Timeout for projection reader calls (seconds)
 _PROJECTION_READER_TIMEOUT_SECONDS: float = 10.0
-
-
-# =============================================================================
-# EVENT MODELS (Placeholder - will be extracted to separate module)
-# =============================================================================
-class ModelMemoryExpiredEvent(BaseModel):  # omnimemory-model-exempt: handler event
-    """Event emitted when a memory entity's TTL has expired.
-
-    This event signals that a memory has transitioned from ACTIVE to EXPIRED
-    state due to its TTL being reached. Downstream handlers should update
-    projections and potentially initiate archival.
-
-    Attributes:
-        entity_id: The memory entity that expired.
-        memory_id: Alias for entity_id (memory-specific semantic).
-        correlation_id: Correlation ID for distributed tracing.
-        causation_id: The tick_id that triggered this expiration.
-        emitted_at: Timestamp when this event was emitted (from tick.now).
-        expires_at: The original expiration deadline that was exceeded.
-        lifecycle_revision: Current revision for optimistic locking.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    entity_id: UUID = Field(..., description="The memory entity that expired.")
-    memory_id: UUID = Field(..., description="The memory ID (alias for entity_id).")
-    correlation_id: UUID = Field(..., description="Correlation ID for tracing.")
-    causation_id: UUID = Field(..., description="The tick_id that triggered this.")
-    emitted_at: datetime = Field(..., description="When this event was emitted.")
-    expires_at: datetime = Field(..., description="The original expiration deadline.")
-    lifecycle_revision: int = Field(
-        default=1, ge=1, description="Revision for optimistic locking."
-    )
-
-
-class ModelMemoryArchiveInitiated(BaseModel):  # omnimemory-model-exempt: handler event
-    """Event emitted when archival is initiated for an expired memory.
-
-    This event signals that a memory in EXPIRED state should be moved to
-    archive storage. The actual archival is performed by the archive effect
-    handler which subscribes to this event.
-
-    Attributes:
-        entity_id: The memory entity to archive.
-        memory_id: Alias for entity_id (memory-specific semantic).
-        correlation_id: Correlation ID for distributed tracing.
-        causation_id: The tick_id that triggered this archival.
-        emitted_at: Timestamp when this event was emitted (from tick.now).
-        expired_at: When the memory transitioned to EXPIRED state.
-        lifecycle_revision: Current revision for optimistic locking.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    entity_id: UUID = Field(..., description="The memory entity to archive.")
-    memory_id: UUID = Field(..., description="The memory ID (alias for entity_id).")
-    correlation_id: UUID = Field(..., description="Correlation ID for tracing.")
-    causation_id: UUID = Field(..., description="The tick_id that triggered this.")
-    emitted_at: datetime = Field(..., description="When this event was emitted.")
-    expired_at: datetime | None = Field(
-        default=None, description="When the memory transitioned to EXPIRED."
-    )
-    lifecycle_revision: int = Field(
-        default=1, ge=1, description="Revision for optimistic locking."
-    )
-
-
-# =============================================================================
-# RESULT MODEL
-# =============================================================================
-
-
-class ModelMemoryTickResult(BaseModel):  # omnimemory-model-exempt: handler result
-    """Result of memory lifecycle tick evaluation.
-
-    Captures metrics and identifiers from a single tick evaluation cycle.
-    Used for observability and debugging of lifecycle processing.
-
-    Attributes:
-        expired_count: Number of memories transitioned to EXPIRED state.
-        archive_initiated_count: Number of archive jobs initiated.
-        tick_id: The tick that triggered this evaluation.
-        sequence_number: The tick's sequence number for ordering.
-        evaluated_at: Timestamp of evaluation (from tick.now).
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    expired_count: int = Field(
-        default=0, ge=0, description="Number of memories expired this tick."
-    )
-    archive_initiated_count: int = Field(
-        default=0, ge=0, description="Number of archive jobs started this tick."
-    )
-    tick_id: UUID = Field(..., description="The tick that triggered this evaluation.")
-    sequence_number: int = Field(
-        ..., ge=0, description="Tick sequence for ordering and restart detection."
-    )
-    evaluated_at: datetime = Field(
-        ..., description="Timestamp of evaluation (from injected now)."
-    )
-
-
-class ModelMemoryTickHealth(BaseModel):  # omnimemory-model-exempt: handler health
-    """Health status for the Memory Tick Handler.
-
-    Returned by health_check() to provide detailed health information
-    about the handler and its dependencies.
-
-    Attributes:
-        initialized: Whether the handler has been initialized.
-        circuit_breaker_state: Current state of the circuit breaker.
-        projection_reader_available: Whether a projection reader is configured.
-        batch_size: Configured batch size for tick processing.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-        strict=True,
-    )
-
-    initialized: bool = Field(
-        ...,
-        description="Whether the handler has been initialized",
-    )
-    circuit_breaker_state: str | None = Field(
-        default=None,
-        description="Current state of the circuit breaker (closed, open, half_open)",
-    )
-    projection_reader_available: bool = Field(
-        ...,
-        description="Whether a projection reader is configured",
-    )
-    batch_size: int = Field(
-        ...,
-        ge=1,
-        description="Configured batch size for tick processing",
-    )
-
-
-class ModelMemoryTickMetadata(BaseModel):  # omnimemory-model-exempt: handler metadata
-    """Metadata describing memory tick handler capabilities and configuration.
-
-    Returned by describe() method to provide introspection information
-    about the handler's purpose, capabilities, and message types.
-
-    Attributes:
-        name: Handler class name.
-        description: Brief description of handler purpose.
-        capabilities: List of supported capabilities.
-        initialized: Whether the handler has been initialized.
-        message_types: Set of message types this handler processes.
-        node_kind: The node kind this handler belongs to.
-    """
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    name: str = Field(
-        ...,
-        description="Handler class name",
-    )
-    description: str = Field(
-        ...,
-        description="Brief description of handler purpose",
-    )
-    capabilities: list[str] = Field(
-        ...,
-        description="List of supported capabilities",
-    )
-    initialized: bool = Field(
-        ...,
-        description="Whether the handler has been initialized",
-    )
-    message_types: list[str] = Field(
-        ...,
-        description="Message types this handler processes",
-    )
-    node_kind: str = Field(
-        ...,
-        description="The node kind this handler belongs to",
-    )
 
 
 # =============================================================================
@@ -310,96 +136,6 @@ class ProtocolMemoryLifecycleProjectionReader(Protocol):
             List of projections for memories eligible for archival.
         """
         ...
-
-
-class ModelMemoryLifecycleProjection(  # omnimemory-model-exempt: projection model
-    BaseModel
-):
-    """Projection of memory lifecycle state for tick evaluation.
-
-    This is a read-optimized view of memory state specifically for
-    lifecycle orchestration decisions. It contains only the fields
-    needed for expiration and archival evaluation.
-
-    Note:
-        This is a placeholder model. The actual projection will be
-        managed by the memory lifecycle reducer (OMN-1453 P4c).
-
-    Attributes:
-        entity_id: The memory entity UUID.
-        lifecycle_state: Current state (active, stale, expired, archived, deleted).
-        expires_at: TTL deadline (None = no expiration).
-        expired_at: When memory transitioned to EXPIRED.
-        archived_at: When memory was archived (None = not archived).
-        lifecycle_revision: Revision for optimistic locking.
-        expiration_emitted_at: When expiration event was emitted (dedup marker).
-        archive_initiated_at: When archive initiation was emitted (dedup marker).
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    entity_id: UUID = Field(..., description="The memory entity UUID.")
-    lifecycle_state: str = Field(..., description="Current lifecycle state.")
-    expires_at: datetime | None = Field(
-        default=None, description="TTL deadline (None = no expiration)."
-    )
-    expired_at: datetime | None = Field(
-        default=None, description="When memory transitioned to EXPIRED."
-    )
-    archived_at: datetime | None = Field(
-        default=None, description="When memory was archived."
-    )
-    lifecycle_revision: int = Field(
-        default=1, ge=1, description="Revision for optimistic locking."
-    )
-    # Deduplication markers
-    expiration_emitted_at: datetime | None = Field(
-        default=None, description="When expiration event was emitted."
-    )
-    archive_initiated_at: datetime | None = Field(
-        default=None, description="When archive initiation was emitted."
-    )
-
-    def needs_expiration_event(self, now: datetime) -> bool:
-        """Check if this memory needs an expiration event emitted.
-
-        Returns True if:
-            - lifecycle_state == ACTIVE (using EnumLifecycleState)
-            - expires_at is not None AND expires_at <= now
-            - expiration_emitted_at is None (not already emitted)
-
-        Args:
-            now: Current time for deadline comparison.
-
-        Returns:
-            True if expiration event should be emitted.
-        """
-        return (
-            self.lifecycle_state == EnumLifecycleState.ACTIVE.value
-            and self.expires_at is not None
-            and self.expires_at <= now
-            and self.expiration_emitted_at is None
-        )
-
-    def needs_archive_event(self, now: datetime) -> bool:
-        """Check if this memory needs an archive initiation event.
-
-        Returns True if:
-            - lifecycle_state == EXPIRED (using EnumLifecycleState)
-            - archived_at is None (not yet archived)
-            - archive_initiated_at is None (not already initiated)
-
-        Args:
-            now: Current time (unused, for consistent interface).
-
-        Returns:
-            True if archive initiation event should be emitted.
-        """
-        return (
-            self.lifecycle_state == EnumLifecycleState.EXPIRED.value
-            and self.archived_at is None
-            and self.archive_initiated_at is None
-        )
 
 
 # =============================================================================

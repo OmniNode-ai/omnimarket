@@ -18,6 +18,8 @@ DTO_IMPORTS = {
     "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result.ModelComplianceLoopResult": "omnibase_compat.contracts.delegation.wire.ModelComplianceLoopResult",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationRequest": "omnibase_compat.contracts.delegation.wire.ModelDelegationRequest",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationResult": "omnibase_compat.contracts.delegation.wire.ModelDelegationResult",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationEvent": "omnibase_compat.contracts.delegation.wire.ModelDelegationEventEnvelope",
+    "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event.ModelDelegationEvent": "omnibase_compat.contracts.delegation.wire.ModelDelegationEventEnvelope",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceIntent": "omnibase_compat.contracts.delegation.wire.ModelInferenceIntent",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceResponseData": "omnibase_compat.contracts.delegation.wire.ModelInferenceResponseData",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelQualityGateIntent": "omnibase_compat.contracts.delegation.wire.ModelQualityGateIntent",

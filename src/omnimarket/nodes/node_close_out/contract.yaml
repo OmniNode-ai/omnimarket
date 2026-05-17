@@ -6,8 +6,9 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Close-out pipeline WorkflowPackage. Coordinates the multi-phase end-of-day
-  close-out workflow: MERGE_SWEEP -> DEPLOY_PLUGIN -> START_ENV -> INTEGRATION
-  -> RELEASE_CHECK -> REDEPLOY_CHECK -> DASHBOARD_SWEEP -> DONE.
+  close-out workflow. Phase order mirrors
+  omniclaude/scripts/closeout-phase-contract.yaml phases whose category is not
+  "build".
   Circuit breaker trips after 3 consecutive failures.
 
 handler:
@@ -50,6 +51,35 @@ concurrent_run_guard:
   lease_expiry_seconds: 600
   skipped_event_model: omnimarket.nodes.node_close_out.models.model_close_out_skipped.ModelCloseOutSkipped
   skip_reason: concurrent_run_in_progress
+
+closeout_phase_order:
+  source: omniclaude/scripts/closeout-phase-contract.yaml
+  excludes_categories:
+    - build
+  phases:
+    - a1_merge_sweep
+    - a2_deploy_plugin
+    - a2b_plugin_refresh
+    - a3_start_env
+    - b1_runtime_sweep
+    - b2_data_flow_sweep
+    - b3_database_sweep
+    - b4b_database_sweep
+    - b4b_database_sweep_retry
+    - b4b_data_flow_sweep
+    - b4b_data_flow_sweep_retry
+    - b4b_runtime_sweep
+    - b4b_runtime_sweep_retry
+    - b5_integration
+    - b6_contract_verify
+    - c1_release
+    - c2_redeploy
+    - d3_dashboard_sweep
+    - e1_foundation_tests
+    - e2_pipeline_tests
+    - e4_golden_chain
+    - e4_golden_chain_retry
+    - e3_dashboard_tests
 
 event_bus:
   subscribe_topics:

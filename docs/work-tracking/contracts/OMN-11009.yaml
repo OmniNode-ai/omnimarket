@@ -1,0 +1,45 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11009"
+title: "Runtime paths fail closed when Kafka bootstrap config is absent"
+summary: >
+  Repo-local deploy-gate contract for omnimarket PR #668. The implementation changes
+  live build-loop event-bus bootstrap behavior and focused tests only: Kafka bootstrap
+  config is resolved through typed Settings, and missing/failed Kafka config raises instead
+  of silently downgrading to EventBusInmemory.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused event-bus bootstrap tests pass."
+    command: "uv run pytest tests/unit/nodes/node_build_loop_orchestrator/test_assemble_live_event_bus.py -q"
+  - kind: "ci"
+    description: "Focused ruff check passes for touched omnimarket files."
+    command: "uv run ruff check src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py tests/unit/nodes/node_build_loop_orchestrator/test_assemble_live_event_bus.py"
+  - kind: "manual"
+    description: "Deploy assessment recorded for PR #668."
+    command: "No live deploy, runtime restart, or .201 mutation was performed."
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Focused tests prove live runtime event-bus bootstrap refuses in-memory downgrade."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_build_loop_orchestrator/test_assemble_live_event_bus.py -q"
+  - id: "dod-lint"
+    description: "Focused ruff check passed for touched omnimarket files."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py tests/unit/nodes/node_build_loop_orchestrator/test_assemble_live_event_bus.py"
+  - id: "dod-deploy-assessment"
+    description: "No live deploy required for this scoped source/test hardening; no runtime restart or .201 mutation performed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy assessment: no live deploy required for PR 668"

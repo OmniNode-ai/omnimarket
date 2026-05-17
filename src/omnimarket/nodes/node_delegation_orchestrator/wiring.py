@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 ROUTE_ID_DELEGATION_REQUEST = "route.delegation.delegation-request"
 ROUTE_ID_INVOCATION_COMMAND = "route.delegation.invocation"
 ROUTE_ID_ROUTING_DECISION = "route.delegation.routing-decision"
+ROUTE_ID_INFERENCE_RESPONSE = "route.delegation.inference-response"
 ROUTE_ID_QUALITY_GATE_RESULT = "route.delegation.quality-gate-result"
 ROUTE_ID_AGENT_TASK_LIFECYCLE = "route.delegation.agent-task-lifecycle"
 
@@ -282,6 +283,9 @@ async def wire_delegation_dispatchers(
     from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_request import (
         DispatcherDelegationRequest,
     )
+    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_inference_response import (
+        DispatcherInferenceResponse,
+    )
     from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_invocation_command import (
         DispatcherInvocationCommand,
     )
@@ -363,7 +367,27 @@ async def wire_delegation_dispatchers(
     engine.register_route(route_routing_decision)
     routes_registered.append(route_routing_decision.route_id)
 
-    # 4. DispatcherQualityGateResult — handles quality gate results
+    # 4. DispatcherInferenceResponse — handles LLM responses from the bridge
+    dispatcher_inference = DispatcherInferenceResponse(handler, event_bus=event_bus)
+    engine.register_dispatcher(
+        dispatcher_id=dispatcher_inference.dispatcher_id,
+        dispatcher=dispatcher_inference.handle,
+        category=dispatcher_inference.category,
+        message_types=dispatcher_inference.message_types,
+    )
+    dispatchers_registered.append(dispatcher_inference.dispatcher_id)
+
+    route_inference_response = ModelDispatchRoute(
+        route_id=ROUTE_ID_INFERENCE_RESPONSE,
+        topic_pattern="*.evt.*.inference-response.*",
+        message_category=EnumMessageCategory.EVENT,
+        dispatcher_id=dispatcher_inference.dispatcher_id,
+        message_type="omnibase-infra.inference-response",
+    )
+    engine.register_route(route_inference_response)
+    routes_registered.append(route_inference_response.route_id)
+
+    # 5. DispatcherQualityGateResult — handles quality gate results
     dispatcher_gate = DispatcherQualityGateResult(handler, event_bus=event_bus)
     engine.register_dispatcher(
         dispatcher_id=dispatcher_gate.dispatcher_id,
@@ -383,7 +407,7 @@ async def wire_delegation_dispatchers(
     engine.register_route(route_quality_gate)
     routes_registered.append(route_quality_gate.route_id)
 
-    # 5. DispatcherAgentTaskLifecycle — handles A2A lifecycle events
+    # 6. DispatcherAgentTaskLifecycle — handles A2A lifecycle events
     dispatcher_lifecycle = DispatcherAgentTaskLifecycle(handler, event_bus=event_bus)
     engine.register_dispatcher(
         dispatcher_id=dispatcher_lifecycle.dispatcher_id,

@@ -12,12 +12,17 @@ Related:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import NAMESPACE_DNS, uuid4, uuid5
 
 import pytest
+import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumDispatchStatus
+from omnibase_infra.event_bus.topic_constants import (
+    TOPIC_DELEGATION_INFERENCE_RESPONSE,
+)
 
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_request import (
     DispatcherDelegationRequest,
@@ -40,6 +45,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 from omnimarket.nodes.node_delegation_orchestrator.wiring import (
     ROUTE_ID_AGENT_TASK_LIFECYCLE,
     ROUTE_ID_DELEGATION_REQUEST,
+    ROUTE_ID_INFERENCE_RESPONSE,
     ROUTE_ID_INVOCATION_COMMAND,
     ROUTE_ID_QUALITY_GATE_RESULT,
     ROUTE_ID_ROUTING_DECISION,
@@ -49,6 +55,16 @@ from omnimarket.nodes.node_delegation_orchestrator.wiring import (
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
+)
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ORCHESTRATOR_CONTRACT = (
+    _REPO_ROOT
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_delegation_orchestrator"
+    / "contract.yaml"
 )
 
 
@@ -89,6 +105,16 @@ def _make_routing_decision(correlation_id: object) -> ModelRoutingDecision:
     )
 
 
+@pytest.mark.unit
+def test_contract_subscribes_to_inference_response_topic() -> None:
+    """The event-bus contract must route LLM responses back into the workflow."""
+    contract = yaml.safe_load(_ORCHESTRATOR_CONTRACT.read_text(encoding="utf-8"))
+
+    assert (
+        TOPIC_DELEGATION_INFERENCE_RESPONSE in contract["event_bus"]["subscribe_topics"]
+    )
+
+
 @pytest.fixture
 def mock_container() -> MagicMock:
     """Create a mock container with a service registry that resolves HandlerDelegationWorkflow."""
@@ -117,8 +143,8 @@ class TestWireDelegationDispatchers:
     ) -> None:
         result = await wire_delegation_dispatchers(mock_container, mock_engine)
 
-        assert len(result["dispatchers"]) == 5
-        assert mock_engine.register_dispatcher.call_count == 5
+        assert len(result["dispatchers"]) == 6
+        assert mock_engine.register_dispatcher.call_count == 6
 
     @pytest.mark.asyncio
     async def test_registers_routes(
@@ -126,8 +152,8 @@ class TestWireDelegationDispatchers:
     ) -> None:
         result = await wire_delegation_dispatchers(mock_container, mock_engine)
 
-        assert len(result["routes"]) == 5
-        assert mock_engine.register_route.call_count == 5
+        assert len(result["routes"]) == 6
+        assert mock_engine.register_route.call_count == 6
 
     @pytest.mark.asyncio
     async def test_route_ids_are_correct(
@@ -138,6 +164,7 @@ class TestWireDelegationDispatchers:
         assert ROUTE_ID_DELEGATION_REQUEST in result["routes"]
         assert ROUTE_ID_INVOCATION_COMMAND in result["routes"]
         assert ROUTE_ID_ROUTING_DECISION in result["routes"]
+        assert ROUTE_ID_INFERENCE_RESPONSE in result["routes"]
         assert ROUTE_ID_QUALITY_GATE_RESULT in result["routes"]
         assert ROUTE_ID_AGENT_TASK_LIFECYCLE in result["routes"]
 
@@ -150,6 +177,7 @@ class TestWireDelegationDispatchers:
         assert "dispatcher.delegation.request" in result["dispatchers"]
         assert "dispatcher.delegation.invocation" in result["dispatchers"]
         assert "dispatcher.delegation.routing-decision" in result["dispatchers"]
+        assert "dispatcher.delegation.inference-response" in result["dispatchers"]
         assert "dispatcher.delegation.quality-gate-result" in result["dispatchers"]
         assert "dispatcher.delegation.agent-task-lifecycle" in result["dispatchers"]
 
@@ -186,7 +214,7 @@ class TestWireDelegationDispatchers:
             for call in mock_engine.register_dispatcher.call_args_list
         ]
 
-        assert len(dispatcher_handlers) == 5
+        assert len(dispatcher_handlers) == 6
         assert len({id(handler) for handler in dispatcher_handlers}) == 1
 
     @pytest.mark.asyncio

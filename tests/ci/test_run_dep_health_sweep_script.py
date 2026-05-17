@@ -37,6 +37,14 @@ def critical_finding_fixture(tmp_path: Path) -> Path:
 class TestRunDepHealthSweepScript:
     """Tests for the dep health CI gate script."""
 
+    def test_script_uses_node_public_api(self) -> None:
+        """Script must not bypass the node package public API."""
+        script = REPO_ROOT / "scripts" / "ci" / "run_dep_health_sweep.py"
+
+        content = script.read_text(encoding="utf-8")
+
+        assert "node_dependency_health_sweep.handlers" not in content
+
     def test_exit_zero_on_clean_tree(self, clean_fixture: Path) -> None:
         """Script exits 0 when no findings at or above threshold."""
         from run_dep_health_sweep import main

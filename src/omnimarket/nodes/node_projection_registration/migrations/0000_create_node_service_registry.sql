@@ -1,4 +1,7 @@
 -- OMN-10079: Create the node registration projection table.
+-- OMN-11012 ownership: omnimarket.nodes.node_projection_registration is the
+-- DDL owner for node_service_registry. Do not add a duplicate CREATE TABLE
+-- migration for this table in omnibase_infra.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

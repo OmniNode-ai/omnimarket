@@ -32,7 +32,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_respon
 def _make_intent(
     *,
     model: str = "qwen3-coder-30b",
-    base_url: str = "http://192.168.86.201:8000/v1",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM endpoint"
+    base_url: str = "http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM base URL"
     system_prompt: str = "You are a code generation assistant.",
     prompt: str = "Write a pytest test for the add() function.",
     max_tokens: int = 2048,
@@ -174,7 +174,7 @@ async def test_provider_closed_after_call() -> None:
 async def test_provider_constructed_with_correct_base_url() -> None:
     """AdapterLlmProviderOpenai is constructed with intent.base_url."""
     intent = _make_intent(
-        base_url="http://192.168.86.201:8001/v1",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM endpoint"
+        base_url="http://192.168.86.201:8001",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM base URL"
         model="deepseek-r1-14b",
     )
     adapter_response = _make_adapter_response(model_used="deepseek-r1-14b")
@@ -194,6 +194,6 @@ async def test_provider_constructed_with_correct_base_url() -> None:
         call_kwargs = mock_provider.call_args.kwargs
         assert (
             call_kwargs["base_url"]
-            == "http://192.168.86.201:8001/v1"  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM endpoint"
+            == "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM base URL"
         )
         assert call_kwargs["default_model"] == "deepseek-r1-14b"

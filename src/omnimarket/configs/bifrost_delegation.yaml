@@ -23,7 +23,7 @@ schema_version: "bifrost_delegation.v1"
 backends:
   # Local backends (AIPC)
   - backend_id: local-qwen-coder-30b
-    endpoint_url: "http://192.168.86.201:8000/v1" # onex-allow-internal-ip OMN-11061 reason="local AIPC vLLM endpoint for Qwen3-Coder-30B; env-var not supported in static YAML backend config"
+    endpoint_url: "http://192.168.86.201:8000" # onex-allow-internal-ip OMN-11061 reason="local AIPC vLLM base URL for Qwen3-Coder-30B; adapter appends OpenAI path"
     # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     tier: local
@@ -33,7 +33,7 @@ backends:
       - refactoring
       - documentation
   - backend_id: local-deepseek-r1-14b
-    endpoint_url: "http://192.168.86.201:8001/v1" # onex-allow-internal-ip OMN-11061 reason="local AIPC vLLM endpoint for DeepSeek-R1-14B; env-var not supported in static YAML backend config"
+    endpoint_url: "http://192.168.86.201:8001" # onex-allow-internal-ip OMN-11061 reason="local AIPC vLLM base URL for DeepSeek-R1-14B; adapter appends OpenAI path"
     # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     tier: local
