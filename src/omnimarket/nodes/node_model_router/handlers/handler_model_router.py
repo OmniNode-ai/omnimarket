@@ -10,11 +10,18 @@ Routing semantics:
   and emits ModelRoutingDegradedEvent.
 - Streak resets only on SUCCESS from that pair (not on time elapsed).
 - Health cache: per (model_key, base_url), 30s TTL, in-process only.
-- Retry: exponential backoff min(1 * 2^attempt, 30s) ± 20% jitter.
+- Retry: exponential backoff min(1 * 2^attempt, 30s) +/- 20% jitter.
 - Fallback authorization: role must be in policy.fallback_allowed_roles;
   absent roles get a loud RuntimeError, not a silent fallback.
 - CI override: when ONEX_CI_MODE=true, policy.ci_override.primary used.
 - All timeouts and model IDs resolved from registry; none in handler source.
+
+Escalation chain (route_with_escalation):
+- Tiered: local -> cheap_cloud -> mid_frontier (expensive_frontier excluded).
+- Exhausts all models within a tier before escalating.
+- Skips models with missing env_key (logs INFO, tries next).
+- Logs every escalation transition to escalation_log_dir.
+- Raises RuntimeError("exhausted ...") when all tiers fail.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ import os
 import random
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -34,6 +42,10 @@ from omnibase_compat.routing.model_routing_degraded_event import (
 )
 from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 
+from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
+    EscalationTier,
+    ModelEscalationChain,
+)
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
@@ -51,6 +63,7 @@ _BACKOFF_BASE_S: float = 1.0
 _BACKOFF_MAX_S: float = 30.0
 _BACKOFF_JITTER: float = 0.2
 _HEALTH_CHECK_TIMEOUT_S: float = 2.0
+_DEFAULT_ESCALATION_LOG_DIR: str = ".onex_state/escalation-events"
 
 RegistryEntry = dict[str, str]
 Registry = dict[str, RegistryEntry]
@@ -71,10 +84,12 @@ class HandlerModelRouter:
         policy: ModelRoutingPolicy,
         registry: Registry,
         event_bus: Any,
+        escalation_log_dir: str | None = None,
     ) -> None:
         self._policy = policy
         self._registry = registry
         self._event_bus = event_bus
+        self._escalation_log_dir = escalation_log_dir or _DEFAULT_ESCALATION_LOG_DIR
 
         self._health_cache: dict[str, tuple[bool, float]] = {}
         self._streak: dict[str, int] = {}
@@ -141,6 +156,62 @@ class HandlerModelRouter:
             correlation_id=request.correlation_id,
         )
 
+    async def route_with_escalation(
+        self, request: ModelRoutingRequest
+    ) -> ModelRoutingResult:
+        """Route request using tiered escalation chain.
+
+        Tries all models in each tier before escalating. expensive_frontier is
+        never auto-selected. Logs every tier transition to escalation_log_dir.
+        Raises RuntimeError when all eligible tiers are exhausted.
+        """
+        chain = ModelEscalationChain.from_registry(
+            self._registry,
+            max_attempts_per_tier=self._policy.max_retries,
+        )
+        eligible_tiers = chain.auto_escalation_tiers()
+
+        for tier in eligible_tiers:
+            level = chain.levels.get(tier)
+            if level is None:
+                continue
+
+            for model_key in level.model_keys:
+                if not self._model_env_key_present(model_key):
+                    logger.info(
+                        "Skipping model '%s' (tier=%s): required env key '%s' absent",
+                        model_key,
+                        tier.name,
+                        self._registry[model_key].get("env_key", ""),
+                    )
+                    continue
+
+                if await self._check_health(model_key):
+                    self._record_success(model_key)
+                    return ModelRoutingResult(
+                        model_key=model_key,
+                        endpoint_url=self._registry[model_key]["base_url"],
+                        used_fallback=tier != EscalationTier.local,
+                        correlation_id=request.correlation_id,
+                        escalation_tier=tier,
+                    )
+                await self._record_failure(model_key, request.correlation_id)
+
+            # Tier exhausted — log escalation event before moving to next
+            next_tier = chain.next_tier(tier)
+            if next_tier is not None and next_tier != EscalationTier.expensive_frontier:
+                self._write_escalation_event(
+                    from_tier=tier,
+                    to_tier=next_tier,
+                    correlation_id=request.correlation_id,
+                )
+
+        msg = (
+            f"Escalation chain exhausted all eligible tiers "
+            f"{[t.name for t in eligible_tiers]} for correlation_id={request.correlation_id}"
+        )
+        raise RuntimeError(msg)
+
     def route_sync(self, request: ModelRoutingRequest) -> ModelRoutingResult:
         """Synchronous wrapper around route_async."""
         return asyncio.get_event_loop().run_until_complete(self.route_async(request))
@@ -170,6 +241,14 @@ class HandlerModelRouter:
         if not self._policy.fallback_allowed_roles:
             return False
         return role in self._policy.fallback_allowed_roles
+
+    def _model_env_key_present(self, model_key: str) -> bool:
+        """Return True if the model's required env key is set (or no key required)."""
+        entry = self._registry.get(model_key, {})
+        env_key = entry.get("env_key", "")
+        if not env_key:
+            return True
+        return bool(os.environ.get(env_key))
 
     async def _record_failure(self, model_key: str, correlation_id: str) -> None:
         streak = self._streak.get(model_key, 0) + 1
@@ -212,6 +291,27 @@ class HandlerModelRouter:
                     "Failed to publish degradation event for %s", model_key
                 )
 
+    def _write_escalation_event(
+        self, from_tier: EscalationTier, to_tier: EscalationTier, correlation_id: str
+    ) -> None:
+        """Write a JSON escalation event file to escalation_log_dir."""
+        try:
+            log_dir = Path(self._escalation_log_dir)
+            log_dir.mkdir(parents=True, exist_ok=True)
+            ts = int(time.time() * 1000)
+            filename = f"escalation-{ts}-{correlation_id[:16]}.json"
+            payload = {
+                "ts_ms": ts,
+                "from_tier": from_tier.name,
+                "to_tier": to_tier.name,
+                "correlation_id": correlation_id,
+            }
+            (log_dir / filename).write_text(json.dumps(payload))
+        except Exception:
+            logger.exception(
+                "Failed to write escalation event for correlation_id=%s", correlation_id
+            )
+
     # ------------------------------------------------------------------ #
     # Health check                                                         #
     # ------------------------------------------------------------------ #
@@ -253,7 +353,7 @@ class HandlerModelRouter:
         """Execute async callable with exponential backoff retry.
 
         Retries up to policy.max_retries times. Delay between attempts:
-        min(1 * 2^attempt, 30s) ± 20% jitter.
+        min(1 * 2^attempt, 30s) +/- 20% jitter.
         """
         last_exc: Exception | None = None
         for attempt in range(self._policy.max_retries):
