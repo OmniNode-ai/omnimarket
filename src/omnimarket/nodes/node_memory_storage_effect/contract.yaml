@@ -11,7 +11,7 @@ contract_version: {major: 0, minor: 2, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 description: "Memory storage effect node for CRUD operations. P1A: FileSystem backend for snapshot persistence.
   Phase 2: PostgreSQL, Redis, and Pinecone backends."
-node_type: "EFFECT"
+node_type: effect
 input_model: "ModelMemoryStorageRequest"
 output_model: "ModelMemoryStorageResponse"
 handler:

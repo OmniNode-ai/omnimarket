@@ -8,7 +8,7 @@ name: node_intent_event_consumer_effect
 contract_version: {major: 0, minor: 2, patch: 0}
 node_version: {major: 0, minor: 2, patch: 0}
 uuid: "6fc349b1-34f0-4760-b547-6e8bebf0c9c0"
-node_type: EFFECT
+node_type: effect
 runtime_profiles:
   - memory
 input_model: "ModelIntentClassifiedEvent"

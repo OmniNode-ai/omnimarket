@@ -11,7 +11,7 @@ name: "node_code_embedding_effect"
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-node_type: "EFFECT"
+node_type: effect
 input_model: "ModelCodeEmbeddingRequest"
 output_model: "ModelCodeEmbeddingResult"
 handler:

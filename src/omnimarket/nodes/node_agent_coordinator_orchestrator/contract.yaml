@@ -12,7 +12,7 @@ contract_version: {major: 0, minor: 2, patch: 0}
 node_version: {major: 0, minor: 2, patch: 0}
 description: "Orchestrator node for cross-agent memory coordination. Manages subscriptions and publishes
   notification events to Kafka for subscriber consumption."
-node_type: "ORCHESTRATOR"
+node_type: orchestrator
 input_model: "ModelAgentCoordinatorRequest"
 output_model: "ModelAgentCoordinatorResponse"
 

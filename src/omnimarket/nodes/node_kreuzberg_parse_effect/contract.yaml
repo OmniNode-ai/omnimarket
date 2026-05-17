@@ -9,7 +9,7 @@ name: node_kreuzberg_parse_effect
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "a4e72f19-3c8b-4d56-b0a1-7f9e2d45c830"
-node_type: EFFECT
+node_type: effect
 runtime_profiles:
   - memory
 input_model: "ModelDocumentDiscoveredEvent | ModelDocumentChangedEvent"

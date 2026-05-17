@@ -9,7 +9,7 @@ name: node_dependency_health_sweep
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-node_type: EFFECT
+node_type: effect
 input_model: "ModelDepHealthSweepRequest"
 output_model: "ModelDepHealthSweepResult"
 handler:

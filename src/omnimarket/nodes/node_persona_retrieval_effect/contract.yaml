@@ -8,7 +8,7 @@ node_version: {major: 0, minor: 1, patch: 0}
 description: >
   Read-only EFFECT node that retrieves the latest PersonaSnapshot for a user_id/agent_id from Postgres.
   No event bus (read-only). Phase 3 Adaptive Personalization (OMN-7305).
-node_type: "EFFECT"
+node_type: effect
 input_model: "ModelPersonaRetrievalRequest"
 output_model: "ModelPersonaRetrievalResponse"
 handler:

@@ -10,7 +10,7 @@
 #   - OMN-8688: node_pipeline_fill — headless ticket pipeline orchestrator
 #   - OMN-5113: Autonomous Build Loop epic
 name: "node_pipeline_fill"
-node_type: "ORCHESTRATOR"
+node_type: orchestrator
 contract_version:
   major: 1
   minor: 0

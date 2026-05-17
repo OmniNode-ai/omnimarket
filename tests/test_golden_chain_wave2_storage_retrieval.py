@@ -36,7 +36,7 @@ def test_node_contract_yaml_is_present_and_parses(node_name: str) -> None:
     assert contract_path.exists(), f"{node_name}/contract.yaml missing"
     data = yaml.safe_load(contract_path.read_text())
     assert data["name"] == node_name
-    assert data["node_type"] == "EFFECT"
+    assert data["node_type"] == "effect"
 
 
 @pytest.mark.unit

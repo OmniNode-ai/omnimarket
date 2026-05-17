@@ -11,7 +11,7 @@ contract_version: {major: 0, minor: 2, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 description: "Intent storage effect node for persisting classified intents to Memgraph. Links intents
   to sessions for analytics and pattern learning."
-node_type: "EFFECT"
+node_type: effect
 input_model: "ModelIntentStorageRequest"
 output_model: "ModelIntentStorageResponse"
 
