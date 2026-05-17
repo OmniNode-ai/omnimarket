@@ -14,6 +14,7 @@ Safety invariants (non-negotiable):
   - pytest gate runs inside the worktree before commit.
   - LLM does NOT author commit message (fixed template only).
   - is_noop=True when LLM output matches current file exactly; no commit.
+  - Push uses force-with-lease against pre-commit SHA to guard concurrent pushes.
 """
 
 from __future__ import annotations
@@ -94,7 +95,7 @@ def _default_subprocess_run(
 
 
 class HandlerConflictHunk:
-    """EFFECT: resolve merge conflict hunks via LLM, commit, emit event."""
+    """EFFECT: resolve merge conflict hunks via LLM, commit, push, emit event."""
 
     handler_type: Literal["node_handler"] = "node_handler"
     handler_category: Literal["effect"] = "effect"
@@ -207,6 +208,12 @@ class HandlerConflictHunk:
             if rc != 0:
                 return _fail(f"git checkout -B {head_ref} failed: {stderr}")
 
+            # Capture pre-commit SHA for force-with-lease push safety
+            rc, pre_sha_raw, _ = await self._arun(
+                ["git", "-C", str(wt_root), "rev-parse", "HEAD"]
+            )
+            pre_commit_sha = pre_sha_raw.strip() if rc == 0 else ""
+
             # Scan for conflict markers
             conflict_file_paths = _find_conflict_files(wt_root)
             if not conflict_file_paths:
@@ -270,7 +277,7 @@ class HandlerConflictHunk:
 
                 any_change = True
 
-                # Check patch size ≤ 50 net changed lines
+                # Check patch size <= 50 net changed lines
                 net_delta = _net_line_delta(original_text, resolved_text)
                 if net_delta > _MAX_NET_CHANGED_LINES:
                     return _fail(
@@ -346,6 +353,28 @@ class HandlerConflictHunk:
                 ["git", "-C", str(wt_root), "rev-parse", "HEAD"]
             )
             commit_sha: str | None = sha_raw.strip() if rc == 0 else None
+
+            # Push resolution to origin using force-with-lease for concurrent-push safety.
+            # pre_commit_sha is the SHA of HEAD before our commit — guards against
+            # a concurrent push landing between our fetch and this push.
+            lease_spec = (
+                f"--force-with-lease={head_ref}:{pre_commit_sha}"
+                if pre_commit_sha
+                else "--force-with-lease"
+            )
+            rc, _, stderr = await self._arun(
+                [
+                    "git",
+                    "-C",
+                    str(wt_root),
+                    "push",
+                    lease_spec,
+                    "origin",
+                    head_ref,
+                ]
+            )
+            if rc != 0:
+                return _fail(f"git push --force-with-lease failed: {stderr}")
 
             return ModelConflictResolvedEvent(
                 correlation_id=correlation_id,
@@ -441,7 +470,7 @@ def _net_line_delta(original: str, resolved: str) -> int:
 
 
 def _extract_ticket(run_id: str) -> str:
-    """Extract ticket ID from run_id (e.g. 'OMN-8992-...' → 'OMN-8992')."""
+    """Extract ticket ID from run_id (e.g. 'OMN-8992-...' -> 'OMN-8992')."""
     import re
 
     match = re.search(r"(OMN-\d+)", run_id, re.IGNORECASE)

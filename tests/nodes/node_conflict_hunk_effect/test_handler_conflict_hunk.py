@@ -871,3 +871,175 @@ def test_extract_hunk_context_includes_surroundings() -> None:
     assert "<<<<<<< HEAD" in ctx
     assert ">>>>>>> branch" in ctx
     assert "line8" in ctx
+
+
+# ---------------------------------------------------------------------------
+# TDD case 11: Push success — resolution pushed to origin
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
+    """Happy path: after commit, push --force-with-lease is called and succeeds."""
+    repo_key = REPO.replace("/", "__")
+    source_clone = tmp_path / repo_key
+    source_clone.mkdir()
+    (source_clone / ".git").mkdir()
+
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
+
+    push_calls: list[list[str]] = []
+
+    def llm_call(
+        file_path: str, hunk_context: str, routing_policy: dict[str, Any]
+    ) -> tuple[str, bool]:
+        return _RESOLVED_CONTENT, False
+
+    def subprocess_fn(
+        cmd_list: list[str], cwd: Path | None = None
+    ) -> tuple[int, str, str]:
+        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
+            wt = Path(cmd_list[-2])
+            wt.mkdir(parents=True, exist_ok=True)
+            (wt / ".git").mkdir(exist_ok=True)
+            (wt / "src").mkdir(exist_ok=True)
+            (wt / "tests").mkdir(exist_ok=True)
+            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
+            return 0, "", ""
+        if "worktree" in cmd_list and "remove" in cmd_list:
+            import shutil
+
+            target = Path(cmd_list[-1])
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            return 0, "", ""
+        if "fetch" in cmd_list:
+            return 0, "", ""
+        if "checkout" in cmd_list and "-B" in cmd_list:
+            return 0, "", ""
+        if "checkout" in cmd_list and "--" in cmd_list:
+            return 0, "", ""
+        if "diff" in cmd_list and "--name-only" in cmd_list:
+            return 0, "src/foo.py\n", ""
+        if "uv" in cmd_list and "pytest" in cmd_list:
+            return 0, "1 passed", ""
+        if "add" in cmd_list and "worktree" not in cmd_list:
+            return 0, "", ""
+        if "commit" in cmd_list:
+            return 0, "", ""
+        if "rev-parse" in cmd_list:
+            return 0, "pre-sha-abc\n", ""
+        if "push" in cmd_list:
+            push_calls.append(cmd_list[:])
+            return 0, "", ""
+        return 0, "", ""
+
+    import os
+
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
+
+    try:
+        handler = HandlerConflictHunk(
+            llm_call_fn=llm_call,
+            subprocess_run_fn=subprocess_fn,
+        )
+        output = await handler.handle(_make_command())
+    finally:
+        os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
+        os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
+
+    event = output.events[0]
+    assert isinstance(event, ModelConflictResolvedEvent)
+    assert event.success is True
+    assert event.resolution_committed is True
+
+    # Verify push was called with force-with-lease
+    assert len(push_calls) == 1
+    push_cmd = push_calls[0]
+    assert "push" in push_cmd
+    assert any("force-with-lease" in arg for arg in push_cmd)
+    assert "origin" in push_cmd
+    assert "feature/some-work" in push_cmd
+
+
+# ---------------------------------------------------------------------------
+# TDD case 12: Push failure → fail event, no success
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_push_failure_emits_fail_event(tmp_path: Path) -> None:
+    """If git push --force-with-lease fails (e.g. concurrent push), emit fail event."""
+    repo_key = REPO.replace("/", "__")
+    source_clone = tmp_path / repo_key
+    source_clone.mkdir()
+    (source_clone / ".git").mkdir()
+
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
+
+    def llm_call(
+        file_path: str, hunk_context: str, routing_policy: dict[str, Any]
+    ) -> tuple[str, bool]:
+        return _RESOLVED_CONTENT, False
+
+    def subprocess_fn(
+        cmd_list: list[str], cwd: Path | None = None
+    ) -> tuple[int, str, str]:
+        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
+            wt = Path(cmd_list[-2])
+            wt.mkdir(parents=True, exist_ok=True)
+            (wt / ".git").mkdir(exist_ok=True)
+            (wt / "src").mkdir(exist_ok=True)
+            (wt / "tests").mkdir(exist_ok=True)
+            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
+            return 0, "", ""
+        if "worktree" in cmd_list and "remove" in cmd_list:
+            import shutil
+
+            target = Path(cmd_list[-1])
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            return 0, "", ""
+        if "fetch" in cmd_list:
+            return 0, "", ""
+        if "checkout" in cmd_list and "-B" in cmd_list:
+            return 0, "", ""
+        if "checkout" in cmd_list and "--" in cmd_list:
+            return 0, "", ""
+        if "diff" in cmd_list and "--name-only" in cmd_list:
+            return 0, "src/foo.py\n", ""
+        if "uv" in cmd_list and "pytest" in cmd_list:
+            return 0, "1 passed", ""
+        if "add" in cmd_list and "worktree" not in cmd_list:
+            return 0, "", ""
+        if "commit" in cmd_list:
+            return 0, "", ""
+        if "rev-parse" in cmd_list:
+            return 0, "pre-sha-xyz\n", ""
+        if "push" in cmd_list:
+            return 1, "", "error: remote rejected (stale info)"
+        return 0, "", ""
+
+    import os
+
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
+
+    try:
+        handler = HandlerConflictHunk(
+            llm_call_fn=llm_call,
+            subprocess_run_fn=subprocess_fn,
+        )
+        output = await handler.handle(_make_command())
+    finally:
+        os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
+        os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
+
+    event = output.events[0]
+    assert isinstance(event, ModelConflictResolvedEvent)
+    assert event.success is False
+    assert "force-with-lease" in (event.error or "")
+    assert event.resolution_committed is False
