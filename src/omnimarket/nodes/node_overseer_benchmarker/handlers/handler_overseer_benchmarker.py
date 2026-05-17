@@ -25,6 +25,7 @@ from omnimarket.nodes.node_llm_eval_harness.handlers.handler_llm_eval_harness im
     ModelLlmEvalSample,
     NodeLlmEvalHarness,
     ProtocolLlmClient,
+    ProtocolLlmEvalHarness,
 )
 
 LEDGER_FILENAME = "overseer_performance_ledger.jsonl"
@@ -113,9 +114,10 @@ class NodeOverseerBenchmarker:
 
     def __init__(
         self,
-        harness: NodeLlmEvalHarness | None = None,
+        harness: ProtocolLlmEvalHarness | None = None,
         client: ProtocolLlmClient | None = None,
     ) -> None:
+        self._harness: ProtocolLlmEvalHarness
         if harness is not None:
             self._harness = harness
         else:

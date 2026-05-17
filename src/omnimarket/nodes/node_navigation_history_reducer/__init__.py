@@ -35,6 +35,7 @@ Fire-and-forget pattern::
 from omnimarket.nodes.node_navigation_history_reducer.handlers import (
     HandlerNavigationHistoryReducer,
     HandlerNavigationHistoryWriter,
+    ProtocolNavigationHistoryWriter,
 )
 from omnimarket.nodes.node_navigation_history_reducer.models import (
     ModelNavigationHistoryRequest,
@@ -56,4 +57,5 @@ __all__ = [
     "ModelPlanStep",
     "NavigationOutcome",
     "NodeNavigationHistoryReducer",
+    "ProtocolNavigationHistoryWriter",
 ]
