@@ -9,7 +9,7 @@ Safety invariants (non-negotiable):
   - No shell=True anywhere.
   - Branch guard refuses to operate on main/master/develop.
   - File allowlist: only src/** and tests/** paths are modified.
-  - Patch size ≤ 50 net changed lines (git diff --stat gate).
+  - Patch size <= 50 net changed lines (git diff --stat gate).
   - Post-mutation scope check: abort + git checkout -- . if unexpected files touched.
   - pytest gate runs inside the worktree before commit.
   - LLM does NOT author commit message (fixed template only).
@@ -135,7 +135,6 @@ class HandlerConflictHunk:
         head_ref = request.head_ref_name
         correlation_id = request.correlation_id
 
-        # Resolve routing policy (fail-loud on malformation)
         routing_policy_model = resolve_routing_policy(_make_envelope(request))
         routing_policy = routing_policy_model.model_dump()
 
@@ -154,7 +153,6 @@ class HandlerConflictHunk:
                 success=False,
             )
 
-        # Branch guard: never operate on protected branches
         if head_ref in _PROTECTED_HEADS:
             return _fail(
                 f"protected_head_ref: refusing to resolve conflicts on {head_ref!r}"
@@ -179,7 +177,6 @@ class HandlerConflictHunk:
 
         worktree_added = False
         try:
-            # Add ephemeral worktree checked out at head_ref
             rc, _, stderr = await self._arun(
                 ["git", "-C", str(source_clone), "fetch", "origin", head_ref]
             )
@@ -201,95 +198,46 @@ class HandlerConflictHunk:
                 return _fail(f"git worktree add failed: {stderr}")
             worktree_added = True
 
-            # Detach from remote tracking and set local branch
             rc, _, stderr = await self._arun(
                 ["git", "-C", str(wt_root), "checkout", "-B", head_ref]
             )
             if rc != 0:
                 return _fail(f"git checkout -B {head_ref} failed: {stderr}")
 
-            # Capture pre-commit SHA for force-with-lease push safety
             rc, pre_sha_raw, _ = await self._arun(
                 ["git", "-C", str(wt_root), "rev-parse", "HEAD"]
             )
             pre_commit_sha = pre_sha_raw.strip() if rc == 0 else ""
 
-            # Scan for conflict markers
             conflict_file_paths = _find_conflict_files(wt_root)
             if not conflict_file_paths:
                 return _fail(
                     "No conflict markers found in worktree. Nothing to resolve."
                 )
 
-            # Enforce file allowlist
-            for fp in conflict_file_paths:
-                rel = str(fp.relative_to(wt_root))
-                if not any(rel.startswith(prefix) for prefix in _ALLOWED_PATH_PREFIXES):
-                    event = ModelConflictResolvedEvent(
-                        correlation_id=correlation_id,
-                        pr_number=pr_number,
-                        repo=repo,
-                        head_ref_name=head_ref,
-                        resolved_files=[],
-                        resolution_committed=False,
-                        is_noop=False,
-                        commit_sha=None,
-                        used_fallback=False,
-                        error=f"file outside allowlist: {rel!r}. Only src/** and tests/** are permitted.",
-                        success=False,
-                    )
-                    return event
+            allowlist_error = _check_allowlist(conflict_file_paths, wt_root)
+            if allowlist_error:
+                return ModelConflictResolvedEvent(
+                    correlation_id=correlation_id,
+                    pr_number=pr_number,
+                    repo=repo,
+                    head_ref_name=head_ref,
+                    resolved_files=[],
+                    resolution_committed=False,
+                    is_noop=False,
+                    commit_sha=None,
+                    used_fallback=False,
+                    error=allowlist_error,
+                    success=False,
+                )
 
-            resolved_files: list[str] = []
-            used_fallback = False
-            any_change = False
+            resolved_files, used_fallback, mutation_error = self._apply_llm_resolutions(
+                conflict_file_paths, wt_root, routing_policy
+            )
+            if mutation_error:
+                return _fail(mutation_error)
 
-            for fp in conflict_file_paths:
-                rel = str(fp.relative_to(wt_root))
-                original_text = fp.read_text(encoding="utf-8")
-                hunk_context = _extract_hunk_context(original_text, _HUNK_CONTEXT_LINES)
-
-                resolved_text, fb = self._llm_call(rel, hunk_context, routing_policy)
-                if fb:
-                    used_fallback = True
-
-                if not resolved_text:
-                    return _fail(f"LLM returned empty resolution for {rel!r}")
-
-                # Noop check: LLM returned the same text (e.g. refused or was already clean)
-                if resolved_text == original_text:
-                    continue
-
-                # Validate: no residual conflict markers
-                if _CONFLICT_MARKER in resolved_text:
-                    return _fail(
-                        f"LLM resolution for {rel!r} still contains conflict markers"
-                    )
-
-                # Validate Python syntax for .py files
-                if fp.suffix == ".py":
-                    try:
-                        ast.parse(resolved_text)
-                    except SyntaxError as exc:
-                        return _fail(
-                            f"LLM resolution for {rel!r} has invalid Python syntax: {exc}"
-                        )
-
-                any_change = True
-
-                # Check patch size <= 50 net changed lines
-                net_delta = _net_line_delta(original_text, resolved_text)
-                if net_delta > _MAX_NET_CHANGED_LINES:
-                    return _fail(
-                        f"patch for {rel!r} exceeds {_MAX_NET_CHANGED_LINES} net changed lines "
-                        f"(got {net_delta}). Refusing to apply."
-                    )
-
-                fp.write_text(resolved_text, encoding="utf-8")
-                resolved_files.append(rel)
-
-            # is_noop when no file changed
-            if not any_change:
+            if not resolved_files:
                 return ModelConflictResolvedEvent(
                     correlation_id=correlation_id,
                     pr_number=pr_number,
@@ -304,77 +252,15 @@ class HandlerConflictHunk:
                     success=True,
                 )
 
-            # Post-mutation scope check: abort if unexpected files were touched
-            rc, diff_out, _ = await self._arun(
-                ["git", "-C", str(wt_root), "diff", "--name-only", "HEAD"]
+            commit_sha, commit_error = await self._commit_resolution(
+                wt_root, resolved_files, request
             )
-            touched = {f.strip() for f in diff_out.splitlines() if f.strip()}
-            expected = set(resolved_files)
-            unexpected = touched - expected
-            if unexpected:
-                # Abort: restore all modifications
-                await self._arun(["git", "-C", str(wt_root), "checkout", "--", "."])
-                return _fail(
-                    f"post-mutation scope check failed: unexpected files modified: {sorted(unexpected)}"
-                )
+            if commit_error:
+                return _fail(commit_error)
 
-            # Run pytest gate in worktree
-            rc, pytest_out, pytest_err = await self._arun(
-                ["uv", "run", "pytest", "tests/", "-x", "--tb=short"],
-                cwd=wt_root,
-            )
-            if rc != 0:
-                await self._arun(["git", "-C", str(wt_root), "checkout", "--", "."])
-                return _fail(
-                    f"pytest gate failed (exit {rc}):\n{pytest_out[-2000:]}\n{pytest_err[-2000:]}"
-                )
-
-            # Stage resolved files
-            rc, _, stderr = await self._arun(
-                ["git", "-C", str(wt_root), "add", "--", *resolved_files]
-            )
-            if rc != 0:
-                return _fail(f"git add failed: {stderr}")
-
-            # Commit with fixed template — LLM does NOT author commit message
-            ticket = _extract_ticket(request.run_id)
-            files_summary = ", ".join(resolved_files[:3])
-            if len(resolved_files) > 3:
-                files_summary += f" (+{len(resolved_files) - 3} more)"
-            commit_msg = f"[{ticket}] auto-resolve conflict in {files_summary} via LLM"
-            rc, _, stderr = await self._arun(
-                ["git", "-C", str(wt_root), "commit", "-m", commit_msg]
-            )
-            if rc != 0:
-                return _fail(f"git commit failed: {stderr}")
-
-            # Capture commit SHA
-            rc, sha_raw, _ = await self._arun(
-                ["git", "-C", str(wt_root), "rev-parse", "HEAD"]
-            )
-            commit_sha: str | None = sha_raw.strip() if rc == 0 else None
-
-            # Push resolution to origin using force-with-lease for concurrent-push safety.
-            # pre_commit_sha is the SHA of HEAD before our commit — guards against
-            # a concurrent push landing between our fetch and this push.
-            lease_spec = (
-                f"--force-with-lease={head_ref}:{pre_commit_sha}"
-                if pre_commit_sha
-                else "--force-with-lease"
-            )
-            rc, _, stderr = await self._arun(
-                [
-                    "git",
-                    "-C",
-                    str(wt_root),
-                    "push",
-                    lease_spec,
-                    "origin",
-                    head_ref,
-                ]
-            )
-            if rc != 0:
-                return _fail(f"git push --force-with-lease failed: {stderr}")
+            push_error = await self._push_resolution(wt_root, head_ref, pre_commit_sha)
+            if push_error:
+                return _fail(push_error)
 
             return ModelConflictResolvedEvent(
                 correlation_id=correlation_id,
@@ -406,15 +292,151 @@ class HandlerConflictHunk:
                 if rc != 0:
                     _log.warning("Failed to remove worktree %s: %s", wt_root, err)
 
+    def _apply_llm_resolutions(
+        self,
+        conflict_file_paths: list[Path],
+        wt_root: Path,
+        routing_policy: dict[str, Any],
+    ) -> tuple[list[str], bool, str | None]:
+        """Apply LLM resolution to each conflicted file. Returns (resolved_files, used_fallback, error)."""
+        resolved_files: list[str] = []
+        used_fallback = False
+
+        for fp in conflict_file_paths:
+            rel = str(fp.relative_to(wt_root))
+            original_text = fp.read_text(encoding="utf-8")
+            hunk_context = _extract_hunk_context(original_text, _HUNK_CONTEXT_LINES)
+
+            resolved_text, fb = self._llm_call(rel, hunk_context, routing_policy)
+            if fb:
+                used_fallback = True
+
+            if not resolved_text:
+                return [], used_fallback, f"LLM returned empty resolution for {rel!r}"
+
+            if resolved_text == original_text:
+                continue
+
+            if _CONFLICT_MARKER in resolved_text:
+                return (
+                    [],
+                    used_fallback,
+                    f"LLM resolution for {rel!r} still contains conflict markers",
+                )
+
+            if fp.suffix == ".py":
+                try:
+                    ast.parse(resolved_text)
+                except SyntaxError as exc:
+                    return (
+                        [],
+                        used_fallback,
+                        f"LLM resolution for {rel!r} has invalid Python syntax: {exc}",
+                    )
+
+            net_delta = _net_line_delta(original_text, resolved_text)
+            if net_delta > _MAX_NET_CHANGED_LINES:
+                return (
+                    [],
+                    used_fallback,
+                    (
+                        f"patch for {rel!r} exceeds {_MAX_NET_CHANGED_LINES} net changed lines "
+                        f"(got {net_delta}). Refusing to apply."
+                    ),
+                )
+
+            fp.write_text(resolved_text, encoding="utf-8")
+            resolved_files.append(rel)
+
+        return resolved_files, used_fallback, None
+
+    async def _commit_resolution(
+        self,
+        wt_root: Path,
+        resolved_files: list[str],
+        request: ModelConflictHunkCommand,
+    ) -> tuple[str | None, str | None]:
+        """Scope check, pytest gate, git add, git commit. Returns (commit_sha, None) on success or (None, error) on failure."""
+        rc, diff_out, _ = await self._arun(
+            ["git", "-C", str(wt_root), "diff", "--name-only", "HEAD"]
+        )
+        touched = {f.strip() for f in diff_out.splitlines() if f.strip()}
+        unexpected = touched - set(resolved_files)
+        if unexpected:
+            await self._arun(["git", "-C", str(wt_root), "checkout", "--", "."])
+            return (
+                None,
+                f"post-mutation scope check failed: unexpected files modified: {sorted(unexpected)}",
+            )
+
+        rc, pytest_out, pytest_err = await self._arun(
+            ["uv", "run", "pytest", "tests/", "-x", "--tb=short"],
+            cwd=wt_root,
+        )
+        if rc != 0:
+            await self._arun(["git", "-C", str(wt_root), "checkout", "--", "."])
+            return (
+                None,
+                f"pytest gate failed (exit {rc}):\n{pytest_out[-2000:]}\n{pytest_err[-2000:]}",
+            )
+
+        rc, _, stderr = await self._arun(
+            ["git", "-C", str(wt_root), "add", "--", *resolved_files]
+        )
+        if rc != 0:
+            return None, f"git add failed: {stderr}"
+
+        ticket = _extract_ticket(request.run_id)
+        files_summary = ", ".join(resolved_files[:3])
+        if len(resolved_files) > 3:
+            files_summary += f" (+{len(resolved_files) - 3} more)"
+        commit_msg = f"[{ticket}] auto-resolve conflict in {files_summary} via LLM"
+        rc, _, stderr = await self._arun(
+            ["git", "-C", str(wt_root), "commit", "-m", commit_msg]
+        )
+        if rc != 0:
+            return None, f"git commit failed: {stderr}"
+
+        rc, sha_raw, _ = await self._arun(
+            ["git", "-C", str(wt_root), "rev-parse", "HEAD"]
+        )
+        sha = sha_raw.strip() if rc == 0 else None
+        return sha, None
+
+    async def _push_resolution(
+        self, wt_root: Path, head_ref: str, pre_commit_sha: str
+    ) -> str | None:
+        """Push resolved commit to origin with force-with-lease. Returns error string or None."""
+        lease_spec = (
+            f"--force-with-lease={head_ref}:{pre_commit_sha}"
+            if pre_commit_sha
+            else "--force-with-lease"
+        )
+        rc, _, stderr = await self._arun(
+            ["git", "-C", str(wt_root), "push", lease_spec, "origin", head_ref]
+        )
+        if rc != 0:
+            return f"git push --force-with-lease failed: {stderr}"
+        return None
+
     async def _arun(
         self, cmd: list[str], cwd: Path | None = None, timeout: float = 300.0
     ) -> tuple[int, str, str]:
         """Async wrapper around the injected subprocess_run_fn."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await asyncio.wait_for(
             loop.run_in_executor(None, lambda: self._run(cmd, cwd)),
             timeout=timeout,
         )
+
+
+def _check_allowlist(conflict_file_paths: list[Path], wt_root: Path) -> str | None:
+    """Return an error string if any file is outside the allowed path prefixes."""
+    for fp in conflict_file_paths:
+        rel = str(fp.relative_to(wt_root))
+        if not any(rel.startswith(prefix) for prefix in _ALLOWED_PATH_PREFIXES):
+            return f"file outside allowlist: {rel!r}. Only src/** and tests/** are permitted."
+    return None
 
 
 def _find_conflict_files(wt_root: Path) -> list[Path]:
@@ -450,7 +472,6 @@ def _extract_hunk_context(text: str, context_lines: int) -> str:
     if not hunk_starts:
         return text
 
-    # Collect union of context windows
     included: set[int] = set()
     for start, end in zip(hunk_starts, hunk_ends, strict=False):
         for idx in range(
