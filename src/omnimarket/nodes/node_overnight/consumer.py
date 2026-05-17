@@ -104,14 +104,22 @@ def _invoke_overnight(cmd: dict[str, Any]) -> dict[str, Any]:
     )
 
     event_publisher = _build_event_publisher()
+    handler_error: Exception | None = None
     try:
         handler = HandlerOvernight(
             event_bus=event_publisher,
             contract_path=_CONTRACT_PATH,
         )
         result = handler.handle(command, dispatch_phases=True)
+    except Exception as exc:
+        handler_error = exc
+        raise
     finally:
-        event_publisher.close()
+        try:
+            event_publisher.close()
+        except Exception:
+            if handler_error is None:
+                raise
 
     return {
         "correlation_id": str(cmd["correlation_id"]),

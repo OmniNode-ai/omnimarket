@@ -164,3 +164,51 @@ class TestOvernightInvokeWiring:
         assert constructed["publisher_closed"] is True
         assert result["session_status"] == "completed"
         assert result["phases_run"] == ["nightly_loop_controller"]
+
+    def test_handler_error_is_not_masked_by_publisher_close(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        constructed: dict[str, object] = {}
+
+        class FakePublisher:
+            def close(self) -> None:
+                constructed["publisher_closed"] = True
+                raise RuntimeError("publisher close failed")
+
+        monkeypatch.setattr(
+            consumer_mod,
+            "_build_event_publisher",
+            lambda: FakePublisher(),
+        )
+
+        class FakeHandler:
+            def __init__(self, *, event_bus: object, contract_path: object) -> None:
+                constructed["event_bus"] = event_bus
+                constructed["contract_path"] = contract_path
+
+            def handle(self, command: object, *, dispatch_phases: bool) -> object:
+                constructed["dispatch_phases"] = dispatch_phases
+                raise RuntimeError("handler failed")
+
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_overnight.handlers.handler_overnight.HandlerOvernight",
+            FakeHandler,
+        )
+
+        with pytest.raises(RuntimeError, match="handler failed"):
+            _invoke_overnight(
+                {
+                    "correlation_id": "night-corr-001",
+                    "max_cycles": 1,
+                    "skip_nightly_loop": False,
+                    "skip_build_loop": True,
+                    "skip_merge_sweep": True,
+                    "dry_run": True,
+                    "enable_self_loop": False,
+                    "loop_delay_seconds": 60,
+                }
+            )
+
+        assert constructed["contract_path"] == _CONTRACT_PATH
+        assert constructed["dispatch_phases"] is True
+        assert constructed["publisher_closed"] is True
