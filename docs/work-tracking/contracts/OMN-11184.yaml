@@ -10,7 +10,7 @@ is_seam_ticket: false
 interface_change: true
 interfaces_touched:
   - "events"
-  - "db_schema"
+  - "protocols"
 emergency_bypass:
   enabled: false
   justification: ""
