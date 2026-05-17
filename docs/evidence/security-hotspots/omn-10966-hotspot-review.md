@@ -1,7 +1,7 @@
 # Security Hotspot Review — OMN-10966
 
 **Date:** 2026-05-17
-**Reviewer:** jonahgabriel
+**Reviewer:** platform-team
 **Ticket:** OMN-10966
 **Scope:** omnimarket codebase — all SonarCloud security hotspots
 
