@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-7390"
+title: "Align closeout FSM with cron phase contract"
+summary: >
+  Align node_close_out phase values and contract metadata with the omniclaude
+  cron closeout phase contract so Process Integrity can validate parity across
+  the scheduler and the market node.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Close-out golden-chain and concurrent-run guard tests pass"
+    command: "uv run pytest tests/test_golden_chain_close_out.py tests/test_close_out_concurrent_run_guard.py -q"
+  - kind: "manual"
+    description: "Touched close-out node files and tests pass ruff"
+    command: "uv run ruff check src/omnimarket/nodes/node_close_out tests/test_golden_chain_close_out.py tests/test_close_out_concurrent_run_guard.py"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports the close-out handler and state model in the runtime container"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_close_out.handlers.handler_close_out import HandlerCloseOut; from omnimarket.nodes.node_close_out.models.model_close_out_state import EnumCloseOutPhase; print('deploy smoke ok', HandlerCloseOut.__name__, EnumCloseOutPhase.DONE.value)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Close-out golden-chain and concurrent-run guard tests pass after phase parity update"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_close_out.py tests/test_close_out_concurrent_run_guard.py -q"
+  - id: "dod-lint"
+    description: "Touched close-out node files and tests pass ruff"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_close_out tests/test_golden_chain_close_out.py tests/test_close_out_concurrent_run_guard.py"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke plan only; this PR has not deployed, restarted runtime, or mutated .201"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_close_out.handlers.handler_close_out import HandlerCloseOut; from omnimarket.nodes.node_close_out.models.model_close_out_state import EnumCloseOutPhase; print('deploy smoke ok', HandlerCloseOut.__name__, EnumCloseOutPhase.DONE.value)\""

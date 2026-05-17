@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_close_out.handlers.handler_close_out import (
@@ -20,6 +22,7 @@ from omnimarket.nodes.node_close_out.models.model_close_out_start_command import
     ModelCloseOutStartCommand,
 )
 from omnimarket.nodes.node_close_out.models.model_close_out_state import (
+    CLOSE_OUT_PHASE_ORDER,
     EnumCloseOutPhase,
 )
 
@@ -42,10 +45,21 @@ def _make_command(
 class TestCloseOutGoldenChain:
     """Golden chain: start command -> phase transitions -> completion."""
 
+    def test_contract_phase_order_matches_fsm(self) -> None:
+        """Machine-check the node contract and FSM phase order stay in parity."""
+        contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_close_out/contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text())
+        assert contract["closeout_phase_order"]["phases"] == [
+            phase.value for phase in CLOSE_OUT_PHASE_ORDER
+        ]
+
     async def test_full_cycle_all_phases_succeed(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """All 8 phases succeed -> DONE."""
+        """All closeout phases succeed -> DONE."""
         handler = HandlerCloseOut()
         command = _make_command()
 
@@ -56,15 +70,11 @@ class TestCloseOutGoldenChain:
         assert state.error_message is None
         assert completed.final_phase == EnumCloseOutPhase.DONE
 
-        # 8 transitions: IDLE->MERGE_SWEEP, MERGE_SWEEP->DEPLOY_PLUGIN,
-        # DEPLOY_PLUGIN->START_ENV, START_ENV->INTEGRATION,
-        # INTEGRATION->RELEASE_CHECK, RELEASE_CHECK->REDEPLOY_CHECK,
-        # REDEPLOY_CHECK->DASHBOARD_SWEEP, DASHBOARD_SWEEP->DONE
-        assert len(events) == 8
+        assert len(events) == len(CLOSE_OUT_PHASE_ORDER) + 1
         assert all(e.success for e in events)
         assert events[0].from_phase == EnumCloseOutPhase.IDLE
-        assert events[0].to_phase == EnumCloseOutPhase.MERGE_SWEEP
-        assert events[-1].from_phase == EnumCloseOutPhase.DASHBOARD_SWEEP
+        assert events[0].to_phase == CLOSE_OUT_PHASE_ORDER[0]
+        assert events[-1].from_phase == CLOSE_OUT_PHASE_ORDER[-1]
         assert events[-1].to_phase == EnumCloseOutPhase.DONE
 
     async def test_circuit_breaker_after_3_failures(
@@ -75,13 +85,13 @@ class TestCloseOutGoldenChain:
         command = _make_command()
         state = handler.start(command)
 
-        # IDLE -> MERGE_SWEEP (success)
+        # IDLE -> first closeout phase (success)
         state, _ = handler.advance(state, phase_success=True)
-        assert state.current_phase == EnumCloseOutPhase.MERGE_SWEEP
+        assert state.current_phase == CLOSE_OUT_PHASE_ORDER[0]
 
-        # Fail MERGE_SWEEP 3 times
+        # Fail the current phase 3 times
         state, _ = handler.advance(state, phase_success=False, error_message="fail 1")
-        assert state.current_phase == EnumCloseOutPhase.MERGE_SWEEP
+        assert state.current_phase == CLOSE_OUT_PHASE_ORDER[0]
         assert state.consecutive_failures == 1
 
         state, _ = handler.advance(state, phase_success=False, error_message="fail 2")
@@ -104,12 +114,12 @@ class TestCloseOutGoldenChain:
 
         state, _events, completed = handler.run_full_pipeline(
             command,
-            phase_results={EnumCloseOutPhase.INTEGRATION: False},
+            phase_results={EnumCloseOutPhase.B5_INTEGRATION: False},
         )
 
-        # After 1 failure trying to enter INTEGRATION, state stays at START_ENV
-        assert completed.final_phase == EnumCloseOutPhase.START_ENV
-        assert state.current_phase == EnumCloseOutPhase.START_ENV
+        # After 1 failure trying to enter B5, state stays at the prior phase.
+        assert completed.final_phase == EnumCloseOutPhase.B4B_RUNTIME_SWEEP_RETRY
+        assert state.current_phase == EnumCloseOutPhase.B4B_RUNTIME_SWEEP_RETRY
         assert state.consecutive_failures == 1
 
     async def test_dry_run_propagated(self, event_bus: EventBusInmemory) -> None:
@@ -164,10 +174,10 @@ class TestCloseOutGoldenChain:
 
         assert len(completed_events) == 1
         assert completed_events[0]["final_phase"] == "done"
-        assert len(phase_events) == 8
+        assert len(phase_events) == len(CLOSE_OUT_PHASE_ORDER) + 1
 
         phase_history = await event_bus.get_event_history(topic=PHASE_TOPIC)
-        assert len(phase_history) == 8
+        assert len(phase_history) == len(CLOSE_OUT_PHASE_ORDER) + 1
 
         completed_history = await event_bus.get_event_history(topic=COMPLETED_TOPIC)
         assert len(completed_history) == 1
@@ -180,7 +190,7 @@ class TestCloseOutGoldenChain:
         command = _make_command()
         state = handler.start(command)
 
-        # IDLE -> MERGE_SWEEP (success)
+        # IDLE -> first closeout phase (success)
         state, _ = handler.advance(state, phase_success=True)
 
         # Fail twice
@@ -192,7 +202,7 @@ class TestCloseOutGoldenChain:
         # Succeed — resets counter and advances
         state, _ = handler.advance(state, phase_success=True)
         assert state.consecutive_failures == 0
-        assert state.current_phase == EnumCloseOutPhase.DEPLOY_PLUGIN
+        assert state.current_phase == CLOSE_OUT_PHASE_ORDER[1]
 
     async def test_cannot_advance_from_terminal(
         self, event_bus: EventBusInmemory
@@ -218,7 +228,7 @@ class TestCloseOutGoldenChain:
         deserialized = json.loads(serialized)
 
         assert deserialized["from_phase"] == "idle"
-        assert deserialized["to_phase"] == "merge_sweep"
+        assert deserialized["to_phase"] == "a1_merge_sweep"
         assert deserialized["success"] is True
 
     async def test_completed_event_serialization(

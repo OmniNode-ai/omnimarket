@@ -11,32 +11,63 @@ from pydantic import BaseModel, ConfigDict, Field
 class EnumCloseOutPhase(StrEnum):
     """FSM phases for the close-out pipeline.
 
-    Phase Transitions:
-        IDLE -> MERGE_SWEEP -> DEPLOY_PLUGIN -> START_ENV -> INTEGRATION
-        -> RELEASE_CHECK -> REDEPLOY_CHECK -> DASHBOARD_SWEEP -> DONE
+    Phase Transitions mirror the closeout phases in
+    omniclaude/scripts/closeout-phase-contract.yaml, excluding build-loop phases.
         Any -> FAILED: Circuit breaker tripped or unrecoverable error
     """
 
     IDLE = "idle"
-    MERGE_SWEEP = "merge_sweep"
-    DEPLOY_PLUGIN = "deploy_plugin"
-    START_ENV = "start_env"
-    INTEGRATION = "integration"
-    RELEASE_CHECK = "release_check"
-    REDEPLOY_CHECK = "redeploy_check"
-    DASHBOARD_SWEEP = "dashboard_sweep"
+    A1_MERGE_SWEEP = "a1_merge_sweep"
+    A2_DEPLOY_PLUGIN = "a2_deploy_plugin"
+    A2B_PLUGIN_REFRESH = "a2b_plugin_refresh"
+    A3_START_ENV = "a3_start_env"
+    B1_RUNTIME_SWEEP = "b1_runtime_sweep"
+    B2_DATA_FLOW_SWEEP = "b2_data_flow_sweep"
+    B3_DATABASE_SWEEP = "b3_database_sweep"
+    B4B_DATABASE_SWEEP = "b4b_database_sweep"
+    B4B_DATABASE_SWEEP_RETRY = "b4b_database_sweep_retry"
+    B4B_DATA_FLOW_SWEEP = "b4b_data_flow_sweep"
+    B4B_DATA_FLOW_SWEEP_RETRY = "b4b_data_flow_sweep_retry"
+    B4B_RUNTIME_SWEEP = "b4b_runtime_sweep"
+    B4B_RUNTIME_SWEEP_RETRY = "b4b_runtime_sweep_retry"
+    B5_INTEGRATION = "b5_integration"
+    B6_CONTRACT_VERIFY = "b6_contract_verify"
+    C1_RELEASE = "c1_release"
+    C2_REDEPLOY = "c2_redeploy"
+    D3_DASHBOARD_SWEEP = "d3_dashboard_sweep"
+    E1_FOUNDATION_TESTS = "e1_foundation_tests"
+    E2_PIPELINE_TESTS = "e2_pipeline_tests"
+    E4_GOLDEN_CHAIN = "e4_golden_chain"
+    E4_GOLDEN_CHAIN_RETRY = "e4_golden_chain_retry"
+    E3_DASHBOARD_TESTS = "e3_dashboard_tests"
     DONE = "done"
     FAILED = "failed"
 
 
-_PHASE_ORDER: tuple[EnumCloseOutPhase, ...] = (
-    EnumCloseOutPhase.MERGE_SWEEP,
-    EnumCloseOutPhase.DEPLOY_PLUGIN,
-    EnumCloseOutPhase.START_ENV,
-    EnumCloseOutPhase.INTEGRATION,
-    EnumCloseOutPhase.RELEASE_CHECK,
-    EnumCloseOutPhase.REDEPLOY_CHECK,
-    EnumCloseOutPhase.DASHBOARD_SWEEP,
+CLOSE_OUT_PHASE_ORDER: tuple[EnumCloseOutPhase, ...] = (
+    EnumCloseOutPhase.A1_MERGE_SWEEP,
+    EnumCloseOutPhase.A2_DEPLOY_PLUGIN,
+    EnumCloseOutPhase.A2B_PLUGIN_REFRESH,
+    EnumCloseOutPhase.A3_START_ENV,
+    EnumCloseOutPhase.B1_RUNTIME_SWEEP,
+    EnumCloseOutPhase.B2_DATA_FLOW_SWEEP,
+    EnumCloseOutPhase.B3_DATABASE_SWEEP,
+    EnumCloseOutPhase.B4B_DATABASE_SWEEP,
+    EnumCloseOutPhase.B4B_DATABASE_SWEEP_RETRY,
+    EnumCloseOutPhase.B4B_DATA_FLOW_SWEEP,
+    EnumCloseOutPhase.B4B_DATA_FLOW_SWEEP_RETRY,
+    EnumCloseOutPhase.B4B_RUNTIME_SWEEP,
+    EnumCloseOutPhase.B4B_RUNTIME_SWEEP_RETRY,
+    EnumCloseOutPhase.B5_INTEGRATION,
+    EnumCloseOutPhase.B6_CONTRACT_VERIFY,
+    EnumCloseOutPhase.C1_RELEASE,
+    EnumCloseOutPhase.C2_REDEPLOY,
+    EnumCloseOutPhase.D3_DASHBOARD_SWEEP,
+    EnumCloseOutPhase.E1_FOUNDATION_TESTS,
+    EnumCloseOutPhase.E2_PIPELINE_TESTS,
+    EnumCloseOutPhase.E4_GOLDEN_CHAIN,
+    EnumCloseOutPhase.E4_GOLDEN_CHAIN_RETRY,
+    EnumCloseOutPhase.E3_DASHBOARD_TESTS,
 )
 
 TERMINAL_PHASES: frozenset[EnumCloseOutPhase] = frozenset(
@@ -47,15 +78,15 @@ TERMINAL_PHASES: frozenset[EnumCloseOutPhase] = frozenset(
 def next_phase(current: EnumCloseOutPhase) -> EnumCloseOutPhase:
     """Return the next phase in the close-out progression."""
     if current == EnumCloseOutPhase.IDLE:
-        return EnumCloseOutPhase.MERGE_SWEEP
-    if current == EnumCloseOutPhase.DASHBOARD_SWEEP:
+        return CLOSE_OUT_PHASE_ORDER[0]
+    if current == CLOSE_OUT_PHASE_ORDER[-1]:
         return EnumCloseOutPhase.DONE
     if current in TERMINAL_PHASES:
         msg = f"No next phase from terminal state: {current}"
         raise ValueError(msg)
 
-    idx = _PHASE_ORDER.index(current)
-    return _PHASE_ORDER[idx + 1]
+    idx = CLOSE_OUT_PHASE_ORDER.index(current)
+    return CLOSE_OUT_PHASE_ORDER[idx + 1]
 
 
 class ModelCloseOutState(BaseModel):
@@ -76,6 +107,7 @@ class ModelCloseOutState(BaseModel):
 
 
 __all__: list[str] = [
+    "CLOSE_OUT_PHASE_ORDER",
     "TERMINAL_PHASES",
     "EnumCloseOutPhase",
     "ModelCloseOutState",

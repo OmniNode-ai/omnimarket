@@ -1,8 +1,7 @@
 """HandlerCloseOut — FSM state machine for the close-out pipeline.
 
-Pure state machine logic. Phases: IDLE -> MERGE_SWEEP -> DEPLOY_PLUGIN ->
-START_ENV -> INTEGRATION -> RELEASE_CHECK -> REDEPLOY_CHECK ->
-DASHBOARD_SWEEP -> DONE.
+Pure state machine logic. Phase order mirrors
+omniclaude/scripts/closeout-phase-contract.yaml closeout phases.
 
 Circuit breaker: 3 consecutive failures -> FAILED.
 """
