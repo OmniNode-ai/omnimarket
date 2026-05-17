@@ -205,6 +205,97 @@ class TestDelegationHandler:
         assert result is True  # skip, don't error
         mock_db.execute.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_generation_completed_projected(self, mock_db: AsyncMock) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+
+        data = {
+            "correlation_id": "gen-corr-1",
+            "task_description": "Build a node that validates email addresses",
+            "provider": "local",
+            "model_id": "Qwen3-Coder-30B",
+            "endpoint_class": "local",
+            "attempt_count": 1,
+            "total_latency_e2e_ms": 3200,
+            "contract_passed": True,
+            "cost_inference_usd": 0.0,
+        }
+
+        result = await runner.project_event(
+            "onex.evt.omnimarket.node-generation-completed.v1", data, _make_meta()
+        )
+        assert result is True
+        mock_db.execute.assert_called_once()
+        args = mock_db.execute.call_args[0]
+        assert "gen-corr-1" in args
+        assert "Build a node that validates email addresses" in args
+
+    @pytest.mark.asyncio
+    async def test_generation_completed_contract_failed(
+        self, mock_db: AsyncMock
+    ) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+
+        data = {
+            "correlation_id": "gen-corr-fail",
+            "task_description": "Generate a broken node",
+            "contract_passed": False,
+            "attempt_count": 2,
+        }
+
+        result = await runner.project_event(
+            "onex.evt.omnimarket.node-generation-completed.v1", data, _make_meta()
+        )
+        assert result is True
+        mock_db.execute.assert_called_once()
+        args = mock_db.execute.call_args[0]
+        assert False in args  # contract_passed=False projected
+
+    @pytest.mark.asyncio
+    async def test_unknown_topic_returns_false(self, mock_db: AsyncMock) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+
+        result = await runner.project_event(
+            "onex.evt.omnimarket.some-unknown-topic.v1", {}, _make_meta()
+        )
+        assert result is False
+        mock_db.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_generation_fallback_correlation_id(self, mock_db: AsyncMock) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+
+        meta = _make_meta()
+        data = {"task_description": "no correlation id here"}  # no correlation_id
+
+        result = await runner.project_event(
+            "onex.evt.omnimarket.node-generation-completed.v1", data, meta
+        )
+        assert result is True
+        mock_db.execute.assert_called_once()
+        args = mock_db.execute.call_args[0]
+        assert meta.fallback_id in args
+
 
 class TestRegistrationHandler:
     @pytest.mark.asyncio

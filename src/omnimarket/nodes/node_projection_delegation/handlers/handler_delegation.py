@@ -22,6 +22,7 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
         "delegation_events",
         "delegation_shadow_comparisons",
+        "generation_events",
         "llm_cost_aggregates",
         "node_service_registry",
         "baselines_snapshots",
@@ -64,9 +65,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             raise ValueError(
                 "Contract missing required table role 'shadow_comparisons'"
             )
+        if "generation_events" not in _by_role:
+            raise ValueError("Contract missing required table role 'generation_events'")
 
         self._table_delegation: str = _by_role["events"]
         self._table_shadow: str = _by_role["shadow_comparisons"]
+        self._table_generation: str = _by_role["generation_events"]
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -94,14 +98,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        subscribe = self.subscribe_topics
-        topic_delegated = subscribe[0] if len(subscribe) > 0 else ""
-        topic_shadow = subscribe[1] if len(subscribe) > 1 else ""
-
-        if topic == topic_delegated:
+        subscribe = set(self.subscribe_topics)
+        if "task-delegated" in topic and topic in subscribe:
             return await self._project_task_delegated(data, meta)
-        if topic == topic_shadow:
+        if "delegation-shadow-comparison" in topic and topic in subscribe:
             return await self._project_shadow_comparison(data, meta)
+        if "node-generation-completed" in topic and topic in subscribe:
+            return await self._project_generation_completed(data, meta)
         return False
 
     async def _project_task_delegated(
@@ -286,6 +289,67 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             primary_cost_usd,
             shadow_cost_usd,
             str(divergence_reason) if divergence_reason else None,
+        )
+        return True
+
+    async def _project_generation_completed(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        correlation_id = (
+            data.get("correlation_id") or data.get("correlationId") or meta.fallback_id
+        )
+
+        task_description = str(
+            data.get("task_description") or data.get("taskDescription") or ""
+        )
+        provider = str(data.get("provider") or "")
+        model_id = str(data.get("model_id") or data.get("modelId") or "")
+        endpoint_class = str(
+            data.get("endpoint_class") or data.get("endpointClass") or ""
+        )
+        attempt_count = (
+            _safe_int_or_none(data.get("attempt_count") or data.get("attemptCount"))
+            or 0
+        )
+        total_latency_e2e_ms = (
+            _safe_int_or_none(
+                data.get("total_latency_e2e_ms") or data.get("totalLatencyE2eMs")
+            )
+            or 0
+        )
+        contract_passed = bool(
+            data.get("contract_passed")
+            if data.get("contract_passed") is not None
+            else data.get("contractPassed") or False
+        )
+        cost_inference_usd = _safe_numeric_str(
+            data.get("cost_inference_usd") or data.get("costInferenceUsd")
+        )
+        timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
+
+        await self.db.execute(
+            f"""
+            INSERT INTO {self._table_generation} (
+              correlation_id, task_description, provider, model_id,
+              endpoint_class, attempt_count, total_latency_e2e_ms,
+              contract_passed, cost_inference_usd, timestamp
+            ) VALUES (
+              $1, $2, $3, $4,
+              $5, $6, $7,
+              $8, $9, $10
+            )
+            ON CONFLICT (correlation_id) DO NOTHING
+            """,
+            correlation_id,
+            task_description,
+            provider,
+            model_id,
+            endpoint_class,
+            attempt_count,
+            total_latency_e2e_ms,
+            contract_passed,
+            cost_inference_usd,
+            timestamp,
         )
         return True
 
