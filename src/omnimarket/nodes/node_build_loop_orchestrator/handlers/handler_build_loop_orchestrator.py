@@ -73,7 +73,6 @@ from omnimarket.nodes.node_overseer_verifier import ModelVerifierRequest
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
     HandlerOverseerVerifier,
 )
-from omnimarket.protocols.protocol_overseer_verifier import ProtocolOverseerVerifier
 
 if TYPE_CHECKING:
     from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
@@ -124,7 +123,8 @@ class HandlerBuildLoopOrchestrator:
         dispatch: ProtocolBuildDispatchHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
         contract_path: Path | None = None,
-        overseer_verifier: ProtocolOverseerVerifier | None = None,
+        fsm: HandlerBuildLoop | None = None,
+        overseer_verifier: HandlerOverseerVerifier | None = None,
     ) -> None:
         contract = _load_contract(contract_path)
         publish_topics: list[str] = contract.get("event_bus", {}).get(
@@ -138,7 +138,9 @@ class HandlerBuildLoopOrchestrator:
             (t for t in publish_topics if "completed" in t), ""
         )
 
-        self._fsm = HandlerBuildLoop()
+        self._fsm = (
+            fsm if fsm is not None else HandlerBuildLoop()
+        )  # lifecycle-ok: optional-di-fallback
         self._closeout = closeout
         self._verify = verify
         self._verify_explicitly_injected: bool = verify is not None
@@ -146,10 +148,11 @@ class HandlerBuildLoopOrchestrator:
         self._classify = classify
         self._dispatch = dispatch
         self._event_bus = event_bus
-        self._overseer_verifier = HandlerOverseerVerifier()
-        # Advisory overseer seam (Phase 1 — OMN-8165). Injected via DI for testing;
-        # defaults to None (advisory check uses self._overseer_verifier directly).
-        self._advisory_overseer: ProtocolOverseerVerifier | None = overseer_verifier
+        self._overseer_verifier = (
+            overseer_verifier
+            if overseer_verifier is not None
+            else HandlerOverseerVerifier()
+        )  # lifecycle-ok: optional-di-fallback
 
         # Inter-phase state: carry results between fill -> classify -> build
         self._last_fill_result: tuple[ScoredTicket, ...] = ()

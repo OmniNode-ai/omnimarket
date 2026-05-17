@@ -373,8 +373,7 @@ class HandlerBaselineCompare:
     ) -> None:
         self._capture_handler = capture_handler or HandlerBaselineCapture(
             probe_registry=probe_registry
-        )
-        # lifecycle-ok: optional-di-fallback
+        )  # lifecycle-ok: optional-di-fallback
 
     def _resolve_baseline_path(self, request: ModelBaselineCompareRequest) -> Path:
         if request.baseline_path is not None:
