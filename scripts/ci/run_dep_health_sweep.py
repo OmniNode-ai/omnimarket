@@ -23,7 +23,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep import (  # noqa: E402
+from omnimarket.nodes.node_dependency_health_sweep import (  # noqa: E402
     HandlerDepHealthSweep,
 )
 from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (  # noqa: E402
