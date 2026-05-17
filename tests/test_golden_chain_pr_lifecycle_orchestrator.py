@@ -29,6 +29,9 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
+    EnumPrBlockReason,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleResult,
@@ -1040,6 +1043,89 @@ class TestPrLifecycleOrchestratorVerifyWiring:
         assert ("verifying", "failed") in transitions
 
         await event_bus.close()
+
+
+@pytest.mark.unit
+class TestOrchestratorFixReasonRouting:
+    """The orchestrator must feed machine fix reasons to node_pr_lifecycle_fix."""
+
+    @pytest.mark.parametrize(
+        ("category", "block_reason", "failed_check_names", "expected"),
+        [
+            (
+                EnumPrCategory.RED,
+                "CI status is 'failing' - fix required before merge.",
+                ("lint",),
+                EnumPrBlockReason.CODE_FAILURE,
+            ),
+            (
+                EnumPrCategory.NEEDS_REVIEW,
+                "Approved but has 2 unresolved review thread(s).",
+                (),
+                EnumPrBlockReason.CHANGES_REQUESTED,
+            ),
+            (
+                EnumPrCategory.CONFLICTED,
+                "PR has merge conflicts and requires a rebase.",
+                (),
+                EnumPrBlockReason.CONFLICT,
+            ),
+            (
+                EnumPrCategory.RED,
+                "Receipt Gate-only failure detected, but no ticket ID was found.",
+                ("verify / verify",),
+                EnumPrBlockReason.RECEIPT_FAILURE,
+            ),
+            (
+                EnumPrCategory.RED,
+                "ci_failure",
+                (),
+                EnumPrBlockReason.CI_FAILURE,
+            ),
+        ],
+    )
+    async def test_triage_reasons_become_fix_effect_enum(
+        self,
+        category: EnumPrCategory,
+        block_reason: str,
+        failed_check_names: tuple[str, ...],
+        expected: EnumPrBlockReason,
+    ) -> None:
+        inventory_record = PrRecord(
+            pr_number=501,
+            repo="OmniNode-ai/omnimarket",
+            checks_status="failure",
+            review_status="pending",
+            ticket_ids=("OMN-11171",),
+            failed_check_names=failed_check_names,
+        )
+        triage_record = TriageRecord(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            category=category,
+            ticket_ids=inventory_record.ticket_ids,
+            failed_check_names=failed_check_names,
+            block_reason=block_reason,
+        )
+        fix_intent = ReducerIntent(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            intent=EnumReducerIntent.FIX,
+        )
+        fix = MockFix()
+        orch = await _make_orchestrator(
+            inventory=MockInventory(prs=(inventory_record,)),
+            triage=MockTriage(classified=(triage_record,)),
+            reducer=MockReducer(intents=(fix_intent,)),
+            fix=fix,
+        )
+
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.prs_fixed == 1
+        assert fix.last_command.block_reason == expected
+        assert fix.last_command.ticket_id == "OMN-11171"
 
 
 # ---------------------------------------------------------------------------
