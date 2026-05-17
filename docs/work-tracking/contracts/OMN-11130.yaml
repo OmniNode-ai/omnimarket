@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11130"
+title: "Phase 1: Merge Sweep and PR Triage"
+summary: >
+  Repo-local deploy-gate contract for omnimarket PR #674. The implementation
+  updates pr_lifecycle inventory check collection for the current GitHub CLI
+  schema so merge-sweep triage receives deterministic pass/fail CI state rather
+  than degrading all PRs to unknown.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused inventory golden-chain tests pass."
+    command: "uv run pytest tests/test_golden_chain_pr_lifecycle_inventory_compute.py -q"
+  - kind: "tests"
+    description: "Inventory plus orchestrator golden-chain tests pass."
+    command: "uv run pytest tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_golden_chain_pr_lifecycle_inventory_compute.py -q"
+  - kind: "ci"
+    description: "Focused ruff checks pass for touched files."
+    command: "uv run ruff check src/omnimarket/nodes/node_pr_lifecycle_inventory_compute/handlers/handler_pr_lifecycle_inventory.py tests/test_golden_chain_pr_lifecycle_inventory_compute.py"
+  - kind: "manual"
+    description: "Deploy assessment recorded for PR #674."
+    command: "No live deploy, runtime restart, or .201 mutation was performed."
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-inventory-tests"
+    description: "Focused inventory tests prove current gh bucket schema is normalized."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_pr_lifecycle_inventory_compute.py -q"
+  - id: "dod-orchestrator-tests"
+    description: "Focused orchestrator tests pass with the inventory model contract unchanged."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_golden_chain_pr_lifecycle_inventory_compute.py -q"
+  - id: "dod-lint"
+    description: "Focused ruff checks passed for touched implementation and tests."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff format --check src/omnimarket/nodes/node_pr_lifecycle_inventory_compute/handlers/handler_pr_lifecycle_inventory.py tests/test_golden_chain_pr_lifecycle_inventory_compute.py && uv run ruff check src/omnimarket/nodes/node_pr_lifecycle_inventory_compute/handlers/handler_pr_lifecycle_inventory.py tests/test_golden_chain_pr_lifecycle_inventory_compute.py"
+  - id: "dod-live-diagnostic"
+    description: >
+      Local live diagnostic against OmniNode-ai/omnibase_infra and OmniNode-ai/omnidash
+      inventoried 4 PRs and classified CI as failure/success instead of unknown.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "local diagnostic: inventory=4; omnibase_infra failures detected; omnidash#91 success awaiting approval"
+  - id: "dod-deploy-assessment"
+    description: >
+      Source-only inventory compatibility fix. No live deploy, runtime restart,
+      .201 mutation, docker exec, or event-bus write was performed pre-merge;
+      deploy validation should occur through normal post-merge/runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy assessment: no live deploy required before merging PR 674"

@@ -157,6 +157,29 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         assert pr.check_runs[0].conclusion == "success"
         assert pr.ci_passing is True
 
+    def test_collect_check_runs_uses_current_gh_bucket_schema(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        commands: list[list[str]] = []
+
+        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+            commands.append(cmd)
+            return _make_subprocess_result(
+                json.dumps(
+                    [
+                        {"name": "ci/test", "state": "SUCCESS", "bucket": "pass"},
+                        {"name": "ci/lint", "state": "FAILURE", "bucket": "fail"},
+                    ]
+                )
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            check_runs = handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
+
+        assert "name,state,bucket" in commands[0]
+        assert "conclusion" not in commands[0]
+        assert [check.conclusion for check in check_runs] == ["success", "failure"]
+        assert [check.status for check in check_runs] == ["completed", "completed"]
+
     def test_ci_failing_when_check_fails(self) -> None:
         check_runs = [
             {"name": "ci/test", "state": "completed", "conclusion": "failure"},

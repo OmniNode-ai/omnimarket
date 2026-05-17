@@ -28,6 +28,14 @@ from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecy
 
 _STUCK_QUEUE_THRESHOLD_MINUTES = 30
 _QUEUE_STALL_THRESHOLD_MINUTES = 15
+_CHECK_BUCKET_TO_CONCLUSION = {
+    "pass": "success",
+    "fail": "failure",
+    "pending": None,
+    "skipping": "skipped",
+    "cancel": "cancelled",
+}
+_TERMINAL_CHECK_BUCKETS = {"pass", "fail", "skipping", "cancel"}
 
 logger = logging.getLogger(__name__)
 
@@ -280,12 +288,12 @@ class HandlerPrLifecycleInventory:
             merge_state_status is not None and merge_state_status == "DIRTY"
         )
 
-        # CI passing: True if all completed checks succeeded, False if any failed
+        # CI passing: True if all terminal checks succeeded, False if any failed
         ci_passing: bool | None = None
         completed = [
             c
             for c in check_runs
-            if c.status == "completed" and c.conclusion is not None
+            if c.status.lower() == "completed" and c.conclusion is not None
         ]
         if completed:
             ci_passing = all(
@@ -356,7 +364,7 @@ class HandlerPrLifecycleInventory:
             "--repo",
             repo,
             "--json",
-            "name,state,conclusion",
+            "name,state,bucket",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -372,16 +380,38 @@ class HandlerPrLifecycleInventory:
             return [
                 ModelPrCheckRun(
                     name=str(item.get("name", "")),
-                    status=str(item.get("state", "unknown")),
-                    conclusion=str(item["conclusion"])
-                    if item.get("conclusion")
-                    else None,
+                    status=self._normalize_check_status(item),
+                    conclusion=self._normalize_check_conclusion(item),
                 )
                 for item in raw
             ]
         except (json.JSONDecodeError, KeyError) as exc:
             logger.debug("Failed to parse check runs for PR #%d: %s", pr_number, exc)
             return []
+
+    @staticmethod
+    def _normalize_check_status(item: dict[str, object]) -> str:
+        """Normalize current and legacy gh check states to the internal vocabulary."""
+        state = str(item.get("state", "unknown") or "unknown").lower()
+        if state in {"completed", "queued", "in_progress"}:
+            return state
+        bucket = str(item.get("bucket", "") or "").lower()
+        if bucket in _TERMINAL_CHECK_BUCKETS:
+            return "completed"
+        if bucket == "pending":
+            return "in_progress"
+        if state in {"success", "failure", "cancelled", "skipped", "neutral"}:
+            return "completed"
+        return state
+
+    @staticmethod
+    def _normalize_check_conclusion(item: dict[str, object]) -> str | None:
+        """Normalize gh's current bucket field while preserving legacy fixtures."""
+        conclusion = item.get("conclusion")
+        if conclusion:
+            return str(conclusion).lower()
+        bucket = str(item.get("bucket", "") or "").lower()
+        return _CHECK_BUCKET_TO_CONCLUSION.get(bucket)
 
     @staticmethod
     def _extract_review_author(review: dict[str, object]) -> str:
