@@ -10,12 +10,8 @@ expensive_frontier is NEVER included in auto-escalation.
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
-
-if TYPE_CHECKING:
-    pass
 
 RegistryEntry = dict[str, str]
 Registry = dict[str, RegistryEntry]

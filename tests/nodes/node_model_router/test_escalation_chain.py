@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-internal-ip: test fixture — uses lab LLM endpoint addresses as router test inputs; not runtime defaults
 
 """TDD tests for model escalation chain (OMN-8537).
 
@@ -36,14 +35,14 @@ from omnimarket.nodes.node_model_router.models.model_routing_request import (
 
 FULL_REGISTRY: dict[str, dict[str, str]] = {
     "qwen3-coder-30b": {
-        "base_url": "http://192.168.86.201:8000",
+        "base_url": "http://localhost:8000",
         "health_path": "/health",
         "ci_override_url": "",
         "tier": "local",
         "env_key": "",
     },
     "deepseek-r1-14b": {
-        "base_url": "http://192.168.86.201:8001",
+        "base_url": "http://localhost:8001",
         "health_path": "/health",
         "ci_override_url": "",
         "tier": "local",
