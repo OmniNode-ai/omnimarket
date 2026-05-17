@@ -15,6 +15,18 @@ tags:
   - registration
   - service-discovery
   - reducer
+ownership:
+  node_service_registry:
+    ddl_owner: omnimarket.nodes.node_projection_registration
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_node_service_registry.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      node_service_registry is the omnimarket projection/API read model fed by
+      this node. omnibase_infra owns runtime registration storage and
+      registration_projections, not this table's CREATE TABLE migration.
 pack: "data"
 display_name: "Projection: Registration"
 node_role: "effect"
