@@ -21,7 +21,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -35,6 +35,16 @@ from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_start
 )
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ProtocolLlmEffectHandler(Protocol):
+    """Protocol for the LLM inference effect handler injected into HandlerAbCompareOrchestrator."""
+
+    async def handle(self, request: Any) -> Any:
+        """Execute an inference request and return the response."""
+        ...
+
 
 _REGISTRY_PATH = Path(__file__).parent.parent / "models_registry.yaml"
 _DEFAULT_SYSTEM_PROMPT = (
@@ -183,17 +193,16 @@ class HandlerAbCompareOrchestrator:
     No direct HTTP calls, no httpx imports in this module.
     """
 
-    def __init__(self, effect_handler: Any | None = None) -> None:
+    def __init__(self, effect_handler: ProtocolLlmEffectHandler | None = None) -> None:
         """Initialize the orchestrator.
 
         Args:
-            effect_handler: Injectable handler for testing. Must implement
-                ``async def handle(request: ModelLlmInferenceRequest) -> ModelLlmInferenceResponse``.
-                When None, creates a HandlerLlmOpenaiCompatible with a transport.
+            effect_handler: Injectable handler implementing ProtocolLlmEffectHandler.
+                When None, constructs HandlerLlmOpenaiCompatible with a transport.  # lifecycle-ok: optional-di-fallback
         """
         if effect_handler is not None:
             self._effect = effect_handler
-        else:
+        else:  # lifecycle-ok: optional-di-fallback
             from omnibase_infra.nodes.node_llm_inference_effect.handlers.handler_llm_openai_compatible import (
                 HandlerLlmOpenaiCompatible,
             )
