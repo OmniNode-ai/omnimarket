@@ -14,10 +14,13 @@ TDD cases:
   8. Patch size guard — net delta > 50 lines → fail event
   9. pytest gate failure → fail event, no commit
   10. Python syntax validation failure → fail event
+  11. Push success — resolution pushed to origin
+  12. Push failure → fail event, no success
 """
 
 from __future__ import annotations
 
+import os
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -93,20 +96,19 @@ def _make_subprocess_fn(
     scope_diff_files: list[str] | None = None,
     push_rc: int = 0,
     push_calls: list[list[str]] | None = None,
+    wt_file: str = "src/foo.py",
 ) -> Any:
     """Build a deterministic subprocess_run_fn that operates on a real temp dir."""
-    import os
 
     def _run(cmd: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
         # Worktree add: create the directory + write conflict file
         if "worktree" in cmd and "add" in cmd and "--force" not in cmd:
             wt_path = Path(cmd[-2])
             wt_path.mkdir(parents=True, exist_ok=True)
-            # Create fake .git and src/
             (wt_path / ".git").mkdir(exist_ok=True)
-            (wt_path / "src").mkdir(exist_ok=True)
-            (wt_path / "tests").mkdir(exist_ok=True)
-            (wt_path / "src" / "foo.py").write_text(conflict_content, encoding="utf-8")
+            file_target = wt_path / wt_file
+            file_target.parent.mkdir(parents=True, exist_ok=True)
+            file_target.write_text(conflict_content, encoding="utf-8")
             return 0, "", ""
 
         # Worktree remove: clean up
@@ -147,7 +149,6 @@ def _make_subprocess_fn(
         if cmd[1:3] == ["-C", str(wt_root)] and "add" in cmd:
             return git_add_rc, "", "" if git_add_rc == 0 else "add failed"
 
-        # find git add by checking the cmd contains "add" (and not worktree add)
         if "add" in cmd and "worktree" not in cmd:
             return git_add_rc, "", "" if git_add_rc == 0 else "add failed"
 
@@ -180,6 +181,14 @@ def _make_subprocess_fn(
     return _run
 
 
+def _setup_source_clone(tmp_path: Path) -> None:
+    """Create a minimal source clone directory with .git marker."""
+    repo_key = REPO.replace("/", "__")
+    source_clone = tmp_path / repo_key
+    source_clone.mkdir(exist_ok=True)
+    (source_clone / ".git").mkdir(exist_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # TDD case 1: Successful resolution
 # ---------------------------------------------------------------------------
@@ -188,12 +197,7 @@ def _make_subprocess_fn(
 @pytest.mark.asyncio
 async def test_successful_resolution(tmp_path: Path) -> None:
     """Happy path: conflict file resolved, committed, success event emitted."""
-    # Create a fake source clone
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
+    _setup_source_clone(tmp_path)
     wt_root_base = tmp_path / "worktrees"
     wt_root_base.mkdir()
 
@@ -205,63 +209,7 @@ async def test_successful_resolution(tmp_path: Path) -> None:
         resolved_calls.append(file_path)
         return _RESOLVED_CONTENT, False
 
-    cmd = _make_command()
-    wt_path_holder: list[Path] = []
-
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        nonlocal wt_path_holder
-
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt_path = Path(cmd_list[-2])
-            wt_path.mkdir(parents=True, exist_ok=True)
-            (wt_path / ".git").mkdir(exist_ok=True)
-            (wt_path / "src").mkdir(exist_ok=True)
-            (wt_path / "tests").mkdir(exist_ok=True)
-            (wt_path / "src" / "foo.py").write_text(
-                _CONFLICT_FILE_CONTENT, encoding="utf-8"
-            )
-            wt_path_holder.append(wt_path)
-            return 0, "", ""
-
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-
-        if "fetch" in cmd_list:
-            return 0, "", ""
-
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-
-        if "checkout" in cmd_list and "--" in cmd_list:
-            return 0, "", ""
-
-        if "diff" in cmd_list and "--name-only" in cmd_list:
-            return 0, "src/foo.py\n", ""
-
-        if "rev-parse" in cmd_list:
-            return 0, "deadbeef1234", ""
-
-        if "uv" in cmd_list and "pytest" in cmd_list:
-            return 0, "1 passed", ""
-
-        if "add" in cmd_list and "worktree" not in cmd_list:
-            return 0, "", ""
-
-        if "commit" in cmd_list:
-            return 0, "", ""
-
-        return 0, "", ""
-
-    import os
-
-    original_env = os.environ.get("ONEX_CONFLICT_SOURCE_CLONE_ROOT")
+    subprocess_fn = _make_subprocess_fn(wt_root_base, commit_sha="deadbeef1234")
     os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
     os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
@@ -270,12 +218,9 @@ async def test_successful_resolution(tmp_path: Path) -> None:
             llm_call_fn=llm_call,
             subprocess_run_fn=subprocess_fn,
         )
-        output = await handler.handle(cmd)
+        output = await handler.handle(_make_command())
     finally:
-        if original_env is None:
-            os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
-        else:
-            os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = original_env
+        os.environ.pop("ONEX_CONFLICT_SOURCE_CLONE_ROOT", None)
         os.environ.pop("ONEX_CONFLICT_WORKTREE_ROOT", None)
 
     assert output is not None
@@ -299,42 +244,16 @@ async def test_successful_resolution(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_validation_failure_residual_markers(tmp_path: Path) -> None:
     """LLM returns text still containing conflict markers → fail event."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
-    import os
-
-    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
     def llm_call(fp: str, ctx: str, rp: dict[str, Any]) -> tuple[str, bool]:
-        # Returns text still containing conflict markers
         return "<<<<<<< HEAD\nstill broken\n", False
 
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(wt_root_base)
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(
@@ -360,41 +279,16 @@ async def test_validation_failure_residual_markers(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_llm_error_reraises(tmp_path: Path) -> None:
     """LLM raises RuntimeError → handler re-raises without swallowing."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
-    import os
-
-    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
     def llm_call(fp: str, ctx: str, rp: dict[str, Any]) -> tuple[str, bool]:
         raise RuntimeError("LLM endpoint unreachable")
 
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(wt_root_base)
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(
@@ -415,15 +309,7 @@ async def test_llm_error_reraises(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_none_routing_policy_raises(tmp_path: Path) -> None:
     """Envelope with routing_policy=None → resolve_routing_policy raises ValueError."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
-    import os
-
-    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
+    _setup_source_clone(tmp_path)
 
     cmd = ModelConflictHunkCommand(
         pr_number=PR_NUM,
@@ -436,10 +322,9 @@ async def test_none_routing_policy_raises(tmp_path: Path) -> None:
         routing_policy={},  # empty dict will fail schema validation
     )
 
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(tmp_path / "wt")
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
 
     try:
         handler = HandlerConflictHunk(subprocess_run_fn=subprocess_fn)
@@ -458,41 +343,13 @@ async def test_none_routing_policy_raises(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_file_outside_allowlist_emits_failure(tmp_path: Path) -> None:
     """File outside src/**,tests/** → fail event emitted (not exception)."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
-    import os
-
+    subprocess_fn = _make_subprocess_fn(wt_root_base, wt_file="scripts/build.sh")
     os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
-
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            # File in disallowed location
-            (wt / "scripts").mkdir(exist_ok=True)
-            (wt / "scripts" / "build.sh").write_text(
-                _CONFLICT_FILE_CONTENT, encoding="utf-8"
-            )
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        return 0, "", ""
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(subprocess_run_fn=subprocess_fn)
@@ -515,41 +372,15 @@ async def test_file_outside_allowlist_emits_failure(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_no_conflict_markers_fails(tmp_path: Path) -> None:
     """No conflict markers in worktree → fail event (no exception)."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
-    import os
-
+    subprocess_fn = _make_subprocess_fn(
+        wt_root_base, conflict_content="def foo(): return 1\n", wt_file="src/clean.py"
+    )
     os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
-
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            # No conflict markers
-            (wt / "src" / "clean.py").write_text(
-                "def foo(): return 1\n", encoding="utf-8"
-            )
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        return 0, "", ""
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(subprocess_run_fn=subprocess_fn)
@@ -572,42 +403,16 @@ async def test_no_conflict_markers_fails(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_noop_when_llm_returns_same_content(tmp_path: Path) -> None:
     """LLM returns same content as current file → is_noop=True, no commit."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
-    import os
-
-    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
     def llm_call(fp: str, ctx: str, rp: dict[str, Any]) -> tuple[str, bool]:
-        # Return the identical conflict content — noop
         return _CONFLICT_FILE_CONTENT, False
 
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(wt_root_base)
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(
@@ -633,44 +438,18 @@ async def test_noop_when_llm_returns_same_content(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_patch_size_guard(tmp_path: Path) -> None:
     """LLM resolution changes > 50 net lines → fail event."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
-    import os
-
-    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
-
-    # Generate resolved content with 100 extra lines
     big_resolved = _RESOLVED_CONTENT + "\n".join(f"# line {i}" for i in range(100))
 
     def llm_call(fp: str, ctx: str, rp: dict[str, Any]) -> tuple[str, bool]:
         return big_resolved, False
 
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(wt_root_base)
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(
@@ -695,48 +474,16 @@ async def test_patch_size_guard(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_pytest_gate_failure(tmp_path: Path) -> None:
     """pytest exits non-zero in worktree → fail event, no commit."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
-    import os
-
-    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
     def llm_call(fp: str, ctx: str, rp: dict[str, Any]) -> tuple[str, bool]:
         return _RESOLVED_CONTENT, False
 
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        cmd_str = " ".join(str(c) for c in cmd_list)
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "--" in cmd_list:
-            return 0, "", ""
-        if "diff" in cmd_list and "--name-only" in cmd_list:
-            return 0, "src/foo.py\n", ""
-        if "pytest" in cmd_str:
-            return 1, "", "FAILED: test_foo AssertionError"
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(wt_root_base, pytest_rc=1)
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(
@@ -762,41 +509,16 @@ async def test_pytest_gate_failure(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_python_syntax_validation_failure(tmp_path: Path) -> None:
     """LLM returns invalid Python → fail event with syntax error message."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
-    import os
-
-    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
-    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
+    _setup_source_clone(tmp_path)
+    wt_root_base = tmp_path / "worktrees"
+    wt_root_base.mkdir()
 
     def llm_call(fp: str, ctx: str, rp: dict[str, Any]) -> tuple[str, bool]:
         return "def foo(\n    broken syntax!!!\n", False
 
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(wt_root_base)
+    os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
+    os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
 
     try:
         handler = HandlerConflictHunk(
@@ -821,20 +543,11 @@ async def test_python_syntax_validation_failure(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_branch_guard_protected_head(tmp_path: Path) -> None:
     """head_ref=main → fail event before worktree creation."""
-    import os
+    _setup_source_clone(tmp_path)
 
+    subprocess_fn = _make_subprocess_fn(tmp_path / "wt")
     os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
     os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(tmp_path / "wt")
-
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        return 0, "", ""
 
     try:
         handler = HandlerConflictHunk(subprocess_run_fn=subprocess_fn)
@@ -889,11 +602,7 @@ def test_extract_hunk_context_includes_surroundings() -> None:
 @pytest.mark.asyncio
 async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
     """Happy path: after commit, push --force-with-lease is called and succeeds."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
+    _setup_source_clone(tmp_path)
     wt_root_base = tmp_path / "worktrees"
     wt_root_base.mkdir()
 
@@ -903,8 +612,6 @@ async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
         commit_sha="pre-sha-abc",
         push_calls=push_calls,
     )
-
-    import os
 
     os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
     os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
@@ -924,7 +631,6 @@ async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
     assert event.success is True
     assert event.resolution_committed is True
 
-    # Verify push was called with force-with-lease
     assert len(push_calls) == 1
     push_cmd = push_calls[0]
     assert "push" in push_cmd
@@ -941,11 +647,7 @@ async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_push_failure_emits_fail_event(tmp_path: Path) -> None:
     """If git push --force-with-lease fails (e.g. concurrent push), emit fail event."""
-    repo_key = REPO.replace("/", "__")
-    source_clone = tmp_path / repo_key
-    source_clone.mkdir()
-    (source_clone / ".git").mkdir()
-
+    _setup_source_clone(tmp_path)
     wt_root_base = tmp_path / "worktrees"
     wt_root_base.mkdir()
 
@@ -954,8 +656,6 @@ async def test_push_failure_emits_fail_event(tmp_path: Path) -> None:
         commit_sha="pre-sha-xyz",
         push_rc=1,
     )
-
-    import os
 
     os.environ["ONEX_CONFLICT_SOURCE_CLONE_ROOT"] = str(tmp_path)
     os.environ["ONEX_CONFLICT_WORKTREE_ROOT"] = str(wt_root_base)
