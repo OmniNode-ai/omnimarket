@@ -10,6 +10,10 @@
 #   - OMN-8297: Wave 1 omnimemory → omnimarket migration
 name: "node_semantic_analyzer_compute"
 node_type: compute
+handler:
+  module: omnimarket.nodes.node_semantic_analyzer_compute.handlers.handler_semantic_compute
+  class: HandlerSemanticCompute
+  input_model: omnimarket.nodes.node_semantic_analyzer_compute.models.model_semantic_analyzer_compute_request.ModelSemanticAnalyzerComputeRequest
 contract_version:
   major: 0
   minor: 1

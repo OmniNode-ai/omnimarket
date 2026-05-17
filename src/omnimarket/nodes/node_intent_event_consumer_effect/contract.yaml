@@ -52,7 +52,7 @@ published_events:
     payload_fields:
       - name: "event_type"
         type: "string"
-        description: "Always 'onex.omnimemory.intent.stored.v1'"
+        description: "Always 'IntentStored'"
       - name: "session_ref"
         type: "string"
         description: "Session reference (mapped from session_id at boundary)"

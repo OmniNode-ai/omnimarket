@@ -64,7 +64,6 @@ KNOWN_MAIN_VIOLATIONS: set[str] = {
     "node_agent_learning_retrieval_effect",
     "node_build_dispatch_effect",
     # node_intent_query_effect: fixed in OMN-10738 (handler block added)
-    "node_intent_storage_effect",
     "node_loop_state_reducer",
     "node_memory_retrieval_effect",
     "node_memory_storage_effect",
@@ -76,7 +75,6 @@ KNOWN_MAIN_VIOLATIONS: set[str] = {
     "node_pr_lifecycle_fix_effect",
     "node_pr_lifecycle_merge_effect",
     "node_pr_lifecycle_state_reducer",
-    "node_semantic_analyzer_compute",
     "node_similarity_compute",
 }
 
