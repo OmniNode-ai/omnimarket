@@ -20,4 +20,4 @@ dod_evidence:
     source: manual
     checks:
       - check_type: command
-        check_value: echo 'deploy gate evidence: OMN-9211 is a topic grammar fix; no live deploy required'
+        check_value: "deploy gate evidence: OMN-9211 is a topic grammar fix; no live deploy required"
