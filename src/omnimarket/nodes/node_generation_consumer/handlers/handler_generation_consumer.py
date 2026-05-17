@@ -24,6 +24,7 @@ import ast
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from collections.abc import Callable
@@ -60,6 +61,10 @@ _REQUIRED_CONTRACT_FIELDS = [
 ]
 
 _DEFAULT_MODEL_ID = "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+
+# Contract model_routing keys — resolved at construction from contract.yaml
+_MODEL_ROUTING_ENDPOINT_ENV_KEY = "endpoint_env"
+_MODEL_ROUTING_MODEL_ID_KEY = "model_id"
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
@@ -195,6 +200,11 @@ class HandlerGenerationConsumer:
 
     The event_publisher is a thin sync callable (topic, bytes) -> None injected by
     the runtime's Kafka adapter. Falls back to a no-op for tests and dry runs.
+
+    Endpoint resolution order (contract-first, no bespoke env vars):
+        1. contract.yaml model_routing.endpoint_env names the env var to read
+        2. That env var (e.g. LLM_CODER_URL) is populated by the overlay system
+        3. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay
     """
 
     def __init__(
@@ -223,6 +233,17 @@ class HandlerGenerationConsumer:
         )
         self._topic_deploy = next((t for t in publish_topics if "node-deploy" in t), "")
 
+        # Resolve LLM routing config from contract model_routing section.
+        # The endpoint_env field names which env var holds the base URL;
+        # that var is populated by the overlay system (never hardcoded here).
+        model_routing: dict[str, Any] = contract.get("model_routing", {})
+        self._endpoint_env: str = model_routing.get(
+            _MODEL_ROUTING_ENDPOINT_ENV_KEY, "LLM_CODER_URL"
+        )
+        self._model_id: str = model_routing.get(
+            _MODEL_ROUTING_MODEL_ID_KEY, _DEFAULT_MODEL_ID
+        )
+
     def _ensure_effect(self) -> None:
         if self._effect is not None:
             return
@@ -250,7 +271,6 @@ class HandlerGenerationConsumer:
         a ModelLlmInferenceRequest (which validates base_url is non-empty) and
         pass None directly — the fake ignores the argument entirely.
         """
-        import os
 
         user_content = f"Task: {task_description}"
         if attempt > 1 and previous_errors:
@@ -268,20 +288,19 @@ class HandlerGenerationConsumer:
                 ModelLlmInferenceRequest,
             )
 
-            endpoint = os.environ["GENERATION_CONSUMER_ENDPOINT"]
-            model_id = os.environ.get("GENERATION_CONSUMER_MODEL_ID", _DEFAULT_MODEL_ID)
-            api_key = os.environ.get("GENERATION_CONSUMER_API_KEY")
+            # Endpoint resolved from contract model_routing.endpoint_env,
+            # populated by the overlay system at boot.
+            endpoint = os.environ[self._endpoint_env]
             assert self._effect is not None
 
             request = ModelLlmInferenceRequest(
                 base_url=endpoint,
                 operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                model=model_id,
+                model=self._model_id,
                 messages=(
                     {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
                     {"role": "user", "content": user_content},
                 ),
-                api_key=api_key,
                 timeout_seconds=120.0,
             )
             response = await self._effect.handle(request)
@@ -296,11 +315,12 @@ class HandlerGenerationConsumer:
     ) -> ModelGenerationBenchmark:
         self._ensure_effect()
 
-        import os
-
-        provider = os.environ.get("GENERATION_CONSUMER_PROVIDER", "local")
-        model_id = os.environ.get("GENERATION_CONSUMER_MODEL_ID", _DEFAULT_MODEL_ID)
-        endpoint_class = os.environ.get("GENERATION_CONSUMER_ENDPOINT_CLASS", "local")
+        # Derive metadata from contract-resolved routing config.
+        # endpoint_env is always LLM_CODER_URL (or whatever the contract declares);
+        # "local" provider means no per-token cost.
+        model_id = self._model_id
+        provider = "local"
+        endpoint_class = "local"
 
         attempts: list[ModelGenerationAttempt] = []
         e2e_start = time.time()
