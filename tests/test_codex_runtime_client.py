@@ -1183,7 +1183,7 @@ async def test_merge_sweep_pattern_b_runs_pr_lifecycle_end_to_end(
 
 
 @pytest.mark.asyncio
-async def test_pr_polish_pattern_b_runs_node_end_to_end() -> None:
+async def test_pr_polish_pattern_b_runs_node_end_to_end(tmp_path: Path) -> None:
     correlation_id = uuid4()
     requested_at = datetime.now(UTC)
     response_topic = "onex.evt.omnibase-infra.pattern-b-pr-polish-e2e.v1"
@@ -1214,6 +1214,7 @@ async def test_pr_polish_pattern_b_runs_node_end_to_end() -> None:
                 "ticket_id": "OMN-10382",
                 "skip_conflicts": True,
                 "dry_run": True,
+                "run_dir": str(tmp_path / "pr-polish-pattern-b"),
                 "requested_at": requested_at.isoformat(),
             },
             timeout_ms=300_000,
@@ -1232,6 +1233,10 @@ async def test_pr_polish_pattern_b_runs_node_end_to_end() -> None:
     assert payload["final_phase"] == "done"
     assert payload["pr_number"] == 464
     assert payload["error_message"] is None
+    assert payload["repair_worker_payloads_prepared"] == 0
+    assert payload["repair_workers_dispatched"] == 0
+    assert payload["delegation_publish_status"] == "skipped_no_payloads"
+    assert Path(str(payload["dispatch_worker_spec_path"])).exists()
     assert len(received_commands) == 1
     assert received_commands[0].command_name == "pr_polish"
     assert received_commands[0].response_topic == response_topic

@@ -150,9 +150,17 @@ class HandlerPrPolish:
     def handle(self, command: ModelPrPolishStartCommand) -> ModelPrPolishCompletedEvent:
         """RuntimeLocal handler protocol shim.
 
-        Delegates to run_full_pipeline with a ModelPrPolishStartCommand
-        constructed from input_data.
+        Runtime skill dispatches that identify a real PR use the live workflow
+        runner so the node emits repair-worker evidence instead of only walking
+        the pure FSM. Unit tests and synthetic FSM callers can still call
+        run_full_pipeline directly.
         """
+        if command.repo and command.pr_number is not None:
+            from omnimarket.nodes.node_pr_polish.workflow_runner import (
+                run_live_pr_polish,
+            )
+
+            return run_live_pr_polish(command)
         _state, _events, completed = self.run_full_pipeline(command)
         return completed
 
