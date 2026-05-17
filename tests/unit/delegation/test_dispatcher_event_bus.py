@@ -248,11 +248,11 @@ class TestDispatcherQualityGateResultBusPublish:
         topic_to_payload_type = {
             c.kwargs["topic"]: type(c.args[0].payload).__name__ for c in calls
         }
-        # The envelope payload is ModelDelegationEvent (the wrapper); its .payload
-        # field is ModelDelegationResult.  Checking the outer type is sufficient.
+        # The envelope payload is the canonical delegation event envelope; its
+        # .payload field is ModelDelegationResult.
         assert (
             topic_to_payload_type.get(TOPIC_DELEGATION_COMPLETED)
-            == "ModelDelegationEvent"
+            == "ModelDelegationEventEnvelope"
         )
         assert (
             topic_to_payload_type.get(TOPIC_DELEGATION_TASK_DELEGATED)

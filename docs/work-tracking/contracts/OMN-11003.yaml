@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11003"
+title: "Classify duplicate model collisions and burn down delegation event wrapper"
+summary: >
+  Classifies the high-risk delegation/routing/task-contract D4 model-name
+  collision families and removes omnimarket's local ModelDelegationEvent class
+  definition by re-exporting the canonical omnibase_compat delegation event
+  envelope while preserving existing omnimarket import paths.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-classification-evidence"
+    description: "Collision families are classified into canonical-shared, intentional local, and rename/consolidate buckets."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "test -f docs/evidence/OMN-11003-model-collision-classification.md && grep -q 'ModelDelegationEvent' docs/evidence/OMN-11003-model-collision-classification.md && grep -q 'ModelDispatchRecord' docs/evidence/OMN-11003-model-collision-classification.md"
+  - id: "dod-focused-tests"
+    description: "Focused delegation compatibility and workflow tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_delegation_dto_omnibase_compat_imports.py tests/unit/delegation/test_delegation_orchestrator.py tests/unit/delegation/test_dispatcher_event_bus.py tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_port.py -q"
+  - id: "dod-lint"
+    description: "Touched compatibility shim and focused test files pass ruff."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_delegation_orchestrator/models/model_delegation_event.py tests/test_delegation_dto_omnibase_compat_imports.py tests/unit/delegation/test_dispatcher_event_bus.py"
+  - id: "dod-d4-targeted"
+    description: >
+      D4 overlay scan with this omnimarket worktree removes the targeted
+      ModelDelegationEvent collision and reduces broad D4 findings from 183 to
+      182; residual routing/task-contract/dispatch-record collisions remain
+      intentionally scoped to follow-up tickets.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "D4 overlay: ModelDelegationEvent absent=True; finding_count=182"
+  - id: "dod-deploy"
+    description: >
+      Import compatibility change only. No live deploy, runtime restart, .201
+      mutation, or event-bus write is required pre-merge.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: no live deploy/restart required for DTO compatibility import'"
