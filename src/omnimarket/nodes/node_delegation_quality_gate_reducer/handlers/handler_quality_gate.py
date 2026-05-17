@@ -29,6 +29,7 @@ from __future__ import annotations
 import ast
 import math
 import re
+from collections.abc import Callable
 
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
     MAX_WORDS_PER_SENTENCE_RE,
@@ -241,6 +242,28 @@ def _check_contains_any(
     return f"{category}: failed {check_name}"
 
 
+def _check_covers_args_returns_raises(content: str) -> str | None:
+    """Heuristic: documentation must cover args, returns, and raises sections."""
+    missing = [m for m in ("args:", "returns:", "raises:") if m not in content.lower()]
+    if missing:
+        return "TASK_MISMATCH: missing documentation sections: " + ", ".join(missing)
+    return None
+
+
+def _check_cites_specific_lines(content: str) -> str | None:
+    """Heuristic: response must cite specific line numbers."""
+    if not _LINE_CITATION_RE.search(content):
+        return "TASK_MISMATCH: missing specific line citations"
+    return None
+
+
+def _check_concise(content: str) -> str | None:
+    """Heuristic: response must be under 250 words."""
+    if len(content.split()) > 250:
+        return "WEAK_OUTPUT: response is not concise"
+    return None
+
+
 def _evaluate_deterministic_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
@@ -276,6 +299,28 @@ def _evaluate_deterministic_checks(
     return failures
 
 
+# Dispatch table: named heuristic check → checker function (content → failure message or None)
+_HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
+    "no_refusal": _check_no_refusal,
+    "covers_args_returns_raises": _check_covers_args_returns_raises,
+    "cites_specific_lines": _check_cites_specific_lines,
+    "concise": _check_concise,
+}
+
+
+def _apply_heuristic_check(check: str, content: str) -> str | None:
+    """Dispatch a named heuristic check against content."""
+    fn = _HEURISTIC_SIMPLE_CHECKS.get(check)
+    if fn is not None:
+        return fn(content)
+    if check in _HEURISTIC_CONTAINS_ANY_CHECKS:
+        category, markers = _HEURISTIC_CONTAINS_ANY_CHECKS[check]
+        return _check_contains_any(
+            content, check_name=check, category=category, markers=markers
+        )
+    return None
+
+
 def _evaluate_heuristic_checks(
     content: str,
     dod_heuristic: tuple[str, ...],
@@ -287,47 +332,18 @@ def _evaluate_heuristic_checks(
     """
     heuristic_failures: list[str] = []
     det_failures: list[str] = []
+    known_checks = set(_HEURISTIC_SIMPLE_CHECKS) | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
 
     for check in dod_heuristic:
-        if check == "no_refusal":
-            reason = _check_no_refusal(content)
-            if reason is not None:
-                heuristic_failures.append(reason)
-        elif check == "covers_args_returns_raises":
-            missing = [
-                marker
-                for marker in ("args:", "returns:", "raises:")
-                if marker not in content.lower()
-            ]
-            if missing:
-                heuristic_failures.append(
-                    "TASK_MISMATCH: missing documentation sections: "
-                    + ", ".join(missing)
-                )
-        elif check == "cites_specific_lines":
-            if not _LINE_CITATION_RE.search(content):
-                heuristic_failures.append(
-                    "TASK_MISMATCH: missing specific line citations"
-                )
-        elif check == "concise":
-            if len(content.split()) > 250:
-                heuristic_failures.append("WEAK_OUTPUT: response is not concise")
-        elif check in _HEURISTIC_CONTAINS_ANY_CHECKS:
-            category, markers = _HEURISTIC_CONTAINS_ANY_CHECKS[check]
-            reason = _check_contains_any(
-                content,
-                check_name=check,
-                category=category,
-                markers=markers,
-            )
-            if reason is not None:
-                heuristic_failures.append(reason)
-        else:
+        reason = _apply_heuristic_check(check, content)
+        if reason is not None:
+            heuristic_failures.append(reason)
+        elif check not in known_checks:
             m = _MIN_LENGTH_CHECK_RE.match(check)
             if m:
-                reason = _check_min_length(content, int(m.group(1)))
-                if reason is not None:
-                    heuristic_failures.append(reason)
+                r = _check_min_length(content, int(m.group(1)))
+                if r is not None:
+                    heuristic_failures.append(r)
             else:
                 det_failures.append(
                     f"MALFORMED: unsupported heuristic DoD check '{check}'"
