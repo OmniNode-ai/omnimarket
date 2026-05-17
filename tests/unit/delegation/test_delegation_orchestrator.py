@@ -193,7 +193,7 @@ class TestHappyPath:
         result: ModelDelegationResult = intents[0].payload
         assert result.correlation_id == cid
         assert result.quality_passed is True
-        assert result.quality_score == 0.9
+        assert result.quality_score == pytest.approx(0.9)
         assert result.model_used == "Qwen3-Coder-30B-A3B"
         assert result.task_type == "test"
         assert result.fallback_to_claude is False
@@ -211,7 +211,7 @@ class TestHappyPath:
         assert intents[1].correlation_id == cid
         assert intents[1].task_type == "test"
         assert intents[1].baseline_cost_usd > 0
-        assert intents[1].candidate_cost_usd == 0.0
+        assert intents[1].candidate_cost_usd == pytest.approx(0.0)
 
         # Backward-compatible task-delegated.v1 event (Task 12)
         from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
