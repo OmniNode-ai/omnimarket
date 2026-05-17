@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11171"
+title: "Fix PR polish node to launch real repair workflow"
+summary: >
+  Route pr_polish skill/runtime requests through node_pr_polish live workflow so
+  the node compiles dispatch-worker repair specs, executes them through the
+  dispatch-worker execution effect, persists artifacts and payloads, and reports
+  node-owned repair evidence.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "public_api"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-skill-adapter-smoke"
+    description: "pr_polish skill adapter compile-only request validates command routing shape."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py --command-name pr_polish --payload '<OMN-11171 dry-run payload>' --timeout-ms 300000 --compile-only"
+  - id: "dod-node-smoke-artifacts"
+    description: "node_pr_polish dry-run creates node-owned dispatch worker artifacts and result.json."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env -u PYTHONPATH uv run python -m omnimarket.nodes.node_pr_polish --repo OmniNode-ai/omnimarket --pr-number 679 --ticket OMN-11171 --dry-run --no-push --no-automerge --run-dir /tmp/onex-node-canary-pr-polish-679"
+  - id: "dod-focused-tests"
+    description: "Focused PR polish runtime and dispatch-worker tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_pr_polish.py tests/test_codex_runtime_client.py::test_pr_polish_pattern_b_runs_node_end_to_end tests/unit/nodes/node_pr_polish/test_main_cli.py tests/test_codex_plugin_shims.py tests/unit/test_cli_market_skills_demo.py tests/validation/test_runtime_profile_contracts.py tests/test_golden_chain_dispatch_worker_execution_effect.py -q"
+  - id: "dod-lint-typecheck"
+    description: "Touched PR polish code passes ruff, metadata dependency scope, and strict mypy."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_pr_polish tests/test_golden_chain_pr_polish.py tests/test_codex_runtime_client.py tests/unit/nodes/node_pr_polish/test_main_cli.py && uv run python scripts/ci/check_node_metadata_dependencies.py && uv run mypy src/omnimarket/ --strict"
+  - id: "dod-dispatch-worker-worktree-root"
+    description: "Dispatch-worker prompts default to $OMNI_HOME/omni_worktrees instead of the legacy external worktree root."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/test_dispatch_worker_persists_dispatch_record.py tests/unit/nodes/node_dispatch_worker/test_main_cli_round_trip.py -q"
+  - id: "dod-merge-sweep-fix-only-canary"
+    description: "merge-sweep fix_only dry-run completes without merge, fix, or verification side effects."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "ONEX_STATE_DIR=/tmp/onex-node-canary-merge-sweep-fix-only OMNI_HOME=${OMNI_HOME} env -u PYTHONPATH uv run python -m omnimarket.nodes.node_pr_lifecycle_orchestrator --input '<OMN-11171 fix_only dry-run envelope>' --output json --evidence-dir /tmp/onex-node-canary-merge-sweep-fix-evidence"
+  - id: "dod-deploy"
+    description: >
+      Runtime-node behavior changed, but no live deploy or .201 restart was
+      performed in this PR. Post-merge deploy validation must import the
+      pr_polish node and run a dry-run node smoke in the deployed runtime before
+      promotion.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_pr_polish --repo OmniNode-ai/omnimarket --pr-number 679 --ticket OMN-11171 --dry-run --no-push --no-automerge"

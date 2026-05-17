@@ -549,7 +549,7 @@ class HandlerDispatchWorker:
             raise ValueError("OMNI_HOME must be set before compiling dispatch prompts.")
         worktree_root = os.environ.get(
             "OMNI_WORKTREES",
-            os.path.join(os.path.dirname(omni_home), "omni_worktrees"),
+            os.path.join(omni_home, "omni_worktrees"),
         )
         if not worktree_root or Path(worktree_root).expanduser() == Path("/"):
             raise ValueError(

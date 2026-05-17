@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -117,6 +118,35 @@ class TestPrPolishGoldenChain:
 
         assert state.dry_run is True
         assert state.current_phase == EnumPrPolishPhase.DONE
+
+    async def test_runtime_handle_compiles_repair_worker_without_worktree(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """Skill/runtime handle emits dispatch-worker evidence for real PR input."""
+        handler = HandlerPrPolish()
+        run_dir = tmp_path / "pr-polish"
+        command = ModelPrPolishStartCommand(
+            correlation_id=uuid4(),
+            repo="OmniNode-ai/omnimarket",
+            pr_number=464,
+            ticket_id="OMN-10382",
+            dry_run=True,
+            run_dir=str(run_dir),
+            requested_at=datetime.now(tz=UTC),
+        )
+
+        completed = handler.handle(command)
+
+        assert completed.final_phase == EnumPrPolishPhase.DONE
+        assert completed.run_dir == str(run_dir)
+        assert completed.repair_worker_payloads_prepared == 0
+        assert completed.repair_workers_dispatched == 0
+        assert completed.delegation_publish_status == "skipped_no_payloads"
+        assert completed.dispatch_worker_spec_path is not None
+        assert Path(completed.dispatch_worker_spec_path).exists()
+        result = json.loads((run_dir / "result.json").read_text())
+        assert result["push_status"] == "deferred_to_repair_worker"
+        assert result["phase_results"][0]["status"] == "dry_run_dispatch_spec_compiled"
 
     async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
         """Handler events can be wired through EventBusInmemory."""

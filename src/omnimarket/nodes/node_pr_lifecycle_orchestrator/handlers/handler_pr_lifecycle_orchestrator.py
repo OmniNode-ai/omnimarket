@@ -276,6 +276,7 @@ _REVIEW_STATUS_MAP: dict[str, str] = {
 
 _TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
+_RECEIPT_GATE_CHECK_NAME = "verify / verify"
 
 
 def _map_ci_status(pr_state: Any) -> str:
@@ -318,6 +319,44 @@ def _map_review_status(pr_state: Any) -> str:
 def _orch_checks_to_ci_status(checks_status: str) -> str:
     """Convert orchestrator checks_status to triage node's ci_status vocabulary."""
     return _CI_STATUS_MAP.get(checks_status.lower(), "unknown")
+
+
+def _block_reason_for_fix(pr: TriageRecord) -> Any:
+    """Map triage output to the fix-effect routing enum.
+
+    Triage ``block_reason`` is a human-readable sentence, not the machine enum
+    consumed by node_pr_lifecycle_fix_effect. Preserve explicit enum values
+    when they are supplied, otherwise derive routing from deterministic triage
+    fields so PR-polish-worthy failures do not collapse to CI reruns.
+    """
+    from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
+        EnumPrBlockReason,
+    )
+
+    block_reason = (pr.block_reason or "").strip()
+    if block_reason:
+        try:
+            return EnumPrBlockReason(block_reason)
+        except ValueError:
+            pass
+
+    reason_lower = block_reason.lower()
+    failed_check_names = tuple(name.strip() for name in pr.failed_check_names)
+    failed_check_names_lower = tuple(name.lower() for name in failed_check_names)
+
+    if pr.category == EnumPrCategory.CONFLICTED:
+        return EnumPrBlockReason.CONFLICT
+    if failed_check_names and set(failed_check_names) == {_RECEIPT_GATE_CHECK_NAME}:
+        return EnumPrBlockReason.RECEIPT_FAILURE
+    if "coderabbit" in reason_lower or any(
+        "coderabbit" in name for name in failed_check_names_lower
+    ):
+        return EnumPrBlockReason.CODERABBIT
+    if pr.category == EnumPrCategory.NEEDS_REVIEW:
+        return EnumPrBlockReason.CHANGES_REQUESTED
+    if pr.category == EnumPrCategory.RED:
+        return EnumPrBlockReason.CODE_FAILURE
+    return EnumPrBlockReason.CODE_FAILURE
 
 
 # ---------------------------------------------------------------------------
@@ -1189,21 +1228,15 @@ class HandlerPrLifecycleOrchestrator:
                 # Real fix handler signature: handle(command: ModelPrLifecycleFixCommand)
                 # Construct command from TriageRecord fields.
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
-                    EnumPrBlockReason,
                     ModelPrLifecycleFixCommand,
                 )
-
-                block_reason_str = pr.block_reason or "ci_failure"
-                try:
-                    block_reason = EnumPrBlockReason(block_reason_str)
-                except ValueError:
-                    block_reason = EnumPrBlockReason.CI_FAILURE
 
                 fix_command = ModelPrLifecycleFixCommand(
                     correlation_id=correlation_id,
                     pr_number=pr.pr_number,
                     repo=pr.repo,
-                    block_reason=block_reason,
+                    block_reason=_block_reason_for_fix(pr),
+                    ticket_id=pr.ticket_ids[0] if pr.ticket_ids else None,
                     dry_run=dry_run,
                     requested_at=datetime.now(tz=UTC),
                 )
