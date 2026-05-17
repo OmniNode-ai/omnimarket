@@ -4,6 +4,6 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility import for the canonical delegation baseline intent DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelBaselineIntent
+from omnimarket.models.delegation.wire import ModelBaselineIntent
 
 __all__: list[str] = ["ModelBaselineIntent"]

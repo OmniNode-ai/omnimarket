@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 import yaml
-from omnibase_compat.contracts.delegation.wire import (
+
+from omnimarket.models.delegation.wire import (
     ModelDelegationConfig,
     ModelRoutingTier,
     ModelTierModel,

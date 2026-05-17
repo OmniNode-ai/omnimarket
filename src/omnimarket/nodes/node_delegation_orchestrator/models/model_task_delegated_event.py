@@ -4,6 +4,6 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility import for the canonical task-delegated event DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelTaskDelegatedEvent
+from omnimarket.models.delegation.wire import ModelTaskDelegatedEvent
 
 __all__: list[str] = ["ModelTaskDelegatedEvent"]
