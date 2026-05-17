@@ -1,0 +1,38 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11187"
+title: "Fix: projection reducer nodes must emit terminal event on projection-delegation-applied topic"
+summary: >
+  DelegationProjectionRunner was writing rows to delegation_events but never publishing to
+  onex.evt.omnimarket.projection-delegation-applied.v1. This fix adds _emit_terminal_event()
+  to DelegationProjectionRunner after each successful project_event() DB write, publishing a
+  ModelEventEnvelope JSON envelope to the terminal topic declared in contract.yaml. Pattern B
+  broker consumers can now observe projection completions on the event bus.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Golden chain projection delegation tests pass including new TestTerminalEventEmission suite."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_projection_delegation.py -v"
+  - id: "dod-lint"
+    description: "ruff, mypy strict, and metadata dependency check pass for changed files."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_projection_delegation/ && uv run mypy src/omnimarket/nodes/node_projection_delegation/ --strict"
+  - id: "dod-deploy"
+    description: >
+      After a delegation event is projected, rpk topic consume on projection-delegation-applied
+      returns a valid envelope. Terminal event emission wired in DelegationProjectionRunner._emit_terminal_event().
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "rpk topic produce onex.evt.omniclaude.task-delegated.v1 --brokers 192.168.86.201:19092 && rpk topic consume onex.evt.omnimarket.projection-delegation-applied.v1 --brokers 192.168.86.201:19092 --num 1"
