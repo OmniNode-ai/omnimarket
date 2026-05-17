@@ -46,6 +46,7 @@ from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
     EscalationTier,
     ModelEscalationChain,
+    ModelEscalationLevel,
 )
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
@@ -96,6 +97,7 @@ class HandlerModelRouter:
         self._health_cache: dict[str, tuple[bool, float]] = {}
         self._streak: dict[str, int] = {}
         self._degraded: set[str] = set()
+        self._escalation_event_seq: int = 0
 
         self._validate_registry()
 
@@ -145,7 +147,7 @@ class HandlerModelRouter:
                     correlation_id=request.correlation_id,
                 )
             msg = (
-                f"Primary '{primary_key}' degraded and role '{request.role}' "
+                f"Primary {primary_key!r} degraded and role {request.role!r} "
                 f"is not in fallback_allowed_roles {self._policy.fallback_allowed_roles}"
             )
             raise RuntimeError(msg)
@@ -179,37 +181,10 @@ class HandlerModelRouter:
             if level is None:
                 continue
 
-            for model_key in level.model_keys:
-                if not self._model_env_key_present(model_key):
-                    logger.info(
-                        "Skipping model '%s' (tier=%s): required env key '%s' absent",
-                        model_key,
-                        tier.name,
-                        self._registry[model_key].get("env_key", ""),
-                    )
-                    continue
+            result = await self._try_tier(tier, level, request)
+            if result is not None:
+                return result
 
-                for attempt in range(level.max_attempts):
-                    if await self._check_health(model_key):
-                        self._record_success(model_key)
-                        return ModelRoutingResult(
-                            model_key=model_key,
-                            endpoint_url=self._registry[model_key]["base_url"],
-                            used_fallback=tier != EscalationTier.local,
-                            correlation_id=request.correlation_id,
-                            escalation_tier=tier,
-                        )
-                    await self._record_failure(model_key, request.correlation_id)
-                    if attempt + 1 < level.max_attempts:
-                        logger.info(
-                            "Model '%s' attempt %d/%d failed, retrying within tier '%s'",
-                            model_key,
-                            attempt + 1,
-                            level.max_attempts,
-                            tier.name,
-                        )
-
-            # Tier exhausted — log escalation event before moving to next
             next_tier = chain.next_tier(tier)
             if next_tier is not None and next_tier != EscalationTier.expensive_frontier:
                 self._write_escalation_event(
@@ -223,6 +198,60 @@ class HandlerModelRouter:
             f"{[t.name for t in eligible_tiers]} for correlation_id={request.correlation_id}"
         )
         raise RuntimeError(msg)
+
+    async def _try_tier(
+        self,
+        tier: EscalationTier,
+        level: ModelEscalationLevel,
+        request: ModelRoutingRequest,
+    ) -> ModelRoutingResult | None:
+        """Attempt all models in a tier; return result on first success, None if exhausted."""
+        for model_key in level.model_keys:
+            if not self._model_env_key_present(model_key):
+                logger.info(
+                    "Skipping model %r (tier=%s): required env key %r absent",
+                    model_key,
+                    tier.name,
+                    self._registry[model_key].get("env_key", ""),
+                )
+                continue
+
+            result = await self._try_model(model_key, tier, level.max_attempts, request)
+            if result is not None:
+                return result
+
+        return None
+
+    async def _try_model(
+        self,
+        model_key: str,
+        tier: EscalationTier,
+        max_attempts: int,
+        request: ModelRoutingRequest,
+    ) -> ModelRoutingResult | None:
+        """Attempt a single model up to max_attempts times; return result on success, None otherwise."""
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                self._health_cache.pop(model_key, None)
+            if await self._check_health(model_key):
+                self._record_success(model_key)
+                return ModelRoutingResult(
+                    model_key=model_key,
+                    endpoint_url=self._registry[model_key]["base_url"],
+                    used_fallback=tier != EscalationTier.local,
+                    correlation_id=request.correlation_id,
+                    escalation_tier=tier,
+                )
+            await self._record_failure(model_key, request.correlation_id)
+            if attempt + 1 < max_attempts:
+                logger.info(
+                    "Model %r attempt %d/%d failed, retrying within tier %r",
+                    model_key,
+                    attempt + 1,
+                    max_attempts,
+                    tier.name,
+                )
+        return None
 
     def route_sync(self, request: ModelRoutingRequest) -> ModelRoutingResult:
         """Synchronous wrapper around route_async."""
@@ -255,7 +284,7 @@ class HandlerModelRouter:
         return role in self._policy.fallback_allowed_roles
 
     def _model_env_key_present(self, model_key: str) -> bool:
-        """Return True if the model's required env key is set (or no key required)."""
+        """Return True if the model required env key is set (or no key required)."""
         entry = self._registry.get(model_key, {})
         env_key = entry.get("env_key", "")
         if not env_key:
@@ -275,9 +304,7 @@ class HandlerModelRouter:
         self._degraded.discard(model_key)
         if was_degraded:
             self._health_cache.pop(model_key, None)
-            logger.info(
-                "Primary endpoint '%s' recovered from degraded state", model_key
-            )
+            logger.info("Primary endpoint %r recovered from degraded state", model_key)
 
     async def _emit_degradation_event(
         self, model_key: str, correlation_id: str
@@ -311,8 +338,9 @@ class HandlerModelRouter:
             log_dir = Path(self._escalation_log_dir)
             log_dir.mkdir(parents=True, exist_ok=True)
             ts = int(time.time() * 1000)
+            self._escalation_event_seq += 1
             safe_correlation = _SAFE_CORRELATION_ID_RE.sub("_", correlation_id)[:16]
-            filename = f"escalation-{ts}-{safe_correlation}.json"
+            filename = f"escalation-{ts}-{self._escalation_event_seq:04d}-{safe_correlation}.json"
             payload = {
                 "ts_ms": ts,
                 "from_tier": from_tier.name,
