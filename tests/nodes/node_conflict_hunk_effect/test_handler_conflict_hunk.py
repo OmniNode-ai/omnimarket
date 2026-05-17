@@ -91,13 +91,13 @@ def _make_subprocess_fn(
     git_add_rc: int = 0,
     git_commit_rc: int = 0,
     scope_diff_files: list[str] | None = None,
+    push_rc: int = 0,
+    push_calls: list[list[str]] | None = None,
 ) -> Any:
     """Build a deterministic subprocess_run_fn that operates on a real temp dir."""
     import os
 
     def _run(cmd: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
-        cmd_str = " ".join(cmd)
-
         # Worktree add: create the directory + write conflict file
         if "worktree" in cmd and "add" in cmd and "--force" not in cmd:
             wt_path = Path(cmd[-2])
@@ -135,8 +135,8 @@ def _make_subprocess_fn(
             files = scope_diff_files if scope_diff_files is not None else ["src/foo.py"]
             return 0, "\n".join(files) + "\n", ""
 
-        # pytest gate
-        if "pytest" in cmd_str:
+        # pytest gate — match on cmd elements, not full cmd_str (path may contain "pytest")
+        if "uv" in cmd and "pytest" in cmd:
             return (
                 pytest_rc,
                 "test output" if pytest_rc == 0 else "",
@@ -158,6 +158,14 @@ def _make_subprocess_fn(
         # git rev-parse HEAD
         if "rev-parse" in cmd:
             return 0, commit_sha, ""
+
+        # git push
+        if "push" in cmd:
+            if push_calls is not None:
+                push_calls.append(cmd[:])
+            if push_rc != 0:
+                return push_rc, "", "error: remote rejected (stale info)"
+            return 0, "", ""
 
         # source clone .git check
         if (
@@ -890,50 +898,11 @@ async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
     wt_root_base.mkdir()
 
     push_calls: list[list[str]] = []
-
-    def llm_call(
-        file_path: str, hunk_context: str, routing_policy: dict[str, Any]
-    ) -> tuple[str, bool]:
-        return _RESOLVED_CONTENT, False
-
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "tests").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "--" in cmd_list:
-            return 0, "", ""
-        if "diff" in cmd_list and "--name-only" in cmd_list:
-            return 0, "src/foo.py\n", ""
-        if "uv" in cmd_list and "pytest" in cmd_list:
-            return 0, "1 passed", ""
-        if "add" in cmd_list and "worktree" not in cmd_list:
-            return 0, "", ""
-        if "commit" in cmd_list:
-            return 0, "", ""
-        if "rev-parse" in cmd_list:
-            return 0, "pre-sha-abc\n", ""
-        if "push" in cmd_list:
-            push_calls.append(cmd_list[:])
-            return 0, "", ""
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(
+        wt_root_base,
+        commit_sha="pre-sha-abc",
+        push_calls=push_calls,
+    )
 
     import os
 
@@ -942,7 +911,7 @@ async def test_push_succeeds_on_successful_resolution(tmp_path: Path) -> None:
 
     try:
         handler = HandlerConflictHunk(
-            llm_call_fn=llm_call,
+            llm_call_fn=lambda _fp, _ctx, _rp: (_RESOLVED_CONTENT, False),
             subprocess_run_fn=subprocess_fn,
         )
         output = await handler.handle(_make_command())
@@ -980,48 +949,11 @@ async def test_push_failure_emits_fail_event(tmp_path: Path) -> None:
     wt_root_base = tmp_path / "worktrees"
     wt_root_base.mkdir()
 
-    def llm_call(
-        file_path: str, hunk_context: str, routing_policy: dict[str, Any]
-    ) -> tuple[str, bool]:
-        return _RESOLVED_CONTENT, False
-
-    def subprocess_fn(
-        cmd_list: list[str], cwd: Path | None = None
-    ) -> tuple[int, str, str]:
-        if "worktree" in cmd_list and "add" in cmd_list and "--force" not in cmd_list:
-            wt = Path(cmd_list[-2])
-            wt.mkdir(parents=True, exist_ok=True)
-            (wt / ".git").mkdir(exist_ok=True)
-            (wt / "src").mkdir(exist_ok=True)
-            (wt / "tests").mkdir(exist_ok=True)
-            (wt / "src" / "foo.py").write_text(_CONFLICT_FILE_CONTENT, encoding="utf-8")
-            return 0, "", ""
-        if "worktree" in cmd_list and "remove" in cmd_list:
-            import shutil
-
-            target = Path(cmd_list[-1])
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            return 0, "", ""
-        if "fetch" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "-B" in cmd_list:
-            return 0, "", ""
-        if "checkout" in cmd_list and "--" in cmd_list:
-            return 0, "", ""
-        if "diff" in cmd_list and "--name-only" in cmd_list:
-            return 0, "src/foo.py\n", ""
-        if "uv" in cmd_list and "pytest" in cmd_list:
-            return 0, "1 passed", ""
-        if "add" in cmd_list and "worktree" not in cmd_list:
-            return 0, "", ""
-        if "commit" in cmd_list:
-            return 0, "", ""
-        if "rev-parse" in cmd_list:
-            return 0, "pre-sha-xyz\n", ""
-        if "push" in cmd_list:
-            return 1, "", "error: remote rejected (stale info)"
-        return 0, "", ""
+    subprocess_fn = _make_subprocess_fn(
+        wt_root_base,
+        commit_sha="pre-sha-xyz",
+        push_rc=1,
+    )
 
     import os
 
@@ -1030,7 +962,7 @@ async def test_push_failure_emits_fail_event(tmp_path: Path) -> None:
 
     try:
         handler = HandlerConflictHunk(
-            llm_call_fn=llm_call,
+            llm_call_fn=lambda _fp, _ctx, _rp: (_RESOLVED_CONTENT, False),
             subprocess_run_fn=subprocess_fn,
         )
         output = await handler.handle(_make_command())
