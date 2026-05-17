@@ -1,4 +1,4 @@
-# OMN-11187: Fix projection reducer nodes must emit terminal event on projection-delegation-applied topic
+# Projection delegation: terminal event emission
 
 ## Problem
 

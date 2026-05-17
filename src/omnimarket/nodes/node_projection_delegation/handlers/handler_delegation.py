@@ -152,21 +152,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             return None
 
         if self._producer is None:
-            self._producer = AIOKafkaProducer(
+            producer = AIOKafkaProducer(
                 bootstrap_servers=brokers,
                 value_serializer=lambda v: (
                     v if isinstance(v, bytes) else v.encode("utf-8")
                 ),
             )
             try:
-                await self._producer.start()
+                await producer.start()
             except Exception as exc:
-                logger.warning(
-                    "Failed to start terminal event producer: %s",
-                    exc,
-                )
-                self._producer = None
+                logger.warning("Kafka producer failed to start: %s", exc)
                 return None
+            self._producer = producer
 
         producer = self._producer
 
