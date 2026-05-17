@@ -32,6 +32,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _DEFAULT_SANDBOX = Path(".onex_state/hackathon/generated")
+_HANDLER_FILENAME = "handler.py"
 
 
 class HandlerGeneratedExecutor:
@@ -54,7 +55,7 @@ class HandlerGeneratedExecutor:
         if isinstance(payload, (bytes, str)):
             try:
                 data: dict[str, Any] = json.loads(payload)
-            except (json.JSONDecodeError, ValueError) as exc:
+            except ValueError as exc:
                 return {"error": f"Invalid deploy payload JSON: {exc}"}
         else:
             data = payload
@@ -80,7 +81,7 @@ class HandlerGeneratedExecutor:
         node_dir = self.sandbox_dir / node_name
         try:
             node_dir.mkdir(parents=True, exist_ok=True)
-            (node_dir / "handler.py").write_text(handler_source)
+            (node_dir / _HANDLER_FILENAME).write_text(handler_source)
             if contract_yaml:
                 (node_dir / "contract.yaml").write_text(contract_yaml)
         except OSError as exc:
@@ -91,7 +92,7 @@ class HandlerGeneratedExecutor:
             )
             return {"error": f"Failed to write sandbox files: {exc}"}
 
-        handler_path = node_dir / "handler.py"
+        handler_path = node_dir / _HANDLER_FILENAME
         self._registry[node_name] = handler_path
         logger.info("[generated-executor] deployed %s → %s", node_name, handler_path)
         return {
@@ -101,7 +102,7 @@ class HandlerGeneratedExecutor:
         }
 
     def execute(self, node_name: str, input_data: dict[str, Any]) -> dict[str, Any]:
-        handler_path = self.sandbox_dir / node_name / "handler.py"
+        handler_path = self.sandbox_dir / node_name / _HANDLER_FILENAME
 
         if not handler_path.exists():
             logger.warning("[generated-executor] handler not found: %s", handler_path)

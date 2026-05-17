@@ -9,6 +9,7 @@ The fake satisfies the HandlerLlmOpenaiCompatible interface:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from typing import Any
@@ -81,6 +82,7 @@ class FakeLlmEffect:
         self._calls: list[Any] = []
 
     async def handle(self, request: Any) -> _FakeResponse:
+        await asyncio.sleep(0)
         self._calls.append(request)
         text = self._responses.pop(0) if self._responses else _VALID_LLM_RESPONSE
         return _FakeResponse(text)
@@ -357,7 +359,6 @@ async def test_no_deploy_event_on_failure() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_deploy_event_payload_has_hashes_and_source() -> None:
-
     published: list[tuple[str, bytes]] = []
     handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
 

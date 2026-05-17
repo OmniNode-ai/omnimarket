@@ -295,7 +295,7 @@ def test_deploy_rejects_absolute_node_name() -> None:
         executor = HandlerGeneratedExecutor(sandbox_dir=Path(tmp))
         result = executor.deploy(
             {
-                "node_name": "/tmp/pwned",
+                "node_name": "/etc/pwned",
                 "handler_source": _VALID_HANDLER,
                 "contract_yaml": "",
             }

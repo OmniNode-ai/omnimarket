@@ -94,47 +94,60 @@ def _extract_blocks(raw: str) -> tuple[str, str]:
     return contract_yaml, handler_source
 
 
-def _validate_generation(contract_yaml: str, handler_source: str) -> dict[str, Any]:
-    errors: list[str] = []
-    checks_passed: list[str] = []
-
+def _check_contract_schema(contract_yaml: str) -> tuple[list[str], bool]:
     try:
         data = yaml.safe_load(contract_yaml)
-        if not isinstance(data, dict):
-            errors.append("schema: contract YAML did not parse to a mapping")
-        else:
-            missing = [f for f in _REQUIRED_CONTRACT_FIELDS if f not in data]
-            if missing:
-                errors.append(f"schema: missing required fields: {', '.join(missing)}")
-            else:
-                checks_passed.append("schema")
     except yaml.YAMLError as exc:
-        errors.append(f"yaml parse error: {exc}")
+        return [f"yaml parse error: {exc}"], False
+    if not isinstance(data, dict):
+        return ["schema: contract YAML did not parse to a mapping"], False
+    missing = [f for f in _REQUIRED_CONTRACT_FIELDS if f not in data]
+    if missing:
+        return [f"schema: missing required fields: {', '.join(missing)}"], False
+    return [], True
 
+
+def _check_handler_syntax(handler_source: str) -> tuple[list[str], bool]:
     if not handler_source.strip():
-        errors.append("syntax: handler source is empty")
-    else:
-        try:
-            tree = ast.parse(handler_source)
-            checks_passed.append("syntax")
-            # Require a top-level handle() function.
-            has_handle = any(
-                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name == "handle"
-                for node in tree.body
-            )
-            if not has_handle:
-                errors.append(
-                    "schema: handler source missing top-level handle() function"
-                )
-        except SyntaxError as exc:
-            errors.append(f"syntax error: {exc}")
+        return ["syntax: handler source is empty"], False
+    try:
+        tree = ast.parse(handler_source)
+    except SyntaxError as exc:
+        return [f"syntax error: {exc}"], False
+    has_handle = any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "handle"
+        for node in tree.body
+    )
+    if not has_handle:
+        return ["schema: handler source missing top-level handle() function"], True
+    return [], True
 
+
+def _check_handler_security(handler_source: str) -> list[str]:
     security_errors: list[str] = []
     if _HARDCODED_PATH_RE.search(handler_source):
         security_errors.append("security: hardcoded absolute path detected")
     if _HARDCODED_TOPIC_RE.search(handler_source):
         security_errors.append("security: hardcoded topic string detected")
+    return security_errors
+
+
+def _validate_generation(contract_yaml: str, handler_source: str) -> dict[str, Any]:
+    errors: list[str] = []
+    checks_passed: list[str] = []
+
+    schema_errors, schema_ok = _check_contract_schema(contract_yaml)
+    errors.extend(schema_errors)
+    if schema_ok:
+        checks_passed.append("schema")
+
+    syntax_errors, syntax_ok = _check_handler_syntax(handler_source)
+    errors.extend(syntax_errors)
+    if syntax_ok:
+        checks_passed.append("syntax")
+
+    security_errors = _check_handler_security(handler_source)
     if security_errors:
         errors.extend(security_errors)
     else:
