@@ -1,0 +1,92 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_generation_consumer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Generates ONEX compute nodes from natural language descriptions.
+  Validates contract + syntax + security, retries on failure, emits benchmark metrics.
+  On success, emits a registration event so ServiceMCPToolSync picks up the new tool.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerGenerationConsumer
+        module: omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer
+      event_model:
+        name: ModelNodeGenerationRequest
+        module: omnimarket.nodes.node_generation_consumer.models.model_generation
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+inputs:
+  task_description:
+    type: str
+    description: "Natural language description of the node to generate"
+    required: true
+  correlation_id:
+    type: uuid
+    description: "Unique run ID for event tracing"
+    required: true
+  max_attempts:
+    type: int
+    description: "Maximum LLM retry attempts on validation failure"
+    required: false
+    default: 2
+
+outputs:
+  contract_passed:
+    type: bool
+    description: "True if the generated node passed all validation checks"
+  attempt_count:
+    type: int
+    description: "Number of generation attempts made"
+  total_latency_e2e_ms:
+    type: int
+    description: "Total end-to-end latency in milliseconds"
+  cost_inference_usd:
+    type: float
+    description: "Estimated inference cost in USD"
+
+terminal_event: onex.evt.omnimarket.node-generation-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.node-generation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.node-generation-completed.v1
+    - onex.evt.omnimarket.node-generation-failed.v1
+    - onex.evt.omnimarket.node-registered.v1
+    - onex.cmd.omnimarket.node-deploy.v1
+
+mcp:
+  expose: true
+  tool_name: "generate_onex_node"
+  description: "Generate a new ONEX compute node from a natural language description"
+  timeout_seconds: 120
+
+metadata:
+  transport_type: kafka
+  description: "Generation consumer node — generates ONEX nodes from natural language, validates, emits benchmark"
+  author: "OmniNode Platform Team"
+  created: "2026-05-16"
+  tags:
+    - "orchestrator"
+    - "generation"
+    - "hackathon"
+    - "llm"
+    - "node-generation"
+    - "OMN-11092"
+  related_tickets:
+    - "OMN-11092"
+    - "OMN-11091"
