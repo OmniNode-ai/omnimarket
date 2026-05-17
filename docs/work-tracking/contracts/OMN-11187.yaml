@@ -35,4 +35,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "rpk topic produce onex.evt.omniclaude.task-delegated.v1 --brokers 192.168.86.201:19092 && rpk topic consume onex.evt.omnimarket.projection-delegation-applied.v1 --brokers 192.168.86.201:19092 --num 1"
+        check_value: "rpk topic produce onex.evt.omniclaude.task-delegated.v1 --brokers 192.168.86.201:19092 && rpk topic consume onex.evt.omnimarket.projection-delegation-applied.v1 --brokers 192.168.86.201:19092 --num 1"  # onex-allow-internal-ip OMN-11187 reason="runtime host reference in deploy evidence command"
