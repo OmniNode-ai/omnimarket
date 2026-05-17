@@ -1,9 +1,8 @@
-# Security Hotspot Review — OMN-10966
+# Security Hotspot Review — Delegation Plugin
 
 **Date:** 2026-05-17
 **Reviewer:** platform-team
-**Ticket:** OMN-10966
-**Scope:** omnimarket codebase — all SonarCloud security hotspots
+**Scope:** Delegation plugin — all SonarCloud security hotspots
 
 ---
 
@@ -104,7 +103,7 @@ A broader scan of the omnimarket codebase found 168 `async def` functions withou
 `await`. These are all protocol stub implementations, test doubles, or interface
 adapters — the same pattern as the delegation plugin. SonarCloud flags are scoped to
 the files changed in the PR/analysis window; this review covers the delegation plugin
-findings which are the reported S7503 instances for OMN-10966. The broader pattern
+findings which are the reported S7503 instances for this ticket. The broader pattern
 is architectural (ONEX protocols require async signatures) and is not a defect.
 
 ---

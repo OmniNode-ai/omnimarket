@@ -14,6 +14,9 @@ evidence_requirements:
     description: omnimarket tests pass
     command: "uv run pytest tests/ -m 'not kafka' -q"
   - kind: manual
+    description: Security hotspot review document exists and is complete.
+    command: "test -f docs/evidence/security-hotspots/omn-10966-hotspot-review.md"
+  - kind: manual
     description: No deploy required; pure code-smell suppression and security review doc.
     command: >-
       printf '%s\n' 'deploy gate: OMN-10966 is a pure code-smell suppression; no live deploy or runtime
@@ -29,6 +32,12 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: "uv run pytest tests/ -m 'not kafka' -q"
+  - id: dod-hotspot-review
+    description: Security hotspot review document exists and is complete.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "test -f docs/evidence/security-hotspots/omn-10966-hotspot-review.md"
   - id: dod-deploy
     description: No live deploy or runtime restart required; pure code-smell suppression with no behavior change.
     source: manual
