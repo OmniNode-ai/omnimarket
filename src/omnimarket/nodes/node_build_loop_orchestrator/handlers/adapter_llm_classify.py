@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
@@ -24,6 +25,9 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
 )
 from omnibase_infra.adapters.llm.model_llm_adapter_request import (
     ModelLlmAdapterRequest,
+)
+from omnibase_infra.adapters.llm.model_llm_adapter_response import (
+    ModelLlmAdapterResponse,
 )
 
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
@@ -51,6 +55,17 @@ Respond with ONLY a JSON object: {"buildability": "<category>", "reason": "<one 
 """
 
 
+@runtime_checkable
+class ProtocolLlmClassifyProvider(Protocol):
+    """Narrow protocol covering the generate_async + close surface used by AdapterLlmClassify."""
+
+    async def generate_async(
+        self, request: ModelLlmAdapterRequest
+    ) -> ModelLlmAdapterResponse: ...
+
+    async def close(self) -> None: ...
+
+
 class AdapterLlmClassify:
     """Classifies tickets via AdapterLlmProviderOpenai, with keyword fallback.
 
@@ -65,10 +80,10 @@ class AdapterLlmClassify:
         llm_url: str | None = None,
         model_name: str = "default",
         timeout_seconds: float = 30.0,
-        provider: AdapterLlmProviderOpenai | None = None,
+        provider: ProtocolLlmClassifyProvider | None = None,
     ) -> None:
         if provider is not None:
-            self._provider = provider
+            self._provider: ProtocolLlmClassifyProvider = provider
         else:
             base_url = llm_url or os.environ.get("LLM_CODER_FAST_URL", "")
             if not base_url:
@@ -191,4 +206,4 @@ class AdapterLlmClassify:
         await self._provider.close()
 
 
-__all__: list[str] = ["AdapterLlmClassify"]
+__all__: list[str] = ["AdapterLlmClassify", "ProtocolLlmClassifyProvider"]
