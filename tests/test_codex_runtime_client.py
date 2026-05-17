@@ -750,6 +750,37 @@ async def _install_session_bootstrap_adapter_worker(
     )
 
 
+def test_default_command_topic_is_omnibase_infra_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-11065: default command topic must target the runtime-consumed omnibase-infra topic.
+
+    The .201 runtime consumers are active on onex.cmd.omnibase-infra.pattern-b-dispatch.v1.
+    Publishing to the omnimarket-namespaced topic sends messages to an unconsumed topic.
+    """
+    monkeypatch.delenv("ONEX_PATTERN_B_COMMAND_TOPIC", raising=False)
+    topic = default_command_topic()
+    assert topic == "onex.cmd.omnibase-infra.pattern-b-dispatch.v1", (
+        f"default_command_topic() returned {topic!r} — must be the omnibase-infra "
+        "namespace consumed by the .201 runtime (OMN-11065)"
+    )
+
+
+def test_default_response_topic_is_omnibase_infra_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-11065: default response topic must target the runtime-consumed omnibase-infra topic.
+
+    The terminal completion topic must match the namespace the runtime emits on.
+    """
+    monkeypatch.delenv("ONEX_PATTERN_B_RESPONSE_TOPIC", raising=False)
+    topic = default_response_topic()
+    assert topic == "onex.evt.omnibase-infra.pattern-b-dispatch-completed.v1", (
+        f"default_response_topic() returned {topic!r} — must be the omnibase-infra "
+        "namespace consumed by the .201 runtime (OMN-11065)"
+    )
+
+
 def test_default_command_topic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "ONEX_PATTERN_B_COMMAND_TOPIC",
