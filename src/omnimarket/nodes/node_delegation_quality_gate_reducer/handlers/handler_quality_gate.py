@@ -27,7 +27,9 @@ Related:
 from __future__ import annotations
 
 import ast
+import math
 import re
+from collections.abc import Callable
 
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
     MAX_WORDS_PER_SENTENCE_RE,
@@ -73,6 +75,44 @@ _LINE_CITATION_RE = re.compile(
     r"(?i)(?:\bline\s+\d+\b|\blines\s+\d+(?:-\d+)?\b|\bL\d+\b|:[1-9]\d*)"
 )
 _SENTENCE_RE = re.compile(r"[^.!?]+[.!?]")
+
+# Heuristic checks that delegate to _check_contains_any with fixed marker sets
+_HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "follows_google_style": ("TASK_MISMATCH", ("args:", "returns:")),
+    "explains_tradeoffs": (
+        "TASK_MISMATCH",
+        ("tradeoff", "trade-off", "risk", "benefit", "cost"),
+    ),
+    "follows_codebase_conventions": (
+        "TASK_MISMATCH",
+        ("pytest", "ruff", "typing", "typed", "contract"),
+    ),
+    "no_obvious_regressions": (
+        "TASK_MISMATCH",
+        ("regression", "backward", "compatib", "existing tests", "no break"),
+    ),
+    "covers_edge_cases": (
+        "TASK_MISMATCH",
+        ("edge", "boundary", "empty", "none", "invalid"),
+    ),
+    "covers_error_paths": (
+        "TASK_MISMATCH",
+        ("error", "exception", "raises", "failure"),
+    ),
+    "step_by_step_explanation": ("TASK_MISMATCH", ("step", "1.", "first", "then")),
+    "accurate": (
+        "TASK_MISMATCH",
+        ("evidence", "verified", "based on", "according to", "line "),
+    ),
+    "methodical_analysis": (
+        "TASK_MISMATCH",
+        ("because", "therefore", "evidence", "risk"),
+    ),
+    "sub_tasks_verified": (
+        "TASK_MISMATCH",
+        ("verified", "passed", "evidence", "check"),
+    ),
+}
 
 
 def _strip_markdown_code_fence(content: str) -> str:
@@ -202,6 +242,116 @@ def _check_contains_any(
     return f"{category}: failed {check_name}"
 
 
+def _check_covers_args_returns_raises(content: str) -> str | None:
+    """Heuristic: documentation must cover args, returns, and raises sections."""
+    missing = [m for m in ("args:", "returns:", "raises:") if m not in content.lower()]
+    if missing:
+        return "TASK_MISMATCH: missing documentation sections: " + ", ".join(missing)
+    return None
+
+
+def _check_cites_specific_lines(content: str) -> str | None:
+    """Heuristic: response must cite specific line numbers."""
+    if not _LINE_CITATION_RE.search(content):
+        return "TASK_MISMATCH: missing specific line citations"
+    return None
+
+
+def _check_concise(content: str) -> str | None:
+    """Heuristic: response must be under 250 words."""
+    if len(content.split()) > 250:
+        return "WEAK_OUTPUT: response is not concise"
+    return None
+
+
+def _evaluate_deterministic_checks(
+    content: str,
+    dod_deterministic: tuple[str, ...],
+) -> list[str]:
+    """Run all deterministic DoD checks and return failure messages."""
+    failures: list[str] = []
+    for check in dod_deterministic:
+        reason: str | None = None
+        if check == "output_parses":
+            reason = _check_output_parses(content)
+        elif check == "signature_preserved":
+            reason = _check_signature_preserved(content)
+        elif check == "compiles_without_errors":
+            reason = _check_compiles_without_errors(content)
+        elif check == "uses_pytest_mark_unit":
+            reason = _check_uses_pytest_mark_unit(content)
+        elif check == "docstring_present":
+            reason = _check_docstring_present(content)
+        elif check in ("response_non_empty", "task_completed"):
+            reason = _check_response_non_empty(content)
+        elif check == "exactly_two_sentences":
+            reason = _check_exactly_two_sentences(content)
+        elif check == "plain_text_only":
+            reason = _check_plain_text_only(content)
+        else:
+            m = MAX_WORDS_PER_SENTENCE_RE.match(check)
+            if m:
+                reason = _check_max_words_per_sentence(content, int(m.group(1)))
+            else:
+                reason = f"MALFORMED: unsupported deterministic DoD check '{check}'"
+        if reason is not None:
+            failures.append(reason)
+    return failures
+
+
+# Dispatch table: named heuristic check → checker function (content → failure message or None)
+_HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
+    "no_refusal": _check_no_refusal,
+    "covers_args_returns_raises": _check_covers_args_returns_raises,
+    "cites_specific_lines": _check_cites_specific_lines,
+    "concise": _check_concise,
+}
+
+
+def _apply_heuristic_check(check: str, content: str) -> str | None:
+    """Dispatch a named heuristic check against content."""
+    fn = _HEURISTIC_SIMPLE_CHECKS.get(check)
+    if fn is not None:
+        return fn(content)
+    if check in _HEURISTIC_CONTAINS_ANY_CHECKS:
+        category, markers = _HEURISTIC_CONTAINS_ANY_CHECKS[check]
+        return _check_contains_any(
+            content, check_name=check, category=category, markers=markers
+        )
+    return None
+
+
+def _evaluate_heuristic_checks(
+    content: str,
+    dod_heuristic: tuple[str, ...],
+) -> tuple[list[str], list[str]]:
+    """Run all heuristic DoD checks; return (heuristic_failures, det_failures).
+
+    Most checks produce heuristic failures. Unknown checks produce deterministic
+    failures so callers cannot silently ignore them.
+    """
+    heuristic_failures: list[str] = []
+    det_failures: list[str] = []
+    known_checks = set(_HEURISTIC_SIMPLE_CHECKS) | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
+
+    for check in dod_heuristic:
+        reason = _apply_heuristic_check(check, content)
+        if reason is not None:
+            heuristic_failures.append(reason)
+        elif check not in known_checks:
+            m = _MIN_LENGTH_CHECK_RE.match(check)
+            if m:
+                r = _check_min_length(content, int(m.group(1)))
+                if r is not None:
+                    heuristic_failures.append(r)
+            else:
+                det_failures.append(
+                    f"MALFORMED: unsupported heuristic DoD check '{check}'"
+                )
+
+    return heuristic_failures, det_failures
+
+
 def _run_contract_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
@@ -213,171 +363,11 @@ def _run_contract_checks(
         (deterministic_failures, heuristic_failures) — separate lists so the
         caller can apply the correct blocking/escalation semantics.
     """
-    det_failures: list[str] = []
-    heuristic_failures: list[str] = []
-
-    for check in dod_deterministic:
-        if check == "output_parses":
-            if reason := _check_output_parses(content):
-                det_failures.append(reason)
-        elif check == "signature_preserved":
-            if reason := _check_signature_preserved(content):
-                det_failures.append(reason)
-        elif check == "compiles_without_errors":
-            if reason := _check_compiles_without_errors(content):
-                det_failures.append(reason)
-        elif check == "uses_pytest_mark_unit":
-            if reason := _check_uses_pytest_mark_unit(content):
-                det_failures.append(reason)
-        elif check == "docstring_present":
-            if reason := _check_docstring_present(content):
-                det_failures.append(reason)
-        elif check == "response_non_empty" or check == "task_completed":
-            if reason := _check_response_non_empty(content):
-                det_failures.append(reason)
-        elif check == "exactly_two_sentences":
-            if reason := _check_exactly_two_sentences(content):
-                det_failures.append(reason)
-        elif check == "plain_text_only":
-            if reason := _check_plain_text_only(content):
-                det_failures.append(reason)
-        else:
-            m = MAX_WORDS_PER_SENTENCE_RE.match(check)
-            if m:
-                threshold = int(m.group(1))
-                if reason := _check_max_words_per_sentence(content, threshold):
-                    det_failures.append(reason)
-            else:
-                det_failures.append(
-                    f"MALFORMED: unsupported deterministic DoD check '{check}'"
-                )
-
-    for check in dod_heuristic:
-        if check == "no_refusal":
-            if reason := _check_no_refusal(content):
-                heuristic_failures.append(reason)
-        elif check == "follows_google_style":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("args:", "returns:"),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "covers_args_returns_raises":
-            missing = [
-                marker
-                for marker in ("args:", "returns:", "raises:")
-                if marker not in content.lower()
-            ]
-            if missing:
-                heuristic_failures.append(
-                    "TASK_MISMATCH: missing documentation sections: "
-                    + ", ".join(missing)
-                )
-        elif check == "cites_specific_lines":
-            if not _LINE_CITATION_RE.search(content):
-                heuristic_failures.append(
-                    "TASK_MISMATCH: missing specific line citations"
-                )
-        elif check == "explains_tradeoffs":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("tradeoff", "trade-off", "risk", "benefit", "cost"),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "follows_codebase_conventions":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("pytest", "ruff", "typing", "typed", "contract"),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "no_obvious_regressions":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=(
-                    "regression",
-                    "backward",
-                    "compatib",
-                    "existing tests",
-                    "no break",
-                ),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "covers_edge_cases":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("edge", "boundary", "empty", "none", "invalid"),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "covers_error_paths":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("error", "exception", "raises", "failure"),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "step_by_step_explanation":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("step", "1.", "first", "then"),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "concise":
-            if len(content.split()) > 250:
-                heuristic_failures.append("WEAK_OUTPUT: response is not concise")
-        elif check == "accurate":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=(
-                    "evidence",
-                    "verified",
-                    "based on",
-                    "according to",
-                    "line ",
-                ),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "methodical_analysis":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("because", "therefore", "evidence", "risk"),
-            ):
-                heuristic_failures.append(reason)
-        elif check == "sub_tasks_verified":
-            if reason := _check_contains_any(
-                content,
-                check_name=check,
-                category="TASK_MISMATCH",
-                markers=("verified", "passed", "evidence", "check"),
-            ):
-                heuristic_failures.append(reason)
-        else:
-            m = _MIN_LENGTH_CHECK_RE.match(check)
-            if m:
-                threshold = int(m.group(1))
-                if reason := _check_min_length(content, threshold):
-                    heuristic_failures.append(reason)
-            else:
-                det_failures.append(
-                    f"MALFORMED: unsupported heuristic DoD check '{check}'"
-                )
-
+    det_failures = _evaluate_deterministic_checks(content, dod_deterministic)
+    heuristic_failures, extra_det_failures = _evaluate_heuristic_checks(
+        content, dod_heuristic
+    )
+    det_failures.extend(extra_det_failures)
     return det_failures, heuristic_failures
 
 
@@ -428,9 +418,10 @@ def _run_legacy_checks(
         + scores["markers"] * _WEIGHT_MARKERS
     )
 
-    passed = quality_score >= 0.6 and scores["no_refusal"] == 1.0
+    no_refusal_score = scores["no_refusal"]
+    passed = quality_score >= 0.6 and math.isclose(no_refusal_score, 1.0)
     fallback_recommended = not passed and (
-        scores["no_refusal"] == 0.0 or quality_score < 0.3
+        math.isclose(no_refusal_score, 0.0) or quality_score < 0.3
     )
     fail_category: EnumQualityGateCategory = "pass" if passed else "fail_heuristic"
 
