@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-8537
+title: "Implement model escalation chain in dispatch engine (local → cheap frontier → expensive_frontier)"
+summary: "Add EscalationTier enum and ModelEscalationChain to node_model_router; implement route_with_escalation() on HandlerModelRouter — local → cheap_cloud → mid_frontier auto-escalation, expensive_frontier excluded."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "CI passes on PR #683 (tests, lint, mypy, deploy-gate, all gates green)"
+    command: "gh pr checks 683 --repo OmniNode-ai/omnimarket --watch"
+  - kind: "tests"
+    description: "31 TDD tests pass (14 escalation chain + existing model_router regression)"
+    command: "uv run pytest tests/nodes/node_model_router/ -v"
+  - kind: "manual"
+    description: "Post-merge deploy readiness smoke: escalation chain imports cleanly"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_model_router.models.model_escalation_chain import ModelEscalationChain, EscalationTier; print('ok')\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-ci"
+    description: "CI passes on omnimarket PR (tests, lint, mypy, hooks all green)"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_model_router/ -q"
+  - id: "dod-tests"
+    description: "31 TDD tests pass: 14 escalation chain unit/integration + existing model_router regression"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_model_router/test_escalation_chain.py -q"
+  - id: "dod-deploy"
+    description: "Post-merge deploy readiness smoke: escalation chain imports cleanly. Compute-only change; no runtime restart required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c from omnimarket.nodes.node_model_router.models.model_escalation_chain import ModelEscalationChain'"
