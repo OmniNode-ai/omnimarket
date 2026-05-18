@@ -1,0 +1,19 @@
+name: node_contract_registry
+version: "1.0.0"
+description: "Projection node for validated contract snapshots — DDL owner for contract_registry table"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["projection", "contract", "registry"]
+pack: "workflow"
+display_name: "Contract Registry Projection"
+node_role: "effect"
