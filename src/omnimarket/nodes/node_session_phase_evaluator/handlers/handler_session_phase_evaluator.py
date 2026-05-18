@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 _WARN_THRESHOLD_PCT = 80
 _DEFAULT_HALT_THRESHOLD_PCT = 100
@@ -25,16 +25,14 @@ class ModelPhaseEvaluationRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     phase_name: str
-    max_duration_minutes: int
-    elapsed_minutes: float
+    max_duration_minutes: int = Field(..., ge=1)
+    elapsed_minutes: float = Field(..., ge=0.0)
     exit_condition_statuses: dict[str, bool]
-    halt_threshold_pct: int = _DEFAULT_HALT_THRESHOLD_PCT
+    halt_threshold_pct: int = Field(_DEFAULT_HALT_THRESHOLD_PCT, ge=1)
 
 
 def _elapsed_pct(elapsed_minutes: float, max_duration_minutes: int) -> int:
-    if max_duration_minutes <= 0:
-        return 100
-    return min(int((elapsed_minutes / max_duration_minutes) * 100), 100)
+    return min(max(int((elapsed_minutes / max_duration_minutes) * 100), 0), 100)
 
 
 def _all_conditions_met(exit_condition_statuses: dict[str, bool]) -> bool:
