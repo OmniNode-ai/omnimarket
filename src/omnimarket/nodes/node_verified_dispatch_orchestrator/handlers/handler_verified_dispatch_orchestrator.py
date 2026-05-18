@@ -218,7 +218,7 @@ class HandlerVerifiedDispatchOrchestrator:
             claim=worker_claim,
             authoritative_checks=checks,
             detected_mismatches=mismatches,
-            decision=decision,  # type: ignore[arg-type]
+            decision=decision,
             evidence_refs=[],
             timestamp_utc=datetime.now(UTC),
             correlation_id=correlation_id,
