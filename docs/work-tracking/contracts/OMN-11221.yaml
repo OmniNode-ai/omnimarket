@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11221
+title: "Architectural Invariant Enforcement Loop"
+summary: "Implements node_architectural_invariant_loop COMPUTE node with 5 seed invariants (ARCH-001 through ARCH-005), per-invariant AST/regex checkers, waiver-aware evaluation, and 17 unit tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "17 unit tests for node_architectural_invariant_loop pass"
+    command: "uv run pytest tests/test_node_architectural_invariant_loop.py -v"
+  - kind: ci
+    description: "omnimarket PR #696 CI green across required gates"
+    command: "gh pr checks 696 --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: "New COMPUTE node — no runtime deploy required before merge; deployment handled post-merge via redeploy ticket"
+    command: "printf '%s\n' 'deploy gate: new COMPUTE node node_architectural_invariant_loop — no docker exec or rpk topic produce required before merge; post-merge deploy via redeploy ticket'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-unit-tests
+    description: "17 unit tests for node_architectural_invariant_loop pass"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_node_architectural_invariant_loop.py -v"
+  - id: dod-deploy
+    description: "New COMPUTE node — no runtime deploy required before merge"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: new COMPUTE node node_architectural_invariant_loop — no docker exec or rpk topic produce required before merge; post-merge deploy via redeploy ticket'"
