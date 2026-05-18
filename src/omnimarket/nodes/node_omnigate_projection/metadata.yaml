@@ -1,0 +1,24 @@
+---
+name: node_omnigate_projection
+version: "1.0.0"
+description: "Owns OmniGate activity and metrics projection snapshots"
+omnibase_core_compat: ">=0.40.1,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_omnigate_projection: "omnimarket.nodes.node_omnigate_projection"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.40.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["omnigate", "reducer", "projection", "dashboard"]
+pack: "omnigate"
+display_name: "OmniGate Projection"
+node_role: "reducer"
