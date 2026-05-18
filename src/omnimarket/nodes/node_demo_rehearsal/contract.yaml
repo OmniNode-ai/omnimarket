@@ -1,0 +1,73 @@
+---
+name: demo_rehearsal
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Executes the demo rehearsal pipeline against approved stability/demo lanes.
+  Captures runtime topology manifest, projection row, dashboard API response,
+  and optional screenshots. Produces a rehearsal_bundle.json evidence artifact.
+  Never modifies runtime state, restarts services, or mutates production data.
+
+handler:
+  module: omnimarket.nodes.node_demo_rehearsal.handlers.handler_demo_rehearsal
+  class: HandlerDemoRehearsal
+  input_model: omnimarket.nodes.node_demo_rehearsal.handlers.handler_demo_rehearsal.ModelDemoRehearsalRequest
+
+handler_routing:
+  default_handler: handler:HandlerDemoRehearsal
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 300000
+
+inputs:
+  run_id:
+    type: str
+    description: "Unique run identifier for correlation and evidence continuity"
+    required: true
+  evidence_dir:
+    type: str
+    description: "Directory to write evidence artifacts. Defaults to docs/evidence/demo-readiness/<run_id>/ relative to omni_home."
+    required: false
+  dry_run:
+    type: bool
+    description: "If true, run rehearsal but do not write artifacts"
+    required: false
+    default: false
+
+outputs:
+  run_id:
+    type: str
+    description: "The run ID for this rehearsal"
+  bundle_path:
+    type: str
+    description: "Filesystem path where rehearsal_bundle.json was written"
+  overall_status:
+    type: str
+    description: "GREEN, DEGRADED, or BROKEN"
+  failure_count:
+    type: int
+    description: "Number of failure items in the rehearsal bundle"
+
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: "Root path of the omni_home workspace"
+  DEMO_DASHBOARD_URL:
+    required: false
+    description: "Dashboard API base URL for rehearsal probes"
+  DEMO_PROJECTION_DB_URL:
+    required: false
+    description: "Postgres DSN for projection probe. Probe skipped when unset."
+
+terminal_event: onex.evt.omnimarket.demo-rehearsed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.demo-rehearsal-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.demo-rehearsed.v1

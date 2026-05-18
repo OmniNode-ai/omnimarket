@@ -1,0 +1,66 @@
+---
+name: morning_handoff_generator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Synthesizes overnight demo readiness evidence (rehearsal bundle, drift report,
+  fix dispatch log) into a human-readable summary and machine-readable
+  morning_dispatch_plan.json. Supports replay mode from saved evidence.
+
+handler:
+  module: omnimarket.nodes.node_morning_handoff_generator.handlers.handler_morning_handoff_generator
+  class: HandlerMorningHandoffGenerator
+  input_model: omnimarket.nodes.node_morning_handoff_generator.handlers.handler_morning_handoff_generator.ModelMorningHandoffRequest
+
+handler_routing:
+  default_handler: handler:HandlerMorningHandoffGenerator
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  run_id:
+    type: str
+    description: "Run identifier for correlation"
+    required: true
+  evidence_dir:
+    type: str
+    description: "Directory containing rehearsal_bundle.json, drift_report.json, fix_dispatch_log.json. Defaults to docs/evidence/demo-readiness/<run_id>/ relative to omni_home."
+    required: false
+  dry_run:
+    type: bool
+    description: "If true, generate plan but do not write morning_dispatch_plan.json"
+    required: false
+    default: false
+
+outputs:
+  run_id:
+    type: str
+    description: "The run ID for this handoff"
+  plan_path:
+    type: str
+    description: "Filesystem path where morning_dispatch_plan.json was written"
+  human_summary:
+    type: str
+    description: "Human-readable overnight summary paragraph"
+  demo_blocker_count:
+    type: int
+    description: "Number of unresolved DEMO_BLOCKER issues in the plan"
+
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: "Root path of the omni_home workspace"
+
+terminal_event: onex.evt.omnimarket.morning-handoff-generated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.morning-handoff-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.morning-handoff-generated.v1

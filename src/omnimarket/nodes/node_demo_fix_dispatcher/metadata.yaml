@@ -1,0 +1,23 @@
+name: node_demo_fix_dispatcher
+version: "1.0.0"
+description: "Auto-fix low-risk demo drift findings with bounded authority"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_demo_fix_dispatcher: "omnimarket.nodes.node_demo_fix_dispatcher"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["demo", "fix", "dispatch", "readiness", "bounded-authority", "automation"]
+pack: "demo_readiness"
+display_name: "Demo Fix Dispatcher"
+node_role: "effect"
