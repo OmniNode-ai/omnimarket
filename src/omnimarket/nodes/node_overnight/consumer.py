@@ -27,6 +27,7 @@ import os
 import signal
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -41,6 +42,27 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_GROUP = "local.omnimarket.overnight.consume.1.0.0"
+_CONTRACT_PATH = Path(__file__).with_name("contract.yaml")
+
+
+class _SyncKafkaEventPublisher:
+    """Synchronous adapter for HandlerOvernight's event publisher seam."""
+
+    def __init__(self) -> None:
+        from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+
+        self._bus = EventBusKafka.default()
+        asyncio.run(self._bus.start())
+
+    def __call__(self, topic: str, payload: bytes) -> None:
+        asyncio.run(self._bus.publish(topic, key=None, value=payload))
+
+    def close(self) -> None:
+        asyncio.run(self._bus.close())
+
+
+def _build_event_publisher() -> _SyncKafkaEventPublisher:
+    return _SyncKafkaEventPublisher()
 
 
 def _parse_command(raw: dict[str, Any]) -> dict[str, Any]:
@@ -81,10 +103,23 @@ def _invoke_overnight(cmd: dict[str, Any]) -> dict[str, Any]:
         loop_delay_seconds=cmd["loop_delay_seconds"],
     )
 
-    handler = HandlerOvernight(
-        event_bus=lambda _topic, _payload: None, contract_path=None
-    )
-    result = handler.handle(command, dispatch_phases=True)
+    event_publisher = _build_event_publisher()
+    handler_error: Exception | None = None
+    try:
+        handler = HandlerOvernight(
+            event_bus=event_publisher,
+            contract_path=_CONTRACT_PATH,
+        )
+        result = handler.handle(command, dispatch_phases=True)
+    except Exception as exc:
+        handler_error = exc
+        raise
+    finally:
+        try:
+            event_publisher.close()
+        except Exception:
+            if handler_error is None:
+                raise
 
     return {
         "correlation_id": str(cmd["correlation_id"]),

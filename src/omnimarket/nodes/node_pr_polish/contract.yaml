@@ -17,7 +17,7 @@ handler:
 
 descriptor:
   node_archetype: compute
-  purity: pure
+  purity: impure
   idempotent: true
   timeout_ms: 300000
 
@@ -101,6 +101,27 @@ outputs:
   comments_addressed:
     type: int
     description: "Review comments addressed"
+  run_dir:
+    type: str
+    description: "State directory containing PR polish artifacts"
+  dispatch_worker_spec_path:
+    type: str
+    description: "Compiled fixer worker spec artifact path"
+  dispatch_execution_result_path:
+    type: str
+    description: "Dispatch-worker execution outcome artifact path"
+  delegation_payloads_path:
+    type: str
+    description: "Persisted repair delegation payload artifact path"
+  repair_worker_payloads_prepared:
+    type: int
+    description: "Repair worker payloads prepared by the execution effect"
+  repair_workers_dispatched:
+    type: int
+    description: "Repair worker payloads published to the runtime bus"
+  delegation_publish_status:
+    type: str
+    description: "Runtime delegation publish status"
 
 terminal_event: onex.evt.omnimarket.pr-polish-completed.v1
 
@@ -110,6 +131,7 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.pr-polish-phase-transition.v1
     - onex.evt.omnimarket.pr-polish-completed.v1
+    - onex.cmd.omnimarket.delegation-request.v1
 
 metadata:
   transport_type: kafka

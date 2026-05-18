@@ -4,6 +4,6 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility import for the canonical quality gate input DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelQualityGateInput
+from omnimarket.models.delegation.wire import ModelQualityGateInput
 
 __all__: list[str] = ["ModelQualityGateInput"]

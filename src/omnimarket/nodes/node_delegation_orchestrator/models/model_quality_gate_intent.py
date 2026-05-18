@@ -4,6 +4,6 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility import for the canonical quality gate intent DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelQualityGateIntent
+from omnimarket.models.delegation.wire import ModelQualityGateIntent
 
 __all__: list[str] = ["ModelQualityGateIntent"]

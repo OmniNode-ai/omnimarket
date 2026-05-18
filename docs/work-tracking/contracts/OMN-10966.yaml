@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10966
+title: Fix remaining SonarCloud findings + review security hotspots on #1581
+summary: >-
+  Suppresses 2 SonarCloud S7503 findings in the delegation plugin with NOSONAR (protocol-required async
+  methods implementing ProtocolDomainPlugin). Adds written security hotspot review for all 5 omnimarket
+  hotspots. Pure code-smell plus documentation; no behavior change, no deploy required.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: manual
+    description: omnimarket tests pass
+    command: "uv run pytest tests/ -m 'not kafka' -q"
+  - kind: manual
+    description: Security hotspot review document exists and is complete.
+    command: "test -f docs/evidence/security-hotspots/omn-10966-hotspot-review.md"
+  - kind: manual
+    description: No deploy required; pure code-smell suppression and security review doc.
+    command: >-
+      printf '%s\n' 'deploy gate: OMN-10966 is a pure code-smell suppression; no live deploy or runtime
+      restart required'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: omnimarket test suite passes
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ -m 'not kafka' -q"
+  - id: dod-hotspot-review
+    description: Security hotspot review document exists and is complete.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "test -f docs/evidence/security-hotspots/omn-10966-hotspot-review.md"
+  - id: dod-deploy
+    description: No live deploy or runtime restart required; pure code-smell suppression with no behavior change.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          printf '%s\n' 'deploy gate: OMN-10966 is a pure code-smell suppression; no live deploy or
+          runtime restart required'

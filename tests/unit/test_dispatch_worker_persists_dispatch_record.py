@@ -98,6 +98,34 @@ def test_handler_requires_omni_home_for_prompt_paths(
 
 
 @pytest.mark.unit
+def test_handler_defaults_worktree_root_inside_omni_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Worker prompts default to $OMNI_HOME/omni_worktrees, not legacy siblings."""
+    omni_home = tmp_path / "omni_home"
+    monkeypatch.setenv("OMNI_HOME", str(omni_home))
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv("OMNI_WORKTREES", raising=False)
+
+    handler = HandlerDispatchWorker()
+    cmd = ModelDispatchWorkerCommand(
+        name="test-worker-omni-home-worktrees",
+        team="test-team",
+        role=EnumWorkerRole.fixer,
+        scope="dummy scope for test",
+        targets=["OMN-9999", "omnibase_core#100"],
+    )
+
+    result = handler.handle(cmd, existing_task_subjects=[])
+
+    assert f"All code changes happen in {omni_home}/omni_worktrees/" in (
+        result.validated_prompt_template
+    )
+    assert f"{tmp_path}/omni_worktrees/" not in result.validated_prompt_template
+
+
+@pytest.mark.unit
 def test_writer_requires_explicit_state_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

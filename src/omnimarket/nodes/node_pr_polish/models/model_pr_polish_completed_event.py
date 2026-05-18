@@ -25,6 +25,15 @@ class ModelPrPolishCompletedEvent(BaseModel):
     conflicts_resolved: int = Field(default=0, ge=0)
     ci_fixes_applied: int = Field(default=0, ge=0)
     comments_addressed: int = Field(default=0, ge=0)
+    run_dir: str | None = Field(default=None)
+    dispatch_worker_spec_path: str | None = Field(default=None)
+    dispatch_execution_result_path: str | None = Field(default=None)
+    delegation_payloads_path: str | None = Field(default=None)
+    dispatch_receipt_dir: str | None = Field(default=None)
+    repair_worker_payloads_prepared: int = Field(default=0, ge=0)
+    repair_workers_dispatched: int = Field(default=0, ge=0)
+    repair_workers_skipped: int = Field(default=0, ge=0)
+    delegation_publish_status: str | None = Field(default=None)
     error_message: str | None = Field(default=None)
 
 

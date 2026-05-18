@@ -1,0 +1,41 @@
+# OMN-10809 contract file for omnimarket deploy-gate (OMN-8912).
+# The canonical ticket contract lives in onex_change_control.
+# This file is the per-repo deploy-evidence carrier only.
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10809"
+title: "Wire overnight consumer event bus"
+summary: >
+  Replace node_overnight's no-op event publisher with a synchronous adapter around EventBusKafka.default(),
+  pass the checked-in node contract into HandlerOvernight, and declare the node's omnibase-infra runtime dependency.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused node_overnight consumer tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_overnight_consumer.py -q"
+  - id: "dod-metadata-dependencies"
+    description: "Node metadata dependency scanner passes after declaring omnibase-infra for node_overnight."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_node_metadata_dependencies.py"
+  - id: "dod-deploy"
+    description: >
+      Runtime-impacting consumer path change is deploy-gated. No live deploy or restart was performed in this
+      PR; post-merge validation must prove the installed runtime can import the overnight consumer and then run
+      an operator-managed smoke against the configured Kafka environment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy smoke: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_overnight.consumer import main; print(main.__name__)\"'"

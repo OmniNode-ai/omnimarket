@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.32.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["pr", "polish", "conflicts", "ci", "review", "fsm"]

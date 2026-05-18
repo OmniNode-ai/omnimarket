@@ -69,6 +69,31 @@ event_bus:
     - onex.evt.omnimarket.node-registered.v1
     - onex.cmd.omnimarket.node-deploy.v1
 
+model_routing:
+  provider: local
+  endpoint_env: LLM_CODER_URL
+  model_id: "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+  auth:
+    shared_secret_env: LOCAL_LLM_SHARED_SECRET
+    cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
+
+dependencies:
+  - name: llm_coder_url
+    type: environment
+    key: LLM_CODER_URL
+    description: "Base URL for the Qwen3-Coder LLM endpoint — set via overlay from Infisical"
+    required: true
+  - name: llm_shared_secret
+    type: environment
+    key: LOCAL_LLM_SHARED_SECRET
+    description: "HMAC shared secret for local LLM trust boundary enforcement"
+    required: true
+  - name: llm_cidr_allowlist
+    type: environment
+    key: LLM_ENDPOINT_CIDR_ALLOWLIST
+    description: "CIDR ranges for local LLM endpoint allowlist — set via overlay from Infisical"
+    required: true
+
 mcp:
   expose: true
   tool_name: "generate_onex_node"

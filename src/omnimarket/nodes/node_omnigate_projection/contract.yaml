@@ -1,0 +1,40 @@
+---
+name: node_omnigate_projection
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Owns OmniGate activity and metrics projection snapshots for dashboard consumers.
+
+handler:
+  module: omnimarket.nodes.node_omnigate_projection.reducers.reducer_omnigate_projection
+  class: reduce_omnigate_projection
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+projection_api:
+  snapshots:
+    - topic: onex.snapshot.projection.gate.activity.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      model: omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_row.ModelOmniGateProjectionRow
+      ownership: authoritative
+      ordering: observed_at_desc
+    - topic: onex.snapshot.projection.gate.metrics.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      model: omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_row.ModelOmniGateMetricsSnapshot
+      ownership: authoritative
+      ordering: aggregate
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.omnigate-checks-completed.v1
+    - onex.evt.omnimarket.omnigate-receipt-generated.v1
+    - onex.evt.omnimarket.omnigate-receipt-verified.v1
+  publish_topics:
+    - onex.snapshot.projection.gate.activity.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    - onex.snapshot.projection.gate.metrics.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+
+metadata:
+  transport_type: kafka

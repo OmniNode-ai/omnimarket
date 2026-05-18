@@ -1,0 +1,29 @@
+---
+name: node_omnigate_receipt_generator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Generates canonical OmniGate receipts bound to diff hash, config hash, repository authority, and commit SHAs.
+
+handler:
+  module: omnimarket.nodes.node_omnigate_receipt_generator.handlers.handler_receipt_generator
+  class: HandlerReceiptGenerator
+  input_model: omnimarket.nodes.node_omnigate_receipt_generator.models.model_receipt_generator_input.ModelReceiptGeneratorInput
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.omnigate-receipt-generated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.omnigate-generate-receipt.v1
+  publish_topics:
+    - onex.evt.omnimarket.omnigate-receipt-generated.v1
+
+metadata:
+  transport_type: kafka

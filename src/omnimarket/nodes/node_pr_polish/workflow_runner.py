@@ -3,29 +3,50 @@
 """Live workflow runner for node_pr_polish.
 
 The pure FSM in ``handler_pr_polish.py`` remains useful for unit coverage, but
-the real branch-polishing path needs explicit repo/worktree execution. This
+the real branch-polishing path needs durable repair workflow evidence. This
 module owns that live path:
 
-- resolve the correct worktree for ``repo`` + ``pr_number``
-- verify checkout matches the PR head branch
-- install pre-commit hooks in the worktree
-- run market-owned deterministic polish phases inside that worktree
-- persist ``result.json`` under the dispatched run directory
+- compile a bounded fixer worker using the dispatch-worker canary
+- execute that spec through the dispatch-worker execution effect
+- optionally publish the resulting delegation payload when Kafka is configured
+- persist ``result.json`` and dispatch artifacts under the run directory
+- run explicit-worktree local checks only when a worktree path is provided
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import re
 import subprocess
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 from uuid import uuid4
 
 from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage import (
     HandlerCoderabbitTriage,
     ModelCoderabbitTriageCommand,
     ModelCoderabbitTriageResult,
+)
+from omnimarket.nodes.node_dispatch_worker import (
+    EnumWorkerRole,
+    ModelDispatchWorkerCommand,
+)
+from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
+    HandlerDispatchWorker,
+)
+from omnimarket.nodes.node_dispatch_worker_execution_effect import (
+    ModelCompiledDispatchWorker,
+    ModelDispatchWorkerDelegationPayload,
+    ModelDispatchWorkerExecutionInput,
+    ModelDispatchWorkerSpecArtifact,
+)
+from omnimarket.nodes.node_dispatch_worker_execution_effect.handlers.handler_dispatch_worker_execution import (
+    HandlerDispatchWorkerExecution,
 )
 from omnimarket.nodes.node_pr_polish.models.model_pr_polish_completed_event import (
     ModelPrPolishCompletedEvent,
@@ -38,6 +59,23 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_state import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+class RepairDispatchEvidence(TypedDict):
+    """Persisted repair-worker dispatch artifacts for a PR polish run."""
+
+    dispatch_worker_command_path: str
+    dispatch_worker_result_path: str
+    dispatch_worker_spec_path: str
+    dispatch_execution_result_path: str
+    delegation_payloads_path: str
+    dispatch_receipt_dir: str
+    repair_worker_payloads_prepared: int
+    repair_workers_dispatched: int
+    repair_workers_skipped: int
+    repair_workers_rejected: int
+    repair_workers_failed: int
+    delegation_publish_status: str
 
 
 def run_live_pr_polish(
@@ -68,6 +106,57 @@ def run_live_pr_polish(
             raise RuntimeError("pr_number is required for live pr_polish execution")
         if command.required_clean_runs > command.max_iterations:
             raise RuntimeError("required_clean_runs cannot exceed max_iterations")
+
+        dispatch_evidence = _prepare_repair_worker_dispatch(
+            command,
+            run_dir=run_dir,
+            started_at=started_at,
+        )
+        payload["repair_worker_dispatch"] = dispatch_evidence
+
+        if not command.worktree_path:
+            phase_results = _delegated_phase_results(command)
+            payload["phase_results"] = phase_results
+            payload["push_status"] = "deferred_to_repair_worker"
+            payload["auto_merge_status"] = "deferred_to_repair_worker"
+            completed = ModelPrPolishCompletedEvent(
+                correlation_id=command.correlation_id,
+                final_phase=EnumPrPolishPhase.DONE,
+                started_at=started_at,
+                completed_at=datetime.now(tz=UTC),
+                pr_number=command.pr_number,
+                run_dir=str(run_dir),
+                dispatch_worker_spec_path=str(
+                    dispatch_evidence["dispatch_worker_spec_path"]
+                ),
+                dispatch_execution_result_path=str(
+                    dispatch_evidence["dispatch_execution_result_path"]
+                ),
+                delegation_payloads_path=str(
+                    dispatch_evidence["delegation_payloads_path"]
+                ),
+                dispatch_receipt_dir=str(dispatch_evidence["dispatch_receipt_dir"]),
+                repair_worker_payloads_prepared=int(
+                    dispatch_evidence["repair_worker_payloads_prepared"]
+                ),
+                repair_workers_dispatched=int(
+                    dispatch_evidence["repair_workers_dispatched"]
+                ),
+                repair_workers_skipped=int(dispatch_evidence["repair_workers_skipped"]),
+                delegation_publish_status=str(
+                    dispatch_evidence["delegation_publish_status"]
+                ),
+            )
+            payload.update(
+                {
+                    "final_state": "COMPLETE",
+                    "worktree_path": None,
+                    "completed_at": completed.completed_at.isoformat(),
+                }
+            )
+            payload["completed_event"] = completed.model_dump(mode="json")
+            (run_dir / "result.json").write_text(json.dumps(payload, indent=2))
+            return completed
 
         worktree = _resolve_worktree_path(command)
         expected_branch = _resolve_pr_head_branch(command.repo, command.pr_number)
@@ -147,6 +236,25 @@ def run_live_pr_polish(
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
             pr_number=command.pr_number,
+            run_dir=str(run_dir),
+            dispatch_worker_spec_path=str(
+                dispatch_evidence["dispatch_worker_spec_path"]
+            ),
+            dispatch_execution_result_path=str(
+                dispatch_evidence["dispatch_execution_result_path"]
+            ),
+            delegation_payloads_path=str(dispatch_evidence["delegation_payloads_path"]),
+            dispatch_receipt_dir=str(dispatch_evidence["dispatch_receipt_dir"]),
+            repair_worker_payloads_prepared=int(
+                dispatch_evidence["repair_worker_payloads_prepared"]
+            ),
+            repair_workers_dispatched=int(
+                dispatch_evidence["repair_workers_dispatched"]
+            ),
+            repair_workers_skipped=int(dispatch_evidence["repair_workers_skipped"]),
+            delegation_publish_status=str(
+                dispatch_evidence["delegation_publish_status"]
+            ),
         )
         payload.update(
             {
@@ -164,6 +272,7 @@ def run_live_pr_polish(
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
             pr_number=command.pr_number,
+            run_dir=str(run_dir),
             error_message=str(exc),
         )
         payload.update(
@@ -182,11 +291,224 @@ def run_live_pr_polish(
 def _resolve_run_dir(command: ModelPrPolishStartCommand) -> Path:
     if command.run_dir:
         return Path(command.run_dir)
-    state_dir = Path(os.environ.get("ONEX_STATE_DIR", ""))
+    raw_state_dir = os.environ.get("ONEX_STATE_DIR")
+    state_dir = (
+        Path(raw_state_dir)
+        if raw_state_dir
+        else _resolve_workspace_root() / ".onex_state"
+    )
+    if state_dir == Path("/.onex_state"):
+        state_dir = _resolve_workspace_root() / ".onex_state"
     repo_slug = (command.repo or "unknown-repo").replace("/", "-")
     pr_part = str(command.pr_number) if command.pr_number is not None else "unknown-pr"
     run_id = uuid4().hex[:12]
     return state_dir / "pr-polish" / f"{repo_slug}-{pr_part}-{run_id}"
+
+
+def _prepare_repair_worker_dispatch(
+    command: ModelPrPolishStartCommand,
+    *,
+    run_dir: Path,
+    started_at: datetime,
+) -> RepairDispatchEvidence:
+    if command.repo is None or command.pr_number is None:
+        raise RuntimeError("repo and pr_number are required for repair dispatch")
+
+    dispatch_dir = run_dir / "dispatch_worker"
+    dispatch_dir.mkdir(parents=True, exist_ok=True)
+    receipt_dir = run_dir / "dispatch_execution"
+    ticket_id = _dispatch_ticket_id(command)
+    dispatch_id = f"pr-polish-{_safe_segment(command.repo)}-{command.pr_number}"
+    worker_name = dispatch_id[:64]
+    command_model = ModelDispatchWorkerCommand(
+        name=worker_name,
+        team="omnimarket",
+        role=EnumWorkerRole.fixer,
+        scope=(
+            f"Polish {command.repo}#{command.pr_number} toward merge readiness: "
+            "inspect CI, review, and receipt blockers; create or reuse an Omni "
+            "worktree; apply minimal fixes; run repo checks; push the PR branch; "
+            "and leave durable evidence."
+        ),
+        targets=[
+            ticket_id,
+            f"{command.repo}#{command.pr_number}",
+            command.repo,
+        ],
+        collision_fences=[],
+        reports_to="pr-polish",
+        wall_clock_cap_min=120,
+        replace=True,
+    )
+    command_path = dispatch_dir / "dispatch_worker_command.json"
+    command_path.write_text(command_model.model_dump_json(indent=2))
+
+    tasks_dir = dispatch_dir / "tasks"
+    (tasks_dir / command_model.team).mkdir(parents=True, exist_ok=True)
+    with _dispatch_worker_environment():
+        dispatch_result = HandlerDispatchWorker().handle(
+            command_model,
+            tasks_dir=tasks_dir,
+            existing_task_subjects=[],
+            state_dir=dispatch_dir / "records",
+            parent_session_id=str(command.correlation_id),
+        )
+    result_path = dispatch_dir / "dispatch_worker_result.json"
+    result_path.write_text(dispatch_result.model_dump_json(indent=2))
+    if dispatch_result.rejected_reason:
+        raise RuntimeError(
+            f"repair worker dispatch rejected: {dispatch_result.rejected_reason}"
+        )
+
+    compiled = ModelCompiledDispatchWorker(
+        validated_task_description=dispatch_result.validated_task_description,
+        validated_prompt_template=dispatch_result.validated_prompt_template,
+        proposed_agent_spawn_args=dispatch_result.proposed_agent_spawn_args,
+        collision_fence_embeds=tuple(dispatch_result.collision_fence_embeds),
+        rejected_reason=dispatch_result.rejected_reason,
+    )
+    artifact = ModelDispatchWorkerSpecArtifact(
+        session_id=f"pr-polish-{command.correlation_id.hex[:12]}",
+        ticket_id=ticket_id,
+        dispatch_id=dispatch_id,
+        correlation_chain=f"{command.correlation_id}.{dispatch_id}.{ticket_id}",
+        compiled_at=started_at,
+        dispatch_worker=compiled,
+    )
+    artifact_path = dispatch_dir / "dispatch_worker_spec.json"
+    artifact_path.write_text(artifact.model_dump_json(indent=2))
+
+    execution_result = HandlerDispatchWorkerExecution().handle(
+        ModelDispatchWorkerExecutionInput(
+            correlation_id=command.correlation_id,
+            artifacts=(artifact,),
+            state_dir=str(run_dir),
+            receipt_dir=str(receipt_dir),
+            dry_run=command.dry_run or command.no_push,
+        )
+    )
+    execution_path = dispatch_dir / "dispatch_execution_result.json"
+    execution_path.write_text(execution_result.model_dump_json(indent=2))
+    payloads_path = dispatch_dir / "delegation_payloads.json"
+    payloads_path.write_text(
+        json.dumps(
+            [
+                payload.model_dump(mode="json")
+                for payload in execution_result.delegation_payloads
+            ],
+            indent=2,
+        )
+    )
+
+    publish_status, published_count = _publish_delegation_payloads(
+        execution_result.delegation_payloads
+    )
+    return {
+        "dispatch_worker_command_path": str(command_path),
+        "dispatch_worker_result_path": str(result_path),
+        "dispatch_worker_spec_path": str(artifact_path),
+        "dispatch_execution_result_path": str(execution_path),
+        "delegation_payloads_path": str(payloads_path),
+        "dispatch_receipt_dir": str(receipt_dir),
+        "repair_worker_payloads_prepared": execution_result.total_delegated,
+        "repair_workers_dispatched": published_count,
+        "repair_workers_skipped": execution_result.total_skipped,
+        "repair_workers_rejected": execution_result.total_rejected,
+        "repair_workers_failed": execution_result.total_failed,
+        "delegation_publish_status": publish_status,
+    }
+
+
+def _delegated_phase_results(
+    command: ModelPrPolishStartCommand,
+) -> list[dict[str, object]]:
+    dispatch_status = (
+        "dry_run_dispatch_spec_compiled"
+        if command.dry_run
+        else "delegated_to_repair_worker"
+    )
+    if command.no_push and not command.dry_run:
+        dispatch_status = "dispatch_spec_compiled_no_push"
+    return [
+        {"phase": "resolve_conflicts", "status": dispatch_status},
+        {"phase": "fix_ci", "status": dispatch_status},
+        {"phase": "address_comments", "status": dispatch_status},
+        {
+            "phase": "local_review",
+            "status": dispatch_status,
+            "detail": "Repair worker owns worktree creation, local checks, push, and evidence.",
+        },
+    ]
+
+
+def _dispatch_ticket_id(command: ModelPrPolishStartCommand) -> str:
+    if command.ticket_id and re.fullmatch(r"OMN-\d+", command.ticket_id):
+        return command.ticket_id
+    return f"OMN-{command.pr_number}"
+
+
+def _safe_segment(value: str) -> str:
+    return re.sub(r"[^a-z0-9_-]+", "-", value.lower()).strip("-")
+
+
+@contextmanager
+def _dispatch_worker_environment() -> Iterator[None]:
+    updates: dict[str, str] = {}
+    if not os.environ.get("OMNI_HOME"):
+        workspace_root = _resolve_workspace_root()
+        updates["OMNI_HOME"] = str(workspace_root)
+    if not os.environ.get("OMNI_WORKTREES"):
+        workspace_root = Path(updates.get("OMNI_HOME") or os.environ["OMNI_HOME"])
+        updates["OMNI_WORKTREES"] = str(workspace_root / "omni_worktrees")
+
+    old_values = {key: os.environ.get(key) for key in updates}
+    os.environ.update(updates)
+    try:
+        yield
+    finally:
+        for key, old_value in old_values.items():
+            if old_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old_value
+
+
+def _resolve_workspace_root() -> Path:
+    for parent in _REPO_ROOT.parents:
+        if parent.name == "omni_worktrees":
+            return parent.parent
+    return _REPO_ROOT.parent
+
+
+def _publish_delegation_payloads(
+    payloads: Sequence[ModelDispatchWorkerDelegationPayload],
+) -> tuple[str, int]:
+    if not payloads:
+        return "skipped_no_payloads", 0
+    if os.environ.get("ONEX_PR_POLISH_DISABLE_DELEGATION_PUBLISH"):
+        return "skipped_disabled", 0
+    if not os.environ.get("KAFKA_BOOTSTRAP_SERVERS"):
+        return "skipped_no_kafka_bootstrap", 0
+
+    async def _publish() -> int:
+        from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+
+        bus = EventBusKafka.default()
+        await bus.start()
+        try:
+            for payload in payloads:
+                await bus.publish(
+                    payload.topic,
+                    key=None,
+                    value=json.dumps(payload.payload).encode(),
+                    headers=None,
+                )
+        finally:
+            await bus.close()
+        return len(payloads)
+
+    published = asyncio.run(_publish())
+    return f"published:{published}", published
 
 
 def _resolve_worktree_path(command: ModelPrPolishStartCommand) -> Path:
