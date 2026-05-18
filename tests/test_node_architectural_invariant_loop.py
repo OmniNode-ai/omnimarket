@@ -110,14 +110,18 @@ class TestCheckerEventBusDI:
 class TestCheckerNoHardcodedPaths:
     def test_detects_users_path(self, tmp_path: Path) -> None:
         py_file = tmp_path / "config.py"
-        py_file.write_text('ROOT = "/Users/alice/Code"\n')
+        py_file.write_text(
+            'ROOT = "/Users/alice/Code"\n'
+        )  # test-literal-ok: intentionally tests /Users/ detection
         violations = _check_no_hardcoded_paths("myrepo", py_file, tmp_path)
         assert len(violations) == 1
         assert violations[0].principle_code == "ARCH-005"
 
     def test_skips_local_path_ok(self, tmp_path: Path) -> None:
         py_file = tmp_path / "config.py"
-        py_file.write_text('ROOT = "/Users/alice/Code"  # local-path-ok\n')
+        py_file.write_text(
+            'ROOT = "/Users/alice/Code"  # local-path-ok\n'
+        )  # test-literal-ok: intentionally tests /Users/ with allowlist annotation
         violations = _check_no_hardcoded_paths("myrepo", py_file, tmp_path)
         assert violations == []
 
