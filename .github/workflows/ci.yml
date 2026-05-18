@@ -422,6 +422,49 @@ jobs:
   # Required status check for branch protection and merge queue.
   # ============================================================================
 
+  # ============================================================================
+  # DEP-HEALTH GATE (OMN-11063) — phased rollout
+  # Phase 1 (advisory): no baseline → continue-on-error, exit 0.
+  # Phase 2 (active):   baseline exists → delta-block new CRITICAL findings.
+  # Phase 3+ ratchet:   raise threshold as baseline shrinks over time.
+  # DEAD_IMPORT pass remains advisory until scanner confidence is proven.
+  # ============================================================================
+  dep-health:
+    name: Dependency Health Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pyyaml
+        run: pip install "pyyaml>=6.0"
+      - name: Check baseline exists (phase detection)
+        id: phase
+        run: |
+          if [ -f ".onex_state/dep_health_baseline.json" ]; then
+            echo "has_baseline=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_baseline=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Dep-health sweep (advisory — no baseline)
+        if: steps.phase.outputs.has_baseline == 'false'
+        continue-on-error: true
+        run: |
+          python scripts/ci/run_dep_health_sweep.py \
+            --repo-roots src \
+            --severity-threshold CRITICAL \
+            --dry-run
+      - name: Dep-health sweep (Phase 2 — delta-block new CRITICAL)
+        if: steps.phase.outputs.has_baseline == 'true'
+        run: |
+          python scripts/ci/run_dep_health_sweep.py \
+            --repo-roots src \
+            --severity-threshold CRITICAL \
+            --baseline-path .onex_state/dep_health_baseline.json \
+            --delta-mode
+
   contract-compliance:
     name: Contract Compliance Check
     runs-on: ubuntu-latest
@@ -458,7 +501,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains]
+    needs: [lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains, dep-health]
     if: always()
     steps:
       - name: Check CI results
@@ -475,7 +518,8 @@ jobs:
             "runtime-sweep=${{ needs.runtime-sweep.result }}" \
             "contract-compliance=${{ needs.contract-compliance.result }}" \
             "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
-            "golden-chains=${{ needs.golden-chains.result }}"; do
+            "golden-chains=${{ needs.golden-chains.result }}" \
+            "dep-health=${{ needs.dep-health.result }}"; do
             NAME="${check%%=*}"
             RESULT="${check##*=}"
             if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
