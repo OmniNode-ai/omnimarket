@@ -605,3 +605,61 @@ async def test_handle_no_httpx_or_health_probe_in_orchestrator() -> None:
     }
     for symbol in forbidden_symbols:
         assert symbol not in source
+
+
+# ---------------------------------------------------------------------------
+# OMN-10870: Protocol injection — ProtocolLlmEffectHandler typed param
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_protocol_llm_effect_handler_is_exported() -> None:
+    """ProtocolLlmEffectHandler is exported from the handler module."""
+    from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import (
+        ProtocolLlmEffectHandler,
+    )
+
+    assert ProtocolLlmEffectHandler is not None
+
+
+@pytest.mark.unit
+def test_fake_effect_handler_satisfies_protocol() -> None:
+    """FakeEffectHandler satisfies ProtocolLlmEffectHandler at runtime."""
+    from omnimarket.nodes.node_ab_compare_orchestrator.handlers.handler_ab_compare_orchestrator import (
+        ProtocolLlmEffectHandler,
+    )
+
+    fake = FakeEffectHandler()
+    assert isinstance(fake, ProtocolLlmEffectHandler)
+
+
+@pytest.mark.unit
+def test_handler_accepts_typed_protocol_injection() -> None:
+    """HandlerAbCompareOrchestrator accepts an explicit ProtocolLlmEffectHandler param."""
+    import inspect
+
+    sig = inspect.signature(HandlerAbCompareOrchestrator.__init__)
+    param = sig.parameters["effect_handler"]
+    # Annotation should reference ProtocolLlmEffectHandler, not Any
+    assert param.annotation is not inspect.Parameter.empty
+    annotation_str = str(param.annotation)
+    assert "ProtocolLlmEffectHandler" in annotation_str or "Protocol" in annotation_str
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_typed_injection_used_in_handle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Injected ProtocolLlmEffectHandler is invoked during handle()."""
+    monkeypatch.delenv("STUB_LLM_B_API_KEY", raising=False)
+
+    fake = FakeEffectHandler()
+    reg_path = _write_registry(_REGISTRY_TWO_LOCAL)
+    handler = _make_handler_with_registry(reg_path, fake)
+
+    result = await handler.handle(
+        ModelAbCompareStart(task="test protocol injection", correlation_id="corr-proto")
+    )
+
+    assert len(result.comparison) == 1
+    assert result.comparison[0].model_key == "stub-local-a"
+    Path(reg_path).unlink(missing_ok=True)

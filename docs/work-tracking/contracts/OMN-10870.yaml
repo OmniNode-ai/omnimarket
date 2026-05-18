@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10870
+title: "DI refactor: OMN-10870 part of OMN-10841 DI Wave 2"
+summary: "Pure DI seam refactor for handler injection cleanup. No runtime deploy required."
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "DI injection unit tests pass"
+    command: "uv run pytest tests/ -v -k di_injection"
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #691"
+    command: "gh pr checks 691 --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: "Pure code seam refactor — no runtime deploy required"
+    command: "printf '%s\\n' 'deploy gate: pure DI seam refactor — no docker exec or rpk topic produce required'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-unit-tests
+    description: "DI injection unit tests pass for OMN-10870"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ -v -k di_injection --tb=short -q"
+  - id: dod-deploy
+    description: "Pure code seam refactor — no runtime restart or Kafka topic change required"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\\n' 'deploy gate: pure DI seam refactor OMN-10870 — no docker exec or rpk topic produce required'"

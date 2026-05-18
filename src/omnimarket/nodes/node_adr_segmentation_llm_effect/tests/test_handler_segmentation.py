@@ -595,3 +595,21 @@ async def test_from_contract_reads_config_defaults() -> None:
     assert ev.model_key == "custom-model"
     assert ev.prompt_template_id == "my_template_v2"
     assert ev.prompt_template_version == "2.0.0"
+
+
+# ---------------------------------------------------------------------------
+# OMN-10871: DI fallback — AdapterInferenceBridge construction annotated
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_handler_segmentation_init_type_annotation_is_typed() -> None:
+    """inference_bridge param is typed as ModelInferenceAdapter | None, not Any."""
+    import inspect
+
+    sig = inspect.signature(HandlerSegmentation.__init__)
+    param = sig.parameters["inference_bridge"]
+    assert param.annotation is not inspect.Parameter.empty
+    annotation_str = str(param.annotation)
+    assert "ModelInferenceAdapter" in annotation_str
+    assert "Any" not in annotation_str

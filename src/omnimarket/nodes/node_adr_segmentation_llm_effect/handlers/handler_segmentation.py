@@ -213,7 +213,7 @@ class HandlerSegmentation:
         prompt_template_version: str = "1.0.0",
     ) -> None:
         self._bridge: ModelInferenceAdapter
-        if inference_bridge is None:
+        if inference_bridge is None:  # lifecycle-ok: optional-di-fallback
             bridge_config = load_inference_bridge_config_from_env()
             self._bridge = AdapterInferenceBridge(bridge_config)
         else:
