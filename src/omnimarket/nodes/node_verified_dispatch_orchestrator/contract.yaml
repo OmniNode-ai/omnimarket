@@ -1,0 +1,141 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Verified Dispatch Orchestrator
+#
+# Paired worker/verifier dispatch. Verifier runs independently alongside
+# each worker and produces typed verification_bundle.json evidence.
+# Bounded escalation: max 3 attempts with 60s cooldown; third failure
+# escalates to Linear ticket.
+#
+# Related Tickets:
+#   - OMN-11220: Verification-First Parallel Worker Dispatch Skill
+#   - OMN-11219: (parent epic)
+---
+name: verified_dispatch_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Orchestrates paired worker/verifier subagent dispatch. The verifier runs
+  asynchronously alongside each worker, independently queries authoritative
+  surfaces (GitHub PR state, CI checks, Linear, projection APIs, topology
+  manifests, deployment receipts, artifact hashes), and produces a typed
+  verification_bundle.json. Bounded escalation: max 3 attempts with 60s
+  cooldown; third failure escalates to a Linear ticket. Verifier rejection
+  blocks PR merge.
+
+handler:
+  module: omnimarket.nodes.node_verified_dispatch_orchestrator.handlers.handler_verified_dispatch_orchestrator
+  class: HandlerVerifiedDispatchOrchestrator
+  input_model: omnimarket.nodes.node_verified_dispatch_orchestrator.models.model_dispatch_request.ModelDispatchRequest
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.verified-dispatch-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.verified-dispatch-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.verified-dispatch-completed.v1
+    - onex.cmd.omnimarket.verified-dispatch-escalate.v1
+
+inputs:
+  ticket_id:
+    type: str
+    description: "Linear ticket ID (e.g. OMN-1234)."
+    required: true
+  worker_prompt:
+    type: str
+    description: "Prompt or task description passed to the worker subagent."
+    required: true
+  max_attempts:
+    type: int
+    description: "Maximum retry attempts before escalation."
+    required: false
+    default: 3
+  cooldown_seconds:
+    type: int
+    description: "Cooldown between retry attempts in seconds."
+    required: false
+    default: 60
+  escalation_action:
+    type: str
+    description: "Action on third failure: linear_ticket or human_review."
+    required: false
+    default: "linear_ticket"
+  correlation_id:
+    type: str
+    description: "Correlation ID for tracing across worker and verifier runs."
+    required: false
+    default: null
+
+outputs:
+  verification_bundle:
+    type: dict
+    description: "Typed ModelVerificationBundle produced by the verifier."
+  decision:
+    type: str
+    description: "Final verifier decision: accept or reject."
+  attempt_count:
+    type: int
+    description: "Number of attempts made."
+  escalated:
+    type: bool
+    description: "True when third failure triggered escalation."
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pydantic>=2.0.0"
+
+env_dependencies:
+  GITHUB_SHA:
+    required: false
+    description: "Current commit SHA injected by GitHub Actions CI."
+
+dod_evidence:
+  - type: pytest
+    description: >
+      Golden chain test confirms HandlerVerifiedDispatchOrchestrator produces
+      a ModelVerificationBundle with decision='accept' when the worker
+      self-reports a passing PR and the verifier confirms it.
+    check: uv run pytest tests/test_golden_chain_verified_dispatch_orchestrator.py::test_verified_dispatch_accept -v
+  - type: integration
+    description: >
+      Contract YAML is parseable and its dod_evidence list validates against
+      ModelDodEvidence schema.
+    check: >-
+      uv run python -c "import yaml; from omnibase_core.models.contracts.model_contract_base
+      import ModelDodEvidence; d=yaml.safe_load(open('src/omnimarket/nodes/node_verified_dispatch_orchestrator/contract.yaml'));
+      [ModelDodEvidence.model_validate(e) for e in d['dod_evidence']]; print('OK')"
+  - type: bash_script
+    description: >
+      HandlerVerifiedDispatchOrchestrator is importable from its declared handler module path.
+    check: >-
+      uv run python -c "from omnimarket.nodes.node_verified_dispatch_orchestrator.handlers.handler_verified_dispatch_orchestrator import HandlerVerifiedDispatchOrchestrator; print('OK')"
+
+metadata:
+  transport_type: kafka
+  description: "Verified Dispatch Orchestrator — paired worker/verifier subagent dispatch with bounded escalation"
+  author: "OmniNode Platform Team"
+  created: "2026-05-18"
+  updated: "2026-05-18"
+  tags:
+    - "dispatch"
+    - "verification"
+    - "worker"
+    - "verifier"
+    - "orchestrator"
+    - "OMN-11220"
+    - "OMN-11219"
+  related_tickets:
+    - "OMN-11220"
+    - "OMN-11219"
