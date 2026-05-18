@@ -30,7 +30,7 @@ import hashlib
 import json
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
 import structlog
@@ -54,11 +54,32 @@ from omnimarket.nodes.node_navigation_history_reducer.models.model_navigation_se
 logger = logging.getLogger(__name__)
 structured_logger = structlog.get_logger(__name__)
 
-__all__ = ["HandlerNavigationHistoryReducer", "HandlerNavigationHistoryWriter"]
+__all__ = [
+    "HandlerNavigationHistoryReducer",
+    "HandlerNavigationHistoryWriter",
+    "ProtocolNavigationHistoryWriter",
+]
 
 # ---------------------------------------------------------------------------
 # Constants (env-var driven; no hardcoded internal IPs)
 # ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class ProtocolNavigationHistoryWriter(Protocol):
+    """Structural protocol for a navigation session persistence writer.
+
+    Any object with ``record()`` and ``close()`` satisfies this protocol,
+    allowing test doubles and alternative implementations to be injected into
+    ``HandlerNavigationHistoryReducer`` without subclassing.
+    """
+
+    async def record(
+        self, session: ModelNavigationSession
+    ) -> ModelNavigationHistoryResponse: ...
+
+    async def close(self) -> None: ...
+
 
 _DEFAULT_PG_DSN = os.environ.get("OMNIMEMORY_PG_DSN", "")
 _DEFAULT_QDRANT_HOST = os.environ.get("QDRANT_HOST", "")
@@ -471,7 +492,7 @@ class HandlerNavigationHistoryReducer:
     failures.
 
     Attributes:
-        _writer: The underlying ``HandlerNavigationHistoryWriter`` instance.
+        _writer: The underlying ``ProtocolNavigationHistoryWriter`` instance.
         _initialized: Whether ``initialize()`` has been called.
 
     Example::
@@ -487,7 +508,7 @@ class HandlerNavigationHistoryReducer:
 
     def __init__(
         self,
-        writer: HandlerNavigationHistoryWriter | None = None,
+        writer: ProtocolNavigationHistoryWriter | None = None,
         pg_dsn: str = _DEFAULT_PG_DSN,
         qdrant_host: str = _DEFAULT_QDRANT_HOST,
         qdrant_port: int = _DEFAULT_QDRANT_PORT,
@@ -497,14 +518,17 @@ class HandlerNavigationHistoryReducer:
         """Initialize the handler.
 
         Args:
-            writer: Optional pre-constructed ``HandlerNavigationHistoryWriter``.
-                If not provided, one is created from the remaining kwargs.
+            writer: Optional injected ``ProtocolNavigationHistoryWriter``.
+                Accepts any conforming implementation, including test doubles.
+                If not provided, a ``HandlerNavigationHistoryWriter`` is
+                constructed from the remaining kwargs.
             pg_dsn: PostgreSQL DSN (used only if ``writer`` is None).
             qdrant_host: Qdrant hostname (used only if ``writer`` is None).
             qdrant_port: Qdrant port (used only if ``writer`` is None).
             embedding_url: Embedding endpoint URL (used only if ``writer`` is None).
             embedding_model: Embedding model name (used only if ``writer`` is None).
         """
+        self._writer: ProtocolNavigationHistoryWriter
         if writer is not None:
             self._writer = writer
         else:

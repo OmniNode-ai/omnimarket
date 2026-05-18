@@ -7,6 +7,11 @@
 from .handler_navigation_history_reducer import (
     HandlerNavigationHistoryReducer,
     HandlerNavigationHistoryWriter,
+    ProtocolNavigationHistoryWriter,
 )
 
-__all__ = ["HandlerNavigationHistoryReducer", "HandlerNavigationHistoryWriter"]
+__all__ = [
+    "HandlerNavigationHistoryReducer",
+    "HandlerNavigationHistoryWriter",
+    "ProtocolNavigationHistoryWriter",
+]

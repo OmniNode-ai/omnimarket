@@ -19,7 +19,7 @@ import time
 from enum import StrEnum
 from pathlib import Path
 from statistics import mean
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -331,6 +331,18 @@ class NodeLlmEvalHarness:
 
         score, hits = _score_substring_output(output, task.expected_substrings)
         return score, False, False, hits
+
+
+@runtime_checkable
+class ProtocolLlmEvalHarness(Protocol):
+    """Structural protocol for an LLM eval harness.
+
+    Any object with a ``handle()`` method matching this signature satisfies
+    the protocol, allowing test doubles and subclasses to be injected into
+    ``NodeOverseerBenchmarker`` without inheriting from ``NodeLlmEvalHarness``.
+    """
+
+    def handle(self, request: LlmEvalRequest) -> LlmEvalResult: ...
 
 
 _FENCE_RE = re.compile(r"^```[a-zA-Z0-9_+-]*\n?|```$", re.MULTILINE)
