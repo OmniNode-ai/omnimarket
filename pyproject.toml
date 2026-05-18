@@ -152,6 +152,7 @@ node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scan
 node_linear_triage = "omnimarket.nodes.node_linear_triage"
 node_autopilot_orchestrator = "omnimarket.nodes.node_autopilot_orchestrator"
 node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap"
+node_session_phase_reducer = "omnimarket.nodes.node_session_phase_reducer"
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem"
 node_onboarding = "omnimarket.nodes.node_onboarding"
 node_integration_test_runner = "omnimarket.nodes.node_integration_test_runner"
