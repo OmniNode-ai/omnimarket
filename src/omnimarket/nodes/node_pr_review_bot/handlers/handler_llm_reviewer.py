@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
     AdapterInferenceBridge,
+    ModelInferenceAdapter,
     ModelInferenceBridgeConfig,
 )
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_prompt_builder import (
@@ -80,10 +81,10 @@ class HandlerLlmReviewer(ProtocolReviewer):
     def __init__(
         self,
         config: LlmReviewerConfig,
-        bridge: AdapterInferenceBridge | None = None,
+        bridge: ModelInferenceAdapter | None = None,
     ) -> None:
         self._config = config
-        self._bridge = (
+        self._bridge: ModelInferenceAdapter = (
             bridge
             if bridge is not None
             else AdapterInferenceBridge(config.inference_bridge_config)

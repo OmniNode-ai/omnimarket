@@ -4,23 +4,23 @@
     "finding_type": "UNTESTED_HANDLER",
     "severity": "MAJOR",
     "repo": "test_d_projection_from_event0",
-    "file_path": "/private/var/folders/fs/2g88nd297b7787lch6_stdl40000gn/T/pytest-of-jonah/pytest-1453/test_d_projection_from_event0/src/omnimarket/nodes/node_orphan_handler/handlers/handler_orphan_handler.py",
+    "file_path": "/private/var/folders/fs/2g88nd297b7787lch6_stdl40000gn/T/pytest-of-jonah/pytest-1463/test_d_projection_from_event0/src/omnimarket/nodes/node_orphan_handler/handlers/handler_orphan_handler.py",
     "symbol": "handler_orphan_handler",
     "detail": "Contract-referenced handler 'handler_orphan_handler' has no test file and no golden-chain fixture coverage.",
     "rule_id": "UNTESTED_HANDLER",
     "rule_version": "v1",
-    "captured_at": "2026-05-17T20:08:53.957755+00:00"
+    "captured_at": "2026-05-17T21:05:22.516467+00:00"
   },
   {
     "run_id": "proof-of-life-001-projection",
     "finding_type": "MISSING_TOPIC_EDGE",
     "severity": "CRITICAL",
     "repo": "test_d_projection_from_event0",
-    "file_path": "/private/var/folders/fs/2g88nd297b7787lch6_stdl40000gn/T/pytest-of-jonah/pytest-1453/test_d_projection_from_event0/src/omnimarket/nodes/node_orphan_handler/contract.yaml",
+    "file_path": "/private/var/folders/fs/2g88nd297b7787lch6_stdl40000gn/T/pytest-of-jonah/pytest-1463/test_d_projection_from_event0/src/omnimarket/nodes/node_orphan_handler/contract.yaml",
     "symbol": "onex.cmd.test.orphan-cmd.v1",
     "detail": "Topic 'onex.cmd.test.orphan-cmd.v1' is published but has no subscriber and is not declared as externally consumed.",
     "rule_id": "MISSING_TOPIC_EDGE",
     "rule_version": "v1",
-    "captured_at": "2026-05-17T20:08:53.957755+00:00"
+    "captured_at": "2026-05-17T21:05:22.516467+00:00"
   }
 ]
