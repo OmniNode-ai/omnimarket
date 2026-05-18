@@ -85,7 +85,7 @@ class AdapterLlmClassify:
         if provider is not None:
             self._provider: ProtocolLlmClassifyProvider = provider
         else:
-            base_url = llm_url or os.environ.get("LLM_CODER_FAST_URL", "")
+            base_url = llm_url or os.environ.get("LLM_CODER_FAST_URL", "")  # contract-config-ok: config  # fmt: skip
             if not base_url:
                 raise RuntimeError(
                     "Model endpoint for policy 'coder_fast' not configured. "

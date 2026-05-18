@@ -41,3 +41,11 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+config:
+  ONEX_REBASE_SOURCE_CLONE_ROOT:
+    description: "Root directory of source clones for rebase operations."
+    required: false
+  ONEX_REBASE_WORKTREE_ROOT:
+    description: "Root directory for worktrees used during rebase."
+    required: false

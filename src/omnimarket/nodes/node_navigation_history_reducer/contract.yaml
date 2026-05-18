@@ -40,3 +40,17 @@ tags:
   - memory
   - reducer
   - navigation
+
+config:
+  OMNIMEMORY_PG_DSN:
+    description: "PostgreSQL DSN for navigation history persistence."
+    required: false
+  QDRANT_HOST:
+    description: "Qdrant host for navigation history vector storage."
+    required: false
+  QDRANT_PORT:
+    description: "Qdrant port (default 6333)."
+    required: false
+  LLM_EMBEDDING_URL:
+    description: "Embedding model endpoint URL."
+    required: false

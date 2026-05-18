@@ -44,7 +44,9 @@ _PROTECTED_HEADS = {"main", "master", "develop"}
 
 def _source_clone_root() -> Path:
     """Resolve source clone root. Fails loud if not configured."""
-    if val := os.environ.get("ONEX_REBASE_SOURCE_CLONE_ROOT"):
+    if val := os.environ.get(  # contract-config-ok: config
+        "ONEX_REBASE_SOURCE_CLONE_ROOT"
+    ):
         return Path(val)
     if val := os.environ.get("OMNI_HOME"):
         return Path(val)
@@ -57,7 +59,7 @@ def _source_clone_root() -> Path:
 
 def _worktree_root() -> Path:
     """Resolve ephemeral worktree root. Defaults to /tmp/onex-rebase."""
-    return Path(os.environ.get("ONEX_REBASE_WORKTREE_ROOT", "/tmp/onex-rebase"))
+    return Path(os.environ.get("ONEX_REBASE_WORKTREE_ROOT", "/tmp/onex-rebase"))  # contract-config-ok: config  # fmt: skip
 
 
 class HandlerRebaseEffect:

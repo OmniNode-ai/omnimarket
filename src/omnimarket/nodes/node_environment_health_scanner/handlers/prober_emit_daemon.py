@@ -22,7 +22,7 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
     EnumReadinessStatus,
 )
 
-_DEFAULT_SOCKET = os.environ.get("ONEX_EMIT_DAEMON_SOCKET", "/tmp/onex_emit.sock")
+_DEFAULT_SOCKET = os.environ.get("ONEX_EMIT_DAEMON_SOCKET", "/tmp/onex_emit.sock")  # contract-config-ok: config  # fmt: skip
 _STALE_THRESHOLD_SECONDS = 3600  # last publish >1h ago = WARN
 
 

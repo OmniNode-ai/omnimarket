@@ -67,8 +67,11 @@ class HandlerCodeEmbeddingEffect:
         batch_size: int | None = None,
     ) -> ModelCodeEmbeddingResult:
         """Embed a batch of code entities and upsert into Qdrant."""
-        endpoint = embedding_endpoint_override or os.environ.get(
-            "EMBEDDING_MODEL_URL", ""
+        endpoint = (
+            embedding_endpoint_override
+            or os.environ.get(  # contract-config-ok: config
+                "EMBEDDING_MODEL_URL", ""
+            )
         )
         if not endpoint:
             raise OSError(
@@ -76,12 +79,15 @@ class HandlerCodeEmbeddingEffect:
                 "Set this env var to the OpenAI-compatible embedding endpoint base URL."
             )
 
-        collection = qdrant_collection_override or os.environ.get(
-            "QDRANT_CODE_COLLECTION", DEFAULT_QDRANT_COLLECTION
+        collection = (
+            qdrant_collection_override
+            or os.environ.get(  # contract-config-ok: config
+                "QDRANT_CODE_COLLECTION", DEFAULT_QDRANT_COLLECTION
+            )
         )
         if batch_size is None:
             effective_batch_size = int(
-                os.environ.get(
+                os.environ.get(  # contract-config-ok: config
                     "CODE_EMBEDDING_BATCH_SIZE", str(DEFAULT_EMBEDDING_BATCH_SIZE)
                 )
             )
@@ -90,7 +96,9 @@ class HandlerCodeEmbeddingEffect:
         else:
             effective_batch_size = batch_size
         vector_size = int(
-            os.environ.get("CODE_EMBEDDING_VECTOR_SIZE", str(DEFAULT_VECTOR_SIZE))
+            os.environ.get(  # contract-config-ok: config
+                "CODE_EMBEDDING_VECTOR_SIZE", str(DEFAULT_VECTOR_SIZE)
+            )
         )
 
         resolved_client = qdrant_client
@@ -221,12 +229,16 @@ def _build_qdrant_client() -> Any | None:
         logger.info("qdrant-client not installed; embedding pipeline will be a no-op")
         return None
 
-    host = os.environ.get("QDRANT_HOST")
+    host = os.environ.get(  # contract-config-ok: config
+        "QDRANT_HOST"
+    )
     if not host:
         logger.info("QDRANT_HOST not set; embedding pipeline will be a no-op")
         return None
 
-    port = int(os.environ.get("QDRANT_PORT", "6333"))
+    port = int(
+        os.environ.get("QDRANT_PORT", "6333")  # contract-config-ok: config
+    )
     client = QdrantClient(host=host, port=port)
     client.get_collections()  # connectivity probe — raises on auth/network failure
     return client

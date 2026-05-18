@@ -1317,7 +1317,7 @@ class HandlerPrLifecycleOrchestrator:
             value = getattr(source, "occ_merge_sha", None)
             if isinstance(value, str) and value.strip():
                 return value.strip()
-        env_value = os.environ.get("ONEX_OCC_MERGE_SHA", "").strip()
+        env_value = os.environ.get("ONEX_OCC_MERGE_SHA", "")  # contract-config-ok: config  # fmt: skip
         if env_value:
             return env_value
         return _UNKNOWN_OCC_MERGE_SHA

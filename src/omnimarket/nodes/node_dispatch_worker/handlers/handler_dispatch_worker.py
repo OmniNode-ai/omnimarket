@@ -76,7 +76,9 @@ def _persist_dispatch_record(
         allowed_tools=[],
         prompt_digest=digest,
         parent_session_id=parent_session_id
-        or os.environ.get("ONEX_PARENT_SESSION_ID", "unknown"),
+        or os.environ.get(  # contract-config-ok: config
+            "ONEX_PARENT_SESSION_ID", "unknown"
+        ),
     )
     write_dispatch_record(record, state_dir=resolved_state_dir)
 
@@ -374,7 +376,9 @@ def _query_active_fences(
     """
     if tasks_dir is None:
         tasks_dir = Path(
-            os.environ.get("CLAUDE_TASKS_DIR", "~/.claude/tasks")
+            os.environ.get(  # contract-config-ok: config
+                "CLAUDE_TASKS_DIR", "~/.claude/tasks"
+            )
         ).expanduser()
 
     team_dir = tasks_dir / team
@@ -547,7 +551,7 @@ class HandlerDispatchWorker:
         omni_home = os.environ.get("OMNI_HOME")
         if not omni_home:
             raise ValueError("OMNI_HOME must be set before compiling dispatch prompts.")
-        worktree_root = os.environ.get(
+        worktree_root = os.environ.get(  # contract-config-ok: config
             "OMNI_WORKTREES",
             os.path.join(omni_home, "omni_worktrees"),
         )
@@ -607,7 +611,9 @@ class HandlerDispatchWorker:
         """Read in_progress task subjects from team task dir."""
         if tasks_dir is None:
             tasks_dir = Path(
-                os.environ.get("CLAUDE_TASKS_DIR", "~/.claude/tasks")
+                os.environ.get(  # contract-config-ok: config
+                    "CLAUDE_TASKS_DIR", "~/.claude/tasks"
+                )
             ).expanduser()
 
         team_dir = tasks_dir / team

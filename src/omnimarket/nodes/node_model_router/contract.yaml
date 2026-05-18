@@ -121,3 +121,8 @@ model_escalation:
     - expensive_frontier
   escalation_log_dir: ".onex_state/escalation-events"
   note: "Exhaust ALL cheaper options before mid_frontier. Never auto-escalate to expensive_frontier."
+
+config:
+  ONEX_CI_MODE:
+    description: "When set, enables CI mode with restricted model routing."
+    required: false

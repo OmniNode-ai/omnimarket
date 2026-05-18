@@ -43,3 +43,14 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+config:
+  ONEX_RUNTIME_API:
+    description: "ONEX runtime API endpoint URL."
+    required: false
+  ONEX_DASHBOARD_API:
+    description: "Dashboard API endpoint URL."
+    required: false
+  ONEX_INFRA_SSH_TARGET:
+    description: "SSH target for infrastructure commands (user@host)."
+    required: false

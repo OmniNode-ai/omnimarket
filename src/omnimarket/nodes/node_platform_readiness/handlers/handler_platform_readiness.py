@@ -28,7 +28,7 @@ SOW_PHASE2_REQUIRED_TOPICS: list[str] = [
 ]
 
 # SSH target for .201 infra checks — must be set via ONEX_INFRA_SSH_TARGET env var
-_INFRA_SSH_TARGET = os.environ.get("ONEX_INFRA_SSH_TARGET", "")
+_INFRA_SSH_TARGET = os.environ.get("ONEX_INFRA_SSH_TARGET", "")  # contract-config-ok: config  # fmt: skip
 
 
 class EnumReadinessStatus(StrEnum):

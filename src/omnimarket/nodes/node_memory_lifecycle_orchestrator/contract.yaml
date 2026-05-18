@@ -255,3 +255,11 @@ load_balancing_enabled: true
 failure_isolation_enabled: true
 monitoring_enabled: true
 metrics_collection_enabled: true
+
+config:
+  OMNIMEMORY_ARCHIVE_PATH:
+    description: "Filesystem path for memory archive storage."
+    required: false
+  OMNIMEMORY_ARCHIVE_COMPRESSION_LEVEL:
+    description: "Compression level for memory archives (0-9)."
+    required: false

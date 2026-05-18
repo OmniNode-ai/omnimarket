@@ -49,7 +49,9 @@ _HUNK_CONTEXT_LINES = 50
 
 
 def _source_clone_root() -> Path:
-    if val := os.environ.get("ONEX_CONFLICT_SOURCE_CLONE_ROOT"):
+    if val := os.environ.get(  # contract-config-ok: config
+        "ONEX_CONFLICT_SOURCE_CLONE_ROOT"
+    ):
         return Path(val)
     if val := os.environ.get("OMNI_HOME"):
         return Path(val)
@@ -60,7 +62,7 @@ def _source_clone_root() -> Path:
 
 
 def _worktree_root() -> Path:
-    return Path(os.environ.get("ONEX_CONFLICT_WORKTREE_ROOT", "/tmp/onex-conflict"))
+    return Path(os.environ.get("ONEX_CONFLICT_WORKTREE_ROOT", "/tmp/onex-conflict"))  # contract-config-ok: config  # fmt: skip
 
 
 def _default_llm_call(  # stub-ok

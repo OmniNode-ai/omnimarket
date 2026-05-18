@@ -61,7 +61,7 @@ class HandlerIntegrationSweepOrchestrator:
     def _resolve_root(configured: str) -> Path:
         if configured:
             return Path(configured).expanduser().resolve()
-        env_root = os.environ.get("ONEX_CC_REPO_PATH")
+        env_root = os.environ.get("ONEX_CC_REPO_PATH")  # contract-config-ok: config  # fmt: skip
         if env_root:
             return Path(env_root).expanduser().resolve()
         return Path.cwd().resolve()

@@ -81,10 +81,10 @@ class ProtocolNavigationHistoryWriter(Protocol):
     async def close(self) -> None: ...
 
 
-_DEFAULT_PG_DSN = os.environ.get("OMNIMEMORY_PG_DSN", "")
-_DEFAULT_QDRANT_HOST = os.environ.get("QDRANT_HOST", "")
-_DEFAULT_QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
-_DEFAULT_EMBEDDING_URL = os.environ.get("LLM_EMBEDDING_URL", "")
+_DEFAULT_PG_DSN = os.environ.get("OMNIMEMORY_PG_DSN", "")  # contract-config-ok: config  # fmt: skip
+_DEFAULT_QDRANT_HOST = os.environ.get("QDRANT_HOST", "")  # contract-config-ok: config  # fmt: skip
+_DEFAULT_QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))  # contract-config-ok: config  # fmt: skip
+_DEFAULT_EMBEDDING_URL = os.environ.get("LLM_EMBEDDING_URL", "")  # contract-config-ok: config  # fmt: skip
 _DEFAULT_EMBEDDING_MODEL = "Qwen3-Embedding-8B"
 _QDRANT_COLLECTION = "navigation_paths"
 

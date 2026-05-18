@@ -49,8 +49,10 @@ HandlerCategory = Literal["ORCHESTRATOR"]
 # Linear project ID for the active sprint backlog.
 # Linear rejects name-based project filters (400); must use project ID.
 # Override via LINEAR_ACTIVE_SPRINT_PROJECT_ID env var.
-_ACTIVE_SPRINT_PROJECT_ID = os.environ.get(
-    "LINEAR_ACTIVE_SPRINT_PROJECT_ID", "1af15047-d06a-4ffc-855d-da70ff124dba"
+_ACTIVE_SPRINT_PROJECT_ID = (
+    os.environ.get(  # contract-config-ok: declared in contract.yaml config section
+        "LINEAR_ACTIVE_SPRINT_PROJECT_ID", "1af15047-d06a-4ffc-855d-da70ff124dba"
+    )
 )
 _UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
 

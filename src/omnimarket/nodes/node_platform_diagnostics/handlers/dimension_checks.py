@@ -34,7 +34,7 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
     EnumReadinessStatus,
 )
 
-_DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")
+_DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")  # contract-config-ok: config  # fmt: skip
 _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 _GITHUB_REPOS = [
     "OmniNode-ai/omnimarket",
