@@ -117,8 +117,13 @@ class HandlerOverseerVerifierConsumer:
     the contract.yaml topic declarations.
     """
 
-    def __init__(self, event_bus: ProtocolEventBusPublisher) -> None:
-        self._verifier = HandlerOverseerVerifier()
+    def __init__(
+        self,
+        event_bus: ProtocolEventBusPublisher,
+        verifier: HandlerOverseerVerifier | None = None,
+    ) -> None:
+        self._verifier = verifier if verifier is not None else HandlerOverseerVerifier()
+        # lifecycle-ok: optional-di-fallback
         self._event_bus = event_bus
 
     def process(self, raw: bytes) -> bytes:

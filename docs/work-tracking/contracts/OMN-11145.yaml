@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11145"
+title: "Task 9: OmniGate Nodes in OmniMarket"
+summary: >
+  Adds OmniGate check executor, receipt generator, receipt verifier, and projection nodes to omnimarket,
+  including node contracts, metadata, typed handlers/models, projection reducer ownership, tests, and
+  onex.nodes entry points.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "events"
+  - "public_api"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused OmniGate node tests and runtime-profile contract validation pass."
+    command: "PYTHONPATH=$PWD/src uv run pytest tests/validation/test_runtime_profile_contracts.py tests/nodes/node_omnigate_check_executor/test_handler_check_executor.py tests/nodes/node_omnigate_receipt_generator/test_handler_receipt_generator.py tests/nodes/node_omnigate_receipt_verifier/test_handler_receipt_verifier.py tests/nodes/node_omnigate_projection/test_reducer_omnigate_projection.py -q"
+  - kind: "ci"
+    description: "omnimarket PR #682 CI passes."
+    command: "gh pr checks 682 --repo OmniNode-ai/omnimarket"
+  - kind: "manual"
+    description: >
+      Deploy proof for runtime-path changes: after merge, runtime deployment must pick up the new node
+      packages and entry points before they are invoked in production workflows.
+    command: "deploy: docker exec omninode-runtime python -c \"from importlib.metadata import entry_points; assert {'node_omnigate_check_executor','node_omnigate_receipt_generator','node_omnigate_receipt_verifier','node_omnigate_projection'} <= {ep.name for ep in entry_points(group='onex.nodes')}\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused OmniGate node tests and runtime-profile contract validation pass locally."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "PYTHONPATH=$PWD/src uv run pytest tests/validation/test_runtime_profile_contracts.py tests/nodes/node_omnigate_check_executor/test_handler_check_executor.py tests/nodes/node_omnigate_receipt_generator/test_handler_receipt_generator.py tests/nodes/node_omnigate_receipt_verifier/test_handler_receipt_verifier.py tests/nodes/node_omnigate_projection/test_reducer_omnigate_projection.py -q"
+  - id: "dod-entrypoints"
+    description: "All four OmniGate packages are registered as onex.nodes entry points and load."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "PYTHONPATH=$PWD/src uv run python scripts/ci/run_runtime_sweep.py && entry point load smoke passed for node_omnigate_check_executor, node_omnigate_receipt_generator, node_omnigate_receipt_verifier, node_omnigate_projection"
+  - id: "dod-deploy-assessment"
+    description: >
+      Deploy-compatible runtime change. This PR adds node code and contracts only; no live .201 deploy,
+      Kafka topic creation, database migration, or container restart was performed from the PR. Post-merge
+      runtime validation must confirm the new onex.nodes entries in the deployed runtime image before use.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy: docker exec omninode-runtime python -c \"from importlib.metadata import entry_points; assert {'node_omnigate_check_executor','node_omnigate_receipt_generator','node_omnigate_receipt_verifier','node_omnigate_projection'} <= {ep.name for ep in entry_points(group='onex.nodes')}\""

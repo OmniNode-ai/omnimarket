@@ -1,0 +1,25 @@
+---
+name: node_omnigate_receipt_generator
+version: "1.0.0"
+description: "Generates canonical OmniGate receipts and delegates Sigstore signing"
+omnibase_core_compat: ">=0.40.1,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_omnigate_receipt_generator: "omnimarket.nodes.node_omnigate_receipt_generator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.40.1"
+  - "omnibase-infra>=0.34.2"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["omnigate", "compute", "receipt", "sigstore"]
+pack: "omnigate"
+display_name: "OmniGate Receipt Generator"
+node_role: "compute"

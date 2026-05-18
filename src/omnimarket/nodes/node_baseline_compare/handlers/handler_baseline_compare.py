@@ -366,8 +366,15 @@ class HandlerBaselineCompare:
         result = await handler.handle(ModelBaselineCompareRequest(baseline_id="pre-deploy"))
     """
 
-    def __init__(self, probe_registry: dict[str, ProbeProtocol] | None = None) -> None:
-        self._capture_handler = HandlerBaselineCapture(probe_registry=probe_registry)
+    def __init__(
+        self,
+        probe_registry: dict[str, ProbeProtocol] | None = None,
+        capture_handler: HandlerBaselineCapture | None = None,
+    ) -> None:
+        self._capture_handler = capture_handler or HandlerBaselineCapture(
+            probe_registry=probe_registry
+        )
+        # lifecycle-ok: optional-di-fallback
 
     def _resolve_baseline_path(self, request: ModelBaselineCompareRequest) -> Path:
         if request.baseline_path is not None:
