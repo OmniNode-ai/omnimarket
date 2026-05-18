@@ -12,8 +12,8 @@ description: >
   Use required env vars (os.environ["OMNI_HOME"]) or Path(__file__).parent
   relative resolution. Annotate legitimate test fixtures with # local-path-ok.
 violation_examples:
-  - '"/Users/jonah/Code/omni_home"  # hardcoded machine path'
-  - 'Path("/Volumes/PRO-G40/Code/omni_worktrees")'
+  - '"/Users/alice/Code/project"  # hardcoded machine path'
+  - 'Path("/Volumes/DISK/Code/worktrees")'
 runtime_scope: module
 generated_from_principle: ARCH-005
 generated_at: "2026-05-18T00:00:00+00:00"
