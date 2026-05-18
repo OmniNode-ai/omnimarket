@@ -8,7 +8,7 @@ node_version: {major: 0, minor: 1, patch: 0}
 description: >
   Orchestrator node that coordinates persona snapshot builds. Handles tick-driven fan-out (up to 100 users
   per tick) and on-demand single-user builds. Phase 3 Adaptive Personalization (OMN-7305).
-node_type: "ORCHESTRATOR"
+node_type: orchestrator
 input_model: "ModelPersonaLifecycleRequest"
 output_model: "ModelPersonaLifecycleResponse"
 

@@ -7,7 +7,7 @@
 name: node_projection_dep_health
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
-node_type: REDUCER
+node_type: reducer
 description: >
   Projects dep-health-sweep-completed events into the dep_health_findings table.
   Upsert keyed by (run_id, finding_type, file_path, symbol). Idempotent.

@@ -123,4 +123,4 @@ class TestProjectionDepHealth:
             "onex.evt.omnimarket.dep-health-sweep-completed.v1"
             in contract["event_bus"]["subscribe_topics"]
         )
-        assert contract["node_type"] == "REDUCER"
+        assert contract["node_type"] == "reducer"

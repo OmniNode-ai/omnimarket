@@ -8,7 +8,7 @@
 # Related Tickets:
 #   - OMN-8297: Wave 1 omnimemory → omnimarket migration
 name: "node_persona_builder_compute"
-node_type: "COMPUTE"
+node_type: compute
 contract_version:
   major: 0
   minor: 1

@@ -12,7 +12,7 @@ node_version: {major: 0, minor: 1, patch: 0}
 description: "Retrieves agent learning records from Qdrant vector collections. Supports error signature
   matching (high precision, cosine > 0.85) and task context matching (broad recall, cosine > 0.70) with
   freshness decay ranking."
-node_type: "EFFECT"
+node_type: effect
 input_model: "ModelAgentLearningRetrievalRequest"
 output_model: "ModelAgentLearningRetrievalResponse"
 handler:

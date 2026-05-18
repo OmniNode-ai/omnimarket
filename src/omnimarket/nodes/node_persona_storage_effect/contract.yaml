@@ -9,7 +9,7 @@ description: >
   EFFECT node that writes PersonaSnapshot to Postgres (append-only). Emits persona-snapshot-created event
   on successful new insert. Idempotent: duplicate (user_id, persona_version) is caught and logged. Phase
   3 Adaptive Personalization (OMN-7305).
-node_type: "EFFECT"
+node_type: effect
 input_model: "ModelPersonaStorageRequest"
 output_model: "ModelPersonaStorageResponse"
 handler:

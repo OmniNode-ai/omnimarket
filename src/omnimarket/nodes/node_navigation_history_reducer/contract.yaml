@@ -7,7 +7,7 @@
 name: node_navigation_history_reducer
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
-node_type: REDUCER
+node_type: reducer
 input_model: "ModelNavigationHistoryRequest"
 output_model: "ModelNavigationHistoryResponse"
 description: |

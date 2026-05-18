@@ -1,0 +1,23 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9211
+title: "Fix invalid topic names: replace onex.snapshot.* with onex.evt.* grammar"
+summary: "Renames onex.snapshot.* topic references to valid onex.evt.* grammar. Pure contract metadata change; no behavior change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: manual
+    description: No live deploy required; pure topic grammar fix in contract.yaml.
+    command: echo 'no deploy required for OMN-9211'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-deploy
+    description: No live deploy required; topic rename is a pure contract fix.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "deploy gate evidence: OMN-9211 is a topic grammar fix; no live deploy required"

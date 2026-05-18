@@ -1,0 +1,23 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9532
+title: "Contract-First Topic & Node-Type Enforcement epic"
+summary: "Epic tracking contract enforcement work: lowercase node_type, valid topic grammar, ARCH-TOPIC-002 fixes. No runtime behavior changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: manual
+    description: No live deploy required; pure contract metadata changes.
+    command: echo 'no deploy required for OMN-9532'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-deploy
+    description: No live deploy required; all changes are pure contract metadata fixes.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "deploy gate evidence: OMN-9532 is a pure contract metadata epic; no live deploy required"

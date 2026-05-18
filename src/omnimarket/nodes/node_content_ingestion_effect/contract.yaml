@@ -10,7 +10,7 @@
 name: node_content_ingestion_effect
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
-node_type: EFFECT
+node_type: effect
 
 handler:
   module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion

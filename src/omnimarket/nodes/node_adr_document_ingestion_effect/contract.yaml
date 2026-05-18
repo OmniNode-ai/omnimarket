@@ -11,7 +11,7 @@ name: "node_adr_document_ingestion_effect"
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "b3c4d5e6-f7a8-9012-bcde-f01234567891"
-node_type: "EFFECT"
+node_type: effect
 input_model: "ModelIngestionRequest"
 output_model: "ModelIngestionResult"
 handler:
@@ -42,7 +42,7 @@ description: |
 dod_evidence:
   ticket: "OMN-10693"
   parent_epic: "OMN-10689"
-  node_type: EFFECT
+  node_type: effect
   read_only: true
   no_hardcoded_paths: true
   no_hardcoded_topic_literals: true

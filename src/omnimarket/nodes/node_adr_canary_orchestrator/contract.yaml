@@ -12,7 +12,7 @@ name: "node_adr_canary_orchestrator"
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "c4d5e6f7-a8b9-0123-cdef-012345678901"
-node_type: "ORCHESTRATOR"
+node_type: orchestrator
 runtime_profiles:
   - canary
 input_model: "ModelCanaryCommandPayload"
@@ -35,7 +35,7 @@ description: |
 dod_evidence:
   ticket: "OMN-10698"
   parent_epic: "OMN-10689"
-  node_type: ORCHESTRATOR
+  node_type: orchestrator
   no_hardcoded_paths: true
   no_hardcoded_topic_literals: true
   no_bare_os_environ_get: true
