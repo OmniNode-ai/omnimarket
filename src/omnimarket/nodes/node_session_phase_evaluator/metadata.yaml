@@ -1,0 +1,20 @@
+name: node_session_phase_evaluator
+version: "1.0.0"
+description: "Pure deterministic session phase evaluator — no LLM calls, no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_session_phase_evaluator: "omnimarket.nodes.node_session_phase_evaluator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "session", "phase", "budget", "deterministic"]
+pack: "core"
+display_name: "Session Phase Evaluator"
+node_role: "compute"
