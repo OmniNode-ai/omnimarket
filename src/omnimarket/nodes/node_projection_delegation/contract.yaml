@@ -35,11 +35,17 @@ db_io:
       access: write
       database: omnidash_analytics
       role: shadow_comparisons
+    - name: generation_events
+      migration: "0008_generation_events.sql"
+      access: write
+      database: omnidash_analytics
+      role: generation_events
 
 event_bus:
   subscribe_topics:
     - onex.evt.omniclaude.task-delegated.v1
     - onex.evt.omniclaude.delegation-shadow-comparison.v1
+    - onex.evt.omnimarket.node-generation-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
 
