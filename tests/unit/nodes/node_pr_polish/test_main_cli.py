@@ -21,7 +21,7 @@ def _write_executable(path: Path, content: str) -> None:
 
 
 @pytest.mark.unit
-def test_live_cli_resolves_worktree_and_writes_result_json(tmp_path: Path) -> None:
+def test_live_cli_compiles_repair_worker_and_writes_result_json(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     worktree = tmp_path / "worktree"
@@ -111,6 +111,7 @@ exit 1
     env = {
         **os.environ,
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "ONEX_PR_POLISH_DISABLE_DELEGATION_PUBLISH": "1",
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
     }
 
@@ -148,43 +149,27 @@ exit 1
     assert result["final_state"] == "COMPLETE"
     assert result["repo"] == "OmniNode-ai/omnimarket"
     assert result["pr_number"] == 42
-    assert result["worktree_path"] == str(worktree)
-    assert result["push_status"] == "pushed"
-    assert result["auto_merge_status"] == "armed"
-    assert result["coderabbit_triage"]["total_threads"] == 0
+    assert result["worktree_path"] is None
+    assert result["push_status"] == "deferred_to_repair_worker"
+    assert result["auto_merge_status"] == "deferred_to_repair_worker"
+    assert result["completed_event"]["repair_worker_payloads_prepared"] == 1
+    assert result["completed_event"]["repair_workers_dispatched"] == 0
+    assert result["completed_event"]["delegation_publish_status"] == "skipped_disabled"
+    assert Path(result["completed_event"]["dispatch_worker_spec_path"]).exists()
     assert result["phase_results"] == [
-        {"phase": "resolve_conflicts", "status": "clean"},
-        {
-            "phase": "fix_ci",
-            "status": "requires_github_required_checks",
-            "detail": (
-                "Remote CI repair is not inferred locally; GitHub required checks "
-                "remain the merge proof."
-            ),
-        },
-        {
-            "phase": "address_comments",
-            "status": "handled_by_market_coderabbit_triage",
-        },
+        {"phase": "resolve_conflicts", "status": "delegated_to_repair_worker"},
+        {"phase": "fix_ci", "status": "delegated_to_repair_worker"},
+        {"phase": "address_comments", "status": "delegated_to_repair_worker"},
         {
             "phase": "local_review",
-            "status": "pre_commit_passed",
-            "detail": "Ran uv run pre-commit run --all-files in the PR worktree.",
+            "status": "delegated_to_repair_worker",
+            "detail": "Repair worker owns worktree creation, local checks, push, and evidence.",
         },
     ]
     assert not (tmp_path / "state" / "claude-argv.txt").exists()
-    assert (
-        "run pre-commit run --all-files"
-        in (tmp_path / "state" / "pre-commit-argv.txt").read_text()
-    )
-    assert (
-        "push origin HEAD:feature/test-pr"
-        in (tmp_path / "state" / "git-push-argv.txt").read_text()
-    )
-    assert (
-        "enablePullRequestAutoMerge"
-        in (tmp_path / "state" / "gh-graphql-argv.txt").read_text()
-    )
+    assert not (tmp_path / "state" / "pre-commit-argv.txt").exists()
+    assert not (tmp_path / "state" / "git-push-argv.txt").exists()
+    assert not (tmp_path / "state" / "gh-graphql-argv.txt").exists()
 
 
 @pytest.mark.unit
@@ -244,6 +229,7 @@ exit 1
     env = {
         **os.environ,
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "ONEX_PR_POLISH_DISABLE_DELEGATION_PUBLISH": "1",
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
     }
 
@@ -271,13 +257,13 @@ exit 1
 
     assert completed.returncode == 0, completed.stderr
     result = json.loads((run_dir / "result.json").read_text())
-    assert result["push_status"] == "skipped"
-    assert result["auto_merge_status"] == "skipped"
-    assert result["coderabbit_triage"]["dry_run"] is True
+    assert result["push_status"] == "deferred_to_repair_worker"
+    assert result["auto_merge_status"] == "deferred_to_repair_worker"
+    assert result["completed_event"]["repair_worker_payloads_prepared"] == 0
     assert {
         "phase": "local_review",
-        "status": "skipped_non_mutating_mode",
-        "detail": "Use push mode to run local review before publishing.",
+        "status": "dispatch_spec_compiled_no_push",
+        "detail": "Repair worker owns worktree creation, local checks, push, and evidence.",
     } in result["phase_results"]
     assert not (tmp_path / "state" / "claude-argv-no-push.txt").exists()
 
@@ -347,6 +333,7 @@ exit 1
     env = {
         **os.environ,
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "ONEX_PR_POLISH_DISABLE_DELEGATION_PUBLISH": "1",
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
     }
 
@@ -361,6 +348,8 @@ exit 1
             "42",
             "--run-dir",
             str(run_dir),
+            "--worktree-path",
+            str(worktree),
         ],
         capture_output=True,
         check=False,

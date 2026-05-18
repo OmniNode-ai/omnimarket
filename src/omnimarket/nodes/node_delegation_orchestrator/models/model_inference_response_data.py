@@ -4,6 +4,6 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility import for the canonical inference response DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelInferenceResponseData
+from omnimarket.models.delegation.wire import ModelInferenceResponseData
 
 __all__: list[str] = ["ModelInferenceResponseData"]

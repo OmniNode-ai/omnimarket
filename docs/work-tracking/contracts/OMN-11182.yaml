@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11182"
+title: "Resolve generation consumer endpoint via contract, not env vars"
+summary: >
+  Remove bespoke GENERATION_CONSUMER_ENDPOINT/MODEL_ID/API_KEY/PROVIDER/ENDPOINT_CLASS
+  env vars from node_generation_consumer. Add model_routing section to contract.yaml
+  declaring endpoint_env, model_id, and auth. Add dependencies entries so the overlay
+  config resolver knows LLM_CODER_URL, LOCAL_LLM_SHARED_SECRET, LLM_ENDPOINT_CIDR_ALLOWLIST
+  are required at boot. Handler reads endpoint_env from the contract at construction
+  and resolves os.environ[endpoint_env] (LLM_CODER_URL) at call time.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "42 unit tests pass for node_generation_consumer including 4 new contract-routing tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_generation_consumer/ -q"
+  - id: "dod-full-suite"
+    description: "Full omnimarket test suite passes (4079 tests, excluding kafka)."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -m 'not kafka' -q"
+  - id: "dod-lint-typecheck"
+    description: "Ruff and strict mypy pass for changed node_generation_consumer files."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_generation_consumer/ && uv run mypy src/omnimarket/nodes/node_generation_consumer/ --strict"
+  - id: "dod-no-bespoke-env-vars"
+    description: "GENERATION_CONSUMER_ENDPOINT no longer appears in handler source."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "! grep -r 'GENERATION_CONSUMER_ENDPOINT' src/omnimarket/nodes/node_generation_consumer/"
+  - id: "dod-deploy"
+    description: >
+      Contract+handler-only change: removes env var reads, adds contract model_routing
+      declaration. No new node registration, no new Kafka topics, no schema changes.
+      Node imports cleanly in the deployed runtime without restart.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import HandlerGenerationConsumer; print('import ok')\""
+  - id: "dod-occ-pr"
+    description: "OCC PR #1105 carries the OMN-11182 central contract and receipt evidence."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 1105 --repo OmniNode-ai/onex_change_control --json state -q .state | grep -qE '^(OPEN|MERGED)$'"

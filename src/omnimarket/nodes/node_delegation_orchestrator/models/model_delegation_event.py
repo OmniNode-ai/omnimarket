@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from omnibase_compat.contracts.delegation.wire import (
+from omnimarket.models.delegation.wire import (
     ModelDelegationEventEnvelope as ModelDelegationEvent,
 )
 

@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11183
+title: "Graduate delegation wire models from omnibase_compat to omnimarket"
+summary: "Move all 23 delegation wire DTOs from the temporary omnibase_compat/contracts/delegation/wire/ staging area to omnimarket/src/omnimarket/models/delegation/wire/ — single-consumer rule, every import was omnimarket-only."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Unit tests green — 2616 passing including 29 parametrized delegation DTO import tests"
+    command: "uv run pytest tests/ -m unit -v"
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #686"
+    command: "gh pr checks 686 --repo OmniNode-ai/omnimarket"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-unit-tests
+    description: "2616 unit tests pass including 29 delegation DTO graduation tests"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/ -m unit --tb=short"
+  - id: dod-deploy
+    description: "No live deploy required — pure import path refactor; node models are import shims only, no runtime topology change, no Kafka topic addition or removal, no container restart needed. Wire models now resolve from omnimarket.models.delegation.wire.* instead of omnibase_compat.contracts.delegation.wire.*"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: import-path refactor only, no docker exec or rpk topic produce required; running nodes pick up new import paths on next deploy cycle'"

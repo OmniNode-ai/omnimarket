@@ -3,6 +3,6 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility import for the canonical delegation routing tier DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelRoutingTier
+from omnimarket.models.delegation.wire import ModelRoutingTier
 
 __all__: list[str] = ["ModelRoutingTier"]

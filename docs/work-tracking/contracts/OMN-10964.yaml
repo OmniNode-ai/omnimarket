@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10964
+title: "Fix logging.exception usage in delegation plugin (SonarCloud S8572, 3 instances)"
+summary: "Replaces 3 logger.error() calls inside except blocks with logger.exception() in wire_handlers, wire_dispatchers, start_consumers. Pure code-smell cleanup — no behavior change, no deploy required."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #676 including SonarCloud"
+    command: "gh pr checks 676 --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: "No deploy required — pure code-smell cleanup (logger.error to logger.exception)"
+    command: "printf '%s\n' 'deploy gate: OMN-10964 is a pure code-smell cleanup; no docker exec or rpk topic produce required'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-ci
+    description: "All CI checks pass on omnimarket PR #676 including SonarCloud S8572 resolved"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "gh pr checks 676 --repo OmniNode-ai/omnimarket --json name,state --jq '[.[] | select(.state == \"FAILURE\")] | length == 0'"
+  - id: dod-deploy
+    description: "Pure code-smell fix (logger.error to logger.exception) — no runtime restart, no docker exec, no Kafka topic change required"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: OMN-10964 is a pure code-smell cleanup; no docker exec or rpk topic produce required'"

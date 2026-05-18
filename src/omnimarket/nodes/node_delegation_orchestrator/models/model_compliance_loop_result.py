@@ -3,6 +3,6 @@
 
 """Compatibility import for the canonical compliance-loop result DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelComplianceLoopResult
+from omnimarket.models.delegation.wire import ModelComplianceLoopResult
 
 __all__ = ["ModelComplianceLoopResult"]

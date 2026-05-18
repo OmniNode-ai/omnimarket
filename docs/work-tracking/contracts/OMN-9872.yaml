@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9872
+title: "Wire merge-sweep conflict resolution through conflict-hunk effect worktrees"
+summary: "Add push-back step to HandlerConflictHunk so LLM-resolved conflict commits land on the PR branch via git push --force-with-lease after commit."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "omnimarket.nodes.node_conflict_hunk_effect.handlers.handler_conflict_hunk"
+evidence_requirements:
+  - kind: "tests"
+    description: "Conflict hunk handler tests including push success and push failure."
+    command: "uv run pytest tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py -q"
+  - kind: "tests"
+    description: "Merge sweep adjacent suites pass."
+    command: "uv run pytest tests/nodes/node_conflict_hunk_effect/ tests/test_rebase_effect.py tests/test_triage_phase2_emit_rules.py tests/test_merge_sweep_state_reducer_phase2.py -q"
+  - kind: "ci"
+    description: "Affected handler passes ruff lint."
+    command: "uv run ruff check src/omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py"
+  - kind: "manual"
+    description: "Post-merge runtime proof; live conflict mutation requires explicit operator approval."
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_conflict_hunk_effect --help"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-conflict-hunk-tests"
+    description: "All 16 conflict hunk unit tests pass including 2 new push step tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py -q"
+  - id: "dod-merge-sweep-adjacent"
+    description: "Rebase effect and merge sweep adjacent suites pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_conflict_hunk_effect/ tests/test_rebase_effect.py tests/test_triage_phase2_emit_rules.py tests/test_merge_sweep_state_reducer_phase2.py -q"
+  - id: "dod-ruff"
+    description: "Affected files pass ruff lint."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py"
+  - id: "dod-runtime-proof-plan"
+    description: "Post-merge runtime proof plan only; live conflict mutation requires explicit operator approval."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_conflict_hunk_effect --help"

@@ -1,0 +1,29 @@
+---
+name: node_omnigate_receipt_verifier
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Verifies inline OmniGate PR receipts against trusted base config and PR metadata.
+
+handler:
+  module: omnimarket.nodes.node_omnigate_receipt_verifier.handlers.handler_receipt_verifier
+  class: HandlerReceiptVerifier
+  input_model: omnimarket.nodes.node_omnigate_receipt_verifier.models.model_receipt_verifier_input.ModelReceiptVerifierInput
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.omnigate-receipt-verified.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.omnigate-verify-receipt.v1
+  publish_topics:
+    - onex.evt.omnimarket.omnigate-receipt-verified.v1
+
+metadata:
+  transport_type: kafka

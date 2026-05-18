@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10841
+title: "DI Refactoring — Handler Injection Cleanup (wave 1: OMN-10751, OMN-10752, OMN-10746)"
+summary: >
+  Adds optional DI injection seams to three handlers: HandlerOverseerVerifierConsumer
+  (OMN-10751), HandlerLlmReviewer (OMN-10752), and HandlerBaselineCompare (OMN-10746).
+  Each handler now accepts an optional injectable param with lifecycle-ok: optional-di-fallback
+  annotation. Pure constructor-signature refactor; no runtime behavior change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "Full omnimarket unit test suite passes including 6 new DI injection tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -q"
+  - id: "dod-deploy"
+    description: >
+      Pure DI refactor — no runtime behavior change. Handler constructors gain optional
+      injectable params; existing callers unaffected. Deploy verification: import all three
+      changed handler modules in the runtime container.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer import HandlerOverseerVerifierConsumer; from omnimarket.nodes.node_pr_review_bot.handlers.handler_llm_reviewer import HandlerLlmReviewer; from omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare import HandlerBaselineCompare; print(HandlerOverseerVerifierConsumer, HandlerLlmReviewer, HandlerBaselineCompare)'"
