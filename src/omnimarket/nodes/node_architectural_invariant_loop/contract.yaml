@@ -1,0 +1,66 @@
+---
+name: node_architectural_invariant_loop
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Convert architectural principles into typed invariant contracts and enforce them
+  across multiple surfaces. Loads seed invariant YAML contracts, evaluates them
+  against a target scope, and reports violations with waiver-aware suppression semantics.
+
+handler:
+  module: omnimarket.nodes.node_architectural_invariant_loop.handlers.handler_architectural_invariant_loop
+  class: NodeArchitecturalInvariantLoop
+  input_model: omnimarket.nodes.node_architectural_invariant_loop.handlers.handler_architectural_invariant_loop.ArchInvariantLoopRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  target_dirs:
+    type: list[str]
+    description: "Repository directories to evaluate against invariant contracts"
+    required: false
+    default: []
+  invariant_ids:
+    type: list[str] | null
+    description: "Specific invariant principle codes to evaluate; null means all"
+    required: false
+    default: null
+  dry_run:
+    type: bool
+    description: "If true, report violations without emitting events"
+    required: false
+    default: false
+  severity_threshold:
+    type: str
+    description: "Minimum severity threshold to report (DEBUG|INFO|WARNING|ERROR|CRITICAL)"
+    required: false
+    default: "WARNING"
+
+outputs:
+  violations:
+    type: list[ArchInvariantViolation]
+    description: "List of detected invariant violations"
+  summary:
+    type: object
+    description: "Aggregated summary with counts by severity and category"
+  invariants_evaluated:
+    type: int
+    description: "Number of invariant contracts evaluated"
+
+terminal_event: onex.evt.omnimarket.arch-invariant-loop-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.arch-invariant-loop-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.arch-invariant-violation.v1
+    - onex.evt.omnimarket.arch-invariant-loop-completed.v1
+
+metadata:
+  transport_type: kafka
