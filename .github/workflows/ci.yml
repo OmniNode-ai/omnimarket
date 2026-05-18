@@ -79,6 +79,10 @@ jobs:
       # Fails CI if any delegation/LLM/bifrost module adds a new os.environ/os.getenv read.
       - name: Delegation env read scanner (enforce)
         run: uv run python scripts/ci/check_delegation_env_reads.py --mode enforce
+      # OMN-10821: Handler* classes in handler_*.py with zero external import references
+      # cannot be wired by the DI container and are silently absent from the pipeline.
+      - name: Unimported-handler check
+        run: uv run python scripts/ci/check_unimported_handlers.py
 
   typecheck:
     needs: zone-filter
