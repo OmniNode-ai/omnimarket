@@ -114,9 +114,9 @@ class TestDispatcherBudgetWarning:
         assert result.budget_warnings_emitted == 1
         evt = warning_events[0]
         assert evt.topic == _TOPIC_BUDGET_WARNING
-        assert evt.payload["cost_usd"] == 4.0
-        assert evt.payload["budget_usd"] == 5.0
-        assert evt.payload["pct_consumed"] == 80.0
+        assert evt.payload["cost_usd"] == pytest.approx(4.0)
+        assert evt.payload["budget_usd"] == pytest.approx(5.0)
+        assert evt.payload["pct_consumed"] == pytest.approx(80.0)
 
     def test_no_budget_warning_below_threshold(self) -> None:
         handler = HandlerSessionPhaseDispatcher()
