@@ -12,9 +12,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     HandlerGenerationConsumer,
@@ -448,3 +450,100 @@ async def test_registration_not_emitted_when_deploy_publisher_raises() -> None:
 
     topics = [t for t, _ in published]
     assert not any("node-registered" in t for t in topics)
+
+
+# ---------------------------------------------------------------------------
+# Contract model_routing endpoint resolution tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) -> None:
+    """Handler must derive endpoint_env from contract.yaml model_routing section."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+        "model_routing": {
+            "endpoint_env": "LLM_CODER_URL",
+            "model_id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        },
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    handler = HandlerGenerationConsumer(
+        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+        contract_path=contract_path,
+    )
+
+    assert handler._endpoint_env == "LLM_CODER_URL"
+    assert "Qwen3-Coder" in handler._model_id
+
+
+@pytest.mark.unit
+def test_handler_falls_back_to_llm_coder_url_when_model_routing_absent(
+    tmp_path: Path,
+) -> None:
+    """When contract has no model_routing section, handler defaults to LLM_CODER_URL."""
+    contract = {
+        "name": "node_generation_consumer",
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "node_type": "orchestrator",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "event_bus": {"publish_topics": [], "subscribe_topics": []},
+    }
+    contract_path = tmp_path / "contract.yaml"
+    contract_path.write_text(yaml.dump(contract))
+
+    handler = HandlerGenerationConsumer(
+        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+        contract_path=contract_path,
+    )
+
+    assert handler._endpoint_env == "LLM_CODER_URL"
+
+
+@pytest.mark.unit
+def test_production_contract_declares_llm_coder_url_endpoint_env() -> None:
+    """The production contract.yaml must declare model_routing.endpoint_env=LLM_CODER_URL."""
+    from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
+        _CONTRACT_PATH,
+    )
+
+    with open(_CONTRACT_PATH) as f:
+        contract = yaml.safe_load(f)
+
+    model_routing = contract.get("model_routing", {})
+    assert model_routing.get("endpoint_env") == "LLM_CODER_URL", (
+        "contract.yaml model_routing.endpoint_env must be 'LLM_CODER_URL'; "
+        f"got: {model_routing.get('endpoint_env')!r}"
+    )
+
+
+@pytest.mark.unit
+def test_production_contract_declares_required_env_dependencies() -> None:
+    """contract.yaml must declare LLM_CODER_URL, LOCAL_LLM_SHARED_SECRET, LLM_ENDPOINT_CIDR_ALLOWLIST as dependencies."""
+    from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
+        _CONTRACT_PATH,
+    )
+
+    with open(_CONTRACT_PATH) as f:
+        contract = yaml.safe_load(f)
+
+    env_keys = {
+        dep["key"]
+        for dep in contract.get("dependencies", [])
+        if isinstance(dep, dict) and dep.get("type") == "environment" and "key" in dep
+    }
+    required = {
+        "LLM_CODER_URL",
+        "LOCAL_LLM_SHARED_SECRET",
+        "LLM_ENDPOINT_CIDR_ALLOWLIST",
+    }
+    missing = required - env_keys
+    assert not missing, (
+        f"contract.yaml is missing environment dependency declarations for: {missing}"
+    )

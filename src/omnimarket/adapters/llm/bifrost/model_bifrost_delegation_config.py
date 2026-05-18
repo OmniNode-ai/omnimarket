@@ -4,7 +4,7 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility imports for canonical Bifrost delegation config DTOs."""
 
-from omnibase_compat.contracts.delegation.wire import (
+from omnimarket.models.delegation.wire import (
     ModelBifrostDelegationConfig,
     ModelDelegationBackendConfig,
     ModelDelegationCircuitBreakerConfig,
