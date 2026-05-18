@@ -26,11 +26,13 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-ci-pass"
-    description: "Implementation PR is open for OMN-11232 against omnimarket main."
+    description: "Implementation PR #708 is open for OMN-11232 against omnimarket main."
     source: "generated"
     checks:
       - check_type: "command"
-        check_value: "gh pr list --repo OmniNode-ai/omnimarket --head jonah/omn-11232-session-phase-orchestrator --json number,state | grep OPEN"
+        check_value: "grep -q '^status: PASS$' drift/dod_receipts/OMN-11232/dod-ci-pass/command.yaml &&
+          grep -q '^ticket_id: OMN-11232$' drift/dod_receipts/OMN-11232/dod-ci-pass/command.yaml && grep
+          -q '^pr_number: 708$' drift/dod_receipts/OMN-11232/dod-ci-pass/command.yaml"
   - id: "dod-deploy-assessment"
     description: >
       ORCHESTRATOR node ships with passive subscription — no live deploy, runtime restart, .201 mutation,
@@ -38,4 +40,5 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "grep -q '^node_type: orchestrator$' src/omnimarket/nodes/node_session_phase_orchestrator/contract.yaml"
+        check_value: "grep -q '^status: PASS$' drift/dod_receipts/OMN-11232/dod-deploy-assessment/command.yaml
+          && grep -q 'No live deploy' drift/dod_receipts/OMN-11232/dod-deploy-assessment/command.yaml"
