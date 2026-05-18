@@ -1,0 +1,52 @@
+---
+name: node_omnigate_check_executor
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Executes trusted maintainer-authored OmniGate checks from the base .omnigate.yaml.
+
+handler:
+  module: omnimarket.nodes.node_omnigate_check_executor.handlers.handler_check_executor
+  class: HandlerCheckExecutor
+  input_model: omnimarket.nodes.node_omnigate_check_executor.models.model_check_executor_input.ModelCheckExecutorInput
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+    - local_cli
+    - contributor_workstation
+    - ci_action
+
+inputs:
+  config_path:
+    type: str
+    description: "Path to .omnigate.yaml"
+    required: true
+  repo_path:
+    type: str
+    description: "Path to repository root"
+    required: true
+
+outputs:
+  checks:
+    type: list
+    description: "Check results"
+  all_passed:
+    type: bool
+    description: "True when no policy-blocking check failed"
+
+terminal_event: onex.evt.omnimarket.omnigate-checks-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.omnigate-run-checks.v1
+  publish_topics:
+    - onex.evt.omnimarket.omnigate-checks-completed.v1
+
+metadata:
+  transport_type: kafka

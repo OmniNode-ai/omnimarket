@@ -4,6 +4,6 @@
 # Copyright (c) 2026 OmniNode Team
 """Compatibility import for the canonical delegation routing intent DTO."""
 
-from omnibase_compat.contracts.delegation.wire import ModelRoutingIntent
+from omnimarket.models.delegation.wire import ModelRoutingIntent
 
 __all__: list[str] = ["ModelRoutingIntent"]

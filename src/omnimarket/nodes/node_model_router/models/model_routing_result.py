@@ -7,6 +7,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
+    EscalationTier,
+)
+
 
 class ModelRoutingResult(BaseModel):
     """Result of a routing decision."""
@@ -21,6 +25,10 @@ class ModelRoutingResult(BaseModel):
         default=False, description="True if the fallback model was used."
     )
     correlation_id: str = Field(..., description="Echoed from the originating request.")
+    escalation_tier: EscalationTier | None = Field(
+        default=None,
+        description="Tier at which the model was selected (None for non-escalation path).",
+    )
 
 
 __all__: list[str] = ["ModelRoutingResult"]

@@ -1,0 +1,30 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10752
+title: "DI injection seam: HandlerLlmReviewer"
+summary: >
+  HandlerLlmReviewer.__init__ now accepts an optional bridge parameter
+  (AdapterInferenceBridge | None = None) with lifecycle-ok: optional-di-fallback annotation.
+  Existing callers are unaffected; the default behavior is preserved when bridge is None.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "New DI injection test for HandlerLlmReviewer passes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_pr_review_bot/test_di_injection_llm_reviewer.py -v"
+  - id: "dod-deploy"
+    description: >
+      Pure constructor-signature addition; no runtime behavior change. Deploy verification:
+      import the changed handler module in the runtime container.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.nodes.node_pr_review_bot.handlers.handler_llm_reviewer import HandlerLlmReviewer; print(HandlerLlmReviewer)'"

@@ -88,7 +88,7 @@ class PluginDelegation:
     def display_name(self) -> str:
         return "Delegation"
 
-    def should_activate(self, config: ModelDomainPluginConfig) -> bool:
+    def should_activate(self, _config: ModelDomainPluginConfig) -> bool:
         """Delegation plugin activates unconditionally.
 
         No external resource dependencies — the pipeline is purely
@@ -96,9 +96,9 @@ class PluginDelegation:
         """
         return True
 
-    async def initialize(
+    async def initialize(  # NOSONAR S7503: protocol-required async (ProtocolDomainPlugin); no await needed in no-op implementation
         self,
-        config: ModelDomainPluginConfig,
+        _config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
         """No-op initialization — delegation has no external resources."""
         return ModelDomainPluginResult(
@@ -109,9 +109,9 @@ class PluginDelegation:
             duration_seconds=0.0,
         )
 
-    async def validate_handshake(
+    async def validate_handshake(  # NOSONAR S7503: protocol-required async (ProtocolDomainPlugin); no await needed in no-op implementation
         self,
-        config: ModelDomainPluginConfig,
+        _config: ModelDomainPluginConfig,
     ) -> ModelHandshakeResult:
         """No handshake checks required for delegation."""
         return ModelHandshakeResult.default_pass(self.plugin_id)
@@ -148,7 +148,7 @@ class PluginDelegation:
 
         except Exception as e:
             duration = time.time() - start_time
-            logger.error(
+            logger.exception(
                 "Failed to wire delegation handlers: %s",
                 sanitize_error_message(e),
                 extra={"correlation_id": str(config.correlation_id)},
@@ -221,7 +221,7 @@ class PluginDelegation:
 
         except Exception as e:
             duration = time.time() - start_time
-            logger.error(
+            logger.exception(
                 "Failed to wire delegation dispatchers: %s",
                 sanitize_error_message(e),
                 extra={"correlation_id": str(config.correlation_id)},
@@ -434,7 +434,7 @@ class PluginDelegation:
             if wiring is not None:
                 await wiring.cleanup()
             self._wiring = None
-            logger.error(
+            logger.exception(
                 "Failed to start delegation consumers: %s",
                 sanitize_error_message(e),
                 extra={"correlation_id": str(correlation_id)},
@@ -447,7 +447,7 @@ class PluginDelegation:
 
     async def shutdown(
         self,
-        config: ModelDomainPluginConfig,
+        _config: ModelDomainPluginConfig,
     ) -> ModelDomainPluginResult:
         """Clean up delegation resources."""
         if self._wiring is not None:
