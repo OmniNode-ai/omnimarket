@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11232
+title: "feat(OMN-11232): create node_session_phase_orchestrator (ORCHESTRATOR)"
+summary: >
+  Creates node_session_phase_orchestrator — the ORCHESTRATOR node in the session-phase control loop.
+  Subscribes to onex.evt.omnimarket.session-phase-evaluated.v1 and routes to
+  onex.cmd.omnimarket.session-phase-transition.v1 (transition_required) or
+  onex.cmd.omnimarket.session-halt-required.v1 (halt_required). no_action and
+  budget_warning evaluations produce no events. ORCHESTRATOR contract enforced:
+  result must never be set. 4 unit tests. Part of epic OMN-11224.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: >
+      ORCHESTRATOR node — emits events only, no result. No runtime service restart,
+      no DB migration, no .201 mutation required.
+    command: "grep -q '^node_type: orchestrator$' src/omnimarket/nodes/node_session_phase_orchestrator/contract.yaml"
+dod_evidence:
+  - id: "dod-ci-pass"
+    description: "Implementation PR is open for OMN-11232 against omnimarket main."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q '^node_type: orchestrator$' src/omnimarket/nodes/node_session_phase_orchestrator/contract.yaml"
+  - id: "dod-deploy-assessment"
+    description: >
+      ORCHESTRATOR node ships with passive subscription — no live deploy, runtime restart,
+      .201 mutation, or docker exec required. Node activates when wired post-merge.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'node_type: orchestrator' src/omnimarket/nodes/node_session_phase_orchestrator/contract.yaml"

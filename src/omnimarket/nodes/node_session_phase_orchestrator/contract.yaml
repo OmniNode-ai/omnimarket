@@ -1,0 +1,55 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — node_session_phase_orchestrator
+#
+# Orchestrator: routes evaluation results to dispatcher or halt.
+# Emits events[] and intents[] only — NEVER returns result.
+#
+# Related Tickets:
+#   - OMN-11232: Task 8: Create node_session_phase_orchestrator (ORCHESTRATOR)
+#   - OMN-11224: Session phase control loop epic
+name: node_session_phase_orchestrator
+node_type: orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Orchestrates the session phase tick loop. Receives phase evaluation results
+  from node_session_phase_evaluator and routes to dispatcher (transition_required)
+  or halt (halt_required). Emits events and intents only — NEVER returns result.
+  no_action evaluations produce no output events.
+
+handler:
+  module: omnimarket.nodes.node_session_phase_orchestrator.handlers.handler_session_phase_orchestrator
+  class: HandlerSessionPhaseOrchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 10000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.session-phase-evaluated.v1
+  publish_topics:
+    - onex.cmd.omnimarket.session-phase-transition.v1
+    - onex.cmd.omnimarket.session-halt-required.v1
+
+terminal_event: onex.cmd.omnimarket.session-phase-transition.v1
+
+metadata:
+  transport_type: kafka
+  description: "Session phase orchestrator — routes evaluation results to transition or halt"
+  author: "OmniNode Platform Team"
+  created: "2026-05-18"
+  tags:
+    - orchestrator
+    - session
+    - phase
+    - OMN-11232
+    - OMN-11224
+  related_tickets:
+    - OMN-11232
+    - OMN-11224

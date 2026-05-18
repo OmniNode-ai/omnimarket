@@ -246,6 +246,7 @@ node_omnigate_check_executor = "omnimarket.nodes.node_omnigate_check_executor"
 node_omnigate_receipt_generator = "omnimarket.nodes.node_omnigate_receipt_generator"
 node_omnigate_receipt_verifier = "omnimarket.nodes.node_omnigate_receipt_verifier"
 node_omnigate_projection = "omnimarket.nodes.node_omnigate_projection"
+node_session_phase_orchestrator = "omnimarket.nodes.node_session_phase_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
