@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,14 @@ class ModelPhaseEvaluationResult(BaseModel):
     phase_name: str = ""
     session_id: str = ""
     correlation_id: str = ""
+
+    @model_validator(mode="after")
+    def _require_next_phase_on_transition(self) -> ModelPhaseEvaluationResult:
+        if self.action == "transition_required" and not self.next_phase:
+            raise ValueError(
+                "next_phase is required when action is 'transition_required'"
+            )
+        return self
 
 
 class HandlerSessionPhaseOrchestrator:

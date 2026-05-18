@@ -121,3 +121,8 @@ class TestOrchestratorNeverReturnsResult:
         handler = HandlerSessionPhaseOrchestrator()
         with pytest.raises(ValueError, match="ORCHESTRATOR contract violation"):
             handler._guard_no_result({"result": "some_value", "events": []})
+
+    def test_orchestrator_raises_when_transition_missing_next_phase(self) -> None:
+        handler = HandlerSessionPhaseOrchestrator()
+        with pytest.raises(ValueError, match="next_phase is required"):
+            handler.handle(_make_input(action="transition_required", next_phase=None))

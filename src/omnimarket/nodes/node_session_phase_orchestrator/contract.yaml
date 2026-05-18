@@ -18,7 +18,7 @@ description: >
   Orchestrates the session phase tick loop. Receives phase evaluation results
   from node_session_phase_evaluator and routes to dispatcher (transition_required)
   or halt (halt_required). Emits events and intents only — NEVER returns result.
-  no_action evaluations produce no output events.
+  no_action and budget_warning evaluations produce no output events.
 
 handler:
   module: omnimarket.nodes.node_session_phase_orchestrator.handlers.handler_session_phase_orchestrator
