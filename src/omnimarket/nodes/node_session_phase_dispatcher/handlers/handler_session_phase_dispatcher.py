@@ -79,6 +79,13 @@ class HandlerSessionPhaseDispatcher:
     def handle(
         self, command: ModelSessionPhaseDispatcherInput
     ) -> ModelSessionPhaseDispatcherResult:
+        result_correlation_id = command.commands[0].correlation_id
+        if any(
+            cmd.correlation_id != result_correlation_id for cmd in command.commands[1:]
+        ):
+            msg = "All commands in a batch must share the same correlation_id"
+            raise ValueError(msg)
+
         all_events: list[ModelSessionPhaseEvent] = []
         total_workers = 0
         total_warnings = 0
@@ -89,9 +96,8 @@ class HandlerSessionPhaseDispatcher:
             total_workers += workers
             total_warnings += warnings
 
-        # Use correlation_id from first command as the result correlation
         return ModelSessionPhaseDispatcherResult(
-            correlation_id=command.commands[0].correlation_id,
+            correlation_id=result_correlation_id,
             events=tuple(all_events),
             workers_dispatched=total_workers,
             budget_warnings_emitted=total_warnings,

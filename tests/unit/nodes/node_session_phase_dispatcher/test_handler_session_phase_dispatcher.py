@@ -17,16 +17,18 @@ from omnibase_core.models.overseer.model_dispatch_item import ModelDispatchItem
 from omnibase_core.models.overseer.model_session_phase_spec import ModelSessionPhaseSpec
 
 from omnimarket.nodes.node_session_phase_dispatcher.handlers.handler_session_phase_dispatcher import (
-    _EVENT_TYPE_BUDGET_WARNING,
-    _EVENT_TYPE_PHASE_STATE,
-    _TOPIC_BUDGET_WARNING,
-    _TOPIC_PHASE_STATE,
     HandlerSessionPhaseDispatcher,
 )
 from omnimarket.nodes.node_session_phase_dispatcher.models.model_dispatcher_input import (
     ModelSessionPhaseDispatcherInput,
     ModelSessionPhaseTransitionCommand,
 )
+
+# String literals from contract.yaml — independent of handler internals
+_TOPIC_PHASE_STATE = "onex.evt.omnimarket.session-phase-state.v1"
+_TOPIC_BUDGET_WARNING = "onex.evt.omnimarket.session-phase-budget-warning.v1"
+_EVENT_TYPE_PHASE_STATE = "omnimarket.session-phase-state"
+_EVENT_TYPE_BUDGET_WARNING = "omnimarket.session-phase-budget-warning"
 
 
 def _make_cmd(
