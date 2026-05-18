@@ -120,7 +120,7 @@ class HandlerSessionPhaseReducer:
         """
         event_type = event.event_type
 
-        if event_type == "session.started" or state is None:
+        if event_type == "session.started":
             return ModelSessionPhaseState(
                 session_id=event.session_id,
                 current_phase=event.phase or "start",
@@ -133,6 +133,25 @@ class HandlerSessionPhaseReducer:
                 last_evaluation=event.last_evaluation or "no_action",
                 last_tick_at=event.timestamp,
             )
+
+        if state is None:
+            logger.warning(
+                "Received %s with no prior state — ignoring (session not started)",
+                event_type,
+            )
+            return ModelSessionPhaseState(
+                session_id=event.session_id,
+                current_phase="unknown",
+                last_tick_at=event.timestamp,
+            )
+
+        if event.session_id != state.session_id:
+            logger.warning(
+                "Rejecting event: session_id mismatch (event=%s, state=%s)",
+                event.session_id,
+                state.session_id,
+            )
+            return state
 
         if event_type == "session.ended":
             return state.model_copy(

@@ -167,6 +167,30 @@ class TestSessionPhaseReducerDelta:
         assert state.current_phase == "start"
         assert new_state.current_phase == "rsd_scoring"
 
+    def test_reducer_rejects_non_start_event_with_no_state(self) -> None:
+        """Non-start event with state=None returns unknown placeholder, not crashing."""
+        handler = HandlerSessionPhaseReducer()
+        event = _phase_event("rsd_scoring", phase_index=1)
+
+        new_state = handler.delta(None, event)
+
+        assert new_state.current_phase == "unknown"
+
+    def test_reducer_rejects_mismatched_session_id(self) -> None:
+        """Event for a different session_id is ignored — state unchanged."""
+        handler = HandlerSessionPhaseReducer()
+        state = _initial_state()
+        event = ModelSessionPhaseEvent(
+            event_type="session.phase.state",
+            session_id="sess-DIFFERENT",
+            timestamp=_LATER,
+            phase="rsd_scoring",
+        )
+
+        new_state = handler.delta(state, event)
+
+        assert new_state is state
+
 
 @pytest.mark.unit
 class TestSessionPhaseReducerWritesStateFile:
