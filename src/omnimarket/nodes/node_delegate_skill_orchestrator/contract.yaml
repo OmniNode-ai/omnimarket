@@ -121,12 +121,20 @@ timeout_behavior:
     status: timeout
     error_message: "Delegation timed out before runtime completion"
 
+runtime_ingress:
+  http_url: ""
+  pandaproxy_url: ""
+  ssh_host: ""
+  ssh_socket_path: ""
+  kafka_bridge_script: ""
+
 metadata:
   transport_type: kafka
   author: OmniNode Team
   license: MIT
   created: "2026-05-12"
-  tags: [orchestrator, delegation, adapter, claude-code, codex, OMN-10889, OMN-10903]
+  tags: [orchestrator, delegation, adapter, claude-code, codex, OMN-10889, OMN-10903, OMN-10604]
   related_tickets:
     - "OMN-10889"
     - "OMN-10903"
+    - "OMN-10604"
