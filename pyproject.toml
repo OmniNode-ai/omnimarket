@@ -75,6 +75,7 @@ node_adr_document_ingestion_effect = "omnimarket.nodes.node_adr_document_ingesti
 node_aislop_sweep = "omnimarket.nodes.node_aislop_sweep"
 node_authorize = "omnimarket.nodes.node_authorize"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
+node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
