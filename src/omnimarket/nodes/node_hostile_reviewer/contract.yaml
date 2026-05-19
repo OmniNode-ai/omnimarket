@@ -124,8 +124,8 @@ model_routing:
     transport: "http"
     timeout_seconds: 90.0
     description: "Qwen3-Coder-30B — primary local code review backend"
-  judge:
-    policy_id: "judge"
+  deepseek-r1:
+    policy_id: "deepseek-r1"
     endpoint_env: "LLM_DEEPSEEK_R1_URL"
     context_window: 32000
     transport: "http"

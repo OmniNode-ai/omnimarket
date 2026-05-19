@@ -33,9 +33,9 @@ class TestBuildModelConfigs:
         monkeypatch.delenv("LLM_CODER_URL", raising=False)
         monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
 
-        configs = build_model_configs(requested_keys=["coder", "judge"])
+        configs = build_model_configs(requested_keys=["coder", "deepseek-r1"])
         assert "coder" not in configs
-        assert "judge" not in configs
+        assert "deepseek-r1" not in configs
 
     def test_http_model_included_when_env_set(
         self, monkeypatch: pytest.MonkeyPatch
@@ -60,9 +60,9 @@ class TestBuildModelConfigs:
         monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
         monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
 
-        configs = build_model_configs(requested_keys=["coder", "judge"])
+        configs = build_model_configs(requested_keys=["coder", "deepseek-r1"])
         assert "coder" in configs
-        assert "judge" not in configs
+        assert "deepseek-r1" not in configs
 
     def test_requested_keys_filters_contract(
         self, monkeypatch: pytest.MonkeyPatch
@@ -73,7 +73,7 @@ class TestBuildModelConfigs:
 
         configs = build_model_configs(requested_keys=["coder"])
         assert "coder" in configs
-        assert "judge" not in configs
+        assert "deepseek-r1" not in configs
 
     def test_url_trailing_slash_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Trailing slash on base_url is stripped."""
@@ -99,10 +99,10 @@ class TestBuildModelConfigs:
         monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
 
         configs = build_model_configs(requested_keys=None)
-        # codex (CLI) always available; coder (HTTP) present; judge (HTTP) absent
+        # codex (CLI) always available; coder (HTTP) present; deepseek-r1 (HTTP) absent
         assert "codex" in configs
         assert "coder" in configs
-        assert "judge" not in configs
+        assert "deepseek-r1" not in configs
 
 
 @pytest.mark.unit
