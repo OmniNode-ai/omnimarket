@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import date
 from pathlib import Path
 
@@ -20,6 +21,14 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integrati
 
 class HandlerIntegrationSweepOrchestrator:
     """Write deterministic integration sweep artifacts."""
+
+    _SAFE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+    @classmethod
+    def _safe_segment(cls, value: str, field: str) -> str:
+        if not cls._SAFE_SEGMENT_RE.fullmatch(value):
+            raise ValueError(f"Invalid {field}: {value!r}")
+        return value
 
     def __init__(
         self, runtime_sha_handler: HandlerRuntimeShaVerify | None = None
@@ -118,7 +127,8 @@ class HandlerIntegrationSweepOrchestrator:
     ) -> list[dict[str, str]]:
         records: list[dict[str, str]] = []
         for ticket_id in tickets:
-            contract_path = contracts_dir / f"{ticket_id}.yaml"
+            safe_ticket_id = self._safe_segment(ticket_id, "ticket_id")
+            contract_path = contracts_dir / f"{safe_ticket_id}.yaml"
             if not contract_path.exists():
                 continue
             raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
@@ -126,6 +136,9 @@ class HandlerIntegrationSweepOrchestrator:
                 continue
 
             for evidence_item_id, merge_sha in self._iter_runtime_sha_checks(raw):
+                safe_evidence_item_id = self._safe_segment(
+                    evidence_item_id, "evidence_item_id"
+                )
                 receipt = self._runtime_sha_handler.handle(
                     ModelRuntimeShaVerifyRequest(
                         ticket_id=ticket_id,
@@ -137,8 +150,8 @@ class HandlerIntegrationSweepOrchestrator:
                 )
                 receipt_path = (
                     receipts_dir
-                    / ticket_id
-                    / evidence_item_id
+                    / safe_ticket_id
+                    / safe_evidence_item_id
                     / f"{CHECK_TYPE_RUNTIME_SHA_MATCH}.yaml"
                 )
                 receipt_path.parent.mkdir(parents=True, exist_ok=True)
