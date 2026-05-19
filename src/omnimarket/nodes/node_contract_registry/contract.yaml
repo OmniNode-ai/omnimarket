@@ -21,6 +21,14 @@ description: >
   version conflicts), and emits validated events for runtime
   materialization. Rejections emit structured rejection events.
 
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 30000
+
 input_model:
   name: ModelContractRegistrationRequest
   module: omnimarket.nodes.node_contract_registry.models
