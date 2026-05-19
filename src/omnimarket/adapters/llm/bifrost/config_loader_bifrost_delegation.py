@@ -18,7 +18,7 @@ from __future__ import annotations
 import copy
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from pydantic import ValidationError
@@ -133,7 +133,7 @@ def deep_merge_bifrost_delegation_config(
     keyed by ``backend_id`` or ``rule_id`` merge by identity, preserving default
     ordering and appending overlay-only entries.
     """
-    return _deep_merge(default_config, overlay_config)
+    return cast(dict[str, Any], _deep_merge(default_config, overlay_config))
 
 
 def _deep_merge(default_value: Any, overlay_value: Any) -> Any:
