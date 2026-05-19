@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9124
+title: "Add runtime-health verify target"
+summary: "Adds runtime-health as a PR lifecycle verify target for runtime auto-wiring, service kernel, and handler paths, with structured Docker probe failure reporting."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Runtime-health verify target unit coverage passes."
+    command: "uv run pytest tests/unit/test_verify_target_mapping.py -q"
+  - kind: "lint"
+    description: "Runtime-health verify target lint passes."
+    command: "uv run ruff check src/omnimarket/nodes/node_pr_lifecycle_orchestrator/verify_target_mapping.py tests/unit/test_verify_target_mapping.py"
+  - kind: "manual"
+    description: "Post-merge deploy validation checks runtime-health Docker probe behavior without mutating live runtime."
+    command: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-runtime-health-unit-tests"
+    description: "Runtime-health verify target unit coverage passes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/test_verify_target_mapping.py -q"
+  - id: "dod-runtime-health-lint"
+    description: "Runtime-health verify target lint passes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_pr_lifecycle_orchestrator/verify_target_mapping.py tests/unit/test_verify_target_mapping.py"
+  - id: "dod-runtime-health-deploy-validation"
+    description: "Post-merge deploy validation checks runtime-health Docker probe behavior; no live deploy or restart was performed in this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping"
