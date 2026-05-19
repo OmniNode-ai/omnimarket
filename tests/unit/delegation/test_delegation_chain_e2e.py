@@ -102,13 +102,42 @@ class TestDelegationChainE2E:
             '    model_name: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"\n'
             "    tier: local\n"
             "    timeout_ms: 30000\n"
-            "    capabilities: []\n"
+            "    capabilities: [research]\n"
             "  - backend_id: local-deepseek-r1-14b\n"
             '    endpoint_url: "http://test-fast:8001"\n'
             '    model_name: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"\n'
             "    tier: local\n"
             "    timeout_ms: 30000\n"
-            "    capabilities: []\n",
+            "    capabilities: [research]\n"
+            "routing_rules:\n"
+            '  - rule_id: "11111111-1111-4111-8111-111111111111"\n'
+            "    priority: 10\n"
+            "    task_class: research\n"
+            '    task_class_contract_version: "1.0.0"\n'
+            '    backend_policy_version: "1.0.0"\n'
+            "    match_operation_types: [chat_completion]\n"
+            "    match_capabilities: [research]\n"
+            "    backend_ids: [local-qwen-coder-30b, local-deepseek-r1-14b]\n"
+            "    fallback_policy:\n"
+            "      action: escalate_to_next_tier\n"
+            "      max_retries: 1\n"
+            "      on_exhaust: return_error\n"
+            '    shadow_policy_id: "22222222-2222-4222-8222-222222222222"\n'
+            "default_backends:\n"
+            "  - local-qwen-coder-30b\n"
+            "  - local-deepseek-r1-14b\n"
+            "circuit_breaker:\n"
+            "  failure_threshold: 5\n"
+            "  window_seconds: 30\n"
+            "failover:\n"
+            "  max_attempts: 3\n"
+            "  backoff_base_ms: 500\n"
+            "shadow_mode:\n"
+            "  enabled: false\n"
+            '  policy_version: "test"\n'
+            "  log_sample_rate: 1.0\n"
+            "  comparison_logging_enabled: true\n"
+            "  max_shadow_latency_ms: 5.0\n",
             encoding="utf-8",
         )
         monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
