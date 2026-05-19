@@ -138,7 +138,12 @@ def test_routing_loader_uses_overlay_path(
     monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay_path))
     routing._load_bifrost_endpoints.cache_clear()
 
-    endpoints = routing._load_bifrost_endpoints()
+    try:
+        endpoints = routing._load_bifrost_endpoints()
 
-    assert endpoints["local-qwen-coder-30b"].endpoint_url == "https://local.test:8000"
-    assert "future-backend" not in endpoints
+        assert (
+            endpoints["local-qwen-coder-30b"].endpoint_url == "https://local.test:8000"
+        )
+        assert "future-backend" not in endpoints
+    finally:
+        routing._load_bifrost_endpoints.cache_clear()
