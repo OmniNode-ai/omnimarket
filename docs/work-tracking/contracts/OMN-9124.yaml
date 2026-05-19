@@ -15,7 +15,7 @@ evidence_requirements:
     command: "uv run ruff check src/omnimarket/nodes/node_pr_lifecycle_orchestrator/verify_target_mapping.py tests/unit/test_verify_target_mapping.py"
   - kind: "manual"
     description: "Post-merge deploy validation checks runtime-health Docker probe behavior without mutating live runtime."
-    command: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping"
+    command: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omnibase-infra-omninode-runtime} python -m omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -38,4 +38,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -m omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping"
+        check_value: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omnibase-infra-omninode-runtime} python -m omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping"
