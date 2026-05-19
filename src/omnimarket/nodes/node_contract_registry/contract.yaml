@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract
+# Node: node_contract_registry
+name: node_contract_registry
+contract_name: node_contract_registry
+node_name: node_contract_registry
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: EFFECT_GENERIC
+description: >
+  Validates, stores, and publishes dynamic contract registrations.
+  Consumes registration requests from deployers, enforces policy
+  (handler allowlist, runtime profiles, hash integrity, schema parse,
+  version conflicts), and emits validated events for runtime
+  materialization. Rejections emit structured rejection events.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 30000
+
+input_model:
+  name: ModelContractRegistrationRequest
+  module: omnimarket.nodes.node_contract_registry.models
+  description: Dynamic contract registration request payload.
+output_model:
+  name: ModelContractRegistrationResult
+  module: omnimarket.nodes.node_contract_registry.models
+  description: Registration validation result with status and reason.
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.platform.node-registration-requested.v1
+  publish_topics:
+    - onex.evt.platform.node-registration.v1
+    - onex.evt.platform.node-registration-rejected.v1
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: contract_registry.validate
+      handler_class: ContractRegistryHandler
+      handler_module: omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry
+      description: Validate, store, and publish contract registration results.
+      input_model:
+        name: ModelContractRegistrationRequest
+        module: omnimarket.nodes.node_contract_registry.models
+
+runtime_profiles:
+  - stability
+  - demo
+
+metadata:
+  description: Central policy enforcement node for dynamic contract registration.
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-18"
+  tags:
+    - effect
+    - contract
+    - registry
+    - policy
+    - platform

@@ -1,12 +1,19 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
 """Delegation projection: Kafka -> delegation_events + delegation_shadow_comparisons tables."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
+import os
+from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
@@ -35,6 +42,9 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     }
 )
 
+# Type alias for an async publish callable: (topic, value_bytes) -> None
+PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
+
 
 class DelegationProjectionRunner(BaseProjectionRunner):
     """Projects task-delegated and delegation-shadow-comparison events.
@@ -42,9 +52,19 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     Two topics -> two tables, each with ON CONFLICT (correlation_id) DO NOTHING.
     Matches omnidash projectTaskDelegatedEvent() and
     projectDelegationShadowComparisonEvent() exactly.
+
+    After each successful DB write the runner publishes a terminal confirmation
+    envelope to the topic declared as ``terminal_event`` in contract.yaml.  This
+    satisfies the golden-chain requirement that Pattern B broker consumers can
+    observe projection completions on the event bus.
     """
 
-    def __init__(self, contract_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        contract_path: Path | None = None,
+        *,
+        publish_fn: PublishFn | None = None,
+    ) -> None:
         super().__init__()
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
@@ -84,6 +104,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._topic_generation: str = next(
             (t for t in _topics if "node-generation-completed" in t), ""
         )
+        self._terminal_topic: str | None = self._contract.get("terminal_event")
+        # Inject for testing; real producer is built lazily on first emit.
+        self._publish_fn: PublishFn | None = publish_fn
+        self._producer: Any = None  # AIOKafkaProducer, created on demand
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -108,16 +132,113 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
+    async def _get_publish_fn(self) -> PublishFn | None:
+        """Return the publish callable, building a Kafka producer lazily if needed."""
+        if self._publish_fn is not None:
+            return self._publish_fn
+
+        brokers = os.environ.get(
+            "KAFKA_BROKERS", ""
+        )  # ONEX_FLAG_EXEMPT: infra bootstrap var, mirrors BaseProjectionRunner.run()
+        if not brokers:
+            return None
+
+        try:
+            from aiokafka import AIOKafkaProducer
+        except ImportError:
+            logger.warning(
+                "aiokafka not installed; terminal events will not be published"
+            )
+            return None
+
+        if self._producer is None:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=brokers,
+                value_serializer=lambda v: (
+                    v if isinstance(v, bytes) else v.encode("utf-8")
+                ),
+            )
+            try:
+                await producer.start()
+            except Exception as exc:
+                logger.warning("Kafka producer failed to start: %s", exc)
+                return None
+            self._producer = producer
+
+        producer = self._producer
+
+        async def _publish(topic: str, value: bytes) -> None:
+            await producer.send_and_wait(topic, value)
+
+        return _publish
+
+    async def _emit_terminal_event(
+        self,
+        correlation_id: str,
+        source_topic: str,
+        terminal_topic: str,
+    ) -> None:
+        """Publish a terminal confirmation envelope to the declared terminal topic."""
+        publish = await self._get_publish_fn()
+        if publish is None:
+            logger.debug(
+                "Terminal event skipped (no publish_fn/KAFKA_BROKERS): topic=%s correlation_id=%s",
+                terminal_topic,
+                correlation_id,
+            )
+            return
+
+        envelope = {
+            "payload": {
+                "correlation_id": correlation_id,
+                "projected_at": datetime.now(UTC).isoformat(),
+                "source_topic": source_topic,
+            },
+            "envelope_timestamp": datetime.now(UTC).isoformat(),
+            "correlation_id": correlation_id,
+            "event_type": terminal_topic,
+            "source_tool": "node_projection_delegation",
+            "envelope_id": str(uuid4()),
+        }
+        value = json.dumps(envelope).encode("utf-8")
+        try:
+            await publish(terminal_topic, value)
+            logger.debug(
+                "Terminal event published: topic=%s correlation_id=%s",
+                terminal_topic,
+                correlation_id,
+            )
+        except Exception as exc:
+            # Best-effort: log but don't fail the projection
+            logger.warning(
+                "Failed to publish terminal event to %s: %s",
+                terminal_topic,
+                exc,
+            )
+
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
         if topic == self._topic_delegated:
-            return await self._project_task_delegated(data, meta)
-        if topic == self._topic_shadow:
-            return await self._project_shadow_comparison(data, meta)
-        if topic == self._topic_generation:
-            return await self._project_generation_completed(data, meta)
-        return False
+            ok = await self._project_task_delegated(data, meta)
+        elif topic == self._topic_shadow:
+            ok = await self._project_shadow_comparison(data, meta)
+        elif topic == self._topic_generation:
+            ok = await self._project_generation_completed(data, meta)
+        else:
+            return False
+
+        if ok and self._terminal_topic:
+            correlation_id = (
+                data.get("correlation_id")
+                or data.get("correlationId")
+                or meta.fallback_id
+            )
+            await self._emit_terminal_event(
+                str(correlation_id), topic, self._terminal_topic
+            )
+
+        return ok
 
     async def _project_task_delegated(
         self, data: dict[str, Any], meta: MessageMeta
@@ -154,8 +275,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if data.get("quality_gate_passed") is not None
             else data.get("qualityGatePassed") or False
         )
-
-        import json
 
         quality_gates_checked = data.get("quality_gates_checked") or data.get(
             "qualityGatesChecked"

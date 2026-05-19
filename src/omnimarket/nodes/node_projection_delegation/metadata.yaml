@@ -17,3 +17,5 @@ tags:
 pack: "data"
 display_name: "Projection: Delegation"
 node_role: "effect"
+dependencies:
+  - "aiokafka>=0.10.0"
