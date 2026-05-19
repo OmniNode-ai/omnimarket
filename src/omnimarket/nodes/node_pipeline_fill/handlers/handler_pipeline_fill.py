@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerPipelineFill — pipeline fill orchestrator.
+"""HandlerPipelineFill — pipeline fill effect.
 
-Orchestrates one fill cycle:
+Executes one fill cycle:
   1. Query Linear for unstarted active-sprint tickets
   2. Filter already-dispatched / blocked tickets
   3. Score via HandlerRsdFill (node_rsd_fill_compute)
@@ -44,7 +44,7 @@ from omnimarket.nodes.node_rsd_fill_compute.models.model_scored_ticket import (
 logger = logging.getLogger(__name__)
 
 HandlerType = Literal["NODE_HANDLER"]
-HandlerCategory = Literal["ORCHESTRATOR"]
+HandlerCategory = Literal["effect"]
 
 # Linear project ID for the active sprint backlog.
 # Linear rejects name-based project filters (400); must use project ID.
@@ -55,7 +55,7 @@ _ACTIVE_SPRINT_PROJECT_ID = os.environ.get(
 _UNSTARTED_STATES = frozenset({"Backlog", "Todo"})
 
 HANDLER_TYPE: HandlerType = "NODE_HANDLER"
-HANDLER_CATEGORY: HandlerCategory = "ORCHESTRATOR"
+HANDLER_CATEGORY: HandlerCategory = "effect"
 
 _LINEAR_API_URL = "https://api.linear.app/graphql"
 
@@ -184,7 +184,7 @@ def _topics_from_contract() -> dict[str, str]:
 
 
 class HandlerPipelineFill:
-    """Orchestrates one RSD-driven pipeline fill cycle."""
+    """Executes one RSD-driven pipeline fill side-effect cycle."""
 
     def __init__(
         self,
