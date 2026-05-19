@@ -9,10 +9,8 @@ and returns the first tier that has a configured endpoint for the given task typ
 All tier order, model assignments, and retry counts come from the YAML config —
 no constants are hardcoded here.
 
-Endpoint URLs are resolved from the bifrost contract. Resolution order:
-  1. BIFROST_CONTRACT_PATH env var (test/override)
-  2. ~/.omninode/delegation/bifrost_delegation.yaml (deployed override)
-  3. Source configs/bifrost_delegation.yaml (default — URLs populated directly)
+Endpoint URLs are resolved by loading the repo default bifrost contract and
+deep-merging the endpoint overlay declared by BIFROST_OVERLAY_PATH.
 Each model in routing_tiers.yaml has a backend_id that maps to a backend
 entry in the bifrost contract.
 
@@ -33,7 +31,8 @@ Related:
     - OMN-7040: Node-based delegation pipeline
     - OMN-8029: Delegation pipeline — local→cheap-cloud→claude routing
     - OMN-10615: Wire routing reducer to read task-class contracts
-    - OMN-10657: Endpoint resolution from deployed contract, not env vars
+    - OMN-10657: Endpoint resolution from bifrost contract, not env vars
+    - OMN-10717: Default contract + endpoint overlay merge semantics
     - OMN-10942: Task routing policy from contract with model defaults
 """
 
@@ -58,6 +57,9 @@ from omnibase_infra.models.errors.model_infra_error_context import (
     ModelInfraErrorContext,
 )
 
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    load_bifrost_delegation_config,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -225,14 +227,6 @@ _DEFAULT_TASK_CLASS_CONTRACT_PATH = (
     / "task_class_contracts.v1.yaml"
 )
 
-_DEFAULT_BIFROST_CONTRACT_PATH = (
-    Path.home() / ".omninode" / "delegation" / "bifrost_delegation.yaml"
-)
-
-_SOURCE_BIFROST_CONTRACT_PATH = (
-    Path(__file__).parent.parent.parent.parent / "configs" / "bifrost_delegation.yaml"
-)
-
 # Module-level config singletons — loaded once on first call.
 # Tests can override by replacing these variables before calling delta().
 _config: ModelDelegationConfig | None = None
@@ -247,7 +241,7 @@ def _get_config() -> ModelDelegationConfig:
 
 
 class BifrostBackendRef:
-    """Resolved backend from the deployed bifrost contract."""
+    """Resolved backend from the bifrost contract plus endpoint overlay."""
 
     __slots__ = ("endpoint_url", "model_name")
 
@@ -258,41 +252,36 @@ class BifrostBackendRef:
 
 @lru_cache(maxsize=1)
 def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
-    """Load backend info from the deployed bifrost contract.
+    """Load backend info from the default bifrost contract plus endpoint overlay.
 
-    Resolution order:
-      1. BIFROST_CONTRACT_PATH env var (test/override)
-      2. ~/.omninode/delegation/bifrost_delegation.yaml (installed by installer)
-      3. Source configs/bifrost_delegation.yaml (development fallback)
+    ``BIFROST_CONTRACT_PATH`` can replace the default contract in tests and
+    staging. ``BIFROST_OVERLAY_PATH`` can replace the endpoint overlay path.
 
     Returns a dict mapping backend_id → BifrostBackendRef (endpoint_url + model_name).
     """
     env_path = os.environ.get(
         "BIFROST_CONTRACT_PATH", ""
     )  # ONEX_EXCLUDE: env_access - contract path override for testing
-    if env_path:
-        contract_path = Path(env_path)
-    elif _DEFAULT_BIFROST_CONTRACT_PATH.exists():
-        contract_path = _DEFAULT_BIFROST_CONTRACT_PATH
-    else:
-        contract_path = _SOURCE_BIFROST_CONTRACT_PATH
+    overlay_path = os.environ.get(
+        "BIFROST_OVERLAY_PATH", ""
+    )  # ONEX_EXCLUDE: env_access - contract path override for testing
 
-    if not contract_path.exists():
-        return {}
-
-    raw = yaml.safe_load(contract_path.read_text())
-    if not isinstance(raw, dict):
+    try:
+        config = load_bifrost_delegation_config(
+            config_path=Path(env_path) if env_path else None,
+            overlay_path=Path(overlay_path) if overlay_path else None,
+        )
+    except (FileNotFoundError, ValueError, yaml.YAMLError):
         return {}
 
     backends: dict[str, BifrostBackendRef] = {}
-    for backend in raw.get("backends", []):
-        if not isinstance(backend, dict):
-            continue
-        bid = backend.get("backend_id", "")
-        url = backend.get("endpoint_url", "")
-        model_name = backend.get("model_name", "")
-        if bid and url:
-            backends[bid] = BifrostBackendRef(endpoint_url=url, model_name=model_name)
+    for backend in config.backends:
+        url = backend.endpoint_url.strip()
+        if backend.backend_id and url:
+            backends[backend.backend_id] = BifrostBackendRef(
+                endpoint_url=url,
+                model_name=backend.model_name,
+            )
 
     return backends
 
@@ -518,7 +507,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     task type, and satisfies task-class contract constraints (cloud routing policy
     and pricing ceiling).
 
-    Endpoint URLs are resolved from the deployed bifrost contract, not env vars.
+    Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
     Args:
         request: The delegation request to route.
@@ -612,8 +601,8 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     )
     msg = (
         f"No tier has a configured endpoint for task_type='{task_type}'. "
-        f"Populate endpoint_url fields in configs/bifrost_delegation.yaml, "
-        f"or set BIFROST_CONTRACT_PATH to a contract with populated endpoint_url fields."
+        f"Populate endpoint_url fields in bifrost_overrides.yaml, "
+        f"or set BIFROST_OVERLAY_PATH to an overlay with endpoint_url fields."
     )
     raise ProtocolConfigurationError(msg, context=context)
 

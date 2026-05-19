@@ -19,7 +19,7 @@ class ModelTierModel(BaseModel):
     id: str = Field(..., description="Model identifier.")
     backend_ref: str = Field(
         ...,
-        description="Backend key in the deployed bifrost contract (bifrost_delegation.yaml).",
+        description="Backend key in the merged bifrost contract.",
     )
     max_context_tokens: int = Field(..., description="Max context window in tokens.")
     use_for: tuple[str, ...] = Field(

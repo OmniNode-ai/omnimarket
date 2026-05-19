@@ -11,13 +11,15 @@
 # Tier evaluation order: local → cheap_cloud → claude
 # The handler iterates tiers top-to-bottom, stopping at the first accepted result.
 #
-# Endpoint URLs are resolved from the deployed bifrost contract at
-# ~/.omninode/delegation/bifrost_delegation.yaml. The backend_id field maps
-# each model to a backend entry in the bifrost contract. See OMN-10657.
+# Endpoint URLs are resolved from the repo bifrost contract deep-merged with
+# the user overlay at ~/.omninode/delegation/bifrost_overrides.yaml. The
+# backend_id field maps each model to a backend entry in the merged contract.
+# See OMN-10657 and OMN-10717.
 #
 # Related Tickets:
 #   - OMN-8029: Delegation pipeline — local→cheap-cloud→claude routing
-#   - OMN-10657: Endpoint resolution from deployed contract, not env vars
+#   - OMN-10657: Endpoint resolution from bifrost contract, not env vars
+#   - OMN-10717: Default contract + endpoint overlay merge semantics
 tiers:
   - name: local
     models:

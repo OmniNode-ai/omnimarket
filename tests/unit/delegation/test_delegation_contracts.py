@@ -117,6 +117,7 @@ class TestRoutingReducerContract:
         data = self._load()
         dep_keys = {d["key"] for d in data["config_dependencies"]}
         assert "BIFROST_CONTRACT_PATH" in dep_keys
+        assert "BIFROST_OVERLAY_PATH" in dep_keys
 
     def test_bifrost_contract_path_is_optional(self) -> None:
         data = self._load()
@@ -125,6 +126,10 @@ class TestRoutingReducerContract:
             "BIFROST_CONTRACT_PATH missing from config_dependencies"
         )
         assert deps["BIFROST_CONTRACT_PATH"]["required"] is False
+        assert "BIFROST_OVERLAY_PATH" in deps, (
+            "BIFROST_OVERLAY_PATH missing from config_dependencies"
+        )
+        assert deps["BIFROST_OVERLAY_PATH"]["required"] is False
 
 
 @pytest.mark.unit
