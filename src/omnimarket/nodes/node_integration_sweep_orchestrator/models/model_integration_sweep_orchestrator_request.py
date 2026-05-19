@@ -25,7 +25,7 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
         description="Optional directory for drift/dod_receipts. Defaults to artifact_root/drift/dod_receipts.",
     )
     runtime_host: str = Field(
-        default="192.168.86.201",  # onex-allow-internal-ip: .201 runtime gate default
+        default="192.168.86.201",  # onex-allow-internal-ip OMN-9334 reason="default runtime host for SHA probe; overridden by caller or env; not a shipping connection string"
         description="Runtime SSH host for runtime_sha_match probes.",
     )
     runtime_repo_path: str = Field(

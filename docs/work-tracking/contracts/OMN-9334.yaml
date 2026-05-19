@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-9334
+title: "runtime_sha_match verifier + integration-sweep orchestrator wiring"
+summary: "Implements the Phase 1 SSH-probe verifier and wires it into the integration-sweep orchestrator. Every 15-min integration-sweep tick probes .201 runtime for deployed git SHA; stale runtimes write FAIL receipts that block Done transitions."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "node_dod_verify.handler_runtime_sha_verify"
+  - "node_integration_sweep_orchestrator.handler_integration_sweep_orchestrator"
+evidence_requirements:
+  - kind: tests
+    description: "runtime_sha_verify handler tests pass"
+    command: "uv run pytest tests/test_runtime_sha_verify_handler.py -v"
+  - kind: tests
+    description: "integration_sweep_orchestrator golden-chain tests pass"
+    command: "uv run pytest tests/test_golden_chain_integration_sweep_orchestrator.py -v"
+  - kind: ci
+    description: "omnimarket PR #709 CI green"
+    command: "gh pr checks 709 --repo OmniNode-ai/omnimarket"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-001
+    description: "runtime_sha_verify handler tests pass — 14 tests covering match, stale, error, and probe-method cases"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_runtime_sha_verify_handler.py -v --tb=short"
+  - id: dod-002
+    description: "integration_sweep_orchestrator golden-chain tests pass — writes artifact, stale-blocks, dry-run, contract declares implemented"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_golden_chain_integration_sweep_orchestrator.py -v --tb=short"
+  - id: dod-deploy
+    description: "Deploy gate evidence — this PR ships handler logic and model wiring only; no new Kafka topics, no container restart required. Runtime picks up on next omnimarket image rebuild."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_dod_verify.handlers.handler_runtime_sha_verify import HandlerRuntimeShaVerify; print('runtime_sha_verify deploy smoke ok')\""

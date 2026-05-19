@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# onex-allow-file OMN-9334 reason="test fixture — uses .201 lab endpoint as integration-sweep test input; not a runtime default or shipping connection string"
 from __future__ import annotations
 
 import json
