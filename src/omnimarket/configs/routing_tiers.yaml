@@ -48,6 +48,18 @@ tiers:
     max_retries: 2
   - name: cheap_cloud
     models:
+      # OpenRouter GLM Flash — primary cheap-cloud code-gen backend (OMN-7980).
+      # Requires OPENROUTER_API_KEY. Falls back to glm-z-ai when key absent.
+      - id: openrouter-glm-flash
+        backend_id: openrouter-glm-flash
+        max_context_tokens: 131072
+        use_for:
+          - code_generation
+          - reasoning
+          - research
+          - test
+          - refactor
+        fast_path_threshold_tokens: 8192
       - id: glm-z-ai
         backend_id: cloud-glm
         max_context_tokens: 128000

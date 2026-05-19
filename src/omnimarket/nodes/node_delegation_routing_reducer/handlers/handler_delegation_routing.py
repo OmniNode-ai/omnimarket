@@ -243,11 +243,19 @@ def _get_config() -> ModelDelegationConfig:
 class BifrostBackendRef:
     """Resolved backend from the bifrost contract plus endpoint overlay."""
 
-    __slots__ = ("endpoint_url", "model_name")
+    __slots__ = ("api_key_ref", "endpoint_url", "extra_headers", "model_name")
 
-    def __init__(self, endpoint_url: str, model_name: str) -> None:
+    def __init__(
+        self,
+        endpoint_url: str,
+        model_name: str,
+        api_key_ref: str | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
         self.endpoint_url = endpoint_url
         self.model_name = model_name
+        self.api_key_ref = api_key_ref
+        self.extra_headers = extra_headers
 
 
 @lru_cache(maxsize=1)
@@ -257,7 +265,11 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     ``BIFROST_CONTRACT_PATH`` can replace the default contract in tests and
     staging. ``BIFROST_OVERLAY_PATH`` can replace the endpoint overlay path.
 
-    Returns a dict mapping backend_id → BifrostBackendRef (endpoint_url + model_name).
+    Returns a dict mapping backend_id → BifrostBackendRef.
+
+    When a backend declares ``api_key_env``, the environment variable must be
+    present for the backend to be routable. The routing decision carries only
+    the secret reference, not the secret value.
     """
     env_path = os.environ.get(
         "BIFROST_CONTRACT_PATH", ""
@@ -267,9 +279,12 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     )  # ONEX_EXCLUDE: env_access - contract path override for testing
 
     try:
+        overlay_override = Path(overlay_path) if overlay_path else None
+        if env_path and overlay_override is None:
+            overlay_override = Path("__omnimarket_no_bifrost_overlay__.yaml")
         config = load_bifrost_delegation_config(
             config_path=Path(env_path) if env_path else None,
-            overlay_path=Path(overlay_path) if overlay_path else None,
+            overlay_path=overlay_override,
         )
     except (FileNotFoundError, ValueError, yaml.YAMLError):
         return {}
@@ -277,11 +292,24 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     backends: dict[str, BifrostBackendRef] = {}
     for backend in config.backends:
         url = backend.endpoint_url.strip()
-        if backend.backend_id and url:
-            backends[backend.backend_id] = BifrostBackendRef(
-                endpoint_url=url,
-                model_name=backend.model_name,
-            )
+        if not (backend.backend_id and url):
+            continue
+
+        api_key_ref: str | None = None
+        if backend.api_key_env:
+            env_value = os.environ.get(backend.api_key_env)  # ONEX_FLAG_EXEMPT: bifrost
+            if not env_value:
+                continue
+            api_key_ref = backend.api_key_env
+
+        backends[backend.backend_id] = BifrostBackendRef(
+            endpoint_url=url,
+            model_name=backend.model_name,
+            api_key_ref=api_key_ref,
+            extra_headers=dict(backend.extra_headers)
+            if backend.extra_headers
+            else None,
+        )
 
     return backends
 
@@ -586,6 +614,8 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             selected_model=model_name,
             selected_backend_id=_backend_id_for_model(selected.id),
             endpoint_url=backend.endpoint_url,
+            api_key_ref=backend.api_key_ref,
+            extra_headers=backend.extra_headers,
             cost_tier=cost_tier,
             max_context_tokens=selected.max_context_tokens,
             system_prompt=system_prompt,

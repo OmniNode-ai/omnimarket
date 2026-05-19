@@ -32,6 +32,11 @@
 version: "1.0"
 default_task_model_ref: "qwen3-coder-30b"
 task_model_overrides:
+  # OMN-7980: OpenRouter GLM Flash is the primary code-gen backend (preferred in cheap_cloud tier).
+  # Local Qwen3-Coder-30B is the fallback when OPENROUTER_API_KEY is absent.
+  code_generation: "openrouter-glm-flash"
+  test: "openrouter-glm-flash"
+  refactor: "openrouter-glm-flash"
   reasoning: "deepseek-r1-14b"
   complex_reasoning: "deepseek-r1-14b"
   planning: "deepseek-r1-14b"
@@ -55,9 +60,10 @@ task_classes:
         - no_obvious_regressions
     escalation_policy:
       max_escalations: 2
+      # OMN-7980: OpenRouter (cheap_cloud) is primary; local is fallback when key absent.
       tier_order:
-        - local
         - cheap_cloud
+        - local
         - claude
   documentation:
     required_capabilities:

@@ -1,0 +1,34 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-7980
+title: "Wire OpenRouter GLM Flash as primary code-generation delegation backend"
+summary: "Routes code-generation delegation through the contract-declared OpenRouter GLM Flash backend while preserving local fallback routing and propagating provider auth metadata."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "delegation_routing_contract"
+  - "bifrost_delegation_config"
+evidence_requirements:
+  - kind: "manual"
+    description: "OpenRouter delegation routing unit tests pass"
+    command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_openrouter_routing.py -q"
+  - kind: "manual"
+    description: "Post-merge deploy validation checks runtime Bifrost endpoint loading before promotion"
+    command: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import _load_bifrost_endpoints; endpoints=_load_bifrost_endpoints(); assert 'openrouter-glm-flash' in endpoints\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-openrouter-routing-tests"
+    description: "OpenRouter delegation routing unit tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_openrouter_routing.py -q"
+  - id: "dod-deploy-openrouter-routing-validation"
+    description: "Post-merge deploy validation checks OpenRouter backend config loads in runtime; no live deploy or restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import _load_bifrost_endpoints; endpoints=_load_bifrost_endpoints(); assert 'openrouter-glm-flash' in endpoints\""
