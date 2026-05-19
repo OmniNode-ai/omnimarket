@@ -1,0 +1,22 @@
+principle_code: ARCH-004
+name: event_bus_di_projections
+violation_category: runtime_topology
+severity: ERROR
+enforcement_surfaces:
+  - static_architecture
+  - ci_gate
+  - runtime_validation
+description: >
+  The event_bus dependency must always be resolved via the DI container.
+  Assigning event_bus = None bypasses the container, producing invisible wiring
+  failures at runtime. Projection consumers must receive an authoritative bus
+  reference from the container.
+violation_examples:
+  - "self._event_bus = None  # bypasses DI container"
+  - "event_bus = None  # direct assignment"
+runtime_scope: handler
+generated_from_principle: ARCH-004
+generated_at: "2026-05-18T00:00:00+00:00"
+source_incidents:
+  - OMN-6930
+generator_tag: "1.0.0"
