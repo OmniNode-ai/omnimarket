@@ -16,6 +16,22 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
             "or the current working directory."
         ),
     )
+    contracts_dir: str = Field(
+        default="",
+        description="Optional directory containing contracts/<ticket>.yaml. Defaults to artifact_root/contracts.",
+    )
+    receipts_dir: str = Field(
+        default="",
+        description="Optional directory for drift/dod_receipts. Defaults to artifact_root/drift/dod_receipts.",
+    )
+    runtime_host: str = Field(
+        default="192.168.86.201",  # onex-allow-internal-ip: .201 runtime gate default
+        description="Runtime SSH host for runtime_sha_match probes.",
+    )
+    runtime_repo_path: str = Field(
+        default="/data/omninode/omni_home/omnimarket",
+        description="Repo path on the runtime host used by the phase-1 SSH git SHA probe.",
+    )
     artifact_date: str = Field(
         default="",
         description="ISO date used in the artifact filename. Defaults to today.",
