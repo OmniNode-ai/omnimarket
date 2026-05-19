@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-7981
+title: "Resurrect hostile_reviewer with contract-driven model routing"
+summary: "Contract-driven model routing for node_hostile_reviewer. Endpoints declared in
+  contract.yaml model_routing, resolved from env vars at runtime. N-1 graceful degradation.
+  Re-enabled as gate in ticket_pipeline."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "Contract-driven model routing unit tests pass"
+    command: "uv run pytest tests/test_hostile_reviewer_contract_routing.py -v"
+  - kind: tests
+    description: "Existing hostile reviewer tests pass"
+    command: "uv run pytest tests/test_node_hostile_reviewer_contract.py -v"
+  - kind: deploy
+    description: "Node available via onex run-node with dry_run=true"
+    command: "uv run onex run-node node_hostile_reviewer --input '{\"dry_run\": true}' 2>/dev/null"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "Contract-driven model routing unit tests pass (12 new tests)"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_hostile_reviewer_contract_routing.py -v"
+  - id: dod-regression
+    description: "Existing hostile reviewer contract tests pass"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/test_node_hostile_reviewer_contract.py -v"
+  - id: dod-deploy
+    description: "deploy gate: node_hostile_reviewer available via onex run-node with dry_run"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run onex run-node node_hostile_reviewer --input '{\"dry_run\": true}' 2>/dev/null"
