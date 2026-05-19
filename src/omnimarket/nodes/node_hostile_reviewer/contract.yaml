@@ -156,6 +156,19 @@ dependencies:
     - "omnibase_core>=0.39.0"
     - "httpx>=0.27.0"
 
+dod_evidence:
+  ticket_id: "OMN-7981"
+  evidence_requirements:
+    - kind: "tests"
+      description: "Contract-driven model routing unit tests (12 new)"
+      command: "uv run pytest tests/test_hostile_reviewer_contract_routing.py -v"
+    - kind: "tests"
+      description: "Existing golden chain + contract routing regression tests"
+      command: "uv run pytest tests/test_node_hostile_reviewer_contract.py tests/test_golden_chain_hostile_reviewer.py -v"
+    - kind: "deploy"
+      description: "Node available via onex run-node node_hostile_reviewer"
+      command: "uv run onex run-node node_hostile_reviewer --input '{\"dry_run\": true}' 2>/dev/null"
+
 metadata:
   transport_type: kafka
   description: "Multi-model adversarial code review WorkflowPackage"
