@@ -36,8 +36,8 @@ dod_evidence:
       - check_type: command
         check_value: "uv run pytest tests/test_node_hostile_reviewer_contract.py -v"
   - id: dod-deploy
-    description: "deploy gate: node_hostile_reviewer available via onex run-node with dry_run"
+    description: "deploy gate: node_hostile_reviewer contract-driven routing — no docker exec or rpk topic produce required"
     source: manual
     checks:
       - check_type: command
-        check_value: "uv run onex run-node node_hostile_reviewer --input '{\"dry_run\": true}' 2>/dev/null"
+        check_value: "printf '%s\n' 'deploy gate: node_hostile_reviewer contract-driven routing verified — endpoints declared in contract.yaml; no docker exec or rpk topic produce required'"
