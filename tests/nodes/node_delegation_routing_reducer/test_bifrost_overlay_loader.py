@@ -83,7 +83,7 @@ def test_deep_merge_preserves_new_default_backend_with_overlay_endpoint() -> Non
         "backends": [
             {
                 "backend_id": "local-qwen-coder-30b",
-                "endpoint_url": "http://local.test:8000",
+                "endpoint_url": "https://local.test:8000",
             }
         ]
     }
@@ -91,7 +91,7 @@ def test_deep_merge_preserves_new_default_backend_with_overlay_endpoint() -> Non
     merged = deep_merge_bifrost_delegation_config(default, overlay)
 
     by_id = {backend["backend_id"]: backend for backend in merged["backends"]}
-    assert by_id["local-qwen-coder-30b"]["endpoint_url"] == "http://local.test:8000"
+    assert by_id["local-qwen-coder-30b"]["endpoint_url"] == "https://local.test:8000"
     assert by_id["local-qwen-coder-30b"]["model_name"] == "qwen-coder"
     assert by_id["future-backend"]["endpoint_url"] == ""
 
@@ -106,7 +106,7 @@ def test_loader_deep_merges_overlay_file(tmp_path: Path) -> None:
             """\
             backends:
               - backend_id: local-qwen-coder-30b
-                endpoint_url: "http://local.test:8000"
+                endpoint_url: "https://local.test:8000"
             """
         )
     )
@@ -114,7 +114,7 @@ def test_loader_deep_merges_overlay_file(tmp_path: Path) -> None:
     config = load_bifrost_delegation_config(default_path, overlay_path)
 
     by_id = {backend.backend_id: backend for backend in config.backends}
-    assert by_id["local-qwen-coder-30b"].endpoint_url == "http://local.test:8000"
+    assert by_id["local-qwen-coder-30b"].endpoint_url == "https://local.test:8000"
     assert by_id["future-backend"].model_name == "future-model"
 
 
@@ -132,7 +132,7 @@ def test_routing_loader_uses_overlay_path(
     overlay_path.write_text(
         "backends:\n"
         "  - backend_id: local-qwen-coder-30b\n"
-        '    endpoint_url: "http://local.test:8000"\n'
+        '    endpoint_url: "https://local.test:8000"\n'
     )
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(default_path))
     monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay_path))
@@ -140,5 +140,5 @@ def test_routing_loader_uses_overlay_path(
 
     endpoints = routing._load_bifrost_endpoints()
 
-    assert endpoints["local-qwen-coder-30b"].endpoint_url == "http://local.test:8000"
+    assert endpoints["local-qwen-coder-30b"].endpoint_url == "https://local.test:8000"
     assert "future-backend" not in endpoints
