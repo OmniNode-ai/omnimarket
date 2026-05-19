@@ -1,0 +1,9 @@
+name: node_contract_registry
+version: 0.1.0
+description: Central policy enforcement for dynamic contract registration.
+pack: platform
+display_name: Contract Registry
+node_role: effect
+entry_points:
+  onex.nodes:
+    node_contract_registry: "omnimarket.nodes.node_contract_registry"
