@@ -31,6 +31,11 @@ inputs:
     description: "Specific invariant principle codes to evaluate; null means all"
     required: false
     default: null
+  waived:
+    type: list[str] | null
+    description: "Violation waiver keys to mark as waived (ARCH-###, ARCH-###:path, or ARCH-###:path:line)"
+    required: false
+    default: null
   dry_run:
     type: bool
     description: "If true, report violations without emitting events"

@@ -21,11 +21,12 @@ from omnimarket.nodes.node_architectural_invariant_loop.handlers.handler_archite
     _check_no_hardcoded_paths,
     _check_no_silent_fallback,
     _load_invariant_contracts,
+    _severity_gte,
 )
 
 
-def _make_handler() -> NodeArchitecturalInvariantLoop:
-    return NodeArchitecturalInvariantLoop(event_bus=MagicMock())
+def _make_handler(event_bus: MagicMock | None = None) -> NodeArchitecturalInvariantLoop:
+    return NodeArchitecturalInvariantLoop(event_bus=event_bus or MagicMock())
 
 
 @pytest.mark.unit
@@ -90,6 +91,14 @@ class TestCheckerContractDrivenRouting:
         violations = _check_contract_driven_routing("myrepo", py_file, tmp_path)
         assert violations == []
 
+    def test_skips_approved_topic_markers(self, tmp_path: Path) -> None:
+        py_file = tmp_path / "handler.py"
+        py_file.write_text(
+            'TOPIC = "onex.cmd.omnimarket.foo.v1"  # onex-topic-allow: pending contract wiring\n'
+        )
+        violations = _check_contract_driven_routing("myrepo", py_file, tmp_path)
+        assert violations == []
+
 
 @pytest.mark.unit
 class TestCheckerEventBusDI:
@@ -125,16 +134,21 @@ class TestCheckerNoHardcodedPaths:
 
 @pytest.mark.unit
 class TestHandlerIntegration:
+    def test_rejects_unknown_severity_threshold(self) -> None:
+        with pytest.raises(ValueError, match="Unknown severity threshold"):
+            _severity_gte("WARNING", "NOTICE")
+
     def test_empty_target_dirs_returns_no_violations(self) -> None:
         handler = _make_handler()
         result = handler.handle(ArchInvariantLoopRequest(target_dirs=[]))
         assert result.violations == []
         assert result.invariants_evaluated == 5
 
-    def test_nonexistent_dir_skipped(self) -> None:
+    def test_nonexistent_dir_skipped(self, tmp_path: Path) -> None:
         handler = _make_handler()
+        missing_dir = tmp_path / "nonexistent" / "repo"
         result = handler.handle(
-            ArchInvariantLoopRequest(target_dirs=["/nonexistent/path/repo"])
+            ArchInvariantLoopRequest(target_dirs=[str(missing_dir)])
         )
         assert result.violations == []
 
@@ -168,6 +182,67 @@ class TestHandlerIntegration:
         )
         assert result.summary["total_violations"] >= 1
         assert "ARCH-004" in result.summary["by_principle"]
+
+    def test_waived_violation_marked_and_not_published(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "module.py").write_text("event_bus = None\n")
+        event_bus = MagicMock()
+        handler = _make_handler(event_bus)
+        result = handler.handle(
+            ArchInvariantLoopRequest(
+                target_dirs=[str(tmp_path)],
+                invariant_ids=["ARCH-004"],
+                waived=["ARCH-004:src/module.py"],
+            )
+        )
+        assert len(result.violations) == 1
+        assert result.violations[0].waived is True
+        assert result.summary["waived_violations"] == 1
+        published_topics = [
+            call.kwargs["topic"] for call in event_bus.publish.call_args_list
+        ]
+        assert published_topics == [
+            "onex.evt.omnimarket.arch-invariant-loop-completed.v1"
+        ]
+
+    def test_live_run_publishes_violation_and_completion(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "module.py").write_text("event_bus = None\n")
+        event_bus = MagicMock()
+        handler = _make_handler(event_bus)
+        result = handler.handle(
+            ArchInvariantLoopRequest(
+                target_dirs=[str(tmp_path)],
+                invariant_ids=["ARCH-004"],
+            )
+        )
+        assert len(result.violations) == 1
+        published_topics = [
+            call.kwargs["topic"] for call in event_bus.publish.call_args_list
+        ]
+        assert published_topics == [
+            "onex.evt.omnimarket.arch-invariant-violation.v1",
+            "onex.evt.omnimarket.arch-invariant-loop-completed.v1",
+        ]
+
+    def test_dry_run_evaluates_without_publishing(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "module.py").write_text("event_bus = None\n")
+        event_bus = MagicMock()
+        handler = _make_handler(event_bus)
+        result = handler.handle(
+            ArchInvariantLoopRequest(
+                target_dirs=[str(tmp_path)],
+                invariant_ids=["ARCH-004"],
+                dry_run=True,
+            )
+        )
+        assert len(result.violations) == 1
+        assert result.summary["dry_run"] is True
+        event_bus.publish.assert_not_called()
 
     def test_severity_threshold_filters_below(self, tmp_path: Path) -> None:
         src = tmp_path / "src"

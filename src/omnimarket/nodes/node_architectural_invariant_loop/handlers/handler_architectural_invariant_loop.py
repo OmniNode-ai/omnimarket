@@ -12,6 +12,9 @@ ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+import json
 import logging
 import re
 import time
@@ -32,13 +35,15 @@ logger = logging.getLogger(__name__)
 _INVARIANTS_DIR = Path(__file__).parent.parent / "invariants"
 
 
-def _load_violation_topic() -> str:
-    """Load the violation publish topic from this node's contract.yaml."""
+def _load_publish_topics() -> tuple[str, str]:
+    """Load publish topics from this node's contract.yaml."""
     contract_path = Path(__file__).parent.parent / "contract.yaml"
     with open(contract_path) as f:
         data: dict[str, Any] = yaml.safe_load(f)
     topics: list[str] = data.get("event_bus", {}).get("publish_topics", [])
-    return next((t for t in topics if "violation" in t), "")
+    violation_topic = next((t for t in topics if "violation" in t), "")
+    completed_topic = next((t for t in topics if "completed" in t), "")
+    return violation_topic, completed_topic
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +58,7 @@ class ArchInvariantLoopRequest(BaseModel):
 
     target_dirs: list[str] = Field(default_factory=list)
     invariant_ids: list[str] | None = Field(default=None)
+    waived: list[str] | None = Field(default=None)
     dry_run: bool = Field(default=False)
     severity_threshold: str = Field(default="WARNING")
 
@@ -102,7 +108,33 @@ _SEVERITY_ORDER: dict[str, int] = {
 
 
 def _severity_gte(a: str, b: str) -> bool:
-    return _SEVERITY_ORDER.get(a, 0) >= _SEVERITY_ORDER.get(b, 0)
+    if a not in _SEVERITY_ORDER:
+        raise ValueError(f"Unknown violation severity: {a}")
+    if b not in _SEVERITY_ORDER:
+        raise ValueError(f"Unknown severity threshold: {b}")
+    return _SEVERITY_ORDER[a] >= _SEVERITY_ORDER[b]
+
+
+def _is_topic_suppressed(line: str, py_file: Path) -> bool:
+    return "onex-topic-" in line or "contract_topics" in py_file.stem
+
+
+def _violation_waiver_keys(violation: ArchInvariantViolation) -> set[str]:
+    path_key = f"{violation.principle_code}:{violation.path}"
+    line_key = f"{path_key}:{violation.line}"
+    repo_path_key = f"{violation.principle_code}:{violation.repo}:{violation.path}"
+    repo_line_key = f"{repo_path_key}:{violation.line}"
+    return {
+        violation.principle_code,
+        path_key,
+        line_key,
+        repo_path_key,
+        repo_line_key,
+    }
+
+
+def _apply_waiver(violation: ArchInvariantViolation) -> ArchInvariantViolation:
+    return violation.model_copy(update={"waived": True})
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +236,7 @@ def _check_contract_driven_routing(
     topic_pattern = re.compile(r'["\']onex\.(cmd|evt)\.[a-z]')
     lines = py_file.read_text(encoding="utf-8", errors="replace").splitlines()
     for lineno, line in enumerate(lines, 1):
-        if "# onex-topic-ok" in line or "contract_topics" in py_file.stem:
+        if _is_topic_suppressed(line, py_file):
             continue
         if topic_pattern.search(line):
             violations.append(
@@ -301,45 +333,136 @@ class NodeArchitecturalInvariantLoop:
 
     def __init__(self, event_bus: ProtocolEventBusPublisher) -> None:
         self._event_bus = event_bus
-        self._violation_topic = _load_violation_topic()
+        self._violation_topic, self._completed_topic = _load_publish_topics()
 
     def handle(self, request: ArchInvariantLoopRequest) -> ArchInvariantLoopResult:
         """Evaluate all applicable invariant contracts and return violations."""
         start_ts = time.monotonic()
-        contracts = _load_invariant_contracts(request.invariant_ids)
-        invariant_ids_active = {c.get("principle_code", "") for c in contracts}
+        try:
+            contracts = _load_invariant_contracts(request.invariant_ids)
+            invariant_ids_active = {c.get("principle_code", "") for c in contracts}
 
-        violations: list[ArchInvariantViolation] = []
+            violations: list[ArchInvariantViolation] = []
+            waived = set(request.waived or [])
 
-        for target_dir in request.target_dirs:
-            target = Path(target_dir)
-            if not target.is_dir():
+            for target_dir in request.target_dirs:
+                target = Path(target_dir)
+                if not target.is_dir():
+                    continue
+                repo_name = target.name
+                src_dir = target / "src"
+                if not src_dir.is_dir():
+                    src_dir = target
+
+                py_files = self._collect_python_files(src_dir)
+
+                for py_file in py_files:
+                    for principle_code, checker in _CHECKER_MAP.items():
+                        if principle_code not in invariant_ids_active:
+                            continue
+                        found = checker(repo_name, py_file, target)
+                        for v in found:
+                            if not _severity_gte(
+                                v.severity, request.severity_threshold
+                            ):
+                                continue
+                            if _violation_waiver_keys(v).isdisjoint(waived):
+                                violations.append(v)
+                                continue
+                            violations.append(_apply_waiver(v))
+
+            elapsed_ms = (time.monotonic() - start_ts) * 1000.0
+            summary = self._build_summary(violations, len(contracts), request.dry_run)
+            result = ArchInvariantLoopResult(
+                violations=violations,
+                summary=summary,
+                invariants_evaluated=len(contracts),
+                elapsed_ms=elapsed_ms,
+            )
+            if not request.dry_run:
+                self._publish_result_events(result, status="completed")
+            return result
+        except Exception as exc:
+            elapsed_ms = (time.monotonic() - start_ts) * 1000.0
+            if not request.dry_run:
+                self._publish_completion(
+                    status="failed",
+                    elapsed_ms=elapsed_ms,
+                    error=str(exc),
+                )
+            raise
+
+    def _publish_result_events(
+        self,
+        result: ArchInvariantLoopResult,
+        *,
+        status: str,
+    ) -> None:
+        for violation in result.violations:
+            if violation.waived:
                 continue
-            repo_name = target.name
-            src_dir = target / "src"
-            if not src_dir.is_dir():
-                src_dir = target
-
-            py_files = self._collect_python_files(src_dir)
-
-            for py_file in py_files:
-                for principle_code, checker in _CHECKER_MAP.items():
-                    if principle_code not in invariant_ids_active:
-                        continue
-                    found = checker(repo_name, py_file, target)
-                    for v in found:
-                        if _severity_gte(v.severity, request.severity_threshold):
-                            violations.append(v)
-
-        elapsed_ms = (time.monotonic() - start_ts) * 1000.0
-        summary = self._build_summary(violations, len(contracts))
-
-        return ArchInvariantLoopResult(
-            violations=violations,
-            summary=summary,
-            invariants_evaluated=len(contracts),
-            elapsed_ms=elapsed_ms,
+            self._publish_event(
+                self._violation_topic,
+                {
+                    "event_type": "arch_invariant_violation",
+                    "violation": violation.model_dump(mode="json"),
+                    "evaluated_at": result.evaluated_at.isoformat(),
+                },
+            )
+        self._publish_completion(
+            status=status,
+            elapsed_ms=result.elapsed_ms,
+            summary=result.summary,
+            invariants_evaluated=result.invariants_evaluated,
         )
+
+    def _publish_completion(
+        self,
+        *,
+        status: str,
+        elapsed_ms: float,
+        summary: dict[str, Any] | None = None,
+        invariants_evaluated: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "event_type": "arch_invariant_loop_completed",
+            "status": status,
+            "elapsed_ms": elapsed_ms,
+            "completed_at": datetime.now(tz=UTC).isoformat(),
+        }
+        if summary is not None:
+            payload["summary"] = summary
+        if invariants_evaluated is not None:
+            payload["invariants_evaluated"] = invariants_evaluated
+        if error is not None:
+            payload["error"] = error
+        self._publish_event(self._completed_topic, payload)
+
+    def _publish_event(self, topic: str, payload: dict[str, Any]) -> None:
+        try:
+            published = self._event_bus.publish(
+                topic=topic,
+                key=None,
+                value=json.dumps(payload, sort_keys=True).encode(),
+            )
+            if inspect.isawaitable(published):
+                try:
+                    asyncio.get_running_loop()
+                except RuntimeError:
+                    asyncio.run(published)
+                else:
+                    task = asyncio.create_task(published)
+                    task.add_done_callback(self._log_publish_task_result)
+        except Exception as exc:  # pragma: no cover - defensive bus boundary
+            logger.warning("arch invariant event publish to %s failed: %s", topic, exc)
+
+    @staticmethod
+    def _log_publish_task_result(task: asyncio.Task[Any]) -> None:
+        try:
+            task.result()
+        except Exception as exc:  # pragma: no cover - async defensive boundary
+            logger.warning("arch invariant async event publish failed: %s", exc)
 
     def _collect_python_files(self, root: Path) -> list[Path]:
         exclude_dirs = {".git", ".venv", "__pycache__", "docs", "fixtures"}
@@ -354,11 +477,15 @@ class NodeArchitecturalInvariantLoop:
         self,
         violations: list[ArchInvariantViolation],
         invariants_evaluated: int,
+        dry_run: bool,
     ) -> dict[str, Any]:
         by_severity: dict[str, int] = {}
         by_category: dict[str, int] = {}
         by_principle: dict[str, int] = {}
+        waived_count = 0
         for v in violations:
+            if v.waived:
+                waived_count += 1
             by_severity[v.severity] = by_severity.get(v.severity, 0) + 1
             by_category[v.violation_category] = (
                 by_category.get(v.violation_category, 0) + 1
@@ -366,7 +493,9 @@ class NodeArchitecturalInvariantLoop:
             by_principle[v.principle_code] = by_principle.get(v.principle_code, 0) + 1
         return {
             "total_violations": len(violations),
+            "waived_violations": waived_count,
             "invariants_evaluated": invariants_evaluated,
+            "dry_run": dry_run,
             "by_severity": by_severity,
             "by_category": by_category,
             "by_principle": by_principle,
