@@ -10,11 +10,12 @@
 #   - OMN-7802: Update contract for new handler routing
 #   - OMN-7781: Unified LLM Workflow Migration epic
 #   - OMN-9269: Repair handler_routing drift (1 topic / 7 handlers / missing event_model)
+#   - OMN-7981: Contract-driven model routing (replaces hardcoded env var reads)
 ---
 name: hostile_reviewer
-contract_version: {major: 3, minor: 0, patch: 0}
+contract_version: {major: 3, minor: 1, patch: 0}
 node_type: workflow
-node_version: {major: 3, minor: 0, patch: 0}
+node_version: {major: 3, minor: 1, patch: 0}
 
 description: >
   Multi-model adversarial code review WorkflowPackage. Coordinates dispatch of
@@ -115,6 +116,30 @@ event_bus:
     - onex.evt.omnimarket.hostile-reviewer-convergence-reduced.v1
     - onex.evt.omnimarket.hostile-reviewer-inference-dispatched.v1
 
+model_routing:
+  coder:
+    policy_id: "coder"
+    endpoint_env: "LLM_CODER_URL"
+    context_window: 112000
+    transport: "http"
+    timeout_seconds: 90.0
+    description: "Qwen3-Coder-30B — primary local code review backend"
+  judge:
+    policy_id: "judge"
+    endpoint_env: "LLM_DEEPSEEK_R1_URL"
+    context_window: 32000
+    transport: "http"
+    timeout_seconds: 90.0
+    description: "DeepSeek-R1 — reasoning specialist for adversarial review"
+  codex:
+    policy_id: "codex"
+    endpoint_env: ""
+    context_window: 64000
+    transport: "cli"
+    cli_command: "codex"
+    timeout_seconds: 120.0
+    description: "Codex CLI — code review via CLI subprocess"
+
 config:
   openrouter_base_url:
     env_var: "OPENROUTER_BASE_URL"
@@ -136,7 +161,7 @@ metadata:
   description: "Multi-model adversarial code review WorkflowPackage"
   author: "OmniNode Team"
   created: "2026-04-06"
-  updated: "2026-04-07"
+  updated: "2026-05-19"
   tags:
     - "review"
     - "adversarial"
@@ -157,3 +182,4 @@ metadata:
     - "OMN-7801"
     - "OMN-7802"
     - "OMN-9269"
+    - "OMN-7981"
