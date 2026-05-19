@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 RUNTIME_HEALTH_CONTAINER_NAME = "omnibase-infra-omninode-runtime"
 AUTO_WIRING_COMPLETE_MARKER = "Auto-wiring complete"
 AUTO_WIRING_FAILED_MARKER = "Auto-wiring failed"
+RUNTIME_HEALTH_DOCKER_TIMEOUT_SECONDS = 15
 
 
 class EnumVerificationTarget(StrEnum):
@@ -194,7 +195,25 @@ def probe_runtime_health(
 
 
 def _run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, capture_output=True, check=False, text=True)
+    try:
+        return subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=RUNTIME_HEALTH_DOCKER_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        detail = (
+            stderr.strip()
+            or stdout.strip()
+            or f"timeout after {RUNTIME_HEALTH_DOCKER_TIMEOUT_SECONDS}s"
+        )
+        return subprocess.CompletedProcess(command, 124, stdout=stdout, stderr=detail)
+    except OSError as exc:
+        return subprocess.CompletedProcess(command, 127, stdout="", stderr=str(exc))
 
 
 def _command_error(result: subprocess.CompletedProcess[str]) -> str:

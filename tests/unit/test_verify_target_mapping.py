@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.verify_target_mapping import (
     EnumVerificationOutcome,
     EnumVerificationTarget,
+    _run_command,
     classify_verification_outcome,
     map_changed_files_to_target,
     probe_runtime_health,
@@ -280,6 +281,35 @@ class TestRuntimeHealthProbe:
                 "omnibase-infra-omninode-runtime",
             ),
         ]
+
+    def test_run_command_returns_structured_timeout_failure(self, monkeypatch) -> None:
+        def timeout_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(
+                cmd=("docker", "logs"),
+                timeout=15,
+                output="partial stdout",
+                stderr=None,
+            )
+
+        monkeypatch.setattr(subprocess, "run", timeout_run)
+
+        result = _run_command(("docker", "logs"))
+
+        assert result.returncode == 124
+        assert result.stdout == "partial stdout"
+        assert result.stderr == "partial stdout"
+
+    def test_run_command_returns_structured_os_error_failure(self, monkeypatch) -> None:
+        def os_error_run(*args, **kwargs):
+            raise FileNotFoundError("docker")
+
+        monkeypatch.setattr(subprocess, "run", os_error_run)
+
+        result = _run_command(("docker", "inspect"))
+
+        assert result.returncode == 127
+        assert result.stdout == ""
+        assert result.stderr == "docker"
 
 
 @pytest.mark.unit
