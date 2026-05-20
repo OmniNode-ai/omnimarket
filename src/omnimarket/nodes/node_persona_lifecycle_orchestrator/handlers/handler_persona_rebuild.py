@@ -190,7 +190,7 @@ async def _call_rebuild_port(
     if "correlation_id" in parameters:
         result = await method(user_id=user_id, correlation_id=correlation_id)
     else:
-        result = await method(user_id)  # type: ignore[call-arg]
+        result = await method(user_id)
     return bool(result)
 
 
