@@ -1,0 +1,23 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10604"
+title: "Delegate skill runtime ingress contract"
+summary: "Adds runtime_ingress transport fields to node_delegate_skill_orchestrator so runtime routing can be configured from the node contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Post-merge deploy smoke verifies runtime_ingress is packaged with the delegate skill orchestrator contract"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python - <<'PY'\nfrom pathlib import Path\nimport yaml\npath = Path('/app/omnimarket/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml')\ndata = yaml.safe_load(path.read_text())\nassert 'runtime_ingress' in data\nprint('runtime_ingress deploy smoke ok')\nPY"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-deploy"
+    description: "Runtime contract change deploy evidence: no live deploy, restart, or .201 mutation was performed pre-merge; post-merge smoke verifies runtime_ingress is present in the packaged node_delegate_skill_orchestrator contract."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: post-merge docker exec smoke check verifies runtime_ingress is present in packaged node_delegate_skill_orchestrator contract; no live deploy/restart performed pre-merge'"

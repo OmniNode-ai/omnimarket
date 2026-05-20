@@ -13,7 +13,7 @@ topic: "onex.cmd.omnibase-infra.delegation-request.v1" # onex-topic-sot
 schema_version: "1.0.0"
 ticket: "OMN-7360"
 description: >
-  Delegation request command emitted by omniclaude to delegate tasks (test, document, research) to a local LLM via the ONEX runtime event bus. Prior incident: silent drops caused by field name mismatches between producer and consumer.
+  Delegation request command emitted by omniclaude to delegate tasks through the ONEX runtime event bus. Prior incident: silent drops caused by field name mismatches between producer and consumer.
 
 producer:
   repo: "omniclaude"
@@ -29,9 +29,21 @@ required_fields:
     description: "The user prompt to delegate to the local LLM."
   - name: "task_type"
     type: "string"
-    description: "Classification of the delegation task (test, document, research)."
+    description: "Classification of the delegation task. Must be one of: test, document, research, code_generation, refactor, reasoning, complex_reasoning, planning, review, summarization, agent_delegation, escalation."
     constraints:
-      enum: ["test", "document", "research"]
+      enum:
+        - "test"
+        - "document"
+        - "research"
+        - "code_generation"
+        - "refactor"
+        - "reasoning"
+        - "complex_reasoning"
+        - "planning"
+        - "review"
+        - "summarization"
+        - "agent_delegation"
+        - "escalation"
   - name: "correlation_id"
     type: "uuid"
     description: "Unique identifier for tracking through the pipeline."
