@@ -6,7 +6,7 @@ summary: >
   Adds delegate-skill-completed and delegate-skill-failed topic subscriptions to
   the delegation and savings projection handlers. Materializes typed terminal
   event metrics (token counts, cost, quality gates) into delegation_events and
-  savings_estimates projections.
+  savings_estimates projections. OCC evidence: OCC PR #1234.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched:
