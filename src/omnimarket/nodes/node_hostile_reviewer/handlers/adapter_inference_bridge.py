@@ -4,6 +4,9 @@ Resolves model configuration, constructs OpenAI-compatible requests, dispatches
 via HTTP or CLI subprocess, and returns raw response text.
 
 Defines ``ModelInferenceAdapter`` ABC consumed by the review orchestrator.
+
+Use ``build_from_contract()`` to construct an adapter from contract.yaml
+model_routing declarations (contract-driven, no hardcoded URLs).
 """
 
 from __future__ import annotations
@@ -157,8 +160,33 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         return result.stdout.strip()
 
 
+def build_from_contract(
+    requested_keys: list[str] | None = None,
+) -> AdapterInferenceBridge:
+    """Build an AdapterInferenceBridge from contract.yaml model_routing.
+
+    Reads model_routing declarations from the node contract and resolves
+    endpoint URLs from environment variables at runtime. Models whose endpoints
+    are not configured are silently skipped (N-1 graceful degradation). Logs
+    which models are unavailable so callers can surface the information.
+
+    Args:
+        requested_keys: Subset of model_routing keys to load. None means all.
+
+    Returns:
+        AdapterInferenceBridge wired with available model configs.
+    """
+    from omnimarket.nodes.node_hostile_reviewer.handlers.model_config_loader import (
+        build_model_configs,
+    )
+
+    configs = build_model_configs(requested_keys=requested_keys)
+    return AdapterInferenceBridge(ModelInferenceBridgeConfig(model_configs=configs))
+
+
 __all__: list[str] = [
     "AdapterInferenceBridge",
     "ModelInferenceAdapter",
     "ModelInferenceBridgeConfig",
+    "build_from_contract",
 ]
