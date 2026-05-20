@@ -111,3 +111,11 @@ metadata:
     - "OMN-7040"
     - "OMN-10615"
     - "OMN-10657"
+
+config:
+  BIFROST_CONTRACT_PATH:
+    description: "Path to the Bifrost delegation contract file."
+    required: false
+  TASK_CLASS_CONTRACT_PATH:
+    description: "Path to the task classification contract file."
+    required: false

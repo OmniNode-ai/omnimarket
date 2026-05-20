@@ -271,12 +271,12 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     present for the backend to be routable. The routing decision carries only
     the secret reference, not the secret value.
     """
-    env_path = os.environ.get(
+    env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "BIFROST_CONTRACT_PATH", ""
-    )  # ONEX_EXCLUDE: env_access - contract path override for testing
-    overlay_path = os.environ.get(
+    )
+    overlay_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "BIFROST_OVERLAY_PATH", ""
-    )  # ONEX_EXCLUDE: env_access - contract path override for testing
+    )
 
     try:
         overlay_override = Path(overlay_path) if overlay_path else None
@@ -324,9 +324,9 @@ def _get_task_class_contract() -> dict[str, object] | None:
     value is cached for the process lifetime; tests clear the cache explicitly
     when changing environment overrides.
     """
-    env_path = os.environ.get(
+    env_path = os.environ.get(  # contract-config-ok: config  # ONEX_EXCLUDE: contract path override
         "TASK_CLASS_CONTRACT_PATH", ""
-    )  # ONEX_EXCLUDE: env_access - contract path override for testing
+    )
     contract_path = Path(env_path) if env_path else _DEFAULT_TASK_CLASS_CONTRACT_PATH
 
     if not contract_path.exists():
@@ -362,7 +362,7 @@ def _get_contract_model_ref(
         raw: dict[str, object] | None = contract
     else:
         if contract_path is None:
-            env_path = os.environ.get(
+            env_path = os.environ.get(  # contract-config-ok: config
                 "TASK_CLASS_CONTRACT_PATH", ""
             )  # ONEX_EXCLUDE: env_access - contract path override for testing
             contract_path = (

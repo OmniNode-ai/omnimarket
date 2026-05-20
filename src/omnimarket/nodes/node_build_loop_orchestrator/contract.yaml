@@ -96,6 +96,38 @@ env_dependencies:
     required: false
     description: "Root directory for git worktrees; used by assemble_live to locate per-ticket worktrees"
 
+config:
+  LLM_CODER_URL:
+    description: "vLLM Qwen3-Coder-30B endpoint URL (primary coder model)"
+    required: false
+  LLM_CODER_FAST_URL:
+    description: "vLLM fast model endpoint URL (ticket classification)"
+    required: false
+  LLM_GLM_URL:
+    description: "GLM cloud API base URL (cloud fallback)"
+    required: false
+  LLM_GLM_MODEL_NAME:
+    description: "GLM model name to use with LLM_GLM_URL"
+    required: false
+  LLM_DEEPSEEK_R1_URL:
+    description: "DeepSeek-R1 reasoning model endpoint URL"
+    required: false
+  BUILD_LOOP_OUTPUT_DIR:
+    description: "Directory path for build loop output artifacts"
+    required: false
+  LINEAR_TEAM_ID:
+    description: "Linear team ID for ticket queries"
+    required: false
+  LINEAR_TEAM_KEY:
+    description: "Linear team key (defaults to 'OMN')"
+    required: false
+  LINEAR_ACTIVE_SPRINT_PROJECT_ID:
+    description: "Linear project ID for the active sprint; used to filter tickets"
+    required: false
+  OMNI_WORKTREES_ROOT:
+    description: "Root directory for git worktrees; used by assemble_live to locate per-ticket worktrees"
+    required: false
+
 sub_handler_dependencies:
   - name: closeout
     protocol: omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers.ProtocolCloseoutHandler

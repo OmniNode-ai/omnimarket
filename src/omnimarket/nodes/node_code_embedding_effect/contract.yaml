@@ -94,6 +94,24 @@ config:
     env_var: "CODE_EMBEDDING_VECTOR_SIZE"
     default: "4096"
     description: "Embedding vector dimension (must match model output)."
+  EMBEDDING_MODEL_URL:
+    description: "Base URL for the embedding model endpoint (declared for contract-config compliance)."
+    required: false
+  QDRANT_CODE_COLLECTION:
+    description: "Qdrant collection name for code vectors."
+    required: false
+  QDRANT_HOST:
+    description: "Qdrant host."
+    required: false
+  QDRANT_PORT:
+    description: "Qdrant port."
+    required: false
+  CODE_EMBEDDING_BATCH_SIZE:
+    description: "Maximum entities to embed per invocation."
+    required: false
+  CODE_EMBEDDING_VECTOR_SIZE:
+    description: "Embedding vector dimension."
+    required: false
 
 # === INPUT/OUTPUT STATE ===
 input_state:

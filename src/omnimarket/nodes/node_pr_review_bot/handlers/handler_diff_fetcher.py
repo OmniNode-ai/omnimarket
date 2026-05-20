@@ -61,8 +61,10 @@ class DiffFetcherConfig:
         default_factory=lambda: os.environ.get("GITHUB_TOKEN", "")
     )
     github_api_base: str = field(
-        default_factory=lambda: os.environ.get(
-            "GITHUB_API_BASE", "https://api.github.com"
+        default_factory=lambda: (
+            os.environ.get(  # contract-config-ok: declared in contract.yaml config section
+                "GITHUB_API_BASE", "https://api.github.com"
+            )
         )
     )
     # Request timeout in seconds; see R4 note (judge latency) — diff fetch is fast

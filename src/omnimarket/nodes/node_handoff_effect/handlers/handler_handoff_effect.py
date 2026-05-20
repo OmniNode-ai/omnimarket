@@ -20,7 +20,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_SSH_HOST = os.environ.get("ONEX_INFRA_SSH_TARGET", "")
+_SSH_HOST = os.environ.get("ONEX_INFRA_SSH_TARGET", "")  # contract-config-ok: config  # fmt: skip
 _SSH_TIMEOUT = 15
 
 
@@ -126,7 +126,7 @@ def _gather_infra_health(env_sync_log_path: Path) -> dict[str, str]:
         "docker ps --filter name=postgres --format '{{.Status}}'",
         "postgres",
     )
-    health["open_infra_blockers"] = os.environ.get("ONEX_INFRA_BLOCKER_TICKETS", "none")
+    health["open_infra_blockers"] = os.environ.get("ONEX_INFRA_BLOCKER_TICKETS", "none")  # contract-config-ok: config  # fmt: skip
 
     return health
 

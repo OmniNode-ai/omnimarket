@@ -94,6 +94,44 @@ env_dependencies:
     required: false
     description: "Qdrant port for the system_health probe."
 
+config:
+  LLM_CODER_URL:
+    description: "vLLM Qwen3-Coder-30B endpoint URL (probed during system_health check)"
+    required: false
+  LLM_CODER_FAST_URL:
+    description: "vLLM fast model endpoint URL (probed during system_health check)"
+    required: false
+  LLM_EMBEDDING_URL:
+    description: "Embedding model endpoint URL (probed during system_health check)"
+    required: false
+  OMNIBASE_INFRA_DB_URL:
+    description: "Postgres DSN for the db_row_counts probe. Probe is skipped when unset."
+    required: false
+  POSTGRES_HOST:
+    description: "Postgres host for the system_health probe connectivity check."
+    required: false
+  POSTGRES_PORT:
+    description: "Postgres port for the system_health probe."
+    required: false
+  REDPANDA_ADMIN_HOST:
+    description: "Redpanda admin API host for kafka_topics probe."
+    required: false
+  REDPANDA_ADMIN_PORT:
+    description: "Redpanda admin API port (default 9644)."
+    required: false
+  VALKEY_HOST:
+    description: "Valkey host for system_health probe."
+    required: false
+  VALKEY_PORT:
+    description: "Valkey port for system_health probe."
+    required: false
+  QDRANT_HOST:
+    description: "Qdrant host for system_health probe."
+    required: false
+  QDRANT_PORT:
+    description: "Qdrant port for system_health probe."
+    required: false
+
 terminal_event: onex.evt.omnimarket.baseline-captured.v1
 
 event_bus:

@@ -39,7 +39,7 @@ class ProbeDbRowCounts:
             logger.warning("asyncpg not available — skipping db_row_counts probe")
             return []
 
-        db_url = os.environ.get("OMNIBASE_INFRA_DB_URL", "")
+        db_url = os.environ.get("OMNIBASE_INFRA_DB_URL", "")  # contract-config-ok: config  # fmt: skip
         if not db_url:
             logger.warning(
                 "OMNIBASE_INFRA_DB_URL not set — skipping db_row_counts probe"

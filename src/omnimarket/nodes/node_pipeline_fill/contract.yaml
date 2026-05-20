@@ -76,3 +76,8 @@ metadata:
   depends_on:
     - "node_rsd_fill_compute"
     - "node_ticket_pipeline"
+
+config:
+  LINEAR_ACTIVE_SPRINT_PROJECT_ID:
+    description: "Linear project ID for the active sprint ticket filter."
+    required: false

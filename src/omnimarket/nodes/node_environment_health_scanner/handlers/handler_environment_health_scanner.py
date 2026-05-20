@@ -115,7 +115,9 @@ class NodeEnvironmentHealthScanner:
             else {s.value for s in EnumSubsystem}
         )
         omni_home = request.omni_home or os.environ.get("OMNI_HOME", "")
-        ssh_target = request.ssh_target or os.environ.get("ONEX_INFRA_SSH_TARGET")
+        ssh_target = request.ssh_target or os.environ.get(  # contract-config-ok: config
+            "ONEX_INFRA_SSH_TARGET"
+        )
         onex_state_dir = os.environ.get("ONEX_STATE_DIR", "")
 
         results: list[ModelSubsystemResult] = []
@@ -125,7 +127,7 @@ class NodeEnvironmentHealthScanner:
                 probe_emit_daemon,
             )
 
-            socket_path = os.environ.get(
+            socket_path = os.environ.get(  # contract-config-ok: config
                 "ONEX_EMIT_DAEMON_SOCKET", "/tmp/onex_emit.sock"
             )
             log_dir = str(Path(onex_state_dir) / "emit")

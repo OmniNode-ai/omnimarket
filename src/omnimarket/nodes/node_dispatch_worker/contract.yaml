@@ -112,3 +112,14 @@ dod_evidence:
 
 metadata:
   transport_type: kafka
+
+config:
+  ONEX_PARENT_SESSION_ID:
+    description: "Parent session ID for dispatch worker correlation."
+    required: false
+  CLAUDE_TASKS_DIR:
+    description: "Directory path for Claude task files."
+    required: false
+  OMNI_WORKTREES:
+    description: "Root directory for omni worktrees."
+    required: false

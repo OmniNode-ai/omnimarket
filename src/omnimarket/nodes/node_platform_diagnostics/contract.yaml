@@ -44,3 +44,8 @@ sub_handler_dependencies:
 
 metadata:
   transport_type: kafka
+
+config:
+  ONEX_DASHBOARD_API:
+    description: "Dashboard API endpoint URL."
+    required: false

@@ -1,0 +1,38 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11180"
+title: "Move node operational configuration into node contracts"
+summary: >
+  Migrates omnimarket node-specific operational configuration reads to node
+  contract config declarations, including CI, worktree, session, and runtime
+  operational settings.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "node_contracts"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-config-validator"
+    description: "Operational raw env reads are represented by node contract config entries."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "validate_paths([\"src/omnimarket\"]): bare_env_read=0 missing_contract_config=0"
+  - id: "dod-focused-tests"
+    description: "Focused runtime-path checks and touched handler import smoke pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "python -m py_compile src/omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py src/omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py"
+  - id: "dod-deploy-assessment"
+    description: >
+      Runtime operational config declarations changed, but no live deploy,
+      restart, or .201 mutation was performed. Deploy validation remains a
+      post-merge runtime rollout step.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy assessment: no live deploy or .201 mutation performed"

@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-_CANONICAL_WORKTREES = os.environ.get(
+_CANONICAL_WORKTREES = os.environ.get(  # contract-config-ok: declared in contract.yaml config section
     "OMNI_WORKTREES",
     "/Volumes/PRO-G40/Code/omni_worktrees",  # onex-allow-local-path OMN-10580 reason="worktree root fallback; override via OMNI_WORKTREES env var"
 )

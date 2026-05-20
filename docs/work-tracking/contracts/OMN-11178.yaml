@@ -1,0 +1,37 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11178"
+title: "Move LLM endpoint configuration into node contracts"
+summary: >
+  Migrates omnimarket LLM endpoint configuration reads to node contract config
+  declarations while preserving injected runtime configuration behavior.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "node_contracts"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-config-validator"
+    description: "LLM-related raw env reads are represented by node contract config entries."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "validate_paths([\"src/omnimarket\"]): bare_env_read=0 missing_contract_config=0"
+  - id: "dod-focused-tests"
+    description: "Delegation routing contract tests cover endpoint contract loading."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_bifrost_overlay_loader.py tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py -q"
+  - id: "dod-deploy-assessment"
+    description: >
+      Runtime config wiring changed, but no live deploy, restart, or .201 mutation
+      was performed. Post-merge deploy validation should import affected nodes and
+      verify contract-backed config is present in the deployed image.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy assessment: no live deploy required before merging PR 701"

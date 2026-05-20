@@ -97,7 +97,7 @@ def _infra_user() -> str:
 
 
 def _ssh_host_key_checking() -> str:
-    return os.environ.get("SSH_STRICT_HOST_KEY_CHECKING", "accept-new")
+    return os.environ.get("SSH_STRICT_HOST_KEY_CHECKING", "accept-new")  # contract-config-ok: config  # fmt: skip
 
 
 # ---------------------------------------------------------------------------
@@ -1069,7 +1069,7 @@ class HandlerSessionOrchestrator:
     ) -> list[str]:
         """Query Linear for active tickets, score with RSD formula, return ordered IDs."""
         logger.info("Phase 2: running RSD scoring for session %s", session_id)
-        fixture_path = os.environ.get("ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE", "")
+        fixture_path = os.environ.get("ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE", "")  # contract-config-ok: config  # fmt: skip
         if fixture_path:
             tickets = self._load_linear_fixture(fixture_path)
             if not tickets:

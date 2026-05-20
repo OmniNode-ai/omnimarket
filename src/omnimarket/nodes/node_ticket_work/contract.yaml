@@ -58,3 +58,8 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+config:
+  OMNI_WORKTREES:
+    description: "Root directory for omni worktrees."
+    required: false

@@ -63,3 +63,11 @@ dod_evidence:
 
 metadata:
   transport_type: kafka
+
+config:
+  ONEX_CONFLICT_SOURCE_CLONE_ROOT:
+    description: "Root directory of source clones for conflict resolution."
+    required: false
+  ONEX_CONFLICT_WORKTREE_ROOT:
+    description: "Root directory for worktrees used during conflict resolution."
+    required: false

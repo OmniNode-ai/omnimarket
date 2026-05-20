@@ -24,37 +24,37 @@ def _services_from_env() -> list[tuple[str, str]]:
     """
     candidates: list[tuple[str, str]] = []
 
-    postgres_host = os.environ.get("POSTGRES_HOST", "")
-    postgres_port = os.environ.get("POSTGRES_PORT", "")
+    postgres_host = os.environ.get("POSTGRES_HOST", "")  # contract-config-ok: config  # fmt: skip
+    postgres_port = os.environ.get("POSTGRES_PORT", "")  # contract-config-ok: config  # fmt: skip
     if postgres_host and postgres_port:
         candidates.append(("postgres", f"http://{postgres_host}:{postgres_port}"))
 
-    redpanda_host = os.environ.get("REDPANDA_ADMIN_HOST", "")
-    redpanda_port = os.environ.get("REDPANDA_ADMIN_PORT", "9644")
+    redpanda_host = os.environ.get("REDPANDA_ADMIN_HOST", "")  # contract-config-ok: config  # fmt: skip
+    redpanda_port = os.environ.get("REDPANDA_ADMIN_PORT", "9644")  # contract-config-ok: config  # fmt: skip
     if redpanda_host:
         candidates.append(
             ("redpanda", f"http://{redpanda_host}:{redpanda_port}/v1/cluster/health")
         )
 
-    valkey_host = os.environ.get("VALKEY_HOST", "")
-    valkey_port = os.environ.get("VALKEY_PORT", "")
+    valkey_host = os.environ.get("VALKEY_HOST", "")  # contract-config-ok: config  # fmt: skip
+    valkey_port = os.environ.get("VALKEY_PORT", "")  # contract-config-ok: config  # fmt: skip
     if valkey_host and valkey_port:
         candidates.append(("valkey", f"http://{valkey_host}:{valkey_port}"))
 
-    qdrant_host = os.environ.get("QDRANT_HOST", "")
-    qdrant_port = os.environ.get("QDRANT_PORT", "")
+    qdrant_host = os.environ.get("QDRANT_HOST", "")  # contract-config-ok: config  # fmt: skip
+    qdrant_port = os.environ.get("QDRANT_PORT", "")  # contract-config-ok: config  # fmt: skip
     if qdrant_host and qdrant_port:
         candidates.append(("qdrant", f"http://{qdrant_host}:{qdrant_port}/healthz"))
 
-    llm_coder_url = os.environ.get("LLM_CODER_URL", "")
+    llm_coder_url = os.environ.get("LLM_CODER_URL", "")  # contract-config-ok: config  # fmt: skip
     if llm_coder_url:
         candidates.append(("llm_coder", f"{llm_coder_url}/health"))
 
-    llm_coder_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")
+    llm_coder_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")  # contract-config-ok: config  # fmt: skip
     if llm_coder_fast_url:
         candidates.append(("llm_coder_fast", f"{llm_coder_fast_url}/health"))
 
-    llm_embedding_url = os.environ.get("LLM_EMBEDDING_URL", "")
+    llm_embedding_url = os.environ.get("LLM_EMBEDDING_URL", "")  # contract-config-ok: config  # fmt: skip
     if llm_embedding_url:
         candidates.append(("llm_embedding", f"{llm_embedding_url}/health"))
 

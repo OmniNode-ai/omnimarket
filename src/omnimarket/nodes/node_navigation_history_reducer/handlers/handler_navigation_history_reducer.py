@@ -81,10 +81,23 @@ class ProtocolNavigationHistoryWriter(Protocol):
     async def close(self) -> None: ...
 
 
-_DEFAULT_PG_DSN = os.environ.get("OMNIMEMORY_PG_DSN", "")
-_DEFAULT_QDRANT_HOST = os.environ.get("QDRANT_HOST", "")
-_DEFAULT_QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
-_DEFAULT_EMBEDDING_URL = os.environ.get("LLM_EMBEDDING_URL", "")
+_DEFAULT_PG_DSN = os.environ.get("OMNIMEMORY_PG_DSN", "")  # contract-config-ok: config  # fmt: skip
+_DEFAULT_QDRANT_HOST = os.environ.get("QDRANT_HOST", "")  # contract-config-ok: config  # fmt: skip
+
+
+def _parse_qdrant_port(value: str | None) -> int:
+    """Parse QDRANT_PORT without making module import depend on env validity."""
+    if not value:
+        return 6333
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning("Ignoring malformed QDRANT_PORT=%r; using default 6333", value)
+        return 6333
+
+
+_DEFAULT_QDRANT_PORT = _parse_qdrant_port(os.environ.get("QDRANT_PORT"))  # contract-config-ok: config  # fmt: skip
+_DEFAULT_EMBEDDING_URL = os.environ.get("LLM_EMBEDDING_URL", "")  # contract-config-ok: config  # fmt: skip
 _DEFAULT_EMBEDDING_MODEL = "Qwen3-Embedding-8B"
 _QDRANT_COLLECTION = "navigation_paths"
 

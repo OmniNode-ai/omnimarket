@@ -94,6 +94,22 @@ config:
     default: "1.0.0"
     description: "Version tag stored alongside enrichment results for lineage tracking."
 
+  LLM_CODER_URL:
+    description: "Qwen3-Coder endpoint URL (contract-config compliance declaration)."
+    required: false
+  LLM_FALLBACK_URL:
+    description: "Fallback LLM endpoint URL."
+    required: false
+  CODE_ENRICHMENT_CONFIDENCE_THRESHOLD:
+    description: "Confidence threshold for classification."
+    required: false
+  CODE_ENRICHMENT_BATCH_SIZE:
+    description: "Max entities per invocation."
+    required: false
+  CODE_ENRICHMENT_VERSION:
+    description: "Enrichment version tag."
+    required: false
+
 # === INPUT/OUTPUT STATE ===
 input_state:
   object_type: "object"

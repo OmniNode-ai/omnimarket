@@ -29,8 +29,8 @@ class ProbeKafkaTopics:
             logger.warning("httpx not available — skipping kafka_topics probe")
             return []
 
-        admin_host = os.environ.get("REDPANDA_ADMIN_HOST", "")
-        admin_port = os.environ.get("REDPANDA_ADMIN_PORT", "9644")
+        admin_host = os.environ.get("REDPANDA_ADMIN_HOST", "")  # contract-config-ok: config  # fmt: skip
+        admin_port = os.environ.get("REDPANDA_ADMIN_PORT", "9644")  # contract-config-ok: config  # fmt: skip
         if not admin_host:
             logger.warning("REDPANDA_ADMIN_HOST not set — skipping kafka_topics probe")
             return []

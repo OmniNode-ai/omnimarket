@@ -1,0 +1,34 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11175"
+title: "Generate node tests through public node imports"
+summary: >
+  Updates the node generator golden-chain test template so generated tests import
+  public node packages instead of handler submodules, avoiding bus-bypass import
+  violations in generated stubs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-validator"
+    description: "Contract compliance validator reports no bus-bypass import findings."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "validate_paths([\"src/omnimarket\"]): bus_bypass_import=0"
+  - id: "dod-lint"
+    description: "Generator and touched runtime files pass focused ruff checks."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check scripts/generate_node.py src/omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py src/omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py"
+  - id: "dod-deploy-assessment"
+    description: "Source generator change only; no live deploy, restart, or .201 mutation was performed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy assessment: generator/template change only"

@@ -283,3 +283,8 @@ dod_evidence:
     - kind: "ci"
       description: "Verification loop triggers on push to PR branch"
       command: "gh run list --workflow=pr-review-bot.yml --limit 5"
+
+config:
+  GITHUB_API_BASE:
+    description: "GitHub API base URL (defaults to https://api.github.com)."
+    required: false

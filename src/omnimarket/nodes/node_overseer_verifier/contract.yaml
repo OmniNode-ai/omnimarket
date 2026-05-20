@@ -172,3 +172,8 @@ metadata:
     - "OMN-8031"
     - "OMN-8025"
     - "OMN-8520"
+
+config:
+  GITHUB_SHA:
+    description: "Git commit SHA injected by CI for verified commit identification."
+    required: false

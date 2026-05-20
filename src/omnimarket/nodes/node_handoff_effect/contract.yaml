@@ -66,3 +66,11 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+config:
+  ONEX_INFRA_SSH_TARGET:
+    description: "SSH target for infrastructure commands (user@host)."
+    required: false
+  ONEX_INFRA_BLOCKER_TICKETS:
+    description: "Comma-separated list of blocker ticket IDs."
+    required: false

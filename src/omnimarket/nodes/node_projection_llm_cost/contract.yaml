@@ -44,3 +44,8 @@ event_bus:
     - onex.evt.omniintelligence.llm-call-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-llm-cost-applied.v1
+
+config:
+  OMNI_PRICING_MANIFEST_PATH:
+    description: "Path to the LLM pricing manifest JSON file."
+    required: false

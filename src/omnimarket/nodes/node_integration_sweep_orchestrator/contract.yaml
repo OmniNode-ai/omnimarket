@@ -22,3 +22,8 @@ descriptor:
   idempotent: true
   timeout_ms: 30000
 terminal_event: onex.evt.omnimarket.integration-sweep-completed.v1
+
+config:
+  ONEX_CC_REPO_PATH:
+    description: "Path to the omniclaude repository for Claude Code plugin operations."
+    required: false

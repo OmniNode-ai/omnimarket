@@ -59,3 +59,11 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.environment-health-scan-finding.v1
     - onex.evt.omnimarket.environment-health-scan-completed.v1
+
+config:
+  ONEX_INFRA_SSH_TARGET:
+    description: "SSH target for infrastructure commands (user@host)."
+    required: false
+  ONEX_EMIT_DAEMON_SOCKET:
+    description: "Unix socket path for the emit daemon."
+    required: false

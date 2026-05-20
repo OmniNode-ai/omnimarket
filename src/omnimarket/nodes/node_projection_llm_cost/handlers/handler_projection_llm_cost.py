@@ -209,7 +209,7 @@ def _float_or_none(value: Any) -> float | None:
 def _default_pricing_manifest_path() -> Path | None:
     import os
 
-    configured = os.environ.get("OMNI_PRICING_MANIFEST_PATH")
+    configured = os.environ.get("OMNI_PRICING_MANIFEST_PATH")  # contract-config-ok: config  # fmt: skip
     if configured:
         return Path(configured)
 

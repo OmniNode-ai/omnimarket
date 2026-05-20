@@ -58,15 +58,21 @@ _SECRET_RE = re.compile(
 # Minimal registry entries for commonly declared model keys.
 _BASE_REGISTRY: dict[str, dict[str, str]] = {
     "qwen3-coder-30b": {
-        "base_url": os.environ.get("LLM_CODER_URL", ""),
+        "base_url": os.environ.get(  # contract-config-ok: config
+            "LLM_CODER_URL", ""
+        ),
         "health_path": "/health",
     },
     "glm-4.5": {
-        "base_url": os.environ.get("LLM_GLM_URL", ""),
+        "base_url": os.environ.get(  # contract-config-ok: config
+            "LLM_GLM_URL", ""
+        ),
         "health_path": "",
     },
     "deepseek-r1-14b": {
-        "base_url": os.environ.get("LLM_CODER_FAST_URL", ""),
+        "base_url": os.environ.get(  # contract-config-ok: config
+            "LLM_CODER_FAST_URL", ""
+        ),
         "health_path": "/health",
     },
 }
@@ -206,13 +212,19 @@ class HandlerThreadReply:
 
     def _is_draft_mode(self) -> bool:
         """Return True if reply should be posted as draft."""
-        ci_mode = os.environ.get("ONEX_CI_MODE", "").lower() in ("1", "true", "yes")
-        if ci_mode:
-            return True
-        direct_post = os.environ.get("ONEX_THREAD_REPLY_DIRECT_POST", "").lower() in (
+        ci_mode = os.environ.get(  # contract-config-ok: config
+            "ONEX_CI_MODE", ""
+        ).lower() in (
             "1",
             "true",
-            "yes",
+        )
+        if ci_mode:
+            return True
+        direct_post = os.environ.get(  # contract-config-ok: config
+            "ONEX_THREAD_REPLY_DIRECT_POST", ""
+        ).lower() in (
+            "1",
+            "true",
         )
         return not direct_post
 
