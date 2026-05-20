@@ -84,6 +84,9 @@ env_dependencies:
 
 terminal_event: onex.evt.omnimarket.demo-fixes-dispatched.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.demo-fixes-dispatched.v1
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.demo-fix-dispatch-start.v1

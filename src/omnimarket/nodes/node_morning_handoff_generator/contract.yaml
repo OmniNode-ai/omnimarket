@@ -59,6 +59,9 @@ env_dependencies:
 
 terminal_event: onex.evt.omnimarket.morning-handoff-generated.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.morning-handoff-generated.v1
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.morning-handoff-start.v1

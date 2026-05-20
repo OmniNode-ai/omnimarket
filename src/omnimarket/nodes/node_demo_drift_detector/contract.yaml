@@ -73,6 +73,9 @@ env_dependencies:
 
 terminal_event: onex.evt.omnimarket.demo-drift-detected.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.demo-drift-detected.v1
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.demo-drift-detect-start.v1

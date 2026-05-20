@@ -66,6 +66,9 @@ env_dependencies:
 
 terminal_event: onex.evt.omnimarket.demo-rehearsed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.demo-rehearsed.v1
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.demo-rehearsal-start.v1
