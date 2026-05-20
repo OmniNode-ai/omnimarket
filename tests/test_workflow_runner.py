@@ -112,7 +112,9 @@ async def test_handle_strips_runtime_local_transport_metadata(
     tmp_path: Path,
 ) -> None:
     review_target = tmp_path / "target.py"
-    review_target.write_text("token = request.headers['Authorization']\n", encoding="utf-8")
+    review_target.write_text(
+        "token = request.headers['Authorization']\n", encoding="utf-8"
+    )
     correlation_id = uuid4()
     adapter = StubAdapter()
     handler = HandlerWorkflowRunner()

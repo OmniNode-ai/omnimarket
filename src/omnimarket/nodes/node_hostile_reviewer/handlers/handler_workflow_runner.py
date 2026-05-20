@@ -157,7 +157,9 @@ def _coerce_handler_payload(
     elif isinstance(input_data, Mapping):
         payload = dict(input_data)
     else:
-        msg = f"unsupported hostile reviewer handler payload: {type(input_data).__name__}"
+        msg = (
+            f"unsupported hostile reviewer handler payload: {type(input_data).__name__}"
+        )
         raise TypeError(msg)
 
     for key in RUNTIME_LOCAL_METADATA_KEYS:
