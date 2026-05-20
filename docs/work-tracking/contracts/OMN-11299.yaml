@@ -46,4 +46,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "printf '%s\n' 'deploy gate: post-merge docker exec smoke imports node_projection_delegation and node_projection_savings handlers; no live deploy/restart performed pre-merge'"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import DelegationProjectionRunner; from omnimarket.nodes.node_projection_savings.handlers.handler_savings import SavingsProjectionRunner; print('deploy smoke ok')\""
