@@ -8,6 +8,13 @@ on:
   merge_group:
 
 jobs:
+  # Zone filter — short-circuit heavy jobs on docs / declarative-evidence PRs.
+  # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
+  zone-filter:
+    uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
+    with:
+      python-version: "3.12"
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -74,6 +81,8 @@ jobs:
         run: uv run python scripts/ci/check_delegation_env_reads.py --mode enforce
 
   typecheck:
+    needs: zone-filter
+    if: needs.zone-filter.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +108,8 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
+    needs: zone-filter
+    if: needs.zone-filter.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -322,6 +333,8 @@ jobs:
 
   e2e-workflow-runner:
     name: E2E Workflow Runner (inmemory bus)
+    needs: zone-filter
+    if: needs.zone-filter.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -390,6 +403,8 @@ jobs:
 
   golden-chains:
     name: Golden Chain Suite (inmemory bus)
+    needs: zone-filter
+    if: needs.zone-filter.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -505,7 +520,7 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains, dep-health]
+    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, contract-compliance, e2e-workflow-runner, golden-chains, dep-health]
     if: always()
     steps:
       - name: Check CI results
@@ -514,6 +529,7 @@ jobs:
           FAILED=false
 
           for check in \
+            "zone-filter=${{ needs.zone-filter.result }}" \
             "lint=${{ needs.lint.result }}" \
             "typecheck=${{ needs.typecheck.result }}" \
             "detect-changes=${{ needs.detect-changes.result }}" \
