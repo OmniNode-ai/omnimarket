@@ -24,6 +24,8 @@ class ModelRoutingDecision(BaseModel):
         selected_model: Name of the LLM model selected for this task.
         selected_backend_id: Identifier for the backend in the Bifrost config.
         endpoint_url: URL of the selected LLM endpoint.
+        api_key_ref: Optional secret reference for authenticated backends.
+        extra_headers: Optional extra HTTP headers for the backend (e.g. OpenRouter HTTP-Referer).
         cost_tier: Cost classification (e.g., "low", "medium", "high").
         max_context_tokens: Maximum context window for the selected model.
         system_prompt: System prompt tailored to the task type.
@@ -53,6 +55,14 @@ class ModelRoutingDecision(BaseModel):
     endpoint_url: str = Field(
         ...,
         description="URL of the selected LLM endpoint.",
+    )
+    api_key_ref: str | None = Field(
+        default=None,
+        description="Secret reference for authenticated backends (e.g. OPENROUTER_API_KEY). None for local backends.",
+    )
+    extra_headers: dict[str, str] | None = Field(
+        default=None,
+        description="Extra HTTP headers for the backend request (e.g. HTTP-Referer for OpenRouter).",
     )
     cost_tier: str = Field(
         ...,
