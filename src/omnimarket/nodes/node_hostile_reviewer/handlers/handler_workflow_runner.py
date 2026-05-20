@@ -6,6 +6,7 @@ CONVERGENCE_CHECK -> REPORT -> DONE. Each phase transition is explicit.
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -36,6 +37,7 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
 
 DEFAULT_MODEL_CONTEXT_WINDOW = 32_000
 GH_PR_DIFF_TIMEOUT_SECONDS = 30
+RUNTIME_LOCAL_METADATA_KEYS = frozenset({"rows", "event_landed", "latency_ms"})
 
 
 class ModelWorkflowInput(BaseModel):
@@ -149,14 +151,18 @@ def _coerce_handler_payload(
         msg = "pass either input_data or keyword payload fields, not both"
         raise TypeError(msg)
     if input_data is None:
-        return dict(kwargs)
-    if isinstance(input_data, BaseModel):
-        return input_data.model_dump()
-    if isinstance(input_data, Mapping):
-        return dict(input_data)
+        payload = dict(kwargs)
+    elif isinstance(input_data, BaseModel):
+        payload = input_data.model_dump()
+    elif isinstance(input_data, Mapping):
+        payload = dict(input_data)
+    else:
+        msg = f"unsupported hostile reviewer handler payload: {type(input_data).__name__}"
+        raise TypeError(msg)
 
-    msg = f"unsupported hostile reviewer handler payload: {type(input_data).__name__}"
-    raise TypeError(msg)
+    for key in RUNTIME_LOCAL_METADATA_KEYS:
+        payload.pop(key, None)
+    return payload
 
 
 async def run_hostile_review_workflow(
@@ -237,7 +243,7 @@ class HandlerWorkflowRunner:
         commonly pass a dict.
         """
         payload = _coerce_handler_payload(input_data, kwargs)
-        parsed = _parse_handler_payload(payload)
+        parsed = await asyncio.to_thread(_parse_handler_payload, payload)
         if self._adapter is None:
             msg = "inference_adapter not set — call set_adapter() first"
             raise RuntimeError(msg)

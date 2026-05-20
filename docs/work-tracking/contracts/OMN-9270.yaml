@@ -20,7 +20,7 @@ evidence_requirements:
     command: "uv run ruff check src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_workflow_runner.py tests/test_workflow_runner.py"
   - kind: "manual"
     description: "Post-merge deploy readiness is limited to the runtime loading the start command adapter; no live deploy or runtime restart was performed."
-    command: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerWorkflowRunner and ModelHostileReviewerStartCommand without changing .201'"
+    command: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerWorkflowRunner and ModelHostileReviewerStartCommand without live runtime mutation'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -43,4 +43,4 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerWorkflowRunner and ModelHostileReviewerStartCommand without changing .201'"
+        check_value: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerWorkflowRunner and ModelHostileReviewerStartCommand without live runtime mutation'"

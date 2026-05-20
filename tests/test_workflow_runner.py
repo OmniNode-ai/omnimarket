@@ -108,6 +108,36 @@ async def test_handle_accepts_contract_start_command_payload(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_handle_strips_runtime_local_transport_metadata(
+    tmp_path: Path,
+) -> None:
+    review_target = tmp_path / "target.py"
+    review_target.write_text("token = request.headers['Authorization']\n", encoding="utf-8")
+    correlation_id = uuid4()
+    adapter = StubAdapter()
+    handler = HandlerWorkflowRunner()
+    handler.set_adapter(adapter)
+    command = ModelHostileReviewerStartCommand(
+        correlation_id=correlation_id,
+        file_path=str(review_target),
+        models=["test-model"],
+        dry_run=True,
+        requested_at=datetime.now(tz=UTC),
+    )
+    payload = command.model_dump(mode="json") | {
+        "rows": [],
+        "event_landed": True,
+        "latency_ms": 4.2,
+    }
+
+    result = await handler.handle(payload)
+
+    assert result["correlation_id"] == str(correlation_id)
+    assert adapter.calls
+    assert "Authorization" in str(adapter.calls[0]["user_prompt"])
+
+
+@pytest.mark.asyncio
 async def test_handler_bus_adapter_routes_start_command_envelope(
     event_bus: EventBusInmemory,
     tmp_path: Path,
