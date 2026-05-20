@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""node_pipeline_fill — RSD-driven pipeline fill orchestrator."""
+"""node_pipeline_fill — RSD-driven pipeline fill effect."""
 
 from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import (
     HandlerPipelineFill,
@@ -13,4 +13,4 @@ __all__ = [
 
 
 class NodePipelineFill(HandlerPipelineFill):
-    """ONEX entry-point wrapper for HandlerPipelineFill."""
+    """ONEX effect entry-point wrapper for HandlerPipelineFill."""

@@ -1,0 +1,23 @@
+name: node_contract_registry
+version: "0.1.0"
+description: "Central policy enforcement for dynamic contract registration and contract_registry projection DDL."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_contract_registry: "omnimarket.nodes.node_contract_registry"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["projection", "contract", "registry", "policy", "platform"]
+pack: "platform"
+display_name: "Contract Registry"
+node_role: "effect"

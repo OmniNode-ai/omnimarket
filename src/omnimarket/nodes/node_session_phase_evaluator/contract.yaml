@@ -1,0 +1,70 @@
+---
+name: node_session_phase_evaluator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic session phase evaluator. Receives current phase state and
+  session contract; computes budget elapsed percentage and checks exit conditions.
+  Returns a ModelPhaseEvaluation action with no side effects, no I/O, no bus or
+  DB dependencies.
+
+handler:
+  module: omnimarket.nodes.node_session_phase_evaluator.handlers.handler_session_phase_evaluator
+  class: HandlerSessionPhaseEvaluator
+  input_model: omnimarket.nodes.node_session_phase_evaluator.handlers.handler_session_phase_evaluator.ModelPhaseEvaluationRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+inputs:
+  phase_name:
+    type: str
+    required: true
+    description: Name of the current session phase
+  max_duration_minutes:
+    type: int
+    required: true
+    description: Maximum allowed duration for the phase in minutes
+  elapsed_minutes:
+    type: float
+    required: true
+    description: Minutes elapsed since the phase started
+  exit_condition_statuses:
+    type: object
+    required: true
+    description: >
+      Mapping of exit condition name to bool indicating whether
+      the condition has been satisfied
+  halt_threshold_pct:
+    type: int
+    required: false
+    description: >
+      Budget percentage at which a halt is required (default 100).
+      When elapsed_pct >= halt_threshold_pct the action is halt_required.
+
+outputs:
+  action:
+    type: str
+    enum: [no_action, budget_warning, transition_required, halt_required]
+  reason:
+    type: str
+  next_phase:
+    type: str
+    nullable: true
+  budget_elapsed_pct:
+    type: int
+
+terminal_event: onex.evt.omnimarket.session-phase-evaluated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.session-phase-evaluate.v1
+  publish_topics:
+    - onex.evt.omnimarket.session-phase-evaluated.v1
+
+metadata:
+  transport_type: kafka

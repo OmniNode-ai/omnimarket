@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: claim_resolver
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Resolver-backed verification node for agent turn side-effect claims emitted
+  by omniclaude hooks. It verifies concrete GitHub/Git claims, returns
+  structured mismatches, and treats blocker_on_X claims without quoted
+  gh pr view --json evidence as failures.
+
+handler:
+  module: omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver
+  class: HandlerClaimResolver
+  input_model: omnimarket.nodes.node_claim_resolver.models.model_claim_resolution.ModelClaimResolutionRequest
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+
+terminal_event: onex.evt.omnimarket.claim-resolver-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.claim-resolve.v1
+  publish_topics:
+    - onex.evt.omnimarket.claim-resolver-completed.v1
+
+inputs:
+  claims:
+    type: list
+    description: "Normalized agent claims to verify."
+    required: true
+  repo_hint:
+    type: [str, "null"]
+    description: "Repository slug for bare PR references."
+    required: false
+    default: null
+  repo_root:
+    type: [str, "null"]
+    description: "Git repository root for commit/file checks."
+    required: false
+    default: null
+
+outputs:
+  results:
+    type: list
+    description: "Per-claim verification results."
+  mismatches:
+    type: list
+    description: "Failed claim results that should block the agent turn."
+
+dependencies:
+  packages:
+    - "pydantic>=2.12.5,<3.0.0"
+  commands:
+    - "gh"
+    - "git"
+
+metadata:
+  transport_type: cli
+  author: "OmniNode Platform Team"
+  tags:
+    - "claims"
+    - "hooks"
+    - "resolver"
+    - "OMN-9107"
+  related_tickets:
+    - "OMN-9107"
+    - "OMN-9055"
