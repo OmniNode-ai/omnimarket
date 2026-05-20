@@ -14,6 +14,8 @@ import pytest
 
 from omnimarket.projection.runner import MessageMeta
 
+_DELEGATE_SKILL_TEST_MODEL = "test-model-local"
+
 
 def _make_meta(partition: int = 0, offset: int = 0) -> MessageMeta:
     return MessageMeta(
@@ -313,7 +315,7 @@ class TestDelegationHandler:
             "session_id": "19ee51d6-d275-4642-8cb5-19cdce2af447",
             "task_type": "test",
             "provider": "local-qwen",
-            "model_name": "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
             "response": "projection proof",
             "quality_gate_passed": True,
             "quality_gates_failed": [],
@@ -343,7 +345,7 @@ class TestDelegationHandler:
         assert "ON CONFLICT (correlation_id) DO UPDATE SET" in args[0]
         assert "4ae8556b-af7c-4e85-a7f5-9388d60cebb5" in args
         assert "19ee51d6-d275-4642-8cb5-19cdce2af447" in args
-        assert "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit" in args
+        assert _DELEGATE_SKILL_TEST_MODEL in args
         assert 144 in args
         assert 593 in args
         assert 737 in args
@@ -545,7 +547,7 @@ class TestSavingsHandler:
             "correlation_id": "f9243395-5cb6-4036-8ffb-39dd25547413",
             "task_type": "document",
             "provider": "local-qwen",
-            "model_name": "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
             "quality_gate_passed": True,
             "metrics": {
                 "input_tokens": 81,
@@ -569,7 +571,7 @@ class TestSavingsHandler:
         args = mock_db.execute.call_args[0]
         assert args[1].isoformat() == "2026-05-20T17:05:00+00:00"
         assert args[2] == "f9243395-5cb6-4036-8ffb-39dd25547413"
-        assert args[3] == "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+        assert args[3] == _DELEGATE_SKILL_TEST_MODEL
         assert args[4] == "claude-sonnet-4-6"
         assert args[5] == Decimal("0.0")
         assert args[6] == Decimal("0.006003")

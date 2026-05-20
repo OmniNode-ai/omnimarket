@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11299"
+title: "Project delegate-skill terminal metrics into delegation and savings projections"
+summary: >
+  Adds delegate-skill-completed and delegate-skill-failed topic subscriptions to
+  the delegation and savings projection handlers. Materializes typed terminal
+  event metrics (token counts, cost, quality gates) into delegation_events and
+  savings_estimates projections.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched:
+  - "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+  - "src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py"
+  - "src/omnimarket/nodes/node_projection_savings/contract.yaml"
+  - "src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py"
+evidence_requirements:
+  - kind: "tests"
+    description: "Projection handler tests pass"
+    command: "uv run pytest tests/test_projection_handlers.py tests/test_golden_chain_projection_delegation.py tests/test_golden_chain_projection_savings.py -q"
+  - kind: "ci"
+    description: "Leaked literal gate passes"
+    command: "bash scripts/validation/check_leaked_literals.sh blocking all"
+  - kind: "manual"
+    description: "Post-merge deploy smoke verifies projection handlers import cleanly"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import DelegationProjectionRunner; from omnimarket.nodes.node_projection_savings.handlers.handler_savings import SavingsProjectionRunner; print('deploy smoke ok')\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Projection handler tests pass including delegate-skill terminal event cases."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_projection_handlers.py tests/test_golden_chain_projection_delegation.py tests/test_golden_chain_projection_savings.py -q"
+  - id: "dod-leak-gate"
+    description: "Leaked literal gate passes; private model IDs replaced with test fixture constants."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash scripts/validation/check_leaked_literals.sh blocking all"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke imports projection handlers cleanly; no live deploy or restart performed pre-merge."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: post-merge docker exec smoke imports node_projection_delegation and node_projection_savings handlers; no live deploy/restart performed pre-merge'"
