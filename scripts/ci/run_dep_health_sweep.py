@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        if not Path(args.baseline_path).exists():
+        if not Path(args.baseline_path).is_file():
             print(
                 "dep-health-gate: --delta-mode requires an existing --baseline-path file",
                 file=sys.stderr,
