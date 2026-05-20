@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """CLI entry point for node_pipeline_fill.
 
-Runs one RSD-driven pipeline fill cycle. Queries Linear for unstarted
+Runs one RSD-driven pipeline fill effect cycle. Queries Linear for unstarted
 active-sprint tickets, scores them, and dispatches the top-N to the
 ticket pipeline. Outputs result JSON to stdout.
 
