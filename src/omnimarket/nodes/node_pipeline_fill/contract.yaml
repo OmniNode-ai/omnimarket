@@ -40,6 +40,10 @@ descriptor:
   timeout_ms: 60000
   runtime_profiles:
     - effects
+handler:
+  module: "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill"
+  class: "HandlerPipelineFill"
+  input_model: "omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command.ModelPipelineFillCommand"
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
