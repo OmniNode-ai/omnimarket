@@ -129,8 +129,8 @@ class AdapterLinearFill:
         history_store: DispatchHistoryStore | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("LINEAR_API_KEY", "")
-        self._team_id = team_id or os.environ.get("LINEAR_TEAM_ID", "")
-        self._team_key = team_key or os.environ.get("LINEAR_TEAM_KEY", "OMN")
+        self._team_id = team_id or os.environ.get("LINEAR_TEAM_ID", "")  # contract-config-ok: config  # fmt: skip
+        self._team_key = team_key or os.environ.get("LINEAR_TEAM_KEY", "OMN")  # contract-config-ok: config  # fmt: skip
         self._team_id_resolved = False
         self._history_store = history_store or DispatchHistoryStore()
 

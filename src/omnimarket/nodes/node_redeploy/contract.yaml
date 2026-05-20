@@ -158,3 +158,8 @@ metadata:
   related_tickets:
     - "OMN-7564"
     - "OMN-7539"
+
+config:
+  KAFKA_ENVIRONMENT:
+    description: "Kafka environment identifier (e.g. 'production', 'staging')."
+    required: false

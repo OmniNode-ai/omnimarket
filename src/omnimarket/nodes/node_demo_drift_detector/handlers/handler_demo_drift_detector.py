@@ -8,6 +8,7 @@ drift_report.json.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -128,9 +129,32 @@ class HandlerDemoDriftDetector:
                 if resp.status_code == 200:
                     data: dict[str, Any] = resp.json()
                     return data
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning("Current topology probe failed: %s", exc)
         return {}
+
+    async def _probe_current_projection(self) -> dict[str, Any] | None:
+        db_url = os.environ.get("DEMO_PROJECTION_DB_URL")
+        if not db_url:
+            return None
+        try:
+            import asyncpg
+
+            conn = await asyncpg.connect(db_url)
+            try:
+                row = await conn.fetchrow(
+                    "SELECT * FROM projection_session_outcome ORDER BY captured_at DESC LIMIT 1"
+                )
+                return dict(row) if row else None
+            finally:
+                await conn.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Current projection probe failed: %s", exc)
+        return None
 
     async def _probe_current_dashboard(self) -> dict[str, Any] | None:
         try:
@@ -142,6 +166,8 @@ class HandlerDemoDriftDetector:
                 if resp.status_code == 200:
                     health: dict[str, Any] = resp.json()
                     return health
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning("Current dashboard probe failed: %s", exc)
         return None
@@ -173,6 +199,37 @@ class HandlerDemoDriftDetector:
                     detail=f"Green: {json.dumps(green, default=str)[:500]} | Current: {json.dumps(current, default=str)[:500]}",
                     auto_fixable=False,
                     fix_hint="Manual topology review required",
+                )
+            )
+        return findings
+
+    def _classify_projection_drift(
+        self,
+        green: dict[str, Any] | None,
+        current: dict[str, Any] | None,
+    ) -> list[ModelDriftFinding]:
+        findings: list[ModelDriftFinding] = []
+        if green is not None and current is None:
+            findings.append(
+                ModelDriftFinding(
+                    finding_id=str(uuid.uuid4()),
+                    dimension="projection",
+                    criticality=EnumDemoCriticality.DEMO_DEGRADED,
+                    summary="Projection data unavailable (was present in proof-of-green)",
+                    detail="Projection probe returned no row or no response.",
+                    auto_fixable=False,
+                )
+            )
+        elif green is not None and current is not None and current != green:
+            findings.append(
+                ModelDriftFinding(
+                    finding_id=str(uuid.uuid4()),
+                    dimension="projection",
+                    criticality=EnumDemoCriticality.DEMO_DEGRADED,
+                    summary="Projection row differs from proof-of-green",
+                    detail=f"Green: {json.dumps(green, default=str)[:500]} | Current: {json.dumps(current, default=str)[:500]}",
+                    auto_fixable=False,
+                    fix_hint="Manual projection review required",
                 )
             )
         return findings
@@ -224,12 +281,18 @@ class HandlerDemoDriftDetector:
         green_bundle = self._load_proof_of_green(request.proof_of_green_path)
 
         current_topology = await self._probe_current_topology()
+        current_projection = await self._probe_current_projection()
         current_dashboard = await self._probe_current_dashboard()
 
         findings: list[ModelDriftFinding] = []
         findings.extend(
             self._classify_topology_drift(
                 green_bundle.runtime_topology_manifest, current_topology
+            )
+        )
+        findings.extend(
+            self._classify_projection_drift(
+                green_bundle.projection_row, current_projection
             )
         )
         findings.extend(

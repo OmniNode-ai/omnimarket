@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-10684"
+title: "Environment configuration to node contract migration"
+summary: >
+  Umbrella repo-local deploy-gate contract for omnimarket PR #701. The PR migrates
+  raw environment-variable reads into node contract config sections and keeps
+  runtime-sensitive values as injected configuration rather than literals.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "node_contracts"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-config-validator"
+    description: "Contract config compliance validator reports no bare env reads or missing contract config entries for omnimarket nodes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "validate_paths([\"src/omnimarket\"]): bare_env_read=0 missing_contract_config=0 bus_bypass_import=0"
+  - id: "dod-focused-tests"
+    description: "Focused runtime-path and contract migration checks pass for PR #701."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_bifrost_overlay_loader.py tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py tests/unit/delegation/test_delegation_contracts.py tests/unit/delegation/test_delegation_chain_e2e.py tests/unit/delegation/test_delegation_quality_contract.py -q"
+  - id: "dod-deploy-assessment"
+    description: >
+      Runtime configuration paths changed, but no live deploy, runtime restart,
+      Kafka mutation, or .201 mutation was performed in this PR. Post-merge
+      runtime validation must confirm the installed image loads the updated node
+      contracts before promotion.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy assessment: no live deploy or .201 mutation performed for PR 701"

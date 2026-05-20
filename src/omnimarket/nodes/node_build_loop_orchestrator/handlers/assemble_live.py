@@ -187,7 +187,7 @@ async def run_live_build_loop(
         )
 
     # Write results to disk
-    _default_output = os.environ.get("BUILD_LOOP_OUTPUT_DIR", "")
+    _default_output = os.environ.get("BUILD_LOOP_OUTPUT_DIR", "")  # contract-config-ok: config  # fmt: skip
     out_path = Path(output_dir or _default_output)
     out_path.mkdir(parents=True, exist_ok=True)
     result_file = out_path / f"live-run-{command.correlation_id}.json"

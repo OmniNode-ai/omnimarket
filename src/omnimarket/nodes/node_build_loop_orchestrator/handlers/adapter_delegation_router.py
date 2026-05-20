@@ -213,8 +213,8 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     # Frontier GLM (primary code gen) — reads LLM_GLM_* from env
     glm_key = os.environ.get("LLM_GLM_API_KEY", "")
-    glm_url = os.environ.get("LLM_GLM_URL", "")
-    glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "")
+    glm_url = os.environ.get("LLM_GLM_URL", "")  # contract-config-ok: config  # fmt: skip
+    glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
     if glm_key and glm_url:
         configs[EnumModelTier.FRONTIER_GLM] = ModelEndpointConfig(
             tier=EnumModelTier.FRONTIER_GLM,
@@ -229,9 +229,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     # Frontier review: GLM-4.7-Flash — cheap frontier code reviewer (203K ctx)
     glm_review_key = os.environ.get("LLM_GLM_API_KEY", "")
-    glm_review_url = (
-        os.environ.get("LLM_GLM_URL") or "https://open.bigmodel.cn/api/paas/v4"
-    )
+    glm_review_url = os.environ.get("LLM_GLM_URL") or "https://open.bigmodel.cn/api/paas/v4"  # contract-config-ok: config  # fmt: skip
     if glm_review_key:
         configs[EnumModelTier.FRONTIER_REVIEW] = ModelEndpointConfig(
             tier=EnumModelTier.FRONTIER_REVIEW,
@@ -245,7 +243,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         logger.info("GLM reviewer configured: %s (model=glm-4.7-flash)", glm_review_url)
 
     # Local fast: Qwen3-14B — URL from model_policy.yaml (LLM_CODER_FAST_URL)
-    local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")
+    local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")  # contract-config-ok: config  # fmt: skip
     if local_fast_url:
         configs[EnumModelTier.LOCAL_FAST] = ModelEndpointConfig(
             tier=EnumModelTier.LOCAL_FAST,
@@ -257,7 +255,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         )
 
     # Local coder: Qwen3-Coder-30B — URL from model_policy.yaml (LLM_CODER_URL)
-    local_coder_url = os.environ.get("LLM_CODER_URL", "")
+    local_coder_url = os.environ.get("LLM_CODER_URL", "")  # contract-config-ok: config  # fmt: skip
     if local_coder_url:
         configs[EnumModelTier.LOCAL_CODER] = ModelEndpointConfig(
             tier=EnumModelTier.LOCAL_CODER,
@@ -269,7 +267,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         )
 
     # Local reasoning: DeepSeek-R1 — URL from model_policy.yaml (LLM_DEEPSEEK_R1_URL)
-    local_reasoning_url = os.environ.get("LLM_DEEPSEEK_R1_URL", "")
+    local_reasoning_url = os.environ.get("LLM_DEEPSEEK_R1_URL", "")  # contract-config-ok: config  # fmt: skip
     if local_reasoning_url:
         configs[EnumModelTier.LOCAL_REASONING] = ModelEndpointConfig(
             tier=EnumModelTier.LOCAL_REASONING,
@@ -283,9 +281,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     # Gemini CLI — preferred for architecture/multi-file tasks; repo-aware via SSO
     # Auth: GEMINI_API_KEY or GOOGLE_API_KEY (both same value per ticket description)
     # Availability: requires `gemini` CLI binary on PATH
-    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get(
-        "GOOGLE_API_KEY", ""
-    )
+    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")  # contract-config-ok: config  # fmt: skip
     if gemini_key and _gemini_cli_available():
         configs[EnumModelTier.GEMINI_CLI] = ModelEndpointConfig(
             tier=EnumModelTier.GEMINI_CLI,

@@ -24,7 +24,20 @@ from uuid import UUID, uuid4
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-_ALLOWED_TASK_TYPES = ("test", "document", "research")
+_ALLOWED_TASK_TYPES = (
+    "test",
+    "document",
+    "research",
+    "code_generation",
+    "refactor",
+    "reasoning",
+    "complex_reasoning",
+    "planning",
+    "review",
+    "summarization",
+    "agent_delegation",
+    "escalation",
+)
 _ALLOWED_SOURCES = ("claude-code", "codex")
 
 # Contract lives in the installed package, not the repo working directory.

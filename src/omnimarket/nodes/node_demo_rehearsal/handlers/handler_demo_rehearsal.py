@@ -172,6 +172,15 @@ class HandlerDemoRehearsal:
             )
 
         projection = await self._probe_projection()
+        if projection is None:
+            failures.append(
+                {
+                    "dimension": "projection",
+                    "severity": "warning",
+                    "msg": "Projection data unavailable",
+                }
+            )
+
         dashboard = await self._probe_dashboard_api()
 
         if dashboard is None:

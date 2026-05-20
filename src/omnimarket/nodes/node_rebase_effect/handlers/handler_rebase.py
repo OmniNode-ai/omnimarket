@@ -6,7 +6,7 @@ EFFECT node. Serial-in-handler execution per Phase 1 audit.
 Rebases a PR branch onto its base using a dedicated per-PR ephemeral worktree.
 
 Worktree isolation model (non-negotiable per plan):
-  ${ONEX_REBASE_WORKTREE_ROOT:-/tmp/onex-rebase}/<correlation_id>/<repo_short>/
+  ${ONEX_REBASE_WORKTREE_ROOT:-~/.cache/onex-rebase}/<correlation_id>/<repo_short>/
 
 Source clone selection:
   ONEX_REBASE_SOURCE_CLONE_ROOT (required). Falls back to $OMNI_HOME if unset.
@@ -44,7 +44,9 @@ _PROTECTED_HEADS = {"main", "master", "develop"}
 
 def _source_clone_root() -> Path:
     """Resolve source clone root. Fails loud if not configured."""
-    if val := os.environ.get("ONEX_REBASE_SOURCE_CLONE_ROOT"):
+    if val := os.environ.get(  # contract-config-ok: config
+        "ONEX_REBASE_SOURCE_CLONE_ROOT"
+    ):
         return Path(val)
     if val := os.environ.get("OMNI_HOME"):
         return Path(val)
@@ -56,8 +58,12 @@ def _source_clone_root() -> Path:
 
 
 def _worktree_root() -> Path:
-    """Resolve ephemeral worktree root. Defaults to /tmp/onex-rebase."""
-    return Path(os.environ.get("ONEX_REBASE_WORKTREE_ROOT", "/tmp/onex-rebase"))
+    """Resolve ephemeral worktree root. Defaults to a user-scoped cache path."""
+    default_root = Path.home() / ".cache" / "onex-rebase"
+    configured_root = os.environ.get("ONEX_REBASE_WORKTREE_ROOT", "").strip()  # contract-config-ok: config  # fmt: skip
+    if configured_root:
+        return Path(configured_root)
+    return default_root
 
 
 class HandlerRebaseEffect:

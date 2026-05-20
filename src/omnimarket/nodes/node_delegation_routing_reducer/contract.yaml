@@ -24,7 +24,7 @@ node_version:
   patch: 0
 node_type: "REDUCER_GENERIC"
 description: >
-  Deterministic routing reducer for the delegation pipeline. Maps task type and prompt token count to a routing decision: which model, endpoint, cost tier, and system prompt to use. Performs read-only configuration I/O to load on-disk contracts (overrideable via BIFROST_CONTRACT_PATH and TASK_CLASS_CONTRACT_PATH). Resolves endpoint URLs from the deployed bifrost contract at ~/.omninode/delegation/bifrost_delegation.yaml (overrideable via BIFROST_CONTRACT_PATH) — not from environment variables (OMN-10657). Loads task-class contracts from configs/task_class_contracts.v1.yaml (overrideable via TASK_CLASS_CONTRACT_PATH) and enforces per-task-class cloud_routing_policy, pricing_ceiling_per_1k_tokens, and escalation_policy.tier_order constraints (OMN-10615).
+  Deterministic routing reducer for the delegation pipeline. Maps task type and prompt token count to a routing decision: which model, endpoint, cost tier, and system prompt to use. Performs read-only configuration I/O to load on-disk contracts (overrideable via BIFROST_CONTRACT_PATH, BIFROST_OVERLAY_PATH, and TASK_CLASS_CONTRACT_PATH). Resolves endpoint URLs by deep-merging the repo default bifrost contract with the user endpoint overlay — not from endpoint environment variables (OMN-10657, OMN-10717). Loads task-class contracts from configs/task_class_contracts.v1.yaml (overrideable via TASK_CLASS_CONTRACT_PATH) and enforces per-task-class cloud_routing_policy, pricing_ceiling_per_1k_tokens, and escalation_policy.tier_order constraints (OMN-10615).
 
 input_model:
   name: "ModelDelegationRequest"
@@ -70,7 +70,10 @@ config_dependencies:
     description: "A2A endpoint URL for the ADK type debt scout agent"
     required: true
   - key: "BIFROST_CONTRACT_PATH"
-    description: "Override path for the deployed bifrost delegation contract (default: ~/.omninode/delegation/bifrost_delegation.yaml). Used in tests and staging environments."
+    description: "Override path for the repo default bifrost delegation contract. Used in tests and staging environments."
+    required: false
+  - key: "BIFROST_OVERLAY_PATH"
+    description: "Override path for the user endpoint overlay file (default: ~/.omninode/delegation/bifrost_overrides.yaml)."
     required: false
 error_handling:
   retry_policy:
@@ -108,3 +111,11 @@ metadata:
     - "OMN-7040"
     - "OMN-10615"
     - "OMN-10657"
+
+config:
+  BIFROST_CONTRACT_PATH:
+    description: "Path to the Bifrost delegation contract file."
+    required: false
+  TASK_CLASS_CONTRACT_PATH:
+    description: "Path to the task classification contract file."
+    required: false

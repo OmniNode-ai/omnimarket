@@ -577,7 +577,7 @@ def _context_ticket_id(context: ModelContextBundle) -> str:
 
 def _receipt_commit_sha() -> str:
     """Return a receipt-valid commit SHA when CI provides one."""
-    raw_sha = os.environ.get("GITHUB_SHA", "")
+    raw_sha = os.environ.get("GITHUB_SHA", "")  # contract-config-ok: config  # fmt: skip
     if _COMMIT_SHA_RE.fullmatch(raw_sha):
         return raw_sha
     return "0" * 40

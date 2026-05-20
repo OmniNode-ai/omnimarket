@@ -1,0 +1,21 @@
+principle_code: ARCH-003
+name: contract_driven_routing_only
+violation_category: contract_violation
+severity: ERROR
+enforcement_surfaces:
+  - static_architecture
+  - ci_gate
+description: >
+  Kafka topic strings must never be hardcoded in application code. All topic names
+  must come from a ContractConfig or event contract YAML loaded at startup.
+  Hardcoded topic literals silently diverge from the canonical contract on rename
+  or versioning.
+violation_examples:
+  - 'topic = "onex.[cmd|evt].<service>.<event>.v1"  # literal string in handler'
+  - 'producer.send("<topic-literal>", ...)  # not loaded from contract.yaml'
+runtime_scope: handler
+generated_from_principle: ARCH-003
+generated_at: "2026-05-18T00:00:00+00:00"
+source_incidents:
+  - OMN-6931
+generator_tag: "1.0.0"

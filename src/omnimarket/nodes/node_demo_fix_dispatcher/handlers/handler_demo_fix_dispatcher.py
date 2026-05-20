@@ -39,6 +39,7 @@ _AUTO_FIXABLE_CRITICALITIES = frozenset(
 _HUMAN_APPROVAL_REQUIRED = frozenset(
     [EnumDemoCriticality.DEMO_BLOCKER, EnumDemoCriticality.DEMO_DEGRADED]
 )
+_ESTIMATED_AUTOFIX_COST_USD = 1.0
 
 
 def _default_omni_home() -> str:
@@ -167,6 +168,7 @@ class HandlerDemoFixDispatcher:
         finding: ModelDriftFinding,
         dispatched_count: int,
         concurrency: ModelBoundedConcurrencyConfig,
+        spent_cost_usd: float,
     ) -> tuple[bool, str | None]:
         """Return (should_dispatch, skip_reason)."""
         if finding.criticality in _HUMAN_APPROVAL_REQUIRED:
@@ -175,8 +177,15 @@ class HandlerDemoFixDispatcher:
             return False, "backlog_only"
         if not finding.auto_fixable:
             return False, "not_auto_fixable"
+        if finding.criticality not in _AUTO_FIXABLE_CRITICALITIES:
+            return False, "criticality_not_allowed"
         if dispatched_count >= concurrency.max_open_autofix_prs:
             return False, "pr_limit_reached"
+        if (
+            spent_cost_usd + _ESTIMATED_AUTOFIX_COST_USD
+            > concurrency.max_daily_cost_usd
+        ):
+            return False, "daily_cost_limit_reached"
         return True, None
 
     async def _dispatch_fix(
@@ -216,16 +225,18 @@ class HandlerDemoFixDispatcher:
         skipped_human = 0
         skipped_limit = 0
         skipped_not_fixable = 0
+        spent_cost_usd = 0.0
 
         for finding in drift_report.findings:
             should_dispatch, skip_reason = self._should_dispatch(
-                finding, dispatched_count, concurrency
+                finding, dispatched_count, concurrency, spent_cost_usd
             )
 
             if should_dispatch:
                 dispatch_id = await self._dispatch_fix(finding, request.dry_run)
                 if not request.dry_run:
                     dispatched_count += 1
+                    spent_cost_usd += _ESTIMATED_AUTOFIX_COST_USD
                 records.append(
                     ModelFixDispatchRecord(
                         finding_id=finding.finding_id,
@@ -239,7 +250,7 @@ class HandlerDemoFixDispatcher:
             else:
                 if skip_reason == "requires_human_approval":
                     skipped_human += 1
-                elif skip_reason == "pr_limit_reached":
+                elif skip_reason in {"daily_cost_limit_reached", "pr_limit_reached"}:
                     skipped_limit += 1
                 else:
                     skipped_not_fixable += 1

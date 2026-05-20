@@ -55,7 +55,35 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         '    model_name: "test-model-placeholder"\n'
         "    tier: local\n"
         "    timeout_ms: 30000\n"
-        "    capabilities: []\n",
+        "    capabilities: [document]\n"
+        "routing_rules:\n"
+        '  - rule_id: "33333333-3333-4333-8333-333333333333"\n'
+        "    priority: 10\n"
+        "    task_class: document\n"
+        '    task_class_contract_version: "1.0.0"\n'
+        '    backend_policy_version: "1.0.0"\n'
+        "    match_operation_types: [chat_completion]\n"
+        "    match_capabilities: [document]\n"
+        "    backend_ids: [local-deepseek-r1-14b]\n"
+        "    fallback_policy:\n"
+        "      action: return_error\n"
+        "      max_retries: 0\n"
+        "      on_exhaust: return_error\n"
+        '    shadow_policy_id: "44444444-4444-4444-8444-444444444444"\n'
+        "default_backends:\n"
+        "  - local-deepseek-r1-14b\n"
+        "circuit_breaker:\n"
+        "  failure_threshold: 5\n"
+        "  window_seconds: 30\n"
+        "failover:\n"
+        "  max_attempts: 1\n"
+        "  backoff_base_ms: 0\n"
+        "shadow_mode:\n"
+        "  enabled: false\n"
+        '  policy_version: "test"\n'
+        "  log_sample_rate: 1.0\n"
+        "  comparison_logging_enabled: true\n"
+        "  max_shadow_latency_ms: 5.0\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))

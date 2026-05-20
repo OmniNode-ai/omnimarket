@@ -270,9 +270,13 @@ class HandlerModelRouter:
     # ------------------------------------------------------------------ #
 
     def _resolve_primary_key(self) -> str:
-        if self._policy.ci_override is not None and os.environ.get(
-            "ONEX_CI_MODE", ""
-        ).lower() in ("1", "true"):
+        if (
+            self._policy.ci_override is not None
+            and os.environ.get(  # contract-config-ok: declared in contract.yaml config section
+                "ONEX_CI_MODE", ""
+            ).lower()
+            in ("1", "true")
+        ):
             return self._policy.ci_override.primary
         return self._policy.primary
 

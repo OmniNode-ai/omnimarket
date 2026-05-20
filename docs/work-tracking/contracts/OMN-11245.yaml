@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11245"
+title: "Contract registry node in omnimarket"
+summary: >
+  Adds node_contract_registry as an effect node that validates dynamic
+  contract registration requests, enforces handler/profile/hash/version policy,
+  stores accepted contracts, and publishes materialization or rejection events.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+  - "public_api"
+evidence_requirements:
+  - kind: "automated"
+    description: "Focused contract registry unit tests pass."
+    command: "uv run pytest tests/unit/nodes/test_node_contract_registry/ -q"
+  - kind: "automated"
+    description: "Runtime profile ownership validation passes for the new effect node."
+    command: "uv run pytest tests/validation/test_runtime_profile_contracts.py -q"
+  - kind: "automated"
+    description: "Node loads through the onex.nodes entry point registry."
+    command: "uv run python scripts/ci/run_runtime_sweep.py"
+  - kind: "manual"
+    description: >
+      Post-merge deploy validation must confirm the deployed runtime image can
+      import node_contract_registry before the registration command topic is
+      enabled for live producers.
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry import ContractRegistryHandler; print(ContractRegistryHandler.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused contract registry behavior tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/test_node_contract_registry/ -q"
+  - id: "dod-runtime-profile"
+    description: "Effect command consumer declares descriptor.runtime_profiles including effects."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py -q"
+  - id: "dod-runtime-sweep"
+    description: "Contract registry node is registered as an onex.nodes entry point and importable."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/run_runtime_sweep.py"
+  - id: "dod-deploy"
+    description: >
+      Runtime node and topic registration change. No live deploy, runtime
+      restart, Kafka mutation, or .201 mutation was performed in this PR.
+      Post-merge deploy validation must import the handler in the deployed
+      runtime container before live producers publish registration requests.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry import ContractRegistryHandler; print(ContractRegistryHandler.__name__)\""

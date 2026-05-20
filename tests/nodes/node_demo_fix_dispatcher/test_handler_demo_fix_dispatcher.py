@@ -139,8 +139,8 @@ async def test_pr_limit_respected(tmp_path: Path) -> None:
         )
     )
 
-    assert result.fixes_dispatched <= 3
-    assert result.fixes_skipped_limit >= 5
+    assert result.fixes_dispatched == 3
+    assert result.fixes_skipped_limit == 5
 
 
 @pytest.mark.unit

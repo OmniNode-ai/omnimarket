@@ -20,7 +20,7 @@ handler_routing:
 descriptor:
   node_archetype: compute
   purity: impure
-  idempotent: true
+  idempotent: false
   timeout_ms: 60000
 
 inputs:

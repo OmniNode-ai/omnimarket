@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import (
     HandlerPipelineFill,
@@ -24,6 +25,8 @@ from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import (
 from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command import (
     ModelPipelineFillCommand,
 )
+
+_NODE_DIR = Path(__file__).resolve().parents[1]
 
 
 def _make_ticket(
@@ -135,6 +138,32 @@ def test_topics_from_contract_returns_required_topics() -> None:
             "ticket_pipeline_start": "onex.cmd.omnimarket.ticket-pipeline-start.v1",
             "pipeline_fill_completed": "onex.evt.omnimarket.pipeline-fill-completed.v1",
         }
+
+
+@pytest.mark.unit
+def test_pipeline_fill_declares_effect_runtime_ownership() -> None:
+    contract = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
+    metadata = yaml.safe_load((_NODE_DIR / "metadata.yaml").read_text())
+
+    assert contract["node_type"] == "effect"
+    assert contract["descriptor"]["node_archetype"] == "effect"
+    assert contract["descriptor"]["purity"] == "impure"
+    assert contract["descriptor"]["runtime_profiles"] == ["effects"]
+    assert set(contract["dependency_ownership"]) == {
+        "event_bus",
+        "linear_api",
+        "dispatch_state_files",
+    }
+    assert metadata["node_role"] == "effect"
+    assert "effect" in metadata["tags"]
+    assert "orchestrator" not in metadata["tags"]
+
+
+@pytest.mark.unit
+def test_handler_category_matches_effect_classification() -> None:
+    handler = HandlerPipelineFill(event_bus=None, linear_client=AsyncMock())
+
+    assert handler.handler_category == "effect"
 
 
 # ---------------------------------------------------------------------------

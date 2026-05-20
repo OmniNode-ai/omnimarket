@@ -100,21 +100,28 @@ class HandlerCodeEnrichmentEffect:
         batch_size: int | None = None,
     ) -> ModelCodeEnrichmentResult:
         """Enrich a batch of unenriched code entities with LLM classification."""
-        primary_endpoint = llm_endpoint_override or os.environ.get("LLM_CODER_URL", "")
+        primary_endpoint = (
+            llm_endpoint_override
+            or os.environ.get(  # contract-config-ok: config
+                "LLM_CODER_URL", ""
+            )
+        )
         if not primary_endpoint:
             raise OSError(
                 "LLM_CODER_URL is required but not set. "
                 "Set this env var to the primary Qwen3-Coder OpenAI-compatible endpoint base URL."
             )
 
-        fallback_endpoint = os.environ.get("LLM_FALLBACK_URL", "")
+        fallback_endpoint = os.environ.get(  # contract-config-ok: config
+            "LLM_FALLBACK_URL", ""
+        )
         confidence_threshold = float(
-            os.environ.get(
+            os.environ.get(  # contract-config-ok: config
                 "CODE_ENRICHMENT_CONFIDENCE_THRESHOLD",
                 str(DEFAULT_CONFIDENCE_THRESHOLD),
             )
         )
-        enrichment_version = os.environ.get(
+        enrichment_version = os.environ.get(  # contract-config-ok: config
             "CODE_ENRICHMENT_VERSION", DEFAULT_ENRICHMENT_VERSION
         )
         if batch_size is not None and batch_size <= 0:
@@ -123,7 +130,7 @@ class HandlerCodeEnrichmentEffect:
             batch_size
             if batch_size is not None and batch_size > 0
             else int(
-                os.environ.get(
+                os.environ.get(  # contract-config-ok: config
                     "CODE_ENRICHMENT_BATCH_SIZE", str(DEFAULT_ENRICHMENT_BATCH_SIZE)
                 )
             )

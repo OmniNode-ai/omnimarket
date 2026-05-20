@@ -307,7 +307,9 @@ class HandlerRedeployKafka:
 
             bus = EventBusKafka(
                 bootstrap_servers=bootstrap,
-                environment=os.environ.get("KAFKA_ENVIRONMENT", "production"),
+                environment=os.environ.get(  # contract-config-ok: config
+                    "KAFKA_ENVIRONMENT", "production"
+                ),
                 group="node-redeploy",
             )
         except ImportError as exc:

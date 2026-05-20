@@ -33,6 +33,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
     EnumPrBlockReason,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
+    _UNKNOWN_OCC_MERGE_SHA,
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleResult,
     ModelPrLifecycleStartCommand,
@@ -981,6 +982,20 @@ class TestPrLifecycleOrchestratorResultFile:
             payload["edges"][0]["rerun_guard_key"]
             == "OMN-10486:OmniNode-ai/omnimarket#10486:occ:occ-merge-sha-123"
         )
+
+    async def test_occ_merge_sha_env_is_stripped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Whitespace-only env does not create unstable OCC rerun keys."""
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("ONEX_OCC_MERGE_SHA", "   ")
+
+        resolved = HandlerPrLifecycleOrchestrator._resolve_occ_merge_sha(
+            triage_result=PrTriageResult(classified=()),
+            reducer_result=ReducerResult(intents=()),
+        )
+
+        assert resolved == _UNKNOWN_OCC_MERGE_SHA
 
 
 @pytest.mark.unit

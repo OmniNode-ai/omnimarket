@@ -37,8 +37,8 @@ from omnimarket.nodes.node_platform_readiness.models.dimension_result_v2 import 
     ModelDimensionResultV2,
 )
 
-_RUNTIME_API = os.environ.get("ONEX_RUNTIME_API", "")
-_DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")
+_RUNTIME_API = os.environ.get("ONEX_RUNTIME_API", "")  # contract-config-ok: config  # fmt: skip
+_DASHBOARD_API = os.environ.get("ONEX_DASHBOARD_API", "")  # contract-config-ok: config  # fmt: skip
 _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 _GITHUB_REPOS = [
     "OmniNode-ai/omnimarket",

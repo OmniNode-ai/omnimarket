@@ -102,6 +102,15 @@ class TestHandlerRuntimeShaVerifyMatchingSha:
 
         assert receipt.commit_sha == _MATCHING_SHA
 
+    def test_receipt_check_value_is_merge_sha(self) -> None:
+        handler = HandlerRuntimeShaVerify()
+        request = _make_request(merge_sha=_MATCHING_SHA)
+
+        with patch.object(handler, "_probe_deployed_sha", return_value=_MATCHING_SHA):
+            receipt = handler.handle(request)
+
+        assert receipt.check_value == _MATCHING_SHA
+
 
 class TestHandlerRuntimeShaVerifyStaleSha:
     def test_stale_runtime_produces_fail_receipt(self) -> None:

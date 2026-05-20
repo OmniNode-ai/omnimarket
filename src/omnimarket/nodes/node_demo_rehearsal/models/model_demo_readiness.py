@@ -3,11 +3,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _normalize_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise ValueError("datetime must be timezone-aware")
+    return value.astimezone(UTC)
 
 
 class EnumDemoCriticality(StrEnum):
@@ -57,13 +63,18 @@ class ModelRehearsalBundle(BaseModel):
         default=None,
         description="Relative path to screenshot artifact (None if not captured).",
     )
-    overall_status: Literal["GREEN", "DEGRADED", "BROKEN"] = Field(
+    overall_status: EnumDemoRehearsalStatus = Field(
         ..., description="Overall rehearsal health."
     )
     failures: list[dict[str, Any]] = Field(
         default_factory=list,
         description="List of failure detail dicts.",
     )
+
+    @field_validator("timestamp_utc")
+    @classmethod
+    def _timestamp_must_be_utc(cls, value: datetime) -> datetime:
+        return _normalize_utc(value)
 
 
 class ModelDriftFinding(BaseModel):
@@ -72,7 +83,7 @@ class ModelDriftFinding(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     finding_id: str = Field(..., description="Unique finding identifier.")
-    dimension: str = Field(
+    dimension: Literal["topology", "projection", "dashboard", "screenshot"] = Field(
         ...,
         description="Drift dimension: topology, projection, dashboard, screenshot.",
     )
@@ -130,6 +141,11 @@ class ModelMorningDispatchPlan(BaseModel):
         default_factory=list,
         description="Proposed parallel fix waves for the morning session.",
     )
+
+    @field_validator("generated_at")
+    @classmethod
+    def _generated_at_must_be_utc(cls, value: datetime) -> datetime:
+        return _normalize_utc(value)
 
 
 class ModelBoundedConcurrencyConfig(BaseModel):

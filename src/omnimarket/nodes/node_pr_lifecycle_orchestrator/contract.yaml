@@ -267,3 +267,8 @@ metadata:
     - "OMN-8085"
     - "OMN-8086"
     - "OMN-8070"
+
+config:
+  ONEX_OCC_MERGE_SHA:
+    description: "Git SHA of the merge commit for OCC post-merge verification."
+    required: false

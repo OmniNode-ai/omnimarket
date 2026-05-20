@@ -23,13 +23,19 @@ from omnimarket.nodes.node_demo_rehearsal.models.model_demo_readiness import (
 )
 
 
-def _write_green_bundle(tmp_path: Path, topology: dict, dashboard: dict | None) -> Path:
+def _write_green_bundle(
+    tmp_path: Path,
+    topology: dict,
+    dashboard: dict | None,
+    projection: dict | None = None,
+) -> Path:
     from datetime import UTC, datetime
 
     bundle = ModelRehearsalBundle(
         rehearsal_id="green-001",
         timestamp_utc=datetime.now(UTC),
         runtime_topology_manifest=topology,
+        projection_row=projection,
         dashboard_api_response=dashboard,
         overall_status="GREEN",
         failures=[],
@@ -55,6 +61,9 @@ async def test_no_drift_when_identical(tmp_path: Path) -> None:
         ),
         patch.object(
             handler, "_probe_current_dashboard", new=AsyncMock(return_value=dashboard)
+        ),
+        patch.object(
+            handler, "_probe_current_projection", new=AsyncMock(return_value=None)
         ),
     ):
         result = await handler.handle(
@@ -84,6 +93,9 @@ async def test_demo_blocker_when_topology_gone(tmp_path: Path) -> None:
             handler,
             "_probe_current_dashboard",
             new=AsyncMock(return_value={"status": "ok"}),
+        ),
+        patch.object(
+            handler, "_probe_current_projection", new=AsyncMock(return_value=None)
         ),
     ):
         result = await handler.handle(
@@ -120,6 +132,9 @@ async def test_cosmetic_when_dashboard_differs(tmp_path: Path) -> None:
             "_probe_current_dashboard",
             new=AsyncMock(return_value={"status": "ok", "v": 2}),
         ),
+        patch.object(
+            handler, "_probe_current_projection", new=AsyncMock(return_value=None)
+        ),
     ):
         result = await handler.handle(
             ModelDemoDriftDetectRequest(
@@ -141,6 +156,48 @@ async def test_cosmetic_when_dashboard_differs(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_projection_drift_is_reported(tmp_path: Path) -> None:
+    green_path = _write_green_bundle(
+        tmp_path,
+        {"nodes": 1},
+        {"status": "ok"},
+        projection={"id": "green"},
+    )
+
+    handler = HandlerDemoDriftDetector()
+    with (
+        patch.object(
+            handler, "_probe_current_topology", new=AsyncMock(return_value={"nodes": 1})
+        ),
+        patch.object(
+            handler,
+            "_probe_current_dashboard",
+            new=AsyncMock(return_value={"status": "ok"}),
+        ),
+        patch.object(
+            handler,
+            "_probe_current_projection",
+            new=AsyncMock(return_value={"id": "current"}),
+        ),
+    ):
+        result = await handler.handle(
+            ModelDemoDriftDetectRequest(
+                run_id="drift-test-projection",
+                proof_of_green_path=str(green_path),
+                omni_home=str(tmp_path),
+                dry_run=True,
+            )
+        )
+
+    projection_findings = [
+        f for f in result.drift_report.findings if f.dimension == "projection"
+    ]
+    assert len(projection_findings) == 1
+    assert projection_findings[0].criticality == EnumDemoCriticality.DEMO_DEGRADED
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_drift_report_written(tmp_path: Path) -> None:
     green_path = _write_green_bundle(tmp_path, {"nodes": 2}, {"status": "ok"})
 
@@ -153,6 +210,9 @@ async def test_drift_report_written(tmp_path: Path) -> None:
             handler,
             "_probe_current_dashboard",
             new=AsyncMock(return_value={"status": "ok"}),
+        ),
+        patch.object(
+            handler, "_probe_current_projection", new=AsyncMock(return_value=None)
         ),
     ):
         result = await handler.handle(

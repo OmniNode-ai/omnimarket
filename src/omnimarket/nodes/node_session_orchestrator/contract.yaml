@@ -202,3 +202,11 @@ health_dimensions:
 
 metadata:
   transport_type: kafka
+
+config:
+  SSH_STRICT_HOST_KEY_CHECKING:
+    description: "SSH StrictHostKeyChecking value (yes/no/accept-new)."
+    required: false
+  ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE:
+    description: "Path to Linear fixture file for testing."
+    required: false

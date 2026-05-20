@@ -82,11 +82,11 @@ async def test_rehearsal_writes_artifact(tmp_omni_home: Path) -> None:
             )
         )
 
-    assert result.overall_status == "GREEN"
+    assert result.overall_status == "DEGRADED"
     bundle_path = Path(result.bundle_path)
     assert bundle_path.exists()
     data = json.loads(bundle_path.read_text())
-    assert data["overall_status"] == "GREEN"
+    assert data["overall_status"] == "DEGRADED"
     assert data["rehearsal_id"] is not None
 
 
@@ -131,3 +131,33 @@ async def test_rehearsal_degraded_when_dashboard_fails(tmp_omni_home: Path) -> N
         )
 
     assert result.overall_status == "DEGRADED"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_rehearsal_degraded_when_projection_missing(
+    tmp_omni_home: Path,
+) -> None:
+    handler = HandlerDemoRehearsal()
+    with (
+        patch.object(
+            handler, "_probe_topology", new=AsyncMock(return_value={"nodes": 1})
+        ),
+        patch.object(handler, "_probe_projection", new=AsyncMock(return_value=None)),
+        patch.object(
+            handler,
+            "_probe_dashboard_api",
+            new=AsyncMock(return_value={"status": "ok"}),
+        ),
+    ):
+        result = await handler.handle(
+            ModelDemoRehearsalRequest(
+                run_id="test-run-projection-missing",
+                omni_home=str(tmp_omni_home),
+                dry_run=True,
+            )
+        )
+
+    assert result.overall_status == "DEGRADED"
+    assert result.failure_count == 1
+    assert result.rehearsal_bundle.failures[0]["dimension"] == "projection"

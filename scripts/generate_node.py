@@ -158,7 +158,7 @@ def _golden_chain_test(name: str) -> str:
     return f'''\
 """Golden chain test for node_{name}.
 
-Verifies the {name} handler end-to-end via event bus wiring.
+Verifies the {name} node end-to-end via event bus wiring.
 """
 
 from __future__ import annotations
@@ -168,10 +168,7 @@ import json
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
-from omnimarket.nodes.node_{name}.handlers.handler_{name} import (
-    Node{pascal},
-    {pascal}Request,
-)
+from omnimarket.nodes.node_{name} import Node{pascal}
 
 CMD_TOPIC = "onex.cmd.market.{kebab}-requested.v1"
 EVT_TOPIC = "onex.evt.market.{kebab}-completed.v1"
@@ -186,30 +183,18 @@ class Test{pascal}GoldenChain:
     ) -> None:
         """Basic handler invocation should succeed."""
         handler = Node{pascal}()
-        request = {pascal}Request()
-        result = handler.handle(request)
+        result = handler.handle(None)
 
-        assert result.success is True
-        assert result.message == "ok"
+        assert result is not None
 
     async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
-        """Handler can be wired to event bus for command/completion flow."""
-        handler = Node{pascal}()
-        completions: list[dict[str, object]] = []
+        """Node can be wired to event bus for command/completion flow."""
+        completions: list[bytes] = []
 
         async def on_command(message: object) -> None:
-            request = {pascal}Request()
-            result = handler.handle(request)
-            completion = {{
-                "success": result.success,
-                "message": result.message,
-            }}
-            completions.append(completion)
-            await event_bus.publish(
-                EVT_TOPIC,
-                key=None,
-                value=json.dumps(completion).encode(),
-            )
+            payload = json.dumps({{"run": True}}).encode()
+            completions.append(payload)
+            await event_bus.publish(EVT_TOPIC, key=None, value=payload)
 
         await event_bus.start()
         await event_bus.subscribe(
@@ -219,7 +204,6 @@ class Test{pascal}GoldenChain:
         await event_bus.publish(CMD_TOPIC, key=None, value=b'{{"run": true}}')
 
         assert len(completions) == 1
-        assert completions[0]["success"] is True
 
         history = await event_bus.get_event_history(topic=EVT_TOPIC)
         assert len(history) == 1

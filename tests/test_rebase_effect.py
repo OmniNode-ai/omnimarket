@@ -15,6 +15,7 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
 )
 from omnimarket.nodes.node_rebase_effect.handlers.handler_rebase import (
     HandlerRebaseEffect,
+    _worktree_root,
 )
 from omnimarket.nodes.node_rebase_effect.models.model_rebase_completed_event import (
     ModelRebaseCompletedEvent,
@@ -39,6 +40,11 @@ def _cmd(
         run_id=_RUN_ID,
         total_prs=3,
     )
+
+
+def test_blank_worktree_root_uses_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONEX_REBASE_WORKTREE_ROOT", "   ")
+    assert _worktree_root() == Path.home() / ".cache" / "onex-rebase"
 
 
 @pytest.mark.asyncio

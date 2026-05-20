@@ -49,7 +49,7 @@ outputs:
     description: "The run ID for this drift detection"
   report_path:
     type: str
-    description: "Filesystem path where drift_report.json was written"
+    description: "Filesystem path where drift_report.json would be written. When dry_run=true the file is not created; the path is informational/testing-only unless dry_run=false or the artifact exists."
   demo_blocker_count:
     type: int
     description: "Number of DEMO_BLOCKER findings"

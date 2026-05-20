@@ -1,0 +1,21 @@
+principle_code: ARCH-002
+name: no_silent_fallback
+violation_category: static_architecture
+severity: WARNING
+enforcement_surfaces:
+  - static_architecture
+  - ci_gate
+  - pre_tool_use
+description: >
+  os.environ.get() calls with non-empty default values silently pick a wrong
+  default when the env var is missing. Use os.environ["KEY"] (fail-fast) instead.
+  Annotate genuine graceful-degradation sites with # fallback-ok: <reason>.
+violation_examples:
+  - 'os.environ.get("OMNI_HOME", "/some/default")'
+  - 'os.environ.get("DB_HOST", "localhost")'
+runtime_scope: module
+generated_from_principle: ARCH-002
+generated_at: "2026-05-18T00:00:00+00:00"
+source_incidents:
+  - OMN-6925
+generator_tag: "1.0.0"

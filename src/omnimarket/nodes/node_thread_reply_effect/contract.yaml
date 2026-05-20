@@ -105,3 +105,20 @@ dod_evidence:
 
 metadata:
   transport_type: kafka
+
+config:
+  LLM_CODER_URL:
+    description: "Qwen3-Coder endpoint URL (primary model)."
+    required: false
+  LLM_GLM_URL:
+    description: "GLM cloud API base URL (fallback model)."
+    required: false
+  LLM_CODER_FAST_URL:
+    description: "Fast model endpoint URL."
+    required: false
+  ONEX_CI_MODE:
+    description: "When set, forces draft-first posting and disables live GitHub API calls."
+    required: false
+  ONEX_THREAD_REPLY_DIRECT_POST:
+    description: "When 'true', enables direct posting (Phase 3 opt-in)."
+    required: false

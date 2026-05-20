@@ -47,7 +47,20 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
         tier: local
         timeout_ms: 30000
         capabilities: []
-    routing_rules: []
+    routing_rules:
+      - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+        priority: 10
+        task_class: code_generation
+        task_class_contract_version: "1.0.0"
+        backend_policy_version: "1.0.0"
+        match_operation_types: [chat_completion]
+        match_capabilities: [code_generation]
+        backend_ids: [local-qwen-coder-30b, local-deepseek-r1-14b]
+        fallback_policy:
+          action: escalate_to_next_tier
+          max_retries: 1
+          on_exhaust: return_error
+        shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
     default_backends:
       - local-qwen-coder-30b
     circuit_breaker:

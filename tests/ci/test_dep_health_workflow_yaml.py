@@ -57,12 +57,11 @@ class TestDepHealthWorkflowYaml:
             "Workflow must have an advisory step (continue-on-error: true)"
         )
 
-    def test_blocking_step_uses_exit_nonzero_on_findings(self) -> None:
-        """The delta-blocking step must pass --exit-nonzero-on-findings."""
+    def test_blocking_step_uses_delta_mode(self) -> None:
+        """The delta-blocking step must pass --delta-mode and baseline path."""
         content = WORKFLOW_PATH.read_text()
-        assert "--exit-nonzero-on-findings" in content, (
-            "Blocking step must pass --exit-nonzero-on-findings"
-        )
+        assert "--delta-mode" in content, "Blocking step must pass --delta-mode"
+        assert "--baseline-path" in content, "Blocking step must pass --baseline-path"
 
     def test_blocking_step_does_not_have_continue_on_error_true(self) -> None:
         """The delta-blocking step must not have continue-on-error: true."""
@@ -75,7 +74,7 @@ class TestDepHealthWorkflowYaml:
             for step in steps:
                 run = str(step.get("run", ""))
                 # Check any step that is the blocking delta step
-                if "--exit-nonzero-on-findings" in run:
+                if "--delta-mode" in run:
                     continue_on_error = step.get("continue-on-error", False)
                     assert not continue_on_error, (
                         f"Blocking step '{step.get('name')}' must not have "

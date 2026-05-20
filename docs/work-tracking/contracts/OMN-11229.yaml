@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11229"
+title: "Task 5: Create node_session_phase_evaluator (COMPUTE)"
+summary: >
+  Pure deterministic COMPUTE node that evaluates session phase exit conditions
+  and budget status. Returns ModelPhaseEvaluation with action: no_action |
+  budget_warning | transition_required | halt_required. No I/O, no bus, no
+  env reads. Part of epic OMN-11224.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omnimarket-pr-702"
+    description: "Bind omnimarket PR #702 to OMN-11229 at observed head SHA."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 702 --repo OmniNode-ai/omnimarket --json headRefOid,state"
+  - id: "dod-unit-tests"
+    description: "20 unit tests pass covering all four action paths."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_session_phase_evaluator/ -v -m unit"
+  - id: "dod-deploy-assessment"
+    description: "No live deploy required. Pure COMPUTE node — stateless, no I/O, no bus subscription activated, no DB migration, no runtime service restart."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'node_type: compute' src/omnimarket/nodes/node_session_phase_evaluator/contract.yaml && echo 'No live deploy required for pure COMPUTE node'"
