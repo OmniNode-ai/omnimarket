@@ -1,0 +1,23 @@
+name: node_morning_handoff_generator
+version: "1.0.0"
+description: "Synthesize overnight demo readiness evidence into morning handoff plan"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_morning_handoff_generator: "omnimarket.nodes.node_morning_handoff_generator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["demo", "handoff", "morning", "readiness", "plan", "automation"]
+pack: "demo_readiness"
+display_name: "Morning Handoff Generator"
+node_role: "compute"

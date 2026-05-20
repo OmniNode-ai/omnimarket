@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11222
+title: "Add demo readiness team nodes"
+summary: >
+  Adds omnimarket demo readiness nodes for rehearsal, drift detection, bounded
+  fix dispatch, and morning handoff generation. The implementation records
+  evidence artifacts and does not perform live deploys, production restarts,
+  or production data mutation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #700 except evidence gates before this contract lands"
+    command: "gh pr checks 700 --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: "No live deploy or runtime restart was performed for this PR evidence update"
+    command: "printf '%s\n' 'deploy gate: no live deploy, runtime restart, .201 mutation, or production data mutation performed; rerun deploy-gate after evidence binding'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-ci
+    description: "omnimarket PR #700 non-evidence gates pass"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "gh pr checks 700 --repo OmniNode-ai/omnimarket"
+  - id: dod-deploy
+    description: "No live deploy, runtime restart, .201 mutation, or production data mutation was performed"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: no live deploy, runtime restart, .201 mutation, or production data mutation performed; rerun deploy-gate after evidence binding'"

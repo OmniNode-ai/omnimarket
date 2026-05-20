@@ -1,0 +1,83 @@
+---
+name: demo_drift_detector
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Diffs current demo state vs a proof-of-green rehearsal bundle.
+  Uses truth hierarchy: topology > projection > dashboard > screenshots.
+  Classifies each finding with a demo-criticality rubric and writes
+  drift_report.json to the evidence directory.
+
+handler:
+  module: omnimarket.nodes.node_demo_drift_detector.handlers.handler_demo_drift_detector
+  class: HandlerDemoDriftDetector
+  input_model: omnimarket.nodes.node_demo_drift_detector.handlers.handler_demo_drift_detector.ModelDemoDriftDetectRequest
+
+handler_routing:
+  default_handler: handler:HandlerDemoDriftDetector
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  run_id:
+    type: str
+    description: "Run identifier for correlation"
+    required: true
+  proof_of_green_path:
+    type: str
+    description: "Path to proof-of-green rehearsal_bundle.json"
+    required: true
+  evidence_dir:
+    type: str
+    description: "Directory to write drift_report.json. Defaults to docs/evidence/demo-readiness/<run_id>/ relative to omni_home."
+    required: false
+  dry_run:
+    type: bool
+    description: "If true, detect drift but do not write report artifact"
+    required: false
+    default: false
+
+outputs:
+  run_id:
+    type: str
+    description: "The run ID for this drift detection"
+  report_path:
+    type: str
+    description: "Filesystem path where drift_report.json would be written. When dry_run=true the file is not created; the path is informational/testing-only unless dry_run=false or the artifact exists."
+  demo_blocker_count:
+    type: int
+    description: "Number of DEMO_BLOCKER findings"
+  demo_degraded_count:
+    type: int
+    description: "Number of DEMO_DEGRADED findings"
+  total_finding_count:
+    type: int
+    description: "Total number of drift findings"
+
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: "Root path of the omni_home workspace"
+  DEMO_DASHBOARD_URL:
+    required: false
+    description: "Dashboard API base URL for current-state probes"
+  DEMO_PROJECTION_DB_URL:
+    required: false
+    description: "Postgres DSN for projection probe"
+
+terminal_event: onex.evt.omnimarket.demo-drift-detected.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.demo-drift-detected.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.demo-drift-detect-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.demo-drift-detected.v1

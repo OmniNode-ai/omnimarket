@@ -1,0 +1,96 @@
+---
+name: demo_fix_dispatcher
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Auto-fixes low-risk demo drift findings (COSMETIC, OBSERVABILITY_ONLY) with
+  bounded authority. DEMO_BLOCKER and DEMO_DEGRADED findings are flagged for
+  human approval and never auto-fixed. Respects concurrency limits:
+  max_parallel_workers, max_daily_cost_usd, max_open_autofix_prs.
+  Never deploys runtime changes, restarts production lanes, or merges
+  topology-affecting PRs.
+
+handler:
+  module: omnimarket.nodes.node_demo_fix_dispatcher.handlers.handler_demo_fix_dispatcher
+  class: HandlerDemoFixDispatcher
+  input_model: omnimarket.nodes.node_demo_fix_dispatcher.handlers.handler_demo_fix_dispatcher.ModelDemoFixDispatchRequest
+
+handler_routing:
+  default_handler: handler:HandlerDemoFixDispatcher
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  runtime_profiles:
+    - effects
+  timeout_ms: 600000
+
+inputs:
+  run_id:
+    type: str
+    description: "Run identifier for correlation"
+    required: true
+  drift_report_path:
+    type: str
+    description: "Path to drift_report.json produced by node_demo_drift_detector"
+    required: true
+  evidence_dir:
+    type: str
+    description: "Directory to write fix_dispatch_log.json. Defaults to docs/evidence/demo-readiness/<run_id>/ relative to omni_home."
+    required: false
+  max_parallel_workers:
+    type: int
+    description: "Maximum parallel fix workers (default 4)"
+    required: false
+    default: 4
+  max_daily_cost_usd:
+    type: float
+    description: "Maximum daily cost in USD (default 50.0)"
+    required: false
+    default: 50.0
+  max_open_autofix_prs:
+    type: int
+    description: "Maximum open auto-fix PRs (default 5)"
+    required: false
+    default: 5
+  dry_run:
+    type: bool
+    description: "If true, evaluate fixes but do not dispatch any workers"
+    required: false
+    default: false
+
+outputs:
+  run_id:
+    type: str
+    description: "The run ID for this dispatch pass"
+  dispatch_log_path:
+    type: str
+    description: "Filesystem path where fix_dispatch_log.json was written"
+  fixes_dispatched:
+    type: int
+    description: "Number of fixes actually dispatched"
+  fixes_skipped_human_approval:
+    type: int
+    description: "Number of findings skipped because they require human approval"
+  fixes_skipped_limit:
+    type: int
+    description: "Number of findings skipped because concurrency/cost limits were reached"
+
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: "Root path of the omni_home workspace"
+
+terminal_event: onex.evt.omnimarket.demo-fixes-dispatched.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.demo-fixes-dispatched.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.demo-fix-dispatch-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.demo-fixes-dispatched.v1

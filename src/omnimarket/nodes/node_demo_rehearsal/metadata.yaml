@@ -1,0 +1,25 @@
+name: node_demo_rehearsal
+version: "1.0.0"
+description: "Execute demo rehearsal pipeline and capture evidence bundle"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_demo_rehearsal: "omnimarket.nodes.node_demo_rehearsal"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+  - "asyncpg>=0.30.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["demo", "rehearsal", "readiness", "evidence", "automation"]
+pack: "demo_readiness"
+display_name: "Demo Rehearsal"
+node_role: "effect"

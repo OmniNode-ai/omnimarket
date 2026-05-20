@@ -253,6 +253,10 @@ node_omnigate_check_executor = "omnimarket.nodes.node_omnigate_check_executor"
 node_omnigate_receipt_generator = "omnimarket.nodes.node_omnigate_receipt_generator"
 node_omnigate_receipt_verifier = "omnimarket.nodes.node_omnigate_receipt_verifier"
 node_omnigate_projection = "omnimarket.nodes.node_omnigate_projection"
+node_demo_rehearsal = "omnimarket.nodes.node_demo_rehearsal"
+node_demo_drift_detector = "omnimarket.nodes.node_demo_drift_detector"
+node_demo_fix_dispatcher = "omnimarket.nodes.node_demo_fix_dispatcher"
+node_morning_handoff_generator = "omnimarket.nodes.node_morning_handoff_generator"
 node_session_phase_dispatcher = "omnimarket.nodes.node_session_phase_dispatcher"
 
 [project.scripts]
