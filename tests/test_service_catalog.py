@@ -20,9 +20,7 @@ from omnimarket.nodes.node_handoff_effect.service_catalog import (
     probe_services,
 )
 
-_SSH_TARGET = (
-    "jonah@192.168.86.201"  # onex-allow-internal-ip OMN-11267 reason="test fixture for read-only service catalog probe"
-)
+_SSH_TARGET = "jonah@192.168.86.201"  # onex-allow-internal-ip OMN-11267 reason="test fixture for read-only service catalog probe"
 
 _HEALTHY_RESPONSES: dict[str, str] = {
     "postgres": "omnibase_postgres|Up 3 hours",
