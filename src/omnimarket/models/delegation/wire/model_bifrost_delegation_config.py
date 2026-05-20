@@ -133,7 +133,7 @@ class ModelDelegationBackendConfig(BaseModel):
     )
     endpoint_url: str = Field(
         default="",
-        description="Deployed full endpoint URL populated by install-delegation.sh.",
+        description="Endpoint URL populated by the user overlay at load time.",
     )
     model_name: str = Field(
         ..., description="Model identifier sent in outbound requests."
