@@ -1,0 +1,14 @@
+# OMN-10821: documented legacy Handler* classes without external Python imports
+# or contract.yaml routing references. Keep this list small: new entries should
+# either add contract wiring, add a Python import, or explain why the handler is
+# intentionally dormant.
+src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_auto_rebase.py:HandlerAutoRebase # Legacy PR lifecycle helper; not in contract routing yet.
+src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_comment_resolution.py:HandlerCommentResolution # Legacy PR lifecycle review-thread helper; not in contract routing yet.
+src/omnimarket/nodes/node_pr_review_bot/handlers/handler_commit_citation_verifier.py:HandlerCommitCitationVerifier # Verification-loop helper pending explicit contract routing.
+src/omnimarket/nodes/node_generation_consumer/handlers/handler_generated_executor.py:HandlerGeneratedExecutor # Dynamic generated-node executor pending explicit contract routing.
+src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_convergence_reducer.py:HandlerConvergenceReducer # Hostile-reviewer internal helper pending explicit contract routing.
+src/omnimarket/nodes/node_overseer_verifier/handlers/handler_overseer_verifier_consumer.py:HandlerOverseerVerifierConsumer # Standalone consumer shim pending explicit contract routing.
+src/omnimarket/nodes/node_nightly_loop_controller/handlers/handler_projection_nightly_loop.py:HandlerProjectionNightlyLoop # Projection helper pending explicit contract routing.
+src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_response_parser.py:HandlerResponseParser # Hostile-reviewer internal helper pending explicit contract routing.
+src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_review_orchestrator.py:HandlerReviewOrchestrator # Hostile-reviewer orchestration helper pending explicit contract routing.
+src/omnimarket/nodes/node_pr_review_bot/handlers/handler_webhook_reconciler.py:HandlerWebhookReconciler # PR-review webhook helper pending explicit contract routing.

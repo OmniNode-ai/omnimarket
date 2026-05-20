@@ -46,6 +46,24 @@ def test_allows_handler_imported_in_init(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_ignores_string_and_comment_mentions(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "nodes/node_x/handlers/handler_x.py",
+        "class HandlerXEffect:\n    pass\n",
+    )
+    _write(
+        tmp_path,
+        "nodes/node_x/mentions.py",
+        "# HandlerXEffect is not wired here\n"
+        "DOC = 'HandlerXEffect is only mentioned as text'\n",
+    )
+    dead = find_dead_handlers(tmp_path)
+    assert len(dead) == 1
+    assert "HandlerXEffect" in dead[0]
+
+
+@pytest.mark.unit
 def test_allows_handler_referenced_in_registry(tmp_path: Path) -> None:
     _write(
         tmp_path,
@@ -59,6 +77,61 @@ def test_allows_handler_referenced_in_registry(tmp_path: Path) -> None:
         "REGISTRY = {HandlerXEffect}\n",
     )
     assert find_dead_handlers(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_allows_handler_declared_in_node_contract(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "nodes/node_x/handlers/handler_x.py",
+        "class HandlerXEffect:\n    pass\n",
+    )
+    _write(
+        tmp_path,
+        "nodes/node_x/contract.yaml",
+        "handler:\n"
+        "  module: omnimarket.nodes.node_x.handlers.handler_x\n"
+        "  class: HandlerXEffect\n",
+    )
+    assert find_dead_handlers(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_allows_documented_legacy_baseline_entry(tmp_path: Path) -> None:
+    handler = _write(
+        tmp_path,
+        "nodes/node_x/handlers/handler_x.py",
+        "class HandlerXEffect:\n    pass\n",
+    )
+    repo_relative = handler.relative_to(tmp_path.parent.parent)
+    baseline = _write(
+        tmp_path,
+        "scripts/validation/unimported_handler_baseline.txt",
+        f"{repo_relative}:HandlerXEffect # documented legacy helper\n",
+    )
+    assert find_dead_handlers(tmp_path, baseline_path=baseline) == []
+
+
+@pytest.mark.unit
+def test_tracks_duplicate_handler_class_names_by_file(tmp_path: Path) -> None:
+    first = _write(
+        tmp_path,
+        "nodes/node_x/handlers/handler_x.py",
+        "class HandlerShared:\n    pass\n",
+    )
+    second = _write(
+        tmp_path,
+        "nodes/node_y/handlers/handler_y.py",
+        "class HandlerShared:\n    pass\n",
+    )
+    baseline = _write(
+        tmp_path,
+        "scripts/validation/unimported_handler_baseline.txt",
+        f"{first.relative_to(tmp_path.parent.parent)}:HandlerShared # legacy\n",
+    )
+    dead = find_dead_handlers(tmp_path, baseline_path=baseline)
+    assert len(dead) == 1
+    assert str(second.relative_to(tmp_path.parent.parent)) in dead[0]
 
 
 @pytest.mark.unit

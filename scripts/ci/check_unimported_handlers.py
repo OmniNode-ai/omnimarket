@@ -30,9 +30,9 @@ _HANDLER_CLASS_RE = re.compile(r"^Handler[A-Z]\w*$")
 
 def _collect_handler_definitions(
     src_root: pathlib.Path,
-) -> dict[str, tuple[pathlib.Path, int]]:
-    """Return {ClassName: (defining_file, lineno)} for all Handler* classes."""
-    definitions: dict[str, tuple[pathlib.Path, int]] = {}
+) -> list[tuple[str, pathlib.Path, int]]:
+    """Return (ClassName, defining_file, lineno) for all Handler* classes."""
+    definitions: list[tuple[str, pathlib.Path, int]] = []
     for py_file in sorted(src_root.rglob("handler_*.py")):
         # Skip test files
         if py_file.name.startswith("test_") or "conftest" in py_file.name:
@@ -49,7 +49,7 @@ def _collect_handler_definitions(
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and _HANDLER_CLASS_RE.match(node.name):
-                definitions[node.name] = (py_file, node.lineno)
+                definitions.append((node.name, py_file, node.lineno))
     return definitions
 
 
@@ -62,27 +62,99 @@ def _collect_all_source_lines(src_root: pathlib.Path) -> dict[pathlib.Path, str]
     return sources
 
 
-def find_dead_handlers(src_root: pathlib.Path) -> list[str]:
-    """Return sorted list of violation strings for Handler* with zero external imports."""
+def _collect_contract_sources(src_root: pathlib.Path) -> dict[pathlib.Path, str]:
+    """Return {path: source_text} for node contract files under src_root."""
+    sources: dict[pathlib.Path, str] = {}
+    for contract_file in sorted((src_root / "nodes").rglob("contract.yaml")):
+        with contextlib.suppress(OSError):
+            sources[contract_file] = contract_file.read_text(encoding="utf-8")
+    return sources
+
+
+def _repo_relative(path: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
+    with contextlib.suppress(ValueError):
+        return path.relative_to(repo_root)
+    return path
+
+
+def _load_baseline(baseline_path: pathlib.Path | None) -> set[str]:
+    """Load documented legacy entries as ``repo/path.py:HandlerClass`` keys."""
+    if baseline_path is None or not baseline_path.is_file():
+        return set()
+
+    entries: set[str] = set()
+    for raw_line in baseline_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        entries.add(line.split("#", 1)[0].strip())
+    return entries
+
+
+def _collect_referenced_symbols(source: str) -> set[str]:
+    """Return Python symbols imported or referenced by AST nodes."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    symbols: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                symbols.add(alias.asname or alias.name.rsplit(".", 1)[-1])
+            continue
+
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                symbols.add(alias.asname or alias.name)
+            continue
+
+        if isinstance(node, ast.Name):
+            symbols.add(node.id)
+            continue
+
+        if isinstance(node, ast.Attribute):
+            symbols.add(node.attr)
+
+    return symbols
+
+
+def find_dead_handlers(
+    src_root: pathlib.Path,
+    baseline_path: pathlib.Path | None = None,
+) -> list[str]:
+    """Return sorted violation strings for Handler* with no wiring evidence."""
     definitions = _collect_handler_definitions(src_root)
     if not definitions:
         return []
 
     all_sources = _collect_all_source_lines(src_root)
+    all_source_symbols = {
+        py_file: _collect_referenced_symbols(source)
+        for py_file, source in all_sources.items()
+    }
+    contract_sources = _collect_contract_sources(src_root)
+    repo_root = src_root.parent.parent
+    baseline = _load_baseline(baseline_path)
 
     dead: list[str] = []
-    for class_name, (defining_file, lineno) in sorted(definitions.items()):
+    for class_name, defining_file, lineno in sorted(definitions):
         imported_elsewhere = False
-        for py_file, source in all_sources.items():
+        for py_file, symbols in all_source_symbols.items():
             if py_file == defining_file:
                 continue
-            # Match: "import HandlerFoo" or "HandlerFoo," or "(HandlerFoo" etc.
-            # A simple name occurrence in another file indicates it is referenced.
-            if class_name in source:
+            if class_name in symbols:
                 imported_elsewhere = True
                 break
         if not imported_elsewhere:
-            rel = defining_file.relative_to(src_root.parent.parent)
+            contract_declared = any(
+                class_name in source for source in contract_sources.values()
+            )
+            rel = _repo_relative(defining_file, repo_root)
+            baseline_key = f"{rel}:{class_name}"
+            if contract_declared or baseline_key in baseline:
+                continue
             dead.append(f"{rel}:{lineno}: {class_name}")
 
     return dead
@@ -91,28 +163,29 @@ def find_dead_handlers(src_root: pathlib.Path) -> list[str]:
 def main() -> int:
     repo_root = pathlib.Path(__file__).resolve().parents[2]
     src_root = repo_root / "src" / "omnimarket"
+    baseline_path = (
+        repo_root / "scripts" / "validation" / "unimported_handler_baseline.txt"
+    )
     if not src_root.is_dir():
         print(f"ERROR: src/omnimarket not found under {repo_root}", file=sys.stderr)
         return 2
 
-    dead = find_dead_handlers(src_root)
+    dead = find_dead_handlers(src_root, baseline_path=baseline_path)
     if dead:
-        print(
-            f"ERROR: {len(dead)} Handler class(es) with zero external import references:"
-        )
+        print(f"ERROR: {len(dead)} Handler class(es) with no wiring evidence:")
         for entry in dead:
             print(f"  {entry}")
         print()
         print(
-            "Fix: import the handler in the node's __init__.py or registry module so the "
-            "DI container can discover and wire it. If the handler is intentionally "
-            "unreferenced (e.g. a base class or stub), add an inline "
-            "`# unimported-handler-allow: <reason>` annotation to the file."
+            "Fix: import the handler in a Python module, declare it in the node's "
+            "contract.yaml handler/handler_routing metadata, or add a documented "
+            "legacy entry to scripts/validation/unimported_handler_baseline.txt."
         )
         return 1
 
     print(
-        "OK: all Handler* classes in src/omnimarket/nodes/ are referenced externally."
+        "OK: all Handler* classes in src/omnimarket/nodes/ are imported, "
+        "contract-declared, or explicitly baselined."
     )
     return 0
 
