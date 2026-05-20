@@ -50,21 +50,29 @@ class ModelLifecycleOrchestratorInput(BaseModel):
 
     @model_validator(mode="after")
     def require_matching_payload(self) -> ModelLifecycleOrchestratorInput:
-        if (
-            self.operation == EnumLifecycleOrchestratorOperation.TICK
-            and self.runtime_tick is None
-        ):
-            raise ValueError("tick operation requires runtime_tick")
-        if (
-            self.operation == EnumLifecycleOrchestratorOperation.EXPIRE
-            and self.expire_command is None
-        ):
-            raise ValueError("expire operation requires expire_command")
-        if (
-            self.operation == EnumLifecycleOrchestratorOperation.ARCHIVE
-            and self.archive_command is None
-        ):
-            raise ValueError("archive operation requires archive_command")
+        payloads = {
+            "runtime_tick": self.runtime_tick,
+            "expire_command": self.expire_command,
+            "archive_command": self.archive_command,
+        }
+        required_by_operation = {
+            EnumLifecycleOrchestratorOperation.TICK: "runtime_tick",
+            EnumLifecycleOrchestratorOperation.EXPIRE: "expire_command",
+            EnumLifecycleOrchestratorOperation.ARCHIVE: "archive_command",
+        }
+        required = required_by_operation[self.operation]
+        if payloads[required] is None:
+            raise ValueError(f"{self.operation.value} operation requires {required}")
+
+        extras = [
+            name
+            for name, value in payloads.items()
+            if name != required and value is not None
+        ]
+        if extras:
+            raise ValueError(
+                f"{self.operation.value} operation does not allow: {', '.join(extras)}"
+            )
         return self
 
 

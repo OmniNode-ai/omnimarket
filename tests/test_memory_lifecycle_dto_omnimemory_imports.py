@@ -195,6 +195,18 @@ def test_memory_lifecycle_orchestrator_envelope_models_validate_operations() -> 
             operation=EnumLifecycleOrchestratorOperation.ARCHIVE,
             correlation_id=uuid4(),
         )
+    with pytest.raises(
+        ValidationError, match="expire operation does not allow: archive_command"
+    ):
+        ModelLifecycleOrchestratorInput(
+            operation=EnumLifecycleOrchestratorOperation.EXPIRE,
+            correlation_id=uuid4(),
+            expire_command=command,
+            archive_command=_resolve(
+                "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers."
+                "handler_memory_archive.ModelArchiveMemoryCommand"
+            )(memory_id=uuid4(), expected_revision=0),
+        )
     with pytest.raises(ValidationError, match="failed status requires error_message"):
         ModelLifecycleOrchestratorOutput(
             status=EnumLifecycleOrchestratorStatus.FAILED,
