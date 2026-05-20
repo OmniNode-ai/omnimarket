@@ -21,7 +21,7 @@ from omnimarket.nodes.node_handoff_effect.service_catalog import (
 )
 
 _SSH_TARGET = (
-    "jonah@192.168.86.201"  # test-literal-ok: canonical .201 infra host for probe tests
+    "jonah@192.168.86.201"  # onex-allow-internal-ip OMN-11267 reason="test fixture for read-only service catalog probe"
 )
 
 _HEALTHY_RESPONSES: dict[str, str] = {
@@ -238,7 +238,7 @@ class TestProbeServices:
             _HEALTHY_RESPONSES,
             (
                 "",
-                "ssh: connect to host 192.168.86.201",  # test-literal-ok: simulated SSH error
+                "ssh: connect to host 192.168.86.201",  # onex-allow-internal-ip OMN-11267 reason="simulated SSH error fixture for service catalog probe"
             ),
         )
         snapshot = _probe_with_fixed_outputs(outputs)
