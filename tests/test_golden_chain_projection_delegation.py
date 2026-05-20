@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -114,6 +115,17 @@ class TestDelegationProjection:
         assert "onex.evt.omnimarket.node-generation-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-failed.v1" in topics
+
+    def test_delegate_skill_metrics_migration_declares_dashboard_columns(self) -> None:
+        migration = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations/"
+            "0009_delegate_skill_projection_metrics.sql"
+        ).read_text()
+        assert "tokens_input INT NOT NULL DEFAULT 0" in migration
+        assert "tokens_output INT NOT NULL DEFAULT 0" in migration
+        assert "quality_gate_detail TEXT" in migration
+        assert "latency_ms INT" in migration
+        assert "pricing_manifest_version INT NOT NULL DEFAULT 0" in migration
 
 
 class TestPromptResponseText:
