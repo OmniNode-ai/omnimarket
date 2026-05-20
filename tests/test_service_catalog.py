@@ -314,19 +314,22 @@ class TestProbeServicesLive:
     def _skip_if_no_ssh(self) -> None:
         import subprocess as sp
 
-        result = sp.run(
-            [
-                "ssh",
-                "-o",
-                "ConnectTimeout=3",
-                "-o",
-                "BatchMode=yes",
-                _SSH_TARGET,
-                "echo ping",
-            ],
-            capture_output=True,
-            timeout=6,
-        )
+        try:
+            result = sp.run(
+                [
+                    "ssh",
+                    "-o",
+                    "ConnectTimeout=3",
+                    "-o",
+                    "BatchMode=yes",
+                    _SSH_TARGET,
+                    "echo ping",
+                ],
+                capture_output=True,
+                timeout=6,
+            )
+        except (sp.TimeoutExpired, OSError):
+            pytest.skip("SSH to .201 not reachable")
         if result.returncode != 0:
             pytest.skip("SSH to .201 not reachable")
 
