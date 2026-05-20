@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from collections.abc import Sequence
+from io import StringIO
 
 import pytest
 
+from omnimarket.nodes.node_claim_resolver import __main__ as claim_resolver_main
 from omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver import (
     HandlerClaimResolver,
 )
@@ -233,6 +236,23 @@ def test_thread_resolved_passes_with_graphql_resolved_evidence() -> None:
     assert result.results[0].status is EnumClaimResolutionStatus.VERIFIED
 
 
+def test_thread_resolved_fails_with_unresolved_graphql_evidence() -> None:
+    resolver = HandlerClaimResolver(FakeRunner({}))
+
+    result = resolver.verify(
+        _request(
+            ModelAgentClaim(
+                kind=EnumAgentClaimKind.THREAD_RESOLVED,
+                ref="PRRT_abc",
+                evidence=('{"isResolved": false}',),
+            )
+        )
+    )
+
+    assert len(result.mismatches) == 1
+    assert result.results[0].status is EnumClaimResolutionStatus.FAILED
+
+
 def test_linear_state_skips_without_api_evidence() -> None:
     resolver = HandlerClaimResolver(FakeRunner({}))
 
@@ -248,3 +268,40 @@ def test_linear_state_skips_without_api_evidence() -> None:
 
     assert result.mismatches == ()
     assert result.results[0].status is EnumClaimResolutionStatus.SKIPPED
+
+
+def test_linear_state_fails_with_conflicting_api_evidence() -> None:
+    resolver = HandlerClaimResolver(FakeRunner({}))
+
+    result = resolver.verify(
+        _request(
+            ModelAgentClaim(
+                kind=EnumAgentClaimKind.LINEAR_STATE,
+                ref="OMN-9107",
+                expected="Done",
+                evidence=('{"state":"Todo"}',),
+            )
+        )
+    )
+
+    assert len(result.mismatches) == 1
+    assert result.results[0].status is EnumClaimResolutionStatus.FAILED
+    assert result.mismatches[0].expected == "Done"
+
+
+def test_cli_reports_runtime_errors(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    request = ModelClaimResolutionRequest(claims=()).model_dump_json()
+    monkeypatch.setattr(sys, "stdin", StringIO(request))
+
+    class RaisingResolver:
+        def verify(self, request: ModelClaimResolutionRequest) -> None:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(claim_resolver_main, "HandlerClaimResolver", RaisingResolver)
+
+    assert claim_resolver_main.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "CLAIM_RESOLVER_RUNTIME_ERROR:boom" in captured.err

@@ -27,7 +27,11 @@ def main() -> int:
         sys.stderr.write(f"CLAIM_RESOLVER_BAD_REQUEST:{exc}\n")
         return 1
 
-    response = HandlerClaimResolver().verify(request)
+    try:
+        response = HandlerClaimResolver().verify(request)
+    except Exception as exc:
+        sys.stderr.write(f"CLAIM_RESOLVER_RUNTIME_ERROR:{exc}\n")
+        return 1
     sys.stdout.write(response.model_dump_json(indent=2) + "\n")
     return 2 if response.mismatches else 0
 

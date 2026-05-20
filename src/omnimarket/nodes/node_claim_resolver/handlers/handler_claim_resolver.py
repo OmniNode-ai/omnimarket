@@ -309,12 +309,19 @@ class HandlerClaimResolver:
     def _verify_thread_resolved(
         claim: ModelAgentClaim,
     ) -> ModelClaimResolutionResult:
+        if not claim.evidence:
+            return _skipped(
+                claim,
+                "thread resolver requires GraphQL evidence in this bounded slice",
+            )
         evidence_text = "\n".join(claim.evidence)
         if re.search(r'"(?:isResolved|resolved)"\s*:\s*true', evidence_text):
             return _verified(claim, "thread evidence marks the thread resolved")
-        return _skipped(
+        return _failed(
             claim,
-            "thread resolver requires GraphQL evidence in this bounded slice",
+            "thread evidence does not mark the thread resolved",
+            expected="resolved true",
+            actual=evidence_text[:300],
         )
 
     @staticmethod
@@ -323,6 +330,12 @@ class HandlerClaimResolver:
     ) -> ModelClaimResolutionResult:
         if claim.expected is None:
             return _skipped(claim, "linear_state claim lacks expected state")
+        if not claim.evidence:
+            return _skipped(
+                claim,
+                "Linear API resolver is not wired in this bounded slice",
+                expected=claim.expected,
+            )
         evidence_text = "\n".join(claim.evidence)
         if re.search(
             rf'"(?:state|name)"\s*:\s*"{re.escape(claim.expected)}"',
@@ -335,10 +348,11 @@ class HandlerClaimResolver:
                 expected=claim.expected,
                 actual=claim.expected,
             )
-        return _skipped(
+        return _failed(
             claim,
-            "Linear API resolver is not wired in this bounded slice",
+            "Linear evidence does not match expected state",
             expected=claim.expected,
+            actual=evidence_text[:300],
         )
 
 
