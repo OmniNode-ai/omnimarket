@@ -24,6 +24,8 @@ descriptor:
   node_archetype: effect
   purity: impure
   idempotent: false
+  runtime_profiles:
+    - effects
   timeout_ms: 600000
 
 inputs:

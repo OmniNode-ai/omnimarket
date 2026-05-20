@@ -20,13 +20,13 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_demo_drift_detector.handlers.handler_demo_drift_detector import (
-    ModelDemoDriftReport,
-)
-from omnimarket.nodes.node_demo_rehearsal.models.model_demo_readiness import (
+from omnimarket.events.demo_readiness import (
     EnumDemoCriticality,
     ModelBoundedConcurrencyConfig,
     ModelDriftFinding,
+)
+from omnimarket.nodes.node_demo_drift_detector.handlers.handler_demo_drift_detector import (
+    ModelDemoDriftReport,
 )
 
 logger = logging.getLogger(__name__)

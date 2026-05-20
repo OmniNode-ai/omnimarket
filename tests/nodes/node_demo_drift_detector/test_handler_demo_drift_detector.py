@@ -13,13 +13,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from omnimarket.events.demo_readiness import (
+    EnumDemoCriticality,
+    ModelRehearsalBundle,
+)
 from omnimarket.nodes.node_demo_drift_detector.handlers.handler_demo_drift_detector import (
     HandlerDemoDriftDetector,
     ModelDemoDriftDetectRequest,
-)
-from omnimarket.nodes.node_demo_rehearsal.models.model_demo_readiness import (
-    EnumDemoCriticality,
-    ModelRehearsalBundle,
 )
 
 

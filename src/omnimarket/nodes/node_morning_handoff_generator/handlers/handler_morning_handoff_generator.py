@@ -19,17 +19,17 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.demo_readiness import (
+    EnumDemoCriticality,
+    ModelDispatchIssue,
+    ModelMorningDispatchPlan,
+    ModelRehearsalBundle,
+)
 from omnimarket.nodes.node_demo_drift_detector.handlers.handler_demo_drift_detector import (
     ModelDemoDriftReport,
 )
 from omnimarket.nodes.node_demo_fix_dispatcher.handlers.handler_demo_fix_dispatcher import (
     ModelFixDispatchLog,
-)
-from omnimarket.nodes.node_demo_rehearsal.models.model_demo_readiness import (
-    EnumDemoCriticality,
-    ModelDispatchIssue,
-    ModelMorningDispatchPlan,
-    ModelRehearsalBundle,
 )
 
 logger = logging.getLogger(__name__)

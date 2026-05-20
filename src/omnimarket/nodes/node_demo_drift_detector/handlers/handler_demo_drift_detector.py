@@ -20,7 +20,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_demo_rehearsal.models.model_demo_readiness import (
+from omnimarket.events.demo_readiness import (
     EnumDemoCriticality,
     ModelDriftFinding,
     ModelRehearsalBundle,
