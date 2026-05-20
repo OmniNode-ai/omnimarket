@@ -11,7 +11,7 @@ jobs:
   # Zone filter — short-circuit heavy jobs on docs / declarative-evidence PRs.
   # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
   zone-filter:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@main
+    uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
     with:
       python-version: "3.12"
 
