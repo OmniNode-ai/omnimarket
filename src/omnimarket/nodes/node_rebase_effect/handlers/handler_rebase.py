@@ -60,7 +60,10 @@ def _source_clone_root() -> Path:
 def _worktree_root() -> Path:
     """Resolve ephemeral worktree root. Defaults to a user-scoped cache path."""
     default_root = Path.home() / ".cache" / "onex-rebase"
-    return Path(os.environ.get("ONEX_REBASE_WORKTREE_ROOT", str(default_root)))  # contract-config-ok: config  # fmt: skip
+    configured_root = os.environ.get("ONEX_REBASE_WORKTREE_ROOT", "").strip()  # contract-config-ok: config  # fmt: skip
+    if configured_root:
+        return Path(configured_root)
+    return default_root
 
 
 class HandlerRebaseEffect:

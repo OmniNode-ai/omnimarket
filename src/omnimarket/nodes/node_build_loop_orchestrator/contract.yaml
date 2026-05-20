@@ -121,6 +121,12 @@ config:
   LINEAR_TEAM_KEY:
     description: "Linear team key (defaults to 'OMN')"
     required: false
+  LINEAR_ACTIVE_SPRINT_PROJECT_ID:
+    description: "Linear project ID for the active sprint; used to filter tickets"
+    required: false
+  OMNI_WORKTREES_ROOT:
+    description: "Root directory for git worktrees; used by assemble_live to locate per-ticket worktrees"
+    required: false
 
 sub_handler_dependencies:
   - name: closeout

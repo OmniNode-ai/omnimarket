@@ -20,6 +20,9 @@ from omnimarket.nodes.node_navigation_history_reducer import (
     ModelNavigationSession,
     ProtocolNavigationHistoryWriter,
 )
+from omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer import (
+    _parse_qdrant_port,
+)
 from omnimarket.nodes.node_navigation_history_reducer.models.model_navigation_history_response import (
     ModelNavigationHistoryResponse,
 )
@@ -74,6 +77,9 @@ class _StubWriter:
 @pytest.mark.unit
 class TestNavigationHistoryReducerDiInjection:
     """OMN-10872: handler accepts ProtocolNavigationHistoryWriter via DI."""
+
+    def test_malformed_qdrant_port_uses_default(self) -> None:
+        assert _parse_qdrant_port("not-a-port") == 6333
 
     def test_protocol_is_runtime_checkable(self) -> None:
         stub = _StubWriter()
