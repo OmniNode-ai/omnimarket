@@ -18,6 +18,7 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionSavings()
+_DELEGATE_SKILL_TEST_MODEL = "test-model-local"
 
 
 class TestSavingsProjection:
@@ -216,6 +217,11 @@ class TestSavingsProjection:
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
         assert (
+            contract["handler"]["module"]
+            == "omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings"
+        )
+        assert contract["handler"]["class"] == "HandlerProjectionSavings"
+        assert (
             "onex.evt.omnibase-infra.savings-estimated.v1"
             in contract["event_bus"]["subscribe_topics"]
         )
@@ -246,6 +252,42 @@ class TestSavingsProjection:
         assert "ux_savings_estimates_identity" in migration
         assert "trg_savings_estimates_updated_at" in migration
         assert "NEW.updated_at = NOW()" in migration
+
+        repair_migration = Path(
+            "src/omnimarket/nodes/node_projection_savings/migrations/"
+            "075_add_savings_estimates_updated_at.sql"
+        ).read_text()
+        assert "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ" in repair_migration
+
+    def test_sync_handler_projects_delegate_skill_terminal_savings(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        handler = HandlerProjectionSavings()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": "f9243395-5cb6-4036-8ffb-39dd25547413",
+            "task_type": "document",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "quality_gate_passed": True,
+            "metrics": {
+                "input_tokens": 81,
+                "output_tokens": 384,
+                "total_tokens": 465,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.006003,
+                "latency_ms": 900,
+            },
+        }
+
+        result = handler.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("savings_estimates")[0]
+        assert row["session_id"] == "f9243395-5cb6-4036-8ffb-39dd25547413"
+        assert row["model_cloud_baseline"] == "claude-sonnet-4-6"
+        assert row["savings_usd"] == Decimal("0.006003")
 
     def test_fixture_replay_matches_golden_checksums(self) -> None:
         db = InmemoryDatabaseAdapter()

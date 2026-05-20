@@ -184,8 +184,8 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
         if not model_local:
             return None
         return cls(
-            event_timestamp=event.emitted_at,
-            session_id=event.session_id or event.correlation_id,
+            event_timestamp=event.emitted_at.replace(microsecond=0),
+            session_id=event.correlation_id,
             model_local=model_local,
             model_cloud_baseline=event.model_cloud_baseline or baseline_model,
             local_cost_usd=local_cost_usd,
