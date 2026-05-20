@@ -16,7 +16,12 @@ from typing import Any
 from uuid import uuid4
 
 import yaml
+from pydantic import ValidationError
 
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
+    ModelDelegationEventProjectionRow,
+)
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -103,6 +108,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         self._topic_generation: str = next(
             (t for t in _topics if "node-generation-completed" in t), ""
+        )
+        self._topic_delegate_skill_completed: str = next(
+            (t for t in _topics if "delegate-skill-completed" in t), ""
+        )
+        self._topic_delegate_skill_failed: str = next(
+            (t for t in _topics if "delegate-skill-failed" in t), ""
         )
         self._terminal_topic: str | None = self._contract.get("terminal_event")
         # Inject for testing; real producer is built lazily on first emit.
@@ -225,6 +236,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ok = await self._project_shadow_comparison(data, meta)
         elif topic == self._topic_generation:
             ok = await self._project_generation_completed(data, meta)
+        elif topic in {
+            self._topic_delegate_skill_completed,
+            self._topic_delegate_skill_failed,
+        }:
+            ok = await self._project_delegate_skill_terminal(data, meta)
         else:
             return False
 
@@ -348,6 +364,99 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             str(response_text) if response_text is not None else None,
         )
         return True
+
+    async def _project_delegate_skill_terminal(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        try:
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
+        except ValidationError as exc:
+            logger.warning(
+                "delegate-skill terminal event failed model validation: %s",
+                exc,
+            )
+            return True
+
+        row = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
+        await self._upsert_delegate_skill_projection_row(row)
+        return True
+
+    async def _upsert_delegate_skill_projection_row(
+        self,
+        row: ModelDelegationEventProjectionRow,
+    ) -> None:
+        quality_gates_checked = json.dumps(list(row.quality_gates_checked))
+        quality_gates_failed = json.dumps(list(row.quality_gates_failed))
+        session_id = str(row.session_id) if row.session_id is not None else None
+        await self.db.execute(
+            f"""
+            INSERT INTO {self._table_delegation} (
+              correlation_id, session_id, timestamp, task_type,
+              delegated_to, model_name, delegated_by, quality_gate_passed,
+              quality_gates_checked, quality_gates_failed, quality_gate_detail,
+              cost_usd, cost_savings_usd, delegation_latency_ms,
+              latency_ms, repo, is_shadow, prompt_text, response_text,
+              tokens_input, tokens_output, tokens_to_compliance,
+              compliance_attempts, pricing_manifest_version
+            ) VALUES (
+              $1, $2, $3, $4,
+              $5, $6, $7, $8,
+              $9::jsonb, $10::jsonb, $11,
+              $12, $13, $14,
+              $15, $16, $17, $18, $19,
+              $20, $21, $22,
+              $23, $24
+            )
+            ON CONFLICT (correlation_id) DO UPDATE SET
+              session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
+              timestamp = EXCLUDED.timestamp,
+              task_type = EXCLUDED.task_type,
+              delegated_to = EXCLUDED.delegated_to,
+              model_name = EXCLUDED.model_name,
+              delegated_by = EXCLUDED.delegated_by,
+              quality_gate_passed = EXCLUDED.quality_gate_passed,
+              quality_gates_checked = EXCLUDED.quality_gates_checked,
+              quality_gates_failed = EXCLUDED.quality_gates_failed,
+              quality_gate_detail = EXCLUDED.quality_gate_detail,
+              cost_usd = EXCLUDED.cost_usd,
+              cost_savings_usd = EXCLUDED.cost_savings_usd,
+              delegation_latency_ms = EXCLUDED.delegation_latency_ms,
+              latency_ms = EXCLUDED.latency_ms,
+              repo = COALESCE(EXCLUDED.repo, {self._table_delegation}.repo),
+              is_shadow = EXCLUDED.is_shadow,
+              prompt_text = COALESCE(EXCLUDED.prompt_text, {self._table_delegation}.prompt_text),
+              response_text = COALESCE(EXCLUDED.response_text, {self._table_delegation}.response_text),
+              tokens_input = EXCLUDED.tokens_input,
+              tokens_output = EXCLUDED.tokens_output,
+              tokens_to_compliance = EXCLUDED.tokens_to_compliance,
+              compliance_attempts = EXCLUDED.compliance_attempts,
+              pricing_manifest_version = EXCLUDED.pricing_manifest_version
+            """,
+            str(row.correlation_id),
+            session_id,
+            row.timestamp,
+            row.task_type,
+            row.delegated_to,
+            row.model_name,
+            row.delegated_by,
+            row.quality_gate_passed,
+            quality_gates_checked,
+            quality_gates_failed,
+            row.quality_gate_detail,
+            row.cost_usd,
+            row.cost_savings_usd,
+            row.latency_ms,
+            row.latency_ms,
+            row.repo_name,
+            row.is_shadow,
+            row.prompt_text,
+            row.response_text,
+            row.tokens_input,
+            row.tokens_output,
+            row.tokens_to_compliance,
+            row.compliance_attempts,
+            row.pricing_manifest_version,
+        )
 
     async def _project_shadow_comparison(
         self, data: dict[str, Any], meta: MessageMeta

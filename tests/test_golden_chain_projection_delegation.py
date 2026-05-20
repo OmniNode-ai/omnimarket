@@ -112,6 +112,8 @@ class TestDelegationProjection:
         topics = contract["event_bus"]["subscribe_topics"]
         assert "onex.evt.omniclaude.task-delegated.v1" in topics
         assert "onex.evt.omnimarket.node-generation-completed.v1" in topics
+        assert "onex.evt.omnimarket.delegate-skill-completed.v1" in topics
+        assert "onex.evt.omnimarket.delegate-skill-failed.v1" in topics
 
 
 class TestPromptResponseText:

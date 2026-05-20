@@ -5,7 +5,9 @@ node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Projects savings-estimated events into the savings_estimates table.
-  Source topic: onex.evt.omnibase-infra.savings-estimated.v1.
+  Source topics include omnibase-infra savings estimates and omnimarket
+  delegate-skill terminal events that already carry measured token/cost
+  savings metrics.
 
 handler:
   module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
@@ -25,8 +27,11 @@ event_bus:
   consumer_group: local.omnibase_infra.node_projection_savings.consume.v1
   subscribe_topics:
     - onex.evt.omnibase-infra.savings-estimated.v1
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
 
 metadata:
   transport_type: kafka
+  delegate_skill_baseline_model: claude-sonnet-4-6

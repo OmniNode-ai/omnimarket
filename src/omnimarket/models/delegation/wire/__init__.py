@@ -20,6 +20,16 @@ from omnimarket.models.delegation.wire.model_budget import (
     EnumBudgetAction,
     ModelBudgetLimits,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
+    ModelDelegateSkillResponseMetrics,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillSavingsProjection,
+    ModelDelegateSkillTerminalProjection,
+    ModelDelegationEventProjectionRow,
+    ModelProjectionEnvelopeMetadata,
+)
 from omnimarket.models.delegation.wire.model_delegation_request import (
     MAX_WORDS_PER_SENTENCE_RE,
     SUPPORTED_ACCEPTANCE_CRITERIA,
@@ -67,10 +77,15 @@ __all__: list[str] = [
     "ModelBifrostDelegationConfig",
     "ModelBudgetLimits",
     "ModelComplianceLoopResult",
+    "ModelDelegateSkillResponse",
+    "ModelDelegateSkillResponseMetrics",
+    "ModelDelegateSkillSavingsProjection",
+    "ModelDelegateSkillTerminalProjection",
     "ModelDelegationBackendConfig",
     "ModelDelegationCircuitBreakerConfig",
     "ModelDelegationConfig",
     "ModelDelegationEventEnvelope",
+    "ModelDelegationEventProjectionRow",
     "ModelDelegationFailoverConfig",
     "ModelDelegationFallbackPolicy",
     "ModelDelegationRequest",
@@ -79,6 +94,7 @@ __all__: list[str] = [
     "ModelDelegationShadowConfig",
     "ModelInferenceIntent",
     "ModelInferenceResponseData",
+    "ModelProjectionEnvelopeMetadata",
     "ModelQualityGateInput",
     "ModelQualityGateIntent",
     "ModelQualityGateResult",

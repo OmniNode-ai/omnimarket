@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillSavingsProjection,
+    ModelDelegateSkillTerminalProjection,
+)
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -62,6 +67,20 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             raise ValueError("Contract missing required table role 'estimates'")
 
         self._table_estimates: str = _by_role["estimates"]
+        _topics: list[str] = self._contract.get("event_bus", {}).get(
+            "subscribe_topics", []
+        )
+        self._topic_delegate_skill_completed: str = next(
+            (t for t in _topics if "delegate-skill-completed" in t), ""
+        )
+        self._topic_delegate_skill_failed: str = next(
+            (t for t in _topics if "delegate-skill-failed" in t), ""
+        )
+        self._delegate_skill_baseline_model = str(
+            self._contract.get("metadata", {}).get(
+                "delegate_skill_baseline_model", "claude-sonnet-4-6"
+            )
+        )
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -89,6 +108,12 @@ class SavingsProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        if topic in {
+            self._topic_delegate_skill_completed,
+            self._topic_delegate_skill_failed,
+        }:
+            return await self._project_delegate_skill_savings(data, meta)
+
         session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
         if not session_id:
             logger.warning("savings-estimated event missing session_id")
@@ -144,6 +169,78 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             )
             return True
 
+        await self._upsert_savings_estimate(
+            event_timestamp=event_timestamp,
+            session_id=session_id,
+            model_local=model_local,
+            model_cloud_baseline=model_cloud_baseline,
+            local_cost_usd=local_cost_usd,
+            cloud_cost_usd=cloud_cost_usd,
+            savings_usd=savings_usd,
+            repo_name=repo_name,
+            machine_id=machine_id,
+        )
+        logger.info(
+            "Projected savings-estimated for session %s (total_savings=$%s)",
+            session_id,
+            savings_usd,
+        )
+        return True
+
+    async def _project_delegate_skill_savings(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        try:
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
+        except ValidationError as exc:
+            logger.warning(
+                "delegate-skill terminal event failed savings model validation: %s",
+                exc,
+            )
+            return True
+
+        projection = ModelDelegateSkillSavingsProjection.from_terminal_event(
+            terminal,
+            baseline_model=self._delegate_skill_baseline_model,
+        )
+        if projection is None:
+            return True
+
+        await self._upsert_savings_estimate(
+            event_timestamp=projection.event_timestamp,
+            session_id=str(projection.session_id),
+            model_local=projection.model_local,
+            model_cloud_baseline=projection.model_cloud_baseline,
+            local_cost_usd=projection.local_cost_usd,
+            cloud_cost_usd=projection.cloud_cost_usd,
+            savings_usd=projection.savings_usd,
+            repo_name=projection.repo_name,
+            machine_id=(
+                str(projection.machine_id)
+                if projection.machine_id is not None
+                else None
+            ),
+        )
+        logger.info(
+            "Projected delegate-skill savings for %s (savings=$%s)",
+            terminal.correlation_id,
+            projection.savings_usd,
+        )
+        return True
+
+    async def _upsert_savings_estimate(
+        self,
+        *,
+        event_timestamp: datetime,
+        session_id: str,
+        model_local: str,
+        model_cloud_baseline: str,
+        local_cost_usd: Decimal,
+        cloud_cost_usd: Decimal,
+        savings_usd: Decimal,
+        repo_name: str | None,
+        machine_id: str | None,
+    ) -> None:
         await self.db.execute(
             f"""
             INSERT INTO {self._table_estimates} (
@@ -175,12 +272,6 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             repo_name,
             machine_id,
         )
-        logger.info(
-            "Projected savings-estimated for session %s (total_savings=$%s)",
-            session_id,
-            savings_usd,
-        )
-        return True
 
 
 def _first_present(data: dict[str, Any], *keys: str) -> Any:
@@ -217,7 +308,8 @@ def _required_decimal(
 def _str_or_none(value: Any) -> str | None:
     if value is None:
         return None
-    return str(value)
+    text = str(value).strip()
+    return text or None
 
 
 if __name__ == "__main__":

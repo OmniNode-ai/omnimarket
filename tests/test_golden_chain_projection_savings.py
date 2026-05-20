@@ -220,6 +220,14 @@ class TestSavingsProjection:
             in contract["event_bus"]["subscribe_topics"]
         )
         assert (
+            "onex.evt.omnimarket.delegate-skill-completed.v1"
+            in contract["event_bus"]["subscribe_topics"]
+        )
+        assert (
+            "onex.evt.omnimarket.delegate-skill-failed.v1"
+            in contract["event_bus"]["subscribe_topics"]
+        )
+        assert (
             contract["event_bus"]["consumer_group"]
             == "local.omnibase_infra.node_projection_savings.consume.v1"
         )
