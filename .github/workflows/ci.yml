@@ -438,8 +438,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install pyyaml
-        run: pip install "pyyaml>=6.0"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Install dependencies
+        run: uv sync --locked --extra dep-health
       - name: Check baseline exists (phase detection)
         id: phase
         run: |
@@ -452,14 +456,14 @@ jobs:
         if: steps.phase.outputs.has_baseline == 'false'
         continue-on-error: true
         run: |
-          python scripts/ci/run_dep_health_sweep.py \
+          uv run python scripts/ci/run_dep_health_sweep.py \
             --repo-roots src \
             --severity-threshold CRITICAL \
             --dry-run
       - name: Dep-health sweep (Phase 2 — delta-block new CRITICAL)
         if: steps.phase.outputs.has_baseline == 'true'
         run: |
-          python scripts/ci/run_dep_health_sweep.py \
+          uv run python scripts/ci/run_dep_health_sweep.py \
             --repo-roots src \
             --severity-threshold CRITICAL \
             --baseline-path .onex_state/dep_health_baseline.json \

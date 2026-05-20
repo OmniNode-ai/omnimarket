@@ -93,6 +93,20 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.delta_mode:
+        if not args.baseline_path:
+            print(
+                "dep-health-gate: --delta-mode requires --baseline-path",
+                file=sys.stderr,
+            )
+            return 2
+        if not Path(args.baseline_path).exists():
+            print(
+                "dep-health-gate: --delta-mode requires an existing --baseline-path file",
+                file=sys.stderr,
+            )
+            return 2
+
     repo_roots = [r.strip() for r in args.repo_roots.split(",") if r.strip()]
 
     request = ModelDepHealthSweepRequest(
