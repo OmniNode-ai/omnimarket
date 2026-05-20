@@ -1,0 +1,45 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-9799"
+title: "Wire persona rebuild handler"
+summary: >
+  Wire persona lifecycle orchestrator exports and handler routing, add HandlerPersonaRebuild
+  for on-demand and tick rebuild flows, and validate contract routing plus handler behavior.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+  - envelopes
+evidence_requirements:
+  - kind: "tests"
+    description: "Persona lifecycle rebuild handler tests pass."
+    command: "uv run pytest tests/unit/nodes/node_persona_lifecycle_orchestrator/test_handler_persona_rebuild.py -q"
+  - kind: "manual"
+    description: "Touched persona lifecycle node files pass ruff."
+    command: "uv run ruff check src/omnimarket/nodes/node_persona_lifecycle_orchestrator tests/unit/nodes/node_persona_lifecycle_orchestrator"
+  - kind: "manual"
+    description: "Post-merge deploy readiness is limited to the runtime loading the persona rebuild handler; no live deploy or runtime restart was performed."
+    command: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerPersonaRebuild without live runtime mutation'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-persona-rebuild-tests"
+    description: "Persona lifecycle rebuild handler tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_persona_lifecycle_orchestrator/test_handler_persona_rebuild.py -q"
+  - id: "dod-persona-rebuild-lint"
+    description: "Touched persona lifecycle node files pass ruff."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_persona_lifecycle_orchestrator tests/unit/nodes/node_persona_lifecycle_orchestrator"
+  - id: "dod-deploy-readiness"
+    description: "Post-merge deploy readiness plan only; no live deploy or runtime restart was performed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerPersonaRebuild without live runtime mutation'"
