@@ -14,7 +14,7 @@
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657
-config_version: "1.2.0"
+config_version: "1.3.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 backends:
@@ -79,6 +79,21 @@ backends:
       - summarization
       - simple_tasks
       - document
+  # OpenRouter backends (OMN-7980) — uses OPENROUTER_API_KEY from env at dispatch time.
+  # api_key_env declared so the bifrost adapter picks up the secret without hardcoding it.
+  - backend_id: openrouter-glm-flash
+    endpoint_url: ""
+    model_name: "thudm/glm-4-9b-chat:free"
+    api_key_env: OPENROUTER_API_KEY
+    tier: cheap_cloud
+    timeout_ms: 60000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Build Loop"
   # CLI agent backends — dispatched via subprocess, not HTTP.
   - backend_id: cli-claude
     endpoint_url: ""

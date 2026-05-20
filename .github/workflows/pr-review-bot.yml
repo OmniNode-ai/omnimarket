@@ -11,10 +11,7 @@
 # pr-arch-review.yml (architectural lint + stub FSM). This is the LIVE review
 # bot pipeline with real model fan-out.
 #
-# Rollout plan:
-#   Phase 1 (this PR): trigger wired, informational only — does not block merge.
-#   Phase 2 (follow-up): add as required status check once a few runs confirm
-#     the bot completes successfully on real PRs.
+# Status: required status check on main branch (graduated from Phase 1, OMN-10983)
 #
 # How to test locally before merging:
 #   uv run python - <<'PYEOF'
@@ -288,8 +285,7 @@ jobs:
               `**Run ID**: \`${correlationId}\``,
               statusNote,
               '',
-              '> **Phase 1 (informational)**: Does not block merge. Required-check gate follows once ' +
-                'a few runs confirm the bot completes successfully. See OMN-8890.',
+              '> **Required gate**: This check blocks merge when verdict is `blocking_issue`.',
               '',
               '---',
               '',

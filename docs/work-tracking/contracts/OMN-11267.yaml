@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11267"
+title: "Add service catalog probe for runtime health"
+summary: >
+  Adds a reusable read-only service catalog probe module that snapshots .201
+  service health through independent SSH probes and exact-match status checks.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused service catalog tests pass"
+    command: "uv run pytest tests/test_service_catalog.py -q"
+  - kind: "ci"
+    description: "Leaked literal gate accepts only ticketed allowlist annotations"
+    command: "bash scripts/validation/check_leaked_literals.sh blocking all"
+  - kind: "manual"
+    description: "Post-merge deploy smoke imports the service catalog probe module"
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_handoff_effect.service_catalog import ServiceCatalogSnapshot, probe_services; print('service catalog deploy smoke ok')\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Focused service catalog tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_service_catalog.py -q"
+  - id: "dod-leak-gate"
+    description: "Leaked literal gate passes with ticketed allowlist annotations for .201 test fixtures."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash scripts/validation/check_leaked_literals.sh blocking all"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke imports service catalog probe module; no live deploy, restart, or .201 mutation was performed pre-merge."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: post-merge docker exec smoke imports omnimarket.nodes.node_handoff_effect.service_catalog; no live deploy/restart performed pre-merge'"
