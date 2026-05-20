@@ -1,0 +1,24 @@
+name: node_claim_resolver
+version: "1.0.0"
+description: "Resolver-backed verification node for agent turn side-effect claims"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_claim_resolver: "omnimarket.nodes.node_claim_resolver"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pydantic>=2.12.5,<3.0.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["claims", "hooks", "resolver", "verification", "OMN-9107"]
+pack: "verification"
+display_name: "Claim Resolver"
+node_role: "probe"
