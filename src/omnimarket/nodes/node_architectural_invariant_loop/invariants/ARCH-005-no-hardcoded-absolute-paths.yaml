@@ -1,0 +1,22 @@
+principle_code: ARCH-005
+name: no_hardcoded_absolute_paths
+violation_category: static_architecture
+severity: ERROR
+enforcement_surfaces:
+  - static_architecture
+  - ci_gate
+  - pre_tool_use
+description: >
+  Any string starting with /Users/ or /Volumes/ in source code is a portability
+  bug. Cross-machine paths silently break on any machine other than the author's.
+  Use required env vars (os.environ["OMNI_HOME"]) or Path(__file__).parent
+  relative resolution. Annotate legitimate test fixtures with # local-path-ok.
+violation_examples:
+  - '"/Users/alice/Code/project"  # hardcoded machine path'
+  - 'Path("/Volumes/DISK/Code/worktrees")'
+runtime_scope: module
+generated_from_principle: ARCH-005
+generated_at: "2026-05-18T00:00:00+00:00"
+source_incidents:
+  - OMN-9043
+generator_tag: "1.0.0"

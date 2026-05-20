@@ -59,5 +59,24 @@ event_bus:
     - onex.evt.omnimarket.ticket-pipeline-phase-transition.v1
     - onex.evt.omnimarket.ticket-pipeline-completed.v1
 
+review_gates:
+  # hostile_reviewer is the adversarial review gate for the PR_REVIEW phase.
+  # When PR_REVIEW is wired, it must invoke node_hostile_reviewer via
+  # build_from_contract() before advancing to AUTO_MERGE. The contract-driven
+  # model routing in node_hostile_reviewer guarantees N-1 graceful degradation
+  # so a single unavailable model does not block the pipeline.
+  pr_review:
+    node: "node_hostile_reviewer"
+    phase: "PR_REVIEW"
+    mode: "gate"
+    blocking_verdict: "blocking_issue"
+    related_ticket: "OMN-7981"
+
+dependencies:
+  nodes:
+    - name: "node_hostile_reviewer"
+      reason: "Adversarial review gate at PR_REVIEW phase"
+      required: false
+
 metadata:
   transport_type: kafka

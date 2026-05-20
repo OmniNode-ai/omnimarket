@@ -1,6 +1,6 @@
 name: node_pipeline_fill
 version: "1.0.0"
-description: "RSD-driven pipeline fill orchestrator — queries Linear, scores tickets, dispatches to ticket-pipeline (OMN-8688)"
+description: "RSD-driven pipeline fill effect — queries Linear, scores tickets, dispatches to ticket-pipeline, and writes dispatch state (OMN-8688)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -19,7 +19,7 @@ dependencies:
   - "pyyaml>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["orchestrator", "pipeline-fill", "rsd", "build-loop", "linear", "dispatch"]
+tags: ["effect", "pipeline-fill", "rsd", "build-loop", "linear", "dispatch"]
 pack: "build_loop"
-display_name: "Pipeline Fill Orchestrator"
-node_role: "orchestrator"
+display_name: "Pipeline Fill Effect"
+node_role: "effect"

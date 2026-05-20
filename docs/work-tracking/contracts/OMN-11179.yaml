@@ -1,0 +1,37 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11179"
+title: "Move storage and infrastructure configuration into node contracts"
+summary: >
+  Migrates omnimarket storage and infrastructure configuration reads to node
+  contract config declarations so runtime values remain externally injected and
+  strongly documented by the owning node contract.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "node_contracts"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-contract-config-validator"
+    description: "Storage and infrastructure raw env reads are represented by node contract config entries."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "validate_paths([\"src/omnimarket\"]): bare_env_read=0 missing_contract_config=0"
+  - id: "dod-focused-tests"
+    description: "Focused delegation and runtime-path tests pass after merge with current main."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_contracts.py tests/unit/delegation/test_delegation_chain_e2e.py tests/unit/delegation/test_delegation_quality_contract.py -q"
+  - id: "dod-deploy-assessment"
+    description: >
+      Runtime config paths changed, but no live deploy, restart, database change,
+      Kafka mutation, or .201 mutation was performed in this PR.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "echo deploy assessment: no live deploy or runtime mutation performed"

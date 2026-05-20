@@ -7,23 +7,20 @@
 # Every gateway response MUST include the selected rule_id and config_version
 # to make provenance auditable (OMN-10637 requirement R1).
 #
-# Backend endpoint URLs are declared directly in this file.
-# Local backends point to vLLM on the AIPC (.201).
-# Cloud backends point to their public API endpoints.
+# Backend endpoint URLs are intentionally empty in the repo default. User- or
+# environment-specific endpoints belong in the overlay file written by the
+# installer, usually ~/.omninode/delegation/bifrost_overrides.yaml.
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657
-config_version: "1.2.0"
+config_version: "1.3.0"
 schema_version: "bifrost_delegation.v1"
-# Backend definitions — endpoint URLs populated directly.
-# Local backends use the AIPC at 192.168.86.201 (vLLM). # onex-allow-internal-ip OMN-11061 reason="delegation config must reference local AIPC vLLM endpoint; env-var override not viable in YAML config"
-# Cloud backends use their public API endpoints.
-# CLI backends use subprocess dispatch (endpoint_url is a marker, not called via HTTP).
+# Backend definitions — endpoint_url values are merged from the overlay at load time.
 backends:
   # Local backends (AIPC)
   - backend_id: local-qwen-coder-30b
-    endpoint_url: "http://192.168.86.201:8000" # onex-allow-internal-ip OMN-11061 reason="local AIPC vLLM base URL for Qwen3-Coder-30B; adapter appends OpenAI path"
+    endpoint_url: ""
     # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     tier: local
@@ -33,7 +30,7 @@ backends:
       - refactoring
       - documentation
   - backend_id: local-deepseek-r1-14b
-    endpoint_url: "http://192.168.86.201:8001" # onex-allow-internal-ip OMN-11061 reason="local AIPC vLLM base URL for DeepSeek-R1-14B; adapter appends OpenAI path"
+    endpoint_url: ""
     # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
     tier: local
@@ -44,7 +41,7 @@ backends:
       - classification
   # Cloud fallback backends
   - backend_id: cloud-sonnet
-    endpoint_url: "https://api.anthropic.com/v1"
+    endpoint_url: ""
     # Claude Sonnet via OAuth — no API key required (Claude Code uses OAuth)
     model_name: claude-sonnet-4-6
     tier: frontier_api
@@ -55,7 +52,7 @@ backends:
       - documentation
       - research
   - backend_id: cloud-haiku
-    endpoint_url: "https://api.anthropic.com/v1"
+    endpoint_url: ""
     # Claude Haiku — cheapest frontier model for documentation/simple tasks
     model_name: claude-haiku-4-5-20251001
     tier: frontier_api
@@ -65,7 +62,7 @@ backends:
       - summarization
       - simple_tasks
   - backend_id: cloud-glm
-    endpoint_url: "https://api.z.ai/v1"
+    endpoint_url: ""
     model_name: glm-z-ai
     tier: cheap_cloud
     timeout_ms: 60000
@@ -74,7 +71,7 @@ backends:
       - reasoning
       - research
   - backend_id: cloud-gemini-flash
-    endpoint_url: "https://generativelanguage.googleapis.com/v1beta"
+    endpoint_url: ""
     model_name: gemini-flash
     tier: cheap_cloud
     timeout_ms: 60000
@@ -82,9 +79,24 @@ backends:
       - summarization
       - simple_tasks
       - document
+  # OpenRouter backends (OMN-7980) — uses OPENROUTER_API_KEY from env at dispatch time.
+  # api_key_env declared so the bifrost adapter picks up the secret without hardcoding it.
+  - backend_id: openrouter-glm-flash
+    endpoint_url: ""
+    model_name: "thudm/glm-4-9b-chat:free"
+    api_key_env: OPENROUTER_API_KEY
+    tier: cheap_cloud
+    timeout_ms: 60000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Build Loop"
   # CLI agent backends — dispatched via subprocess, not HTTP.
   - backend_id: cli-claude
-    endpoint_url: "cli://claude"
+    endpoint_url: ""
     model_name: claude-cli
     tier: cli_agents
     timeout_ms: 300000
@@ -92,7 +104,7 @@ backends:
       - agent_delegation
       - complex_reasoning
   - backend_id: cli-opencode
-    endpoint_url: "cli://opencode"
+    endpoint_url: ""
     model_name: opencode-cli
     tier: cli_agents
     timeout_ms: 300000

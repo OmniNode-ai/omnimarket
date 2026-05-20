@@ -1,0 +1,74 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — node_session_phase_reducer
+#
+# Pure reducer: delta(state, event) -> new_state
+# Materializes canonical phase state from session events.
+# Writes to .onex_state/session/phase_state.yaml for hook consumption.
+#
+# Related Tickets:
+#   - OMN-11230: Task 6: Create node_session_phase_reducer (REDUCER)
+#   - OMN-11224: Session phase control loop epic
+name: node_session_phase_reducer
+node_type: reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure reducer that materializes canonical session phase state from events.
+  delta(state, event) -> new_state. Writes phase_state.yaml for hook consumption.
+  REDUCER nodes return projections[] only — no events, intents, or result.
+
+input_model:
+  name: ModelSessionPhaseReducerInput
+  module: omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer
+  description: "Envelope containing current state + incoming event."
+
+output_model:
+  name: ModelSessionPhaseState
+  module: omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer
+  description: "New canonical phase state after applying the event."
+
+handler:
+  module: omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer
+  class: HandlerSessionPhaseReducer
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reduce_session_phase
+      handler:
+        name: HandlerSessionPhaseReducer
+        module: omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.session-started.v1
+    - onex.evt.omniclaude.session-ended.v1
+    - onex.evt.omnimarket.session-phase-state.v1
+  publish_topics:
+    - onex.evt.omnimarket.session-phase-state-reduced.v1
+
+terminal_event: onex.evt.omnimarket.session-phase-state-reduced.v1
+
+metadata:
+  transport_type: kafka
+  description: "Session phase state reducer — materializes canonical phase state from events"
+  author: "OmniNode Platform Team"
+  created: "2026-05-18"
+  tags:
+    - reducer
+    - session
+    - phase
+    - OMN-11230
+    - OMN-11224
+  related_tickets:
+    - OMN-11230
+    - OMN-11224

@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11230
+title: "feat(OMN-11230): create node_session_phase_reducer REDUCER node"
+summary: "Creates node_session_phase_reducer — pure delta(state, event) -> new_state REDUCER. Materializes canonical session phase state from session-started, session-ended, and phase-state events. Writes .onex_state/session/phase_state.yaml for hook consumption. 14 unit tests. Part of epic OMN-11224."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: "14 unit tests pass covering delta function, YAML projection, and field completeness"
+    command: "uv run pytest tests/unit/nodes/node_session_phase_reducer/ -v"
+  - kind: ci
+    description: "CI pipeline green on omnimarket PR #703"
+    command: "gh pr checks 703 --repo OmniNode-ai/omnimarket"
+  - kind: manual
+    description: "Pure REDUCER — writes only to local .onex_state/session/phase_state.yaml. No runtime restart, no Kafka publish, no DB migration required."
+    command: "printf '%s\n' 'deploy gate: pure REDUCER node writing to local phase_state.yaml only — no docker exec or rpk topic produce required'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-tests
+    description: "14 unit tests pass: delta function, YAML projection, all required fields, immutability"
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/nodes/node_session_phase_reducer/ -v"
+  - id: dod-deploy
+    description: "Pure REDUCER node — writes only to local .onex_state/session/phase_state.yaml. No runtime restart, no bus subscription, no DB migration required."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "printf '%s\n' 'deploy gate: pure REDUCER node writing to local phase_state.yaml only — no docker exec or rpk topic produce required'"

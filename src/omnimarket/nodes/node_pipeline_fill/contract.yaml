@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# ONEX Node Contract - Pipeline Fill Orchestrator
+# ONEX Node Contract - Pipeline Fill Effect
 #
-# Orchestration node: queries Linear for unstarted tickets, scores via
+# Effect node: queries Linear for unstarted tickets, scores via
 # node_rsd_fill_compute, dispatches top-N via ticket-pipeline events,
 # and writes durable dispatched.yaml state.
 #
 # Related Tickets:
-#   - OMN-8688: node_pipeline_fill — headless ticket pipeline orchestrator
+#   - OMN-8688: node_pipeline_fill — headless ticket pipeline fill effect
 #   - OMN-5113: Autonomous Build Loop epic
 name: "node_pipeline_fill"
-node_type: orchestrator
+node_type: effect
 contract_version:
   major: 1
   minor: 0
@@ -18,8 +18,10 @@ contract_version:
 node_version: "1.0.0"
 dependency_ownership:
   - event_bus
+  - linear_api
+  - dispatch_state_files
 description: >
-  Pipeline fill orchestrator. Queries Linear for unstarted active-sprint tickets,
+  Pipeline fill effect. Queries Linear for unstarted active-sprint tickets,
   scores them via node_rsd_fill_compute, dispatches top-N to ticket-pipeline,
   and writes durable state to .onex_state/pipeline-fill/dispatched.yaml.
   Designed for headless/cron invocation.
@@ -31,6 +33,17 @@ output_model:
   name: "ModelPipelineFillResult"
   module: "omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_result"
   description: "Result of one pipeline fill cycle."
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+handler:
+  module: "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill"
+  class: "HandlerPipelineFill"
+  input_model: "omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command.ModelPipelineFillCommand"
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -47,11 +60,11 @@ event_bus:
 terminal_event: onex.evt.omnimarket.pipeline-fill-completed.v1
 metadata:
   transport_type: kafka
-  description: "RSD-driven pipeline fill orchestrator for autonomous build loop"
+  description: "RSD-driven pipeline fill effect for autonomous build loop"
   author: "OmniNode Team"
   created: "2026-04-13"
   tags:
-    - "orchestrator"
+    - "effect"
     - "build-loop"
     - "rsd"
     - "pipeline-fill"

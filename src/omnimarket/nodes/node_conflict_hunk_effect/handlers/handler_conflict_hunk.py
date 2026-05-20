@@ -62,7 +62,8 @@ def _source_clone_root() -> Path:
 
 
 def _worktree_root() -> Path:
-    return Path(os.environ.get("ONEX_CONFLICT_WORKTREE_ROOT", "/tmp/onex-conflict"))  # contract-config-ok: config  # fmt: skip
+    default_root = Path.home() / ".cache" / "onex-conflict"
+    return Path(os.environ.get("ONEX_CONFLICT_WORKTREE_ROOT", str(default_root)))  # contract-config-ok: config  # fmt: skip
 
 
 def _default_llm_call(  # stub-ok

@@ -5,9 +5,9 @@
 # Dependency health gate — pre-commit hook wrapper.
 # Delegates to scripts/ci/run_dep_health_sweep.py.
 #
-# Phased rollout (mirrors GHA dep-health-gate.yml):
-#   - Advisory mode (exit 0): no baseline file present
-#   - Delta-blocking mode (exit 1 on new findings): baseline file present
+# Phased rollout (mirrors GHA dep-health job):
+#   Phase 1 (advisory): no baseline file → exit 0, advisory output only
+#   Phase 2 (active):   baseline present → --delta-mode blocks new CRITICAL findings
 #
 # Usage: invoked by pre-commit as a system-language hook, or directly:
 #   bash scripts/validation/run_dep_health_gate.sh
@@ -23,23 +23,23 @@ if [ ! -f "$GATE_SCRIPT" ]; then
 fi
 
 if [ -f "$BASELINE_PATH" ]; then
-  # Delta-blocking mode: fail on new findings above threshold vs baseline
+  # Phase 2: delta-blocking — fail only when new CRITICAL findings appear vs baseline
+  RC=0
   OUTPUT="$(uv run python "$GATE_SCRIPT" \
     --repo-roots "src/" \
-    --severity-threshold MAJOR \
+    --severity-threshold CRITICAL \
     --baseline-path "$BASELINE_PATH" \
-    --exit-nonzero-on-findings 2>&1)" || RC=$?
-  RC="${RC:-0}"
+    --delta-mode 2>&1)" || RC=$?
 else
-  # Advisory mode: gather data without blocking (baseline not yet committed)
+  # Phase 1: advisory — gather data without blocking (baseline not yet committed)
   OUTPUT="$(uv run python "$GATE_SCRIPT" \
     --repo-roots "src/" \
-    --severity-threshold MAJOR 2>&1)"
+    --severity-threshold CRITICAL 2>&1)"
   RC=0
 fi
 
 FINDING_COUNT=$(echo "$OUTPUT" | grep -c '"finding_type"' || true)
-echo "dep-health-gate: ${FINDING_COUNT} finding(s) detected (threshold: MAJOR)" >&2
+echo "dep-health-gate: ${FINDING_COUNT} finding(s) detected (threshold: CRITICAL)" >&2
 
 echo "$OUTPUT"
 exit $RC

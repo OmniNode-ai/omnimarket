@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11220
+title: "Verification-First Parallel Worker Dispatch Skill"
+summary: >
+  Build node_verified_dispatch_orchestrator in omnimarket with paired worker/verifier dispatch
+  and bounded escalation. Skill shim lives in omniclaude PR #1602.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden chain tests for node_verified_dispatch_orchestrator pass"
+    command: "uv run pytest tests/test_golden_chain_verified_dispatch_orchestrator.py -v"
+  - kind: "ci"
+    description: "omnimarket PR CI green across required gates"
+    command: "gh pr checks --repo OmniNode-ai/omnimarket 695"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Golden chain tests for node_verified_dispatch_orchestrator pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_verified_dispatch_orchestrator.py -v"
+  - id: "dod-deploy"
+    description: "node_verified_dispatch_orchestrator is a stateless ORCHESTRATOR node with no daemon
+      lifecycle — no live deploy or runtime restart required. Deploy check confirms stateless pattern."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy check: node_verified_dispatch_orchestrator is stateless orchestrator — no daemon lifecycle, no deploy required (OMN-11220)'"

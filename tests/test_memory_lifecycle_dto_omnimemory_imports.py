@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import BaseModel, ValidationError
 
 DTO_IMPORTS = {
     "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_archive.ModelArchiveMemoryCommand": "omnimemory.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_archive.ModelArchiveMemoryCommand",
@@ -38,6 +39,32 @@ DTO_IMPORTS = {
 def _resolve(dotted_ref: str) -> Any:
     module_name, _, attr = dotted_ref.rpartition(".")
     return getattr(import_module(module_name), attr)
+
+
+def _memory_lifecycle_contract() -> dict[str, Any]:
+    contract_path = Path(
+        resources.files("omnimarket.nodes")
+        / "node_memory_lifecycle_orchestrator"
+        / "contract.yaml"  # type: ignore[arg-type]
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    assert isinstance(contract, dict)
+    return contract
+
+
+def _collect_contract_model_refs(value: Any) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in {"input_model", "output_model", "schema_ref"}:
+                if isinstance(item, str) and "." in item:
+                    refs.append(item)
+                continue
+            refs.extend(_collect_contract_model_refs(item))
+    elif isinstance(value, list):
+        for item in value:
+            refs.extend(_collect_contract_model_refs(item))
+    return refs
 
 
 @pytest.mark.unit
@@ -83,12 +110,7 @@ def test_memory_lifecycle_package_exports_reexport_omnimemory_classes() -> None:
 @pytest.mark.unit
 def test_memory_lifecycle_contract_schema_refs_resolve_to_canonical_classes() -> None:
     """Contract schema refs can keep omnimarket paths through compatibility aliases."""
-    contract_path = Path(
-        resources.files("omnimarket.nodes")
-        / "node_memory_lifecycle_orchestrator"
-        / "contract.yaml"  # type: ignore[arg-type]
-    )
-    contract = yaml.safe_load(contract_path.read_text())
+    contract = _memory_lifecycle_contract()
     event_bus = contract["event_bus"]
 
     schema_refs = [
@@ -105,3 +127,89 @@ def test_memory_lifecycle_contract_schema_refs_resolve_to_canonical_classes() ->
         _resolve(schema_ref).__module__.startswith("omnimemory.")
         for schema_ref in schema_refs
     )
+
+
+@pytest.mark.unit
+def test_memory_lifecycle_contract_model_refs_resolve() -> None:
+    """Every active model reference in the contract resolves to importable code."""
+    contract = _memory_lifecycle_contract()
+
+    model_refs = _collect_contract_model_refs(contract)
+
+    assert model_refs
+    for model_ref in model_refs:
+        model = _resolve(model_ref)
+        assert model is not None, model_ref
+        if model_ref.startswith(
+            "omnimarket.nodes.node_memory_lifecycle_orchestrator.models"
+        ):
+            assert issubclass(model, BaseModel)
+
+
+@pytest.mark.unit
+def test_memory_lifecycle_contract_declares_orchestrator_runtime_ownership() -> None:
+    """Memory lifecycle is an effectful orchestrator owned by the effects runtime."""
+    contract = _memory_lifecycle_contract()
+    descriptor = contract["descriptor"]
+
+    assert contract["node_type"] == "orchestrator"
+    assert descriptor["node_archetype"] == "orchestrator"
+    assert descriptor["purity"] == "effectful"
+    assert descriptor["runtime_profiles"] == ["effects"]
+
+
+@pytest.mark.unit
+def test_memory_lifecycle_orchestrator_envelope_models_validate_operations() -> None:
+    """Contract I/O models require operation-specific payloads."""
+    from uuid import uuid4
+
+    from omnimarket.nodes.node_memory_lifecycle_orchestrator.models import (
+        EnumLifecycleOrchestratorOperation,
+        EnumLifecycleOrchestratorStatus,
+        ModelLifecycleOrchestratorInput,
+        ModelLifecycleOrchestratorOutput,
+    )
+
+    command = _resolve(
+        "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers."
+        "handler_memory_expire.ModelExpireMemoryCommand"
+    )(memory_id=uuid4(), expected_revision=0)
+    input_model = ModelLifecycleOrchestratorInput(
+        operation=EnumLifecycleOrchestratorOperation.EXPIRE,
+        correlation_id=uuid4(),
+        expire_command=command,
+    )
+    output_model = ModelLifecycleOrchestratorOutput(
+        status=EnumLifecycleOrchestratorStatus.COMPLETED,
+        operation=EnumLifecycleOrchestratorOperation.EXPIRE,
+        correlation_id=input_model.correlation_id,
+        processed_memory_count=1,
+    )
+
+    assert input_model.expire_command is command
+    assert output_model.processed_memory_count == 1
+    with pytest.raises(
+        ValidationError, match="archive operation requires archive_command"
+    ):
+        ModelLifecycleOrchestratorInput(
+            operation=EnumLifecycleOrchestratorOperation.ARCHIVE,
+            correlation_id=uuid4(),
+        )
+    with pytest.raises(
+        ValidationError, match="expire operation does not allow: archive_command"
+    ):
+        ModelLifecycleOrchestratorInput(
+            operation=EnumLifecycleOrchestratorOperation.EXPIRE,
+            correlation_id=uuid4(),
+            expire_command=command,
+            archive_command=_resolve(
+                "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers."
+                "handler_memory_archive.ModelArchiveMemoryCommand"
+            )(memory_id=uuid4(), expected_revision=0),
+        )
+    with pytest.raises(ValidationError, match="failed status requires error_message"):
+        ModelLifecycleOrchestratorOutput(
+            status=EnumLifecycleOrchestratorStatus.FAILED,
+            operation=EnumLifecycleOrchestratorOperation.EXPIRE,
+            correlation_id=uuid4(),
+        )

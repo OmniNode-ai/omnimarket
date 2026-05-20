@@ -1,0 +1,24 @@
+name: node_architectural_invariant_loop
+version: "1.0.0"
+description: "Convert architectural principles into typed invariant contracts enforced across multiple surfaces"
+omnibase_core_compat: ">=0.41.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_architectural_invariant_loop: "omnimarket.nodes.node_architectural_invariant_loop"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.41.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["architecture", "invariants", "enforcement", "governance"]
+pack: "review"
+display_name: "Architectural Invariant Loop"
+node_role: "inventory"

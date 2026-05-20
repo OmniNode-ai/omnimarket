@@ -1,0 +1,23 @@
+name: node_session_phase_orchestrator
+version: "1.0.0"
+description: "Session phase orchestrator — routes evaluation results to transition or halt commands"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_session_phase_orchestrator: "omnimarket.nodes.node_session_phase_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: event_publish
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "session-phase", "phase-enforcement"]
+pack: "session"
+display_name: "Session Phase Orchestrator"
+node_role: "orchestrator"

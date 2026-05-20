@@ -6,7 +6,7 @@ EFFECT node. Serial-in-handler execution per Phase 1 audit.
 Rebases a PR branch onto its base using a dedicated per-PR ephemeral worktree.
 
 Worktree isolation model (non-negotiable per plan):
-  ${ONEX_REBASE_WORKTREE_ROOT:-/tmp/onex-rebase}/<correlation_id>/<repo_short>/
+  ${ONEX_REBASE_WORKTREE_ROOT:-~/.cache/onex-rebase}/<correlation_id>/<repo_short>/
 
 Source clone selection:
   ONEX_REBASE_SOURCE_CLONE_ROOT (required). Falls back to $OMNI_HOME if unset.
@@ -58,8 +58,9 @@ def _source_clone_root() -> Path:
 
 
 def _worktree_root() -> Path:
-    """Resolve ephemeral worktree root. Defaults to /tmp/onex-rebase."""
-    return Path(os.environ.get("ONEX_REBASE_WORKTREE_ROOT", "/tmp/onex-rebase"))  # contract-config-ok: config  # fmt: skip
+    """Resolve ephemeral worktree root. Defaults to a user-scoped cache path."""
+    default_root = Path.home() / ".cache" / "onex-rebase"
+    return Path(os.environ.get("ONEX_REBASE_WORKTREE_ROOT", str(default_root)))  # contract-config-ok: config  # fmt: skip
 
 
 class HandlerRebaseEffect:

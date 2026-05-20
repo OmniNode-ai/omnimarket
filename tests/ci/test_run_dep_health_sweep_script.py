@@ -265,3 +265,23 @@ class TestRunDepHealthSweepScript:
             )
 
         assert rc == 0
+
+    def test_delta_mode_requires_baseline_path_before_handler(
+        self, tmp_path: Path
+    ) -> None:
+        """Delta mode fails fast before invoking the handler when no baseline is supplied."""
+        from run_dep_health_sweep import main
+
+        with patch("run_dep_health_sweep.HandlerDepHealthSweep") as mock_handler:
+            rc = main(
+                [
+                    "--repo-roots",
+                    str(tmp_path),
+                    "--severity-threshold",
+                    "MAJOR",
+                    "--delta-mode",
+                ]
+            )
+
+        assert rc == 2
+        mock_handler.assert_not_called()

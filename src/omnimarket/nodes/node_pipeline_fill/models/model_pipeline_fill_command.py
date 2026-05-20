@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""ModelPipelineFillCommand — command input for the pipeline fill orchestrator.
+"""ModelPipelineFillCommand — command input for the pipeline fill effect.
 
 Related:
     - OMN-8688: node_pipeline_fill

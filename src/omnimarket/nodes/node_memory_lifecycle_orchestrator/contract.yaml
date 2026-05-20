@@ -61,13 +61,21 @@ node_version:
   patch: 0
 
 name: "node_memory_lifecycle_orchestrator"
-node_type: "ORCHESTRATOR_GENERIC"
+node_type: orchestrator
 description: >-
   Memory lifecycle orchestrator that manages expiration, archival, and cleanup of memory entities based
   on configurable TTL and retention policies.
 # Model specifications - fully qualified class names
 input_model: "omnimarket.nodes.node_memory_lifecycle_orchestrator.models.ModelLifecycleOrchestratorInput"
 output_model: "omnimarket.nodes.node_memory_lifecycle_orchestrator.models.ModelLifecycleOrchestratorOutput"
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  runtime_profiles:
+    - effects
+  timeout_ms: 300000
 
 # Performance requirements
 performance:

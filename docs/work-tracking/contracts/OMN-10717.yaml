@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-10717
+title: "Merge Bifrost default delegation config with endpoint overlay"
+summary: "Adds contract-driven Bifrost delegation overlay loading so repo defaults keep endpoint_url empty while runtime-specific endpoints are supplied through bifrost_overrides.yaml."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "delegation_routing_contract"
+evidence_requirements:
+  - kind: "manual"
+    description: "Bifrost overlay loader and delegation contract tests pass"
+    command: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_bifrost_overlay_loader.py tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py tests/unit/delegation/test_delegation_contracts.py tests/unit/delegation/test_delegation_chain_e2e.py tests/unit/delegation/test_delegation_quality_contract.py -q"
+  - kind: "manual"
+    description: "Bifrost loader type-checks under strict mypy"
+    command: "uv run mypy src/omnimarket/adapters/llm/bifrost/config_loader_bifrost_delegation.py --strict"
+  - kind: "manual"
+    description: "Post-merge deploy validation checks overlay path loading before runtime promotion"
+    command: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from pathlib import Path; from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import load_bifrost_delegation_config; load_bifrost_delegation_config(Path('/app/src/omnimarket/configs/bifrost_delegation.yaml'), Path('/app/src/omnimarket/configs/bifrost_overrides.yaml'))\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-bifrost-overlay-tests"
+    description: "Bifrost overlay loader and delegation contract tests pass"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_bifrost_overlay_loader.py tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py tests/unit/delegation/test_delegation_contracts.py tests/unit/delegation/test_delegation_chain_e2e.py tests/unit/delegation/test_delegation_quality_contract.py -q"
+  - id: "dod-bifrost-loader-mypy"
+    description: "Bifrost loader type-checks under strict mypy"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/adapters/llm/bifrost/config_loader_bifrost_delegation.py --strict"
+  - id: "dod-deploy-overlay-validation"
+    description: "Post-merge deploy validation checks overlay path loading before runtime promotion; no live deploy or restart was performed in this PR"
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy validation: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from pathlib import Path; from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import load_bifrost_delegation_config; load_bifrost_delegation_config(Path('/app/src/omnimarket/configs/bifrost_delegation.yaml'), Path('/app/src/omnimarket/configs/bifrost_overrides.yaml'))\""

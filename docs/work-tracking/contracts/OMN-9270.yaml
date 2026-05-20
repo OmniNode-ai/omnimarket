@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-9270"
+title: "Adapt hostile reviewer start command"
+summary: >
+  Adapt ModelHostileReviewerStartCommand into the hostile reviewer workflow input,
+  support file-path and PR-diff review targets, and verify RuntimeLocal bus adapter
+  routing for start command envelopes.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+  - envelopes
+evidence_requirements:
+  - kind: "tests"
+    description: "Hostile reviewer workflow and contract tests pass."
+    command: "uv run pytest tests/test_workflow_runner.py tests/test_node_hostile_reviewer_contract.py -q"
+  - kind: "manual"
+    description: "Touched hostile reviewer workflow files pass ruff."
+    command: "uv run ruff check src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_workflow_runner.py tests/test_workflow_runner.py"
+  - kind: "manual"
+    description: "Post-merge deploy readiness is limited to the runtime loading the start command adapter; no live deploy or runtime restart was performed."
+    command: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerWorkflowRunner and ModelHostileReviewerStartCommand without live runtime mutation'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-hostile-reviewer-tests"
+    description: "Hostile reviewer workflow and contract tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_workflow_runner.py tests/test_node_hostile_reviewer_contract.py -q"
+  - id: "dod-hostile-reviewer-lint"
+    description: "Touched hostile reviewer workflow files pass ruff."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_workflow_runner.py tests/test_workflow_runner.py"
+  - id: "dod-deploy-readiness"
+    description: "Post-merge deploy readiness plan only; no live deploy or runtime restart was performed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy readiness: runtime imports HandlerWorkflowRunner and ModelHostileReviewerStartCommand without live runtime mutation'"

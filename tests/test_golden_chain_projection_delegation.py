@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import yaml
 
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
@@ -305,3 +307,122 @@ class TestComplianceCounters:
         rows = db.query("delegation_events")
         assert rows[0]["tokens_to_compliance"] == 1280
         assert rows[0]["compliance_attempts"] == 3
+
+
+class TestTerminalEventEmission:
+    """OMN-11187 — after a successful DB write the runner must emit to the terminal topic."""
+
+    def _make_inmemory_runner(self) -> tuple[Any, list[tuple[str, bytes]]]:
+        """Build a DelegationProjectionRunner with an in-memory DB and a capture publish_fn."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        published: list[tuple[str, bytes]] = []
+
+        async def capture_publish(topic: str, value: bytes) -> None:
+            published.append((topic, value))
+
+        runner = DelegationProjectionRunner(publish_fn=capture_publish)
+        # Replace the DB adapter with a mock that no-ops execute
+        mock_db = MagicMock(spec=AsyncpgAdapter)
+        mock_db.execute = AsyncMock(return_value=None)
+        runner._db = mock_db
+        return runner, published
+
+    def test_terminal_event_emitted_after_task_delegated(self) -> None:
+        import asyncio
+        import json
+
+        from omnimarket.projection.runner import MessageMeta
+
+        runner, published = self._make_inmemory_runner()
+        topic = runner.subscribe_topics[0]
+        data = {
+            "correlation_id": "corr-terminal-001",
+            "task_type": "code-review",
+            "delegated_to": "agent-alpha",
+        }
+        meta = MessageMeta(partition=0, offset=0, fallback_id="corr-terminal-001")
+
+        asyncio.run(runner.project_event(topic, data, meta))
+
+        assert len(published) == 1
+        terminal_topic, raw = published[0]
+        assert terminal_topic == "onex.evt.omnimarket.projection-delegation-applied.v1"
+        envelope = json.loads(raw.decode("utf-8"))
+        assert envelope["correlation_id"] == "corr-terminal-001"
+        assert (
+            envelope["event_type"]
+            == "onex.evt.omnimarket.projection-delegation-applied.v1"
+        )
+
+    def test_terminal_event_carries_source_topic(self) -> None:
+        import asyncio
+        import json
+
+        from omnimarket.projection.runner import MessageMeta
+
+        runner, published = self._make_inmemory_runner()
+        topic = runner.subscribe_topics[0]
+        data = {
+            "correlation_id": "corr-source-topic",
+            "task_type": "refactor",
+            "delegated_to": "agent-beta",
+        }
+        meta = MessageMeta(partition=0, offset=1, fallback_id="corr-source-topic")
+
+        asyncio.run(runner.project_event(topic, data, meta))
+
+        assert len(published) == 1
+        envelope = json.loads(published[0][1].decode("utf-8"))
+        assert envelope["payload"]["source_topic"] == topic
+
+    def test_no_terminal_event_when_publish_fn_is_none_and_no_brokers(self) -> None:
+        """Without KAFKA_BROKERS and no publish_fn, emission is skipped gracefully."""
+        import asyncio
+        import os
+        from unittest.mock import AsyncMock, MagicMock
+
+        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        env_backup = os.environ.pop("KAFKA_BROKERS", None)
+        try:
+            runner = DelegationProjectionRunner()  # no publish_fn
+            mock_db = MagicMock(spec=AsyncpgAdapter)
+            mock_db.execute = AsyncMock(return_value=None)
+            runner._db = mock_db
+
+            from omnimarket.projection.runner import MessageMeta
+
+            topic = runner.subscribe_topics[0]
+            data = {
+                "correlation_id": "corr-no-publish",
+                "task_type": "code-review",
+                "delegated_to": "agent-gamma",
+            }
+            meta = MessageMeta(partition=0, offset=2, fallback_id="corr-no-publish")
+            # Should not raise even without Kafka
+            ok = asyncio.run(runner.project_event(topic, data, meta))
+            assert ok is True
+        finally:
+            if env_backup is not None:
+                os.environ["KAFKA_BROKERS"] = env_backup
+
+    def test_terminal_event_topic_read_from_contract(self) -> None:
+
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        assert (
+            runner._terminal_topic
+            == "onex.evt.omnimarket.projection-delegation-applied.v1"
+        )

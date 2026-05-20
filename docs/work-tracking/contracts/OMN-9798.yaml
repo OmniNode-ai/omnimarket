@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-9798"
+title: "Classify pipeline fill as effect"
+summary: >
+  Classifies node_pipeline_fill as an effect node, declares runtime ownership
+  and handler routing, and verifies the pipeline-fill contract plus focused
+  handler tests.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "protocols"
+  - "public_api"
+evidence_requirements:
+  - kind: "tests"
+    description: "Pipeline fill handler tests pass."
+    command: "uv run pytest src/omnimarket/nodes/node_pipeline_fill/tests -q"
+  - kind: "manual"
+    description: "Changed node contract passes strict node drift validation."
+    command: "uv run python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - kind: "manual"
+    description: >
+      Post-merge deploy readiness is limited to the effects runtime loading the
+      pipeline fill handler and contract; no live deploy or runtime restart was performed.
+    command: "deploy: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import HandlerPipelineFill; print('pipeline fill deploy smoke ok', HandlerPipelineFill.__name__)\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-pipeline-fill-tests"
+    description: "Pipeline fill handler tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest src/omnimarket/nodes/node_pipeline_fill/tests -q"
+  - id: "dod-node-drift"
+    description: "Changed node contract passes strict node drift validation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/validate_node_drift.py --check-changed origin/main --strict"
+  - id: "dod-deploy-readiness"
+    description: "Post-merge deploy readiness plan only; no live deploy or runtime restart was performed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import HandlerPipelineFill; print('pipeline fill deploy smoke ok', HandlerPipelineFill.__name__)\""
