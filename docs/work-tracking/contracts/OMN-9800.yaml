@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-9800"
+title: "Add memory lifecycle contract models"
+summary: >
+  Add typed input and output envelope models for the memory lifecycle orchestrator,
+  declare runtime descriptor ownership, and verify compatibility imports for the
+  canonical omnimemory lifecycle DTOs.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - contracts
+  - models
+evidence_requirements:
+  - kind: "tests"
+    description: "Memory lifecycle DTO imports and contract model references pass."
+    command: "uv run pytest tests/test_memory_lifecycle_dto_omnimemory_imports.py -q"
+  - kind: "lint"
+    description: "Touched memory lifecycle model and test files pass ruff."
+    command: "uv run ruff check src/omnimarket/nodes/node_memory_lifecycle_orchestrator/models/__init__.py tests/test_memory_lifecycle_dto_omnimemory_imports.py"
+  - kind: "manual"
+    description: "Post-merge deploy readiness is limited to the effects runtime loading the typed contract models; no live deploy or runtime restart was performed."
+    command: "printf '%s\n' 'post-merge deploy readiness: effects runtime imports node_memory_lifecycle_orchestrator contract models without changing .201'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-memory-lifecycle-tests"
+    description: "Memory lifecycle DTO imports and contract model references pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_memory_lifecycle_dto_omnimemory_imports.py -q"
+  - id: "dod-memory-lifecycle-lint"
+    description: "Touched memory lifecycle model and test files pass ruff."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check src/omnimarket/nodes/node_memory_lifecycle_orchestrator/models/__init__.py tests/test_memory_lifecycle_dto_omnimemory_imports.py"
+  - id: "dod-deploy-readiness"
+    description: "Post-merge deploy readiness plan only; no live deploy or runtime restart was performed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'post-merge deploy readiness: effects runtime imports node_memory_lifecycle_orchestrator contract models without changing .201'"

@@ -28,11 +28,23 @@ class ModelDelegateSkillRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     prompt: str = Field(..., min_length=1, description="User prompt to delegate.")
-    task_type: Literal["test", "document", "research"] = Field(
+    task_type: Literal[
+        "test",
+        "document",
+        "research",
+        "code_generation",
+        "refactor",
+        "reasoning",
+        "complex_reasoning",
+        "planning",
+        "review",
+        "summarization",
+        "agent_delegation",
+        "escalation",
+    ] = Field(
         ...,
         description=(
-            "Task classification for routing. MVP taxonomy; must match contract "
-            "allowed_task_types."
+            "Task classification for routing. Must match contract allowed_task_types."
         ),
     )
     source: Literal["claude-code", "codex"] = Field(
