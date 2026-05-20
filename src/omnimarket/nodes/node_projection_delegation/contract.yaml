@@ -4,9 +4,10 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Projects task-delegated events into the delegation_events table.
-  Dedup by correlation_id. Source topic:
-  onex.evt.omniclaude.task-delegated.v1.
+  Projects delegation terminal events into the delegation_events table.
+  Dedup by correlation_id. Sources include legacy task-delegated events,
+  shadow comparisons, node generation completions, and delegate-skill
+  terminal events.
 
 handler:
   module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
@@ -14,9 +15,9 @@ handler:
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 
-# Golden path: delegation chain (task delegated -> delegation_events table)
+# Golden path: delegation chain (terminal event -> delegation_events table)
 golden_path:
-  - "Consume task-delegated event from onex.evt.omniclaude.task-delegated.v1"
+  - "Consume delegation terminal event from a contract-declared topic"
   - "Projection handler upserts row into delegation_events table"
   - "Dedup by correlation_id (UPSERT semantics)"
   - "Emit projection-applied event to onex.evt.omnimarket.projection-delegation-applied.v1"
@@ -26,7 +27,7 @@ golden_path:
 db_io:
   db_tables:
     - name: delegation_events
-      migration: "0007_delegation_events.sql"
+      migration: "0009_delegate_skill_projection_metrics.sql"
       access: write
       database: omnidash_analytics
       role: events
@@ -46,6 +47,8 @@ event_bus:
     - onex.evt.omniclaude.task-delegated.v1
     - onex.evt.omniclaude.delegation-shadow-comparison.v1
     - onex.evt.omnimarket.node-generation-completed.v1
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
 
