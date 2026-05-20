@@ -44,12 +44,11 @@ class TestDepHealthPrecommitHook:
             "Hook must invoke scripts/ci/run_dep_health_sweep.py"
         )
 
-    def test_hook_uses_exit_nonzero_flag(self) -> None:
-        """The hook must use --exit-nonzero-on-findings for blocking enforcement."""
+    def test_hook_uses_delta_mode(self) -> None:
+        """The hook must use --delta-mode for baseline-relative blocking."""
         content = HOOK_SCRIPT.read_text()
-        assert "--exit-nonzero-on-findings" in content, (
-            "Hook must pass --exit-nonzero-on-findings to the CI script"
-        )
+        assert "--delta-mode" in content, "Hook must pass --delta-mode to the CI script"
+        assert "--baseline-path" in content, "Hook must pass the baseline path"
 
     def test_no_hardcoded_absolute_paths_in_hook(self) -> None:
         """Hook must not contain hardcoded workstation path prefixes."""

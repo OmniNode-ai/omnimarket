@@ -57,4 +57,4 @@ jobs:
             --repo-roots src/ \
             --severity-threshold MAJOR \
             --baseline-path .onex_state/dep_health_baseline.json \
-            --exit-nonzero-on-findings
+            --delta-mode

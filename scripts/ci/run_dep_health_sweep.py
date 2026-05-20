@@ -78,12 +78,34 @@ def main(argv: list[str] | None = None) -> int:
         help="Exit 1 if any findings at or above --severity-threshold are found.",
     )
     parser.add_argument(
+        "--delta-mode",
+        action="store_true",
+        help=(
+            "Exit 1 only when NEW findings appear vs baseline (baseline_delta > 0). "
+            "Requires --baseline-path. Existing findings in baseline do not block."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run analysis but always exit 0 (advisory mode).",
     )
 
     args = parser.parse_args(argv)
+
+    if args.delta_mode:
+        if not args.baseline_path:
+            print(
+                "dep-health-gate: --delta-mode requires --baseline-path",
+                file=sys.stderr,
+            )
+            return 2
+        if not Path(args.baseline_path).is_file():
+            print(
+                "dep-health-gate: --delta-mode requires an existing --baseline-path file",
+                file=sys.stderr,
+            )
+            return 2
 
     repo_roots = [r.strip() for r in args.repo_roots.split(",") if r.strip()]
 
@@ -109,6 +131,22 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(result.model_dump(mode="json"), indent=2, default=str))
 
     if args.dry_run:
+        return 0
+
+    if args.delta_mode:
+        delta = result.baseline_delta
+        if delta is None:
+            print(
+                "dep-health-gate: --delta-mode requires a valid --baseline-path with an existing baseline file",
+                file=sys.stderr,
+            )
+            return 2
+        if delta > 0:
+            print(
+                f"dep-health-gate: {delta} new finding(s) introduced vs baseline at or above {args.severity_threshold}",
+                file=sys.stderr,
+            )
+            return 1
         return 0
 
     if args.exit_nonzero_on_findings:
