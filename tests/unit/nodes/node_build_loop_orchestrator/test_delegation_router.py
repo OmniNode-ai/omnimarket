@@ -9,9 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_build_loop_orchestrator.handlers import (
+    adapter_delegation_router,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import (
     EnumModelTier,
     ModelDelegationHarnessSample,
+    build_endpoint_configs,
     route_ticket_to_tier,
 )
 
@@ -219,3 +223,80 @@ class TestRouteTicketToTier:
         )
 
         assert tier == EnumModelTier.LOCAL_CODER
+
+
+_ENDPOINT_ENV_KEYS = (
+    "LLM_GLM_API_KEY",
+    "LLM_GLM_URL",
+    "LLM_GLM_MODEL_NAME",
+    "LLM_CODER_FAST_URL",
+    "LLM_CODER_URL",
+    "LLM_DEEPSEEK_R1_URL",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "OPENAI_API_KEY",
+)
+
+
+def _clear_endpoint_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in _ENDPOINT_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+@pytest.mark.unit
+class TestBuildEndpointConfigs:
+    """Endpoint config proof without depending on host environment variables."""
+
+    def test_empty_env_builds_no_endpoint_configs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _clear_endpoint_env(monkeypatch)
+
+        configs = build_endpoint_configs()
+
+        assert configs == {}
+
+    def test_glm_endpoint_requires_key_and_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _clear_endpoint_env(monkeypatch)
+        monkeypatch.setenv("LLM_GLM_API_KEY", "secret")
+
+        assert EnumModelTier.FRONTIER_GLM not in build_endpoint_configs()
+
+        monkeypatch.setenv("LLM_GLM_URL", "https://glm.example/v4")
+        monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-4.5")
+
+        configs = build_endpoint_configs()
+
+        assert configs[EnumModelTier.FRONTIER_GLM].base_url == "https://glm.example/v4"
+        assert configs[EnumModelTier.FRONTIER_GLM].model_id == "glm-4.5"
+        assert configs[EnumModelTier.FRONTIER_REVIEW].model_id == "glm-4.7-flash"
+
+    def test_gemini_key_uses_cli_when_binary_is_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _clear_endpoint_env(monkeypatch)
+        monkeypatch.setenv("GEMINI_API_KEY", "secret")
+        monkeypatch.setattr(
+            adapter_delegation_router, "_gemini_cli_available", lambda: True
+        )
+
+        configs = build_endpoint_configs()
+
+        assert configs[EnumModelTier.GEMINI_CLI].base_url == "cli://gemini"
+        assert configs[EnumModelTier.FRONTIER_GOOGLE].model_id == "gemini-2.5-flash"
+
+    def test_gemini_key_skips_cli_when_binary_is_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _clear_endpoint_env(monkeypatch)
+        monkeypatch.setenv("GOOGLE_API_KEY", "secret")
+        monkeypatch.setattr(
+            adapter_delegation_router, "_gemini_cli_available", lambda: False
+        )
+
+        configs = build_endpoint_configs()
+
+        assert EnumModelTier.GEMINI_CLI not in configs
+        assert configs[EnumModelTier.FRONTIER_GOOGLE].api_key == "secret"

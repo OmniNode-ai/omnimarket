@@ -1059,6 +1059,34 @@ class TestPrLifecycleOrchestratorVerifyWiring:
 
         await event_bus.close()
 
+    async def test_verify_true_failure_is_persisted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed verify-gated sweep still writes durable pollable evidence."""
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+        inventory = MockInventory(prs=(_PR_GREEN,))
+        triage = MockTriage(classified=(_TRIAGE_GREEN,))
+        reducer = MockReducer(intents=(_INTENT_MERGE,))
+        orch = await _make_orchestrator(
+            inventory=inventory,
+            triage=triage,
+            reducer=reducer,
+            merge=MockMerge(prs_merged=1),
+            fix=MockFix(),
+        )
+
+        result = await orch.handle(
+            _make_command(run_id="20260521-verify-failed", verify=True)
+        )
+
+        result_path = (
+            tmp_path / "merge-sweep" / "20260521-verify-failed" / "result.json"
+        )
+        payload = json.loads(result_path.read_text())
+        assert result.final_state == "FAILED"
+        assert payload["final_state"] == "FAILED"
+        assert "VERIFYING phase dispatch is not wired yet" in payload["error_message"]
+
 
 @pytest.mark.unit
 class TestOrchestratorFixReasonRouting:
