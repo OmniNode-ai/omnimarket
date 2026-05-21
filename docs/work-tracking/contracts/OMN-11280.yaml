@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-11280
+title: "feat(OMN-11280): create node_session_phase_dispatcher (EFFECT) in omnimarket"
+summary: >
+  node_session_phase_dispatcher is the ONLY side-effecting node in the session-phase subsystem.
+  Receives phase transition commands (onex.cmd.omnimarket.session-phase-transition.v1) and
+  publishes phase-state events (onex.evt.omnimarket.session-phase-state.v1) and budget-warning
+  events (onex.evt.omnimarket.session-phase-budget-warning.v1). Worker dispatch_items from phase
+  spec counted on enter transitions. Topics loaded from contract.yaml. 4 unit tests.
+
+  Note: Core implementation was delivered under OMN-11231 (PR #704, merged). This contract
+  provides OMN-11280 DoD evidence for the same node.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "EFFECT node exists with correct contract.yaml and all 4 unit tests pass."
+    command: "uv run pytest tests/unit/nodes/node_session_phase_dispatcher/ -q"
+  - kind: "manual"
+    description: "Node registered in pyproject.toml entry-points."
+    command: "grep -q 'node_session_phase_dispatcher' pyproject.toml"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests-pass"
+    description: "All 4 unit tests pass: phase-state publish, worker dispatch, budget warning, no-warning-below-threshold."
+    source: "local"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_session_phase_dispatcher/ -q -- 4 passed"
+  - id: "dod-deploy-assessment"
+    description: >
+      EFFECT node ships with passive subscription — no live deploy, runtime restart, or .201 mutation
+      required. Node activates when orchestrator wires it post-merge.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q '^node_type: effect$' src/omnimarket/nodes/node_session_phase_dispatcher/contract.yaml"
