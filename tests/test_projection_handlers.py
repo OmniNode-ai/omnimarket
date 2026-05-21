@@ -169,6 +169,39 @@ class TestDelegationHandler:
         mock_db.execute.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_task_delegated_preserves_manifest_pricing_fields(
+        self, mock_db: AsyncMock
+    ) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+
+        data = {
+            "correlation_id": "corr-pricing-proof",
+            "task_type": "test",
+            "delegated_to": "Qwen3-Coder-30B-A3B",
+            "timestamp": "2026-05-21T12:00:00Z",
+            "cost_usd": 0.0,
+            "cost_savings_usd": 0.00525,
+            "pricing_manifest_version": 1,
+        }
+
+        result = await runner.project_event(
+            "onex.evt.omniclaude.task-delegated.v1", data, _make_meta()
+        )
+
+        assert result is True
+        mock_db.execute.assert_called_once()
+        args = mock_db.execute.call_args[0]
+        assert "pricing_manifest_version" in args[0]
+        assert "corr-pricing-proof" in args
+        assert "0.00525" in args
+        assert args[-1] == 1
+
+    @pytest.mark.asyncio
     async def test_shadow_comparison(self, mock_db: AsyncMock) -> None:
         from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
             DelegationProjectionRunner,

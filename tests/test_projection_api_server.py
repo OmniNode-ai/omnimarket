@@ -292,6 +292,54 @@ class TestProjectionRoutes:
         assert body["rows"][0]["model_id"] == "qwen3-coder-30b"
         assert body["rows"][0]["estimated_cost_usd"] == "0.0025"
 
+    def test_delegation_projection_api_preserves_manifest_pricing_fields(
+        self,
+    ) -> None:
+        topic = "onex.evt.omnimarket.projection-delegation-events.v1"
+        cfg = ProjectionTableConfig(
+            topic=topic,
+            table="delegation_events",
+            schema_name="public",
+            columns=(
+                "correlation_id",
+                "task_type",
+                "delegated_to",
+                "cost_savings_usd",
+                "pricing_manifest_version",
+                "timestamp",
+            ),
+            order_by="timestamp DESC",
+            freshness_column="timestamp",
+            limit=100,
+            source_contract="projection_delegation",
+        )
+        rows = [
+            {
+                "correlation_id": "corr-pricing-proof",
+                "task_type": "test",
+                "delegated_to": "Qwen3-Coder-30B-A3B",
+                "cost_savings_usd": "0.00525",
+                "pricing_manifest_version": 1,
+                "timestamp": _ts(timedelta(minutes=1)),
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
+
+        with _with_pool(pool, topic_map={topic: cfg}) as client:
+            resp = client.get(
+                f"/projection/{topic}",
+                params={"correlation_id": "corr-pricing-proof"},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        _assert_envelope(body, topic)
+        assert body["row_count"] == 1
+        row = body["rows"][0]
+        assert row["correlation_id"] == "corr-pricing-proof"
+        assert row["cost_savings_usd"] == "0.00525"
+        assert row["pricing_manifest_version"] == 1
+
     def test_registration_envelope_shape(self) -> None:
         rows = [
             {
