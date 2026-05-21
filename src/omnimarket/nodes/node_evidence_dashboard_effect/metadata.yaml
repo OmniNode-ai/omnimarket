@@ -1,0 +1,23 @@
+name: node_evidence_dashboard_effect
+version: "0.1.0"
+description: "Normalizes evidence pipeline events for dashboard projection."
+pack: evidence_pipeline
+node_role: effect
+display_name: "Evidence Dashboard Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_evidence_dashboard_effect: "omnimarket.nodes.node_evidence_dashboard_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: kafka_publish
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "evidence-pipeline", "dashboard", "OMN-11471", "OMN-11474"]
+

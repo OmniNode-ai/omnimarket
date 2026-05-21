@@ -23,7 +23,7 @@ from typing import Any
 
 import asyncpg
 from fastapi import Depends, FastAPI, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
@@ -34,6 +34,10 @@ log = logging.getLogger(__name__)
 _PROJECTION_VERSION = "1.0.0"
 _FRESH_THRESHOLD = timedelta(minutes=5)
 _STALE_THRESHOLD = timedelta(minutes=60)
+_EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1"
+_EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"
+_EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"
+_EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +200,12 @@ async def list_projections(
             "columns": list(cfg.columns),
             "order_by": cfg.order_by,
             "freshness_column": cfg.freshness_column,
+            "cursor_column": cfg.cursor_column,
+            "last_event_id_column": cfg.last_event_id_column,
+            "last_ingest_sequence_column": cfg.last_ingest_sequence_column,
+            "freshness_state_column": cfg.freshness_state_column,
+            "degraded_reason_column": cfg.degraded_reason_column,
+            "observed_at_column": cfg.observed_at_column,
             "limit": cfg.limit,
             "source_contract": cfg.source_contract,
             "degraded_reason": cfg.degraded_reason or None,
@@ -318,6 +328,254 @@ async def projection_query(
             "rows": serialisable_rows,
         }
     )
+
+
+@app.get("/v1/evidence-pipeline/dashboard")
+@app.get("/v1/evidence-pipeline/stages")
+async def evidence_pipeline_dashboard(
+    cursor: str | None = Query(default=None),
+    correlation_id: str | None = Query(default=None),
+    ticket_id: str | None = Query(default=None),
+    repo: str | None = Query(default=None),
+    pr_number: int | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+) -> JSONResponse:
+    return await _evidence_projection_response(
+        topic=_EVIDENCE_STAGES_TOPIC,
+        cursor=cursor,
+        correlation_id=correlation_id,
+        ticket_id=ticket_id,
+        repo=repo,
+        pr_number=pr_number,
+        limit=limit,
+        pool=pool,
+        topic_map=topic_map,
+    )
+
+
+@app.get("/v1/evidence-pipeline/correlation-traces")
+@app.get("/v1/evidence-pipeline/correlations")
+async def evidence_pipeline_correlation_traces(
+    cursor: str | None = Query(default=None),
+    correlation_id: str | None = Query(default=None),
+    ticket_id: str | None = Query(default=None),
+    repo: str | None = Query(default=None),
+    pr_number: int | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+) -> JSONResponse:
+    return await _evidence_projection_response(
+        topic=_EVIDENCE_TRACE_TOPIC,
+        cursor=cursor,
+        correlation_id=correlation_id,
+        ticket_id=ticket_id,
+        repo=repo,
+        pr_number=pr_number,
+        limit=limit,
+        pool=pool,
+        topic_map=topic_map,
+    )
+
+
+@app.get("/v1/evidence-pipeline/readiness")
+async def evidence_pipeline_readiness(
+    cursor: str | None = Query(default=None),
+    correlation_id: str | None = Query(default=None),
+    ticket_id: str | None = Query(default=None),
+    repo: str | None = Query(default=None),
+    pr_number: int | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+) -> JSONResponse:
+    return await _evidence_projection_response(
+        topic=_EVIDENCE_READINESS_TOPIC,
+        cursor=cursor,
+        correlation_id=correlation_id,
+        ticket_id=ticket_id,
+        repo=repo,
+        pr_number=pr_number,
+        limit=limit,
+        pool=pool,
+        topic_map=topic_map,
+    )
+
+
+@app.get("/v1/evidence-pipeline/events")
+async def evidence_pipeline_live_events(
+    cursor: str | None = Query(default=None),
+    correlation_id: str | None = Query(default=None),
+    ticket_id: str | None = Query(default=None),
+    repo: str | None = Query(default=None),
+    pr_number: int | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+) -> JSONResponse:
+    return await _evidence_projection_response(
+        topic=_EVIDENCE_EVENTS_TOPIC,
+        cursor=cursor,
+        correlation_id=correlation_id,
+        ticket_id=ticket_id,
+        repo=repo,
+        pr_number=pr_number,
+        limit=limit,
+        pool=pool,
+        topic_map=topic_map,
+    )
+
+
+@app.get("/v1/evidence-pipeline/events/stream")
+async def evidence_pipeline_event_stream() -> StreamingResponse:
+    """Advisory SSE endpoint.
+
+    Reconnect clients must query the projection endpoints above for
+    authoritative state; this stream is only a live-update hint.
+    """
+
+    async def _stream() -> AsyncIterator[str]:
+        yield "event: advisory\n"
+        yield 'data: {"authority":"projection_state_required"}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+async def _evidence_projection_response(
+    *,
+    topic: str,
+    cursor: str | None,
+    correlation_id: str | None,
+    ticket_id: str | None,
+    repo: str | None,
+    pr_number: int | None,
+    limit: int | None,
+    pool: asyncpg.Pool,
+    topic_map: dict[str, ProjectionTableConfig],
+) -> JSONResponse:
+    cfg = topic_map.get(topic)
+    if cfg is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "error": "projection_not_configured",
+                "topic": topic,
+            },
+        )
+    if cfg.status == ProjectionStatus.DEGRADED:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "reason": cfg.degraded_reason},
+        )
+    if cfg.cursor_column is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "error": "cursor_column_missing",
+                "topic": topic,
+            },
+        )
+
+    effective_limit = min(limit or cfg.limit, cfg.limit)
+    generated_at = datetime.now(UTC).isoformat()
+    qualified_table = f"{cfg.schema_name}.{cfg.table}"
+    columns = cfg.columns
+    col_list = "*" if columns == ("*",) else ", ".join(columns)
+
+    clauses: list[str] = []
+    args: list[object] = []
+    _append_filter(clauses, args, cfg.cursor_column, ">", cursor)
+    _append_filter(clauses, args, "correlation_id", "=", correlation_id)
+    _append_filter(clauses, args, "ticket_id", "=", ticket_id)
+    _append_filter(clauses, args, "repo", "=", repo)
+    _append_filter(clauses, args, "pr_number", "=", pr_number)
+    where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    order_clause = f" ORDER BY {cfg.order_by}" if cfg.order_by else ""
+    sql = (
+        f"SELECT {col_list} FROM {qualified_table}"
+        f"{where_clause}{order_clause} LIMIT {effective_limit}"
+    )
+
+    try:
+        async with pool.acquire() as conn:
+            raw_rows = await conn.fetch(sql, *args)
+            latest_ts_val: Any = (
+                await conn.fetchval(
+                    f"SELECT MAX({cfg.freshness_column}) FROM {qualified_table}"
+                )
+                if cfg.freshness_column is not None
+                else None
+            )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "error": "upstream_unavailable",
+                "reason": str(exc),
+                "freshness_state": "DEGRADED",
+            },
+        )
+
+    rows = [dict(r) if not isinstance(r, dict) else r for r in raw_rows]
+    serialisable_rows = [{k: _json_value(v) for k, v in row.items()} for row in rows]
+    latest_row = serialisable_rows[0] if serialisable_rows else {}
+    next_cursor = (
+        str(serialisable_rows[-1].get(cfg.cursor_column))
+        if serialisable_rows and cfg.cursor_column in serialisable_rows[-1]
+        else None
+    )
+    latest_ts = _json_value(latest_ts_val) if latest_ts_val is not None else None
+    computed_freshness = (
+        "DEGRADED"
+        if cfg.freshness_column is None
+        else compute_freshness(str(latest_ts)).upper()
+    )
+
+    return JSONResponse(
+        {
+            "topic": topic,
+            "version": _PROJECTION_VERSION,
+            "generated_at": generated_at,
+            "projection_cursor": latest_row.get(cfg.cursor_column),
+            "next_cursor": next_cursor,
+            "last_event_id": _column_value(latest_row, cfg.last_event_id_column),
+            "last_ingest_sequence": _column_value(
+                latest_row, cfg.last_ingest_sequence_column
+            ),
+            "freshness_state": _column_value(latest_row, cfg.freshness_state_column)
+            or computed_freshness,
+            "degraded_reason": _column_value(latest_row, cfg.degraded_reason_column),
+            "observed_at": _column_value(latest_row, cfg.observed_at_column)
+            or latest_ts,
+            "row_count": len(serialisable_rows),
+            "rows": serialisable_rows,
+            "sse_authority": "advisory_only",
+        }
+    )
+
+
+def _append_filter(
+    clauses: list[str],
+    args: list[object],
+    column: str,
+    operator: str,
+    value: object | None,
+) -> None:
+    if value is None:
+        return
+    args.append(value)
+    clauses.append(f"{column} {operator} ${len(args)}")
+
+
+def _column_value(row: dict[str, Any], column: str | None) -> Any:
+    if column is None:
+        return None
+    return row.get(column)
 
 
 # ---------------------------------------------------------------------------

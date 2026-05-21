@@ -131,28 +131,24 @@ def build_projection_topic_map(
             # Section present but expose != true — skip silently.
             continue
 
-        cfg = _parse_projection_api_section(section, node_name, contract_path)
-        if cfg is None:
-            # Parse failure already logged inside _parse_projection_api_section.
-            continue
+        for cfg in _parse_projection_api_sections(section, node_name, contract_path):
+            if cfg.topic in topic_map:
+                logger.error(
+                    "Duplicate projection_api topic %r declared by %r and %r - "
+                    "second declaration ignored",
+                    cfg.topic,
+                    topic_map[cfg.topic].source_contract,
+                    node_name,
+                )
+                continue
 
-        if cfg.topic in topic_map:
-            logger.error(
-                "Duplicate projection_api topic %r declared by %r and %r — "
-                "second declaration ignored",
+            topic_map[cfg.topic] = cfg
+            logger.info(
+                "Projection API: registered topic %r -> table %r (contract: %s)",
                 cfg.topic,
-                topic_map[cfg.topic].source_contract,
+                cfg.table,
                 node_name,
             )
-            continue
-
-        topic_map[cfg.topic] = cfg
-        logger.info(
-            "Projection API: registered topic %r -> table %r (contract: %s)",
-            cfg.topic,
-            cfg.table,
-            node_name,
-        )
 
     if not topic_map:
         logger.warning(
@@ -197,6 +193,43 @@ def _load_projection_api_section(contract_path: Path) -> dict[str, object] | Non
         return None
 
     return section
+
+
+def _parse_projection_api_sections(
+    section: dict[str, object],
+    node_name: str,
+    contract_path: Path,
+) -> tuple[ProjectionTableConfig, ...]:
+    """Parse one legacy projection_api section or many explicit exposures."""
+    raw_exposures = section.get("exposures")
+    if raw_exposures is None:
+        cfg = _parse_projection_api_section(section, node_name, contract_path)
+        return (cfg,) if cfg is not None else ()
+
+    if not isinstance(raw_exposures, list) or not raw_exposures:
+        logger.error(
+            "Contract %r (path: %s): projection_api.exposures must be a "
+            "non-empty list when present - contract excluded",
+            node_name,
+            contract_path,
+        )
+        return ()
+
+    configs: list[ProjectionTableConfig] = []
+    for index, raw_exposure in enumerate(raw_exposures):
+        if not isinstance(raw_exposure, dict):
+            logger.error(
+                "Contract %r (path: %s): projection_api.exposures[%d] must "
+                "be a mapping - exposure excluded",
+                node_name,
+                contract_path,
+                index,
+            )
+            continue
+        cfg = _parse_projection_api_section(raw_exposure, node_name, contract_path)
+        if cfg is not None:
+            configs.append(cfg)
+    return tuple(configs)
 
 
 def _parse_projection_api_section(
@@ -295,6 +328,37 @@ def _parse_projection_api_section(
         return None
     freshness_column: str | None = raw_freshness
 
+    cursor_column = _optional_string_field(
+        section, "cursor_column", node_name, contract_path
+    )
+    if cursor_column is _INVALID_OPTIONAL_FIELD:
+        return None
+    last_event_id_column = _optional_string_field(
+        section, "last_event_id_column", node_name, contract_path
+    )
+    if last_event_id_column is _INVALID_OPTIONAL_FIELD:
+        return None
+    last_ingest_sequence_column = _optional_string_field(
+        section, "last_ingest_sequence_column", node_name, contract_path
+    )
+    if last_ingest_sequence_column is _INVALID_OPTIONAL_FIELD:
+        return None
+    freshness_state_column = _optional_string_field(
+        section, "freshness_state_column", node_name, contract_path
+    )
+    if freshness_state_column is _INVALID_OPTIONAL_FIELD:
+        return None
+    degraded_reason_column = _optional_string_field(
+        section, "degraded_reason_column", node_name, contract_path
+    )
+    if degraded_reason_column is _INVALID_OPTIONAL_FIELD:
+        return None
+    observed_at_column = _optional_string_field(
+        section, "observed_at_column", node_name, contract_path
+    )
+    if observed_at_column is _INVALID_OPTIONAL_FIELD:
+        return None
+
     raw_limit = section.get("limit")
     if raw_limit is None:
         limit = _DEFAULT_LIMIT
@@ -316,8 +380,38 @@ def _parse_projection_api_section(
         columns=columns,
         order_by=order_by,
         freshness_column=freshness_column,
+        cursor_column=cursor_column,
+        last_event_id_column=last_event_id_column,
+        last_ingest_sequence_column=last_ingest_sequence_column,
+        freshness_state_column=freshness_state_column,
+        degraded_reason_column=degraded_reason_column,
+        observed_at_column=observed_at_column,
         limit=limit,
         source_contract=node_name,
         status=ProjectionStatus.OK,
         degraded_reason="",
     )
+
+
+_INVALID_OPTIONAL_FIELD = object()
+
+
+def _optional_string_field(
+    section: dict[str, object],
+    field_name: str,
+    node_name: str,
+    contract_path: Path,
+) -> str | None | object:
+    raw_value = section.get(field_name)
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, str):
+        return raw_value
+    logger.error(
+        "Contract %r (path: %s): projection_api.%s must be a string when "
+        "present - contract excluded",
+        node_name,
+        contract_path,
+        field_name,
+    )
+    return _INVALID_OPTIONAL_FIELD

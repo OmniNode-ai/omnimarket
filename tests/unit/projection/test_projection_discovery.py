@@ -26,6 +26,7 @@ from omnimarket.projection.discovery import (
     ALLOWED_SCHEMAS,
     _load_projection_api_section,
     _parse_projection_api_section,
+    _parse_projection_api_sections,
     build_projection_topic_map,
 )
 from omnimarket.projection.models import ProjectionStatus
@@ -122,6 +123,29 @@ class TestParseProjectionApiSection:
         assert cfg.limit == 50
         assert cfg.source_contract == "node_test"
         assert cfg.status == ProjectionStatus.OK
+
+    def test_projection_metadata_columns_are_parsed(self, tmp_path: Path) -> None:
+        section = self._valid_section()
+        section.update(
+            {
+                "cursor_column": "projection_cursor",
+                "last_event_id_column": "last_event_id",
+                "last_ingest_sequence_column": "last_ingest_sequence",
+                "freshness_state_column": "freshness_state",
+                "degraded_reason_column": "degraded_reason",
+                "observed_at_column": "observed_at",
+            }
+        )
+        p = tmp_path / "contract.yaml"
+        cfg = _parse_projection_api_section(section, "node_test", p)
+
+        assert cfg is not None
+        assert cfg.cursor_column == "projection_cursor"
+        assert cfg.last_event_id_column == "last_event_id"
+        assert cfg.last_ingest_sequence_column == "last_ingest_sequence"
+        assert cfg.freshness_state_column == "freshness_state"
+        assert cfg.degraded_reason_column == "degraded_reason"
+        assert cfg.observed_at_column == "observed_at"
 
     def test_explicit_topic_required(self, tmp_path: Path) -> None:
         section = self._valid_section()
@@ -234,6 +258,23 @@ class TestParseProjectionApiSection:
             cfg = _parse_projection_api_section(section, "node_test", p)
             assert cfg is None
 
+    def test_optional_projection_metadata_fields_reject_non_strings(
+        self, tmp_path: Path
+    ) -> None:
+        for field in (
+            "cursor_column",
+            "last_event_id_column",
+            "last_ingest_sequence_column",
+            "freshness_state_column",
+            "degraded_reason_column",
+            "observed_at_column",
+        ):
+            section = self._valid_section()
+            section[field] = 123
+            p = tmp_path / "contract.yaml"
+            cfg = _parse_projection_api_section(section, "node_test", p)
+            assert cfg is None
+
     def test_limit_must_be_positive_integer(self, tmp_path: Path) -> None:
         for raw_limit in (0, -1, "100", True):
             section = self._valid_section()
@@ -271,6 +312,55 @@ class TestBuildProjectionTopicMap:
         assert cfg.order_by == "created_at DESC"
         assert cfg.freshness_column == "created_at"
         assert "*" not in cfg.columns
+
+    def test_multiple_projection_api_exposures_are_registered(
+        self, tmp_path: Path
+    ) -> None:
+        p = _write_contract(
+            tmp_path,
+            """
+            name: node_multi_projection
+            projection_api:
+              expose: true
+              exposures:
+                - topic: "onex.snapshot.projection.one.v1"
+                  table: "projection_one"
+                  columns: ["projection_cursor", "last_event_id"]
+                  cursor_column: "projection_cursor"
+                  last_event_id_column: "last_event_id"
+                - topic: "onex.snapshot.projection.two.v1"
+                  table: "projection_two"
+                  columns: ["projection_cursor", "last_event_id"]
+                  cursor_column: "projection_cursor"
+                  last_event_id_column: "last_event_id"
+            """,
+        )
+        manifest = _make_manifest([_make_contract_stub(p, "node_multi_projection")])
+        result = build_projection_topic_map(manifest)
+
+        assert set(result) == {
+            "onex.snapshot.projection.one.v1",
+            "onex.snapshot.projection.two.v1",
+        }
+        assert result["onex.snapshot.projection.one.v1"].cursor_column == (
+            "projection_cursor"
+        )
+
+    def test_parse_projection_api_sections_accepts_legacy_single_section(
+        self, tmp_path: Path
+    ) -> None:
+        p = tmp_path / "contract.yaml"
+        section = {
+            "expose": True,
+            "topic": "onex.snapshot.projection.legacy.v1",
+            "table": "legacy_projection",
+            "columns": ["projection_cursor"],
+        }
+
+        configs = _parse_projection_api_sections(section, "node_legacy", p)
+
+        assert len(configs) == 1
+        assert configs[0].topic == "onex.snapshot.projection.legacy.v1"
 
     def test_expose_true_required(self, tmp_path: Path) -> None:
         """Contracts with projection_api.expose: false are excluded."""

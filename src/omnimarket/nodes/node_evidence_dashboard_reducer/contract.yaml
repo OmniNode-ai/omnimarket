@@ -1,0 +1,205 @@
+---
+name: node_evidence_dashboard_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Materializes normalized evidence dashboard events into three projection
+  tables: current dashboard state, ordered correlation traces, and readiness
+  aggregates. The reducer owns projection state, freshness state, cursor
+  advancement, and retention TTL metadata.
+
+input_model:
+  name: ModelDashboardProjectionEvent
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_dashboard_projection_event
+  description: "Normalized event emitted by node_evidence_dashboard_effect."
+output_model:
+  name: ModelReadinessAggregateProjection
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_readiness_aggregate_projection
+  description: "Projection state written by the reducer."
+
+handler:
+  module: omnimarket.nodes.node_evidence_dashboard_reducer.handlers.handler_evidence_dashboard_reducer
+  class: HandlerEvidenceDashboardReducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  runtime_profiles: [compute]
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.evidence-dashboard-reduced.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.evidence-dashboard-normalized.v1
+  publish_topics:
+    - onex.evt.omnimarket.evidence-dashboard-reduced.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.evidence-dashboard-reduced.v1
+
+reducer_contract:
+  state_update: "delta(state, event) -> (new_projection_state, intents)"
+  owns_state: true
+  append_only_corrections: true
+  ordering_authority: ingest_sequence
+  duplicate_key_fields:
+    - event_id
+    - projection_cursor
+  ttl:
+    retention_days: 14
+    authority: reducer_projection_retention_layer
+    expiry_column: expires_at
+  projection_surfaces:
+    - EvidenceDashboardProjection
+    - CorrelationTraceProjection
+    - ReadinessAggregateProjection
+
+projection_schema:
+  tables:
+    - model: EvidenceDashboardProjection
+      table: evidence_dashboard_projection
+      conflict_key: projection_key
+      cursor_column: projection_cursor
+      freshness_column: observed_at
+      ttl_column: expires_at
+    - model: CorrelationTraceProjection
+      table: evidence_correlation_trace_projection
+      conflict_key: event_id
+      cursor_column: projection_cursor
+      freshness_column: observed_at
+      ttl_column: expires_at
+    - model: ReadinessAggregateProjection
+      table: evidence_readiness_aggregate_projection
+      conflict_key: aggregate_key
+      cursor_column: projection_cursor
+      freshness_column: observed_at
+      ttl_column: expires_at
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: "onex.snapshot.projection.evidence_pipeline.stages.v1"
+      table: "evidence_dashboard_projection"
+      schema: "public"
+      columns:
+        - "projection_key"
+        - "correlation_id"
+        - "ticket_id"
+        - "repo"
+        - "pr_number"
+        - "validation_run_id"
+        - "current_stage"
+        - "status"
+        - "severity"
+        - "projection_cursor"
+        - "last_event_id"
+        - "last_ingest_sequence"
+        - "freshness_state"
+        - "degraded_reason"
+        - "observed_at"
+        - "updated_at"
+      order_by: "observed_at DESC, projection_cursor DESC"
+      freshness_column: "observed_at"
+      cursor_column: "projection_cursor"
+      last_event_id_column: "last_event_id"
+      last_ingest_sequence_column: "last_ingest_sequence"
+      freshness_state_column: "freshness_state"
+      degraded_reason_column: "degraded_reason"
+      observed_at_column: "observed_at"
+      limit: 100
+    - topic: "onex.snapshot.projection.evidence_pipeline.correlations.v1"
+      table: "evidence_correlation_trace_projection"
+      schema: "public"
+      columns:
+        - "event_id"
+        - "correlation_id"
+        - "ticket_id"
+        - "repo"
+        - "pr_number"
+        - "source_topic"
+        - "source_event_type"
+        - "normalized_stage"
+        - "status"
+        - "severity"
+        - "ingest_sequence"
+        - "projection_cursor"
+        - "last_event_id"
+        - "last_ingest_sequence"
+        - "freshness_state"
+        - "degraded_reason"
+        - "observed_at"
+      order_by: "ingest_sequence ASC NULLS LAST, observed_at ASC, projection_cursor ASC"
+      freshness_column: "observed_at"
+      cursor_column: "projection_cursor"
+      last_event_id_column: "last_event_id"
+      last_ingest_sequence_column: "last_ingest_sequence"
+      freshness_state_column: "freshness_state"
+      degraded_reason_column: "degraded_reason"
+      observed_at_column: "observed_at"
+      limit: 250
+    - topic: "onex.snapshot.projection.evidence_pipeline.readiness.v1"
+      table: "evidence_readiness_aggregate_projection"
+      schema: "public"
+      columns:
+        - "aggregate_key"
+        - "correlation_id"
+        - "ticket_id"
+        - "repo"
+        - "pr_number"
+        - "readiness_state"
+        - "total_events"
+        - "error_events"
+        - "warning_events"
+        - "projection_cursor"
+        - "last_event_id"
+        - "last_ingest_sequence"
+        - "freshness_state"
+        - "degraded_reason"
+        - "observed_at"
+        - "updated_at"
+      order_by: "observed_at DESC, projection_cursor DESC"
+      freshness_column: "observed_at"
+      cursor_column: "projection_cursor"
+      last_event_id_column: "last_event_id"
+      last_ingest_sequence_column: "last_ingest_sequence"
+      freshness_state_column: "freshness_state"
+      degraded_reason_column: "degraded_reason"
+      observed_at_column: "observed_at"
+      limit: 100
+    - topic: "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+      table: "evidence_correlation_trace_projection"
+      schema: "public"
+      columns:
+        - "event_id"
+        - "correlation_id"
+        - "ticket_id"
+        - "source_topic"
+        - "source_event_type"
+        - "normalized_stage"
+        - "status"
+        - "severity"
+        - "ingest_sequence"
+        - "projection_cursor"
+        - "last_event_id"
+        - "last_ingest_sequence"
+        - "freshness_state"
+        - "degraded_reason"
+        - "observed_at"
+        - "payload"
+      order_by: "ingest_sequence ASC NULLS LAST, observed_at ASC, projection_cursor ASC"
+      freshness_column: "observed_at"
+      cursor_column: "projection_cursor"
+      last_event_id_column: "last_event_id"
+      last_ingest_sequence_column: "last_ingest_sequence"
+      freshness_state_column: "freshness_state"
+      degraded_reason_column: "degraded_reason"
+      observed_at_column: "observed_at"
+      limit: 250
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 3
+  related_tickets: ["OMN-11472", "OMN-11473", "OMN-11475", "OMN-11476"]
