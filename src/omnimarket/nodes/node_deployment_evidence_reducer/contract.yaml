@@ -35,6 +35,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.deployment-evidence-reduced.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.deployment-evidence-reduced.v1
+
 reducer_contract:
   state_update: "delta(state, event) -> (new_state, intents)"
   append_only: true
@@ -49,7 +52,7 @@ reducer_contract:
 
 projection_api:
   expose: true
-  topic: "onex.snapshot.projection.deployment-evidence.v1"
+  topic: "onex.snapshot.projection.deployment-evidence.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "deployment_evidence_projection"
   schema: "public"
   columns:
@@ -61,7 +64,7 @@ projection_api:
     - "updated_at"
   order_by: "updated_at DESC"
   freshness_column: "updated_at"
-  limit: 100
+  limit: 500
 
 metadata:
   transport_type: kafka

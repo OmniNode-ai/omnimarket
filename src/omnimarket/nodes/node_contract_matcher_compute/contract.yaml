@@ -33,6 +33,11 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.evidence-validated.v1
 
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
 validation_contract:
   llm_allowed: false
   checks:

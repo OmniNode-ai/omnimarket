@@ -43,10 +43,7 @@ EXPECTED_NODES = {
     "node_gap_analyzer_compute": {
         "node_type": "COMPUTE_GENERIC",
         "terminal_event": "onex.evt.omnimarket.evidence-gap-analyzed.v1",
-        "subscribe": {
-            "onex.evt.omnimarket.evidence-validated.v1",
-            "onex.evt.omnimarket.deployment-evidence-reduced.v1",
-        },
+        "subscribe": {"onex.evt.omnimarket.evidence-validated.v1"},
         "publish": {"onex.evt.omnimarket.evidence-gap-analyzed.v1"},
     },
     "node_readiness_scorer_compute": {
@@ -154,11 +151,16 @@ def test_evidence_pipeline_authority_invariants_are_declared() -> None:
     pipeline = _load_contract("node_evidence_pipeline_orchestrator")
     readiness = _load_contract("node_readiness_gate_orchestrator")
     matcher = _load_contract("node_contract_matcher_compute")
+    gap_analyzer = _load_contract("node_gap_analyzer_compute")
+    readiness_scorer = _load_contract("node_readiness_scorer_compute")
     reducer = _load_contract("node_deployment_evidence_reducer")
 
     assert pipeline["evidence_authority"]["provisional_is_completion_proof"] is False
     assert readiness["evidence_authority"]["authoritative_for_deploy"] is True
     assert readiness["evidence_authority"]["requires_finalized_evidence"] is True
     assert matcher["validation_contract"]["llm_allowed"] is False
+    assert matcher["replay"]["timestamp_authority"] == "ingest_sequence"
+    assert gap_analyzer["replay"]["deterministic"] is True
+    assert readiness_scorer["replay"]["requires_validator_version"] is True
     assert reducer["reducer_contract"]["append_only"] is True
     assert reducer["reducer_contract"]["ordering_authority"] == "ingest_sequence"

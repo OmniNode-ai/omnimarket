@@ -35,6 +35,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.evidence-published.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.evidence-published.v1
+
 side_effects:
   reads: []
   writes:

@@ -36,6 +36,10 @@ event_bus:
     - onex.evt.omnimarket.readiness-gate-completed.v1
     - onex.evt.omnimarket.readiness-gate-blocked.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.readiness-gate-completed.v1
+  - onex.evt.omnimarket.readiness-gate-blocked.v1
+
 fsm:
   states:
     - COLLECTING

@@ -29,9 +29,13 @@ terminal_event: onex.evt.omnimarket.evidence-gap-analyzed.v1
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.evidence-validated.v1
-    - onex.evt.omnimarket.deployment-evidence-reduced.v1
   publish_topics:
     - onex.evt.omnimarket.evidence-gap-analyzed.v1
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
 
 gap_classifications:
   - MISSING

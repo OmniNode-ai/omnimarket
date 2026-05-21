@@ -33,6 +33,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.linear-evidence-updated.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.linear-evidence-updated.v1
+
 side_effects:
   reads:
     - linear_api

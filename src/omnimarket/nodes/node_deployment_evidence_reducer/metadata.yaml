@@ -15,7 +15,7 @@ capabilities:
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: none
+  side_effect_class: read_only
 dependencies: []
 authors: ["OmniNode Platform Team"]
 license: "MIT"

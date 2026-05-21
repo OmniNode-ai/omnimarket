@@ -34,6 +34,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.evidence-pipeline-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.evidence-pipeline-completed.v1
+
 fsm:
   states:
     - COLLECTING
