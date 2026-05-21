@@ -76,7 +76,13 @@ def validate_infra_sources(
             "ONEX_INFRA_SSH_TARGET is not configured",
         )
 
-    snapshot = probe_services(ssh_target, timeout_s=ssh_timeout_s)
+    try:
+        snapshot = probe_services(ssh_target, timeout_s=ssh_timeout_s)
+    except Exception as exc:
+        raise HandoffGateError(
+            "service-catalog",
+            f"probe execution failed: {exc}",
+        ) from exc
     unhealthy = [s for s in snapshot.services if not s.healthy]
     if unhealthy:
         names = ", ".join(s.name for s in unhealthy)
@@ -97,8 +103,9 @@ def _run(args: list[str], cwd: str) -> str:
         return ""
 
 
-def _ssh(remote_cmd: str, check_name: str) -> str:
+def _ssh(remote_cmd: str, check_name: str, ssh_host: str = "") -> str:
     """Run a remote SSH command. Raises InfraHealthGatherError on any failure."""
+    host = ssh_host or _SSH_HOST
     try:
         result = subprocess.run(
             [
@@ -107,7 +114,7 @@ def _ssh(remote_cmd: str, check_name: str) -> str:
                 "ConnectTimeout=10",
                 "-o",
                 "BatchMode=yes",
-                _SSH_HOST,
+                host,
                 remote_cmd,
             ],
             capture_output=True,
@@ -160,29 +167,34 @@ def _parse_env_sync_log(log_path: Path) -> dict[str, str]:
     }
 
 
-def _gather_infra_health(env_sync_log_path: Path) -> dict[str, str]:
+def _gather_infra_health(env_sync_log_path: Path, ssh_host: str = "") -> dict[str, str]:
     """Gather all infra health values. Raises InfraHealthGatherError if any check fails."""
     health = _parse_env_sync_log(env_sync_log_path)
 
     health["infisical_container"] = _ssh(
         "docker ps --filter name=infisical --format '{{.Names}}.{{.Status}}'",
         "infisical",
+        ssh_host,
     )
     health["deploy_agent_service"] = _ssh(
         "systemctl --user is-active deploy-agent.service",
         "deploy-agent",
+        ssh_host,
     )
     health["runtime_effects_health"] = _ssh(
         "docker inspect omninode-runtime-effects --format='{{.State.Health.Status}}'",
         "runtime-effects",
+        ssh_host,
     )
     health["kafka_redpanda"] = _ssh(
         "docker ps --filter name=redpanda --format '{{.Status}}'",
         "kafka-redpanda",
+        ssh_host,
     )
     health["postgres"] = _ssh(
         "docker ps --filter name=postgres --format '{{.Status}}'",
         "postgres",
+        ssh_host,
     )
     health["open_infra_blockers"] = os.environ.get("ONEX_INFRA_BLOCKER_TICKETS", "none")  # contract-config-ok: config  # fmt: skip
 
@@ -240,7 +252,7 @@ class HandlerHandoffEffect:
         )
 
         # Raises InfraHealthGatherError on any SSH failure — fail loudly
-        infra_health = _gather_infra_health(env_sync_log)
+        infra_health = _gather_infra_health(env_sync_log, ssh_host=ssh_target)
 
         artifact: dict[str, object] = {
             "version": 1,

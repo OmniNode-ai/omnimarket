@@ -79,7 +79,7 @@ def _healthy_ssh_probe_mock(
     return "", "unknown probe"
 
 
-def _mock_ssh_ok(remote_cmd: str, check_name: str) -> str:
+def _mock_ssh_ok(remote_cmd: str, check_name: str, ssh_host: str = "") -> str:
     return "ok"
 
 

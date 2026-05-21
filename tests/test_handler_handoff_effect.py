@@ -42,7 +42,7 @@ def git_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _mock_ssh_ok(remote_cmd: str, check_name: str) -> str:
+def _mock_ssh_ok(remote_cmd: str, check_name: str, ssh_host: str = "") -> str:
     return "ok"
 
 
@@ -221,7 +221,7 @@ class TestInfraHealthGatherError:
             "2026-04-15T10:00:00Z SUCCESS seed-infisical exit=0\n"
         )
 
-        def _mock_ssh(remote_cmd: str, check_name: str) -> str:
+        def _mock_ssh(remote_cmd: str, check_name: str, ssh_host: str = "") -> str:
             if check_name == "infisical":
                 return "infisical.Up 2 hours"
             if check_name == "deploy-agent":
