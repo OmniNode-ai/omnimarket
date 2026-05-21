@@ -1,0 +1,50 @@
+---
+name: node_contract_matcher_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: COMPUTE_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 pure compute node that compares an evidence bundle with
+  the typed ticket contract and emits a deterministic validation result. The
+  validation path is explicitly non-LLM.
+
+input_model:
+  name: ModelEvidenceBundle
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_bundle
+  description: "Structured evidence bundle to compare against the ticket contract."
+output_model:
+  name: ModelEvidenceValidationResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  description: "Per-ticket validation result with contract hash, evidence hash, verifier identity, and run identity."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [compute]
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.evidence-validated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.evidence-extracted.v1
+  publish_topics:
+    - onex.evt.omnimarket.evidence-validated.v1
+
+validation_contract:
+  llm_allowed: false
+  checks:
+    - contract_hash_match
+    - evidence_bundle_hash_match
+    - dod_requirement_coverage
+    - scope_drift_detection
+    - topology_affecting_classification
+  requires_validator_version: true
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

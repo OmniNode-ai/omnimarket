@@ -1,0 +1,51 @@
+---
+name: node_readiness_scorer_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: COMPUTE_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 pure compute node that converts a typed gap report into
+  a machine-readable deployment readiness decision.
+
+input_model:
+  name: ModelGapReport
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report
+  description: "Deployment evidence gap report."
+output_model:
+  name: ModelDeploymentReadinessResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result
+  description: "Deployment readiness result with state, blocking reason codes, and topology metadata."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [compute]
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.readiness-scored.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.evidence-gap-analyzed.v1
+  publish_topics:
+    - onex.evt.omnimarket.readiness-scored.v1
+
+readiness_states:
+  - READY
+  - BLOCKED
+  - DEGRADED
+  - ADVISORY_ONLY
+blocking_state: BLOCKED
+hash_checks:
+  - contract_hash
+  - evidence_bundle_hash
+  - deployment_artifact_hash
+  - receipt_reference_hash
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

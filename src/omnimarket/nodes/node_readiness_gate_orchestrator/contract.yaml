@@ -1,0 +1,66 @@
+---
+name: node_readiness_gate_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: ORCHESTRATOR_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 node for the production deployment readiness gate. The
+  gate consumes projection surfaces from deployment evidence reducers, scores
+  deployment eligibility, and emits the authoritative deployment readiness
+  decision. Handlers are added in Wave 3.
+
+input_model:
+  name: ModelGapReport
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report
+  description: "Deployment-scoped evidence gap report produced by deterministic analysis."
+output_model:
+  name: ModelDeploymentReadinessResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result
+  description: "Machine-readable deployment readiness decision."
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 600000
+
+terminal_event: onex.evt.omnimarket.readiness-gate-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.readiness-gate-start.v1
+    - onex.evt.omnimarket.readiness-scored.v1
+  publish_topics:
+    - onex.evt.omnimarket.readiness-gate-completed.v1
+    - onex.evt.omnimarket.readiness-gate-blocked.v1
+
+fsm:
+  states:
+    - COLLECTING
+    - SCORING
+    - REPORTING
+    - COMPLETE
+    - BLOCKED
+  initial_state: COLLECTING
+  terminal_states: [COMPLETE, BLOCKED]
+
+evidence_authority:
+  tier: prod
+  authoritative_for_deploy: true
+  provisional_evidence_allowed: false
+  requires_finalized_evidence: true
+  deterministic_validation_required: true
+
+dependencies:
+  nodes:
+    - node_deployment_evidence_reducer
+    - node_gap_analyzer_compute
+    - node_readiness_scorer_compute
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

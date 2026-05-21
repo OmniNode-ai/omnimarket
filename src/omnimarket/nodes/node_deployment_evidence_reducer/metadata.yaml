@@ -1,0 +1,22 @@
+name: node_deployment_evidence_reducer
+version: "0.1.0"
+description: "Contract-only package for deployment evidence projection reduction."
+pack: evidence_pipeline
+node_role: reducer
+display_name: "Deployment Evidence Reducer"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_deployment_evidence_reducer: "omnimarket.nodes.node_deployment_evidence_reducer"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "projection", "evidence-pipeline", "OMN-11443"]

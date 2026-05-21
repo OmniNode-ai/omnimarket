@@ -1,0 +1,50 @@
+---
+name: node_evidence_publisher_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 effect node that publishes typed evidence pipeline
+  events to Kafka for downstream consumers. Publishing is idempotent by
+  correlation_id and validation_run_id.
+
+input_model:
+  name: ModelEvidenceValidationResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  description: "Evidence pipeline model event selected for downstream publication."
+output_model:
+  name: ModelEvidenceValidationResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  description: "Published evidence pipeline event acknowledgement."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.evidence-published.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.evidence-validated.v1
+    - onex.evt.omnimarket.occ-pr-created.v1
+    - onex.evt.omnimarket.readiness-scored.v1
+  publish_topics:
+    - onex.evt.omnimarket.evidence-published.v1
+
+side_effects:
+  reads: []
+  writes:
+    - kafka_publish
+  duplicate_key_fields:
+    - correlation_id
+    - validation_run_id
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

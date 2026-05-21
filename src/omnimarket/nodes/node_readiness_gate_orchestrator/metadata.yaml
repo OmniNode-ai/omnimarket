@@ -1,0 +1,22 @@
+name: node_readiness_gate_orchestrator
+version: "0.1.0"
+description: "Contract-only package for the OMN-11443 deployment readiness gate."
+pack: evidence_pipeline
+node_role: orchestrator
+display_name: "Readiness Gate Orchestrator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_readiness_gate_orchestrator: "omnimarket.nodes.node_readiness_gate_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrates
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "readiness-gate", "evidence-pipeline", "OMN-11443"]
