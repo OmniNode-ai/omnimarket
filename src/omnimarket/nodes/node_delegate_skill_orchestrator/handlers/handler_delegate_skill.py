@@ -25,6 +25,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
     ProtocolDelegationEventBus,
     RuntimeDelegationDispatchPort,
 )
+from omnimarket.pricing import estimate_baseline_cost_usd
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
@@ -115,9 +116,11 @@ def _estimate_claude_cost_savings(result: dict[str, object]) -> float:
     completion_tokens = _as_int(
         result.get("output_tokens", result.get("completion_tokens", 0))
     )
-    # Matches the delegation workflow's baseline comparison estimate.
     return round(
-        prompt_tokens * (3.0 / 1_000_000) + completion_tokens * (15.0 / 1_000_000),
+        estimate_baseline_cost_usd(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        ),
         6,
     )
 
