@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -22,6 +23,7 @@ from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionTableConfig
 from scripts.projection_api_server import (
+    _dsn,
     app,
     compute_freshness,
     get_pool,
@@ -157,6 +159,29 @@ def _with_pool(
         yield client
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Unit: DSN construction
+# ---------------------------------------------------------------------------
+
+
+class TestPostgresDsn:
+    def test_dsn_defaults_to_omnibase_infra_database(self, monkeypatch) -> None:
+        monkeypatch.setenv("POSTGRES_PASSWORD", "pw")
+        monkeypatch.delenv("POSTGRES_HOST", raising=False)
+        monkeypatch.delenv("POSTGRES_PORT", raising=False)
+        monkeypatch.delenv("POSTGRES_DB", raising=False)
+
+        assert _dsn() == "postgresql://postgres:pw@192.168.86.201:5436/omnibase_infra"
+
+    def test_dsn_honors_postgres_db_override(self, monkeypatch) -> None:
+        monkeypatch.setenv("POSTGRES_PASSWORD", "pw")
+        monkeypatch.setenv("POSTGRES_HOST", "db.internal")
+        monkeypatch.setenv("POSTGRES_PORT", "15436")
+        monkeypatch.setenv("POSTGRES_DB", "omnidash_analytics")
+
+        assert _dsn() == "postgresql://postgres:pw@db.internal:15436/omnidash_analytics"
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +343,7 @@ class TestProjectionRoutes:
                 "correlation_id": "corr-pricing-proof",
                 "task_type": "test",
                 "delegated_to": "Qwen3-Coder-30B-A3B",
-                "cost_savings_usd": "0.00525",
+                "cost_savings_usd": Decimal("0.00525"),
                 "pricing_manifest_version": 1,
                 "timestamp": _ts(timedelta(minutes=1)),
             }
