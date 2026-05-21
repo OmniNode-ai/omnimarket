@@ -54,7 +54,7 @@ event_bus:
 
 projection_api:
   expose: true
-  topic: onex.snapshot.projection.delegation.events.v1
+  topic: onex.evt.omnimarket.projection-delegation-events.v1
   table: delegation_events
   schema: public
   columns:

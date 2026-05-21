@@ -295,7 +295,7 @@ class TestProjectionRoutes:
     def test_delegation_projection_api_preserves_manifest_pricing_fields(
         self,
     ) -> None:
-        topic = "onex.snapshot.projection.delegation.events.v1"
+        topic = "onex.evt.omnimarket.projection-delegation-events.v1"
         cfg = ProjectionTableConfig(
             topic=topic,
             table="delegation_events",
