@@ -18,6 +18,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import asyncpg
@@ -62,6 +63,14 @@ def compute_freshness(latest_ts: str | None) -> str:
         return "degraded"
 
 
+def _json_value(value: Any) -> Any:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Pool factory — swapped out by tests via dependency_overrides
 # ---------------------------------------------------------------------------
@@ -74,7 +83,8 @@ def _dsn() -> str:
         "192.168.86.201",  # onex-allow-internal-ip OMN-10580 reason="env-var fallback to lab Postgres; override via POSTGRES_HOST"
     )
     port = os.environ.get("POSTGRES_PORT", "5436")
-    return f"postgresql://postgres:{password}@{host}:{port}/omnibase_infra"
+    database = os.environ.get("POSTGRES_DB", "omnibase_infra")
+    return f"postgresql://postgres:{password}@{host}:{port}/{database}"
 
 
 async def _create_pool() -> asyncpg.Pool:
@@ -293,12 +303,7 @@ async def projection_query(
 
     serialisable_rows: list[dict[str, Any]] = []
     for row in rows:
-        serialisable_rows.append(
-            {
-                k: (v.isoformat() if hasattr(v, "isoformat") else v)
-                for k, v in row.items()
-            }
-        )
+        serialisable_rows.append({k: _json_value(v) for k, v in row.items()})
 
     return JSONResponse(
         {
