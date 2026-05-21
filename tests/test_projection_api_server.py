@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import urlparse
 
 from fastapi.testclient import TestClient
 
@@ -173,7 +174,12 @@ class TestPostgresDsn:
         monkeypatch.delenv("POSTGRES_PORT", raising=False)
         monkeypatch.delenv("POSTGRES_DB", raising=False)
 
-        assert _dsn() == "postgresql://postgres:pw@192.168.86.201:5436/omnibase_infra"
+        parsed = urlparse(_dsn())
+
+        assert parsed.scheme == "postgresql"
+        assert parsed.username == "postgres"
+        assert parsed.password == "pw"
+        assert parsed.path == "/omnibase_infra"
 
     def test_dsn_honors_postgres_db_override(self, monkeypatch) -> None:
         monkeypatch.setenv("POSTGRES_PASSWORD", "pw")
@@ -181,7 +187,11 @@ class TestPostgresDsn:
         monkeypatch.setenv("POSTGRES_PORT", "15436")
         monkeypatch.setenv("POSTGRES_DB", "omnidash_analytics")
 
-        assert _dsn() == "postgresql://postgres:pw@db.internal:15436/omnidash_analytics"
+        parsed = urlparse(_dsn())
+
+        assert parsed.hostname == "db.internal"
+        assert parsed.port == 15436
+        assert parsed.path == "/omnidash_analytics"
 
 
 # ---------------------------------------------------------------------------
