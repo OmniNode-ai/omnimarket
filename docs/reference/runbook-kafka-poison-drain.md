@@ -21,7 +21,7 @@ and the MEMBER-ID field contains `aiokafka`.
 ## Diagnosis
 
 ```bash
-# 1. Confirm broker state (run on 192.168.86.201)
+# 1. Confirm broker state (run on the infra host) # onex-allow-internal-ip
 PROD_GROUP="prod.omnimarket.pr_lifecycle_orchestrator.consume.1.0.0.__i.prod-effects.__t.onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
 docker exec omnibase-infra-prod-redpanda rpk group describe "$PROD_GROUP"
 ```
