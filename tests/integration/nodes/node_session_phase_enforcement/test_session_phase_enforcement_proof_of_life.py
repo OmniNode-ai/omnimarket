@@ -156,6 +156,7 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
         cmd for cmd in orch_result.commands if "session-phase-transition" in cmd.topic
     ]
     assert transition_commands, "Orchestrator must emit at least one transition command"
+    transition_payload = transition_commands[0].payload
 
     # Step 5: Feed transition to dispatcher — should publish phase-state event.
     dispatcher = HandlerSessionPhaseDispatcher()
@@ -163,13 +164,13 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
         ModelSessionPhaseDispatcherInput(
             commands=(
                 ModelSessionPhaseTransitionCommand(
-                    correlation_id=correlation_id,
-                    session_id=_SESSION_ID,
-                    phase_name=_PHASE_1_NAME,
-                    transition="exit",
-                    elapsed_seconds=elapsed_minutes * 60,
-                    cost_usd=0.0,
-                    budget_usd=5.0,
+                    correlation_id=transition_payload["correlation_id"],
+                    session_id=transition_payload["session_id"],
+                    phase_name=transition_payload["phase_name"],
+                    transition=transition_payload["transition"],
+                    elapsed_seconds=transition_payload["elapsed_seconds"],
+                    cost_usd=transition_payload["cost_usd"],
+                    budget_usd=transition_payload["budget_usd"],
                 ),
             )
         )
@@ -179,6 +180,7 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
     ]
     assert phase_state_events, "Dispatcher must publish at least one phase-state event"
     assert dispatch_result.correlation_id == correlation_id
+    phase_state_payload = phase_state_events[0].payload
 
     # Step 6: Feed phase-state event to reducer -> update phase_state.yaml to phase 2.
     reducer.handle(
@@ -186,9 +188,9 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
             "state": initial_state_data,
             "event": {
                 "event_type": "session.phase.state",
-                "session_id": _SESSION_ID,
+                "session_id": phase_state_payload["session_id"],
                 "timestamp": now.isoformat(),
-                "phase": _PHASE_2_NAME,
+                "phase": transition_payload["next_phase"],
                 "phase_index": 1,
                 "last_evaluation": "transition_required",
                 "budget_elapsed_pct": evaluation.budget_elapsed_pct,
@@ -218,7 +220,7 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
     assert "PHASE ENFORCEMENT" in directive, (
         f"Expected PHASE ENFORCEMENT directive, got: {directive!r}"
     )
-    assert _PHASE_2_NAME in directive or _PHASE_1_NAME in directive, (
+    assert _PHASE_2_NAME in directive, (
         f"Directive must reference a phase name: {directive!r}"
     )
 
