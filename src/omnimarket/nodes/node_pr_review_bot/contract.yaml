@@ -123,7 +123,7 @@ model_routing:
   reviewer:
     primary: "qwen3-coder-30b"
     fallback: "qwen3-14b"
-    endpoint_env: "LLM_QWEN3_CODER_URL"
+    endpoint_env: "LLM_CODER_URL"
     context_window: 112000
     transport: "http"
   judge:
