@@ -1,0 +1,37 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-9272"
+title: "Correct pr_review_bot contract endpoint_env registry drift"
+summary: >
+  Align node_pr_review_bot/contract.yaml model_routing endpoint_env with the bridge_config_loader registry
+  by replacing the unregistered LLM_QWEN3_CODER_URL with canonical LLM_CODER_URL. Adds a regression test
+  that every pr_review_bot contract model_routing endpoint_env is registered before runtime bridge config
+  loading.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "protocols"
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused pr_review_bot model routing tests pass."
+    command: "uv run pytest tests/nodes/node_pr_review_bot/test_contract_model_routing_env_alignment.py tests/nodes/node_pr_review_bot/ -q -m unit"
+  - kind: "manual"
+    description: "Post-merge deploy validation confirms pr_review_bot bridge config resolves reviewer model configs."
+    command: "deploy: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_pr_review_bot.config.bridge_config_loader import load_inference_bridge_config_from_env; cfg=load_inference_bridge_config_from_env(); assert cfg.model_configs\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused pr_review_bot endpoint_env registry alignment tests pass locally."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_pr_review_bot/test_contract_model_routing_env_alignment.py tests/nodes/node_pr_review_bot/ -q -m unit"
+  - id: "dod-deploy"
+    description: "Post-merge deploy smoke validates the reviewer bridge config loads model configs in the runtime image; no live deploy or restart was performed from this PR."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "deploy: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_pr_review_bot.config.bridge_config_loader import load_inference_bridge_config_from_env; cfg=load_inference_bridge_config_from_env(); assert cfg.model_configs\""
