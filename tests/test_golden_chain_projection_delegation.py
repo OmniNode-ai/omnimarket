@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -13,6 +15,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionDelegation()
+_DELEGATE_SKILL_TEST_MODEL = "test-model-local"
 
 
 class TestDelegationProjection:
@@ -109,9 +112,62 @@ class TestDelegationProjection:
         contract_path = "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
+        assert (
+            contract["handler"]["module"]
+            == "omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation"
+        )
+        assert contract["handler"]["class"] == "HandlerProjectionDelegation"
         topics = contract["event_bus"]["subscribe_topics"]
         assert "onex.evt.omniclaude.task-delegated.v1" in topics
         assert "onex.evt.omnimarket.node-generation-completed.v1" in topics
+        assert "onex.evt.omnimarket.delegate-skill-completed.v1" in topics
+        assert "onex.evt.omnimarket.delegate-skill-failed.v1" in topics
+
+    def test_delegate_skill_metrics_migration_declares_dashboard_columns(self) -> None:
+        migration = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations/"
+            "0009_delegate_skill_projection_metrics.sql"
+        ).read_text()
+        assert "tokens_input INT NOT NULL DEFAULT 0" in migration
+        assert "tokens_output INT NOT NULL DEFAULT 0" in migration
+        assert "quality_gate_detail TEXT" in migration
+        assert "latency_ms INT" in migration
+        assert "pricing_manifest_version INT NOT NULL DEFAULT 0" in migration
+
+    def test_sync_handler_projects_delegate_skill_terminal_event(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": "4ae8556b-af7c-4e85-a7f5-9388d60cebb5",
+            "session_id": "19ee51d6-d275-4642-8cb5-19cdce2af447",
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "response": "projection proof",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 144,
+                "output_tokens": 593,
+                "total_tokens": 737,
+                "tokens_to_compliance": 737,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.009327,
+                "latency_ms": 1250,
+            },
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["correlation_id"] == "4ae8556b-af7c-4e85-a7f5-9388d60cebb5"
+        assert row["tokens_input"] == 144
+        assert row["tokens_output"] == 593
+        assert row["cost_savings_usd"] == Decimal("0.009327")
 
 
 class TestPromptResponseText:

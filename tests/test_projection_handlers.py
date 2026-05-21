@@ -14,6 +14,8 @@ import pytest
 
 from omnimarket.projection.runner import MessageMeta
 
+_DELEGATE_SKILL_TEST_MODEL = "test-model-local"
+
 
 def _make_meta(partition: int = 0, offset: int = 0) -> MessageMeta:
     return MessageMeta(
@@ -296,6 +298,58 @@ class TestDelegationHandler:
         args = mock_db.execute.call_args[0]
         assert meta.fallback_id in args
 
+    @pytest.mark.asyncio
+    async def test_delegate_skill_terminal_uses_typed_projection_model(
+        self, mock_db: AsyncMock
+    ) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+
+        data = {
+            "status": "completed",
+            "correlation_id": "4ae8556b-af7c-4e85-a7f5-9388d60cebb5",
+            "session_id": "19ee51d6-d275-4642-8cb5-19cdce2af447",
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "response": "projection proof",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 144,
+                "output_tokens": 593,
+                "total_tokens": 737,
+                "tokens_to_compliance": 737,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.009327,
+                "latency_ms": 1250,
+            },
+            "_envelope": {
+                "envelope_timestamp": "2026-05-20T17:03:00Z",
+            },
+        }
+
+        result = await runner.project_event(
+            "onex.evt.omnimarket.delegate-skill-completed.v1", data, _make_meta()
+        )
+
+        assert result is True
+        mock_db.execute.assert_called_once()
+        args = mock_db.execute.call_args[0]
+        assert "tokens_input" in args[0]
+        assert "ON CONFLICT (correlation_id) DO UPDATE SET" in args[0]
+        assert "4ae8556b-af7c-4e85-a7f5-9388d60cebb5" in args
+        assert "19ee51d6-d275-4642-8cb5-19cdce2af447" in args
+        assert _DELEGATE_SKILL_TEST_MODEL in args
+        assert 144 in args
+        assert 593 in args
+        assert 737 in args
+
 
 class TestRegistrationHandler:
     @pytest.mark.asyncio
@@ -476,3 +530,49 @@ class TestSavingsHandler:
         )
         assert result is True
         mock_db.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delegate_skill_terminal_projects_typed_savings(
+        self, mock_db: AsyncMock
+    ) -> None:
+        from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
+            SavingsProjectionRunner,
+        )
+
+        runner = SavingsProjectionRunner()
+        runner._db = mock_db
+
+        data = {
+            "status": "completed",
+            "correlation_id": "f9243395-5cb6-4036-8ffb-39dd25547413",
+            "task_type": "document",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "quality_gate_passed": True,
+            "metrics": {
+                "input_tokens": 81,
+                "output_tokens": 384,
+                "total_tokens": 465,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.006003,
+                "latency_ms": 900,
+            },
+            "_envelope": {
+                "envelope_timestamp": "2026-05-20T17:05:00Z",
+            },
+        }
+
+        result = await runner.project_event(
+            "onex.evt.omnimarket.delegate-skill-completed.v1", data, _make_meta()
+        )
+
+        assert result is True
+        mock_db.execute.assert_called_once()
+        args = mock_db.execute.call_args[0]
+        assert args[1].isoformat() == "2026-05-20T17:05:00+00:00"
+        assert args[2] == "f9243395-5cb6-4036-8ffb-39dd25547413"
+        assert args[3] == _DELEGATE_SKILL_TEST_MODEL
+        assert args[4] == "claude-sonnet-4-6"
+        assert args[5] == Decimal("0.0")
+        assert args[6] == Decimal("0.006003")
+        assert args[7] == Decimal("0.006003")

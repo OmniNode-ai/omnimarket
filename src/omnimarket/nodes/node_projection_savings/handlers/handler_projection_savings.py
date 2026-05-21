@@ -4,9 +4,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.events.topics import (
+    DELEGATE_SKILL_COMPLETED_TOPIC_V1,
+    DELEGATE_SKILL_FAILED_TOPIC_V1,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillSavingsProjection,
+    ModelDelegateSkillTerminalProjection,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "savings_estimates"
@@ -56,6 +67,25 @@ class ModelProjectionResult(BaseModel):
 class HandlerProjectionSavings:
     """Project savings-estimated events into savings_estimates table."""
 
+    _delegate_skill_terminal_events = frozenset(
+        {
+            "delegate-skill-completed",
+            "delegate-skill-failed",
+            DELEGATE_SKILL_COMPLETED_TOPIC_V1,
+            DELEGATE_SKILL_FAILED_TOPIC_V1,
+        }
+    )
+
+    def __init__(self, contract_path: Path | None = None) -> None:
+        _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
+        with open(_path) as f:
+            contract: dict[str, Any] = yaml.safe_load(f)
+        self._delegate_skill_baseline_model = str(
+            contract.get("metadata", {}).get(
+                "delegate_skill_baseline_model", "claude-sonnet-4-6"
+            )
+        )
+
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.
 
@@ -66,6 +96,21 @@ class HandlerProjectionSavings:
         db_raw = payload.pop("_db", None)
         if not isinstance(db_raw, DatabaseAdapter):
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
+        event_type = str(payload.pop("_event_type", ""))
+        if (
+            event_type in self._delegate_skill_terminal_events
+            or _is_delegate_skill_terminal_payload(payload)
+        ):
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+            projection = ModelDelegateSkillSavingsProjection.from_terminal_event(
+                terminal,
+                baseline_model=self._delegate_skill_baseline_model,
+            )
+            if projection is None:
+                return ModelProjectionResult(rows_upserted=0).model_dump(mode="json")
+            result = self.project_delegate_skill_savings(projection, db_raw)
+            return result.model_dump(mode="json")
+
         event_data = {
             key: value
             for key, value in payload.items()
@@ -100,6 +145,33 @@ class HandlerProjectionSavings:
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
+    def project_delegate_skill_savings(
+        self,
+        projection: ModelDelegateSkillSavingsProjection,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """UPSERT savings_estimates from a typed delegate-skill terminal event."""
+        now = datetime.now(tz=UTC).isoformat()
+        row: dict[str, object] = {
+            "event_timestamp": projection.event_timestamp.astimezone(UTC).isoformat(),
+            "session_id": str(projection.session_id),
+            "model_local": projection.model_local,
+            "model_cloud_baseline": projection.model_cloud_baseline,
+            "local_cost_usd": projection.local_cost_usd,
+            "cloud_cost_usd": projection.cloud_cost_usd,
+            "savings_usd": projection.savings_usd,
+            "repo_name": projection.repo_name,
+            "machine_id": (
+                str(projection.machine_id)
+                if projection.machine_id is not None
+                else None
+            ),
+            "created_at": now,
+            "updated_at": now,
+        }
+        ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        return ModelProjectionResult(rows_upserted=1 if ok else 0)
+
     def project_batch(
         self,
         events: list[ModelSavingsEstimatedEvent],
@@ -118,3 +190,11 @@ __all__: list[str] = [
     "ModelProjectionResult",
     "ModelSavingsEstimatedEvent",
 ]
+
+
+def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
+    return (
+        payload.get("correlation_id") is not None
+        and payload.get("status") is not None
+        and isinstance(payload.get("metrics"), dict)
+    )

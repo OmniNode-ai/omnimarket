@@ -29,6 +29,14 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.topics import (
+    DELEGATE_SKILL_COMPLETED_TOPIC_V1,
+    DELEGATE_SKILL_FAILED_TOPIC_V1,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
+    ModelDelegationEventProjectionRow,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "delegation_events"
@@ -106,16 +114,35 @@ ModelTaskDelegatedEvent = ModelProjectionTaskDelegatedEvent
 class HandlerProjectionDelegation:
     """Project task-delegated events into delegation_events table."""
 
+    _delegate_skill_terminal_events = frozenset(
+        {
+            "delegate-skill-completed",
+            "delegate-skill-failed",
+            DELEGATE_SKILL_COMPLETED_TOPIC_V1,
+            DELEGATE_SKILL_FAILED_TOPIC_V1,
+        }
+    )
+
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to project() with a ModelTaskDelegatedEvent and
         a DatabaseAdapter from input_data['_db'].
         """
-        db_raw = input_data.pop("_db", None)
+        payload = dict(input_data)
+        db_raw = payload.pop("_db", None)
         if not isinstance(db_raw, DatabaseAdapter):
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        event = ModelTaskDelegatedEvent(**input_data)
+        event_type = str(payload.pop("_event_type", ""))
+        if (
+            event_type in self._delegate_skill_terminal_events
+            or _is_delegate_skill_terminal_payload(payload)
+        ):
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+            result = self.project_delegate_skill_terminal(terminal, db_raw)
+            return result.model_dump(mode="json")
+
+        event = ModelTaskDelegatedEvent(**payload)
         result = self.project(event, db_raw)
         return result.model_dump(mode="json")
 
@@ -152,6 +179,44 @@ class HandlerProjectionDelegation:
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
+    def project_delegate_skill_terminal(
+        self,
+        event: ModelDelegateSkillTerminalProjection,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """UPSERT a typed delegate-skill terminal event into delegation_events."""
+        row_model = ModelDelegationEventProjectionRow.from_terminal_event(event)
+        row: dict[str, object] = {
+            "correlation_id": str(row_model.correlation_id),
+            "session_id": (
+                str(row_model.session_id) if row_model.session_id is not None else None
+            ),
+            "timestamp": row_model.timestamp.isoformat(),
+            "task_type": row_model.task_type,
+            "delegated_to": row_model.delegated_to,
+            "model_name": row_model.model_name,
+            "delegated_by": row_model.delegated_by,
+            "quality_gate_passed": row_model.quality_gate_passed,
+            "quality_gates_checked": list(row_model.quality_gates_checked),
+            "quality_gates_failed": list(row_model.quality_gates_failed),
+            "quality_gate_detail": row_model.quality_gate_detail,
+            "cost_usd": row_model.cost_usd,
+            "cost_savings_usd": row_model.cost_savings_usd,
+            "delegation_latency_ms": row_model.latency_ms,
+            "latency_ms": row_model.latency_ms,
+            "repo": row_model.repo_name,
+            "is_shadow": row_model.is_shadow,
+            "prompt_text": row_model.prompt_text,
+            "response_text": row_model.response_text,
+            "tokens_input": row_model.tokens_input,
+            "tokens_output": row_model.tokens_output,
+            "tokens_to_compliance": row_model.tokens_to_compliance,
+            "compliance_attempts": row_model.compliance_attempts,
+            "pricing_manifest_version": row_model.pricing_manifest_version,
+        }
+        ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        return ModelProjectionResult(rows_upserted=1 if ok else 0)
+
     def project_batch(
         self,
         events: list[ModelTaskDelegatedEvent],
@@ -171,3 +236,11 @@ __all__: list[str] = [
     "ModelProjectionTaskDelegatedEvent",
     "ModelTaskDelegatedEvent",
 ]
+
+
+def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
+    return (
+        payload.get("correlation_id") is not None
+        and payload.get("status") is not None
+        and isinstance(payload.get("metrics"), dict)
+    )
