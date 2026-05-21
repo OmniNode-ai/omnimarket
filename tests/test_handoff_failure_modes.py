@@ -127,7 +127,7 @@ class TestConnectionRefused:
                 _PATCH_SSH_PROBE,
                 side_effect=OSError("ssh: No such file or directory"),
             ),
-            pytest.raises((HandoffGateError, OSError)),
+            pytest.raises(HandoffGateError),
         ):
             validate_infra_sources(
                 env_sync_log_path=valid_log,
