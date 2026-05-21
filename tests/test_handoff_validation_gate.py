@@ -24,9 +24,7 @@ from omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect import
     validate_infra_sources,
 )
 
-_SSH_TARGET = (
-    "jonah@192.168.86.201"  # onex-allow-internal-ip: test fixture for gate validation
-)
+_SSH_TARGET = "jonah@192.168.86.201"  # onex-allow-internal-ip OMN-11266 reason="test fixture: known .201 SSH target for gate validation tests"
 _PATCH_SSH_PROBE = "omnimarket.nodes.node_handoff_effect.service_catalog._run_ssh_probe"
 _PATCH_SSH = "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh"
 
