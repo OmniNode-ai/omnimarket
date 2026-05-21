@@ -1,0 +1,53 @@
+---
+name: node_gap_analyzer_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: COMPUTE_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 pure compute node that reduces deployment-scoped
+  validation results into typed evidence gap classifications.
+
+input_model:
+  name: ModelEvidenceValidationResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  description: "Validation results for a deployment evidence scope."
+output_model:
+  name: ModelGapReport
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report
+  description: "Deployment-level gap report with typed evidence classifications."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [compute]
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.evidence-gap-analyzed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.evidence-validated.v1
+  publish_topics:
+    - onex.evt.omnimarket.evidence-gap-analyzed.v1
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+gap_classifications:
+  - MISSING
+  - STALE
+  - SUPERSEDED
+  - HASH_MISMATCH
+  - RECEIPT_MISSING
+  - VALIDATION_FAILED
+  - UNKNOWN
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

@@ -1,0 +1,52 @@
+---
+name: node_occ_pr_writer_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 effect node that creates provisional OCC evidence PRs
+  from deterministic validation results. Generated PRs remain provisional until
+  validated evidence is finalized by the readiness gate.
+
+input_model:
+  name: ModelEvidenceValidationResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  description: "Validation result used to create or update a provisional OCC evidence PR."
+output_model:
+  name: ModelOccPrReference
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_occ_pr_reference
+  description: "Created or reused OCC PR reference with lifecycle state."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 300000
+
+terminal_event: onex.evt.omnimarket.occ-pr-created.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.evidence-validated.v1
+  publish_topics:
+    - onex.evt.omnimarket.occ-pr-created.v1
+
+side_effects:
+  reads:
+    - github_api
+    - git
+  writes:
+    - github_pull_request
+    - onex_change_control_branch
+  duplicate_key_fields:
+    - ticket_id
+    - source_pr
+    - validation_run_id
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

@@ -1,0 +1,73 @@
+---
+name: node_deployment_evidence_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 reducer that aggregates append-only evidence validation
+  events into deployment evidence and readiness projection surfaces. Corrections
+  and supersessions are new events; prior evidence truth is not mutated.
+
+input_model:
+  name: ModelEvidenceValidationResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  description: "Append-only evidence validation event consumed by the reducer."
+output_model:
+  name: ModelDeploymentReadinessResult
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result
+  description: "Derived deployment readiness projection state."
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  runtime_profiles: [compute]
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.deployment-evidence-reduced.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.evidence-validated.v1
+    - onex.evt.omnimarket.readiness-scored.v1
+    - onex.evt.omnimarket.occ-pr-created.v1
+  publish_topics:
+    - onex.evt.omnimarket.deployment-evidence-reduced.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.deployment-evidence-reduced.v1
+
+reducer_contract:
+  state_update: "delta(state, event) -> (new_state, intents)"
+  append_only: true
+  ordering_authority: ingest_sequence
+  duplicate_key_fields:
+    - ticket_id
+    - pr_number
+    - validation_run_id
+  projection_surfaces:
+    - deployment_evidence_projection
+    - deployment_readiness_projection
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.deployment-evidence.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "deployment_evidence_projection"
+  schema: "public"
+  columns:
+    - "deployment_id"
+    - "ticket_id"
+    - "validation_run_id"
+    - "evidence_lifecycle_state"
+    - "readiness_state"
+    - "updated_at"
+  order_by: "updated_at DESC"
+  freshness_column: "updated_at"
+  limit: 500
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

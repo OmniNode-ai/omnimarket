@@ -1,0 +1,70 @@
+---
+name: node_evidence_pipeline_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: ORCHESTRATOR_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 node for the per-PR evidence pipeline FSM. The
+  orchestrator coordinates collection, extraction, deterministic contract
+  matching, provisional OCC PR creation, advisory Linear annotation, and final
+  completion event emission. Handlers are added in Wave 3.
+
+input_model:
+  name: ModelEvidencePipelineCommand
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command
+  description: "Trigger payload containing repo, PR, ticket, commit, and correlation identity."
+output_model:
+  name: ModelOccPrReference
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_occ_pr_reference
+  description: "Reference to the provisional OCC evidence PR created for this run."
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 600000
+
+terminal_event: onex.evt.omnimarket.evidence-pipeline-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.evidence-pipeline-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.evidence-pipeline-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.evidence-pipeline-completed.v1
+
+fsm:
+  states:
+    - COLLECTING
+    - EXTRACTING
+    - MATCHING
+    - GENERATING_PR
+    - COMPLETE
+  initial_state: COLLECTING
+  terminal_states: [COMPLETE]
+
+evidence_authority:
+  tier: dev
+  lifecycle_start_state: PROVISIONAL
+  provisional_is_completion_proof: false
+  readiness_gate_is_deployment_authority: true
+  deterministic_validation_required: true
+
+dependencies:
+  nodes:
+    - node_evidence_collector_effect
+    - node_evidence_extractor_compute
+    - node_contract_matcher_compute
+    - node_occ_pr_writer_effect
+    - node_linear_updater_effect
+    - node_evidence_publisher_effect
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]

@@ -1,0 +1,50 @@
+---
+name: node_evidence_collector_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 2 effect node that gathers raw evidence from GitHub, CI,
+  filesystem, git, and projection surfaces. This is the evidence pipeline I/O
+  boundary; downstream compute nodes must not touch external systems.
+
+input_model:
+  name: ModelEvidencePipelineCommand
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command
+  description: "Pipeline trigger command identifying repository, PR, ticket, commit, and correlation identity."
+output_model:
+  name: ModelRawEvidencePayload
+  module: omnibase_compat.contracts.evidence_pipeline.wire.model_raw_evidence_payload
+  description: "Normalized raw evidence payload for pure extraction."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 300000
+
+terminal_event: onex.evt.omnimarket.evidence-collected.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.evidence-pipeline-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.evidence-collected.v1
+
+side_effects:
+  reads:
+    - github_api
+    - ci_artifacts
+    - filesystem
+    - git
+    - projection_api
+  writes: []
+  duplicate_handling: idempotent
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-11443"]
