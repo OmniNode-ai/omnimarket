@@ -1,187 +1,264 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Proof-of-life script for node_seam_parallel_executor.
-
-Steps:
-1. 2-task wave config — independent tasks, assert all_succeeded=True,
-   shim_outputs["OutputA"] == "result_from_a", shims_removed=True.
-2. Dependency chain — task B depends on task A, confirm ordering.
+"""Publish seam-parallel proof-of-life commands through the event bus.
 
 Related:
-    - OMN-8035: Proof of life — run verifier and seam-parallel via onex run
+    - OMN-8035: Proof of life - run verifier and seam-parallel via onex run
+    - OMN-11174: Rewrite proof-of-life script as a bus-triggered publisher
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
-from typing import Any
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
 from uuid import UUID
 
-from omnimarket.nodes.node_seam_parallel_executor import (
-    HandlerSeamParallelExecutor,
+from omnimarket.nodes.contract_topics import contract_subscribe_topics
+from omnimarket.nodes.node_seam_parallel_executor.models.model_seam_task import (
     ModelSeamParallelInput,
-    ModelSeamParallelResult,
     ModelSeamTask,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_PATH = (
+    REPO_ROOT
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_seam_parallel_executor"
+    / "contract.yaml"
+)
+SOURCE_TOOL = "proof_of_life_seam_parallel"
+OMNIMARKET_COMMAND_TOPIC_PREFIX = ".".join(("onex", "cmd", "omnimarket", ""))
 
-def _print_result(label: str, result: ModelSeamParallelResult) -> None:
+
+class ProtocolEventBusPublisher(Protocol):
+    async def start(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object | None = None,
+    ) -> None: ...
+
+
+@dataclass(frozen=True)
+class ProofCase:
+    label: str
+    command: ModelSeamParallelInput
+
+
+@dataclass(frozen=True)
+class PublishReceipt:
+    label: str
+    topic: str
+    correlation_id: UUID
+    payload_bytes: int
+    dry_run: bool
+
+
+def _default_bus_factory() -> ProtocolEventBusPublisher:
+    from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+
+    return EventBusKafka.default()
+
+
+def _load_command_topic(contract_path: Path = CONTRACT_PATH) -> str:
+    topics = contract_subscribe_topics(contract_path)
+    if len(topics) != 1:
+        raise ValueError(
+            f"{contract_path} must declare exactly one event_bus.subscribe_topics entry"
+        )
+    topic = topics[0]
+    if not topic.startswith(OMNIMARKET_COMMAND_TOPIC_PREFIX):
+        raise ValueError(
+            f"{contract_path} subscribe topic is not an OmniMarket command"
+        )
+    return topic
+
+
+def _independent_tasks_case() -> ProofCase:
+    return ProofCase(
+        label="2 independent tasks",
+        command=ModelSeamParallelInput(
+            correlation_id=UUID("00000000-0000-0000-0000-000000000001"),
+            tasks=(
+                ModelSeamTask(
+                    task_id="task-a",
+                    callable_key="shim_a",
+                    payload={"name": "OutputA"},
+                ),
+                ModelSeamTask(
+                    task_id="task-b",
+                    callable_key="shim_b",
+                    payload={"name": "OutputB"},
+                ),
+            ),
+            timeout_seconds=10.0,
+        ),
+    )
+
+
+def _dependency_chain_case() -> ProofCase:
+    return ProofCase(
+        label="dependency chain",
+        command=ModelSeamParallelInput(
+            correlation_id=UUID("00000000-0000-0000-0000-000000000002"),
+            tasks=(
+                ModelSeamTask(
+                    task_id="task-a",
+                    callable_key="shim_a",
+                    payload={},
+                ),
+                ModelSeamTask(
+                    task_id="task-downstream",
+                    callable_key="shim_downstream",
+                    depends_on=("task-a",),
+                    payload={},
+                ),
+            ),
+            timeout_seconds=10.0,
+        ),
+    )
+
+
+def build_proof_cases(case_name: str) -> tuple[ProofCase, ...]:
+    cases = {
+        "independent": _independent_tasks_case(),
+        "dependency-chain": _dependency_chain_case(),
+    }
+    if case_name == "all":
+        return tuple(cases.values())
+    try:
+        return (cases[case_name],)
+    except KeyError as exc:
+        raise ValueError(f"Unknown proof case: {case_name}") from exc
+
+
+def _command_payload(command: ModelSeamParallelInput) -> bytes:
+    return command.model_dump_json().encode("utf-8")
+
+
+def _print_case(receipt: PublishReceipt, command: ModelSeamParallelInput) -> None:
     print(f"\n{'=' * 60}")
-    print(f"CASE: {label}")
+    print(f"CASE: {receipt.label}")
     print(f"{'=' * 60}")
+    status = "dry_run" if receipt.dry_run else "published"
     data = {
-        "correlation_id": str(result.correlation_id),
-        "all_succeeded": result.all_succeeded,
-        "shims_removed": result.shims_removed,
-        "waves_executed": result.waves_executed,
-        "task_results": [
+        "status": status,
+        "topic": receipt.topic,
+        "correlation_id": str(receipt.correlation_id),
+        "payload_bytes": receipt.payload_bytes,
+        "tasks": [
             {
-                "task_id": r.task_id,
-                "status": r.status,
-                "output": r.output,
-                "error": r.error,
+                "task_id": task.task_id,
+                "callable_key": task.callable_key,
+                "depends_on": list(task.depends_on),
+                "payload": task.payload,
             }
-            for r in result.task_results
+            for task in command.tasks
         ],
+        "timeout_seconds": command.timeout_seconds,
     }
     print(json.dumps(data, indent=2, default=str))
 
 
-async def _noop_shim_a(
-    payload: dict[str, Any], upstream_outputs: dict[str, Any]
-) -> str:
-    """Shim for task A — returns a fixed string."""
-    return "result_from_a"
+async def publish_proof_of_life(
+    *,
+    case_name: str = "all",
+    dry_run: bool = False,
+    bus_factory: Callable[[], ProtocolEventBusPublisher] = _default_bus_factory,
+) -> tuple[PublishReceipt, ...]:
+    topic = _load_command_topic()
+    cases = build_proof_cases(case_name)
+    receipts: list[PublishReceipt] = []
+
+    if dry_run:
+        for proof_case in cases:
+            payload = _command_payload(proof_case.command)
+            receipts.append(
+                PublishReceipt(
+                    label=proof_case.label,
+                    topic=topic,
+                    correlation_id=proof_case.command.correlation_id,
+                    payload_bytes=len(payload),
+                    dry_run=True,
+                )
+            )
+        return tuple(receipts)
+
+    bus = bus_factory()
+    await bus.start()
+    try:
+        for proof_case in cases:
+            payload = _command_payload(proof_case.command)
+            await bus.publish(topic=topic, key=None, value=payload, headers=None)
+            receipts.append(
+                PublishReceipt(
+                    label=proof_case.label,
+                    topic=topic,
+                    correlation_id=proof_case.command.correlation_id,
+                    payload_bytes=len(payload),
+                    dry_run=False,
+                )
+            )
+    finally:
+        await bus.close()
+
+    return tuple(receipts)
 
 
-async def _noop_shim_b(
-    payload: dict[str, Any], upstream_outputs: dict[str, Any]
-) -> str:
-    """Shim for task B — returns a fixed string."""
-    return "result_from_b"
-
-
-async def _downstream_shim(
-    payload: dict[str, Any], upstream_outputs: dict[str, Any]
-) -> dict[str, Any]:
-    """Shim that consumes upstream output from task A."""
-    return {
-        "received_from_a": upstream_outputs.get("task-a"),
-        "my_output": "downstream_result",
+async def _main_async(args: argparse.Namespace) -> int:
+    receipts = await publish_proof_of_life(
+        case_name=args.case,
+        dry_run=args.dry_run,
+    )
+    cases_by_correlation = {
+        proof_case.command.correlation_id: proof_case
+        for proof_case in build_proof_cases(args.case)
     }
+    for receipt in receipts:
+        _print_case(receipt, cases_by_correlation[receipt.correlation_id].command)
 
-
-async def main() -> int:
-    # ------------------------------------------------------------------
-    # Case 1: 2 independent tasks in a single wave
-    # ------------------------------------------------------------------
-    print("\nCASE 1: 2 independent tasks (single wave)")
-
-    executor = HandlerSeamParallelExecutor(
-        shim_registry={
-            "shim_a": _noop_shim_a,
-            "shim_b": _noop_shim_b,
-        }
-    )
-
-    input_model = ModelSeamParallelInput(
-        correlation_id=UUID("00000000-0000-0000-0000-000000000001"),
-        tasks=(
-            ModelSeamTask(
-                task_id="task-a",
-                callable_key="shim_a",
-                payload={"name": "OutputA"},
-            ),
-            ModelSeamTask(
-                task_id="task-b",
-                callable_key="shim_b",
-                payload={"name": "OutputB"},
-            ),
-        ),
-        timeout_seconds=10.0,
-    )
-
-    result = await executor.handle(input_model)
-    _print_result("2 independent tasks", result)
-
-    assert result.all_succeeded is True, (
-        f"Expected all_succeeded=True, got {result.all_succeeded}"
-    )
-    assert result.shims_removed is True, (
-        f"Expected shims_removed=True, got {result.shims_removed}"
-    )
-    assert result.waves_executed == 1, f"Expected 1 wave, got {result.waves_executed}"
-
-    # Build shim_outputs by task_id
-    shim_outputs = {r.task_id: r.output for r in result.task_results}
-    assert shim_outputs["task-a"] == "result_from_a", (
-        f"Expected shim_outputs['task-a'] == 'result_from_a', got {shim_outputs['task-a']!r}"
-    )
-    assert shim_outputs["task-b"] == "result_from_b", (
-        f"Expected shim_outputs['task-b'] == 'result_from_b', got {shim_outputs['task-b']!r}"
-    )
-
-    print("ASSERTION: all_succeeded == True  ✓")
-    print("ASSERTION: shim_outputs['task-a'] == 'result_from_a'  ✓")
-    print("ASSERTION: shim_outputs['task-b'] == 'result_from_b'  ✓")
-    print("ASSERTION: shims_removed == True  ✓")
-    print("ASSERTION: waves_executed == 1  ✓")
-
-    # ------------------------------------------------------------------
-    # Case 2: dependency chain (B depends on A, 2 waves)
-    # ------------------------------------------------------------------
-    print("\nCASE 2: dependency chain (task-downstream depends on task-a)")
-
-    executor2 = HandlerSeamParallelExecutor(
-        shim_registry={
-            "shim_a": _noop_shim_a,
-            "shim_downstream": _downstream_shim,
-        }
-    )
-
-    input_model2 = ModelSeamParallelInput(
-        correlation_id=UUID("00000000-0000-0000-0000-000000000002"),
-        tasks=(
-            ModelSeamTask(
-                task_id="task-a",
-                callable_key="shim_a",
-                payload={},
-            ),
-            ModelSeamTask(
-                task_id="task-downstream",
-                callable_key="shim_downstream",
-                depends_on=("task-a",),
-                payload={},
-            ),
-        ),
-        timeout_seconds=10.0,
-    )
-
-    result2 = await executor2.handle(input_model2)
-    _print_result("dependency chain", result2)
-
-    assert result2.all_succeeded is True
-    assert result2.waves_executed == 2, (
-        f"Expected 2 waves, got {result2.waves_executed}"
-    )
-
-    outputs2 = {r.task_id: r.output for r in result2.task_results}
-    assert outputs2["task-a"] == "result_from_a"
-    assert isinstance(outputs2["task-downstream"], dict)
-    assert outputs2["task-downstream"]["received_from_a"] == "result_from_a"
-
-    print("ASSERTION: all_succeeded == True  ✓")
-    print("ASSERTION: waves_executed == 2  ✓")
-    print("ASSERTION: downstream received 'result_from_a' from task-a  ✓")
-
+    action = "COMPILED" if args.dry_run else "PUBLISHED"
     print("\n" + "=" * 60)
-    print("ALL SEAM-PARALLEL PROOF-OF-LIFE ASSERTIONS PASSED")
+    print(f"ALL SEAM-PARALLEL PROOF-OF-LIFE COMMANDS {action}")
     print("=" * 60)
     return 0
 
 
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--case",
+        choices=("all", "independent", "dependency-chain"),
+        default="all",
+        help="Proof-of-life command case to publish",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build and print command payload metadata without publishing to Kafka",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        return asyncio.run(_main_async(args))
+    except Exception as exc:
+        print(f"{SOURCE_TOOL}: failed: {exc}", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(main())
