@@ -1,0 +1,38 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11301"
+title: "Wire pricing manifest into delegation orchestrator handlers"
+summary: >-
+  Replaces hardcoded Claude pricing constants in delegation orchestrator handlers
+  with manifest-backed pricing lookup and stamps pricing_manifest_version on
+  emitted delegation events.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Focused delegation pricing tests pass."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_handler.py tests/unit/delegation/"
+  - kind: "manual"
+    description: "Deploy smoke plan for runtime handler import and manifest-backed pricing utility."
+    command: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_int; print('pricing deploy smoke ok', get_manifest_version_int(), estimate_baseline_cost_usd(1, 1))\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused delegation pricing tests pass and derive expected savings from the manifest."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_handler.py tests/unit/delegation/"
+  - id: "dod-deploy"
+    description: >-
+      Post-merge deploy smoke plan for runtime handler import and
+      manifest-backed pricing utility. No live runtime deploy or restart was
+      performed during PR validation; runtime acceptance is tracked separately.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_int; print('pricing deploy smoke ok', get_manifest_version_int(), estimate_baseline_cost_usd(1, 1))\""
