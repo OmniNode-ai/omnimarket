@@ -52,5 +52,29 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
 
+projection_api:
+  expose: true
+  topic: onex.snapshot.projection.delegation.events.v1
+  table: delegation_events
+  schema: public
+  columns:
+    - correlation_id
+    - timestamp
+    - task_type
+    - delegated_to
+    - model_name
+    - quality_gate_passed
+    - cost_usd
+    - cost_savings_usd
+    - delegation_latency_ms
+    - tokens_input
+    - tokens_output
+    - tokens_to_compliance
+    - compliance_attempts
+    - pricing_manifest_version
+  order_by: timestamp DESC
+  freshness_column: timestamp
+  limit: 100
+
 metadata:
   transport_type: kafka

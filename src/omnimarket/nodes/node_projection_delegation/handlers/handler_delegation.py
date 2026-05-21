@@ -308,6 +308,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             or data.get("estimated_savings_usd")
             or data.get("estimatedSavingsUsd")
         )
+        pricing_manifest_version = (
+            _safe_int_or_none(
+                data.get("pricing_manifest_version")
+                or data.get("pricingManifestVersion"),
+            )
+            or 0
+        )
         delegation_latency_ms = _safe_int_or_none(
             data.get("delegation_latency_ms")
             or data.get("delegationLatencyMs")
@@ -336,13 +343,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               delegated_to, delegated_by, quality_gate_passed,
               quality_gates_checked, quality_gates_failed,
               cost_usd, cost_savings_usd, delegation_latency_ms,
-              repo, is_shadow, prompt_text, response_text
+              repo, is_shadow, prompt_text, response_text,
+              pricing_manifest_version
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8::jsonb, $9::jsonb,
               $10, $11, $12,
-              $13, $14, $15, $16
+              $13, $14, $15, $16,
+              $17
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -362,6 +371,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             is_shadow,
             str(prompt_text) if prompt_text is not None else None,
             str(response_text) if response_text is not None else None,
+            pricing_manifest_version,
         )
         return True
 

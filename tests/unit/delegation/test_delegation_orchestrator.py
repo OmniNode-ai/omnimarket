@@ -222,6 +222,18 @@ class TestHappyPath:
         assert intents[2].correlation_id == cid
         assert intents[2].quality_gate_passed is True
         assert intents[2].llm_call_id == "chatcmpl-abc123"
+        from omnimarket.pricing import (
+            estimate_baseline_cost_usd,
+            get_manifest_version_int,
+        )
+
+        expected_savings = estimate_baseline_cost_usd(
+            prompt_tokens=100,
+            completion_tokens=50,
+        )
+        assert intents[2].cost_savings_usd == pytest.approx(expected_savings)
+        assert intents[2].pricing_manifest_version == get_manifest_version_int()
+        assert intents[2].pricing_manifest_version > 0
         from omnibase_infra.event_bus.topic_constants import (
             TOPIC_DELEGATION_TASK_DELEGATED,
         )
