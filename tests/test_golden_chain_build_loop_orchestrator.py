@@ -34,6 +34,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     BuildTarget,
     ClassifyResult,
     CloseoutResult,
+    DelegationPayload,
     DispatchResult,
     RsdFillResult,
     ScoredTicket,
@@ -121,8 +122,13 @@ class MockClassify:
 class MockDispatch:
     """Mock dispatch handler."""
 
-    def __init__(self, dispatched: int = 0) -> None:
+    def __init__(
+        self,
+        dispatched: int = 0,
+        delegation_payloads: tuple[DelegationPayload, ...] = (),
+    ) -> None:
         self._dispatched = dispatched
+        self._delegation_payloads = delegation_payloads
         self.call_count = 0
 
     async def handle(
@@ -135,7 +141,7 @@ class MockDispatch:
         self.call_count += 1
         return DispatchResult(
             total_dispatched=self._dispatched,
-            delegation_payloads=(),
+            delegation_payloads=self._delegation_payloads,
         )
 
 
@@ -347,6 +353,57 @@ class TestBuildLoopOrchestratorGoldenChain:
         assert summary.tickets_filled == 2
         assert summary.tickets_classified == 1  # Only auto_buildable
         assert summary.tickets_dispatched == 1
+
+    async def test_dispatch_payload_evidence_is_carried_and_published(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Dispatch PR refs and cost keys stay durable in the cycle summary."""
+        await event_bus.start()
+        payload_correlation_id = "11111111-1111-4111-8111-111111111111"
+        delegation_topic = "onex.cmd.omnimarket.delegate-task.v1"
+        targets = (
+            BuildTarget(
+                ticket_id="OMN-11427", title="T", buildability="auto_buildable"
+            ),
+        )
+        payload = DelegationPayload(
+            topic=delegation_topic,
+            payload={
+                "ticket_id": "OMN-11427",
+                "correlation_id": payload_correlation_id,
+                "pr_refs": [
+                    "OmniNode-ai/omnimarket#11427",
+                    "OmniNode-ai/omnimarket#11427",
+                ],
+                "cost_event_keys": ["cost-a"],
+                "cost_event_key": "cost-b",
+            },
+        )
+        orch = await _make_orchestrator(
+            rsd_fill=MockRsdFill(
+                tickets=(
+                    ScoredTicket(
+                        ticket_id="OMN-11427", title="T", rsd_score=3.0, priority=2
+                    ),
+                )
+            ),
+            classify=MockClassify(targets=targets),
+            dispatch=MockDispatch(dispatched=1, delegation_payloads=(payload,)),
+            event_bus=event_bus,
+            verify=MockVerify(),
+        )
+
+        result = await orch.handle(_make_command())
+
+        summary = result.cycle_summaries[0]
+        assert summary.pr_refs == ("OmniNode-ai/omnimarket#11427",)
+        assert summary.cost_event_keys == ("cost-a", "cost-b")
+        published = await event_bus.get_event_history(topic=delegation_topic)
+        assert len(published) == 1
+        published_payload = json.loads(published[0].value)
+        assert published_payload["payload"]["ticket_id"] == "OMN-11427"
+        assert published_payload["correlation_id"] == payload_correlation_id
+        await event_bus.close()
 
     async def test_multiple_cycles(self) -> None:
         """Multiple cycles run sequentially when max_cycles > 1."""
