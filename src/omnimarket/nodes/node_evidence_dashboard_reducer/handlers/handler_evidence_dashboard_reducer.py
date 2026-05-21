@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_evidence_dashboard_effect.models.model_dashboard_projection_event import (
+from omnimarket.events.evidence_dashboard import (
     ModelDashboardProjectionEvent,
 )
 from omnimarket.nodes.node_evidence_dashboard_reducer.models.model_projection_result import (
@@ -178,9 +178,17 @@ def _first_row(rows: list[dict[str, object]]) -> dict[str, object] | None:
 
 
 def _int_value(value: object) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str | bytes | bytearray):
+        return 0
     try:
-        return int(value) if value is not None else 0
-    except (TypeError, ValueError):
+        return int(value)
+    except ValueError:
         return 0
 
 

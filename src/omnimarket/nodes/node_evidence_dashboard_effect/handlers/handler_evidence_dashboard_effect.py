@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.nodes.node_evidence_dashboard_effect.models.model_dashboard_projection_event import (
+from omnimarket.events.evidence_dashboard import (
     DashboardSeverity,
     DashboardStage,
     DashboardStatus,
@@ -191,9 +191,15 @@ def _optional_str(value: object) -> str | None:
 def _optional_int(value: object) -> int | None:
     if value is None or value == "":
         return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str | bytes | bytearray):
+        return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except ValueError:
         return None
 
 

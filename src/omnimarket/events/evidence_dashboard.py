@@ -1,4 +1,4 @@
-"""Local dashboard projection wire shim.
+"""Shared evidence dashboard event models.
 
 The canonical wire DTO belongs in omnibase_compat. This local model keeps the
 omnimarket handler and tests executable until that compat package is published.
@@ -76,3 +76,12 @@ class ModelDashboardProjectionEvent(BaseModel):
     @property
     def source_topic(self) -> str:
         return self.topic
+
+
+__all__ = [
+    "DashboardSeverity",
+    "DashboardStage",
+    "DashboardStatus",
+    "EvidenceLifecycleState",
+    "ModelDashboardProjectionEvent",
+]

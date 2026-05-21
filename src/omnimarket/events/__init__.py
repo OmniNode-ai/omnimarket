@@ -3,6 +3,7 @@
 """Shared event models for cross-node event contracts within omnimarket."""
 
 from omnimarket.events.daemon_health_probe import ModelDaemonHealthProbeResult
+from omnimarket.events.evidence_dashboard import ModelDashboardProjectionEvent
 from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
 from omnimarket.intelligence.events import (
     ModelIntentClassifiedEnvelope,
@@ -13,6 +14,7 @@ from omnimarket.intelligence.events import (
 
 __all__ = [
     "ModelDaemonHealthProbeResult",
+    "ModelDashboardProjectionEvent",
     "ModelIntentClassifiedEnvelope",
     "ModelIntentDriftDetectedEnvelope",
     "ModelIntentOutcomeLabeledEnvelope",
