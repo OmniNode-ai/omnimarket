@@ -1031,6 +1031,134 @@ async def test_delegate_skill_direct_dispatch_subscribes_to_terminal_topics_befo
     assert len(transport.published) == 1
 
 
+def test_delegate_skill_explicit_local_runtime_dispatches_via_contract_bus(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+    cid = uuid4()
+    client = CodexRuntimeRequestAdapter(
+        requester="codex-test",
+        command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+    )
+
+    result = client.dispatch_sync(
+        command_name="delegate_skill.orchestrate",
+        payload={
+            "prompt": "Write a regression test",
+            "task_type": "test",
+            "source": "codex",
+            "correlation_id": str(cid),
+            "metadata": {"ticket": "OMN-8701"},
+        },
+        correlation_id=cid,
+        timeout_ms=5000,
+        response_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+        additional_response_topics=("onex.evt.omnimarket.delegate-skill-failed.v1",),
+        runtime_selection="local",
+    )
+
+    assert result.ok is True
+    assert result.runtime_selection == "local"
+    assert result.runtime_mode == "local"
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.event_bus_backend == "inmemory"
+    assert result.runtime_evidence.state_store_backend == "local_disk"
+    assert (
+        result.runtime_evidence.command_topic == "onex.cmd.omnimarket.delegate-skill.v1"
+    )
+    assert (
+        result.runtime_evidence.terminal_topic
+        == "onex.evt.omnimarket.delegate-skill-completed.v1"
+    )
+    assert result.output_payloads is not None
+    assert result.output_payloads[0]["provider"] == "local://inmemory-delegation-effect"
+    assert (
+        tmp_path
+        / "state"
+        / "node_delegate_skill_orchestrator"
+        / str(cid)
+        / "state.yaml"
+    ).exists()
+
+
+def test_deployed_or_local_falls_back_when_deployed_runtime_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+
+    def unavailable_event_bus_factory() -> _AdapterTestTransport:
+        raise OSError("Kafka runtime unavailable")
+
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=unavailable_event_bus_factory,
+        requester="codex-test",
+    )
+
+    result = client.dispatch_sync(
+        command_name="aislop_sweep",
+        payload={"target_dirs": [str(tmp_path)], "dry_run": True},
+        timeout_ms=5000,
+        runtime_selection="deployed_or_local",
+    )
+
+    assert result.ok is True
+    assert result.runtime_selection == "deployed_or_local"
+    assert result.runtime_mode == "local"
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.event_bus_backend == "inmemory"
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.aislop-sweep-start.v1"
+    )
+    assert result.runtime_evidence.details["fallback_reason"] == (
+        "Kafka runtime unavailable"
+    )
+    assert result.output_payloads is not None
+    assert result.output_payloads[0]["dry_run"] is True
+
+
+def test_aislop_sweep_explicit_local_runtime_preserves_node_contract_topics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_dir = tmp_path / "fixture_repo"
+    src_dir = repo_dir / "src"
+    src_dir.mkdir(parents=True)
+    (src_dir / "bad.py").write_text(
+        'ONEX_EVENT_BUS_TYPE = "inmemory"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+
+    client = CodexRuntimeRequestAdapter(requester="codex-test")
+    result = client.dispatch_sync(
+        command_name="aislop_sweep",
+        payload={
+            "target_dirs": [str(repo_dir)],
+            "checks": ["prohibited-patterns"],
+            "dry_run": True,
+        },
+        timeout_ms=5000,
+        runtime_selection="local",
+    )
+
+    assert result.ok is True
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.node_contract is not None
+    assert result.runtime_evidence.node_contract.endswith(
+        "node_aislop_sweep/contract.yaml"
+    )
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.aislop-sweep-start.v1"
+    )
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.aislop-sweep-completed.v1"
+    )
+    assert result.output_payloads is not None
+    assert result.output_payloads[0]["status"] == "findings"
+
+
 @pytest.mark.asyncio
 async def test_dispatch_async_uses_env_target_runtime_address(
     monkeypatch: pytest.MonkeyPatch,

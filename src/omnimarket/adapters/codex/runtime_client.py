@@ -18,7 +18,6 @@ from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
-from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from omnimarket.adapters.codex.topics import (
@@ -43,6 +42,7 @@ _DELEGATE_SKILL_EVENT_TYPE = "omnimarket.delegate-skill"
 _DELEGATE_SKILL_COMMAND_NAMES = frozenset(
     {"delegate_skill", "delegate_skill.orchestrate"}
 )
+_RUNTIME_SELECTION_VALUES = frozenset({"deployed", "local", "deployed_or_local"})
 
 
 class ModelDispatchBusRoute(BaseModel):
@@ -80,6 +80,20 @@ class ModelDispatchBusTerminalResult(BaseModel):
     error_message: str | None = None
 
 
+class ModelRuntimeEvidence(BaseModel):
+    """Runtime/backend evidence returned by the adapter."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    selected_runtime_mode: str
+    event_bus_backend: str
+    state_store_backend: str
+    node_contract: str | None = None
+    command_topic: str
+    terminal_topic: str | None = None
+    details: dict[str, object] = Field(default_factory=dict)
+
+
 def default_command_topic() -> str:
     """Resolve the Codex adapter command topic."""
     return str(os.environ.get("ONEX_PATTERN_B_COMMAND_TOPIC", _DEFAULT_COMMAND_TOPIC))
@@ -101,6 +115,12 @@ def default_target_runtime_address() -> str | None:
     if value is None or not value.strip():
         return None
     return value.strip()
+
+
+def default_runtime_selection() -> str:
+    """Resolve the explicit runtime selection mode for adapter dispatch."""
+    value = os.environ.get("ONEX_RUNTIME_SELECTION", "deployed").strip()
+    return value or "deployed"
 
 
 class _ProtocolLifecycleTransport(Protocol):
@@ -140,9 +160,12 @@ class _CodexDispatchBusAdapter:
         q: asyncio.Queue[ModelDispatchBusTerminalResult] = asyncio.Queue()
 
         async def on_message(msg: object) -> None:
-            if not isinstance(msg, ModelEventMessage):
+            value = getattr(msg, "value", None)
+            if isinstance(value, bytearray):
+                value = bytes(value)
+            if not isinstance(value, bytes):
                 return
-            result = _parse_terminal_result(msg.value)
+            result = _parse_terminal_result(value)
             if result is None:
                 return
             if str(result.correlation_id) == correlation_id:
@@ -253,6 +276,7 @@ class ModelCodexRuntimeRequestAdapterRequest(BaseModel):
     target_runtime_address: str | None = Field(
         default_factory=default_target_runtime_address
     )
+    runtime_selection: str = Field(default_factory=default_runtime_selection)
 
     @field_validator("command_name")
     @classmethod
@@ -282,6 +306,15 @@ class ModelCodexRuntimeRequestAdapterRequest(BaseModel):
             raise ValueError("target_runtime_address must use runtime:// addressing")
         return normalized
 
+    @field_validator("runtime_selection")
+    @classmethod
+    def _validate_runtime_selection(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized not in _RUNTIME_SELECTION_VALUES:
+            allowed = ", ".join(sorted(_RUNTIME_SELECTION_VALUES))
+            raise ValueError(f"runtime_selection must be one of: {allowed}")
+        return normalized
+
 
 class ModelCodexRuntimeRequestAdapterResponse(BaseModel):
     """Structured response returned by the Codex runtime request adapter."""
@@ -293,6 +326,9 @@ class ModelCodexRuntimeRequestAdapterResponse(BaseModel):
     command_topic: str = Field(..., min_length=1)
     response_topic: str = Field(..., min_length=1)
     correlation_id: UUID | None = None
+    runtime_selection: str = Field(default="deployed")
+    runtime_mode: str | None = None
+    runtime_evidence: ModelRuntimeEvidence | None = None
     dispatch_result: dict[str, object] | None = None
     output_payloads: list[dict[str, object]] | None = None
     error: ModelCodexRuntimeRequestAdapterError | None = None
@@ -306,6 +342,7 @@ def _build_client_request(
     timeout_ms: int = 300_000,
     response_topic: str | None = None,
     target_runtime_address: str | None = None,
+    runtime_selection: str | None = None,
 ) -> ModelCodexRuntimeRequestAdapterRequest:
     return ModelCodexRuntimeRequestAdapterRequest.model_validate(
         {
@@ -322,6 +359,11 @@ def _build_client_request(
                 target_runtime_address
                 if target_runtime_address is not None
                 else default_target_runtime_address()
+            ),
+            "runtime_selection": (
+                runtime_selection
+                if runtime_selection is not None
+                else default_runtime_selection()
             ),
         }
     )
@@ -361,6 +403,39 @@ def _dispatch_result(
     result: ModelDispatchBusTerminalResult,
 ) -> dict[str, object]:
     return cast(dict[str, object], result.model_dump(mode="json", exclude_none=True))
+
+
+def _deployed_runtime_evidence(
+    *,
+    command_topic: str,
+    response_topic: str,
+    runtime_selection: str,
+) -> ModelRuntimeEvidence:
+    return ModelRuntimeEvidence(
+        selected_runtime_mode="deployed",
+        event_bus_backend="kafka",
+        state_store_backend="deployed_runtime",
+        command_topic=command_topic,
+        terminal_topic=response_topic,
+        details={"runtime_selection": runtime_selection},
+    )
+
+
+def _local_runtime_evidence(evidence: object) -> ModelRuntimeEvidence:
+    raw = cast(
+        dict[str, object],
+        evidence.model_dump(mode="json", exclude_none=True),
+    )
+    details = dict(raw)
+    return ModelRuntimeEvidence(
+        selected_runtime_mode=str(raw["selected_runtime_mode"]),
+        event_bus_backend=str(raw["event_bus_backend"]),
+        state_store_backend=str(raw["state_store_backend"]),
+        node_contract=cast(str, raw.get("node_contract")),
+        command_topic=str(raw["command_topic"]),
+        terminal_topic=cast(str | None, raw.get("terminal_topic")),
+        details=details,
+    )
 
 
 def _uses_direct_delegate_skill_contract(
@@ -445,6 +520,7 @@ class CodexRuntimeRequestAdapter:
         timeout_ms: int = 300_000,
         response_topic: str | None = None,
         target_runtime_address: str | None = None,
+        runtime_selection: str | None = None,
     ) -> ModelCodexRuntimeRequestAdapterResponse:
         """Compile the adapter command envelope without touching the event bus."""
         request = _build_client_request(
@@ -454,6 +530,7 @@ class CodexRuntimeRequestAdapter:
             timeout_ms=timeout_ms,
             response_topic=response_topic,
             target_runtime_address=target_runtime_address,
+            runtime_selection=runtime_selection,
         )
         command = _build_dispatch_command(request, requester=self._requester)
         compiled_command = command.model_dump(mode="json", exclude_none=True)
@@ -463,8 +540,11 @@ class CodexRuntimeRequestAdapter:
             command_topic=self._command_topic,
             response_topic=request.response_topic,
             correlation_id=command.correlation_id,
+            runtime_selection=request.runtime_selection,
+            runtime_mode="compiled",
             dispatch_result={
                 "status": "compiled",
+                "runtime_selection": request.runtime_selection,
                 "command_topic": self._command_topic,
                 "response_topic": request.response_topic,
                 "command": compiled_command,
@@ -472,6 +552,7 @@ class CodexRuntimeRequestAdapter:
             output_payloads=[
                 {
                     "status": "compiled",
+                    "runtime_selection": request.runtime_selection,
                     "command_topic": self._command_topic,
                     "response_topic": request.response_topic,
                     "command": compiled_command,
@@ -489,6 +570,7 @@ class CodexRuntimeRequestAdapter:
         response_topic: str | None = None,
         additional_response_topics: tuple[str, ...] = (),
         target_runtime_address: str | None = None,
+        runtime_selection: str | None = None,
     ) -> ModelCodexRuntimeRequestAdapterResponse:
         request = _build_client_request(
             command_name=command_name,
@@ -497,7 +579,28 @@ class CodexRuntimeRequestAdapter:
             timeout_ms=timeout_ms,
             response_topic=response_topic,
             target_runtime_address=target_runtime_address,
+            runtime_selection=runtime_selection,
         )
+
+        if request.runtime_selection == "local":
+            return await self._dispatch_local_async(request)
+
+        try:
+            return await self._dispatch_deployed_async(
+                request,
+                additional_response_topics=additional_response_topics,
+            )
+        except Exception as exc:
+            if request.runtime_selection != "deployed_or_local":
+                raise
+            return await self._dispatch_local_async(request, fallback_reason=str(exc))
+
+    async def _dispatch_deployed_async(
+        self,
+        request: ModelCodexRuntimeRequestAdapterRequest,
+        *,
+        additional_response_topics: tuple[str, ...],
+    ) -> ModelCodexRuntimeRequestAdapterResponse:
 
         transport = self._event_bus_factory()
         await transport.start()
@@ -538,6 +641,11 @@ class CodexRuntimeRequestAdapter:
         finally:
             await transport.close()
 
+        evidence = _deployed_runtime_evidence(
+            command_topic=self._command_topic,
+            response_topic=request.response_topic,
+            runtime_selection=request.runtime_selection,
+        )
         ok = terminal_result.status == "completed"
         if ok:
             return ModelCodexRuntimeRequestAdapterResponse(
@@ -546,6 +654,9 @@ class CodexRuntimeRequestAdapter:
                 command_topic=self._command_topic,
                 response_topic=request.response_topic,
                 correlation_id=terminal_result.correlation_id,
+                runtime_selection=request.runtime_selection,
+                runtime_mode="deployed",
+                runtime_evidence=evidence,
                 dispatch_result=_dispatch_result(terminal_result),
                 output_payloads=_output_payloads(terminal_result.payload),
             )
@@ -555,11 +666,62 @@ class CodexRuntimeRequestAdapter:
             command_topic=self._command_topic,
             response_topic=request.response_topic,
             correlation_id=terminal_result.correlation_id,
+            runtime_selection=request.runtime_selection,
+            runtime_mode="deployed",
+            runtime_evidence=evidence,
             dispatch_result=_dispatch_result(terminal_result),
             error=ModelCodexRuntimeRequestAdapterError(
                 code=f"runtime_{terminal_result.status}",
                 message=terminal_result.error_message
                 or "Codex runtime adapter request did not complete successfully.",
+                retryable=terminal_result.status == "timeout",
+            ),
+        )
+
+    async def _dispatch_local_async(
+        self,
+        request: ModelCodexRuntimeRequestAdapterRequest,
+        *,
+        fallback_reason: str | None = None,
+    ) -> ModelCodexRuntimeRequestAdapterResponse:
+        from omnimarket.adapters.codex.local_runtime_dispatch import (
+            LocalRuntimeDispatch,
+        )
+
+        command = _build_dispatch_command(request, requester=self._requester)
+        terminal_result, evidence_raw = await LocalRuntimeDispatch(
+            adapter_command_topic=self._command_topic,
+            fallback_reason=fallback_reason,
+        ).dispatch(command)
+        evidence = _local_runtime_evidence(evidence_raw)
+        ok = terminal_result.status == "completed"
+        if ok:
+            return ModelCodexRuntimeRequestAdapterResponse(
+                ok=True,
+                command_name=request.command_name,
+                command_topic=self._command_topic,
+                response_topic=request.response_topic,
+                correlation_id=terminal_result.correlation_id,
+                runtime_selection=request.runtime_selection,
+                runtime_mode="local",
+                runtime_evidence=evidence,
+                dispatch_result=_dispatch_result(terminal_result),
+                output_payloads=_output_payloads(terminal_result.payload),
+            )
+        return ModelCodexRuntimeRequestAdapterResponse(
+            ok=False,
+            command_name=request.command_name,
+            command_topic=self._command_topic,
+            response_topic=request.response_topic,
+            correlation_id=terminal_result.correlation_id,
+            runtime_selection=request.runtime_selection,
+            runtime_mode="local",
+            runtime_evidence=evidence,
+            dispatch_result=_dispatch_result(terminal_result),
+            error=ModelCodexRuntimeRequestAdapterError(
+                code=f"runtime_{terminal_result.status}",
+                message=terminal_result.error_message
+                or "Local runtime adapter request did not complete successfully.",
                 retryable=terminal_result.status == "timeout",
             ),
         )
@@ -574,6 +736,7 @@ class CodexRuntimeRequestAdapter:
         response_topic: str | None = None,
         additional_response_topics: tuple[str, ...] = (),
         target_runtime_address: str | None = None,
+        runtime_selection: str | None = None,
     ) -> ModelCodexRuntimeRequestAdapterResponse:
         return asyncio.run(
             self.dispatch_async(
@@ -584,6 +747,7 @@ class CodexRuntimeRequestAdapter:
                 response_topic=response_topic,
                 additional_response_topics=additional_response_topics,
                 target_runtime_address=target_runtime_address,
+                runtime_selection=runtime_selection,
             )
         )
 
@@ -653,6 +817,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional runtime:// address to target for this adapter request",
     )
     parser.add_argument(
+        "--runtime-selection",
+        default=default_runtime_selection(),
+        choices=sorted(_RUNTIME_SELECTION_VALUES),
+        help=(
+            "Explicit runtime selection: deployed, local, or deployed_or_local. "
+            "Only deployed_or_local falls back when the deployed runtime is unavailable."
+        ),
+    )
+    parser.add_argument(
         "--compile-only",
         action="store_true",
         help=(
@@ -703,6 +876,7 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_ms=args.timeout_ms,
                 response_topic=args.response_topic,
                 target_runtime_address=args.target_runtime_address,
+                runtime_selection=args.runtime_selection,
             )
         else:
             response = client.dispatch_sync(
@@ -712,6 +886,7 @@ def main(argv: list[str] | None = None) -> int:
                 timeout_ms=args.timeout_ms,
                 response_topic=args.response_topic,
                 target_runtime_address=args.target_runtime_address,
+                runtime_selection=args.runtime_selection,
             )
     except ValidationError as exc:
         response = _build_cli_error_response(
@@ -745,6 +920,7 @@ __all__ = [
     "default_command_topic",
     "default_requester",
     "default_response_topic",
+    "default_runtime_selection",
     "default_target_runtime_address",
     "main",
 ]
