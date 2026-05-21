@@ -10,6 +10,7 @@ import hashlib
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 import yaml
+
+from omnimarket.nodes.node_handoff_effect.service_catalog import probe_services
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,67 @@ _SSH_TIMEOUT = 15
 
 class InfraHealthGatherError(RuntimeError):
     """Raised when a mandatory infra health check cannot be sourced."""
+
+
+class HandoffGateError(RuntimeError):
+    """Raised when a pre-generation gate check fails.
+
+    Always has exit_code=2 to distinguish from user-error (1).
+    """
+
+    exit_code: int = 2
+
+    def __init__(self, source: str, message: str) -> None:
+        self.source = source
+        full_msg = f"HANDOFF_GATE_FAILURE: {source} — {message}"
+        super().__init__(full_msg)
+        sys.stderr.write(full_msg + "\n")
+
+
+def validate_infra_sources(
+    env_sync_log_path: Path,
+    ssh_target: str,
+    ssh_timeout_s: int = 5,
+) -> None:
+    """Pre-generation gate: abort with HandoffGateError if any source is unsourceable.
+
+    Checks:
+      1. env-sync.log exists and is readable
+      2. All service catalog probes return healthy via SSH
+
+    Raises:
+        HandoffGateError: If any check fails (exit_code=2).
+    """
+    if not env_sync_log_path.exists():
+        raise HandoffGateError(
+            "env-sync.log",
+            f"log not found at {env_sync_log_path}",
+        )
+    try:
+        env_sync_log_path.read_text()
+    except OSError as exc:
+        raise HandoffGateError("env-sync.log", f"unreadable: {exc}") from exc
+
+    if not ssh_target:
+        raise HandoffGateError(
+            "ssh",
+            "ONEX_INFRA_SSH_TARGET is not configured",
+        )
+
+    try:
+        snapshot = probe_services(ssh_target, timeout_s=ssh_timeout_s)
+    except Exception as exc:
+        raise HandoffGateError(
+            "service-catalog",
+            f"probe execution failed: {exc}",
+        ) from exc
+    unhealthy = [s for s in snapshot.services if not s.healthy]
+    if unhealthy:
+        names = ", ".join(s.name for s in unhealthy)
+        raise HandoffGateError(
+            names,
+            f"service probe(s) failed: {names}",
+        )
 
 
 def _run(args: list[str], cwd: str) -> str:
@@ -39,8 +103,9 @@ def _run(args: list[str], cwd: str) -> str:
         return ""
 
 
-def _ssh(remote_cmd: str, check_name: str) -> str:
+def _ssh(remote_cmd: str, check_name: str, ssh_host: str = "") -> str:
     """Run a remote SSH command. Raises InfraHealthGatherError on any failure."""
+    host = ssh_host or _SSH_HOST
     try:
         result = subprocess.run(
             [
@@ -49,7 +114,7 @@ def _ssh(remote_cmd: str, check_name: str) -> str:
                 "ConnectTimeout=10",
                 "-o",
                 "BatchMode=yes",
-                _SSH_HOST,
+                host,
                 remote_cmd,
             ],
             capture_output=True,
@@ -102,29 +167,34 @@ def _parse_env_sync_log(log_path: Path) -> dict[str, str]:
     }
 
 
-def _gather_infra_health(env_sync_log_path: Path) -> dict[str, str]:
+def _gather_infra_health(env_sync_log_path: Path, ssh_host: str = "") -> dict[str, str]:
     """Gather all infra health values. Raises InfraHealthGatherError if any check fails."""
     health = _parse_env_sync_log(env_sync_log_path)
 
     health["infisical_container"] = _ssh(
         "docker ps --filter name=infisical --format '{{.Names}}.{{.Status}}'",
         "infisical",
+        ssh_host,
     )
     health["deploy_agent_service"] = _ssh(
         "systemctl --user is-active deploy-agent.service",
         "deploy-agent",
+        ssh_host,
     )
     health["runtime_effects_health"] = _ssh(
         "docker inspect omninode-runtime-effects --format='{{.State.Health.Status}}'",
         "runtime-effects",
+        ssh_host,
     )
     health["kafka_redpanda"] = _ssh(
         "docker ps --filter name=redpanda --format '{{.Status}}'",
         "kafka-redpanda",
+        ssh_host,
     )
     health["postgres"] = _ssh(
         "docker ps --filter name=postgres --format '{{.Status}}'",
         "postgres",
+        ssh_host,
     )
     health["open_infra_blockers"] = os.environ.get("ONEX_INFRA_BLOCKER_TICKETS", "none")  # contract-config-ok: config  # fmt: skip
 
@@ -172,8 +242,17 @@ class HandlerHandoffEffect:
         state_dir = Path(os.environ.get("ONEX_STATE_DIR", ""))
         env_sync_log = state_dir / "logs" / "env-sync.log"
 
+        # Hard gate: raises HandoffGateError (exit_code=2) if any source is unsourceable.
+        # Must run before any artifact I/O so no partial file is written.
+        # Read env var at call time so monkeypatch works in tests.
+        ssh_target = os.environ.get("ONEX_INFRA_SSH_TARGET", "")  # contract-config-ok: config  # fmt: skip
+        validate_infra_sources(
+            env_sync_log_path=env_sync_log,
+            ssh_target=ssh_target,
+        )
+
         # Raises InfraHealthGatherError on any SSH failure — fail loudly
-        infra_health = _gather_infra_health(env_sync_log)
+        infra_health = _gather_infra_health(env_sync_log, ssh_host=ssh_target)
 
         artifact: dict[str, object] = {
             "version": 1,
@@ -221,6 +300,8 @@ class HandlerHandoffEffect:
 
 __all__: list[str] = [
     "HandlerHandoffEffect",
+    "HandoffGateError",
     "InfraHealthGatherError",
     "_parse_env_sync_log",
+    "validate_infra_sources",
 ]

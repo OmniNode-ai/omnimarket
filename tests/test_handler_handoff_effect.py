@@ -21,6 +21,8 @@ from omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect import
     _parse_env_sync_log,
 )
 
+_PATCH_VALIDATE = "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect.validate_infra_sources"
+
 
 def _git(args: list[str], cwd: Path) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
@@ -40,7 +42,7 @@ def git_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _mock_ssh_ok(remote_cmd: str, check_name: str) -> str:
+def _mock_ssh_ok(remote_cmd: str, check_name: str, ssh_host: str = "") -> str:
     return "ok"
 
 
@@ -56,9 +58,12 @@ class TestHandlerHandoffEffect:
         session_id = "test-sess-abc123"
         correlation_id = uuid.uuid4()
 
-        with patch(
-            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
-            side_effect=_mock_ssh_ok,
+        with (
+            patch(_PATCH_VALIDATE),
+            patch(
+                "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+                side_effect=_mock_ssh_ok,
+            ),
         ):
             result = handler.handle(
                 session_id=session_id,
@@ -90,9 +95,12 @@ class TestHandlerHandoffEffect:
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
 
         handler = HandlerHandoffEffect()
-        with patch(
-            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
-            side_effect=_mock_ssh_ok,
+        with (
+            patch(_PATCH_VALIDATE),
+            patch(
+                "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+                side_effect=_mock_ssh_ok,
+            ),
         ):
             result = handler.handle(
                 session_id="sess-xyz",
@@ -113,9 +121,12 @@ class TestHandlerHandoffEffect:
         monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
 
         handler = HandlerHandoffEffect()
-        with patch(
-            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
-            side_effect=_mock_ssh_ok,
+        with (
+            patch(_PATCH_VALIDATE),
+            patch(
+                "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+                side_effect=_mock_ssh_ok,
+            ),
         ):
             result = handler.handle(
                 session_id="sess-nogit",
@@ -178,11 +189,15 @@ class TestInfraHealthGatherError:
             "2026-04-15T10:00:00Z SUCCESS seed-infisical exit=0\n"
         )
 
-        # Patch _ssh directly so git subprocess calls are unaffected
-        with patch(
-            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
-            side_effect=InfraHealthGatherError(
-                "SSH check 'infisical' timed out after 15s"
+        # Patch _ssh directly so git subprocess calls are unaffected.
+        # validate_infra_sources is bypassed: this test exercises _gather_infra_health.
+        with (
+            patch(_PATCH_VALIDATE),
+            patch(
+                "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+                side_effect=InfraHealthGatherError(
+                    "SSH check 'infisical' timed out after 15s"
+                ),
             ),
         ):
             handler = HandlerHandoffEffect()
@@ -206,7 +221,7 @@ class TestInfraHealthGatherError:
             "2026-04-15T10:00:00Z SUCCESS seed-infisical exit=0\n"
         )
 
-        def _mock_ssh(remote_cmd: str, check_name: str) -> str:
+        def _mock_ssh(remote_cmd: str, check_name: str, ssh_host: str = "") -> str:
             if check_name == "infisical":
                 return "infisical.Up 2 hours"
             if check_name == "deploy-agent":
@@ -220,9 +235,12 @@ class TestInfraHealthGatherError:
             return "unknown"
 
         handler = HandlerHandoffEffect()
-        with patch(
-            "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
-            side_effect=_mock_ssh,
+        with (
+            patch(_PATCH_VALIDATE),
+            patch(
+                "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect._ssh",
+                side_effect=_mock_ssh,
+            ),
         ):
             result = handler.handle(
                 session_id="sess-infra",
