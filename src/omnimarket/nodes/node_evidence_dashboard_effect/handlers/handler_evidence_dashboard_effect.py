@@ -5,6 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
+
+import yaml
 
 from omnimarket.nodes.node_evidence_dashboard_effect.models.model_dashboard_projection_event import (
     DashboardSeverity,
@@ -13,29 +17,31 @@ from omnimarket.nodes.node_evidence_dashboard_effect.models.model_dashboard_proj
     ModelDashboardProjectionEvent,
 )
 
-SOURCE_TOPICS: tuple[str, ...] = (
-    "onex.cmd.omnimarket.evidence-pipeline-start.v1",
-    "onex.evt.omnimarket.evidence-collected.v1",
-    "onex.evt.omnimarket.evidence-extracted.v1",
-    "onex.evt.omnimarket.evidence-validated.v1",
-    "onex.evt.omnimarket.occ-pr-created.v1",
-    "onex.evt.omnimarket.evidence-pipeline-completed.v1",
-    "onex.cmd.omnimarket.readiness-gate-start.v1",
-    "onex.evt.omnimarket.readiness-gate-completed.v1",
-    "onex.evt.omnimarket.readiness-gate-blocked.v1",
-)
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+_START_SUFFIX = "-start"
+_STARTED_SUFFIX = "-started"
+_COMPLETED_SUFFIX = "-completed"
+_BLOCKED_SUFFIX = "-blocked"
 
-_TOPIC_TO_EVENT_TYPE: dict[str, str] = {
-    "onex.cmd.omnimarket.evidence-pipeline-start.v1": "evidence-pipeline-started",
-    "onex.evt.omnimarket.evidence-collected.v1": "evidence-collected",
-    "onex.evt.omnimarket.evidence-extracted.v1": "evidence-extracted",
-    "onex.evt.omnimarket.evidence-validated.v1": "evidence-validated",
-    "onex.evt.omnimarket.occ-pr-created.v1": "occ-pr-created",
-    "onex.evt.omnimarket.evidence-pipeline-completed.v1": "evidence-pipeline-completed",
-    "onex.cmd.omnimarket.readiness-gate-start.v1": "readiness-gate-started",
-    "onex.evt.omnimarket.readiness-gate-completed.v1": "readiness-gate-completed",
-    "onex.evt.omnimarket.readiness-gate-blocked.v1": "readiness-gate-blocked",
-}
+
+@lru_cache(maxsize=1)
+def _source_topics_from_contract() -> tuple[str, ...]:
+    with _CONTRACT_PATH.open(encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle)
+    if not isinstance(loaded, dict):
+        raise ValueError(f"invalid contract YAML at {_CONTRACT_PATH}")
+    event_bus = loaded.get("event_bus")
+    if not isinstance(event_bus, dict):
+        raise ValueError("contract missing event_bus mapping")
+    topics = event_bus.get("subscribe_topics")
+    if not isinstance(topics, list) or not all(
+        isinstance(topic, str) for topic in topics
+    ):
+        raise ValueError("contract event_bus.subscribe_topics must be a string list")
+    return tuple(topics)
+
+
+SOURCE_TOPICS = _source_topics_from_contract()
 
 _NORMALIZATION: dict[str, tuple[DashboardStage, DashboardStatus, DashboardSeverity]] = {
     "evidence-pipeline-started": ("TRIGGERED", "IN_FLIGHT", "INFO"),
@@ -67,7 +73,7 @@ class HandlerEvidenceDashboardEffect:
             payload.pop("_event_type", None)
             or payload.get("event_type")
             or payload.get("source_event_type")
-            or _TOPIC_TO_EVENT_TYPE.get(source_topic)
+            or _event_type_from_topic(source_topic)
             or "unknown"
         )
         source_event_type = str(raw_event_type)
@@ -153,6 +159,18 @@ def _source_event_hash(
         separators=(",", ":"),
     )
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _event_type_from_topic(source_topic: str) -> str | None:
+    parts = source_topic.split(".")
+    if len(parts) < 5:
+        return None
+    event_name = parts[-2]
+    if event_name.endswith(_START_SUFFIX):
+        return event_name.removesuffix(_START_SUFFIX) + _STARTED_SUFFIX
+    if event_name.endswith(_COMPLETED_SUFFIX) or event_name.endswith(_BLOCKED_SUFFIX):
+        return event_name
+    return event_name
 
 
 def _lifecycle_state(status: DashboardStatus) -> str:
