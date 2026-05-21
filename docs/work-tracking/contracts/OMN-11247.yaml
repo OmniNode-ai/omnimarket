@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11247"
+title: "Publish runtime-ready contract registration events"
+summary: >
+  Fixes node_contract_registry to include contract_yaml and event_type: registered
+  on validated contract registration events, propagating deployment metadata needed
+  by the runtime dynamic-contract listener in omnibase_infra (PR #1655).
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+evidence_requirements:
+  - kind: "automated"
+    description: "Focused contract registry handler unit tests pass."
+    command: "uv run pytest tests/unit/nodes/test_node_contract_registry/test_contract_registry_handler.py -q"
+  - kind: "manual"
+    description: >
+      Post-merge deploy validation must confirm the deployed runtime image can
+      import the updated handler and that registration events include contract_yaml.
+    command: 'printf "%s\n" "deploy validation deferred to post-merge; run: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry import ContractRegistryHandler; print(ContractRegistryHandler.__name__)\"'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused contract registry handler tests pass with updated event payload shape."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/test_node_contract_registry/test_contract_registry_handler.py -q"
+  - id: "dod-deploy"
+    description: >
+      Runtime handler change. No live deploy, runtime restart, Kafka mutation, or .201
+      mutation was performed in this PR. Post-merge deploy validation must import the
+      updated handler in the deployed runtime container.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'printf "%s\n" "deploy validation deferred to post-merge; run: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c \"from omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry import ContractRegistryHandler; print(ContractRegistryHandler.__name__)\"'

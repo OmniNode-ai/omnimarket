@@ -33,6 +33,11 @@ class ModelContractRegistrationResult(BaseModel):
     contract_hash: str
     correlation_id: UUID
     status: EnumMaterializationStatus
+    event_type: str = "registered"
+    contract_yaml: str = ""
+    node_version: dict[str, int] = Field(default_factory=dict)
+    deployer_id: str = ""
+    target_profile: str = ""
     reason: EnumMaterializationRejection | None = None
     stored: bool = False
     published_topic: str = ""

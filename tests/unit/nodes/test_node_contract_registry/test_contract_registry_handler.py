@@ -68,7 +68,11 @@ def _make_handler(**kwargs: Any) -> ContractRegistryHandler:
 def test_valid_contract_materialized() -> None:
     publisher = MagicMock()
     handler = _make_handler(publisher=publisher)
-    request = _make_request()
+    request = _make_request(
+        node_version={"major": 0, "minor": 1, "patch": 0},
+        deployer_id="codex-integration-pass",
+        target_profile="stability",
+    )
 
     result = handler.handle(request)
 
@@ -79,6 +83,13 @@ def test_valid_contract_materialized() -> None:
     topic, payload = publisher.publish.call_args[0]
     assert topic == "onex.evt.platform.node-registration.v1"
     assert payload["node_name"] == "node_example"
+    assert payload["event_type"] == "registered"
+    assert payload["contract_yaml"] == _VALID_CONTRACT_YAML
+    assert payload["contract_hash"] == _sha256(_VALID_CONTRACT_YAML)
+    assert payload["correlation_id"] == str(request.correlation_id)
+    assert payload["node_version"] == {"major": 0, "minor": 1, "patch": 0}
+    assert payload["deployer_id"] == "codex-integration-pass"
+    assert payload["target_profile"] == "stability"
 
 
 @pytest.mark.unit
