@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11278"
+title: "Create node_session_phase_evaluator (COMPUTE) in omnimarket"
+summary: >
+  Pure deterministic COMPUTE node that evaluates session phase exit conditions
+  and budget status. Receives ModelPhaseEvaluationRequest (phase_name,
+  max_duration_minutes, elapsed_minutes, exit_condition_statuses,
+  halt_threshold_pct) and returns ModelPhaseEvaluation with action
+  (no_action | budget_warning | transition_required | halt_required),
+  reason, next_phase, and budget_elapsed_pct. No I/O, no side effects,
+  no env reads, no network calls.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "20 unit tests pass across all 4 action types."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_session_phase_evaluator/ -v -q"
+  - id: "dod-deploy-gate"
+    description: >
+      Pure COMPUTE node — no live deploy, runtime restart, or .201 mutation
+      required pre-merge. Deploy validation is a post-merge import smoke
+      through the node entry point.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          echo deploy && uv run python - <<'PY'
+          from omnimarket.nodes.node_session_phase_evaluator import (
+              HandlerSessionPhaseEvaluator,
+              ModelPhaseEvaluation,
+              ModelPhaseEvaluationRequest,
+          )
+          req = ModelPhaseEvaluationRequest(
+              phase_name="planning",
+              max_duration_minutes=60,
+              elapsed_minutes=30.0,
+              exit_condition_statuses={},
+          )
+          result = HandlerSessionPhaseEvaluator().handle(req)
+          assert result.action == "no_action"
+          assert result.budget_elapsed_pct == 50
+          print("smoke ok")
+          PY
