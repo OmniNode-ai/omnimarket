@@ -83,6 +83,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_int
 
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
@@ -90,11 +91,6 @@ _TASK_TEMPERATURE: dict[str, float] = {
     "document": 0.5,
     "research": 0.7,
 }
-
-# Approximate Claude pricing for savings estimation (Task 11, OMN-7040)
-# Claude Sonnet 3.5: ~$3/M input, ~$15/M output tokens
-_CLAUDE_INPUT_PRICE_PER_TOKEN: float = 3.0 / 1_000_000
-_CLAUDE_OUTPUT_PRICE_PER_TOKEN: float = 15.0 / 1_000_000
 
 # Valid state transitions: from_state -> set of valid to_states
 # Note: ROUTED -> ROUTED self-loop (OMN-10794) supports the schema-compliance
@@ -479,10 +475,10 @@ class HandlerDelegationWorkflow:
             compliance_attempts=compliance_attempts,
         )
 
-        # Estimate Claude cost for savings comparison (Task 11)
-        estimated_claude_cost = (
-            workflow.inference_prompt_tokens * _CLAUDE_INPUT_PRICE_PER_TOKEN
-            + workflow.inference_completion_tokens * _CLAUDE_OUTPUT_PRICE_PER_TOKEN
+        # Estimate Claude baseline cost for savings comparison (OMN-11301)
+        estimated_claude_cost = estimate_baseline_cost_usd(
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
         )
 
         # Backward-compatible task-delegated.v1 event for omnidash (Task 12)
@@ -502,6 +498,7 @@ class HandlerDelegationWorkflow:
             llm_call_id=workflow.inference_llm_call_id,
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
+            pricing_manifest_version=get_manifest_version_int(),
         )
 
         events: list[BaseModel] = []
@@ -514,7 +511,7 @@ class HandlerDelegationWorkflow:
                     payload=delegation_result,
                 )
             )
-            # Baseline comparison for savings pipeline (Task 11)
+            # Baseline comparison for savings pipeline (OMN-11301)
             events.append(
                 ModelBaselineIntent(
                     correlation_id=cid,

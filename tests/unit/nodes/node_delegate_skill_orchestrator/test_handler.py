@@ -24,6 +24,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.pricing import estimate_baseline_cost_usd
 
 
 @pytest.fixture
@@ -208,7 +209,9 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     assert response.metrics.total_tokens == 46
     assert response.metrics.tokens_to_compliance == 46
     assert response.metrics.compliance_attempts == 1
-    assert response.metrics.cost_savings_usd == 0.000546
+    assert response.metrics.cost_savings_usd == round(
+        estimate_baseline_cost_usd(prompt_tokens=12, completion_tokens=34), 6
+    )
 
 
 @pytest.mark.unit
@@ -242,7 +245,9 @@ async def test_handler_maps_scored_failed_delegation_terminal() -> None:
     assert response.metrics.total_tokens == 85
     assert response.metrics.tokens_to_compliance == 85
     assert response.metrics.compliance_attempts == 1
-    assert response.metrics.cost_savings_usd == 0.000459
+    assert response.metrics.cost_savings_usd == round(
+        estimate_baseline_cost_usd(prompt_tokens=68, completion_tokens=17), 6
+    )
 
 
 @pytest.mark.unit
