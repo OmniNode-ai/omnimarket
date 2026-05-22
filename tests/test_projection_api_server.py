@@ -18,8 +18,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
-from urllib.parse import urlparse
 
+import pytest
 from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionTableConfig
@@ -168,30 +168,17 @@ def _with_pool(
 
 
 class TestPostgresDsn:
-    def test_dsn_defaults_to_omnibase_infra_database(self, monkeypatch) -> None:
-        monkeypatch.setenv("POSTGRES_PASSWORD", "pw")
-        monkeypatch.delenv("POSTGRES_HOST", raising=False)
-        monkeypatch.delenv("POSTGRES_PORT", raising=False)
-        monkeypatch.delenv("POSTGRES_DB", raising=False)
+    def test_dsn_requires_contract_db_url(self, monkeypatch) -> None:
+        monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
 
-        parsed = urlparse(_dsn())
+        with pytest.raises(RuntimeError, match="OMNIBASE_INFRA_DB_URL is required"):
+            _dsn()
 
-        assert parsed.scheme == "postgresql"
-        assert parsed.username == "postgres"
-        assert parsed.password == "pw"
-        assert parsed.path == "/omnibase_infra"
+    def test_dsn_uses_contract_db_url(self, monkeypatch) -> None:
+        expected = "postgresql://projection:pw@db.internal:15436/omnibase_infra"
+        monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", expected)
 
-    def test_dsn_honors_postgres_db_override(self, monkeypatch) -> None:
-        monkeypatch.setenv("POSTGRES_PASSWORD", "pw")
-        monkeypatch.setenv("POSTGRES_HOST", "db.internal")
-        monkeypatch.setenv("POSTGRES_PORT", "15436")
-        monkeypatch.setenv("POSTGRES_DB", "omnidash_analytics")
-
-        parsed = urlparse(_dsn())
-
-        assert parsed.hostname == "db.internal"
-        assert parsed.port == 15436
-        assert parsed.path == "/omnidash_analytics"
+        assert _dsn() == expected
 
 
 # ---------------------------------------------------------------------------
