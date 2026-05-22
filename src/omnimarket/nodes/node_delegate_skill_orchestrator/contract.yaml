@@ -19,6 +19,44 @@ input_model:
   module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
   description: Consumer-facing delegation request with prompt, task_type, source, and metadata.
 
+inputs:
+  prompt:
+    type: string
+    required: true
+    description: User prompt to delegate.
+  task_type:
+    type: string
+    required: true
+    description: Task classification for routing.
+  source:
+    type: string
+    required: true
+    description: Registered adapter source.
+  cwd:
+    type: string
+    required: false
+    description: Working directory context.
+  wait:
+    type: boolean
+    required: false
+    description: Wait for synchronous result.
+  max_tokens:
+    type: integer
+    required: false
+    description: Maximum tokens for delegated execution.
+  metadata:
+    type: object
+    required: false
+    description: Adapter-supplied metadata.
+  quality_contract_mode:
+    type: string
+    required: false
+    description: Request-level acceptance criteria merge mode.
+  acceptance_criteria:
+    type: array
+    required: false
+    description: Request-level quality criteria.
+
 output_model:
   name: ModelDelegateSkillResponse
   module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response
