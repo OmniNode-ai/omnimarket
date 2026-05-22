@@ -37,6 +37,12 @@ class ProjectionTableConfig(BaseModel):
     columns: tuple[str, ...] | tuple[Literal["*"]]
     order_by: str | None = None  # None means ordering is undefined
     freshness_column: str | None = None  # None means freshness is unknown
+    cursor_column: str | None = None
+    last_event_id_column: str | None = None
+    last_ingest_sequence_column: str | None = None
+    freshness_state_column: str | None = None
+    degraded_reason_column: str | None = None
+    observed_at_column: str | None = None
     limit: int = 100
     source_contract: str = ""  # node name for tracing
     status: ProjectionStatus = ProjectionStatus.OK

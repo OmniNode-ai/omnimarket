@@ -60,6 +60,12 @@ def _make_cfg(
     columns: tuple[str, ...] = ("col_a", "col_b"),
     order_by: str | None = "col_a DESC",
     freshness_column: str | None = "col_a",
+    cursor_column: str | None = None,
+    last_event_id_column: str | None = None,
+    last_ingest_sequence_column: str | None = None,
+    freshness_state_column: str | None = None,
+    degraded_reason_column: str | None = None,
+    observed_at_column: str | None = None,
     status: ProjectionStatus = ProjectionStatus.OK,
     degraded_reason: str = "",
 ) -> ProjectionTableConfig:
@@ -70,6 +76,12 @@ def _make_cfg(
         columns=columns,
         order_by=order_by,
         freshness_column=freshness_column,
+        cursor_column=cursor_column,
+        last_event_id_column=last_event_id_column,
+        last_ingest_sequence_column=last_ingest_sequence_column,
+        freshness_state_column=freshness_state_column,
+        degraded_reason_column=degraded_reason_column,
+        observed_at_column=observed_at_column,
         limit=100,
         source_contract="node_test",
         status=status,
@@ -179,6 +191,71 @@ class TestProjectionEndpointDynamic:
         assert entry["freshness_column"] == "col_a"
         assert entry["limit"] == 100
         assert entry["source_contract"] == "node_test"
+
+    def test_evidence_pipeline_endpoint_returns_projection_envelope(self) -> None:
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.evidence_pipeline.stages.v1",
+            table="evidence_dashboard_projection",
+            columns=(
+                "projection_cursor",
+                "last_event_id",
+                "last_ingest_sequence",
+                "freshness_state",
+                "degraded_reason",
+                "observed_at",
+            ),
+            order_by="last_ingest_sequence ASC",
+            freshness_column="observed_at",
+            cursor_column="projection_cursor",
+            last_event_id_column="last_event_id",
+            last_ingest_sequence_column="last_ingest_sequence",
+            freshness_state_column="freshness_state",
+            degraded_reason_column="degraded_reason",
+            observed_at_column="observed_at",
+        )
+        rows = [
+            {
+                "projection_cursor": "cursor-1",
+                "last_event_id": "evt-1",
+                "last_ingest_sequence": 10,
+                "freshness_state": "CURRENT",
+                "degraded_reason": None,
+                "observed_at": "2026-05-21T23:00:00Z",
+            }
+        ]
+        pool = _make_pool(rows, latest_ts="2026-05-21T23:00:00Z")
+
+        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+            resp = client.get("/v1/evidence-pipeline/stages")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["projection_cursor"] == "cursor-1"
+        assert body["last_event_id"] == "evt-1"
+        assert body["last_ingest_sequence"] == 10
+        assert body["freshness_state"] == "CURRENT"
+        assert body["version"] == "1.0.0"
+        assert body["sse_authority"] == "advisory_only"
+
+    def test_evidence_pipeline_sse_endpoint_is_separate_from_events_snapshot(
+        self,
+    ) -> None:
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.evidence_pipeline.live_events.v1",
+            table="evidence_correlation_trace_projection",
+            columns=("projection_cursor", "last_event_id"),
+            cursor_column="projection_cursor",
+            last_event_id_column="last_event_id",
+        )
+        pool = _make_pool([])
+
+        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+            snapshot_resp = client.get("/v1/evidence-pipeline/events")
+            stream_resp = client.get("/v1/evidence-pipeline/events/stream")
+
+        assert snapshot_resp.status_code == 200
+        assert stream_resp.status_code == 200
+        assert "projection_state_required" in stream_resp.text
 
     def test_query_failure_returns_503_degraded(self) -> None:
         """A DB query error during serving returns 503 with reason, not 500."""
