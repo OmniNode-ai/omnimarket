@@ -75,5 +75,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.golden-chain-generation-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.golden-chain-generation-completed.v1
+
 metadata:
   transport_type: kafka

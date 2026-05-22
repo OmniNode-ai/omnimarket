@@ -74,5 +74,9 @@ event_bus:
     - onex.evt.omnimarket.test-generation-completed.v1
     - onex.evt.omnimarket.test-generation-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.test-generation-completed.v1
+  - onex.evt.omnimarket.test-generation-failed.v1
+
 metadata:
   transport_type: kafka
