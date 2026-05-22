@@ -83,8 +83,8 @@ def test_contract_declares_cross_repo_dependencies() -> None:
 @pytest.mark.unit
 def test_contract_handler_module_resolves() -> None:
     contract = _load_contract()
-    handler = contract["handler_routing"]["handlers"][0]
-    parts = handler["handler_module"].split(".")
+    handler = contract["handler"]
+    parts = handler["module"].split(".")
     module_file = (
         Path(__file__).resolve().parents[4] / "src" / Path(*parts)
     ).with_suffix(".py")

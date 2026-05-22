@@ -309,13 +309,11 @@ def test_handler_constructs_without_dispatch_port() -> None:
 
 
 @pytest.mark.unit
-async def test_handler_with_no_port_fails_closed_on_dispatch() -> None:
-    handler = HandlerDelegateSkill()
-    request = ModelDelegateSkillRequest(
-        prompt="Test",
-        task_type="test",
-        source="claude-code",
+async def test_handler_with_no_port_uses_direct_curl_dispatch() -> None:
+    """Default port is DirectCurlDelegationDispatchPort (not fail-closed)."""
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
+        DirectCurlDelegationDispatchPort,
     )
-    response = await handler.handle(request)
-    assert response.status == "failed"
-    assert "no dispatch port wired" in response.error_message.lower()
+
+    handler = HandlerDelegateSkill()
+    assert isinstance(handler._dispatch_port, DirectCurlDelegationDispatchPort)

@@ -187,13 +187,16 @@ class HandlerDelegateSkill:
         *,
         dispatch_port: ProtocolDelegationDispatchPort | None = None,
     ) -> None:
-        self._dispatch_port: ProtocolDelegationDispatchPort = (
-            dispatch_port
-            if dispatch_port is not None
-            else RuntimeDelegationDispatchPort(event_bus=event_bus)
-            if event_bus is not None
-            else _UnwiredDelegationDispatchPort()
-        )
+        if dispatch_port is not None:
+            self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
+        elif event_bus is not None:
+            self._dispatch_port = RuntimeDelegationDispatchPort(event_bus=event_bus)
+        else:
+            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_curl_dispatch import (
+                DirectCurlDelegationDispatchPort,
+            )
+
+            self._dispatch_port = DirectCurlDelegationDispatchPort()
 
     async def handle(
         self, request: ModelDelegateSkillRequest
