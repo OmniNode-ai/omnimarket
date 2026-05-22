@@ -34,13 +34,12 @@ Models::
 Handler Integration::
 
     import os
-    from omnibase_core.container import ModelONEXContainer
     from omnimemory.handlers import (
         HandlerSubscription,
         ModelHandlerSubscriptionConfig,
     )
 
-    container = ModelONEXContainer()
+    # container is injected by the DI resolver — never instantiated here
     config = ModelHandlerSubscriptionConfig(
         db_dsn=os.environ["OMNIMEMORY_DB_URL"],
         valkey_host=os.environ["VALKEY_HOST"],

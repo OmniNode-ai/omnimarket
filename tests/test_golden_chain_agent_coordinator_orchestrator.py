@@ -116,3 +116,40 @@ class TestAgentCoordinatorOrchestratorGoldenChain:
                 topic="y",
                 unknown_field="bad",
             )
+
+    def test_package_import_does_not_create_container(self) -> None:
+        """Regression: importing the package must not instantiate ModelONEXContainer."""
+        import importlib
+        import sys
+        from unittest.mock import patch
+
+        mods_to_remove = [
+            k for k in sys.modules if "node_agent_coordinator_orchestrator" in k
+        ]
+        for mod in mods_to_remove:
+            del sys.modules[mod]
+
+        instantiation_count = 0
+
+        try:
+            from omnibase_core import container as _c_mod
+
+            original_cls = _c_mod.ModelONEXContainer
+
+            class _TrackingContainer(original_cls):  # type: ignore[misc]
+                def __init__(self, *args: object, **kwargs: object) -> None:
+                    nonlocal instantiation_count
+                    instantiation_count += 1
+                    super().__init__(*args, **kwargs)
+
+            with patch.object(_c_mod, "ModelONEXContainer", _TrackingContainer):
+                importlib.import_module(
+                    "omnimarket.nodes.node_agent_coordinator_orchestrator"
+                )
+        except Exception:
+            pass  # import errors are a separate concern
+
+        assert instantiation_count == 0, (
+            "importing node_agent_coordinator_orchestrator must not instantiate"
+            " ModelONEXContainer"
+        )
