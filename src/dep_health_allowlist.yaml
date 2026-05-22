@@ -124,3 +124,23 @@ allowlist:
     owner_repo: omnimarket
     planned_subscriber: observability_platform
     expires_at: "2026-11-15"
+
+  # --- golden-chain-generation (context pack pipeline, OMN-11680) ---
+  # Published by: node_golden_chain_generator (omnimarket) — Milestone 2.2
+  # Intended consumer: node_context_pack_builder (omnimarket, planned in OMN-11674 Milestone 3.2)
+  # Status: genuinely_unwired — consumer not yet implemented; pipeline is being built
+  #   incrementally. node_golden_chain_generator is the first node in the chain.
+  # Expires: 2026-08-15 — wire node_context_pack_builder
+  - topic: "onex.evt.omnimarket.golden-chain-generation-completed.v1"
+    reason: "New context pack pipeline node (OMN-11680); consumer node_context_pack_builder planned in OMN-11674 Milestone 3.2 but not yet implemented."
+    owner_repo: omnimarket
+    planned_subscriber: node_context_pack_builder
+    expires_at: "2026-08-15"
+
+  # Published trigger for node_golden_chain_generator — subscriber is this node.
+  # Allowlisted because the producer (node_test_generator, planned OMN-11679) is not yet merged.
+  - topic: "onex.cmd.omnimarket.golden-chain-generation-requested.v1"
+    reason: "New context pack pipeline command topic (OMN-11680); producer node_test_generator planned in OMN-11679 but not yet merged."
+    owner_repo: omnimarket
+    planned_subscriber: node_golden_chain_generator
+    expires_at: "2026-08-15"
