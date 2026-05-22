@@ -1,0 +1,69 @@
+---
+name: node_context_pack_builder_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic assembly of ModelContextPack from resolved context
+  artifacts and a validated context profile. The node performs no I/O and
+  treats cache hits as external advisory metadata, not compute truth.
+
+handler:
+  module: omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder
+  class: HandlerContextPackBuilder
+  input_model: omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_request.ModelContextPackBuilderRequest
+  output_model: omnimarket.nodes.node_context_pack_builder_compute.models.model_context_pack_builder_result.ModelContextPackBuilderResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+inputs:
+  contract_hash:
+    type: str
+    required: true
+  generated_at:
+    type: str
+    required: true
+    description: Caller-supplied timezone-aware ISO8601 UTC timestamp.
+  profile:
+    type: object
+    required: true
+  artifacts:
+    type: array
+    required: false
+
+outputs:
+  status:
+    type: str
+    enum: [ok, failed]
+  context_pack:
+    type: object
+    required: false
+    nullable: true
+  pack_hash:
+    type: str
+    required: false
+    nullable: true
+  failure_class:
+    type: str
+    required: false
+    nullable: true
+  errors:
+    type: array
+  warnings:
+    type: array
+
+terminal_event: onex.evt.omnimarket.context-pack-build-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-pack-build-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-pack-build-completed.v1
+    - onex.evt.omnimarket.context-pack-build-failed.v1
+
+metadata:
+  transport_type: kafka
