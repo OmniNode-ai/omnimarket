@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from omnibase_core.runtime.runtime_local_adapter import HandlerBusAdapter
+from omnibase_infra.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     TOPIC_COMPLETED,
@@ -94,7 +94,7 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
 
 
 class _TypedHandlerWrapper:
-    """Bridge HandlerBusAdapter kwargs into the orchestrator's typed command API."""
+    """Bridge local runtime adapter kwargs into the orchestrator's typed command API."""
 
     def __init__(self, handler: HandlerPrLifecycleOrchestrator) -> None:
         self._handler = handler
@@ -137,7 +137,7 @@ async def test_event_bus_round_trip_reaches_terminal_topic(
             fix=_MockFix(),
             event_bus=integration_event_bus,
         )
-        adapter = HandlerBusAdapter(
+        adapter = LocalRuntimeBusAdapter(
             handler=_TypedHandlerWrapper(orchestrator),
             handler_name="pr-lifecycle-orchestrator",
             input_model_cls=ModelPrLifecycleStartCommand,

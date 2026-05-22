@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_core.runtime.runtime_local_adapter import HandlerBusAdapter
+from omnibase_infra.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
 
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_review_orchestrator import (
     ModelInferenceAdapter,
@@ -150,7 +150,7 @@ async def test_handler_bus_adapter_routes_start_command_envelope(
     adapter = StubAdapter()
     handler = HandlerWorkflowRunner()
     handler.set_adapter(adapter)
-    bus_adapter = HandlerBusAdapter(
+    bus_adapter = LocalRuntimeBusAdapter(
         handler=handler,
         handler_name="HandlerWorkflowRunner",
         input_model_cls=ModelHostileReviewerStartCommand,
