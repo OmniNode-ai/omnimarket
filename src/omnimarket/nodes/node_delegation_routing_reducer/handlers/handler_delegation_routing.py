@@ -44,13 +44,6 @@ from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
 import yaml
-from omnibase_core.enums.enum_agent_capability import EnumAgentCapability
-from omnibase_core.enums.enum_invocation_kind import EnumInvocationKind
-from omnibase_core.models.common.model_schema_value import ModelSchemaValue
-from omnibase_core.models.delegation.model_invocation_command import (
-    ModelInvocationCommand,
-)
-from omnibase_core.models.delegation.model_routing_rule import ModelRoutingRule
 from omnibase_infra.enums import EnumInfraTransportType
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.models.errors.model_infra_error_context import (
@@ -492,40 +485,6 @@ def _definition_of_done_checks(
     )
 
 
-def resolve_invocation_command(
-    *,
-    rules: tuple[ModelRoutingRule, ...],
-    capability: EnumAgentCapability,
-    payload: dict[str, object],
-    task_id: UUID,
-    correlation_id: UUID,
-) -> ModelInvocationCommand:
-    """Resolve a capability to a typed invocation command.
-
-    Part 1 supports AGENT rules only. MODEL dispatch remains deferred to Part 2.
-    """
-    for rule in rules:
-        if rule.capability is not capability:
-            continue
-        if rule.invocation_kind is EnumInvocationKind.MODEL:
-            raise NotImplementedError("MODEL deferred to Part 2")
-        return ModelInvocationCommand(
-            task_id=task_id,
-            correlation_id=correlation_id,
-            invocation_kind=rule.invocation_kind,
-            agent_protocol=rule.agent_protocol,
-            model_backend=rule.model_backend,
-            target_ref=rule.target_ref,
-            payload={
-                key: value
-                if isinstance(value, ModelSchemaValue)
-                else ModelSchemaValue.from_value(value)
-                for key, value in payload.items()
-            },
-        )
-    raise LookupError(f"no routing rule for capability={capability.value}")
-
-
 def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -637,4 +596,4 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     raise ProtocolConfigurationError(msg, context=context)
 
 
-__all__: list[str] = ["_get_contract_model_ref", "delta", "resolve_invocation_command"]
+__all__: list[str] = ["_get_contract_model_ref", "delta"]

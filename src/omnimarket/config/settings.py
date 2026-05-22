@@ -36,46 +36,19 @@ flagged in Task 3 with ticketed annotations.
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-def load_env_from_parents() -> None:
-    """Walk up from this file looking for a ``.env`` and load it if present.
-
-    Local bootstrap code may call this before constructing ``Settings``.
-    Loading is best-effort and never raises —
-    in production the env is provided by the runtime, not by a checked-in
-    .env file. .env support exists for local dev only.
-    """
-    try:
-        from dotenv import load_dotenv
-    except ImportError:  # python-dotenv not installed → noop
-        return
-
-    current = Path(__file__).resolve().parent
-    for _ in range(10):
-        env_file = current / ".env"
-        if env_file.exists():
-            load_dotenv(env_file, override=False)
-            return
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
 
 
 class Settings(BaseSettings):
     """Typed configuration for omnimarket production code.
 
     Read from environment variables and pydantic's configured ``.env`` file.
-    Parent-directory ``.env`` discovery is opt-in through
-    ``load_env_from_parents()``. All defaults are empty / zero / false — fields
-    are required only when their service is enabled. Use
-    ``validate_required_services()`` after construction to get a structured
-    list of missing-required errors before starting a service.
+    All defaults are empty / zero / false — fields are required only when
+    their service is enabled. Use ``validate_required_services()`` after
+    construction to get a structured list of missing-required errors before
+    starting a service.
     """
 
     model_config = SettingsConfigDict(

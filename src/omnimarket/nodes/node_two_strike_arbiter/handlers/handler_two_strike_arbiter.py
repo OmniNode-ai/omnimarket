@@ -13,7 +13,6 @@ All side effects are injectable for testing.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
@@ -62,33 +61,6 @@ class FrictionRecorder(Protocol):
         *,
         dry_run: bool,
     ) -> bool: ...
-
-
-class FileSystemDiagnosisWriter:
-    """Writes diagnosis markdown files to docs/ directory."""
-
-    def __init__(self, docs_dir: str = "docs") -> None:
-        self._docs_dir = docs_dir
-
-    def write_diagnosis(
-        self,
-        ticket_id: str,
-        content: str,
-        *,
-        dry_run: bool,
-    ) -> str | None:
-        if dry_run:
-            _log.info("dry_run: would write diagnosis for %s", ticket_id)
-            return f"(dry-run) docs/diagnosis-{ticket_id}.md"
-        date_str = datetime.now(tz=UTC).strftime("%Y-%m-%d")
-        filename = f"diagnosis-{ticket_id}-{date_str}.md"
-        dir_path = os.path.abspath(self._docs_dir)
-        os.makedirs(dir_path, exist_ok=True)
-        full_path = os.path.join(dir_path, filename)
-        with open(full_path, "w", encoding="utf-8") as fh:
-            fh.write(content)
-        _log.info("Wrote diagnosis: %s", full_path)
-        return full_path
 
 
 def _build_diagnosis_content(
@@ -225,7 +197,6 @@ class HandlerTwoStrikeArbiter:
 
 __all__: list[str] = [
     "DiagnosisWriter",
-    "FileSystemDiagnosisWriter",
     "FrictionRecorder",
     "HandlerTwoStrikeArbiter",
     "LinearUpdater",
