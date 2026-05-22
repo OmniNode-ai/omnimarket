@@ -2,7 +2,7 @@ name: Market Skill Baseline
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - "src/omnimarket/market_skill_baseline.py"
       - "src/omnimarket/nodes/**/contract.yaml"

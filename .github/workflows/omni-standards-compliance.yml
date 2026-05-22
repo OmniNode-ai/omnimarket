@@ -8,9 +8,9 @@ name: Omni* Ecosystem Standards Compliance
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'hotfix/**']
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   merge_group:
   workflow_dispatch:
 

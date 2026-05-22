@@ -39,7 +39,7 @@ name: PR Architectural Review
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     types: [opened, synchronize, reopened]
 
 permissions:
