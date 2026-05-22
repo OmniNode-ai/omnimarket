@@ -63,6 +63,7 @@ event_bus:
     - onex.evt.omniclaude.prompt-submitted.v1
     # Tool events
     - onex.evt.omniclaude.tool-executed.v1
+    - onex.cmd.omniintelligence.tool-content.v1
     # Routing events
     - onex.evt.omniclaude.routing-feedback.v1
     - onex.evt.omniclaude.routing-decision.v1
@@ -131,3 +132,6 @@ event_bus:
     # and cannot be listed here without failing the topic-naming lint. It is allowlisted
     # in dep_health_allowlist.yaml for UNDECLARED_TOPIC suppression (OMN-11061).
     - onex.evt.omniclaude.diagnostic-daemon-health.v1
+
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.tool-content.v1
