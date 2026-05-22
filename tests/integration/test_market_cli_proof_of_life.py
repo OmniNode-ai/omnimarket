@@ -139,6 +139,31 @@ exit 1
         )
     elif spec.smoke_kind == "local_review":
         command.append("--dry-run")
+    elif spec.smoke_kind == "delegate_skill":
+        command.extend(
+            [
+                "--prompt",
+                "Write exactly two plain-text sentences describing this delegation smoke.",
+                "--task-type",
+                "test",
+                "--source",
+                "codex",
+                "--source-file",
+                "tests/unit/adapters/claude_code/test_delegate_adapter.py",
+                "--working-directory",
+                str(Path.cwd()),
+                "--session-id",
+                "sess-market-cli-proof",
+                "--recipient",
+                "codex",
+                "--codex-sandbox-mode",
+                "workspace-write",
+                "--quality-contract-mode",
+                "replace_task_class",
+                "--acceptance-criterion",
+                "exactly_two_sentences",
+            ]
+        )
     elif spec.smoke_kind == "coderabbit_triage":
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir()
