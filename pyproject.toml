@@ -29,7 +29,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "omnibase_core>=0.40.1,<0.42.0",
+    "omnibase_core>=0.42.0,<0.43.0",
     "omnibase-compat==0.3.1",
     "omnibase-spi>=0.20.6,<0.22.0",
     "omnibase-infra>=0.34.2,<0.37.0",
@@ -76,6 +76,8 @@ node_aislop_sweep = "omnimarket.nodes.node_aislop_sweep"
 node_architectural_invariant_loop = "omnimarket.nodes.node_architectural_invariant_loop"
 node_authorize = "omnimarket.nodes.node_authorize"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
+node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
+node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
@@ -289,13 +291,14 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "30b2bde9753a285d63f7547791030929cffa8bae" }
 omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "3e34ab94fad0a9db1c3b59f0e100c5da659b0792" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
 
 [tool.uv]
 override-dependencies = [
-    "omnibase-core>=0.40.1,<0.42.0",
+    "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@30b2bde9753a285d63f7547791030929cffa8bae",
     "omnibase-spi>=0.20.6,<0.22.0",
     "omnibase-infra>=0.34.2,<0.37.0",
     "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@3e34ab94fad0a9db1c3b59f0e100c5da659b0792",

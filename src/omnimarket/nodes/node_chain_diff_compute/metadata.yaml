@@ -1,0 +1,19 @@
+name: node_chain_diff_compute
+version: "1.0.0"
+description: "Pure deterministic expected-vs-observed golden-chain comparison"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_chain_diff_compute: "omnimarket.nodes.node_chain_diff_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "golden-chain", "closeout", "deterministic"]
+pack: "pipeline"
+display_name: "Chain Diff Compute"
+node_role: "compute"

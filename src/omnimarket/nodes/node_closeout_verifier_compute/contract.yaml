@@ -1,0 +1,77 @@
+---
+name: node_closeout_verifier_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic closeout verifier. It compares expected and observed
+  chains, checks declared evidence kinds, requires verifier identity, and
+  returns a shared ModelCloseoutResult. Upstream effects are responsible for
+  reading files or capturing runtime evidence.
+
+handler:
+  module: omnimarket.nodes.node_closeout_verifier_compute.handlers.handler_closeout_verifier
+  class: HandlerCloseoutVerifier
+  input_model: omnimarket.nodes.node_closeout_verifier_compute.models.model_closeout_verify_request.ModelCloseoutVerifyRequest
+  output_model: omnibase_core.models.pipeline.model_closeout_result.ModelCloseoutResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+inputs:
+  expected_chain:
+    type: array
+    required: true
+  observed_chain:
+    type: array
+    required: false
+    nullable: true
+  evidence_artifacts:
+    type: array
+    required: false
+  required_evidence_kinds:
+    type: array
+    required: false
+  test_result:
+    type: bool
+    required: false
+    default: true
+  verifier_identity:
+    type: str
+    required: false
+    nullable: true
+
+outputs:
+  passed:
+    type: bool
+  chain_match:
+    type: bool
+  chain_diff:
+    type: object
+    nullable: true
+  evidence_artifacts:
+    type: array
+  missing_evidence:
+    type: array
+  test_result:
+    type: bool
+  failure_class:
+    type: str
+    nullable: true
+  verifier_identity:
+    type: str
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.closeout-verify-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.closeout-verify-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.closeout-verify-completed.v1
+
+metadata:
+  transport_type: kafka
