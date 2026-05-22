@@ -362,6 +362,7 @@ class TestDelegationHandler:
                 "cost_savings_usd": 0.009327,
                 "latency_ms": 1250,
             },
+            "pricing_manifest_version": 1,
             "_envelope": {
                 "envelope_timestamp": "2026-05-20T17:03:00Z",
             },
@@ -386,6 +387,7 @@ class TestDelegationHandler:
         assert 144 in args
         assert 593 in args
         assert 737 in args
+        assert args[-1] == 1
 
 
 class TestRegistrationHandler:
@@ -609,7 +611,7 @@ class TestSavingsHandler:
         assert args[1].isoformat() == "2026-05-20T17:05:00+00:00"
         assert args[2] == "f9243395-5cb6-4036-8ffb-39dd25547413"
         assert args[3] == _DELEGATE_SKILL_TEST_MODEL
-        assert args[4] == "claude-sonnet-4-6"
+        assert args[4] == "claude-opus-4-6"
         assert args[5] == Decimal("0.0")
         assert args[6] == Decimal("0.006003")
         assert args[7] == Decimal("0.006003")

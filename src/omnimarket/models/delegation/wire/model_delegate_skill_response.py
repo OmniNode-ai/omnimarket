@@ -22,6 +22,7 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
     compliance_attempts: int = Field(default=0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0.0)
     cost_savings_usd: float = Field(default=0.0, ge=0.0)
+    frontier_costs_usd: dict[str, float] = Field(default_factory=dict)
     latency_ms: int = Field(default=0, ge=0)
 
 
@@ -35,6 +36,8 @@ class ModelDelegateSkillResponse(BaseModel):
     task_type: str = Field(...)
     provider: str = Field(default="")
     model_name: str = Field(default="")
+    model_cloud_baseline: str = Field(default="")
+    pricing_manifest_version: int = Field(default=0, ge=0)
     response: str = Field(default="")
     quality_gate_passed: bool = Field(default=False)
     quality_score: float = Field(default=0.0, ge=0.0, le=1.0)

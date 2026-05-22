@@ -195,7 +195,12 @@ class LocalRuntimeDispatch:
         try:
             await self._persist_invocation(command, route)
             input_model = _import_attr(route.input_model_module, route.input_model_name)
-            payload = input_model.model_validate(command.payload)
+            payload_data = _payload_with_command_correlation_id(
+                input_model,
+                command.payload,
+                command.correlation_id,
+            )
+            payload = input_model.model_validate(payload_data)
             node_envelope = ModelEventEnvelope[Any](
                 payload=payload,
                 correlation_id=command.correlation_id,
@@ -491,6 +496,19 @@ def _completed_topic(value: object) -> str | None:
 def _import_attr(module_name: str, attr_name: str) -> Any:
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
+
+
+def _payload_with_command_correlation_id(
+    input_model: Any,
+    payload: dict[str, object],
+    correlation_id: UUID,
+) -> dict[str, object]:
+    model_fields = getattr(input_model, "model_fields", {})
+    if not isinstance(model_fields, dict) or "correlation_id" not in model_fields:
+        return payload
+    stamped = dict(payload)
+    stamped["correlation_id"] = str(correlation_id)
+    return stamped
 
 
 def _instantiate_handler(

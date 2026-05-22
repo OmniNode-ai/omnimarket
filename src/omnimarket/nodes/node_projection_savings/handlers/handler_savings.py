@@ -16,6 +16,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
 )
+from omnimarket.pricing import DEFAULT_BASELINE_MODEL
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -78,7 +79,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         )
         self._delegate_skill_baseline_model = str(
             self._contract.get("metadata", {}).get(
-                "delegate_skill_baseline_model", "claude-sonnet-4-6"
+                "delegate_skill_baseline_model", DEFAULT_BASELINE_MODEL
             )
         )
 

@@ -145,6 +145,7 @@ class ModelDelegationEventProjectionRow(BaseModel):
             tokens_output=metrics.output_tokens,
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=metrics.compliance_attempts,
+            pricing_manifest_version=event.pricing_manifest_version,
         )
 
 

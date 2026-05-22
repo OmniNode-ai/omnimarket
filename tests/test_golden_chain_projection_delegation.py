@@ -158,6 +158,7 @@ class TestDelegationProjection:
                 "cost_savings_usd": 0.009327,
                 "latency_ms": 1250,
             },
+            "pricing_manifest_version": 1,
         }
 
         result = HANDLER.handle(payload)
@@ -172,6 +173,7 @@ class TestDelegationProjection:
         assert row["tokens_input"] == 144
         assert row["tokens_output"] == 593
         assert row["cost_savings_usd"] == Decimal("0.009327")
+        assert row["pricing_manifest_version"] == 1
 
 
 class TestPromptResponseText:

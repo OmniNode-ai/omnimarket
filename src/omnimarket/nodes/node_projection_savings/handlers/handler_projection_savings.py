@@ -18,6 +18,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
 )
+from omnimarket.pricing import DEFAULT_BASELINE_MODEL
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "savings_estimates"
@@ -82,7 +83,7 @@ class HandlerProjectionSavings:
             contract: dict[str, Any] = yaml.safe_load(f)
         self._delegate_skill_baseline_model = str(
             contract.get("metadata", {}).get(
-                "delegate_skill_baseline_model", "claude-sonnet-4-6"
+                "delegate_skill_baseline_model", DEFAULT_BASELINE_MODEL
             )
         )
 

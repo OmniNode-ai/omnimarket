@@ -25,7 +25,12 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
     ProtocolDelegationEventBus,
     RuntimeDelegationDispatchPort,
 )
-from omnimarket.pricing import estimate_baseline_cost_usd
+from omnimarket.pricing import (
+    DEFAULT_BASELINE_MODEL,
+    estimate_baseline_cost_usd,
+    estimate_frontier_costs_usd,
+    get_manifest_version_int,
+)
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
@@ -125,6 +130,17 @@ def _estimate_claude_cost_savings(result: dict[str, object]) -> float:
     )
 
 
+def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
+    prompt_tokens = _as_int(result.get("input_tokens", result.get("prompt_tokens", 0)))
+    completion_tokens = _as_int(
+        result.get("output_tokens", result.get("completion_tokens", 0))
+    )
+    return estimate_frontier_costs_usd(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
+
+
 def _response_from_result(
     request: ModelDelegateSkillRequest, result: dict[str, object]
 ) -> ModelDelegateSkillResponse:
@@ -149,6 +165,15 @@ def _response_from_result(
         task_type=request.task_type,
         provider=str(result.get("delegated_to") or result.get("endpoint_url") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
+        model_cloud_baseline=str(
+            result.get("model_cloud_baseline")
+            or result.get("baseline_model")
+            or DEFAULT_BASELINE_MODEL
+        ),
+        pricing_manifest_version=_as_int(
+            result.get("pricing_manifest_version"),
+            default=get_manifest_version_int(),
+        ),
         response=str(result.get("content", "")),
         quality_gate_passed=bool(
             result.get("quality_gate_passed", result.get("quality_passed", False))
@@ -171,6 +196,7 @@ def _response_from_result(
                 result.get("cost_savings_usd"),
                 default=_estimate_claude_cost_savings(result),
             ),
+            frontier_costs_usd=_frontier_cost_estimates(result),
             latency_ms=_as_int(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),
