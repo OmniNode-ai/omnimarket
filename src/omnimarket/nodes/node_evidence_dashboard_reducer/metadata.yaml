@@ -20,4 +20,3 @@ dependencies: []
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["reducer", "projection", "evidence-pipeline", "dashboard", "OMN-11472", "OMN-11475"]
-
