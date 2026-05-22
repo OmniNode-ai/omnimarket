@@ -129,6 +129,7 @@ def test_canonical_command_fields_allowed_and_forwarded() -> None:
     result = handler.handle(request)
 
     assert result.status == EnumMaterializationStatus.MATERIALIZED
+    publisher.publish.assert_called_once()
     topic, payload = publisher.publish.call_args[0]
     assert topic == "onex.evt.platform.node-registration.v1"
     assert payload["registration_request_id"] == str(registration_request_id)

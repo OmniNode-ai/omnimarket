@@ -176,11 +176,14 @@ class ContractRegistryHandler:
         reason: EnumMaterializationRejection,
     ) -> ModelContractRegistrationResult:
         reject_topic = TOPIC_REGISTRATION_REJECTED
+        registration_request_id = _registration_request_id(request)
         result = ModelContractRegistrationResult(
             node_name=request.node_name,
             contract_hash=request.contract_hash,
             correlation_id=request.correlation_id,
             status=EnumMaterializationStatus.REJECTED,
+            event_type="rejected",
+            contract_yaml=request.contract_yaml,
             node_version=request.node_version,
             deployer_id=request.deployer_id,
             target_profile=request.target_profile,
@@ -193,9 +196,9 @@ class ContractRegistryHandler:
                 reject_topic,
                 {
                     **result.model_dump(mode="json"),
-                    "event_type": "rejected",
-                    "registration_request_id": _registration_request_id(request),
+                    "registration_request_id": registration_request_id,
                     "runtime_profile": request.target_profile,
+                    "materialization_result": result.status.value,
                 },
             )
         return result
