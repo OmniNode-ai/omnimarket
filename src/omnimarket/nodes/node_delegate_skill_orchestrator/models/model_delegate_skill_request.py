@@ -51,7 +51,27 @@ class ModelDelegateSkillRequest(BaseModel):
         ...,
         description="Registered adapter source.",
     )
-    cwd: str | None = Field(default=None, description="Working directory context.")
+    cwd: str | None = Field(default=None, description="Caller current directory.")
+    source_file_path: str | None = Field(
+        default=None,
+        description="File context for the delegation, if any.",
+    )
+    working_directory: str | None = Field(
+        default=None,
+        description="Worker working directory requested by the caller.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Session that originated the delegation request.",
+    )
+    recipient: str | None = Field(
+        default=None,
+        description="Requested delegation recipient surface.",
+    )
+    codex_sandbox_mode: str | None = Field(
+        default=None,
+        description="Codex sandbox mode requested by the caller.",
+    )
     wait: bool = Field(default=True, description="Wait for synchronous result.")
     max_tokens: int = Field(default=2048, gt=0, le=16384)
     correlation_id: UUID = Field(default_factory=uuid4)

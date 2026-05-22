@@ -80,6 +80,57 @@ async def test_handler_dispatches_and_returns_typed_response(
 
 
 @pytest.mark.unit
+async def test_handler_maps_source_file_without_reusing_cwd() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "ok",
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+        cwd="/caller/cwd",
+        source_file_path="src/example.py",
+        working_directory="/worker/repo",
+        session_id="sess-typed",
+        metadata={"session_id": "sess-metadata"},
+    )
+
+    response = await handler.handle(request)
+
+    assert response.status == "completed"
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["source_file_path"] == "src/example.py"
+    assert call_kwargs["source_session_id"] == "sess-typed"
+    assert call_kwargs["source_file_path"] != request.cwd
+
+
+@pytest.mark.unit
+async def test_handler_preserves_metadata_session_id_fallback() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "ok",
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+        source_file_path="src/example.py",
+        metadata={"session_id": "sess-metadata"},
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["source_session_id"] == "sess-metadata"
+
+
+@pytest.mark.unit
 async def test_handler_propagates_correlation_id(
     mock_dispatch_port: AsyncMock,
     event_bus: object,

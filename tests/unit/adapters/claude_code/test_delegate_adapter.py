@@ -35,11 +35,27 @@ def test_build_delegation_payload_includes_all_fields() -> None:
         task_type="test",
         source="claude-code",
         cwd="/path",
+        source_file_path="tests/example.py",
+        working_directory="/repo",
+        session_id="sess-1",
+        recipient="codex",
+        codex_sandbox_mode="workspace-write",
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=("exactly_two_sentences",),
+        metadata={"ticket": "OMN-11623"},
     )
     assert payload["prompt"] == "Write tests"
     assert payload["task_type"] == "test"
     assert payload["source"] == "claude-code"
     assert payload["cwd"] == "/path"
+    assert payload["source_file_path"] == "tests/example.py"
+    assert payload["working_directory"] == "/repo"
+    assert payload["session_id"] == "sess-1"
+    assert payload["recipient"] == "codex"
+    assert payload["codex_sandbox_mode"] == "workspace-write"
+    assert payload["quality_contract_mode"] == "replace_task_class"
+    assert payload["acceptance_criteria"] == ("exactly_two_sentences",)
+    assert payload["metadata"] == {"ticket": "OMN-11623"}
     assert "correlation_id" in payload
     # correlation_id must be a valid UUID string
     UUID(str(payload["correlation_id"]))
@@ -63,6 +79,17 @@ def test_build_delegation_payload_rejects_invalid_task_type() -> None:
             prompt="Test",
             task_type="invalid",
             source="claude-code",
+        )
+
+
+@pytest.mark.unit
+def test_build_delegation_payload_rejects_invalid_acceptance_criteria() -> None:
+    with pytest.raises(ValueError, match="unsupported acceptance criteria"):
+        build_delegation_payload(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+            acceptance_criteria=("semantic_magic",),
         )
 
 
@@ -126,6 +153,10 @@ def test_dispatch_sync_subscribes_to_failure_topic(
     assert captured["additional_response_topics"] == (
         ("onex.evt.omnimarket.delegate-skill-failed.v1",)
     )
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["quality_contract_mode"] == "extend_task_class"
+    assert payload["acceptance_criteria"] == ()
 
 
 @pytest.mark.unit
@@ -135,6 +166,13 @@ def test_compile_only_does_not_publish() -> None:
         prompt="Test",
         task_type="test",
         source="claude-code",
+        source_file_path="tests/example.py",
+        working_directory="/repo",
+        session_id="sess-1",
+        recipient="codex",
+        codex_sandbox_mode="workspace-write",
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=("plain_text_only",),
     )
     assert result["command_topic"] == "onex.cmd.omnimarket.delegate-skill.v1"
     assert result["terminal_events"]["success"] == (
@@ -146,6 +184,13 @@ def test_compile_only_does_not_publish() -> None:
     assert "correlation_id" in result
     UUID(str(result["correlation_id"]))
     assert result["payload"]["task_type"] == "test"
+    assert result["payload"]["source_file_path"] == "tests/example.py"
+    assert result["payload"]["working_directory"] == "/repo"
+    assert result["payload"]["session_id"] == "sess-1"
+    assert result["payload"]["recipient"] == "codex"
+    assert result["payload"]["codex_sandbox_mode"] == "workspace-write"
+    assert result["payload"]["quality_contract_mode"] == "replace_task_class"
+    assert result["payload"]["acceptance_criteria"] == ("plain_text_only",)
 
 
 @pytest.mark.unit
@@ -173,6 +218,20 @@ def test_cli_compile_only_returns_zero(capsys: pytest.CaptureFixture[str]) -> No
             "test",
             "--source",
             "claude-code",
+            "--source-file",
+            "tests/example.py",
+            "--working-directory",
+            "/repo",
+            "--session-id",
+            "sess-1",
+            "--recipient",
+            "codex",
+            "--codex-sandbox-mode",
+            "workspace-write",
+            "--quality-contract-mode",
+            "replace_task_class",
+            "--acceptance-criterion",
+            "exactly_two_sentences",
             "--compile-only",
         ]
     )
@@ -180,6 +239,13 @@ def test_cli_compile_only_returns_zero(capsys: pytest.CaptureFixture[str]) -> No
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] is True
     assert out["command_topic"] == "onex.cmd.omnimarket.delegate-skill.v1"
+    assert out["payload"]["source_file_path"] == "tests/example.py"
+    assert out["payload"]["working_directory"] == "/repo"
+    assert out["payload"]["session_id"] == "sess-1"
+    assert out["payload"]["recipient"] == "codex"
+    assert out["payload"]["codex_sandbox_mode"] == "workspace-write"
+    assert out["payload"]["quality_contract_mode"] == "replace_task_class"
+    assert out["payload"]["acceptance_criteria"] == ["exactly_two_sentences"]
 
 
 @pytest.mark.unit
@@ -210,6 +276,24 @@ def test_cli_rejects_invalid_task_type() -> None:
             "invalid",
             "--source",
             "claude-code",
+            "--compile-only",
+        ]
+    )
+    assert rc != 0
+
+
+@pytest.mark.unit
+def test_cli_rejects_invalid_acceptance_criterion() -> None:
+    rc = main(
+        [
+            "--prompt",
+            "Test",
+            "--task-type",
+            "test",
+            "--source",
+            "claude-code",
+            "--acceptance-criterion",
+            "semantic_magic",
             "--compile-only",
         ]
     )

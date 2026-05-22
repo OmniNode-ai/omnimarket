@@ -5,10 +5,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 import yaml
+
+from omnimarket.adapters.claude_code.delegate import _ALLOWED_TASK_TYPES
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 
 _NODE_DIR = (
     Path(__file__).resolve().parents[4]
@@ -52,7 +57,30 @@ def test_contract_declares_runtime_profile() -> None:
 @pytest.mark.unit
 def test_contract_declares_allowed_task_types() -> None:
     contract = _load_contract()
-    assert set(contract["allowed_task_types"]) == {"test", "document", "research"}
+    assert set(contract["allowed_task_types"]) == {
+        "test",
+        "document",
+        "research",
+        "code_generation",
+        "refactor",
+        "reasoning",
+        "complex_reasoning",
+        "planning",
+        "review",
+        "summarization",
+        "agent_delegation",
+        "escalation",
+    }
+
+
+@pytest.mark.unit
+def test_contract_model_and_adapter_task_types_match() -> None:
+    contract = _load_contract()
+    model_task_types = set(
+        get_args(ModelDelegateSkillRequest.model_fields["task_type"].annotation)
+    )
+    assert set(contract["allowed_task_types"]) == model_task_types
+    assert set(_ALLOWED_TASK_TYPES) == model_task_types
 
 
 @pytest.mark.unit

@@ -298,8 +298,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         quality_gates_failed = data.get("quality_gates_failed") or data.get(
             "qualityGatesFailed"
         )
-        qgc_json = json.dumps(quality_gates_checked) if quality_gates_checked else None
-        qgf_json = json.dumps(quality_gates_failed) if quality_gates_failed else None
+        qgc_labels = _coerce_gate_labels(quality_gates_checked)
+        qgf_labels = _coerce_gate_labels(quality_gates_failed)
+        qgc_json = json.dumps(qgc_labels) if qgc_labels else None
+        qgf_json = json.dumps(qgf_labels) if qgf_labels else None
 
         cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
         cost_savings_usd = _safe_numeric_str(
@@ -342,16 +344,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               correlation_id, session_id, timestamp, task_type,
               delegated_to, delegated_by, quality_gate_passed,
               quality_gates_checked, quality_gates_failed,
+              quality_gates_checked_jsonb, quality_gates_failed_jsonb,
               cost_usd, cost_savings_usd, delegation_latency_ms,
               repo, is_shadow, prompt_text, response_text,
               pricing_manifest_version
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
-              $8::jsonb, $9::jsonb,
-              $10, $11, $12,
-              $13, $14, $15, $16,
-              $17
+              $8, $9,
+              $10::jsonb, $11::jsonb,
+              $12, $13, $14,
+              $15, $16, $17, $18,
+              $19
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -362,6 +366,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             str(delegated_to),
             str(delegated_by) if delegated_by else None,
             quality_gate_passed,
+            len(qgc_labels),
+            len(qgf_labels),
             qgc_json,
             qgf_json,
             cost_usd,
@@ -395,15 +401,19 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self,
         row: ModelDelegationEventProjectionRow,
     ) -> None:
-        quality_gates_checked = json.dumps(list(row.quality_gates_checked))
-        quality_gates_failed = json.dumps(list(row.quality_gates_failed))
+        quality_gates_checked = list(row.quality_gates_checked)
+        quality_gates_failed = list(row.quality_gates_failed)
+        quality_gates_checked_json = json.dumps(quality_gates_checked)
+        quality_gates_failed_json = json.dumps(quality_gates_failed)
         session_id = str(row.session_id) if row.session_id is not None else None
         await self.db.execute(
             f"""
             INSERT INTO {self._table_delegation} (
               correlation_id, session_id, timestamp, task_type,
               delegated_to, model_name, delegated_by, quality_gate_passed,
-              quality_gates_checked, quality_gates_failed, quality_gate_detail,
+              quality_gates_checked, quality_gates_failed,
+              quality_gates_checked_jsonb, quality_gates_failed_jsonb,
+              quality_gate_detail,
               cost_usd, cost_savings_usd, delegation_latency_ms,
               latency_ms, repo, is_shadow, prompt_text, response_text,
               tokens_input, tokens_output, tokens_to_compliance,
@@ -411,11 +421,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7, $8,
-              $9::jsonb, $10::jsonb, $11,
-              $12, $13, $14,
-              $15, $16, $17, $18, $19,
-              $20, $21, $22,
-              $23, $24
+              $9, $10,
+              $11::jsonb, $12::jsonb,
+              $13,
+              $14, $15, $16,
+              $17, $18, $19, $20, $21,
+              $22, $23, $24,
+              $25, $26
             )
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
@@ -427,6 +439,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               quality_gate_passed = EXCLUDED.quality_gate_passed,
               quality_gates_checked = EXCLUDED.quality_gates_checked,
               quality_gates_failed = EXCLUDED.quality_gates_failed,
+              quality_gates_checked_jsonb = EXCLUDED.quality_gates_checked_jsonb,
+              quality_gates_failed_jsonb = EXCLUDED.quality_gates_failed_jsonb,
               quality_gate_detail = EXCLUDED.quality_gate_detail,
               cost_usd = EXCLUDED.cost_usd,
               cost_savings_usd = EXCLUDED.cost_savings_usd,
@@ -450,8 +464,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row.model_name,
             row.delegated_by,
             row.quality_gate_passed,
-            quality_gates_checked,
-            quality_gates_failed,
+            len(quality_gates_checked),
+            len(quality_gates_failed),
+            quality_gates_checked_json,
+            quality_gates_failed_json,
             row.quality_gate_detail,
             row.cost_usd,
             row.cost_savings_usd,
@@ -629,6 +645,23 @@ def _safe_int_or_none(value: Any) -> int | None:
         return round(n)
     except (ValueError, TypeError):
         return None
+
+
+def _coerce_gate_labels(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            decoded = json.loads(text)
+        except json.JSONDecodeError:
+            return [text]
+        return _coerce_gate_labels(decoded)
+    if isinstance(value, list | tuple | set):
+        return [str(item) for item in value if str(item)]
+    return [str(value)]
 
 
 if __name__ == "__main__":

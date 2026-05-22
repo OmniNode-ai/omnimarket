@@ -209,8 +209,9 @@ class HandlerDelegateSkill:
                 task_type=request.task_type,
                 correlation_id=request.correlation_id,
                 max_tokens=request.max_tokens,
-                source_file_path=request.cwd,
-                source_session_id=request.metadata.get("session_id"),
+                source_file_path=request.source_file_path,
+                source_session_id=request.session_id
+                or request.metadata.get("session_id"),
                 wait=request.wait,
                 quality_contract_mode=request.quality_contract_mode,
                 acceptance_criteria=request.acceptance_criteria,

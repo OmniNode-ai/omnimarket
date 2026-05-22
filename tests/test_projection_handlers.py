@@ -375,10 +375,14 @@ class TestDelegationHandler:
         mock_db.execute.assert_called_once()
         args = mock_db.execute.call_args[0]
         assert "tokens_input" in args[0]
+        assert "quality_gates_checked_jsonb" in args[0]
+        assert "quality_gates_failed_jsonb" in args[0]
         assert "ON CONFLICT (correlation_id) DO UPDATE SET" in args[0]
         assert "4ae8556b-af7c-4e85-a7f5-9388d60cebb5" in args
         assert "19ee51d6-d275-4642-8cb5-19cdce2af447" in args
         assert _DELEGATE_SKILL_TEST_MODEL in args
+        assert 1 in args
+        assert "[]" in args
         assert 144 in args
         assert 593 in args
         assert 737 in args
