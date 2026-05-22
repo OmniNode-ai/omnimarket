@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import yaml
 from pydantic import ValidationError
@@ -16,17 +16,39 @@ from omnimarket.nodes.node_dispatch_queue_drainer.models import (
     ModelDispatchQueueDrainerResult,
     ModelDispatchQueueItem,
 )
-from omnimarket.nodes.node_dispatch_worker import ModelDispatchWorkerCommand
-from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
-    HandlerDispatchWorker,
+from omnimarket.nodes.node_dispatch_worker import (
+    ModelDispatchWorkerCommand,
+    ModelDispatchWorkerResult,
 )
+
+
+@runtime_checkable
+class ProtocolDispatchWorker(Protocol):
+    """Protocol for a handler that compiles a dispatch worker command."""
+
+    def handle(
+        self,
+        command: ModelDispatchWorkerCommand,
+        *,
+        tasks_dir: Path | None = None,
+        existing_task_subjects: list[str] | None = None,
+        state_dir: Path | str | None = None,
+        parent_session_id: str | None = None,
+    ) -> ModelDispatchWorkerResult: ...
 
 
 class HandlerDispatchQueueDrainer:
     """Read one legacy queue item and compile it through node_dispatch_worker."""
 
-    def __init__(self, dispatch_worker: HandlerDispatchWorker | None = None) -> None:
-        self._dispatch_worker = dispatch_worker or HandlerDispatchWorker()
+    def __init__(self, dispatch_worker: ProtocolDispatchWorker | None = None) -> None:
+        if dispatch_worker is not None:
+            self._dispatch_worker: ProtocolDispatchWorker = dispatch_worker
+        else:
+            from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
+                HandlerDispatchWorker,
+            )
+
+            self._dispatch_worker = HandlerDispatchWorker()
 
     def handle(
         self,
@@ -87,15 +109,9 @@ class HandlerDispatchQueueDrainer:
             )
             return self._write_result(result, resolved_state_dir)
 
-        previous_state_dir = os.environ.get("ONEX_STATE_DIR")
-        os.environ["ONEX_STATE_DIR"] = str(resolved_state_dir)
-        try:
-            compiled = self._dispatch_worker.handle(command, tasks_dir=tasks_dir)
-        finally:
-            if previous_state_dir is None:
-                os.environ.pop("ONEX_STATE_DIR", None)
-            else:
-                os.environ["ONEX_STATE_DIR"] = previous_state_dir
+        compiled = self._dispatch_worker.handle(
+            command, tasks_dir=tasks_dir, state_dir=resolved_state_dir
+        )
 
         if compiled.rejected_reason:
             result = ModelDispatchQueueDrainerResult(
@@ -189,4 +205,4 @@ def _to_dispatch_worker_command(
     )
 
 
-__all__: list[str] = ["HandlerDispatchQueueDrainer"]
+__all__: list[str] = ["HandlerDispatchQueueDrainer", "ProtocolDispatchWorker"]
