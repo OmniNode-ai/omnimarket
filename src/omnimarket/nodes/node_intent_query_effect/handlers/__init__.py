@@ -12,11 +12,9 @@ Handlers:
 Example::
 
     import os
-    from omnibase_core.container import ModelONEXContainer
     from omnimarket.nodes.node_intent_query_effect.handlers import HandlerIntentQuery
 
-    # Create handler with container (handler owns adapter lifecycle)
-    container = ModelONEXContainer()
+    # container is injected by the DI resolver — never instantiated here
     handler = HandlerIntentQuery(container)
     await handler.initialize(
         connection_uri=os.environ["MEMGRAPH_URI"],

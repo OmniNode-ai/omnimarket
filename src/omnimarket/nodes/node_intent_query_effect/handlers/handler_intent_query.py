@@ -13,10 +13,9 @@ the adapter lifecycle and manages all database connection setup internally.
 
 Example::
 
-    from omnibase_core.container import ModelONEXContainer
     from omnimarket.nodes.node_intent_query_effect.handlers import HandlerIntentQuery
 
-    container = ModelONEXContainer()
+    # container is injected by the DI resolver — never instantiated here
     handler = HandlerIntentQuery(container)
     await handler.initialize(
         connection_uri="bolt://{OMNIMEMORY_MEMGRAPH_HOST}:{OMNIMEMORY_MEMGRAPH_PORT}",
@@ -217,11 +216,9 @@ class HandlerIntentQuery:
     Example::
 
         import os
-        from omnibase_core.container import ModelONEXContainer
         from omnimarket.nodes.node_intent_query_effect.handlers import HandlerIntentQuery
 
-        # Create handler with container
-        container = ModelONEXContainer()
+        # container is injected by the DI resolver — never instantiated here
         handler = HandlerIntentQuery(container)
 
         # Initialize (creates and owns adapter internally)
