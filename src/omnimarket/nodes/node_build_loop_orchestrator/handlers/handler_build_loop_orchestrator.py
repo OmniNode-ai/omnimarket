@@ -33,17 +33,21 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
-import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.protocols.event_bus.protocol_event_envelope import (
     ProtocolEventEnvelope,
 )
 
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_build_loop import (
     TERMINAL_PHASES,
     EnumBuildLoopPhase,
@@ -82,22 +86,98 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-TOPIC_DOD_CHECKED = "onex.evt.omnimarket.build-loop-dod-checked.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
-TOPIC_OVERSEER_VERIFICATION_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml subscribe_topics
-TOPIC_OVERSEER_VERIFY_REQUESTED = "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
-TOPIC_BUILD_LOOP_START = "onex.cmd.omnimarket.build-loop-orchestrator-start.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml subscribe_topics
-TOPIC_BUILD_LOOP_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
-TOPIC_BUILD_LOOP_FAILED = "onex.evt.omnimarket.build-loop-failed.v1"  # onex-topic-allow: declared in build_loop_orchestrator contract.yaml publish_topics
-
 _VERIFIER_TIMEOUT_SECONDS = 120
+_DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 
 
-def _load_contract(contract_path: Path | None = None) -> dict[str, Any]:
-    """Load the node's contract.yaml."""
-    _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-    with open(_path) as f:
-        data: dict[str, Any] = yaml.safe_load(f)
-    return data
+@dataclass(frozen=True)
+class _BuildLoopOrchestratorTopics:
+    start: str
+    phase_transition: str
+    completed: str
+    failed: str
+    dod_checked: str
+    overseer_verification_completed: str
+    overseer_verify_requested: str
+
+
+def _single_topic(
+    topics: tuple[str, ...],
+    fragment: str,
+    *,
+    contract_path: Path,
+    section: str,
+) -> str:
+    matches = tuple(topic for topic in topics if fragment in topic)
+    if len(matches) != 1:
+        raise ValueError(
+            f"{contract_path} expected exactly one event_bus.{section} topic "
+            f"containing {fragment!r}; found {matches!r}"
+        )
+    return matches[0]
+
+
+def _load_topic_bindings(
+    contract_path: Path | None = None,
+) -> _BuildLoopOrchestratorTopics:
+    path = contract_path or _DEFAULT_CONTRACT_PATH
+    subscribe_topics = contract_subscribe_topics(path)
+    publish_topics = contract_publish_topics(path)
+    return _BuildLoopOrchestratorTopics(
+        start=_single_topic(
+            subscribe_topics,
+            "build-loop-orchestrator-start",
+            contract_path=path,
+            section="subscribe_topics",
+        ),
+        phase_transition=_single_topic(
+            publish_topics,
+            "build-loop-orchestrator-phase-transition",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        completed=_single_topic(
+            publish_topics,
+            "build-loop-orchestrator-completed",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        failed=_single_topic(
+            publish_topics,
+            "build-loop-failed",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        dod_checked=_single_topic(
+            publish_topics,
+            "build-loop-dod-checked",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        overseer_verification_completed=_single_topic(
+            subscribe_topics,
+            "overseer-verifier-completed",
+            contract_path=path,
+            section="subscribe_topics",
+        ),
+        overseer_verify_requested=_single_topic(
+            publish_topics,
+            "overseer-verify",
+            contract_path=path,
+            section="publish_topics",
+        ),
+    )
+
+
+_DEFAULT_TOPIC_BINDINGS = _load_topic_bindings()
+TOPIC_DOD_CHECKED = _DEFAULT_TOPIC_BINDINGS.dod_checked
+TOPIC_OVERSEER_VERIFICATION_COMPLETED = (
+    _DEFAULT_TOPIC_BINDINGS.overseer_verification_completed
+)
+TOPIC_OVERSEER_VERIFY_REQUESTED = _DEFAULT_TOPIC_BINDINGS.overseer_verify_requested
+TOPIC_BUILD_LOOP_START = _DEFAULT_TOPIC_BINDINGS.start
+TOPIC_BUILD_LOOP_COMPLETED = _DEFAULT_TOPIC_BINDINGS.completed
+TOPIC_BUILD_LOOP_FAILED = _DEFAULT_TOPIC_BINDINGS.failed
 
 
 class HandlerBuildLoopOrchestrator:
@@ -126,18 +206,15 @@ class HandlerBuildLoopOrchestrator:
         fsm: HandlerBuildLoop | None = None,
         overseer_verifier: HandlerOverseerVerifier | None = None,
     ) -> None:
-        contract = _load_contract(contract_path)
-        publish_topics: list[str] = contract.get("event_bus", {}).get(
-            "publish_topics", []
-        )
+        topics = _load_topic_bindings(contract_path)
 
-        self._topic_phase_transition = next(
-            (t for t in publish_topics if "phase-transition" in t), ""
+        self._topic_phase_transition = topics.phase_transition
+        self._topic_completed = topics.completed
+        self._topic_dod_checked = topics.dod_checked
+        self._topic_overseer_verification_completed = (
+            topics.overseer_verification_completed
         )
-        self._topic_completed = next(
-            (t for t in publish_topics if "completed" in t), ""
-        )
-
+        self._topic_overseer_verify_requested = topics.overseer_verify_requested
         self._fsm = (
             fsm if fsm is not None else HandlerBuildLoop()
         )  # lifecycle-ok: optional-di-fallback
@@ -565,8 +642,8 @@ class HandlerBuildLoopOrchestrator:
     ) -> tuple[bool, str | None, dict[str, int]]:
         """VERIFYING phase: publish verify command, await correlated verdict.
 
-        1. Publish onex.cmd.omnimarket.overseer-verify.v1 with correlation_id
-        2. Await onex.evt.omnimarket.overseer-verifier-completed.v1 filtered by correlation_id
+        1. Publish the contract-declared verify command with correlation_id
+        2. Await the contract-declared verifier-completed event filtered by correlation_id
         3. Timeout after _VERIFIER_TIMEOUT_SECONDS → FAILED
         4. passed=False → FAILED with failed_criteria surfaced
         5. passed=True → advance to FILLING
@@ -576,7 +653,7 @@ class HandlerBuildLoopOrchestrator:
         path is only taken when event_bus is present AND no legacy verify handler was
         injected (i.e. the auto-wired default is in use).
         """
-        if self._verify_explicitly_injected or dry_run:
+        if self._event_bus is None or self._verify_explicitly_injected or dry_run:
             # No event bus: fall back to legacy verify handler for standalone/dry-run
             assert self._verify is not None
             result = await self._verify.handle(
@@ -596,7 +673,7 @@ class HandlerBuildLoopOrchestrator:
             }
         ).encode()
         await self._event_bus.publish(
-            topic=TOPIC_OVERSEER_VERIFY_REQUESTED,
+            topic=self._topic_overseer_verify_requested,
             key=None,
             value=verify_cmd,
         )
@@ -621,7 +698,7 @@ class HandlerBuildLoopOrchestrator:
         # Register callback on event bus if it supports subscribe; otherwise poll
         if hasattr(self._event_bus, "subscribe"):
             await self._event_bus.subscribe(
-                TOPIC_OVERSEER_VERIFICATION_COMPLETED,
+                self._topic_overseer_verification_completed,
                 on_message=on_verification_completed,
                 group_id=f"build-loop-overseer-wait-{correlation_id}",
             )
@@ -686,7 +763,7 @@ class HandlerBuildLoopOrchestrator:
             }
         ).encode()
         await self._event_bus.publish(
-            topic=TOPIC_DOD_CHECKED,
+            topic=self._topic_dod_checked,
             key=None,
             value=payload,
         )
