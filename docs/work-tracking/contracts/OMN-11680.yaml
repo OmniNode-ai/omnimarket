@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11680"
+title: "node_golden_chain_generator compute node (AST-based, deterministic)"
+summary: >-
+  New ONEX compute node that derives the expected golden chain from contract topology (primary)
+  and generated tests (secondary, AST-based static analysis). Fully deterministic — same inputs
+  produce same chain hash. No I/O, no Kafka publishing, no runtime state.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "20 unit tests pass: determinism, contract topology, AST supplement, edge cases, JSON serialization."
+    command: "uv run pytest tests/nodes/node_golden_chain_generator/ -v"
+  - kind: "manual"
+    description: "Pure compute node — no live deploy required before merge."
+    command: "printf '%s\n' 'deploy-assessment: node_golden_chain_generator is a pure compute node with no I/O, no Kafka, no runtime state; no live deploy, docker exec, or rpk topic produce performed pre-merge'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "20 unit tests pass covering determinism, contract topology, AST supplement, edge cases, JSON serialization."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_golden_chain_generator/ -v --tb=short"
+  - id: "dod-deploy-assessment"
+    description: "Pure compute node — no live deploy, docker exec, or rpk topic produce required pre-merge."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy-assessment: node_golden_chain_generator is a pure compute node with no I/O, no Kafka, no runtime state; no live deploy, docker exec, or rpk topic produce performed pre-merge'"
