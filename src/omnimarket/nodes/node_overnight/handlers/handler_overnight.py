@@ -313,6 +313,7 @@ class HandlerBuildLoopExecutor:
         halt_action_handler: HaltActionHandler | None = None,
         state_root: Path | None = None,
         contract_path: Path | str | None = None,
+        topic_contract_path: Path | str | None = None,
         event_bus: EventPublisher,
         nightly_loop: ProtocolNightlyLoopHandler | None = None,
         build_loop: ProtocolBuildLoopPhaseHandler | None = None,
@@ -345,6 +346,9 @@ class HandlerBuildLoopExecutor:
             contract_path: Path to the YAML contract file — embedded in
                 the flag file so the sibling PreToolUse hook can surface
                 it in its block message (OMN-8376).
+            topic_contract_path: Path to the node ``contract.yaml`` that
+                owns event-bus topic bindings. Defaults to this node's
+                checked-in contract when not supplied.
             event_bus: Optional sync callable ``(topic, payload_bytes) -> None``
                 used to publish phase-start / phase-end / complete envelopes
                 (OMN-8405). When None, publishing is a no-op so legacy callers
@@ -365,7 +369,7 @@ class HandlerBuildLoopExecutor:
         self._state_root = state_root
         self._contract_path = contract_path
         self._event_bus: EventPublisher = event_bus
-        topics = _load_topic_bindings(contract_path)
+        topics = _load_topic_bindings(topic_contract_path)
         self._topic_overnight_complete = topics.complete
         self._topic_overnight_phase_end = topics.phase_end
         self._topic_overnight_phase_start = topics.phase_start

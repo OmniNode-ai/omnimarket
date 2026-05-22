@@ -108,7 +108,7 @@ def test_injected_contract_path_controls_runtime_topic_bindings(tmp_path: Path) 
     assert topics.failed == "custom.evt.omnimarket.overnight-session-failed.v2"
 
     bus = _RecordingBus()
-    handler = HandlerOvernight(event_bus=bus, contract_path=contract_path)
+    handler = HandlerOvernight(event_bus=bus, topic_contract_path=contract_path)
     handler.handle(ModelOvernightCommand(correlation_id="custom-topics", dry_run=True))
 
     published_topics = [topic for topic, _ in bus.calls]
