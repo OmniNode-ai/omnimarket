@@ -1,0 +1,78 @@
+---
+name: node_test_generator_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic generation of parser-valid pytest artifacts from a
+  ModelTicketContract. The node writes no files and executes no tests; effect
+  nodes own persistence and runtime execution.
+
+handler:
+  module: omnimarket.nodes.node_test_generator_compute.handlers.handler_test_generator
+  class: HandlerTestGenerator
+  input_model: omnimarket.nodes.node_test_generator_compute.models.model_test_generation_request.ModelTestGenerationRequest
+  output_model: omnimarket.nodes.node_test_generator_compute.models.model_test_generation_result.ModelTestGenerationResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+inputs:
+  contract:
+    type: object
+    required: true
+    schema_ref: omnibase_core.models.ticket.model_ticket_contract.ModelTicketContract
+  generator_version:
+    type: str
+    required: false
+    default: "1.0.0"
+  generation_profile_hash:
+    type: str
+    required: false
+    default: "profile_default"
+
+outputs:
+  status:
+    type: str
+    enum: [ok, insufficient_contract, failed]
+  ticket_id:
+    type: str
+  contract_hash:
+    type: str
+  contract_fingerprint:
+    type: str
+    required: false
+    nullable: true
+  generator_version:
+    type: str
+  template_hash:
+    type: str
+  generation_profile_hash:
+    type: str
+  generated_files:
+    type: array
+  warnings:
+    type: array
+  failure_class:
+    type: str
+    required: false
+    nullable: true
+  parser_error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.test-generation-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.test-generation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.test-generation-completed.v1
+    - onex.evt.omnimarket.test-generation-failed.v1
+
+metadata:
+  transport_type: kafka
