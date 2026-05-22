@@ -1,0 +1,79 @@
+---
+name: node_golden_chain_generator_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic derivation of expected golden-chain entries from explicit
+  ticket-contract declarations. Unknown topology is represented as deferred
+  warnings instead of inferred hidden chain entries.
+
+handler:
+  module: omnimarket.nodes.node_golden_chain_generator_compute.handlers.handler_golden_chain_generator
+  class: HandlerGoldenChainGenerator
+  input_model: omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_request.ModelGoldenChainGenerationRequest
+  output_model: omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_result.ModelGoldenChainGenerationResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+inputs:
+  contract:
+    type: object
+    required: true
+    schema_ref: omnibase_core.models.ticket.model_ticket_contract.ModelTicketContract
+  generated_test_hash:
+    type: str
+    required: false
+    nullable: true
+  generator_version:
+    type: str
+    required: false
+    default: "1.0.0"
+  template_hash:
+    type: str
+    required: false
+    nullable: true
+
+outputs:
+  status:
+    type: str
+    enum: [ok, deferred, insufficient_contract]
+  ticket_id:
+    type: str
+  contract_hash:
+    type: str
+  contract_fingerprint:
+    type: str
+    required: false
+    nullable: true
+  chain_hash:
+    type: str
+  generator_version:
+    type: str
+  template_hash:
+    type: str
+    required: false
+    nullable: true
+  generated_test_hash:
+    type: str
+    required: false
+    nullable: true
+  expected_chain:
+    type: array
+  deferred_warnings:
+    type: array
+
+terminal_event: onex.evt.omnimarket.golden-chain-generation-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.golden-chain-generation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.golden-chain-generation-completed.v1
+
+metadata:
+  transport_type: kafka
