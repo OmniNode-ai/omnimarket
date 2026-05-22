@@ -126,6 +126,66 @@ def test_handler_blocks_malformed_yaml_as_typed_outcome(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_handler_does_not_mutate_os_environ(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: handler must not write ONEX_STATE_DIR to os.environ."""
+    from unittest.mock import MagicMock
+
+    from omnimarket.nodes.node_dispatch_queue_drainer.handlers.handler_dispatch_queue_drainer import (
+        ProtocolDispatchWorker,
+    )
+    from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_result import (
+        ModelDispatchWorkerResult,
+    )
+
+    state_dir = tmp_path / "state"
+    queue_dir = state_dir / "dispatch_queue"
+    queue_dir.mkdir(parents=True)
+    queue_item = queue_dir / "item.yaml"
+    import yaml as _yaml
+
+    queue_item.write_text(
+        _yaml.safe_dump(
+            {
+                "name": "test-worker",
+                "team": "Omninode",
+                "role": "fixer",
+                "scope": "test scope",
+                "targets": ["OMN-9999"],
+                "repo": "omnimarket",
+            }
+        ),
+        encoding="utf-8",
+    )
+    omni_home = tmp_path / "omni_home"
+    (omni_home / "omnimarket").mkdir(parents=True)
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+
+    worker: ProtocolDispatchWorker = MagicMock(spec=ProtocolDispatchWorker)
+    worker.handle.return_value = ModelDispatchWorkerResult(  # type: ignore[attr-defined]
+        validated_task_description="desc",
+        validated_prompt_template="tmpl",
+        proposed_agent_spawn_args={"name": "test-worker"},
+        collision_fence_embeds=[],
+        rejected_reason="",
+    )
+    env_before = dict(os.environ)
+
+    HandlerDispatchQueueDrainer(dispatch_worker=worker).handle(
+        queue_item_path=queue_item,
+        state_dir=state_dir,
+        omni_home=omni_home,
+    )
+
+    assert os.environ == env_before, "handler must not mutate os.environ"
+    assert "ONEX_STATE_DIR" not in os.environ
+    worker.handle.assert_called_once()
+    _, call_kwargs = worker.handle.call_args
+    assert call_kwargs.get("state_dir") == state_dir
+
+
+@pytest.mark.unit
 def test_handler_scan_uses_oldest_queue_item(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
