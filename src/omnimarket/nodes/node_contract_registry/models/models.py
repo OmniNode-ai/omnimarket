@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,13 +18,23 @@ from omnimarket.nodes.node_contract_registry.models.enums import (
 class ModelContractRegistrationRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    registration_request_id: UUID | None = None
     node_name: str
     contract_yaml: str
     contract_hash: str
+    runtime_profiles: tuple[str, ...] = Field(default_factory=tuple)
+    source_repo: str = ""
+    source_commit_sha: str = ""
+    generated_by: str = ""
     node_version: dict[str, int] = Field(default_factory=dict)
     correlation_id: UUID
     deployer_id: str = ""
+    deployment_identity: str = ""
+    source_environment: str = ""
+    generated_by_agent: str = ""
+    trusted_artifact_ref: str = ""
     target_profile: str = ""
+    emitted_at: datetime | None = None
 
 
 class ModelContractRegistrationResult(BaseModel):

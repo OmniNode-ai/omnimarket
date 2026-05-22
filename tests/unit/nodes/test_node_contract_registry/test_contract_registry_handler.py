@@ -109,6 +109,35 @@ def test_hash_mismatch_rejected() -> None:
 
 
 @pytest.mark.unit
+def test_canonical_command_fields_allowed_and_forwarded() -> None:
+    publisher = MagicMock()
+    handler = _make_handler(publisher=publisher)
+    registration_request_id = uuid.uuid4()
+    request = _make_request(
+        registration_request_id=registration_request_id,
+        runtime_profiles=("stability",),
+        source_repo="onex-self-extending-agent",
+        source_commit_sha="abc123",
+        generated_by="codex",
+        deployment_identity="stability-validator",
+        source_environment="stability-test",
+        generated_by_agent="codex",
+        trusted_artifact_ref="local-worktree",
+        target_profile="stability-test",
+    )
+
+    result = handler.handle(request)
+
+    assert result.status == EnumMaterializationStatus.MATERIALIZED
+    publisher.publish.assert_called_once()
+    topic, payload = publisher.publish.call_args[0]
+    assert topic == "onex.evt.platform.node-registration.v1"
+    assert payload["registration_request_id"] == str(registration_request_id)
+    assert payload["runtime_profile"] == "stability-test"
+    assert payload["materialization_result"] == "materialized"
+
+
+@pytest.mark.unit
 def test_handler_allowlist_rejected() -> None:
     bad_yaml = """\
 name: node_malicious

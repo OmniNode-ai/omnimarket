@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import uuid4
 
 import yaml
 
@@ -41,6 +42,11 @@ def _read_active_profiles() -> tuple[str, ...]:
 
 class EventPublisher(Protocol):
     def publish(self, topic: str, payload: dict[str, Any]) -> None: ...
+
+
+def _registration_request_id(request: ModelContractRegistrationRequest) -> str:
+    request_id = request.registration_request_id
+    return str(request_id if request_id is not None else uuid4())
 
 
 class ContractRegistryHandler:
@@ -151,7 +157,17 @@ class ContractRegistryHandler:
             mcp_tags=mcp_tags,
         )
         if self._publisher is not None:
-            self._publisher.publish(publish_topic, result.model_dump(mode="json"))
+            self._publisher.publish(
+                publish_topic,
+                {
+                    **result.model_dump(mode="json"),
+                    "event_type": "registered",
+                    "registration_request_id": _registration_request_id(request),
+                    "contract_yaml": request.contract_yaml,
+                    "runtime_profile": request.target_profile,
+                    "materialization_result": result.status.value,
+                },
+            )
         return result
 
     def _reject(
@@ -160,11 +176,14 @@ class ContractRegistryHandler:
         reason: EnumMaterializationRejection,
     ) -> ModelContractRegistrationResult:
         reject_topic = TOPIC_REGISTRATION_REJECTED
+        registration_request_id = _registration_request_id(request)
         result = ModelContractRegistrationResult(
             node_name=request.node_name,
             contract_hash=request.contract_hash,
             correlation_id=request.correlation_id,
             status=EnumMaterializationStatus.REJECTED,
+            event_type="rejected",
+            contract_yaml=request.contract_yaml,
             node_version=request.node_version,
             deployer_id=request.deployer_id,
             target_profile=request.target_profile,
@@ -173,7 +192,15 @@ class ContractRegistryHandler:
             published_topic=reject_topic,
         )
         if self._publisher is not None:
-            self._publisher.publish(reject_topic, result.model_dump(mode="json"))
+            self._publisher.publish(
+                reject_topic,
+                {
+                    **result.model_dump(mode="json"),
+                    "registration_request_id": registration_request_id,
+                    "runtime_profile": request.target_profile,
+                    "materialization_result": result.status.value,
+                },
+            )
         return result
 
 
