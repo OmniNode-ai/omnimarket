@@ -222,7 +222,7 @@ class LocalRuntimeDispatch:
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=command.correlation_id,
                 status=str(terminal_payload.pop("_runtime_status", "completed")),
-                payload=cast(dict[str, object], terminal_payload),
+                payload=terminal_payload,
                 error_message=cast(str | None, terminal_payload.get("error_message")),
             )
         except Exception as exc:

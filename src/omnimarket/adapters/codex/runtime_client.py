@@ -421,7 +421,7 @@ def _deployed_runtime_evidence(
     )
 
 
-def _local_runtime_evidence(evidence: object) -> ModelRuntimeEvidence:
+def _local_runtime_evidence(evidence: BaseModel) -> ModelRuntimeEvidence:
     raw = cast(
         dict[str, object],
         evidence.model_dump(mode="json", exclude_none=True),
