@@ -1,0 +1,39 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Test Generator Compute (OMN-11677)
+name: node_test_generator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Deterministic COMPUTE node. Takes a ticket contract and generates Python test
+  source code from it. Same contract + same generator_version + same template_hash
+  + same generation_profile_hash always produces the same test_hash. Part of the
+  Context Pack Pipeline (OMN-11674).
+
+handler:
+  module: omnimarket.nodes.node_test_generator.handlers.handler_test_generator
+  class: HandlerTestGenerator
+  input_model: omnimarket.nodes.node_test_generator.models.model_test_generation_request.ModelTestGenerationRequest
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_test_generator.handlers.handler_test_generator:HandlerTestGenerator
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.test-generation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.test-generation-completed.v1
+
+terminal_event: onex.evt.omnimarket.test-generation-completed.v1
+
+metadata:
+  transport_type: kafka
