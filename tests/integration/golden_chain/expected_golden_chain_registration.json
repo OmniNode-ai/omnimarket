@@ -1,0 +1,13 @@
+{
+  "chain_name": "registration",
+  "head_topic": "onex.evt.omniclaude.routing-decision.v1",
+  "tail_table": "agent_routing_decisions",
+  "expected_reducer": "node_projection_registration",
+  "terminal_event": "onex.evt.omnimarket.projection-registration-applied.v1",
+  "replay_idempotent": true,
+  "dedup_key": "id",
+  "conflict_strategy": "DO NOTHING",
+  "database": "omnibase_infra",
+  "migration": "021_create_agent_routing_decisions_table.sql",
+  "test_file": "tests/integration/golden_chain/test_registration_e2e.py"
+}
