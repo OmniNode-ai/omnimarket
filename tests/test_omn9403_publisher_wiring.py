@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer import (
     TOPIC_VERIFICATION_RECEIPT_START,
@@ -160,11 +161,20 @@ class TestFixerDispatchStartPublished:
             f"expected 2 fixer-dispatch-start messages, got {len(history)}"
         )
 
-        pr_numbers = {json.loads(msg.value)["pr_number"] for msg in history}
+        envelopes = [
+            ModelEventEnvelope[dict[str, object]].model_validate_json(msg.value)
+            for msg in history
+        ]
+
+        pr_numbers = {envelope.payload["pr_number"] for envelope in envelopes}
         assert pr_numbers == {201, 202}
 
-        for msg in history:
-            payload = json.loads(msg.value)
+        for envelope in envelopes:
+            payload = envelope.payload
+            assert envelope.correlation_id == correlation_id
+            assert envelope.source_tool == "pr_lifecycle_orchestrator"
+            assert envelope.target_tool == "node_fixer_dispatcher"
+            assert envelope.event_type == TOPIC_FIXER_DISPATCH_START
             assert payload["correlation_id"] == str(correlation_id)
             assert "stall_category" in payload
             assert "repo" in payload
