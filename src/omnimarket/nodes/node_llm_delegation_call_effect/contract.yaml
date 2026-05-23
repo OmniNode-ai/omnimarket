@@ -118,6 +118,7 @@ event_bus:
       description: "Emitted when a model exceeds the escalation rate threshold for a task type."
 
 externally_consumed_topics:
+  - "onex.evt.omnimarket.delegation-call-completed.v1"
   - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
   - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
   - "onex.evt.omnimarket.delegation-model-degraded.v1"
