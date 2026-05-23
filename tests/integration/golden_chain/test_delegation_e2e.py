@@ -39,8 +39,9 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 
 _PG_HOST = os.environ.get(
-    "INTEGRATION_POSTGRES_HOST", "192.168.86.201"
-)  # onex-allow-internal-ip: lab GPU server stability-test lane default
+    "INTEGRATION_POSTGRES_HOST",
+    "192.168.86.201",  # onex-allow-internal-ip OMN-11765 reason="stability-test lane lab GPU server; read from env at runtime"
+)
 _PG_PORT = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5436"))
 _PG_USER = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
 _PG_PASSWORD = os.environ.get(
@@ -49,8 +50,9 @@ _PG_PASSWORD = os.environ.get(
 _PG_DB = os.environ.get("INTEGRATION_POSTGRES_DB", "omnidash_analytics")
 
 _KAFKA_BOOTSTRAP = os.environ.get(
-    "KAFKA_BOOTSTRAP_SERVERS", "192.168.86.201:19092"
-)  # onex-allow-internal-ip: lab GPU server Redpanda default
+    "KAFKA_BOOTSTRAP_SERVERS",
+    "192.168.86.201:19092",  # onex-allow-internal-ip OMN-11765 reason="stability-test lane lab Redpanda; read from env at runtime"
+)
 
 _TOPIC_DELEGATED = "onex.evt.omniclaude.task-delegated.v1"
 _TERMINAL_TOPIC = "onex.evt.omnimarket.projection-delegation-applied.v1"
