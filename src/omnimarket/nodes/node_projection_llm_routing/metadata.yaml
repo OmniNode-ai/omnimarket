@@ -1,0 +1,21 @@
+name: projection_llm_routing
+version: "1.0.0"
+description: >
+  Projects llm-routing-decision events into llm_routing_decisions table.
+  Closes the routing golden chain tail gap (OMN-8540). UPSERT key: correlation_id.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - routing
+  - llm-routing
+  - reducer
+  - golden-chain
+pack: "data"
+display_name: "Projection: LLM Routing"
+node_role: "effect"
