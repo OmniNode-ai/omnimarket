@@ -7,8 +7,16 @@ description: >
   Owns OmniGate activity and metrics projection snapshots for dashboard consumers.
 
 handler:
-  module: omnimarket.nodes.node_omnigate_projection.reducers.reducer_omnigate_projection
-  class: reduce_omnigate_projection
+  module: omnimarket.nodes.node_omnigate_projection.handlers.handler_omnigate_projection
+  class: HandlerOmniGateProjection
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reduce_omnigate_projection
+      handler:
+        name: HandlerOmniGateProjection
+        module: omnimarket.nodes.node_omnigate_projection.handlers.handler_omnigate_projection
 
 descriptor:
   node_archetype: reducer
