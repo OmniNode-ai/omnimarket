@@ -15,6 +15,7 @@ description: >
 
 input_model:
   name: ModelDelegateSkillRequest
+  class: ModelDelegateSkillRequest
   module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
   description: Consumer-facing delegation request with prompt, task_type, source, and metadata.
 
@@ -158,16 +159,6 @@ handler:
   class: HandlerDelegateSkill
   input_model: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request.ModelDelegateSkillRequest
 
-handler_routing:
-  routing_strategy: payload_type_match
-  handlers:
-    - operation: delegate_skill.orchestrate
-      handler_class: HandlerDelegateSkill
-      handler_module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill
-      input_model:
-        name: ModelDelegateSkillRequest
-        module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
-
 error_handling:
   retry_policy:
     max_retries: 1
@@ -190,13 +181,6 @@ timeout_behavior:
   terminal_response:
     status: timeout
     error_message: "Delegation timed out before runtime completion"
-
-runtime_ingress:
-  http_url: ""
-  pandaproxy_url: ""
-  ssh_host: ""
-  ssh_socket_path: ""
-  kafka_bridge_script: ""
 
 metadata:
   transport_type: kafka
