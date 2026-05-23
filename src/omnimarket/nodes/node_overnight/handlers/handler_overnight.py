@@ -30,6 +30,7 @@ import json
 import logging
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -41,6 +42,10 @@ from onex_change_control.overseer.model_overnight_contract import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     HaltActionHandler,
     OutcomeProbe,
@@ -61,13 +66,106 @@ from omnimarket.nodes.node_overnight.protocols.protocol_phase_handlers import (
     ProtocolPlatformReadinessHandler,
 )
 
-TOPIC_OVERNIGHT_COMPLETE = "onex.evt.omnimarket.overnight-session-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERNIGHT_FAILED = "onex.evt.omnimarket.overnight-session-failed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERNIGHT_PHASE_END = "onex.evt.omnimarket.overnight-phase-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERNIGHT_PHASE_START = "onex.evt.omnimarket.overnight-phase-start.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERNIGHT_START = "onex.cmd.omnimarket.overnight-start.v1"  # onex-topic-allow: pending contract auto-wiring
-
 logger = logging.getLogger(__name__)
+_DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+@dataclass(frozen=True)
+class _OvernightTopics:
+    complete: str
+    failed: str
+    phase_end: str
+    phase_start: str
+    start: str
+
+
+def _single_topic(
+    topics: tuple[str, ...],
+    fragment: str,
+    *,
+    contract_path: Path,
+    section: str,
+) -> str:
+    matches = tuple(topic for topic in topics if fragment in topic)
+    if len(matches) != 1:
+        raise ValueError(
+            f"{contract_path} expected exactly one event_bus.{section} topic "
+            f"containing {fragment!r}; found {matches!r}"
+        )
+    return matches[0]
+
+
+def _shared_topic(
+    subscribe_topics: tuple[str, ...],
+    publish_topics: tuple[str, ...],
+    fragment: str,
+    *,
+    contract_path: Path,
+) -> str:
+    subscribed = _single_topic(
+        subscribe_topics,
+        fragment,
+        contract_path=contract_path,
+        section="subscribe_topics",
+    )
+    published = _single_topic(
+        publish_topics,
+        fragment,
+        contract_path=contract_path,
+        section="publish_topics",
+    )
+    if subscribed != published:
+        raise ValueError(
+            f"{contract_path} expected matching subscribe/publish topic "
+            f"containing {fragment!r}; found {subscribed!r} and {published!r}"
+        )
+    return subscribed
+
+
+def _load_topic_bindings(contract_path: Path | str | None = None) -> _OvernightTopics:
+    path = Path(contract_path) if contract_path is not None else _DEFAULT_CONTRACT_PATH
+    subscribe_topics = contract_subscribe_topics(path)
+    publish_topics = contract_publish_topics(path)
+    return _OvernightTopics(
+        complete=_single_topic(
+            publish_topics,
+            "overnight-session-completed",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        failed=_single_topic(
+            publish_topics,
+            "overnight-session-failed",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        phase_end=_single_topic(
+            publish_topics,
+            "overnight-phase-completed",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        phase_start=_single_topic(
+            publish_topics,
+            "overnight-phase-start",
+            contract_path=path,
+            section="publish_topics",
+        ),
+        start=_shared_topic(
+            subscribe_topics,
+            publish_topics,
+            "overnight-start",
+            contract_path=path,
+        ),
+    )
+
+
+_DEFAULT_TOPIC_BINDINGS = _load_topic_bindings()
+TOPIC_OVERNIGHT_COMPLETE = _DEFAULT_TOPIC_BINDINGS.complete
+TOPIC_OVERNIGHT_FAILED = _DEFAULT_TOPIC_BINDINGS.failed
+TOPIC_OVERNIGHT_PHASE_END = _DEFAULT_TOPIC_BINDINGS.phase_end
+TOPIC_OVERNIGHT_PHASE_START = _DEFAULT_TOPIC_BINDINGS.phase_start
+TOPIC_OVERNIGHT_START = _DEFAULT_TOPIC_BINDINGS.start
 
 # Type alias for a phase dispatcher: takes the command + contract (if present),
 # returns (success, error_message). Dispatchers own their own handler imports
@@ -141,8 +239,8 @@ class ModelOvernightCommand(BaseModel):
     dry_run: bool = False
     overnight_contract: ModelOvernightContract | None = None
     # OMN-8407: self-perpetuating loop trigger. When True, the handler re-emits
-    # onex.cmd.omnimarket.overnight-start.v1 after session completion so the
-    # overseer loop runs autonomously on .201 without Claude Code crons.
+    # the contract start command after session completion so the overseer loop
+    # runs autonomously on .201 without Claude Code crons.
     # Set to False for one-shot runs (tests, manual invocations).
     enable_self_loop: bool = True
     # Seconds the runtime should wait before delivering the requeued start command.
@@ -215,6 +313,7 @@ class HandlerBuildLoopExecutor:
         halt_action_handler: HaltActionHandler | None = None,
         state_root: Path | None = None,
         contract_path: Path | str | None = None,
+        topic_contract_path: Path | str | None = None,
         event_bus: EventPublisher,
         nightly_loop: ProtocolNightlyLoopHandler | None = None,
         build_loop: ProtocolBuildLoopPhaseHandler | None = None,
@@ -233,9 +332,9 @@ class HandlerBuildLoopExecutor:
                 outcomes are reported as unsatisfied — phases do not
                 silently advance.
             tick_emitter: Optional callable that receives the per-phase
-                tick snapshot. Use for Kafka ``onex.evt.omnimarket.overseer-tick.v1``
-                publishing. When None, snapshots still land in the local
-                overseer flag file and tick jsonl log.
+                tick snapshot. Use for the contract overseer tick topic.
+                When None, snapshots still land in the local overseer flag
+                file and tick jsonl log.
             halt_action_handler: Optional per-condition action dispatcher.
                 Returns True when the action resolved the condition and
                 the pipeline can continue; False halts. When None, the
@@ -247,11 +346,14 @@ class HandlerBuildLoopExecutor:
             contract_path: Path to the YAML contract file — embedded in
                 the flag file so the sibling PreToolUse hook can surface
                 it in its block message (OMN-8376).
+            topic_contract_path: Path to the node ``contract.yaml`` that
+                owns event-bus topic bindings. Defaults to this node's
+                checked-in contract when not supplied.
             event_bus: Optional sync callable ``(topic, payload_bytes) -> None``
                 used to publish phase-start / phase-end / complete envelopes
                 (OMN-8405). When None, publishing is a no-op so legacy callers
-                and unit tests remain unaffected. Topics come from
-                ``node_overnight/topics.py`` (mirrored in contract.yaml).
+                and unit tests remain unaffected. Topics come from the node
+                contract.
             nightly_loop: DI slot for ProtocolNightlyLoopHandler (OMN-8449).
             build_loop: DI slot for ProtocolBuildLoopPhaseHandler (OMN-8449).
             merge_sweep: DI slot for ProtocolMergeSweepHandler (OMN-8449).
@@ -267,6 +369,11 @@ class HandlerBuildLoopExecutor:
         self._state_root = state_root
         self._contract_path = contract_path
         self._event_bus: EventPublisher = event_bus
+        topics = _load_topic_bindings(topic_contract_path)
+        self._topic_overnight_complete = topics.complete
+        self._topic_overnight_phase_end = topics.phase_end
+        self._topic_overnight_phase_start = topics.phase_start
+        self._topic_overnight_start = topics.start
         # OMN-8449: 5 protocol DI slots — populated by _ensure_sub_handlers() (OMN-8450)
         self._nightly_loop: ProtocolNightlyLoopHandler | None = nightly_loop
         self._build_loop: ProtocolBuildLoopPhaseHandler | None = build_loop
@@ -442,7 +549,7 @@ class HandlerBuildLoopExecutor:
                 # consumers (overseer tick loop, delegation pipeline) can observe
                 # an overnight run advancing.
                 self._publish(
-                    TOPIC_OVERNIGHT_PHASE_START,
+                    self._topic_overnight_phase_start,
                     {
                         "correlation_id": command.correlation_id,
                         "phase": phase.value,
@@ -580,7 +687,7 @@ class HandlerBuildLoopExecutor:
                 else:
                     _phase_status = "failed"
                 self._publish(
-                    TOPIC_OVERNIGHT_PHASE_END,
+                    self._topic_overnight_phase_end,
                     {
                         "correlation_id": command.correlation_id,
                         "phase": phase.value,
@@ -718,7 +825,7 @@ class HandlerBuildLoopExecutor:
         # pipeline exits (success, halt, or phase failure — all paths reach
         # here). Downstream consumers key off this for end-of-run analytics.
         self._publish(
-            TOPIC_OVERNIGHT_COMPLETE,
+            self._topic_overnight_complete,
             {
                 "correlation_id": command.correlation_id,
                 "session_status": status.value,
@@ -743,7 +850,7 @@ class HandlerBuildLoopExecutor:
             import uuid
 
             self._publish(
-                TOPIC_OVERNIGHT_START,
+                self._topic_overnight_start,
                 {
                     "correlation_id": str(uuid.uuid4()),
                     "max_cycles": command.max_cycles,
