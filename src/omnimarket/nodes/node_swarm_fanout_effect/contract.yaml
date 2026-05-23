@@ -41,6 +41,8 @@ event_bus:
     - onex.cmd.omnimarket.swarm-fanout.v1
   publish_topics:
     - onex.evt.omnimarket.swarm-fanout-completed.v1
+  externally_consumed_topics:
+    - onex.evt.omnimarket.swarm-fanout-completed.v1
 
 terminal_event: onex.evt.omnimarket.swarm-fanout-completed.v1
 
