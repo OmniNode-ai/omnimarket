@@ -36,6 +36,27 @@ def test_market_skill_baseline_includes_ticket_pipeline() -> None:
 
     assert "ticket_pipeline" in specs
     assert specs["ticket_pipeline"].module == "omnimarket.nodes.node_ticket_pipeline"
+    assert "delegate_skill" in specs
+    assert (
+        specs["delegate_skill"].module
+        == "omnimarket.nodes.node_delegate_skill_orchestrator"
+    )
+
+
+def test_delegate_skill_smoke_compiles_market_adapter_payload() -> None:
+    result = market_skill_baseline.run_cli_smoke(
+        next(
+            spec
+            for spec in market_skill_baseline.iter_market_skill_specs()
+            if spec.skill_name == "delegate_skill"
+        )
+    )
+
+    assert result.passed
+    assert result.summary["command_topic"] == "onex.cmd.omnimarket.delegate-skill.v1"
+    assert result.summary["has_source_file_path"] is True
+    assert result.summary["has_session_id"] is True
+    assert result.summary["quality_contract_mode"] == "replace_task_class"
 
 
 def test_baseline_continues_after_one_skill_smoke_failure(monkeypatch) -> None:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -1037,6 +1039,7 @@ def test_delegate_skill_explicit_local_runtime_dispatches_via_contract_bus(
 ) -> None:
     monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
     cid = uuid4()
+    stale_cid = uuid4()
     client = CodexRuntimeRequestAdapter(
         requester="codex-test",
         command_topic="onex.cmd.omnimarket.delegate-skill.v1",
@@ -1048,7 +1051,7 @@ def test_delegate_skill_explicit_local_runtime_dispatches_via_contract_bus(
             "prompt": "Write a regression test",
             "task_type": "test",
             "source": "codex",
-            "correlation_id": str(cid),
+            "correlation_id": str(stale_cid),
             "metadata": {"ticket": "OMN-8701"},
         },
         correlation_id=cid,
@@ -1072,6 +1075,7 @@ def test_delegate_skill_explicit_local_runtime_dispatches_via_contract_bus(
         == "onex.evt.omnimarket.delegate-skill-completed.v1"
     )
     assert result.output_payloads is not None
+    assert result.output_payloads[0]["correlation_id"] == str(cid)
     assert result.output_payloads[0]["provider"] == "local://inmemory-delegation-effect"
     assert (
         tmp_path
@@ -1080,6 +1084,42 @@ def test_delegate_skill_explicit_local_runtime_dispatches_via_contract_bus(
         / str(cid)
         / "state.yaml"
     ).exists()
+
+
+def test_delegate_skill_python_m_local_runtime_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.adapters.codex.runtime_client",
+            "--command-name",
+            "delegate_skill.orchestrate",
+            "--runtime-selection",
+            "local",
+            "--timeout-ms",
+            "5000",
+            "--response-topic",
+            "onex.evt.omnimarket.delegate-skill-completed.v1",
+            "--payload",
+            json.dumps({"prompt": "x", "task_type": "test", "source": "codex"}),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["ok"] is True
+    assert payload["runtime_selection"] == "local"
+    assert payload["runtime_mode"] == "local"
+    assert payload["correlation_id"] == payload["output_payloads"][0]["correlation_id"]
 
 
 def test_deployed_or_local_falls_back_when_deployed_runtime_unavailable(

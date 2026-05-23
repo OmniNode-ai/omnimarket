@@ -16,7 +16,13 @@ from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BASELINE_MODEL = "claude-opus-4-6"
+DEFAULT_BASELINE_MODEL = "claude-opus-4-6"
+DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = (
+    "claude-opus-4-6",
+    "claude-sonnet-4-20250514",
+    "claude-haiku-3-5",
+    "gpt-4o",
+)
 
 
 @functools.cache
@@ -48,7 +54,7 @@ def estimate_baseline_cost_usd(
     *,
     prompt_tokens: int,
     completion_tokens: int,
-    baseline_model: str = _DEFAULT_BASELINE_MODEL,
+    baseline_model: str = DEFAULT_BASELINE_MODEL,
 ) -> float:
     """Estimate the USD cost of running prompt+completion against the baseline model.
 
@@ -66,7 +72,26 @@ def estimate_baseline_cost_usd(
     return float(estimate.estimated_cost_usd)
 
 
+def estimate_frontier_costs_usd(
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+    model_ids: tuple[str, ...] = DEFAULT_FRONTIER_COMPARISON_MODELS,
+) -> dict[str, float]:
+    """Estimate counterfactual costs for configured frontier comparison models."""
+    table = _load_table()
+    estimates: dict[str, float] = {}
+    for model_id in model_ids:
+        estimate = table.estimate_cost(model_id, prompt_tokens, completion_tokens)
+        if estimate.estimated_cost_usd is not None:
+            estimates[model_id] = float(estimate.estimated_cost_usd)
+    return estimates
+
+
 __all__: list[str] = [
+    "DEFAULT_BASELINE_MODEL",
+    "DEFAULT_FRONTIER_COMPARISON_MODELS",
     "estimate_baseline_cost_usd",
+    "estimate_frontier_costs_usd",
     "get_manifest_version_int",
 ]

@@ -36,6 +36,11 @@ def test_valid_request_full() -> None:
         task_type="document",
         source="codex",
         cwd="/some/path",
+        source_file_path="docs/auth.md",
+        working_directory="/repo",
+        session_id="sess-1",
+        recipient="codex",
+        codex_sandbox_mode="workspace-write",
         wait=True,
         max_tokens=1200,
         metadata={"repo": "omnimarket", "issue": "OMN-1234"},
@@ -47,6 +52,12 @@ def test_valid_request_full() -> None:
         ),
     )
     assert req.wait is True
+    assert req.cwd == "/some/path"
+    assert req.source_file_path == "docs/auth.md"
+    assert req.working_directory == "/repo"
+    assert req.session_id == "sess-1"
+    assert req.recipient == "codex"
+    assert req.codex_sandbox_mode == "workspace-write"
     assert req.max_tokens == 1200
     assert req.metadata["repo"] == "omnimarket"
     assert req.quality_contract_mode == "replace_task_class"

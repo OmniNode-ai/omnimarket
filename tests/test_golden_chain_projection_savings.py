@@ -286,7 +286,7 @@ class TestSavingsProjection:
         assert result["rows_upserted"] == 1
         row = db.query("savings_estimates")[0]
         assert row["session_id"] == "f9243395-5cb6-4036-8ffb-39dd25547413"
-        assert row["model_cloud_baseline"] == "claude-sonnet-4-6"
+        assert row["model_cloud_baseline"] == "claude-opus-4-6"
         assert row["savings_usd"] == Decimal("0.006003")
 
     def test_fixture_replay_matches_golden_checksums(self) -> None:

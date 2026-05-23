@@ -908,7 +908,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # `python -m` executes this file as `__main__`; re-enter through the
+    # canonical module so generic event envelopes use one ModelDispatchBusCommand
+    # class identity across the CLI and local runtime dispatcher.
+    from omnimarket.adapters.codex.runtime_client import main as _canonical_main
+
+    raise SystemExit(_canonical_main())
 
 
 __all__ = [

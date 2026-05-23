@@ -24,6 +24,7 @@ import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.adapters.codex.topics import TOPIC_CODEX_DELEGATE_SKILL_COMMAND
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     ModelPrLifecycleStartCommand,
 )
@@ -102,6 +103,7 @@ class ModelMarketSkillSpec(BaseModel):
         "pr_lifecycle_orchestrator",
         "pr_polish",
         "local_review",
+        "delegate_skill",
         "coderabbit_triage",
         "session_bootstrap",
         "session_orchestrator",
@@ -206,6 +208,23 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
             "tests/test_codex_runtime_client.py::test_local_review_pattern_b_runs_node_end_to_end",
         ),
         smoke_kind="local_review",
+    ),
+    ModelMarketSkillSpec(
+        skill_name="delegate_skill",
+        node_name="node_delegate_skill_orchestrator",
+        module="omnimarket.nodes.node_delegate_skill_orchestrator",
+        contract_path=(
+            "src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml"
+        ),
+        task_text=(
+            "Compile a typed delegation command through the market-owned Claude "
+            "Code adapter without relying on external wrapper transports."
+        ),
+        pytest_targets=(
+            "tests/unit/adapters/claude_code/test_delegate_adapter.py",
+            "tests/unit/nodes/node_delegate_skill_orchestrator",
+        ),
+        smoke_kind="delegate_skill",
     ),
     ModelMarketSkillSpec(
         skill_name="coderabbit_triage",
@@ -466,6 +485,23 @@ def _summarize_local_review(payload: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _summarize_delegate_skill(payload: dict[str, object]) -> dict[str, object]:
+    delegation_payload = payload.get("payload")
+    if not isinstance(delegation_payload, dict):
+        delegation_payload = {}
+    terminal_events = payload.get("terminal_events")
+    return {
+        "ok": payload.get("ok"),
+        "command_topic": payload.get("command_topic"),
+        "task_type": delegation_payload.get("task_type"),
+        "source": delegation_payload.get("source"),
+        "has_source_file_path": bool(delegation_payload.get("source_file_path")),
+        "has_session_id": bool(delegation_payload.get("session_id")),
+        "quality_contract_mode": delegation_payload.get("quality_contract_mode"),
+        "terminal_events_configured": isinstance(terminal_events, dict),
+    }
+
+
 def _summarize_coderabbit(payload: dict[str, object]) -> dict[str, object]:
     payload = _unwrap_cli_report_payload(payload)
     return {
@@ -712,6 +748,59 @@ def _smoke_local_review() -> ModelCommandResult:
     )
 
 
+def _smoke_delegate_skill() -> ModelCommandResult:
+    command = [
+        sys.executable,
+        "-m",
+        "omnimarket.adapters.claude_code.delegate",
+        "--prompt",
+        "Write exactly two plain-text sentences describing this delegation smoke.",
+        "--task-type",
+        "test",
+        "--source",
+        "claude-code",
+        "--source-file",
+        "tests/unit/adapters/claude_code/test_delegate_adapter.py",
+        "--working-directory",
+        str(REPO_ROOT),
+        "--session-id",
+        "sess-market-baseline",
+        "--recipient",
+        "codex",
+        "--codex-sandbox-mode",
+        "workspace-write",
+        "--quality-contract-mode",
+        "replace_task_class",
+        "--acceptance-criterion",
+        "exactly_two_sentences",
+        "--compile-only",
+    ]
+    completed = _run_command(command=command, env={"OMNI_HOME": str(OMNI_HOME)})
+    payload = _parse_json(completed.stdout)
+    delegation_payload = payload.get("payload")
+    passed = (
+        completed.returncode == 0
+        and payload.get("ok") is True
+        and payload.get("command_topic") == TOPIC_CODEX_DELEGATE_SKILL_COMMAND
+        and isinstance(delegation_payload, dict)
+        and delegation_payload.get("source_file_path")
+        == "tests/unit/adapters/claude_code/test_delegate_adapter.py"
+        and delegation_payload.get("session_id") == "sess-market-baseline"
+        and delegation_payload.get("quality_contract_mode") == "replace_task_class"
+        and delegation_payload.get("acceptance_criteria") == ["exactly_two_sentences"]
+    )
+    return ModelCommandResult(
+        passed=passed,
+        command=_sanitize_command(command),
+        returncode=completed.returncode,
+        summary=_summarize_delegate_skill(payload),
+        stderr=completed.stderr.strip(),
+        notes=[
+            "compile-only smoke proves typed market adapter payload parity without dispatching runtime side effects"
+        ],
+    )
+
+
 def _smoke_coderabbit_triage() -> ModelCommandResult:
     command = [
         sys.executable,
@@ -908,6 +997,7 @@ SMOKE_RUNNERS: dict[str, Callable[[], ModelCommandResult]] = {
     "pr_lifecycle_orchestrator": _smoke_pr_lifecycle_orchestrator,
     "pr_polish": _smoke_pr_polish,
     "local_review": _smoke_local_review,
+    "delegate_skill": _smoke_delegate_skill,
     "coderabbit_triage": _smoke_coderabbit_triage,
     "session_bootstrap": _smoke_session_bootstrap,
     "session_orchestrator": _smoke_session_orchestrator,

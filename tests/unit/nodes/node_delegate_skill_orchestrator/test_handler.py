@@ -24,7 +24,11 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
-from omnimarket.pricing import estimate_baseline_cost_usd
+from omnimarket.pricing import (
+    DEFAULT_BASELINE_MODEL,
+    estimate_baseline_cost_usd,
+    get_manifest_version_int,
+)
 
 
 @pytest.fixture
@@ -77,6 +81,57 @@ async def test_handler_dispatches_and_returns_typed_response(
     call_kwargs = mock_dispatch_port.dispatch.await_args.kwargs
     assert call_kwargs["quality_contract_mode"] == "replace_task_class"
     assert call_kwargs["acceptance_criteria"] == ("exactly_two_sentences",)
+
+
+@pytest.mark.unit
+async def test_handler_maps_source_file_without_reusing_cwd() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "ok",
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+        cwd="/caller/cwd",
+        source_file_path="src/example.py",
+        working_directory="/worker/repo",
+        session_id="sess-typed",
+        metadata={"session_id": "sess-metadata"},
+    )
+
+    response = await handler.handle(request)
+
+    assert response.status == "completed"
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["source_file_path"] == "src/example.py"
+    assert call_kwargs["source_session_id"] == "sess-typed"
+    assert call_kwargs["source_file_path"] != request.cwd
+
+
+@pytest.mark.unit
+async def test_handler_preserves_metadata_session_id_fallback() -> None:
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "ok",
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+        source_file_path="src/example.py",
+        metadata={"session_id": "sess-metadata"},
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["source_session_id"] == "sess-metadata"
 
 
 @pytest.mark.unit
@@ -201,6 +256,8 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     assert response.status == "completed"
     assert response.provider == "https://qwen.local"
     assert response.model_name == "Qwen3-Coder-30B"
+    assert response.model_cloud_baseline == DEFAULT_BASELINE_MODEL
+    assert response.pricing_manifest_version == get_manifest_version_int()
     assert response.response == "internal result"
     assert response.quality_gate_passed is True
     assert response.metrics.latency_ms == 1234
@@ -212,6 +269,8 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     assert response.metrics.cost_savings_usd == round(
         estimate_baseline_cost_usd(prompt_tokens=12, completion_tokens=34), 6
     )
+    assert response.metrics.frontier_costs_usd[DEFAULT_BASELINE_MODEL] > 0
+    assert "claude-sonnet-4-20250514" in response.metrics.frontier_costs_usd
 
 
 @pytest.mark.unit

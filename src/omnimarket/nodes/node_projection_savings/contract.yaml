@@ -34,4 +34,4 @@ event_bus:
 
 metadata:
   transport_type: kafka
-  delegate_skill_baseline_model: claude-sonnet-4-6
+  delegate_skill_baseline_model: claude-opus-4-6

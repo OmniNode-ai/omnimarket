@@ -24,6 +24,11 @@ from uuid import UUID, uuid4
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.events.delegation import (
+    EnumQualityContractMode,
+    validate_acceptance_criteria,
+)
+
 _ALLOWED_TASK_TYPES = (
     "test",
     "document",
@@ -115,6 +120,13 @@ def build_delegation_payload(
     task_type: str,
     source: str,
     cwd: str | None = None,
+    source_file_path: str | None = None,
+    working_directory: str | None = None,
+    session_id: str | None = None,
+    recipient: str | None = None,
+    codex_sandbox_mode: str | None = None,
+    quality_contract_mode: EnumQualityContractMode = "extend_task_class",
+    acceptance_criteria: tuple[str, ...] = (),
     wait: bool = True,
     max_tokens: int = 2048,
     correlation_id: str | UUID | None = None,
@@ -141,6 +153,18 @@ def build_delegation_payload(
     }
     if cwd is not None:
         payload["cwd"] = cwd
+    if source_file_path is not None:
+        payload["source_file_path"] = source_file_path
+    if working_directory is not None:
+        payload["working_directory"] = working_directory
+    if session_id is not None:
+        payload["session_id"] = session_id
+    if recipient is not None:
+        payload["recipient"] = recipient
+    if codex_sandbox_mode is not None:
+        payload["codex_sandbox_mode"] = codex_sandbox_mode
+    payload["quality_contract_mode"] = quality_contract_mode
+    payload["acceptance_criteria"] = validate_acceptance_criteria(acceptance_criteria)
     return payload
 
 
@@ -161,6 +185,13 @@ class DelegationDispatchAdapter:
         task_type: str,
         source: str,
         cwd: str | None,
+        source_file_path: str | None,
+        working_directory: str | None,
+        session_id: str | None,
+        recipient: str | None,
+        codex_sandbox_mode: str | None,
+        quality_contract_mode: EnumQualityContractMode,
+        acceptance_criteria: tuple[str, ...],
         wait: bool,
         max_tokens: int,
         correlation_id: str | UUID | None,
@@ -171,6 +202,13 @@ class DelegationDispatchAdapter:
             task_type=task_type,
             source=source,
             cwd=cwd,
+            source_file_path=source_file_path,
+            working_directory=working_directory,
+            session_id=session_id,
+            recipient=recipient,
+            codex_sandbox_mode=codex_sandbox_mode,
+            quality_contract_mode=quality_contract_mode,
+            acceptance_criteria=acceptance_criteria,
             wait=wait,
             max_tokens=max_tokens,
             correlation_id=correlation_id,
@@ -194,6 +232,13 @@ class DelegationDispatchAdapter:
         task_type: str,
         source: str,
         cwd: str | None = None,
+        source_file_path: str | None = None,
+        working_directory: str | None = None,
+        session_id: str | None = None,
+        recipient: str | None = None,
+        codex_sandbox_mode: str | None = None,
+        quality_contract_mode: EnumQualityContractMode = "extend_task_class",
+        acceptance_criteria: tuple[str, ...] = (),
         wait: bool = True,
         max_tokens: int = 2048,
         correlation_id: str | UUID | None = None,
@@ -205,6 +250,13 @@ class DelegationDispatchAdapter:
             task_type=task_type,
             source=source,
             cwd=cwd,
+            source_file_path=source_file_path,
+            working_directory=working_directory,
+            session_id=session_id,
+            recipient=recipient,
+            codex_sandbox_mode=codex_sandbox_mode,
+            quality_contract_mode=quality_contract_mode,
+            acceptance_criteria=acceptance_criteria,
             wait=wait,
             max_tokens=max_tokens,
             correlation_id=correlation_id,
@@ -218,6 +270,13 @@ class DelegationDispatchAdapter:
         task_type: str,
         source: str,
         cwd: str | None = None,
+        source_file_path: str | None = None,
+        working_directory: str | None = None,
+        session_id: str | None = None,
+        recipient: str | None = None,
+        codex_sandbox_mode: str | None = None,
+        quality_contract_mode: EnumQualityContractMode = "extend_task_class",
+        acceptance_criteria: tuple[str, ...] = (),
         wait: bool = True,
         max_tokens: int = 2048,
         correlation_id: str | UUID | None = None,
@@ -241,6 +300,13 @@ class DelegationDispatchAdapter:
             task_type=task_type,
             source=source,
             cwd=cwd,
+            source_file_path=source_file_path,
+            working_directory=working_directory,
+            session_id=session_id,
+            recipient=recipient,
+            codex_sandbox_mode=codex_sandbox_mode,
+            quality_contract_mode=quality_contract_mode,
+            acceptance_criteria=acceptance_criteria,
             wait=wait,
             max_tokens=max_tokens,
             correlation_id=correlation_id,
@@ -285,6 +351,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Registered adapter source, one of {_ALLOWED_SOURCES}.",
     )
     parser.add_argument("--cwd", default=None, help="Working directory context.")
+    parser.add_argument("--source-file", default=None, help="Source file context.")
+    parser.add_argument(
+        "--working-directory",
+        default=None,
+        help="Worker working directory context.",
+    )
+    parser.add_argument("--session-id", default=None, help="Originating session ID.")
+    parser.add_argument("--recipient", default=None, help="Delegation recipient.")
+    parser.add_argument(
+        "--codex-sandbox-mode",
+        default=None,
+        help="Codex sandbox mode requested by the caller.",
+    )
+    parser.add_argument(
+        "--quality-contract-mode",
+        choices=("extend_task_class", "replace_task_class"),
+        default="extend_task_class",
+        help="How request criteria interact with task-class quality gates.",
+    )
+    parser.add_argument(
+        "--acceptance-criterion",
+        action="append",
+        default=[],
+        help="Request-level quality criterion. May be repeated.",
+    )
     parser.add_argument(
         "--max-tokens", type=int, default=2048, help="Max output tokens."
     )
@@ -322,15 +413,36 @@ def main(argv: list[str] | None = None) -> int:
     adapter = DelegationDispatchAdapter()
 
     if args.compile_only:
-        envelope = adapter.compile_request(
-            prompt=args.prompt,
-            task_type=task_type,
-            source=source,
-            cwd=args.cwd,
-            wait=args.wait,
-            max_tokens=args.max_tokens,
-            correlation_id=correlation_id,
-        )
+        try:
+            envelope = adapter.compile_request(
+                prompt=args.prompt,
+                task_type=task_type,
+                source=source,
+                cwd=args.cwd,
+                source_file_path=args.source_file,
+                working_directory=args.working_directory,
+                session_id=args.session_id,
+                recipient=args.recipient,
+                codex_sandbox_mode=args.codex_sandbox_mode,
+                quality_contract_mode=args.quality_contract_mode,
+                acceptance_criteria=tuple(args.acceptance_criterion),
+                wait=args.wait,
+                max_tokens=args.max_tokens,
+                correlation_id=correlation_id,
+            )
+        except ValueError as exc:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "correlation_id": str(correlation_id),
+                        "error": str(exc),
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            return 2
         result = {"ok": True, **envelope}
         sys.stdout.write(json.dumps(result, indent=2) + "\n")
         return 0
@@ -341,6 +453,13 @@ def main(argv: list[str] | None = None) -> int:
             task_type=task_type,
             source=source,
             cwd=args.cwd,
+            source_file_path=args.source_file,
+            working_directory=args.working_directory,
+            session_id=args.session_id,
+            recipient=args.recipient,
+            codex_sandbox_mode=args.codex_sandbox_mode,
+            quality_contract_mode=args.quality_contract_mode,
+            acceptance_criteria=tuple(args.acceptance_criterion),
             wait=args.wait,
             max_tokens=args.max_tokens,
             correlation_id=correlation_id,

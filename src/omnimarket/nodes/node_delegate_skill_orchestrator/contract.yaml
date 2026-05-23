@@ -27,6 +27,76 @@ allowed_task_types:
   - test
   - document
   - research
+  - code_generation
+  - refactor
+  - reasoning
+  - complex_reasoning
+  - planning
+  - review
+  - summarization
+  - agent_delegation
+  - escalation
+
+inputs:
+  prompt:
+    type: str
+    required: true
+    description: User prompt to delegate.
+  task_type:
+    type: str
+    required: true
+    description: Contract task taxonomy for delegation routing.
+  source:
+    type: str
+    required: true
+    description: Registered adapter source.
+  cwd:
+    type: str
+    required: false
+    description: Caller current directory.
+  source_file_path:
+    type: str
+    required: false
+    description: Source file context for runtime delegation.
+  working_directory:
+    type: str
+    required: false
+    description: Worker working directory requested by the caller.
+  session_id:
+    type: str
+    required: false
+    description: Session that originated the delegation request.
+  recipient:
+    type: str
+    required: false
+    description: Requested delegation recipient surface.
+  codex_sandbox_mode:
+    type: str
+    required: false
+    description: Codex sandbox mode requested by the caller.
+  wait:
+    type: bool
+    required: false
+    default: true
+    description: Wait for synchronous result.
+  max_tokens:
+    type: int
+    required: false
+    default: 2048
+    description: Maximum tokens for the delegated response.
+  metadata:
+    type: object
+    required: false
+    description: Additional adapter metadata.
+  quality_contract_mode:
+    type: str
+    required: false
+    default: extend_task_class
+    description: How request criteria interact with task-class quality gates.
+  acceptance_criteria:
+    type: list
+    required: false
+    description: Request-level quality criteria enforced by the quality gate.
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegate-skill.v1

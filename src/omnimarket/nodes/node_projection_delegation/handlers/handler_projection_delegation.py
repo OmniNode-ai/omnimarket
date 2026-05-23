@@ -13,8 +13,10 @@ Target table schema (from omnidash, OMN-2284):
   model_name TEXT DEFAULT ''
   delegated_by TEXT
   quality_gate_passed BOOLEAN DEFAULT false
-  quality_gates_checked JSONB
-  quality_gates_failed JSONB
+  quality_gates_checked INT
+  quality_gates_failed INT
+  quality_gates_checked_jsonb JSONB
+  quality_gates_failed_jsonb JSONB
   cost_usd NUMERIC DEFAULT 0
   cost_savings_usd NUMERIC DEFAULT 0
   delegation_latency_ms INT
@@ -162,8 +164,10 @@ class HandlerProjectionDelegation:
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
-            "quality_gates_checked": event.quality_gates_checked,
-            "quality_gates_failed": event.quality_gates_failed,
+            "quality_gates_checked": _gate_count(event.quality_gates_checked),
+            "quality_gates_failed": _gate_count(event.quality_gates_failed),
+            "quality_gates_checked_jsonb": event.quality_gates_checked,
+            "quality_gates_failed_jsonb": event.quality_gates_failed,
             "cost_usd": event.cost_usd,
             "cost_savings_usd": event.cost_savings_usd,
             "delegation_latency_ms": event.delegation_latency_ms,
@@ -197,8 +201,10 @@ class HandlerProjectionDelegation:
             "model_name": row_model.model_name,
             "delegated_by": row_model.delegated_by,
             "quality_gate_passed": row_model.quality_gate_passed,
-            "quality_gates_checked": list(row_model.quality_gates_checked),
-            "quality_gates_failed": list(row_model.quality_gates_failed),
+            "quality_gates_checked": len(row_model.quality_gates_checked),
+            "quality_gates_failed": len(row_model.quality_gates_failed),
+            "quality_gates_checked_jsonb": list(row_model.quality_gates_checked),
+            "quality_gates_failed_jsonb": list(row_model.quality_gates_failed),
             "quality_gate_detail": row_model.quality_gate_detail,
             "cost_usd": row_model.cost_usd,
             "cost_savings_usd": row_model.cost_savings_usd,
@@ -244,3 +250,7 @@ def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
         and payload.get("status") is not None
         and isinstance(payload.get("metrics"), dict)
     )
+
+
+def _gate_count(value: list[str] | None) -> int:
+    return len(value or [])
