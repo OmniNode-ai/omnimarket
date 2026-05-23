@@ -57,6 +57,28 @@ def _avg(total: Decimal | int, count: int) -> Decimal:
     return Decimal(str(total)) / Decimal(str(count))
 
 
+def _int_field(row: dict[str, object] | None, key: str) -> int:
+    if row is None:
+        return 0
+    value = row[key]
+    if isinstance(value, int | str | bytes | bytearray):
+        return int(value)
+    if isinstance(value, Decimal | float):
+        return int(value)
+    raise TypeError(f"{key} must be int-compatible")
+
+
+def _optional_float_field(row: dict[str, object] | None, key: str) -> float | None:
+    if row is None:
+        return None
+    value = row.get(key)
+    if value is None:
+        return None
+    if isinstance(value, int | float | str | bytes | bytearray | Decimal):
+        return float(value)
+    raise TypeError(f"{key} must be float-compatible")
+
+
 class HandlerLlmDelegationProjection:
     """Reduce delegation-call-completed events into daily aggregate rows."""
 
@@ -131,23 +153,17 @@ class HandlerLlmDelegationProjection:
         current = current_rows[0] if current_rows else None
 
         # Accumulate deltas
-        prev_calls = int(current["total_calls"]) if current else 0
+        prev_calls = _int_field(current, "total_calls")
         new_total_calls = prev_calls + 1
-        new_successful = (int(current["successful_calls"]) if current else 0) + (
+        new_successful = _int_field(current, "successful_calls") + (
             1 if event.success else 0
         )
-        new_escalated = (int(current["escalated_calls"]) if current else 0) + (
+        new_escalated = _int_field(current, "escalated_calls") + (
             1 if event.escalated_to is not None else 0
         )
-        new_tokens_in = (
-            int(current["total_tokens_in"]) if current else 0
-        ) + event.tokens_in
-        new_tokens_out = (
-            int(current["total_tokens_out"]) if current else 0
-        ) + event.tokens_out
-        new_latency_ms = (
-            int(current["total_latency_ms"]) if current else 0
-        ) + event.latency_ms
+        new_tokens_in = _int_field(current, "total_tokens_in") + event.tokens_in
+        new_tokens_out = _int_field(current, "total_tokens_out") + event.tokens_out
+        new_latency_ms = _int_field(current, "total_latency_ms") + event.latency_ms
         new_actual_cost = (
             Decimal(str(current["total_actual_cost_usd"])) if current else Decimal("0")
         ) + event.actual_cost_usd
@@ -161,11 +177,7 @@ class HandlerLlmDelegationProjection:
         ) + event.savings_usd
 
         # Incremental average quality score
-        prev_avg_quality = (
-            float(current["avg_quality_score"])
-            if current and current.get("avg_quality_score") is not None
-            else None
-        )
+        prev_avg_quality = _optional_float_field(current, "avg_quality_score")
         if event.quality_score is not None:
             if prev_avg_quality is not None:
                 new_avg_quality: float | None = (
