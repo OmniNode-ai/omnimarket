@@ -1,0 +1,25 @@
+---
+name: node_kb_adr_publisher
+version: "1.0.0"
+description: "KB ADR publisher effect — renders canary-extracted ADRs into knowledge-base PRs for human review"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_kb_adr_publisher: "omnimarket.nodes.node_kb_adr_publisher"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["adr", "kb", "effect", "publish", "canary"]
+pack: "adr"
+display_name: "KB ADR Publisher Effect"
+node_role: "effect"
+tickets: ["OMN-11808"]
