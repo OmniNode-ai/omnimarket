@@ -1,0 +1,23 @@
+name: node_swarm_decomposer_compute
+version: "1.0.0"
+description: "Pure compute node for swarm task decomposition — parses pre-fetched planner output into typed subtasks"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_swarm_decomposer_compute: "omnimarket.nodes.node_swarm_decomposer_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "pydantic>=2.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["compute", "swarm", "decomposition", "OMN-11809"]
+pack: "swarm"
+display_name: "Swarm Decomposer Compute"
+node_role: "compute"
