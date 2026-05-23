@@ -16,17 +16,15 @@ from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+    TOPIC_DELEGATION_ALL_TIERS_FAILED,
+    TOPIC_DELEGATION_CALL_COMPLETED,
+    TOPIC_DELEGATION_ESCALATION_TRIGGERED,
     HandlerLlmDelegationCall,
     _health_cache,
     _is_endpoint_healthy,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.topics import (
-    TOPIC_DELEGATION_ALL_TIERS_FAILED,
-    TOPIC_DELEGATION_CALL_COMPLETED,
-    TOPIC_DELEGATION_ESCALATION_TRIGGERED,
 )
 
 

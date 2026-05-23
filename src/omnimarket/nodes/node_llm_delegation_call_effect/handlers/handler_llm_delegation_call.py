@@ -18,6 +18,7 @@ import os
 import time
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -37,18 +38,26 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event import (
     ModelLlmDelegationModelDegradedEvent,
 )
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
     ModelLlmDelegationCallResult,
 )
-from omnimarket.nodes.node_llm_delegation_call_effect.topics import (
-    TOPIC_DELEGATION_ALL_TIERS_FAILED,
-    TOPIC_DELEGATION_CALL_COMPLETED,
-    TOPIC_DELEGATION_ESCALATION_TRIGGERED,
-    TOPIC_DELEGATION_MODEL_DEGRADED,
-)
+
+_CONTRACT = Path(__file__).parent.parent / "contract.yaml"
+_subscribe = contract_subscribe_topics(_CONTRACT)
+_publish = contract_publish_topics(_CONTRACT)
+
+TOPIC_DELEGATION_EXECUTE = _subscribe[0]
+TOPIC_DELEGATION_CALL_COMPLETED = _publish[0]
+TOPIC_DELEGATION_ESCALATION_TRIGGERED = _publish[1]
+TOPIC_DELEGATION_ALL_TIERS_FAILED = _publish[2]
+TOPIC_DELEGATION_MODEL_DEGRADED = _publish[3]
 
 __all__ = ["HandlerLlmDelegationCall"]
 
