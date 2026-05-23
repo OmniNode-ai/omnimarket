@@ -9,3 +9,6 @@ tags:
   - delegation
   - routing
   - llm
+pack: "intelligence"
+display_name: "LLM Delegation Routing Compute"
+node_role: "compute"
