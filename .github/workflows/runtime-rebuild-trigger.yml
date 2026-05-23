@@ -25,6 +25,7 @@ on:
     types: [closed]
     branches:
       - main
+      - dev
 
 jobs:
   trigger-rebuild:
