@@ -1,0 +1,23 @@
+name: node_test_generator
+version: "1.0.0"
+description: "Generates deterministic Python test source from a ticket contract"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_test_generator: "omnimarket.nodes.node_test_generator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase-core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["test-generation", "compute", "deterministic", "context-pack-pipeline"]
+pack: "context_pack"
+display_name: "Test Generator Compute"
+node_role: "compute"
