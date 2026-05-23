@@ -1,0 +1,60 @@
+---
+name: node_chain_diff
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure chain comparison node. Accepts an expected golden chain and an observed
+  event chain and returns a detailed diff with missing events, unexpected events,
+  order mismatches, and topic mismatches. No I/O, no side effects.
+
+handler:
+  module: omnimarket.nodes.node_chain_diff.handlers.handler_chain_diff
+  class: HandlerChainDiff
+  input_model: omnimarket.nodes.node_chain_diff.models.model_chain_diff_request.ModelChainDiffRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+inputs:
+  expected:
+    type: array
+    required: true
+    description: Expected golden chain entries (ModelGoldenChainEntry list)
+  observed:
+    type: array
+    required: true
+    description: Observed event chain entries (ModelGoldenChainEntry list)
+
+outputs:
+  matches:
+    type: bool
+  expected_count:
+    type: int
+  observed_count:
+    type: int
+  missing_events:
+    type: array
+  unexpected_events:
+    type: array
+  order_mismatches:
+    type: array
+  topic_mismatches:
+    type: array
+
+terminal_event: onex.evt.omnimarket.chain-diff-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.chain-diff-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.chain-diff-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.chain-diff-completed.v1
+
+metadata:
+  transport_type: kafka
