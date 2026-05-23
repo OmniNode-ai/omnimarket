@@ -38,9 +38,7 @@ pytestmark = [
 # Stability-test lane connection constants (read from env, fallback to lab defaults)
 # ---------------------------------------------------------------------------
 
-_PG_HOST = os.environ.get(
-    "INTEGRATION_POSTGRES_HOST", "192.168.86.201"
-)  # onex-allow-internal-ip: lab GPU server stability-test lane default
+_PG_HOST = os.environ.get("INTEGRATION_POSTGRES_HOST", "192.168.86.201")  # onex-allow-internal-ip OMN-11766 reason="stability-test lane lab GPU server default; overridden by env at runtime"  # fmt: skip
 _PG_PORT = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5436"))
 _PG_USER = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
 _PG_PASSWORD = os.environ.get(
@@ -49,9 +47,7 @@ _PG_PASSWORD = os.environ.get(
 # agent_routing_decisions lives in omnibase_infra (not omnidash_analytics)
 _PG_DB = os.environ.get("INTEGRATION_POSTGRES_DB_INFRA", "omnibase_infra")
 
-_KAFKA_BOOTSTRAP = os.environ.get(
-    "KAFKA_BOOTSTRAP_SERVERS", "192.168.86.201:19092"
-)  # onex-allow-internal-ip: lab GPU server Redpanda default
+_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "192.168.86.201:19092")  # onex-allow-internal-ip OMN-11766 reason="stability-test lane lab GPU server Redpanda bootstrap; overridden by env at runtime"  # fmt: skip
 
 # Topic sourced from node_emit_daemon/registries/topics.yaml routing.decision fan_out
 # onex-topic-allow: read from topics registry at test construction time; used only in integration tests
