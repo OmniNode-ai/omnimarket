@@ -15,13 +15,13 @@ name: Plugin Compat Handshake Gate
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'hotfix/**']
     paths:
       - 'src/omnimarket/runtime/**'
       - 'tests/test_plugin_compat_handshake.py'
       - '.github/workflows/plugin-compat-gate.yml'
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev, develop]
     paths:
       - 'src/omnimarket/runtime/**'
       - 'tests/test_plugin_compat_handshake.py'

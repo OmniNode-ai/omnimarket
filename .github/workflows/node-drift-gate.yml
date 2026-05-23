@@ -19,7 +19,7 @@ name: node-drift-gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - "src/omnimarket/nodes/**"
       - "pyproject.toml"

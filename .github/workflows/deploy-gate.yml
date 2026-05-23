@@ -11,7 +11,7 @@ name: Deploy Gate
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev, develop]
   merge_group:
 
 concurrency:

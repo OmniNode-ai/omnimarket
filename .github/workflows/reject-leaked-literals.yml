@@ -24,7 +24,7 @@ name: Leaked Literals Gate
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
-    branches: [main]
+    branches: [main, dev]
   merge_group:
 
 permissions:
