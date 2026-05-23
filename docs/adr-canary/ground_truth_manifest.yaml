@@ -172,3 +172,2016 @@ entries:
         provider: local_vllm
         model_id: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
         external: false
+
+  - id: "adr-006-message-dispatch-engine-canonical-routing"
+    root_paths:
+    - "omnibase_infra/docs/decisions/"
+    ground_truth_adr: |
+      > **Navigation**: [Home](../index.md) > [Decisions](README.md) > ADR-006 MessageDispatchEngine Canonical Routing
+      
+      # ADR-006: MessageDispatchEngine as Canonical Consumer Routing Pattern
+      
+      ## Status
+      
+      Accepted
+      
+      ## Date
+      
+      2026-02-08
+      
+      ## Context
+      
+      The ONEX runtime has two patterns for routing Kafka messages to handlers:
+      
+      **Pattern A (plugin-direct):** Each plugin subscribes directly to Kafka
+      topics via `EventBusKafka.subscribe()` and routes messages through a custom
+      event router. Used by `PluginRegistration` with `IntrospectionEventRouter`.
+      
+      **Pattern B (dispatch engine):** Plugins register dispatchers with
+      `MessageDispatchEngine`, which owns the subscription lifecycle and routes
+      messages based on `message_type` (and, in future, `event_type`). Used by
+      `EventBusSubcontractWiring` for contract-driven subscriptions.
+      
+      When `PluginIntelligence` needed to wire its three Kafka topics to real
+      handlers (replacing the `_noop_handler` placeholder), the question was:
+      follow Pattern A (matching the existing `PluginRegistration` template) or
+      Pattern B (the dispatch engine)?
+      
+      ### Why this matters
+      
+      At two consumers, maintaining parallel patterns is manageable. At three or
+      more, direct subscription per plugin creates:
+      
+      - **Fragmented invariants**: Each plugin implements its own retry policy,
+        ordering semantics, dead-letter handling, and envelope parsing.
+      - **No global guarantees**: Cannot enforce platform-wide rules like
+        "partition key is `run_id`" or "all consumers enforce the same
+        `schema_version` policy."
+      - **Architectural drift**: The runtime's role as centralized subscriber
+        (transport spec invariant #1) is undermined by each plugin owning its
+        own consumer lifecycle.
+      
+      ## Decision
+      
+      **MessageDispatchEngine is the default wiring pattern for all new
+      consumers.** Direct subscription patterns are legacy exceptions.
+      
+      ### Rules
+      
+      1. New plugins wire consumers through `MessageDispatchEngine.register_dispatcher()`.
+      2. `PluginRegistration`'s direct subscription (`IntrospectionEventRouter`)
+         is a legacy exception. It stays as-is but is documented as legacy.
+      3. Migration target for `PluginRegistration`: move `IntrospectionEventRouter`
+         registrations into `MessageDispatchEngine` dispatchers.
+      4. `PluginIntelligence` is the first plugin implementing Pattern B
+         end-to-end. It serves as the reference implementation.
+      
+      ### Phase 1 Independence Invariant
+      
+      Phase 1 (intelligence dispatcher wiring) uses existing envelope fields and
+      `message_type` inference for routing. The `event_type` field is a Phase 2
+      concern. No Phase 1 work depends on envelope evolution.
+      
+      ## Consequences
+      
+      ### Positive
+      
+      - **Single routing enforcement point**: retry, DLQ, ordering, schema
+        validation, and backpressure policies are enforced once in the dispatch
+        engine, not per-plugin.
+      - **Global guarantees possible**: partition key policy, schema version
+        enforcement, and dead-letter routing are centralized.
+      - **Intelligence establishes the pattern**: future plugins have a working
+        template to follow.
+      
+      ### Negative
+      
+      - **PluginRegistration diverges**: it continues using direct subscription
+        until migrated, creating a known inconsistency.
+      - **Dispatch engine becomes a bottleneck risk**: all message routing flows
+        through one component. Must ensure it remains performant under load.
+      
+      ### Neutral
+      
+      - Phase 2 (envelope evolution with `event_type`, `payload_type`,
+        `payload_schema_version`) is a separate concern tracked in
+        through . It enhances routing but is not required for Phase 1.
+      
+      ## Open Decisions (resolve before or during Phase 2)
+      
+      These decisions are referenced in the transport envelope specification and
+      affect Phase 2 ticket scope.
+      
+      | # | Decision | Recommendation | Rationale |
+      |---|----------|----------------|-----------|
+      | 1 | Routing key format: dot-path string vs enum vs topic segment | Dot-path string | Extensible without code changes; matches topic naming convention |
+      | 2 | Payload discriminator: dot-path string vs enum member | Dot-path string | Enums require code changes for each new type; strings allow dynamic registration |
+      | 3 | Dead-letter policy: single DLQ vs per-category vs per-source | Per-category DLQ | Already implemented in `topic_constants.py`; category derived from `event_type` domain prefix (`intelligence.*` -> `onex.dlq.intelligence.v1`) |
+      | 4 | Spool format: JSON lines vs one file per event vs SQLite WAL | JSON lines | Simplest; append-only; easy to replay with standard tools |
+      | 5 | Ordering guarantee: none vs per-topic vs per-partition-key | Partition key = `run_id` | Reducers need per-run ordering for FSM correctness; Kafka partition keys provide this naturally |
+      
+      ## References
+      
+      - **Epic**:  — Intelligence Domain Routing + Envelope Evolution
+      - **Phase 1 tickets**:  through
+      - **Phase 2 tickets**:  through
+      - **Measurement work**:  (Workstream M — separate scope)
+      - **PluginRegistration template**: `src/omnibase_infra/nodes/node_registration_orchestrator/plugin.py`
+      - **MessageDispatchEngine**: `src/omnibase_infra/runtime/service_message_dispatch_engine.py`
+      - **EventBusSubcontractWiring**: `src/omnibase_infra/runtime/event_bus_subcontract_wiring.py`
+      - **PluginIntelligence (blocker)**: `omniintelligence/src/omniintelligence/runtime/plugin.py`
+    ground_truth_adr_hash: "sha256:b06f9f61882a0f60115aebdedcd2e6cfbcee314c4e36736661e890f87e5beece"
+    source_file_hash: "sha256:b06f9f61882a0f60115aebdedcd2e6cfbcee314c4e36736661e890f87e5beece"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - pattern_adoption
+    expected_keywords:
+    - "MessageDispatchEngine"
+    - "dispatch engine"
+    - "consumer routing"
+    - "register_dispatcher"
+    - "legacy exception"
+
+  - id: "adr-consumer-group-naming"
+    root_paths:
+    - "omnibase_infra/docs/decisions/"
+    ground_truth_adr: |
+      > **Navigation**: [Home](../index.md) > [Decisions](README.md) > ADR Consumer Group Naming
+      
+      # ADR: Kafka Consumer Group Naming Convention
+      
+      ## Status
+      
+      Accepted
+      
+      ## Date
+      
+      2026-01-27
+      
+      ## Context
+      
+      ONEX infrastructure services use Kafka consumer groups for event-driven communication. Each service subscribes to topics using consumer groups that determine how Kafka partitions are assigned across consumers.
+      
+      **Problem Statement**: Without a systematic naming convention, services using hardcoded or ad-hoc consumer group IDs can cause:
+      
+      1. **Partition stealing**: Two services using the same group ID on the same topic will compete for partitions, causing one to receive messages intended for the other
+      2. **Non-deterministic behavior**: Restarting services could result in different partition assignments
+      3. **Debugging difficulty**: Generic group IDs like `"onex-runtime"` provide no context about which service owns the consumer
+      4. **Purpose confusion**: Different consumption patterns (real-time vs replay vs audit) require different offset policies but have no way to express this semantically
+      
+      **Use Cases Requiring Distinct Consumer Groups**:
+      
+      1. **Multiple services on shared topic**: Registration events consumed by both orchestrators and projectors
+      2. **Introspection consumers**: Node discovery queries that should not interfere with normal event processing
+      3. **Replay consumers**: Reprocessing historical data from the beginning of a topic
+      4. **Audit consumers**: Compliance logging that requires full topic capture
+      5. **Backfill consumers**: One-shot bounded consumers for populating derived state
+      
+      **Kafka Consumer Group Constraints**:
+      
+      - Maximum length: 255 characters
+      - Valid characters: alphanumeric, period (`.`), underscore (`_`), hyphen (`-`)
+      - Cannot be empty
+      
+      ## Decision
+      
+      We implemented a **derived consumer group naming convention** that generates deterministic, semantically meaningful group IDs from node identity and purpose.
+      
+      ### 1. Canonical Format
+      
+      ```
+      {env}.{service}.{node_name}.{purpose}.{version}
+      ```
+      
+      **Components**:
+      
+      | Component | Description | Example |
+      |-----------|-------------|---------|
+      | `env` | Environment identifier | `dev`, `staging`, `prod` |
+      | `service` | Service name from contract | `omniintelligence`, `omnibridge` |
+      | `node_name` | Node name from contract | `claude_hook_event_effect` |
+      | `purpose` | Consumer purpose classification | `consume`, `introspection`, `replay` |
+      | `version` | Node version string | `v1`, `v2.0.0` |
+      
+      **Example Group IDs**:
+      
+      ```
+      dev.omniintelligence.claude_hook_event_effect.consume.v1
+      prod.omnibridge.registration_orchestrator.introspection.v1
+      staging.omnidash.metrics_projector.replay.v2
+      ```
+      
+      ### 2. Purpose Classification
+      
+      Consumer purposes are defined in `EnumConsumerGroupPurpose`:
+      
+      | Purpose | Offset Policy | Pattern | Use Case |
+      |---------|---------------|---------|----------|
+      | `CONSUME` | `latest` | Continuous | Standard event processing |
+      | `INTROSPECTION` | `latest` | Targeted | Node discovery and health queries |
+      | `REPLAY` | `earliest` | Full topic | Reprocess historical data |
+      | `AUDIT` | `earliest` | Full topic | Compliance and audit logging |
+      | `BACKFILL` | `earliest` | Bounded | Populate derived state from history |
+      
+      ### 3. Typed Node Identity
+      
+      Consumer group derivation uses `ModelNodeIdentity`, a frozen Pydantic model:
+      
+      ```python
+      from omnibase_infra.models import ModelNodeIdentity
+      from omnibase_infra.enums import EnumConsumerGroupPurpose
+      from omnibase_infra.utils import compute_consumer_group_id
+      
+      identity = ModelNodeIdentity(
+          env="dev",
+          service="omniintelligence",
+          node_name="claude_hook_event_effect",
+          version="v1",
+      )
+      
+      # Standard consumption
+      group_id = compute_consumer_group_id(identity)
+      # Result: "dev.omniintelligence.claude_hook_event_effect.consume.v1"
+      
+      # Introspection
+      group_id = compute_consumer_group_id(identity, EnumConsumerGroupPurpose.INTROSPECTION)
+      # Result: "dev.omniintelligence.claude_hook_event_effect.introspection.v1"
+      ```
+      
+      ### 4. Component Normalization
+      
+      Each component is normalized to ensure Kafka compatibility:
+      
+      1. **Lowercase conversion**: `DEV` becomes `dev`
+      2. **Invalid character replacement**: Spaces and special characters become underscores
+      3. **Separator collapse**: `foo..bar` becomes `foo.bar`
+      4. **Edge trimming**: Leading/trailing separators are removed
+      
+      ### 5. Length Constraint Handling
+      
+      When the combined group ID exceeds 255 characters:
+      
+      1. Generate 8-character SHA-256 hash suffix from original (pre-normalized) identity
+      2. Truncate the group ID prefix to `255 - 9` characters (reserving space for `_` + hash)
+      3. Append `_{hash_suffix}`
+      
+      This ensures:
+      - Determinism: Same identity always produces same truncated ID
+      - Uniqueness: Hash suffix differentiates truncated IDs
+      - Kafka compliance: Result is always <= 255 characters
+      
+      ### 6. Event Bus Integration
+      
+      The `subscribe()` method on event bus implementations accepts `ModelNodeIdentity` and `EnumConsumerGroupPurpose`:
+      
+      ```python
+      await event_bus.subscribe(
+          topic="node.introspection.events",
+          node_identity=identity,
+          on_message=handler,
+          purpose=EnumConsumerGroupPurpose.INTROSPECTION,
+      )
+      ```
+      
+      The event bus internally calls `compute_consumer_group_id()` to derive the group ID.
+      
+      ## Consequences
+      
+      ### Positive
+      
+      - **Partition isolation**: Each node gets unique consumer groups, eliminating partition stealing
+      - **Deterministic assignment**: Same node identity always produces same group ID
+      - **Semantic clarity**: Group IDs encode environment, service, node, purpose, and version
+      - **Monitoring integration**: Hierarchical format enables Kafka tooling to filter by prefix (`dev.*`, `*.introspection.*`)
+      - **Offset policy alignment**: Purpose-based naming enables automatic offset reset configuration
+      - **Debugging support**: Group IDs in logs immediately identify the owning service and purpose
+      
+      ### Negative
+      
+      - **Group ID verbosity**: Full format is longer than simple names like `"my-service"`
+      - **Truncation complexity**: Very long service/node names require hash-based truncation
+      - **Migration overhead**: Existing deployments must migrate to new group IDs (offset positions are not preserved)
+      
+      ### Neutral
+      
+      - **Consumer group proliferation**: Each purpose creates a separate group, which is intentional for isolation
+      - **Kafka offset storage**: More consumer groups means more offset metadata stored in Kafka
+      
+      ## Runtime Naming Model (Current Constraint)
+      
+      **INVARIANT**: In the current runtime model, `ModelRuntimeConfig.name` represents both `service_name` and `node_name` by design.
+      
+      This means consumer group IDs have intentional redundancy:
+      
+      ```
+      local.my-service.my-service.introspection.v1
+            ^^^^^^^^^^ ^^^^^^^^^^
+            service    node_name (same value)
+      ```
+      
+      ### Why This Is Acceptable
+      
+      1. **Single-node deployments**: Current architecture has 1:1 service-to-node mapping
+      2. **Explicit redundancy**: Redundancy is honest and traceable (avoids inventing fake node names)
+      3. **Deterministic IDs**: Consumer group IDs remain deterministic and traceable
+      4. **No information loss**: When the split occurs, the format already has the slot for distinct values
+      
+      ### Trigger for Schema Split
+      
+      Split `service_name` and `node_name` when:
+      
+      - `ServiceKernel` supports registering multiple node contracts under one service runtime
+      - A single service process needs to host >1 ONEX node identity
+      - Multi-tenant node hosting becomes a requirement
+      
+      ### Migration Expectations
+      
+      When the split occurs:
+      
+      1. **Existing consumer groups will naturally diverge**: New IDs will have distinct service/node components
+      2. **Old group IDs orphaned**: Acceptable per no-backwards-compatibility policy (see CLAUDE.md)
+      3. **Offset positions reset**: Services will resume from configured offset policy (latest/earliest)
+      4. **No migration tooling required**: Clean break is preferred over compatibility shims
+      
+      ## Alternatives Considered
+      
+      ### 1. UUID-Based Consumer Group IDs
+      
+      **Approach**: Generate random UUIDs for each consumer group.
+      
+      ```python
+      group_id = f"onex-{uuid.uuid4()}"
+      ```
+      
+      **Why rejected**:
+      
+      1. **Non-deterministic**: Same service would get different group IDs on restart
+      2. **Partition rebalancing**: Every restart triggers full partition reassignment
+      3. **No semantic meaning**: UUIDs provide no context for debugging or monitoring
+      4. **Offset loss**: Offsets tied to old UUIDs are orphaned on restart
+      
+      ### 2. Simple Service Name Only
+      
+      **Approach**: Use just the service name as the group ID.
+      
+      ```python
+      group_id = config.name  # "my-service"
+      ```
+      
+      **Why rejected**:
+      
+      1. **Purpose collision**: Same service consuming for different purposes shares offsets
+      2. **Version collision**: Service upgrades compete with old versions for partitions
+      3. **Environment collision**: Dev and prod instances could share group IDs if misconfigured
+      4. **No node distinction**: Multi-node services cannot be differentiated
+      
+      ### 3. Topic-Prefixed Groups
+      
+      **Approach**: Prefix group ID with the topic name.
+      
+      ```python
+      group_id = f"{topic}-{service_name}"  # "events-my-service"
+      ```
+      
+      **Why rejected**:
+      
+      1. **Topic coupling**: Group ID changes if topic is renamed
+      2. **Multi-topic consumption**: Services consuming multiple topics get multiple group IDs per purpose
+      3. **Still lacks purpose/version**: Does not solve offset policy or version collision issues
+      
+      ### 4. Centralized Group Registry
+      
+      **Approach**: Require services to register group IDs in a central registry (Consul/database).
+      
+      **Why rejected**:
+      
+      1. **Operational overhead**: Requires registry management and coordination
+      2. **Single point of failure**: Registry unavailability blocks service startup
+      3. **No clear benefit**: Derived naming achieves uniqueness without coordination
+      4. **Complexity**: Adds another moving part to the infrastructure
+      
+      ## Implementation Notes
+      
+      ### Key Files
+      
+      - `src/omnibase_infra/utils/util_consumer_group.py`: Core derivation logic
+      - `src/omnibase_infra/enums/enum_consumer_group_purpose.py`: Purpose enumeration
+      - `src/omnibase_infra/models/model_node_identity.py`: Typed identity model
+      - `src/omnibase_infra/event_bus/event_bus_kafka.py`: Kafka integration
+      - `src/omnibase_infra/event_bus/event_bus_inmemory.py`: In-memory integration
+      - `tests/unit/utils/test_util_consumer_group.py`: Unit tests
+      
+      ### Error Handling
+      
+      The `normalize_kafka_identifier()` function raises `ValueError` for:
+      
+      - Empty input strings
+      - Input that normalizes to empty string (e.g., `"@#$%^"`)
+      
+      All `ModelNodeIdentity` fields are validated as non-empty, non-whitespace strings.
+      
+      ### Monitoring Consumer Groups
+      
+      Use Kafka tooling to monitor consumer groups by pattern:
+      
+      ```bash
+      # List all dev environment groups
+      kafka-consumer-groups.sh --list | grep '^dev\.'
+      
+      # List all introspection consumers
+      kafka-consumer-groups.sh --list | grep '\.introspection\.'
+      
+      # Describe specific group
+      kafka-consumer-groups.sh --describe --group dev.omniintelligence.claude_hook_event_effect.consume.v1
+      ```
+      
+      ### Performance Characteristics
+      
+      - **Normalization**: O(n) where n is input string length
+      - **Hash computation**: O(1) for SHA-256 (fixed input size after truncation)
+      - **Total derivation**: O(m) where m is sum of all component lengths
+      
+      ### Hash Computation Details
+      
+      When group IDs exceed 255 characters, a hash suffix is computed from the original identity components. The hash input uses pipe (`|`) as a separator:
+      
+      ```
+      {env}|{service}|{node_name}|{purpose}|{version}
+      ```
+      
+      **Important**: Changing this separator would produce different hash suffixes, effectively creating new consumer groups and orphaning existing ones. This format is considered stable and should not be modified without a migration plan.
+      
+      ## References
+      
+      - **EnumConsumerGroupPurpose**: Purpose classification enum
+      - **ModelNodeIdentity**: Typed node identity model
+      - **ADR-001**: Graceful Shutdown with Drain Period (related consumer lifecycle)
+    ground_truth_adr_hash: "sha256:52287459551b47d13418a8303fcd9d60386c99c8f767af314f1591db27b50a3b"
+    source_file_hash: "sha256:52287459551b47d13418a8303fcd9d60386c99c8f767af314f1591db27b50a3b"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - pattern_adoption
+    expected_keywords:
+    - "consumer group"
+    - "naming convention"
+    - "EnumConsumerGroupPurpose"
+    - "ModelNodeIdentity"
+    - "compute_consumer_group_id"
+
+  - id: "adr-2026-04-28-dispatch-lifecycle-canonical-omni_home"
+    root_paths:
+    - "docs/decisions/"
+    ground_truth_adr: |
+      # ADR: Dispatch Lifecycle Canonical Source (SEAM-9)
+      
+      **Status:** ACCEPTED
+      **Ticket:** OMN-10172
+      **Date:** 2026-04-28
+      **Repo-level ADR:** `omnibase_core/docs/decisions/adr-2026-04-28-dispatch-lifecycle-canonical.md`
+      
+      ---
+      
+      ## Context
+      
+      Two concurrent plans introduced overlapping abstractions for the same dispatch lifecycle:
+      
+      - **Runtime-Lifecycle Wave 4** (`2026-04-26-runtime-lifecycle-hardening-plan.md` Task 10):
+        `ModelDispatchLifecycleEvent` — typed FSM with states
+        `accepted / started / heartbeat / terminal_success / terminal_failure / timeout / cancelled / dlq`.
+        Already implemented at
+        `omnibase_core/src/omnibase_core/models/dispatch/model_dispatch_lifecycle_event.py`.
+      
+      - **Skills-to-Market Phase 1 Task 4** (`2026-04-27-skills-to-market-orchestrators-plan.md`):
+        `ModelDispatchRecord` — filesystem YAML written to
+        `$ONEX_STATE_DIR/dispatches/<agent_id>.yaml` at dispatch time by
+        `node_dispatch_worker/handlers/dispatch_record_writer.py`.
+      
+      Without a canonical owner, both abstractions can independently drift and different
+      tickets can claim lifecycle correctness against different surfaces. SEAM-9 closes that
+      ambiguity.
+      
+      ---
+      
+      ## Decision
+      
+      **Typed FSM events are canonical.**
+      
+      `ModelDispatchLifecycleEvent` in `omnibase_core` is the authoritative representation of
+      dispatch lifecycle state and transition semantics. This ADR ratifies the existing model
+      home rather than proposing a relocation.
+      
+      Filesystem YAML records (`ModelDispatchRecord`) are compatibility projections — derived
+      views written from terminal FSM events, not the authoritative source.
+      
+      ### Emitter responsibility table (canonical)
+      
+      | State | Emitter | Required fields |
+      |---|---|---|
+      | `accepted` | DISPATCHER | `dispatched_at`, `command_topic`, `target_node_id` |
+      | `started` | CONSUMER | `started_at`, `consumer_group`, `consumer_host` |
+      | `heartbeat` | CONSUMER | `heartbeat_at`, `consumer_host` |
+      | `terminal_success` | CONSUMER | `terminated_at`, `terminal_event_topic`, `result_payload_hash` |
+      | `terminal_failure` | CONSUMER | `terminated_at`, `terminal_event_topic`, `failure_reason` |
+      | `timeout` | ORCHESTRATOR | `timed_out_at`, `budget_seconds`, `last_observed_state` |
+      | `cancelled` | ORCHESTRATOR | `cancelled_at`, `cancel_reason`, `cancelled_by` |
+      | `dlq` | DLQ_WRITER | `dlq_at`, `dlq_topic`, `retry_attempts_used`, `final_failure_reason` |
+      
+      Enforced by `ModelDispatchLifecycleEvent._validate_emitter_owns_state` and
+      `_validate_required_fields_for_state` validators at construction time.
+      
+      ---
+      
+      ## Consequences
+      
+      1. **Skills-to-Market Phase 1** must treat `ModelDispatchRecord` as a projection of
+         `terminal_success` / `terminal_failure` FSM events, not as a standalone source of truth.
+         The compatibility section has been added to the canonical skills plan.
+      
+      2. **Runtime-Lifecycle Wave 4** must add a task requiring that skill workers (via
+         `node_dispatch_worker`) emit `ModelDispatchLifecycleEvent` events on the canonical bus.
+         That task has been added to `2026-04-26-runtime-lifecycle-hardening-plan.md` as
+         Task 11a (Skill Worker Lifecycle Emission).
+      
+      3. **Name collision** — the existing
+         `omnimarket/nodes/node_build_dispatch_effect/handlers/dispatch_history_store.py:46`
+         defines a `ModelDispatchRecord` with a different schema (build-loop history, not
+         per-dispatch snapshot). It should be renamed to `ModelBuildDispatchRecord` in a
+         separate follow-up ticket (do NOT bundle into this ADR).
+      
+      4. **`omnibase_compat`** may hold compatibility projection record types and projection
+         writer surfaces only; it must not redefine lifecycle state semantics.
+      
+      5. Proof-of-lifecycle claims in PR bodies, receipts, and DoD evidence must cite a
+         `ModelDispatchLifecycleEvent` chain observable on the bus, not a local YAML file.
+      
+      ---
+      
+      ## Alternatives Rejected
+      
+      - **YAML as canonical**: local file records are too easy to self-attest and cannot carry
+        the typed emitter-ownership constraints that prevent dispatchers from self-reporting
+        terminal success.
+      
+      - **Second canonical home outside `omnibase_core`**: adds indirection without solving
+        ownership. The typed FSM model already exists in `omnibase_core`; ratifying the
+        existing location is the zero-cost path.
+      
+      - **Co-equal YAML and typed events**: leaves the same lifecycle open to inconsistent
+        claims across tickets and repos — the failure mode this ADR exists to prevent.
+    ground_truth_adr_hash: "sha256:20ba2bbe138c8da3f3a40bfd250d33504f22df771cef93f778a586b9d5d05df5"
+    source_file_hash: "sha256:20ba2bbe138c8da3f3a40bfd250d33504f22df771cef93f778a586b9d5d05df5"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - doctrine_formation
+    expected_keywords:
+    - "ModelDispatchLifecycleEvent"
+    - "typed FSM"
+    - "canonical"
+    - "YAML records"
+    - "compatibility projections"
+
+  - id: "adr-2026-04-28-skill-liveness-validator-home-omni_home"
+    root_paths:
+    - "docs/decisions/"
+    ground_truth_adr: |
+      # ADR: Skill Liveness Validator Home
+      
+      ## Context
+      
+      Two competing plans proposed the skill-backing-node liveness validator in
+      different homes:
+      - `docs/plans/2026-04-27-skills-to-market-phase-2-validator-gates.md`
+      - `docs/plans/2026-04-26-runtime-lifecycle-part-4-skill-shim-runtime-proof.md`
+      
+      The current execution also surfaced a repo-policy constraint: reusable
+      governance and validator logic should not be scattered into workspace-root
+      helpers. Existing validator precedent already lives in `omnibase_core`.
+      
+      ## Decision
+      
+      The validator code lives in `omnibase_core`.
+      
+      Invocation surfaces are split by audience:
+      - `omniclaude` runs it in pre-commit for local author feedback.
+      - `omnimarket` runs it in CI for shared enforcement.
+      
+      This ADR applies to the skill-backing-node liveness validator only. It does
+      not make every future validator an `omnibase_core` concern by default, but it
+      does align with the current validator-in-core precedent.
+      
+      ## Consequences
+      
+      - The competing validator sections in the two older plans are retired and
+        replaced with pointers to this ADR.
+      - The implementation ticket (`OMN-10196`) targets `omnibase_core` for code,
+        not `omnimarket`, `omniclaude`, or `omnibase_compat`.
+      - `omniclaude` and `omnimarket` remain the enforcement surfaces, not the
+        ownership home.
+      
+      ## Alternatives Rejected
+      
+      - `omnimarket` as code home: too consumer-specific for a validator that scans
+        skill declarations across repo boundaries.
+      - `omniclaude` as code home: good invocation surface, wrong ownership layer.
+      - `omnibase_compat` as code home: compat should stay focused on DTOs and
+        transitional seams, not become a general validator bucket.
+    ground_truth_adr_hash: "sha256:ad1c2032ce71835ec80c4062798b43f096078cfa49a9e48805e8ab69601fc5fa"
+    source_file_hash: "sha256:ad1c2032ce71835ec80c4062798b43f096078cfa49a9e48805e8ab69601fc5fa"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    expected_keywords:
+    - "omnibase_core"
+    - "validator"
+    - "pre-commit"
+    - "omniclaude"
+    - "omnimarket"
+
+  - id: "adr-2026-04-28-skills-canonical-plan"
+    root_paths:
+    - "docs/decisions/"
+    ground_truth_adr: |
+      # ADR: Canonical Skills Migration Plan
+      
+      ## Context
+      
+      Two same-day plans cover the same skills-to-market migration surface:
+      - `docs/plans/2026-04-27-skills-to-market-orchestrators-plan.md`
+      - `docs/plans/2026-04-27-skills-actually-working-plan.md`
+      
+      The overlap created duplicated guidance and made it too easy for later tasks to
+      cite whichever file was convenient.
+      
+      ## Decision
+      
+      `docs/plans/2026-04-27-skills-to-market-orchestrators-plan.md` is the canonical
+      skills migration plan.
+      
+      `docs/plans/2026-04-27-skills-actually-working-plan.md` is archived but
+      retained for context. Its unique content must be explicitly migrated into the
+      canonical plan rather than implied away.
+      
+      ## Consequences
+      
+      - The canonical plan gains a `Subsumes` marker, an explicit `Invariants`
+        section, and a short process retro.
+      - The archived plan gains an archive banner pointing to the canonical file.
+      - A follow-up enforcement ticket should add same-day canonical-plan overlap
+        checking to `plan_to_tickets`.
+      
+      ## Alternatives Rejected
+      
+      - Keeping both plans active: preserves ambiguity.
+      - Deleting the duplicate plan: removes historical context and hides what was
+        merged versus dropped.
+    ground_truth_adr_hash: "sha256:33a1e5c15bb3f7b53044adb319ab911615c6f2d524e10d1e8fcea500c71edb41"
+    source_file_hash: "sha256:33a1e5c15bb3f7b53044adb319ab911615c6f2d524e10d1e8fcea500c71edb41"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - migration_decision
+    expected_keywords:
+    - "canonical plan"
+    - "skills-to-market"
+    - "orchestrators-plan"
+    - "archived"
+    - "Subsumes"
+
+  - id: "adr-2026-04-28-dispatch-lifecycle-canonical-omnibase_core"
+    root_paths:
+    - "omnibase_core/docs/decisions/"
+    ground_truth_adr: |
+      > **Navigation**: [Home](../INDEX.md) > [Decisions](README.md) > OMN-10180 Dispatch Lifecycle Canonical
+      
+      # ADR: Dispatch Lifecycle Canonical Source
+      
+      ## Document Metadata
+      
+      | Field | Value |
+      |-------|-------|
+      | **Document Type** | Architecture Decision Record (ADR) |
+      | **Status** | 🟢 **ACCEPTED** |
+      | **Created** | 2026-04-28 |
+      | **Last Updated** | 2026-04-28 |
+      | **Author** | Codex (GPT-5) |
+      | **Related Issue** | `OMN-10180` |
+      | **Canonical Model** | `src/omnibase_core/models/dispatch/model_dispatch_lifecycle_event.py` |
+      
+      ---
+      
+      ## Executive Summary
+      
+      Typed lifecycle/FSM events are the canonical representation of dispatch lifecycle. In practice that means `ModelDispatchLifecycleEvent` in `omnibase_core` is the source of truth, while YAML or file-backed lifecycle records are projections and compatibility surfaces derived from those typed events.
+      
+      This ADR ratifies the existing `omnibase_core` model home rather than relocating it. The decision is about ownership and canonical semantics, not about removing every downstream projection surface.
+      
+      ## Context
+      
+      The current dispatch substrate work references two abstractions for the same lifecycle:
+      
+      - typed lifecycle/FSM events via `ModelDispatchLifecycleEvent`
+      - filesystem or YAML lifecycle records used as sidecars, receipts, or compatibility projections
+      
+      Without a declared canonical source, separate tickets can claim lifecycle correctness against different abstractions. That creates drift risk and makes it too easy to treat a local file artifact as authoritative proof instead of a projection of the actual lifecycle stream.
+      
+      The current user direction resolves that ambiguity:
+      
+      - implementation ADRs live in the owning repo
+      - `omnibase_core` is the canonical home for typed lifecycle/FSM events
+      - YAML or file-backed records are projections and compatibility surfaces
+      
+      That direction matches the code already in place:
+      
+      - `src/omnibase_core/models/dispatch/model_dispatch_lifecycle_event.py` defines `ModelDispatchLifecycleEvent` (commit `2ddc0971`)
+      - `src/omnibase_core/models/dispatch/model_lifecycle_chain.py` composes typed lifecycle chains from those events (commit `2ddc0971`)
+      - `tests/unit/models/dispatch/test_model_dispatch_lifecycle_event.py` exercises the state machine semantics (commit `2ddc0971`)
+      
+      ## Decision
+      
+      Typed lifecycle/FSM events are canonical.
+      
+      `ModelDispatchLifecycleEvent` in `omnibase_core` is the authoritative representation of dispatch lifecycle state and transition semantics. Any YAML, file-backed, or sidecar lifecycle record is a projection of terminal or intermediate lifecycle state, not the source of truth.
+      
+      Concretely:
+      
+      - lifecycle validity is defined by the typed event model and its state-machine rules
+      - projection writers must derive records from canonical typed events
+      - downstream repos may keep compatibility records, but those records must not redefine lifecycle semantics
+      - implementation ADR ownership for this surface remains in `omnibase_core`
+      
+      ## Consequences
+      
+      ### Positive
+      
+      - One canonical lifecycle model defines accepted states, emitters, and transition semantics.
+      - Runtime, skill, and proof workflows can all point at the same typed surface when proving lifecycle behavior.
+      - Projection records remain useful without being allowed to silently fork the lifecycle contract.
+      
+      ### Negative
+      
+      - Downstream code that treated file records as authoritative must be reframed around typed events first.
+      - Compatibility surfaces may require follow-up rename or cleanup work where older record types imply canonical ownership.
+      
+      ### Neutral
+      
+      - YAML and file-backed lifecycle records may continue to exist as compatibility outputs, receipts, or derived views.
+      - This ADR does not bundle any downstream rename or migration work into `OMN-10180`; it only establishes canonical ownership and semantics.
+      
+      ## Alternatives Rejected
+      
+      ### Keeping YAML or file records as canonical
+      
+      Rejected because a local record is too easy to self-attest and too weak to carry typed lifecycle semantics on its own.
+      
+      ### Creating a second canonical lifecycle home outside `omnibase_core`
+      
+      Rejected because it would add indirection without improving ownership clarity or reducing drift.
+      
+      ### Treating typed events and projections as co-equal
+      
+      Rejected because co-equal ownership leaves the same lifecycle open to inconsistent claims across tickets and repos.
+      
+      ## References
+      
+      - Workspace ADR source: `/Users/jonah/Code/omni_home/docs/decisions/adr-2026-04-28-dispatch-lifecycle-canonical.md`
+      - Canonical model: `src/omnibase_core/models/dispatch/model_dispatch_lifecycle_event.py` (commit `2ddc0971`)
+      - Lifecycle chain model: `src/omnibase_core/models/dispatch/model_lifecycle_chain.py` (commit `2ddc0971`)
+      - State-machine tests: `tests/unit/models/dispatch/test_model_dispatch_lifecycle_event.py` (commit `2ddc0971`)
+    ground_truth_adr_hash: "sha256:12b20b0e1702b5a25c57117887fbea9efc5114e4f1e4ed72d6d014b504dc585b"
+    source_file_hash: "sha256:12b20b0e1702b5a25c57117887fbea9efc5114e4f1e4ed72d6d014b504dc585b"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - doctrine_formation
+    expected_keywords:
+    - "ModelDispatchLifecycleEvent"
+    - "omnibase_core"
+    - "YAML records"
+    - "projections"
+    - "canonical"
+
+  - id: "adr-2026-04-28-skill-liveness-validator-home-omnibase_core"
+    root_paths:
+    - "omnibase_core/docs/decisions/"
+    ground_truth_adr: |
+      > **Navigation**: [Home](../INDEX.md) > [Decisions](README.md) > OMN-10180 Validator Home
+      
+      # ADR: Skill Liveness Validator Home
+      
+      ## Document Metadata
+      
+      | Field | Value |
+      |-------|-------|
+      | **Document Type** | Architecture Decision Record (ADR) |
+      | **Status** | 🟢 **ACCEPTED** |
+      | **Created** | 2026-04-28 |
+      | **Last Updated** | 2026-04-28 |
+      | **Author** | Codex (GPT-5) |
+      | **Related Issue** | `OMN-10180` |
+      | **Implementation Home** | `src/omnibase_core/validation/` |
+      
+      ---
+      
+      ## Executive Summary
+      
+      The skill-backing-node liveness validator is owned by `omnibase_core`. That keeps reusable validator logic with the existing validation substrate, while `omniclaude` and `omnimarket` remain invocation and enforcement surfaces rather than the code home.
+      
+      This ADR applies to the skill liveness validator surface only. It does not declare that every future validator must live in `omnibase_core`, but it does ratify `omnibase_core` as the correct owner for this cross-repo validator.
+      
+      ## Context
+      
+      Two competing workspace plans placed the same validator in different homes:
+      
+      - `docs/plans/2026-04-27-skills-to-market-phase-2-validator-gates.md`
+      - `docs/plans/2026-04-26-runtime-lifecycle-part-4-skill-shim-runtime-proof.md`
+      
+      On 2026-04-28 the user direction corrected that ambiguity: implementation ADRs live in the owning repo, and the validator home for this surface is `omnibase_core`.
+      
+      That direction is consistent with current repo precedent. `omnibase_core` already owns reusable validation surfaces such as:
+      
+      - `src/omnibase_core/nodes/node_validator.py` (commit `2ddc0971`)
+      - `src/omnibase_core/mixins/mixin_node_type_validator.py` (commit `2ddc0971`)
+      - `src/omnibase_core/models/core/model_node_action_validator.py` (commit `2ddc0971`)
+      - `src/omnibase_core/validation/validator_runtime_profiles.py` (commit `2ddc0971`)
+      
+      Putting the new validator in `omnimarket` or `omniclaude` would make a cross-repo rule look like a consumer-local utility. Putting it in `omnibase_compat` would blur compat DTO boundaries with validator ownership.
+      
+      ## Decision
+      
+      The skill-backing-node liveness validator lives in `omnibase_core`, under the repo's existing validation/validator surface.
+      
+      Execution surfaces remain split by audience:
+      
+      - `omniclaude` invokes the validator in pre-commit for local author feedback.
+      - `omnimarket` invokes the validator in CI for shared enforcement.
+      - `omnibase_core` owns the validator implementation, typed inputs, and rule semantics.
+      
+      The owning-repo ADR for this decision lives here in `omnibase_core`, not in `omni_home`, because the implementation and architectural ownership are both on the core side.
+      
+      ## Consequences
+      
+      ### Positive
+      
+      - Validator ownership is aligned with the repo that already carries validation infrastructure.
+      - Cross-repo consumers share one implementation instead of growing repo-specific copies.
+      - The corrected plan expectation is explicit: code lives in `omnibase_core`, while pre-commit and CI remain downstream enforcement surfaces.
+      
+      ### Negative
+      
+      - Downstream repos must integrate a validator they do not own, which adds coordination work for invocation wiring.
+      - Future validator proposals will still need an ownership decision; this ADR is scoped to the skill liveness surface only.
+      
+      ### Neutral
+      
+      - Older workspace plans that proposed other homes should be treated as retired in favor of this repo-owned ADR.
+      - No backwards-compatibility shim is implied for alternate validator homes.
+      
+      ## Alternatives Rejected
+      
+      ### `omnimarket` as code home
+      
+      Rejected because the validator is broader than a single consumer repo and should not be anchored to one CI surface.
+      
+      ### `omniclaude` as code home
+      
+      Rejected because pre-commit is an invocation surface, not the correct architectural owner for reusable validator logic.
+      
+      ### `omnibase_compat` as code home
+      
+      Rejected because compat should remain focused on DTOs and compatibility seams, not become a general validator bucket.
+      
+      ## References
+      
+      - Workspace ADR source: `/Users/jonah/Code/omni_home/docs/decisions/adr-2026-04-28-skill-liveness-validator-home.md`
+      - Validation ownership precedent: `src/omnibase_core/nodes/node_validator.py` (commit `2ddc0971`)
+      - Validation ownership precedent: `src/omnibase_core/mixins/mixin_node_type_validator.py` (commit `2ddc0971`)
+      - Validation ownership precedent: `src/omnibase_core/models/core/model_node_action_validator.py` (commit `2ddc0971`)
+    ground_truth_adr_hash: "sha256:d113cf5c30080c85cfb10e5591640f94a9637f342ac9b39f27a4274e6dfff148"
+    source_file_hash: "sha256:d113cf5c30080c85cfb10e5591640f94a9637f342ac9b39f27a4274e6dfff148"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    expected_keywords:
+    - "omnibase_core"
+    - "skill liveness"
+    - "validator"
+    - "omniclaude"
+    - "omnimarket enforcement"
+
+  - id: "omnidash-001-typography-system"
+    root_paths:
+    - "omnidash/docs/adr/"
+    - "omnidash/src/styles/"
+    ground_truth_adr: |
+      # ADR 001 — Typography System
+      
+      **Status:** Accepted
+      **Date:** 2026-04-24
+      **Authors:** OmniNode-ai
+      **Related:** OMN-59 (Typography System Refactor epic), `docs/plans/typography-refactor.md`
+      
+      ## Context
+      
+      During the OMN-22 UX polish pass, two dashboard widgets — `EventStream` and `RoutingDecisionTable` — were observed to diverge visually despite being designed to read as a matched pair of "data feed" surfaces. The symptoms were subtle but systematic:
+      
+      - Data rows: EventStream rendered at `0.75rem` (12 px); RoutingDecisionTable rendered at `0.8125rem` (13 px).
+      - Column headers: EventStream at `10 px`; RoutingDecisionTable at `11 px`.
+      - Status/pagination rows: EventStream at `11 px`; RoutingDecisionTable at `12 px`.
+      - Timestamp cell color: EventStream dimmed (`--ink-3`); RoutingDecisionTable used the full ink (`--ink`).
+      
+      Root cause: every widget hand-authors inline `fontSize`, `fontFamily`, `fontWeight`, and `color` values. There is no typography scale, no semantic text-role token, and no shared React primitive for rendering text. Widgets that "should look the same" must remember to pick the same numbers — and they didn't.
+      
+      A prior refactor (`refactor(styles): unify font-family tokens`, commit 329dd56) introduced `--font-sans` and `--font-mono` CSS custom properties. That solved the family drift (widget mono text was rendering in JetBrains Mono, not IBM Plex Mono, because of a stale vanilla-extract override). The family tokens are a good start but cover only one axis of typography. Size, weight, leading, and text-color drift remain open.
+      
+      Across the codebase, at the time of this ADR:
+      
+      - 8 widget files reference inline `fontSize` values (10, 11, 12, 13, 14, `0.75rem`, `0.8125rem`, …).
+      - 10+ widget files inline `fontFamily: 'var(--font-mono)'` — these should read as a primitive, not repeat everywhere.
+      - No Storybook setup exists to visually audit typography variants.
+      - No lint rule prevents a new widget from repeating the drift.
+      
+      ## Decision
+      
+      Adopt a **CSS custom-property tokens + typed React component primitives** typography system:
+      
+      1. **Token layer (CSS).** Declare type-scale, leading, weight, and text-color-role tokens in `src/styles/globals.css :root`. Every typographic value a widget can use traces to one of these tokens. Themes override via `[data-theme="X"]` scope. See the plan's Task 3 for the exact 22 tokens.
+      
+      2. **Component layer (React).** Introduce `<Text>` and `<Heading>` in `src/components/ui/typography/`. Both accept prop variants (`size`, `color`, `weight`, `leading`, `family`, `transform`, `tabularNums`, `truncate`, `as`, …) that resolve internally to the CSS custom properties. Widgets consume the components, never the raw tokens inline.
+      
+      3. **Enforcement layer.** A custom ESLint rule `local/no-typography-inline` fails CI when any of `fontSize`, `fontFamily`, `fontWeight`, `fontVariantNumeric`, `letterSpacing`, `textTransform`, `lineHeight` appears in a JSX `style` prop outside `src/components/ui/typography/`. This prevents regression.
+      
+      4. **Showcase layer.** Storybook 8 with a theme decorator. Typography and Heading stories document every variant in both light and dark modes; the stories are also the visual contract a reviewer can check.
+      
+      5. **Compliance-testing layer.** `src/typography-compliance.test.ts` encodes every acceptance criterion from every phase as a Vitest assertion. The count of failing tests is the refactor's progress indicator; it is excluded from the default test run during the refactor and promoted to a permanent regression gate at Task 39.
+      
+      **Constraint on new work.** No CSS-in-JS for typography. The existing vanilla-extract theme contract in `src/theme/tokens.css.ts` is retained for colors and radius (used by `Header.css.ts` and `AgentChatPanel.css.ts`), but its font entries have already been removed. New components must not reference `vars.font.*` — use the CSS custom property directly (`fontFamily: 'var(--font-mono)'`) until tokens are consumed through `<Text>` / `<Heading>`.
+      
+      ## Consequences
+      
+      | Consequence | Pro | Con | Mitigation |
+      |---|---|---|---|
+      | Single-source typography tokens | Drift between widgets impossible by construction | Widget authors must learn the token vocabulary | Storybook showcase + typography README document every variant |
+      | `<Text>` / `<Heading>` primitives | Widgets express intent, not implementation | One-off overrides need an escape hatch | `style` prop on Text merges OVER computed style; documented as the escape hatch |
+      | ESLint rule blocks inline typography | Regression mechanically impossible | Inputs / textareas cannot style natively via `<Text>` | Exempt `src/components/ui/typography/` from the rule; for native inputs, use a small CSS utility class (e.g. `.text-input-md`) rather than inline style |
+      | Two parallel theme systems during migration | Non-breaking — legacy Header/AgentChatPanel keep working | vanilla-extract + globals.css cohabit — confusing to new readers | Comment in `tokens.css.ts` flags the system as legacy for colors only; consolidation deferred (see Phase 7) |
+      | Compliance file excluded from default run | Refactor doesn't red the CI while in progress | Easy to forget to re-enable at Task 39 | Task 39's acceptance explicitly checks the `exclude` list; its ticket (OMN-98) is the gate |
+      | 39-ticket epic | Broken into waves; multi-agent workflow can parallelize the 17 widget migrations | Each ticket adds Linear noise | Under OMN-59 umbrella; old work tracked without a sprawling sibling-epic set |
+      | Theme-able foundation (for a future "brutalist" mode, etc.) | Rebranding is a token-override exercise, not a widget sweep | None at current scale | — |
+      
+      ## Alternatives Considered
+      
+      1. **Tailwind utility classes (`text-sm text-muted-foreground font-mono`).**
+         Rejected. Tailwind is a heavy runtime dep for this scope and would shadow the existing CSS-custom-property conventions. Migrating to Tailwind would be a multi-week effort that dwarfs the typography fix. If the team decides to adopt Tailwind later, the token names (`--text-xs` etc.) can be mapped into `tailwind.config.ts` without touching widgets.
+      
+      2. **vanilla-extract everywhere (unify on CSS-in-JS).**
+         Rejected. The legacy `Header.css.ts` uses vanilla-extract, but the rest of the app uses plain CSS + CSS variables. Migrating globals.css into vanilla-extract is a large refactor with no functional improvement. Keep the two systems; new typography work uses CSS custom properties directly. Consolidation triggers are recorded in Phase 7.
+      
+      3. **MUI / Chakra (full component library).**
+         Rejected. The app already has its own visual language (Tron-inspired dark mode, pastel light). Adopting a component library would force a total visual rewrite. Typography is narrower — solve typography, don't overhaul the chrome.
+      
+      4. **Styled-components / emotion.**
+         Rejected. Same reason as vanilla-extract — CSS custom properties are already the primary pattern; adding a second CSS-in-JS layer increases complexity without benefit.
+      
+      5. **Inline improvements (keep ad-hoc typography, just be more careful).**
+         Rejected. The RoutingDecisionTable/EventStream drift happened *despite* author attention. Without a structural fix, drift is inevitable.
+      
+      ## Related Work
+      
+      - **Commit 329dd56** (`refactor(styles): unify font-family tokens`) — established `--font-sans` / `--font-mono` as primitives. This ADR builds on that foundation by adding size, weight, leading, and text-color tokens plus the `<Text>` component layer.
+      - **Commit b8e1b81** (`feat(dashboard): UX polish batch`) — included the 1-px font-size / color fix on RoutingDecisionTable that exposed the systemic problem. The manual fix is still in place; it will be re-expressed via `<Text>` during Task 16 migration.
+      
+      ## References
+      
+      - Plan: `docs/plans/typography-refactor.md`
+      - Epic: OMN-59
+      - Compliance scorecard: `src/typography-compliance.test.ts`
+      
+      ## Status
+      
+      Accepted.
+    ground_truth_adr_hash: "sha256:8dfd73f05a0749d8b670c00c8ef9f567a3cd49fe330f2d6aa2c5cc0de76b5081"
+    source_file_hash: "sha256:8dfd73f05a0749d8b670c00c8ef9f567a3cd49fe330f2d6aa2c5cc0de76b5081"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - pattern_adoption
+    expected_keywords:
+    - "typography"
+    - "CSS custom properties"
+    - "Text"
+    - "Heading"
+    - "ESLint rule"
+
+  - id: "omnidash-002-storybook-widget-coverage"
+    root_paths:
+    - "omnidash/docs/adr/"
+    - "omnidash/src/components/dashboard/"
+    ground_truth_adr: |
+      # ADR 002 — Storybook Widget Coverage
+      
+      **Status:** Accepted
+      **Date:** 2026-04-24
+      **Authors:** OmniNode-ai
+      **Related:** OMN-100 (Storybook Coverage for Dashboard Widgets epic), OMN-22 (UX polish parent), OMN-59 (Typography Refactor sibling), `docs/plans/storybook-widget-coverage.md`
+      
+      ## Context
+      
+      OMN-59 scaffolded Storybook 10 in this repo and authored stories for the typography PRIMITIVES (`<Text>`, `<Heading>`). That investment proved Storybook works in the project, wired up the addon set (`@storybook/addon-themes`, `@storybook/addon-a11y`), and gave reviewers a visual catalog for the typography scale. It did not extend to the 17 dashboard widgets that consume those primitives.
+      
+      The result is a hollow showcase: the alphabet appears in Storybook, but the things built from it do not. Concretely, at the time of this ADR:
+      
+      - `Typography.stories.tsx` and `Heading.stories.tsx` are the only stories in the repo.
+      - 17 widgets under `src/components/dashboard/` (RoutingDecisionTable, EventStream, CostTrendPanel, CostTrend3D, CostByModelPie, QualityScorePanel, DelegationMetrics, BaselinesRoiCard, ReadinessGate, CustomRangePicker, DateRangeSelector, TimezoneSelector, AutoRefreshSelector, ComponentWrapper, ComponentPalette, plus their helpers) have no story coverage.
+      - There is no shared decorator that injects the providers a widget needs to render in isolation (`QueryClientProvider`, `ThemeProvider`).
+      - There is no fixture module producing realistic projection data for stories to consume.
+      - A11y violations on widget-level surfaces are invisible — `addon-a11y` has nothing to audit.
+      
+      For a deliverable described as "professional" to an employer, widget-level Storybook coverage is table stakes. Storybook is the documented surface area, the per-component a11y audit gate, and the foundation for any future visual regression layer. Shipping a design system with stories only for primitives signals "started, not finished."
+      
+      A separate but related observation: the existing CI Storybook build job from OMN-74 already runs on every PR. It currently catches regressions only on the typography stories — adding widget stories instantly extends its coverage to the dashboard surface with zero CI work.
+      
+      ## Decision
+      
+      Add a `<Widget>.stories.tsx` file co-located with each widget under `src/components/dashboard/<area>/`. Adopt the following conventions:
+      
+      1. **Shared decorator.** A `withDashboardContext` decorator in `src/storybook/decorators/` wraps every widget story in a fresh `QueryClientProvider` plus the project's `ThemeProvider`. The decorator is parameterized to support `prefetched` (seed cache for `Populated`), `forceLoading` (queries never resolve), and `forceError` (queries throw). One decorator factory; per-story options drive the state.
+      
+      2. **Typed fixture builders.** Mock data lives in `src/storybook/fixtures/` as builder functions (`buildRoutingDecisions`, `buildCostDataPoints`, …). Builders import the widget's data interface directly from the widget file — no duplicated type definitions in the fixture module. When a widget exports its row interface for the first time, that's a one-line refactor done as part of the story task.
+      
+      3. **Real WebGL for three.js widgets.** `CostTrend3D`, `CostByModelPie`, and `QualityScorePanel` render with real WebGL inside the Storybook iframe. No canvas mocking, no headless three.js shim. Modern Chromium-based Storybook iframes support WebGL natively.
+      
+      4. **State coverage per widget.** At minimum every widget gets `Empty` + `Populated`. `Loading` and `Error` are added wherever they read meaningfully different from `Empty` (most data-driven widgets do; a stateless picker like `CustomRangePicker` does not). Widget-specific states (`HighDisagreement`, `DominantModel`, `LightTheme`, etc.) are added per the plan when they exercise unique visual logic.
+      
+      5. **Direct cache seeding over network mocking.** The decorator pre-populates `QueryClient` via `setQueryData(queryKey, data)`. No `msw`, no service worker, no fetch interception. The `useProjectionQuery` hook reads from cache like any other React Query consumer; in stories the cache is just hand-fed.
+      
+      6. **Co-location.** Story files live next to their widgets (`RoutingDecisionTable.stories.tsx` next to `RoutingDecisionTable.tsx`) — not in a `__stories__/` sibling, not in `.storybook/`. This matches the OMN-59 convention and keeps the surface area discoverable when working on a widget.
+      
+      7. **Compliance test as the gate.** `src/storybook-coverage-compliance.test.ts` (introduced in Task 1 of the plan) is the scorecard. It asserts each story file's existence and the presence of `Empty` / `Populated` exports. Excluded from the default vitest run during the refactor; promoted to a permanent regression gate at Task 18.
+      
+      ## Consequences
+      
+      | Consequence | Pro | Con | Mitigation |
+      |---|---|---|---|
+      | Story file per widget | Documented surface area; reviewer can audit any widget in isolation | Maintenance burden — every widget rev may touch its stories | Minimal viable per widget (`Empty` + `Populated`); expand only when a state has unique visual signal. Stories co-located so a widget edit and its story edit happen together. |
+      | Shared `withDashboardContext` decorator | Widgets stay decoupled from Storybook specifics; one place to evolve provider context | Decorator becomes a coupling point — a widget needing a new provider drags every story along | Decorator owns the provider tree; widgets remain provider-agnostic. New providers added once in the decorator, picked up by all stories transparently. |
+      | Storybook build adds to CI time | Coverage of every widget on every PR | `storybook build` adds ~30-60s to CI runtime | Already absorbed in CI from OMN-74; verified scaling fine. Re-evaluate only if Storybook crosses 30 stories. |
+      | A11y panel runs per-story | Per-component a11y signal, not just whole-page | First pass surfaces violations that need either fixes or documented exceptions | Manual audit pass at Task 18 reviews every story's a11y panel; exceptions documented in this ADR or the task's Linear ticket. |
+      | Real WebGL for three.js widgets | Stories render the same scene users see — no fidelity gap | Storybook iframe must have explicit dimensions (zero-size container = blank canvas) | Set `parameters.layout = 'fullscreen'` or wrap in a 720px+ container for three.js widgets; documented in plan Task 7. |
+      | Fixture builders import widget data interfaces | Single source of truth for row shape; refactors break loudly | When a widget's interface isn't currently exported, requires a one-line `export` change to the widget | Acceptable — the export is harmless to the widget's runtime and prevents the worse alternative (type duplication that silently drifts). |
+      | Direct QueryClient seeding | Simpler than `msw`; no service worker; faster startup per story | Stories don't exercise the real network path | Acceptable — Storybook is a visual + a11y catalog, not an integration test harness. Network-path coverage belongs in vitest + integration tests. |
+      
+      ## Alternatives Considered
+      
+      1. **`msw` (mock service worker) for network-level mocking.**
+         Rejected. Direct `QueryClient.setQueryData` seeding is simpler, faster per story boot, and avoids the service-worker registration sleights of hand `msw` requires inside Storybook iframes. The widgets don't care where the data came from — they read from cache either way. Adopting `msw` would add a runtime dep and a setup step for zero visual fidelity gain.
+      
+      2. **Per-widget `*.docs.mdx` files instead of stories.**
+         Rejected. MDX is for narrative documentation — prose explaining a component, embedded examples, design rationale. It does not provide the per-story a11y audit panel, does not get picked up by the Storybook CI build's "every story renders" gate, and does not support state variants ergonomically. MDX is additive on top of stories, not a replacement. Stories first; MDX may follow if narrative docs are ever requested.
+      
+      3. **Cypress component testing.**
+         Rejected. Storybook is the convention already established here (OMN-59 made the call). Adding a parallel testing harness — second config, second runner, second mental model — increases complexity without filling a gap Storybook leaves open. Cypress component testing is a credible alternative on a greenfield project; this is not greenfield.
+      
+      4. **Defer story work until a visual regression layer (Chromatic / Playwright visual) is added.**
+         Rejected. Stories have standalone value: documented surface area, a11y signal, isolated rendering for design review. Visual regression is icing on the cake — useful when stories already exist, useless without them. The plan explicitly defers visual regression as Out of Scope. Stories are not a prerequisite for visual regression; they are independently the product.
+      
+      5. **Switch to Histoire or another Storybook alternative.**
+         Rejected. Storybook is established (OMN-59 scaffolding, OMN-74 CI build). Switching tools mid-refactor loses that scaffolding investment, requires re-learning addon ecosystem, and saves nothing the stories themselves can't deliver. Histoire is a reasonable choice on day zero of a project; the marginal benefit at this stage is negative.
+      
+      ## Related Work
+      
+      - **OMN-59** (Typography Refactor) — scaffolded Storybook 10.3.5 with `@storybook/addon-themes` and `@storybook/addon-a11y`. This ADR builds directly on that scaffolding; the addon set, the `withThemeByDataAttribute` global decorator in `.storybook/preview.tsx`, and the `Typography.stories.tsx` / `Heading.stories.tsx` shape are the templates this work extends.
+      - **OMN-74** (CI Storybook build job) — added the `storybook build` step to PR CI. Widget stories slot into this gate at zero additional CI cost.
+      - **OMN-22** (UX polish parent epic) — the deliverable polish pass this work contributes to.
+      
+      ## References
+      
+      - Plan: `docs/plans/storybook-widget-coverage.md`
+      - Epic: OMN-100
+      - Compliance scorecard: `src/storybook-coverage-compliance.test.ts`
+      
+      ## Status
+      
+      Accepted.
+    ground_truth_adr_hash: "sha256:d62bd8a41c01c00099528ffd260cddd5b150be01f2bb4f8c2a0b51afad892240"
+    source_file_hash: "sha256:d62bd8a41c01c00099528ffd260cddd5b150be01f2bb4f8c2a0b51afad892240"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - pattern_adoption
+    expected_keywords:
+    - "Storybook"
+    - "widget stories"
+    - "withDashboardContext"
+    - "QueryClient"
+    - "fixture builders"
+
+  - id: "omnidash-003-baselines-roi-card-stay-bespoke"
+    root_paths:
+    - "omnidash/docs/adr/"
+    - "omnidash/src/components/dashboard/baselines/"
+    ground_truth_adr: |
+      # ADR-003: BaselinesROICard — STAY-BESPOKE decision
+      
+      - **Status:** Accepted
+      - **Date:** 2026-04-29
+      - **Ticket:** OMN-10296
+      - **Epic:** OMN-10282 — Generic widget primitives (iteration 1)
+      
+      ## Context
+      
+      The OMN-10282 epic is introducing generic widget primitives (`<KPITileCluster>`, `<TrendChart>`,
+      `<BarChart>`, `<DataTable>`) to replace hand-rolled dashboard layouts. As part of the audit phase,
+      every existing bespoke component is evaluated for migration eligibility.
+      
+      `BaselinesROICard` (`src/components/dashboard/baselines/BaselinesROICard.tsx`) renders two
+      distinct layout sections in a single card:
+      
+      1. A 3-column KPI grid of numeric deltas (`tokenDelta`, `timeDeltaMs`, `retryDelta`) with
+         conditional colour coding (improved vs regressed).
+      2. A horizontal recommendation list (`promote`, `shadow`, `suppress`, `fork` counts) separated
+         by a rule, with its own heading.
+      
+      ## Decision
+      
+      **STAY-BESPOKE.** `BaselinesROICard` is not migrated to `<KPITileCluster>` in iteration 1.
+      
+      ## Rationale
+      
+      `IKPITileClusterAdapter` models a flat array of uniformly structured KPI tiles. It does not have
+      a slot for a secondary heterogeneous section (the recommendation list). Mapping this component
+      to `<KPITileCluster>` would require either:
+      
+      - (a) Stuffing the recommendation list into KPI tiles — semantically wrong and visually
+        inconsistent with the rest of the cluster usage.
+      - (b) Adding a `secondarySlot` or `listSection` prop to `IKPITileClusterAdapter` — a premature
+        abstraction driven by a single edge case before the primitive has any other adopters.
+      
+      Neither option is acceptable at this stage. The bespoke layout is correct and tested.
+      
+      ## Alternatives considered
+      
+      | Option | Why rejected |
+      |---|---|
+      | Migrate delta grid to `<KPITileCluster>` + keep list bespoke | Splits one cohesive card across two rendering strategies; harder to reason about than a single bespoke component. |
+      | Add `listSection` slot to `IKPITileClusterAdapter` | Premature abstraction — no other widget needs this pattern today. |
+      | Full migration with flat tiles including recommendation counts | Semantically incorrect — recommendations are not the same kind of metric as delta measurements. |
+      
+      ## Re-evaluate criteria
+      
+      Revisit this decision **after iteration 1 ships** and `<KPITileCluster>` has at least two
+      production adopters. At that point:
+      
+      - If a recurring pattern of "KPI cluster + secondary list section" emerges in another widget,
+        add the `listSection` slot to the adapter and migrate both.
+      - If no such pattern emerges, keep `BaselinesROICard` bespoke indefinitely.
+      
+      The `MVP_COMPONENTS` registry entry for `baselines-roi-card` is left unchanged.
+    ground_truth_adr_hash: "sha256:b3e48e8dca006dcf1758173e3427bc4a9f390d1efa44e84bf88a3de7b19aa370"
+    source_file_hash: "sha256:b3e48e8dca006dcf1758173e3427bc4a9f390d1efa44e84bf88a3de7b19aa370"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    expected_keywords:
+    - "STAY-BESPOKE"
+    - "BaselinesROICard"
+    - "KPITileCluster"
+    - "bespoke"
+    - "iteration 1"
+
+  - id: "2026-04-23-data-verification-invocation"
+    root_paths:
+    - "docs/decisions/"
+    - "omnimarket/src/omnimarket/nodes/node_data_verification/"
+    ground_truth_adr: |
+      # ADR: `node_data_verification` Invocation Policy
+      
+      **Date:** 2026-04-23
+      **Status:** Proposed
+      **Ticket:** OMN-9576
+      **Parent epic:** OMN-7621 (Insights Action Plan 2026-04-06 — Runtime Activation & Infrastructure Observability)
+      **Related:** OMN-7624 (Task 3 — Post-pipeline data validation gate), OMN-7722 (Milestone 3 verification), OMN-9577 (pipeline-touching PR classifier, follows from this ADR)
+      **Source plan:** `docs/plans/2026-04-06-insights-plan.md` Task 3b (lines 196–200)
+      
+      ## Why This Exists
+      
+      `node_data_verification` has a working runtime adapter — the node runs end-to-end against real Postgres on `.201:5436`, the 6 deterministic checks (`NO_GARBAGE_UUIDS`, `NO_NULL_REQUIRED_FIELDS`, `NO_DUPLICATES`, `ROW_COUNT_NONZERO`, `SCHEMA_MATCH`, `EVENT_LANDED`) pass golden-chain tests, and OMN-7722 proved real-DB execution. What does **not** exist is a deterministic contract describing how DoD gates call the node. Four questions have been open since OMN-7624 closed Task 3a:
+      
+      1. How does `dod_verify` invoke `node_data_verification` — skill wrapper, Kafka event, or both?
+      2. How are target tables selected per ticket — explicit list, PR-diff inference, or contract-declared?
+      3. How is `rendered_output` evidence represented — receipt format?
+      4. What does a verification failure block — Done status, PR merge, or both?
+      
+      Until these have single canonical answers, `dod_verify` cannot call `node_data_verification` the same way twice, and receipts written by different callers will not compare. This ADR locks the answers against the node's `contract.yaml` (`omnimarket/src/omnimarket/nodes/node_data_verification/contract.yaml`).
+      
+      ## Decision
+      
+      ### 1. Invocation Mode — Kafka command topic is canonical; `onex run` is the local-only fallback
+      
+      `dod_verify` invokes `node_data_verification` by publishing a `ModelDataVerificationStartCommand` envelope onto the command topic declared in the node contract:
+      
+      - **Command topic:** `onex.cmd.omnimarket.data-verification-start.v1`
+        — source: `contract.yaml` `event_bus.subscribe_topics`
+      - **Completion topic:** `onex.evt.omnimarket.data-verification-completed.v1`
+        — source: `contract.yaml` `terminal_event` and `event_bus.publish_topics`
+      - **Input envelope:** `omnimarket.nodes.node_data_verification.models.model_data_verification_start_command.ModelDataVerificationStartCommand`
+        — source: `contract.yaml` `handler.input_model`
+      - **Terminal envelope:** `ModelDataVerificationCompletedEvent`
+        — source: `models/model_data_verification_completed_event.py`
+      
+      The Kafka path is canonical because it is the only path that works from `dod_verify` running in the runtime container (which has no filesystem access to `onex run` and no authority to shell out). It is also the only path that produces a verifiable event trail the runtime sweep can audit.
+      
+      `uv run onex run node_data_verification -- --table-name ... --correlation-id ...` remains supported as a local-only invocation mode for human debugging and for CI jobs that don't have Kafka reachability. Local invocation **MUST** emit an equivalent `ModelDataVerificationCompletedEvent` through `EventBusInmemory` and **MUST NOT** be used to satisfy a DoD receipt for a real ticket — receipts are only valid when sourced from the Kafka terminal event.
+      
+      **Not chosen:** a dedicated HTTP endpoint on the runtime. Rejected because it would duplicate the command-topic surface and would not be auditable via the existing Redpanda event log.
+      
+      ### 2. Table Selection — Contract-declared, with explicit override
+      
+      Per-ticket table selection reads from **`ModelTicketContract.dod_evidence`**, specifically the `rendered_output` evidence items whose verification method is `data_verification`. Each such item declares:
+      
+      - `table_name` (required) — the fully-qualified target table, e.g. `omnibase_infra.llm_cost_aggregates`
+      - `expected_columns`, `unique_columns`, `uuid_columns`, `min_rows`, `sample_size` — the remaining inputs declared by `contract.yaml` `inputs`
+      
+      `dod_verify` reads the evidence list, filters to `data_verification` items, and publishes one command per item. No PR-diff inference. No wildcard expansion. If a ticket's tables are not listed in `dod_evidence`, `dod_verify` does not guess — the ticket's Done gate either does not require data verification, or it is misconfigured and must be fixed at the contract.
+      
+      **Not chosen:** PR-diff inference. Rejected because the mapping from diff → affected tables is ambiguous (a migration file changes one table; a handler refactor changes zero or many) and the inference step would itself need verification. Contract declaration is explicit, auditable, and diffable.
+      
+      **Not chosen:** per-repo allowlist file. Rejected because the source of truth would drift away from the ticket that describes the work.
+      
+      The companion `pipeline-touching PR classifier` (OMN-9577) decides **whether** to fire verification, not **which tables** — that stays with the ticket contract.
+      
+      ### 3. Receipt Format — `ModelDodReceipt` serialization of the terminal event
+      
+      The `rendered_output` evidence receipt is a structured JSON document written by `dod_verify` after it consumes the terminal event. Shape:
+      
+      ```json
+      {
+        "evidence_type": "rendered_output",
+        "verification_method": "data_verification",
+        "ticket_id": "OMN-XXXX",
+        "correlation_id": "<uuid from ModelDataVerificationStartCommand>",
+        "table_name": "<FQDN from contract inputs>",
+        "verification_status": "pass | fail | partial | timeout",
+        "total_rows": <int>,
+        "issues": ["<issue strings from ModelDataVerificationResult.issues>"],
+        "event_landed": <bool>,
+        "started_at": "<ISO-8601>",
+        "completed_at": "<ISO-8601>",
+        "source_event_topic": "onex.evt.omnimarket.data-verification-completed.v1",
+        "source_event_offset": <int>
+      }
+      ```
+      
+      Fields map directly to `ModelDataVerificationCompletedEvent` (`models/model_data_verification_completed_event.py`). Status vocabulary is fixed by `EnumVerificationStatus` (`models/model_data_verification_state.py`).
+      
+      Receipts are stored by `onex_change_control` under its existing receipts surface (same path used for the other `rendered_output` types shipped under OMN-597). `dod_verify` does not invent a new storage mechanism.
+      
+      **Not chosen:** a free-form markdown summary. Rejected because receipts must be machine-readable to be gated on.
+      
+      ### 4. Blocking Semantics — Fails block Done; PR merge is not gated here
+      
+      A failed `node_data_verification` run blocks **Done** on the Linear ticket via the DoD completion guard. It does **not** block PR merge.
+      
+      Rationale:
+      
+      - Verification runs against real `.201` DB state. Many verification targets only exist **after** the PR merges and the runtime redeploys (projection tables populate from live events). Gating merge on a table that does not exist yet would deadlock the release.
+      - Merge-time gating is already covered by CI (unit + golden-chain + contract sweep). Data verification is the post-deploy confirmation that the merged change actually produced correct rows, which is the gap OMN-7624 exists to close.
+      - Done gate enforcement already exists as a hard-mode check in `onex_change_control` (OMN-597 receipt gate). Adding data verification as an evidence type fits that surface without new plumbing.
+      
+      A `fail` terminal status writes a failing receipt; the Done guard reads receipt status and refuses to mark the ticket Done. A `partial` or `timeout` status is treated as `fail` for gating purposes and produces an explicit `retry_required` flag on the receipt.
+      
+      **Not chosen:** block PR merge on verification failure. Rejected for the deadlock reason above and because pre-merge verification against post-merge schema is logically impossible.
+      
+      **Not chosen:** block neither (advisory only). Rejected because advisory checks do not get adopted — OMN-9126 documents the pattern. Detection without enforcement is the status quo that OMN-7624 was filed to replace.
+      
+      ## Scope — What This ADR Does Not Cover
+      
+      - **Automatic trigger policy** — when a pipeline-touching PR should fire verification without an explicit evidence item. This is OMN-9577 (Task 3c). This ADR assumes `dod_evidence` is the source; OMN-9577 decides when a classifier backfills missing evidence.
+      - **Runtime wiring on .201** — the `ModelDataVerificationStartCommand` publisher in `dod_verify`'s Kafka-runtime path. This ADR specifies the contract surface; the wiring PR comes after.
+      - **Schema of `ModelTicketContract.dod_evidence`** — evidence schema lives in `omnibase_core` models; adding `verification_method: data_verification` is additive and compatible.
+      - **Rollback** — a failed verification does not trigger redeploy rollback. Rollback is `node_redeploy`'s concern (OMN-9579).
+      
+      ## Consequences
+      
+      **Immediate:**
+      
+      - `dod_verify` can begin publishing `ModelDataVerificationStartCommand` as soon as the runtime wiring PR lands. No further policy work required.
+      - Tickets whose Done gates need data verification must add `rendered_output` evidence items with `verification_method: data_verification` and the input fields the contract declares. Missing evidence means no verification fires — which is correct, because the ticket author is the only party who knows which tables matter.
+      - Tickets that merge without declaring verification evidence cannot retroactively have verification enforced. This is acceptable: the gate exists for new work, not for backfilling historical closures.
+      
+      **Deferred to follow-on work:**
+      
+      - OMN-9577 — pipeline-touching PR classifier that fires verification when the ticket contract did not declare it and the diff touches pipeline code paths.
+      - Runtime wiring PR for the Kafka publisher path in `dod_verify`.
+      - `omnibase_core` additive field on `ModelDodEvidence` for `verification_method` vocabulary.
+      
+      ## References
+      
+      - `omnimarket/src/omnimarket/nodes/node_data_verification/contract.yaml` — topic names, input schema, terminal event
+      - `omnimarket/src/omnimarket/nodes/node_data_verification/models/model_data_verification_completed_event.py` — terminal envelope
+      - `omnimarket/src/omnimarket/nodes/node_data_verification/models/model_data_verification_state.py` — status enum
+      - `omnimarket/src/omnimarket/nodes/node_data_verification/handlers/datasource_postgres.py` — real-DB adapter
+      - `docs/plans/2026-04-06-insights-plan.md` lines 178–210 — Task 3 source plan
+      - `docs/tracking/2026-04-23-omn-7621-decomposition.md` — decomposition that produced OMN-9576
+    ground_truth_adr_hash: "sha256:ae39f2097036259de690e7714f7f68053e38e0c38797df0307d466dcd6bc5b68"
+    source_file_hash: "sha256:ae39f2097036259de690e7714f7f68053e38e0c38797df0307d466dcd6bc5b68"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - doctrine_formation
+    expected_keywords:
+    - "node_data_verification"
+    - "Kafka command topic"
+    - "dod_verify"
+    - "ModelDodReceipt"
+    - "Done gate"
+
+  - id: "2026-04-23-registry-owned-consumer-surface"
+    root_paths:
+    - "docs/decisions/"
+    ground_truth_adr: |
+      # ADR: Registry-Owned Consumer Surface
+      
+      **Date:** 2026-04-23  
+      **Status:** Proposed  
+      **Related:** `OMN-9542`, `OMN-9420`, `OMN-7889`
+      
+      ## Why This Exists
+      
+      The registration architecture boundary is now clearer, but the supported consumer surface is still too implicit.
+      
+      Current evidence shows:
+      
+      - `registration_projections` is the only live, fresh registry projection on `.201`
+      - `node_registrations` behaves like a storage/effect table, not canonical read truth
+      - `node_service_registry` is a downstream compatibility read model and does not exist in the live infra database
+      
+      This ADR names the supported registry-owned consumer surfaces so follow-on API and verification work can proceed against one explicit target.
+      
+      ## Decision
+      
+      ### 1. Canonical registry source
+      
+      `registration_projections` is the canonical current registry truth surface for node registration state.
+      
+      This means:
+      
+      - registry-owned reads must trace back to `registration_projections`
+      - projection freshness and correctness are judged at `registration_projections`
+      - no new canonical projection layer should be introduced for this workstream
+      
+      ### 2. Supported synchronous consumer surface
+      
+      The supported query surface is the registry API backed by `ProjectionReaderRegistration`.
+      
+      That includes:
+      
+      - registry node list/detail reads
+      - registry discovery summaries that are derived from those projection-backed node results
+      - future synchronous consumers that need registry state without reading tables directly
+      
+      This does **not** authorize direct downstream reads from `registration_projections` as the default integration contract. The supported contract is the registry-owned API surface built on that projection.
+      
+      ### 3. Snapshot surface stance
+      
+      Registration snapshot publication remains an existing registry-owned capability, but it is **not** the primary supported consumer boundary in this tranche.
+      
+      For this workstream:
+      
+      - query-time registry API is the primary supported consumer surface
+      - snapshot publication may remain as an internal or compatibility path
+      - any future decision to promote snapshots into a supported consumer contract must explicitly define payload, topic, intended consumers, and verification
+      
+      ### 4. Non-canonical surfaces
+      
+      The following are not canonical registry truth for this stream:
+      
+      - `node_service_registry`
+      - runtime memory or startup state
+      - Consul-derived or instance-oriented compatibility surfaces
+      - ad hoc direct table reads by downstream consumers
+      
+      `node_service_registry` may continue to exist as a downstream adapter or legacy consumer artifact, but it is not the source this workstream will harden.
+      
+      ## Consequences
+      
+      ### What this enables now
+      
+      1. Registry API hardening can proceed against one named source: `registration_projections`.
+      2. Identity and field-exposure decisions can be judged against projection truth instead of legacy discovery semantics.
+      3. Focused verification can assert the projection -> reader -> API path directly.
+      
+      ### What this defers
+      
+      - snapshot promotion into a supported public consumer contract
+      - any dashboard implementation work
+      - any attempt to revive `node_service_registry` as canonical truth
+      
+      ## Truth Boundary
+      
+      This ADR names the target supported consumer surface for the current registry stream. It does **not** claim every existing registry API payload is already semantically correct or complete.
+      
+      In particular:
+      
+      - canonical source correctness does not imply current API identity semantics are correct
+      - projection-backed source ownership does not imply every useful projection field is already exposed
+      - discovery payloads may still carry degraded post-Consul compatibility residue that follow-on tickets must simplify
+      
+      ## Done Means
+      
+      This ADR is realized for the current stream when:
+      
+      - registry API work references `registration_projections` as canonical source
+      - follow-on tickets stop treating `node_service_registry` as target truth
+      - focused verification covers the projection-backed registry consumer path
+      - no new registry truth layer is introduced to satisfy downstream consumers
+    ground_truth_adr_hash: "sha256:efda15e0ce523d80afda64e3eee17a788a4f8c31dc01382c6572e6fb72bc274c"
+    source_file_hash: "sha256:efda15e0ce523d80afda64e3eee17a788a4f8c31dc01382c6572e6fb72bc274c"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    expected_keywords:
+    - "registration_projections"
+    - "canonical registry"
+    - "ProjectionReaderRegistration"
+    - "node_service_registry"
+    - "consumer surface"
+
+  - id: "omniclaude-adr-001-event-fan-out-and-app-owned-catalogs"
+    root_paths:
+    - "omniclaude/docs/decisions/"
+    - "omniclaude/src/omniclaude/hooks/"
+    ground_truth_adr: |
+      # ADR-001: Event Fan-Out Strategy and App-Owned Event Catalogs
+      
+      ## Document Metadata
+      
+      | Field | Value |
+      |-------|-------|
+      | **Document Type** | Architecture Decision Record (ADR) |
+      | **Document Number** | ADR-001 |
+      | **Status** | IMPLEMENTED |
+      | **Created** | 2026-02-09 |
+      | **Last Updated** | 2026-02-09 |
+      | **Author** | Jonah |
+      | **Related Issues** | [OMN-1944](https://linear.app/omninode/issue/OMN-1944), [OMN-1972](https://linear.app/omninode/issue/OMN-1972), [OMN-1735](https://linear.app/omninode/issue/OMN-1735), [OMN-1892](https://linear.app/omninode/issue/OMN-1892) |
+      | **Implementation PRs** | omnibase_infra #275 (remove defaults), omniclaude4 branch `jonah/omn-1892-add-feedback-loop-with-guardrails` |
+      | **Related ADR** | omnibase_core [ADR-005](https://github.com/OmniNode-ai/omnibase_core/blob/main/docs/decisions/ADR-005-core-infra-dependency-boundary.md) - Core-Infra Dependency Boundary |
+      
+      ---
+      
+      ## Document Purpose
+      
+      This Architecture Decision Record documents two interrelated decisions about the omniclaude event pipeline:
+      
+      1. **App-owned event catalogs**: The application repository is the sole source of truth for its event schemas. Infrastructure provides generic publish primitives, not application-specific event definitions.
+      2. **Fan-out at daemon level**: A single semantic event can publish to multiple Kafka topics with per-target payload transformations, enabling clean separation of intelligence (CMD) and observability (EVT) concerns.
+      
+      **Why this document exists**:
+      - To establish the invariant that infra must not ship app-specific event definitions
+      - To document the fan-out pattern and when to apply it (CMD vs EVT semantics)
+      - To record the removal of legacy topic names and the migration path
+      - To prevent regression back to "infra knows app stuff"
+      
+      **When to reference this document**:
+      - When adding a new event type to the registry
+      - When deciding whether an event needs fan-out (CMD + EVT)
+      - When modifying the publisher's topic resolution logic
+      - When evaluating whether infra should contain application-specific code
+      
+      ---
+      
+      ## Document Status and Maintenance
+      
+      **Current Status**: IMPLEMENTED - Publisher rewired, fan-out active, infra defaults removed
+      
+      **Maintenance Model**: This is a **policy document** establishing architectural invariants. Updates should occur when:
+      - New fan-out events are added (update the fan-out table)
+      - The CMD/EVT topic semantics evolve
+      - New application repos need their own event catalogs
+      
+      **Supersession**: This document is NOT superseded. The app-owned catalog and fan-out principles are foundational.
+      
+      ---
+      
+      ## Target Audience
+      
+      | Audience | Use Case |
+      |----------|----------|
+      | **Hook Developers** | Adding new event types or modifying existing emit behavior |
+      | **Consumer Developers** | Understanding which topics to subscribe to and what payload shape to expect |
+      | **Infra Developers** | Knowing what NOT to add to omnibase_infra's EventRegistry |
+      | **Dashboard/Observability Engineers** | Knowing which EVT topics carry sanitized data |
+      | **Code Reviewers** | Evaluating PRs that touch event routing or topic definitions |
+      
+      ---
+      
+      ## Executive Summary
+      
+      The omniclaude event pipeline was coupled to `omnibase_infra`'s `EventRegistry`, which hardcoded 12 application-specific event definitions. This created version drift, prevented fan-out, and violated the principle that infrastructure should be generic.
+      
+      **Decision**: The application repository (`omniclaude4`) owns its event catalog via a local `EVENT_REGISTRY` dict. The emit daemon uses fan-out rules to publish a single event to multiple topics with per-target transforms. Infrastructure provides only `EventBusKafka.publish()` — the generic publish primitive.
+      
+      Two events now fan-out to both CMD and EVT topics:
+      - `prompt.submitted` → intelligence (full prompt) + observability (sanitized 100-char preview)
+      - `session.outcome` → intelligence (feedback loop) + observability (dashboards/monitoring)
+      
+      Legacy topic `agent-routing-decisions` was removed in favor of `onex.evt.omniclaude.routing-decision.v1`.
+      
+      ---
+      
+      ## Table of Contents
+      
+      1. [Problem Statement](#problem-statement)
+      2. [Background](#background)
+      3. [Decision](#decision)
+      4. [Implementation](#implementation)
+      5. [Trade-offs](#trade-offs)
+      6. [References](#references)
+      
+      ---
+      
+      ## Problem Statement
+      
+      Before this change, the omniclaude event pipeline had three structural problems:
+      
+      ### 1. Infra shipped app-specific event definitions
+      
+      `omnibase_infra`'s `EventRegistry._register_defaults()` hardcoded 12 omniclaude-specific event types. This meant:
+      - Infra knew about omniclaude semantics it had no business knowing
+      - Adding a new event type required touching infra (wrong repo)
+      - The installed infra package, infra source, and local registry all had different event counts (4, 12, 17)
+      
+      ### 2. No fan-out support
+      
+      Infra's `EventRegistry` mapped one event type → one topic. `prompt.submitted` needed to publish to *two* topics with different payloads:
+      - Full prompt to intelligence (CMD topic, restricted access)
+      - Sanitized 100-char preview to observability (EVT topic, broad access)
+      
+      This was impossible without forking the registry.
+      
+      ### 3. Mixed CMD/EVT semantics
+      
+      `session.outcome` was routed only to `onex.cmd.omniintelligence.session-outcome.v1`. Dashboards and monitoring had no visibility into session outcomes — they'd need to reverse-engineer intelligence-side artifacts. The event is simultaneously an intelligence input *and* an observability fact; the single-topic design forced a false choice.
+      
+      **Questions resolved**:
+      - Should infra contain application-specific event definitions? **No.**
+      - Should the daemon support publishing one event to multiple topics? **Yes.**
+      - Should `session.outcome` be available to both intelligence and observability? **Yes.**
+      
+      ---
+      
+      ## Background
+      
+      ### ONEX Topic Naming Convention
+      
+      ```
+      onex.{kind}.{producer}.{event-name}.v{n}
+      ```
+      
+      | Kind | Semantics | Access |
+      |------|-----------|--------|
+      | `cmd` | "Do something with this" — intended for a specific downstream system | Restricted |
+      | `evt` | "This happened" — facts about what happened, safe to observe broadly | Broad |
+      
+      Topics are **realm-agnostic** (OMN-1972). No environment prefix (`dev.`, `prod.`). The `TopicBase` StrEnum value IS the wire topic.
+      
+      ### Fan-Out Architecture
+      
+      ```
+      Hook Script
+          |
+          | emit_daemon_send(event_type="prompt.submitted", payload={...})
+          v
+      Emit Daemon
+          |
+          | EVENT_REGISTRY lookup -> EventRegistration with [FanOutRule, FanOutRule]
+          |
+          +----> FanOutRule 1: CMD topic (passthrough)       -> intelligence consumers
+          +----> FanOutRule 2: EVT topic (transform applied)  -> dashboards, monitoring
+      ```
+      
+      Each `FanOutRule` specifies:
+      - `topic_base: TopicBase` — target topic (bare ONEX suffix = wire topic)
+      - `transform: PayloadTransform | None` — optional callable applied before publishing
+      - `description: str` — human-readable purpose
+      
+      ### Prior State
+      
+      | Component | Event Count | Fan-Out | Source of Truth |
+      |-----------|-------------|---------|-----------------|
+      | Infra `EventRegistry` (installed) | 4 | No | Stale |
+      | Infra `EventRegistry` (source) | 12 | No | Conflicting |
+      | omniclaude4 local `EVENT_REGISTRY` | 14 | Yes | Canonical |
+      
+      ---
+      
+      ## Decision
+      
+      ### 1. App owns its event catalog
+      
+      The application repository is the **sole source of truth** for its event schemas.
+      
+      **omniclaude4 provides** (in `src/omniclaude/hooks/event_registry.py`):
+      - `EVENT_REGISTRY` — static dict mapping `event_type` → `EventRegistration`
+      - Fan-out rules with per-target transforms
+      - Partition key configuration
+      - Required field validation
+      - Metadata injection (`_inject_metadata()` in the publisher)
+      
+      **omnibase_infra provides** (generic primitives only):
+      - `EventBusKafka.publish(topic, key, value, headers)` — publishes exactly what it receives
+      - `TopicResolver` — pass-through validation (OMN-1972)
+      - No application-specific event catalogs
+      - No `_register_defaults()`
+      
+      **Invariant**: If you `grep` infra for "omniclaude", you should find zero event definitions.
+      
+      ### 2. Fan-out at daemon level
+      
+      One semantic event can publish to multiple Kafka topics with different payload transformations.
+      
+      **Current fan-out events**:
+      
+      | Event Type | CMD Target | EVT Target | EVT Transform |
+      |------------|-----------|------------|---------------|
+      | `prompt.submitted` | `onex.cmd.omniintelligence.claude-hook-event.v1` | `onex.evt.omniclaude.prompt-submitted.v1` | `transform_for_observability` (redacts secrets, truncates to 100 chars) |
+      | `session.outcome` | `onex.cmd.omniintelligence.session-outcome.v1` | `onex.evt.omniclaude.session-outcome.v1` | Passthrough (no sensitive content) |
+      
+      All other event types (12 of 14) are single-target with passthrough.
+      
+      **When to add fan-out**: An event needs fan-out when it is simultaneously:
+      - An input to a specific downstream system (CMD) — e.g., intelligence feedback loop
+      - A fact that dashboards/monitoring should observe (EVT) — e.g., session outcomes
+      
+      If an event is only observed (not acted upon), a single EVT target suffices. If it's only a command (not worth observing), a single CMD target suffices.
+      
+      ### 3. CMD vs EVT topic naming
+      
+      | Kind | Topic Format | Semantics |
+      |------|-------------|-----------|
+      | **CMD** | `onex.cmd.{consumer}.{event}.v{n}` | Named by consumer. "Do something with this." Restricted access. |
+      | **EVT** | `onex.evt.{producer}.{event}.v{n}` | Named by producer. "This happened." Broad access. |
+      
+      The same `event_type` can legitimately map to both CMD and EVT via fan-out. This is not duplication — each target serves a different contract with different access semantics.
+      
+      ### 4. Legacy topic removal
+      
+      `ROUTING_DECISIONS = "agent-routing-decisions"` removed from `TopicBase`. The ONEX-canonical replacement `ROUTING_DECISION = "onex.evt.omniclaude.routing-decision.v1"` is the sole target for `routing.decision` events.
+      
+      **Resolved**: `consumers/agent_actions_consumer.py` has been migrated to subscribe to `"onex.evt.omniclaude.routing-decision.v1"` in the same PR.
+      
+      ---
+      
+      ## Implementation
+      
+      ### Files Modified
+      
+      | File | Change |
+      |------|--------|
+      | `src/omniclaude/hooks/topics.py` | +3 TopicBase entries (`ROUTING_DECISION`, `NOTIFICATION_BLOCKED`, `NOTIFICATION_COMPLETED`), renamed `SESSION_OUTCOME` → `SESSION_OUTCOME_CMD` + `SESSION_OUTCOME_EVT`, removed `ROUTING_DECISIONS` |
+      | `src/omniclaude/hooks/event_registry.py` | +6 EventRegistrations (14 total), `session.outcome` upgraded to dual fan-out |
+      | `src/omniclaude/runtime/lifecycle.py` | Starts the omnimarket emit daemon wrapper and publishes queued events through `EventBusKafka` |
+      | `plugins/onex/hooks/lib/hook_event_adapter.py` | `TopicBase.ROUTING_DECISIONS` → `TopicBase.ROUTING_DECISION` |
+      | `tests/runtime/test_lifecycle.py` and `tests/scripts/test_omnimarket_launcher.py` | Cover emit-daemon lifecycle startup and launcher wiring |
+      | `tests/hooks/test_topics.py` | Removed `ROUTING_DECISIONS` assertions |
+      | `tests/hooks/test_event_registry.py` | +4 tests for session.outcome fan-out and routing.decision topic |
+      | `tests/hooks/test_emit_client_wrapper.py` | Updated docstring referencing legacy topic |
+      
+      ### Infra Changes (PR #275)
+      
+      | File | Change |
+      |------|--------|
+      | `omnibase_infra4/.../event_registry.py` | Deleted `_register_defaults()` method entirely |
+      | `omnibase_infra4/.../test_event_registry.py` | Removed 60+ tests asserting 12 default registrations |
+      
+      ### Verification
+      
+      ```bash
+      # All 14 event types registered with correct fan-out
+      .venv/bin/python3 -c "
+      from omniclaude.hooks.event_registry import EVENT_REGISTRY
+      for et in sorted(EVENT_REGISTRY.keys()):
+          reg = EVENT_REGISTRY[et]
+          targets = [str(r.topic_base) for r in reg.fan_out]
+          print(f'  {et:25s} -> {targets}')
+      print(f'Total: {len(EVENT_REGISTRY)} event types')
+      "
+      
+      # No deleted publisher package import remains
+      ! rg 'omniclaude\.publisher' src tests plugins scripts --glob '!uv.lock'
+      # Expected: 0
+      
+      # Tests pass
+      uv run pytest tests/runtime/test_lifecycle.py tests/runtime/test_plugin_claude.py tests/scripts/test_emit_daemon_cutover_static.py tests/scripts/test_omnimarket_launcher.py -q
+      ```
+      
+      ---
+      
+      ## Trade-offs
+      
+      ### Accepted Trade-offs
+      
+      1. **Breaking change for other working copies**
+         - **Impact**: `omniclaude2` and `omniclaude3` still import `EventRegistry` from infra. They will fail when they pull updated infra (PR #275).
+         - **Rationale**: Each working copy is on a separate ticket. They adopt the infra change when they're ready.
+         - **Mitigation**: The fix is straightforward — switch to local registry, same as omniclaude4.
+      
+      2. **Consumer migration** *(resolved)*
+         - **Impact**: `consumers/agent_actions_consumer.py` migrated to `"onex.evt.omniclaude.routing-decision.v1"` in the same PR.
+         - **Rationale**: Dual-publishing to legacy topics adds complexity for limited benefit.
+         - **Mitigation**: Complete — consumer and skills updated to ONEX topic.
+      
+      3. **Static registry (no dynamic registration)**
+         - **Impact**: Adding event types requires code changes, not runtime configuration.
+         - **Rationale**: The event catalog is known at code time. Dynamic registration adds complexity for a problem that doesn't exist.
+         - **Mitigation**: The static dict is trivial to extend.
+      
+      ### Benefits Realized
+      
+      1. **Single source of truth**: 14 event types defined once, in one file, in the app repo
+      2. **No version drift**: No infra package to go stale
+      3. **Fan-out support**: One event, multiple delivery targets with per-target transforms
+      4. **Privacy by design**: EVT topics get sanitized previews; CMD topics get full payloads
+      5. **Clean topic semantics**: CMD for commands, EVT for facts — not conflated
+      6. **Stronger test coverage**: Tests exercise the real registry instead of mocking infra's
+      
+      ---
+      
+      ## Alternatives Considered
+      
+      ### A. Keep event definitions in infra with register_batch
+      
+      Apps would call `registry.register_batch(defs)` at startup. **Rejected** because:
+      - Still couples the registry mechanism to infra's class design
+      - omniclaude4 needs richer semantics (fan-out, transforms) that infra doesn't support
+      - Adds a runtime registration step for something that's static
+      
+      ### B. Dual-publish to legacy + ONEX topics during migration
+      
+      Temporarily publish `routing.decision` to both `agent-routing-decisions` and `onex.evt.omniclaude.routing-decision.v1`. **Rejected** because:
+      - Adds complexity for a topic with limited active consumers
+      - Consumers should migrate, not be accommodated indefinitely
+      - Legacy topic name violates ONEX naming convention
+      
+      ### C. Add fan-out to infra's EventRegistry
+      
+      Extend infra with `FanOutRule` support. **Rejected** because:
+      - Fan-out is an application concern, not an infrastructure primitive
+      - Only omniclaude needs it today
+      - Infra should stay generic — "publish to topic X" is the right abstraction level
+      
+      ---
+      
+      ## References
+      
+      ### Related Documentation
+      
+      - **[ADR-005 (omnibase_core)](https://github.com/OmniNode-ai/omnibase_core/blob/main/docs/decisions/ADR-005-core-infra-dependency-boundary.md)**: Core-Infra Dependency Boundary — establishes the principle that core/infra provides abstractions, not application content
+      - **[Handoff Doc](../handoff-publisher-topic-resolution.md)**: Detailed handoff notes from the publisher rewiring work
+      
+      ### Related Code
+      
+      - **Event Registry**: `src/omniclaude/hooks/event_registry.py` — 14 event types with fan-out rules
+      - **Topic Definitions**: `src/omniclaude/hooks/topics.py` — `TopicBase` StrEnum
+      - **Emit Daemon Lifecycle**: `src/omniclaude/runtime/lifecycle.py` — wraps omnimarket emit-daemon startup and Kafka publishing
+      - **Infra PR**: omnibase_infra #275 — removed `_register_defaults()` from `EventRegistry`
+      
+      ### Related Issues
+      
+      - **OMN-1944**: Port emit daemon from omnibase_infra to omniclaude
+      - **OMN-1972**: TopicResolver — realm-agnostic topics
+      - **OMN-1735**: Session outcome feedback loop
+      - **OMN-1892**: Routing feedback events with guardrails
+      
+      ---
+      
+      ## Revision History
+      
+      | Date | Version | Author | Changes |
+      |------|---------|--------|---------|
+      | 2026-02-09 | 1.0 | Jonah | Initial ADR: app-owned catalogs, fan-out strategy, legacy topic removal |
+    ground_truth_adr_hash: "sha256:b2a3f04f16d7d2ee663082d710e1a7bef4f92fc7e962d10274b64b3a07261c6e"
+    source_file_hash: "sha256:b2a3f04f16d7d2ee663082d710e1a7bef4f92fc7e962d10274b64b3a07261c6e"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - pattern_adoption
+    expected_keywords:
+    - "app-owned event catalog"
+    - "fan-out"
+    - "EVENT_REGISTRY"
+    - "FanOutRule"
+    - "infra generic primitives"
+
+  - id: "omniclaude-adr-005-delegation-orchestrator"
+    root_paths:
+    - "omniclaude/docs/decisions/"
+    - "omniclaude/plugins/onex/hooks/lib/"
+    ground_truth_adr: |
+      # ADR-005: Local LLM Delegation with 2-Clean-Run Quality Gate
+      
+      **Date**: 2026-02-19
+      **Status**: Accepted
+      **Ticket**: OMN-2281, PR #177
+      
+      ## Context
+      
+      A significant portion of prompts submitted to Claude Code are routine code tasks — formatting,
+      renaming, generating boilerplate, simple transformations — that do not require a frontier cloud
+      model. Routing these to a local LLM would reduce latency and cost. However, local LLMs produce
+      lower-quality output at a higher rate than cloud models, and silently accepting degraded output
+      would harm user trust.
+      
+      The problem has two parts:
+      
+      1. **Classification**: Which tasks are suitable for local delegation? Classification must be fast
+         (within the UserPromptSubmit budget) and conservative — false positives (delegating tasks that
+         need the cloud model) are worse than false negatives.
+      2. **Quality gate**: How do we accept local LLM output confidently? A single run may succeed by
+         chance; we need a signal that the result is stable.
+      
+      **Alternatives considered**:
+      
+      - **No quality gate, single run**: Accept first local LLM output. Rejected — local model output
+        is non-deterministic; a single successful run does not indicate stable quality.
+      - **Human review step**: Route local output to human review before accepting. Rejected — eliminates
+        the latency benefit of local delegation.
+      - **Statistical sampling (N runs, majority vote)**: Run the task N times, accept the majority
+        result. Rejected — expensive in tokens and time; majority vote requires semantic comparison of
+        outputs, which is its own hard problem.
+      - **2 consecutive clean runs**: Run the task twice; accept only if both runs pass a quality check.
+        Accepted — two consecutive clean runs provide high confidence in stability without N-run cost.
+      
+      ## Decision
+      
+      Add a delegation orchestrator that implements a three-step delegation pipeline:
+      
+      **Step 1 — Classification** (`task_classifier.py`): Determines if the incoming task is suitable
+      for local delegation using a lightweight heuristic classifier. Tasks classified as non-delegatable
+      pass through to the standard cloud routing path immediately.
+      
+      **Step 2 — Local dispatch** (`local_delegation_handler.py`): Routes delegatable tasks to the
+      appropriate local LLM endpoint based on task type and estimated token count. Uses
+      `LLM_CODER_FAST_URL` for most code tasks; falls back gracefully if the endpoint is unavailable.
+      
+      **Step 3 — Quality gate** (`delegation_orchestrator.py`): Requires 2 consecutive clean runs
+      before accepting the result. "Clean" is defined by a rubric applied to the output (no error
+      markers, output length within expected range, structural validity for the task type). If either
+      run fails the rubric, the result is discarded and the task is re-routed to the cloud path.
+      
+      Delegation is disabled by default and must be explicitly enabled via environment configuration.
+      
+      ## Consequences
+      
+      **Positive**:
+      - Reduces cloud LLM calls for routine tasks that local models handle well.
+      - The 2-clean-run gate prevents degraded outputs from reaching users silently.
+      - Graceful fallback — if local dispatch fails or either run fails the gate, the task routes to the
+        cloud path with no user-visible error.
+      - Quality gate failure rate is a useful metric for monitoring local model health.
+      
+      **Negative / trade-offs**:
+      - Worst-case latency increases significantly. The delegation path adds up to ~8 seconds to
+        UserPromptSubmit (classification + 2 local runs + rubric evaluation). This exceeds the 500ms
+        typical budget but is within the documented 15s worst-case ceiling.
+      - The classification heuristic has false negatives — tasks that could be delegated may not be
+        classified as delegatable. This is intentional conservatism.
+      - Must be explicitly enabled (`ENABLE_DELEGATION=true`). Operators must opt in and monitor
+        delegation quality metrics before relying on it for production traffic.
+      
+      ## Implementation
+      
+      Key files:
+      - `plugins/onex/hooks/lib/task_classifier.py` — lightweight heuristic classification
+      - `plugins/onex/hooks/lib/local_delegation_handler.py` — local LLM dispatch and response handling
+      - `plugins/onex/hooks/lib/delegation_orchestrator.py` — 2-clean-run gate and fallback logic
+    ground_truth_adr_hash: "sha256:363c1fcf81ea27b2e6f4bc9680daa65ad40070b2c100ce1b2b3bf6b76604eb64"
+    source_file_hash: "sha256:363c1fcf81ea27b2e6f4bc9680daa65ad40070b2c100ce1b2b3bf6b76604eb64"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - technology_selection
+    expected_keywords:
+    - "delegation orchestrator"
+    - "2-clean-run"
+    - "local LLM"
+    - "quality gate"
+    - "task_classifier"
+
+  - id: "omnibase-core-adr-006-receipt-consolidation"
+    root_paths:
+    - "omnibase_core/docs/decisions/"
+    ground_truth_adr: |
+      # ADR-006: Receipt Type Consolidation onto ModelDodReceipt (OMN-9792)
+      
+      **Date:** 2026-04-27
+      **Ticket:** OMN-9792
+      **Status:** Accepted
+      
+      ## Context
+      
+      A scan on 2026-04-26 identified two near-duplicate receipt-shaped types that diverged
+      from the canonical `ModelDodReceipt`:
+      
+      - `omniclaude.EvidenceReceipt` — a `@dataclass` in the DoD evidence runner with
+        7 fields: `ticket_id`, `timestamp`, `git_sha`, `branch`, `working_dir`,
+        `contract_path`, `result`.
+      - `onex_change_control.ModelVerifierCheckResult` — a Pydantic model used as items
+        in `ModelVerifierOutput.checks` with fields: `name`, `passed`, `message`,
+        `failure_class`.
+      
+      Leaving both in place creates ongoing schema drift and forces callers to maintain
+      knowledge of three distinct receipt types with overlapping semantics.
+      
+      ## Decision
+      
+      ### EvidenceReceipt → ModelDodReceipt
+      
+      Extend `ModelDodReceipt` with two optional fields (`branch`, `working_dir`) to
+      absorb the extra provenance information carried by `EvidenceReceipt`. The `result`
+      field is intentionally **not** migrated — it is an aggregate run summary, not a
+      per-check receipt. The runner constructs one `ModelDodReceipt` per evidence check
+      using the field mappings below:
+      
+      | EvidenceReceipt field | ModelDodReceipt field |
+      |-----------------------|-----------------------|
+      | `ticket_id` | `ticket_id` |
+      | `timestamp` | `run_timestamp` |
+      | `git_sha` | `commit_sha` |
+      | `branch` | `branch` (new optional field) |
+      | `working_dir` | `working_dir` (new optional field) |
+      | `contract_path` | `check_value` |
+      | `result.details[i].checks[j].status` | `status` (mapped to `EnumReceiptStatus`) |
+      
+      ### ModelVerifierCheckResult → ModelDodReceipt
+      
+      `ModelVerifierOutput.checks` is re-typed from `tuple[ModelVerifierCheckResult, ...]`
+      to `tuple[ModelDodReceipt, ...]`. The `failure_class` field on `ModelVerifierCheckResult`
+      is encoded in `probe_stdout` (the captured stderr/stdout of the verification command).
+      The `passed` field is derived from `status == PASS`.
+      
+      The `ModelVerifierCheckResult` class is **deleted in the downstream
+      onex_change_control PR** (follow-up); no backwards-compat re-exports are added
+      per CLAUDE.md policy. This omnibase_core PR only adds the `branch` and
+      `working_dir` fields — the deletion lands in onex_change_control separately.
+      
+      ### Forward-compatibility with OMN-9132
+      
+      OMN-9132 will extend `ModelDodReceipt` with a required `post_merge_probe` field
+      (`ModelPostMergeProbe`). That field is intentionally **not** added here to preserve
+      the non-breaking nature of this PR. OMN-9132 owns that addition.
+      
+      ## Consequences
+      
+      - Single receipt type across omnibase_core, omniclaude, and onex_change_control.
+      - `EvidenceReceipt` dataclass deleted from omniclaude.
+      - `ModelVerifierCheckResult` deleted from onex_change_control.
+      - `ModelDodReceipt` gains two optional fields; all existing receipts remain valid
+        (no migration required — both fields default to `None`).
+      - `ModelVerifierOutput.checks` type changes from `tuple[ModelVerifierCheckResult, ...]`
+        to `tuple[ModelDodReceipt, ...]`; callers must be updated.
+    ground_truth_adr_hash: "sha256:5828bc51aa92ae78313eec4ff9bb612fb39c61690c92cbd73164c501f028ad07"
+    source_file_hash: "sha256:5828bc51aa92ae78313eec4ff9bb612fb39c61690c92cbd73164c501f028ad07"
+    manifest_schema_version: "v1"
+    models:
+    - qwen3-coder
+    expected_decision_types:
+    - architecture_decision
+    - migration_decision
+    expected_keywords:
+    - "ModelDodReceipt"
+    - "EvidenceReceipt"
+    - "ModelVerifierCheckResult"
+    - "receipt consolidation"
+    - "OMN-9792"
