@@ -10,7 +10,6 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_core.runtime.runtime_local_adapter import HandlerBusAdapter
 
 from omnimarket.nodes.node_hostile_reviewer.handlers.handler_review_orchestrator import (
     ModelInferenceAdapter,
@@ -27,6 +26,7 @@ from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_start_
 from omnimarket.nodes.node_hostile_reviewer.models.model_hostile_reviewer_state import (
     EnumHostileReviewerPhase,
 )
+from tests.runtime_local_compat import LocalRuntimeBusAdapter
 
 CMD_TOPIC = "onex.cmd.omnimarket.hostile-reviewer-start.v1"
 COMPLETED_TOPIC = "onex.evt.omnimarket.hostile-reviewer-completed.v1"
@@ -150,7 +150,7 @@ async def test_handler_bus_adapter_routes_start_command_envelope(
     adapter = StubAdapter()
     handler = HandlerWorkflowRunner()
     handler.set_adapter(adapter)
-    bus_adapter = HandlerBusAdapter(
+    bus_adapter = LocalRuntimeBusAdapter(
         handler=handler,
         handler_name="HandlerWorkflowRunner",
         input_model_cls=ModelHostileReviewerStartCommand,
