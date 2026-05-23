@@ -1,7 +1,7 @@
 {
-  "graphify_version": "ast-fallback",
+  "graphify_version": "0.8.2",
   "rule_version": "v1",
-  "captured_at": "2026-05-23T19:58:46Z",
+  "captured_at": "2026-05-23T23:01:42Z",
   "findings": [
     {
       "finding_type": "UNTESTED_HANDLER",
@@ -740,16 +740,6 @@
       "file_path": "src/omnimarket/nodes/node_authorize/handlers/handler_authorize.py",
       "symbol": "handler_authorize",
       "detail": "Contract-referenced handler 'handler_authorize' has no test file and no golden-chain fixture coverage.",
-      "rule_id": "UNTESTED_HANDLER",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "UNTESTED_HANDLER",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py",
-      "symbol": "handler_delegation_routing",
-      "detail": "Contract-referenced handler 'handler_delegation_routing' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -2567,6 +2557,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.delegation-all-tiers-failed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_build_loop_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.delegation-attempt.v1",
       "detail": "Topic 'onex.evt.omnimarket.delegation-attempt.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -2577,9 +2577,39 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.delegation-call-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.delegation-call-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
+      "detail": "Topic 'onex.evt.omnimarket.delegation-escalation-triggered.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_build_loop_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.delegation-metrics.v1",
       "detail": "Topic 'onex.evt.omnimarket.delegation-metrics.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.delegation-model-degraded.v1",
+      "detail": "Topic 'onex.evt.omnimarket.delegation-model-degraded.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
