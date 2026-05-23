@@ -9,7 +9,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from omnibase_infra.runtime.runtime_local_adapter import LocalRuntimeBusAdapter
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     TOPIC_COMPLETED,
@@ -27,6 +26,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ReducerResult,
     TriageRecord,
 )
+from tests.runtime_local_compat import LocalRuntimeBusAdapter
 
 _START_TOPIC = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
 

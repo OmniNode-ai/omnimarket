@@ -16,7 +16,8 @@ from typing import Any
 
 import pytest
 import yaml
-from omnibase_infra.runtime.runtime_local import RuntimeLocal
+
+from tests.runtime_local_compat import RuntimeLocal
 
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]

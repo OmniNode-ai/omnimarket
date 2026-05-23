@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
-from omnibase_infra.runtime.runtime_local import RuntimeLocal
+
+from tests.runtime_local_compat import RuntimeLocal
 
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
