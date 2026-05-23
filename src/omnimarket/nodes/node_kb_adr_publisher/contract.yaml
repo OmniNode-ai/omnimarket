@@ -1,0 +1,162 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_kb_adr_publisher
+# EFFECT node — clones KB repo, renders ADRs from canary output, opens PR.
+# [OMN-11808]
+
+name: "node_kb_adr_publisher"
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+uuid: "d4e5f6a7-b8c9-0123-def0-123456789abc"
+node_type: effect
+input_model: "ModelKBADRPublishRequest"
+output_model: "ModelKBADRPublishResult"
+handler:
+  module: omnimarket.nodes.node_kb_adr_publisher.handlers.handler_kb_adr_publisher
+  class: HandlerKBADRPublisher
+  input_model: ModelKBADRPublishRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  runtime_profiles:
+    - effects
+description: |
+  Subscribes to kb-adr-publish-requested.v1 commands. Reads
+  extracted_decisions.json from the canary run directory, filters by
+  model_key, renders each ModelADRDraft via render_adr_to_kb adapter,
+  clones OmniNode-ai/knowledge-base, creates a branch, writes ADR files
+  into adrs/proposed/, and opens a PR for human review.
+  Emits kb-adr-publish-completed.v1 with PR URL and ADR count.
+  dry_run=true exits cleanly without filesystem writes, git ops, or gh CLI.
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-11808"
+  parent_epic: "OMN-11786"
+  node_type: effect
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  no_bare_os_environ_get: true
+  unit_tests: true
+  bus_bypass_free: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "filesystem_read"
+    atomic: false
+    timeout_seconds: 30
+    description: "Read extracted_decisions.json from canary run dir"
+  - operation_type: "subprocess"
+    atomic: false
+    timeout_seconds: 120
+    description: "Clone KB repo, create branch, push, open PR via gh CLI"
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "kb_adr_publisher"
+  main_tool_class: "NodeKBADRPublisher"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === NODE CONFIGURATION ===
+config: {}
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["canary_run_dir", "model_key"]
+  optional: ["kb_repo", "dry_run"]
+
+output_state:
+  object_type: "object"
+  required: ["success", "adr_count"]
+
+# === ACTIONS ===
+actions:
+  - name: "publish_adrs"
+    description: "Render ADRs and open PR against knowledge-base repo"
+    inputs: ["canary_run_dir", "model_key", "kb_repo", "dry_run"]
+    outputs: ["success", "adr_count", "pr_url", "branch", "error"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "gh"
+    dependency_type: "subprocess"
+    description: "GitHub CLI for repo clone and PR creation"
+    required: true
+  - name: "git"
+    dependency_type: "subprocess"
+    description: "git CLI for branch creation and commit"
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 180000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["kb-adr-publish-completed"]
+  event_categories: ["adr", "kb", "effect", "publish"]
+  publish_events: true
+  subscribe_events: true
+  invocation_mode: "subscription"
+  event_routing: "adr"
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.kb-adr-publish-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.kb-adr-publish-completed.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.kb-adr-publish-requested.v1":
+      schema_ref: "omnimarket.nodes.node_kb_adr_publisher.models.model_publish_request.ModelKBADRPublishRequest"
+      description: "Command to render canary ADR extractions and open a KB PR."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.kb-adr-publish-completed.v1":
+      schema_ref: "omnimarket.nodes.node_kb_adr_publisher.models.model_publish_result.ModelKBADRPublishResult"
+      description: "Completed publish — PR URL, ADR count, and branch name."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "publish_adrs"
+      handler_class: "HandlerKBADRPublisher"
+      handler_module: "omnimarket.nodes.node_kb_adr_publisher.handlers.handler_kb_adr_publisher"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+
+# === TAGS ===
+tags:
+  - adr
+  - kb
+  - effect
+  - publish
+  - canary
+  - omn-11808
+
+metadata:
+  transport_type: kafka
