@@ -1,0 +1,758 @@
+# ADR Inventory — Full Corpus
+# Generated: 2026-05-23
+# Canary scope: full corpus
+# Total ADRs found: 56
+# Note: README.md and ADR_BEST_PRACTICES.md are index/meta documents included in the
+#       file count but listed as Reference status. They are not extractable decisions.
+# Repos covered: omnibase_infra (25), omnibase_core (12), omniclaude (8),
+#                omnimarket (1), omni_home (7), omnidash (3)
+# Classification breakdown: high_confidence: 18, medium_confidence: 31, low_confidence: 11
+
+entries:
+  # ============================================================
+  # HIGH CONFIDENCE — clear source doc with matching dates/terms
+  # ============================================================
+
+  - id: "adr-kafka-required-infrastructure"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-kafka-required-infrastructure.md"
+    title: "Kafka is Required Infrastructure (Rule #8)"
+    status: "Accepted"
+    date: "2026-02-10"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-10-omniclaude-kafka-producer-wiring.md"
+        reasoning: "Kafka infrastructure wiring; same platform-level Kafka-required rule"
+      - path: "docs/deep-dives/2026-02-27-redpanda-connection-limit-outage.md"
+        reasoning: "Kafka/Redpanda infrastructure deep-dive, date proximity to ADR"
+    already_in_manifest: true
+    classification: "high_confidence"
+
+  - id: "adr-007-vault-to-infisical-migration"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-007-vault-to-infisical-migration.md"
+    title: "Vault to Infisical Migration"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-15-single-source-env-bootstrap-plan.md"
+        reasoning: "Single-source env bootstrap aligns directly with Infisical migration rationale"
+    already_in_manifest: true
+    classification: "high_confidence"
+
+  - id: "adr-001-graceful-shutdown-drain-period"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-001-graceful-shutdown-drain-period.md"
+    title: "Graceful Shutdown with Drain Period"
+    status: "Accepted"
+    date: "2025-12-17"
+    source_doc_candidates:
+      - path: "docs/plans/2026-05-05-active-sprint-drain-plan.md"
+        reasoning: "Drain period terminology matches; shutdown/drain patterns"
+    already_in_manifest: true
+    classification: "high_confidence"
+
+  - id: "adr-006-message-dispatch-engine-canonical-routing"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-006-message-dispatch-engine-canonical-routing.md"
+    title: "MessageDispatchEngine as Canonical Consumer Routing Pattern"
+    status: "Accepted"
+    date: "2026-02-08"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-18-dispatch-engine-architecture.md"
+        reasoning: "Same dispatch-engine topic; architecture alignment document"
+      - path: "docs/plans/2026-04-18-dispatch-engine-execution.md"
+        reasoning: "Dispatch engine execution details, same conceptual surface"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "adr-consumer-group-naming"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-consumer-group-naming.md"
+    title: "Kafka Consumer Group Naming Convention"
+    status: "Accepted"
+    date: "2026-01-27"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-23-registry-owned-consumer-surface-plan.md"
+        reasoning: "Consumer surface naming and ownership — overlapping terminology"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "adr-2026-04-28-dispatch-lifecycle-canonical-omni_home"
+    repo: "omni_home"
+    path: "docs/decisions/adr-2026-04-28-dispatch-lifecycle-canonical.md"
+    title: "Dispatch Lifecycle Canonical Source (SEAM-9)"
+    status: "Accepted"
+    date: "2026-04-28"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-26-runtime-lifecycle-hardening-plan.md"
+        reasoning: "Referenced directly in ADR body as source plan for Task 10"
+      - path: "docs/plans/2026-04-27-skills-to-market-phase-2-validator-gates.md"
+        reasoning: "Referenced in ADR body as competing plan"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "adr-2026-04-28-skill-liveness-validator-home-omni_home"
+    repo: "omni_home"
+    path: "docs/decisions/adr-2026-04-28-skill-liveness-validator-home.md"
+    title: "Skill Liveness Validator Home"
+    status: "Accepted"
+    date: "2026-04-28"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-27-skills-to-market-phase-2-validator-gates.md"
+        reasoning: "Referenced directly in ADR body as source plan"
+      - path: "docs/plans/2026-04-26-runtime-lifecycle-part-4-skill-shim-runtime-proof.md"
+        reasoning: "Referenced directly in ADR body as competing plan"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "adr-2026-04-28-skills-canonical-plan"
+    repo: "omni_home"
+    path: "docs/decisions/adr-2026-04-28-skills-canonical-plan.md"
+    title: "Canonical Skills Migration Plan"
+    status: "Accepted"
+    date: "2026-04-28"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-27-skills-to-market-orchestrators-plan.md"
+        reasoning: "Referenced directly in ADR body as canonical plan"
+      - path: "docs/plans/2026-04-27-skills-actually-working-plan.md"
+        reasoning: "Referenced directly in ADR body as competing plan"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "adr-2026-04-28-dispatch-lifecycle-canonical-omnibase_core"
+    repo: "omnibase_core"
+    path: "docs/decisions/adr-2026-04-28-dispatch-lifecycle-canonical.md"
+    title: "Dispatch Lifecycle Canonical Source"
+    status: "Accepted"
+    date: "2026-04-28"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-26-runtime-lifecycle-hardening-plan.md"
+        reasoning: "Same ticket OMN-10180; runtime lifecycle wave 4 source plan"
+      - path: "docs/plans/2026-04-27-skills-to-market-phase-2-validator-gates.md"
+        reasoning: "Overlapping dispatch lifecycle surface, same date"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "adr-2026-04-28-skill-liveness-validator-home-omnibase_core"
+    repo: "omnibase_core"
+    path: "docs/decisions/adr-2026-04-28-skill-liveness-validator-home.md"
+    title: "Skill Liveness Validator Home"
+    status: "Accepted"
+    date: "2026-04-28"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-27-skills-to-market-phase-2-validator-gates.md"
+        reasoning: "Validator gates plan directly motivates this ADR; same OMN-10180 ticket"
+      - path: "docs/plans/2026-04-26-runtime-lifecycle-part-4-skill-shim-runtime-proof.md"
+        reasoning: "Competing plan referenced in parallel omni_home ADR"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "omnidash-001-typography-system"
+    repo: "omnidash"
+    path: "docs/adr/001-typography-system.md"
+    title: "Typography System"
+    status: "Accepted"
+    date: "2026-04-24"
+    source_doc_candidates:
+      - path: "docs/plans/typography-refactor.md"
+        reasoning: "Referenced directly in ADR frontmatter as Related plan"
+      - path: "docs/plans/2026-04-21-omn-22-ux-polish.md"
+        reasoning: "OMN-22 UX polish referenced in ADR context section"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "omnidash-002-storybook-widget-coverage"
+    repo: "omnidash"
+    path: "docs/adr/002-storybook-widget-coverage.md"
+    title: "Storybook Widget Coverage"
+    status: "Accepted"
+    date: "2026-04-24"
+    source_doc_candidates:
+      - path: "docs/plans/storybook-widget-coverage.md"
+        reasoning: "Referenced directly in ADR frontmatter as Related plan"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "omnidash-003-baselines-roi-card-stay-bespoke"
+    repo: "omnidash"
+    path: "docs/adr/003-baselines-roi-card-stay-bespoke.md"
+    title: "BaselinesROICard — STAY-BESPOKE decision"
+    status: "Accepted"
+    date: "2026-04-29"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-29-omnidash-generic-widgets.md"
+        reasoning: "Same OMN-10282 epic and date; generic widget primitives plan"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "2026-04-23-data-verification-invocation"
+    repo: "omni_home"
+    path: "docs/decisions/2026-04-23-data-verification-invocation.md"
+    title: "node_data_verification Invocation Policy"
+    status: "Proposed"
+    date: "2026-04-23"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-06-insights-plan.md"
+        reasoning: "Referenced directly in ADR body as source plan Task 3b lines 196-200"
+      - path: "docs/plans/2026-04-07-insights-plan.md"
+        reasoning: "Follow-up insights plan; same date proximity"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "2026-04-23-registry-owned-consumer-surface"
+    repo: "omni_home"
+    path: "docs/decisions/2026-04-23-registry-owned-consumer-surface.md"
+    title: "Registry-Owned Consumer Surface"
+    status: "Proposed"
+    date: "2026-04-23"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-23-registry-owned-consumer-surface-plan.md"
+        reasoning: "Exact same name — plan directly motivated the ADR same day"
+      - path: "docs/plans/2026-04-23-registration-architecture-and-registry-realignment.md"
+        reasoning: "Same date and registration/registry realignment topic"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "omniclaude-adr-001-event-fan-out-and-app-owned-catalogs"
+    repo: "omniclaude"
+    path: "docs/decisions/ADR-001-event-fan-out-and-app-owned-catalogs.md"
+    title: "Event Fan-Out Strategy and App-Owned Event Catalogs"
+    status: "Implemented"
+    date: "2026-02-09"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-06-omniclaude-extraction-to-omnimarket.md"
+        reasoning: "omniclaude extraction and event routing architecture topic"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "omniclaude-adr-005-delegation-orchestrator"
+    repo: "omniclaude"
+    path: "docs/decisions/ADR-005-delegation-orchestrator.md"
+    title: "Local LLM Delegation with 2-Clean-Run Quality Gate"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-03-node-activation-delegation-design.md"
+        reasoning: "Delegation orchestrator design — same delegation LLM routing topic"
+      - path: "docs/plans/2026-05-23-llm-delegation-framework.md"
+        reasoning: "LLM delegation framework directly covers delegation orchestrator concepts"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  - id: "omnibase-core-adr-006-receipt-consolidation"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-006-receipt-consolidation-omn-9792.md"
+    title: "Receipt Type Consolidation onto ModelDodReceipt (OMN-9792)"
+    status: "Accepted"
+    date: "2026-04-27"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-28-occ-models-to-core-migration.md"
+        reasoning: "OCC model migration to core; same date window and model consolidation topic"
+    already_in_manifest: false
+    classification: "high_confidence"
+
+  # ============================================================
+  # MEDIUM CONFIDENCE — probable source but weaker correlation
+  # ============================================================
+
+  - id: "adr-002-enum-message-category-node-output-separation"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-002-enum-message-category-node-output-separation.md"
+    title: "Separation of EnumMessageCategory and EnumNodeOutputType"
+    status: "Accepted"
+    date: "2025-12-20"
+    source_doc_candidates:
+      - path: "docs/deep-dives/APRIL_1_2026_DEEP_DIVE.md"
+        reasoning: "Architecture deep-dives from this period cover enum separation decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-003-remove-handler-health-checks"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-003-remove-handler-health-checks.md"
+    title: "Remove Health Check Methods from Handlers"
+    status: "Accepted"
+    date: "2025-12-26"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-02-platform-blockers-fix.md"
+        reasoning: "Platform blockers fix may cover handler interface cleanup"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-004-performance-baseline-thresholds"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-004-performance-baseline-thresholds.md"
+    title: "Performance Baseline Thresholds for E2E Tests"
+    status: "Accepted"
+    date: "2025-12-27"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-09-baseline-measurement-system-design.md"
+        reasoning: "Baseline measurement system design covers performance thresholds concept"
+      - path: "docs/plans/2026-04-09-baseline-measurement-system.md"
+        reasoning: "Baseline measurement implementation plan"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-005-denormalize-capability-fields-in-registration-projections"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-005-denormalize-capability-fields-in-registration-projections.md"
+    title: "Denormalize Capability Fields in Registration Projections"
+    status: "Accepted"
+    date: "2026-01-09"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-23-registration-architecture-and-registry-realignment.md"
+        reasoning: "Registration architecture realignment covers projection design"
+      - path: "docs/plans/2026-04-08-projection-plan.md"
+        reasoning: "Projection architecture plan aligns with projection denormalization decision"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-008-realm-agnostic-topics"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-008-realm-agnostic-topics.md"
+    title: "Realm-Agnostic Topic Format"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-24-omnibase-core-hardcoded-topics-cleanup.md"
+        reasoning: "Topics cleanup covers realm-agnostic topic format adoption"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-009-llm-cost-tracking-spi"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-009-llm-cost-tracking-spi.md"
+    title: "LLM Cost Tracking at the Infrastructure Layer"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-29-unified-cost-observability-completion.md"
+        reasoning: "Cost observability plan covers LLM cost tracking infrastructure"
+      - path: "docs/plans/2026-05-01-ab-cost-compare-cli.md"
+        reasoning: "Cost comparison CLI extends LLM cost tracking SPI work"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-any-type-pydantic-workaround"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-any-type-pydantic-workaround.md"
+    title: "Use of Any Type as Pydantic 2.x JsonType Workaround"
+    status: "Superseded"
+    date: "2026-01-06"
+    source_doc_candidates:
+      - path: "docs/deep-dives/APRIL_1_2026_DEEP_DIVE.md"
+        reasoning: "Deep dives from this period cover Pydantic migration decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-canonical-publish-interface-policy"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-canonical-publish-interface-policy.md"
+    title: "Canonical Publish Interface Policy"
+    status: "Accepted"
+    date: "2026-01-27"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-06-external-service-protocols.md"
+        reasoning: "External service protocols covers publish interface standardization"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-cryptography-upgrade-46"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-cryptography-upgrade-46.md"
+    title: "Cryptography Library Upgrade to v46.0.3"
+    status: "Accepted"
+    date: "2026-01-06"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-03-precommit-sweep-fixes-part1.md"
+        reasoning: "Precommit sweep fixes surface security upgrade decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-custom-bool-result-models"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-custom-bool-result-models.md"
+    title: "Custom __bool__ for Result Models"
+    status: "Accepted"
+    date: "2026-01-09"
+    source_doc_candidates:
+      - path: "docs/deep-dives/APRIL_1_2026_DEEP_DIVE.md"
+        reasoning: "Deep dives from this period cover Pydantic model design decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-dsn-validation-strengthening"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-dsn-validation-strengthening.md"
+    title: "Strengthen DSN Validation with urllib.parse"
+    status: "Implemented"
+    date: "2025-12-27"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-03-precommit-sweep-fixes-part1.md"
+        reasoning: "Input validation strengthening aligns with precommit sweep focus"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-enum-message-category-vs-node-output-type"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-enum-message-category-vs-node-output-type.md"
+    title: "EnumMessageCategory vs EnumNodeOutputType Distinction"
+    status: "Accepted"
+    date: "2025-12-21"
+    source_doc_candidates:
+      - path: "docs/deep-dives/APRIL_1_2026_DEEP_DIVE.md"
+        reasoning: "Architecture deep-dives document enum design decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-error-context-factory-pattern"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-error-context-factory-pattern.md"
+    title: "Error Context Factory Pattern with with_correlation()"
+    status: "Accepted"
+    date: "2026-01-16"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-02-platform-blockers-fix.md"
+        reasoning: "Platform blockers fix covers error handling infrastructure patterns"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-handler-contract-schema-evolution"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-handler-contract-schema-evolution.md"
+    title: "Handler Contract Schema Evolution Strategy"
+    status: "Accepted"
+    date: "2026-01-13"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-06-contract-auto-wiring.md"
+        reasoning: "Contract auto-wiring covers handler contract schema management"
+      - path: "docs/plans/2026-04-15-contract-validation-in-ci-design.md"
+        reasoning: "Contract validation in CI design aligns with schema evolution strategy"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-handler-plugin-loader-security"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-handler-plugin-loader-security.md"
+    title: "Handler Plugin Loader Security Model"
+    status: "Accepted"
+    date: "2026-01-10"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-11-plugin-runtime-architecture-plan.md"
+        reasoning: "Plugin runtime architecture covers plugin loader design decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-handler-type-vs-handler-category"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-handler-type-vs-handler-category.md"
+    title: "EnumHandlerType vs EnumHandlerTypeCategory Distinction"
+    status: "Accepted"
+    date: "2025-12-29"
+    source_doc_candidates:
+      - path: "docs/deep-dives/APRIL_1_2026_DEEP_DIVE.md"
+        reasoning: "Architecture deep-dives document handler enum design decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-projector-composite-key-upsert-workaround"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-projector-composite-key-upsert-workaround.md"
+    title: "Projector Composite Key Upsert Workaround"
+    status: "Accepted"
+    date: "2026-01-15"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-08-projection-plan.md"
+        reasoning: "Projection plan covers projector design and upsert patterns"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-protocol-design-guidelines"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-protocol-design-guidelines.md"
+    title: "Protocol Design Guidelines"
+    status: "Accepted"
+    date: "2026-01-17"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-06-external-service-protocols.md"
+        reasoning: "External service protocols plan covers protocol design decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-soft-validation-env-parsing"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-soft-validation-env-parsing.md"
+    title: "Soft Validation for Environment Variable Parsing"
+    status: "Implemented"
+    date: "2025-12-28"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-15-single-source-env-bootstrap-plan.md"
+        reasoning: "Single-source env bootstrap plan covers env parsing decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "adr-two-handler-systems"
+    repo: "omnibase_infra"
+    path: "docs/decisions/adr-two-handler-systems.md"
+    title: "Two Handler Systems in omnibase_infra"
+    status: "Accepted"
+    date: "2026-02-24"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-18-handler-resolver-architecture.md"
+        reasoning: "Handler resolver architecture directly addresses two handler systems discovery"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omnibase-core-adr-001-protocol-based-di-architecture"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-001-protocol-based-di-architecture.md"
+    title: "Protocol-Based Dependency Injection Architecture"
+    status: "Implemented"
+    date: "2025-10-30"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-06-external-service-protocols.md"
+        reasoning: "External service protocols extends the DI architecture pattern"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omnibase-core-adr-004-registration-trigger-architecture"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-004-registration-trigger-architecture.md"
+    title: "Registration Trigger Architecture"
+    status: "Accepted"
+    date: "2025-12-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-23-registration-architecture-and-registry-realignment.md"
+        reasoning: "Registration architecture realignment — same registration trigger topic"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omnibase-core-adr-006-status-taxonomy"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-006-status-taxonomy.md"
+    title: "Status Taxonomy and Categorical Organization"
+    status: "Accepted"
+    date: "2026-01-12"
+    source_doc_candidates:
+      - path: "docs/deep-dives/APRIL_1_2026_DEEP_DIVE.md"
+        reasoning: "Deep dives cover taxonomy and classification decisions from this period"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omniclaude-adr-002-candidate-list-injection"
+    repo: "omniclaude"
+    path: "docs/decisions/ADR-002-candidate-list-injection.md"
+    title: "Remove YAML Loading from Synchronous Hook Path"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-01-hook-health-observability.md"
+        reasoning: "Hook health observability covers hook path performance decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omniclaude-adr-003-no-fallback-routing"
+    repo: "omniclaude"
+    path: "docs/decisions/ADR-003-no-fallback-routing.md"
+    title: "Fail-Fast Routing — No Silent Fallback to general-purpose"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-08-foreground-dispatch-enforcement.md"
+        reasoning: "Dispatch enforcement covers fail-fast routing decisions"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omniclaude-adr-004-dual-emission-privacy-split"
+    repo: "omniclaude"
+    path: "docs/decisions/ADR-004-dual-emission-privacy-split.md"
+    title: "Dual-Topic Emission for Prompt Privacy"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-08-intelligence-pipeline-canary.md"
+        reasoning: "Intelligence pipeline canary covers dual-topic emission patterns"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omniclaude-adr-006-llm-routing-with-fuzzy-fallback"
+    repo: "omniclaude"
+    path: "docs/decisions/ADR-006-llm-routing-with-fuzzy-fallback.md"
+    title: "Three-Tier Agent Routing (LLM → Fuzzy → Explicit)"
+    status: "Accepted"
+    date: "2026-02-19"
+    source_doc_candidates:
+      - path: "docs/plans/2026-05-23-llm-delegation-framework.md"
+        reasoning: "LLM delegation framework covers multi-tier LLM routing strategy"
+      - path: "docs/plans/2026-04-02-intelligent-model-router-design.md"
+        reasoning: "Intelligent model router design covers fuzzy routing concepts"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omnimarket-adr-dispatch-architecture-foreground-only"
+    repo: "omnimarket"
+    path: "docs/decisions/adr-dispatch-architecture-foreground-only-agent-call.md"
+    title: "Agent() Spawn Is a Foreground-Only Capability"
+    status: "Accepted"
+    date: "2026-04-27"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-11-dispatch-worker-skill-plan.md"
+        reasoning: "Dispatch worker skill plan covers foreground-only dispatch constraints"
+      - path: "docs/plans/2026-04-27-skills-to-market-phase-1-canonical-dispatch-loop.md"
+        reasoning: "Canonical dispatch loop explicitly addresses foreground vs background dispatch"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "2026-03-25-dependabot-approval-manual"
+    repo: "omni_home"
+    path: "docs/decisions/2026-03-25-dependabot-approval-manual.md"
+    title: "Dependabot PR Approval Remains Manual"
+    status: "Accepted"
+    date: "2026-03-25"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-07-plan-braindump-pr-rules.md"
+        reasoning: "PR rules braindump includes Dependabot approval policy discussion"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "2026-04-23-registration-runtime-registry-boundary"
+    repo: "omni_home"
+    path: "docs/decisions/2026-04-23-registration-runtime-registry-boundary.md"
+    title: "Registration Runtime / Registry Boundary"
+    status: "Proposed"
+    date: "2026-04-23"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-23-registration-architecture-and-registry-realignment.md"
+        reasoning: "Same date — registration architecture realignment plan is the direct source"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  - id: "omniclaude-2026-02-28-ai-slop-checker-rule-set"
+    repo: "omniclaude"
+    path: "docs/decisions/2026-02-28-ai-slop-checker-rule-set.md"
+    title: "AI-Slop Checker Rule Set v1.0"
+    status: "Accepted"
+    date: "2026-03-02"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-25-omniclaude-restructure-and-contract-validation.md"
+        reasoning: "omniclaude restructure includes validation rule-set review"
+    already_in_manifest: false
+    classification: "medium_confidence"
+
+  # ============================================================
+  # LOW CONFIDENCE — no clear source doc, or ADR predates docs
+  # ============================================================
+
+  - id: "omnibase-core-adr-002-field-limit-constants"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-002-field-limit-constants.md"
+    title: "Centralized Field Limit Constants"
+    status: "Accepted"
+    date: "2025-12-27"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-core-adr-003-reducer-output-exception-consistency"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-003-reducer-output-exception-consistency.md"
+    title: "Reducer Output Exception Consistency"
+    status: "Implemented"
+    date: "2025-12-16"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-core-adr-005-core-infra-dependency-boundary"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-005-core-infra-dependency-boundary.md"
+    title: "Core-Infra Dependency Boundary"
+    status: "Implemented"
+    date: "2025-12-26"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-core-adr-007-context-mutability-design-decision"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-007-context-mutability-design-decision.md"
+    title: "Context Mutability Design Decision"
+    status: "Implemented"
+    date: "2025-12-15"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-core-adr-012-validator-error-handling"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR-012-VALIDATOR-ERROR-HANDLING.md"
+    title: "Validator Error Handling with ModelOnexError"
+    status: "Accepted"
+    date: "2026-01-18"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-11-validation-stack-architecture-plan.md"
+        reasoning: "Validation stack architecture covers validator error handling approach (weak: 3-month gap)"
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-core-risk-009-ci-workflow-modification-risk"
+    repo: "omnibase_core"
+    path: "docs/decisions/RISK-009-ci-workflow-modification-risk.md"
+    title: "CI Workflow Modification Risk"
+    status: "Mitigated"
+    date: "2025-12-10"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omniclaude-2026-04-23-sibling-plugin-strategy"
+    repo: "omniclaude"
+    path: "docs/decisions/2026-04-23-sibling-plugin-strategy.md"
+    title: "Sibling Plugin Strategy (omnigemini, omnimemory, omniintelligence)"
+    status: "Recorded"
+    date: "2026-04-23"
+    source_doc_candidates:
+      - path: "docs/plans/2026-04-14-standalone-plugin-distribution.md"
+        reasoning: "Referenced in ADR as Section 10 source (Open Question), but correlation is indirect"
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-core-adr-readme"
+    repo: "omnibase_core"
+    path: "docs/decisions/README.md"
+    title: "ADR README (index document — not an ADR)"
+    status: "Reference"
+    date: "unknown"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-infra-adr-readme"
+    repo: "omnibase_infra"
+    path: "docs/decisions/README.md"
+    title: "ADR README (index document — not an ADR)"
+    status: "Reference"
+    date: "unknown"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omniclaude-adr-readme"
+    repo: "omniclaude"
+    path: "docs/decisions/README.md"
+    title: "ADR README (index document — not an ADR)"
+    status: "Reference"
+    date: "unknown"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
+
+  - id: "omnibase-core-adr-best-practices"
+    repo: "omnibase_core"
+    path: "docs/decisions/ADR_BEST_PRACTICES.md"
+    title: "ADR Best Practices (reference/meta document — not an ADR)"
+    status: "Reference"
+    date: "unknown"
+    source_doc_candidates: []
+    already_in_manifest: false
+    classification: "low_confidence"
