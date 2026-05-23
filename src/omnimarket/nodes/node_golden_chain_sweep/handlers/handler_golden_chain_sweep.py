@@ -24,6 +24,7 @@ class EnumChainStatus(StrEnum):
     FAIL = "fail"
     ERROR = "error"
     TIMEOUT = "timeout"
+    GATED = "gated"  # consumer healthy but idle; non-blocking
 
 
 class EnumSweepStatus(StrEnum):
@@ -32,6 +33,7 @@ class EnumSweepStatus(StrEnum):
     PASS = "pass"
     PARTIAL = "partial"
     FAIL = "fail"
+    GATED = "gated"  # all non-passing chains are idle-gated; non-blocking
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +76,9 @@ class GoldenChainSweepRequest(BaseModel):
     chains: list[ModelChainDefinition] = Field(default_factory=list)
     timeout_ms: int = 15000
     projected_rows: dict[str, dict[str, object]] = Field(default_factory=dict)
+    idle_gate: bool = (
+        False  # when True, missing rows → GATED (non-blocking) not TIMEOUT
+    )
 
 
 class GoldenChainSweepResult(BaseModel):
@@ -85,6 +90,7 @@ class GoldenChainSweepResult(BaseModel):
     chains_total: int = 0
     chains_passed: int = 0
     chains_failed: int = 0
+    chains_gated: int = 0
     overall_status: EnumSweepStatus = EnumSweepStatus.PASS
     status: str = "pass"
 
@@ -113,18 +119,25 @@ class NodeGoldenChainSweep:
         results: list[ModelChainResult] = []
         passed = 0
         failed = 0
+        gated = 0
 
         for chain in request.chains:
-            result = self._validate_chain(chain, request.projected_rows)
+            result = self._validate_chain(
+                chain, request.projected_rows, idle_gate=request.idle_gate
+            )
             results.append(result)
             if result.status == EnumChainStatus.PASS:
                 passed += 1
+            elif result.status == EnumChainStatus.GATED:
+                gated += 1
             else:
                 failed += 1
 
-        if failed == 0:
+        if failed == 0 and gated == 0:
             overall = EnumSweepStatus.PASS
-        elif passed > 0:
+        elif failed == 0 and gated > 0:
+            overall = EnumSweepStatus.GATED
+        elif passed > 0 or gated > 0:
             overall = EnumSweepStatus.PARTIAL
         else:
             overall = EnumSweepStatus.FAIL
@@ -134,6 +147,7 @@ class NodeGoldenChainSweep:
             chains_total=len(request.chains),
             chains_passed=passed,
             chains_failed=failed,
+            chains_gated=gated,
             overall_status=overall,
             status=overall.value,
         )
@@ -142,11 +156,21 @@ class NodeGoldenChainSweep:
         self,
         chain: ModelChainDefinition,
         projected_rows: dict[str, dict[str, object]],
+        *,
+        idle_gate: bool = False,
     ) -> ModelChainResult:
         """Validate a single chain against projected data."""
         row = projected_rows.get(chain.name)
 
         if row is None:
+            if idle_gate:
+                return ModelChainResult(
+                    name=chain.name,
+                    status=EnumChainStatus.GATED,
+                    head_topic=chain.head_topic,
+                    tail_table=chain.tail_table,
+                    message=f"No projected row for {chain.name} — consumer idle (non-blocking)",
+                )
             return ModelChainResult(
                 name=chain.name,
                 status=EnumChainStatus.TIMEOUT,

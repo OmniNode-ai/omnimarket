@@ -61,6 +61,15 @@ def main() -> None:
             "(default: empty — all chains will show timeout)"
         ),
     )
+    parser.add_argument(
+        "--idle-gate",
+        action="store_true",
+        default=False,
+        help=(
+            "Gate missing-row chains to GATED (non-blocking) instead of TIMEOUT. "
+            "Use when consumers are healthy but no events have flowed yet."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -82,6 +91,7 @@ def main() -> None:
             chains=chains,
             timeout_ms=args.timeout_ms,
             projected_rows=projected_rows,
+            idle_gate=args.idle_gate,
         )
     except ValidationError as exc:
         _log.error("invalid --projected-rows content: %s", exc)
@@ -92,7 +102,8 @@ def main() -> None:
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 
-    if result.status not in ("pass",):
+    # GATED is non-blocking: consumers are healthy but idle, not broken
+    if result.status not in ("pass", "gated"):
         sys.exit(1)
 
 
