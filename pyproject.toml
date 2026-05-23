@@ -202,6 +202,7 @@ node_intelligence_orchestrator = "omnimarket.nodes.node_intelligence_orchestrato
 node_intelligence_reducer = "omnimarket.nodes.node_intelligence_reducer"
 node_swarm_supervisor_orchestrator = "omnimarket.nodes.node_swarm_supervisor_orchestrator"
 node_swarm_fanout_effect = "omnimarket.nodes.node_swarm_fanout_effect"
+node_swarm_aggregator_compute = "omnimarket.nodes.node_swarm_aggregator_compute"
 node_handoff_effect = "omnimarket.nodes.node_handoff_effect"
 node_session_orchestrator = "omnimarket.nodes.node_session_orchestrator"
 node_session_phase_orchestrator = "omnimarket.nodes.node_session_phase_orchestrator"
