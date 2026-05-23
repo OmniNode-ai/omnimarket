@@ -45,8 +45,8 @@ event_bus:
     - onex.snapshot.projection.gate.metrics.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
 
 externally_consumed_topics:
-  - onex.snapshot.projection.gate.activity.v1
-  - onex.snapshot.projection.gate.metrics.v1
+  - onex.snapshot.projection.gate.activity.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  - onex.snapshot.projection.gate.metrics.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
 
 metadata:
   transport_type: kafka
