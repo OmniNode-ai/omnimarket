@@ -162,3 +162,11 @@ class TestModelLlmDelegationResponse:
         resp = ModelLlmDelegationResponse(**kwargs)
         assert resp.quality_score is None
         assert resp.redacted_summary is None
+
+    def test_optional_fields_may_be_omitted(self) -> None:
+        kwargs = self._valid_kwargs()
+        kwargs.pop("quality_score")
+        kwargs.pop("redacted_summary")
+        resp = ModelLlmDelegationResponse(**kwargs)
+        assert resp.quality_score is None
+        assert resp.redacted_summary is None

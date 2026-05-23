@@ -40,10 +40,10 @@ class ModelLlmDelegationResponse(BaseModel):
     pricing_manifest_version: str
 
     escalated: bool
-    quality_score: float | None
+    quality_score: float | None = None
 
     output_hash: str
     """SHA-256 of content. Used for idempotency and audit."""
 
-    redacted_summary: str | None
+    redacted_summary: str | None = None
     """Short summary safe for logging. Raw content NOT stored by default."""
