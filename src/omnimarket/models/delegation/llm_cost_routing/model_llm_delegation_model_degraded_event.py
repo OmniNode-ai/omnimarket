@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 class ModelLlmDelegationModelDegradedEvent(BaseModel):
     """Event emitted when a model exceeds escalation rate threshold for a task type.
 
-    Published to onex.evt.omnimarket.delegation-model-degraded.v1.
+    Published to the delegation-model-degraded topic declared in contract.yaml.
 
     Degradation is always time-bounded via expires_at. It does not become an
     unbounded global ban. After expiry the model is re-eligible and its next

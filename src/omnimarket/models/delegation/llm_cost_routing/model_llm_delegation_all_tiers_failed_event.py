@@ -15,7 +15,7 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 class ModelLlmDelegationAllTiersFailedEvent(BaseModel):
     """Event emitted when all model tiers fail for a delegation request.
 
-    Published to onex.evt.omnimarket.delegation-all-tiers-failed.v1.
+    Published to the delegation-all-tiers-failed topic declared in contract.yaml.
     This is terminal for a delegation request — caller must handle the error.
     """
 

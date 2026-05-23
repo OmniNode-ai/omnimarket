@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""LLM cost routing models — model registry (OMN-11779) and event models (OMN-11772)."""
+"""LLM cost routing models — registry, policy, request/response, and delegation event models."""
 
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
@@ -18,8 +18,14 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_failed_e
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event import (
     ModelLlmDelegationModelDegradedEvent,
 )
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_request import (
+    ModelLlmDelegationRequest,
+)
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_requested_command import (
     ModelLlmDelegationRequestedCommand,
+)
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_response import (
+    ModelLlmDelegationResponse,
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_started_event import (
     ModelLlmDelegationStartedEvent,
@@ -29,14 +35,24 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_model_registry impo
     ModelLlmModelRegistry,
     ModelLlmModelRegistryLoader,
 )
+from omnimarket.models.delegation.llm_cost_routing.model_routing_policy import (
+    ModelDelegationModelProfile,
+    ModelDelegationRoutingPolicy,
+    ModelDelegationTaskPolicy,
+)
 
 __all__ = [
+    "ModelDelegationModelProfile",
+    "ModelDelegationRoutingPolicy",
+    "ModelDelegationTaskPolicy",
     "ModelLlmDelegationAllTiersFailedEvent",
     "ModelLlmDelegationCompletedEvent",
     "ModelLlmDelegationEscalationTriggeredEvent",
     "ModelLlmDelegationFailedEvent",
     "ModelLlmDelegationModelDegradedEvent",
+    "ModelLlmDelegationRequest",
     "ModelLlmDelegationRequestedCommand",
+    "ModelLlmDelegationResponse",
     "ModelLlmDelegationStartedEvent",
     "ModelLlmModelProfile",
     "ModelLlmModelRegistry",

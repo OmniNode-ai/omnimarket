@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_usage_source import EnumUsageSource
@@ -69,3 +69,9 @@ class ModelLlmDelegationCompletedEvent(BaseModel):
     redacted_summary: str | None  # short summary safe for logging
 
     created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_policy_hash_alias(self) -> ModelLlmDelegationCompletedEvent:
+        if self.policy_hash != self.routing_policy_hash:
+            raise ValueError("policy_hash must equal routing_policy_hash")
+        return self

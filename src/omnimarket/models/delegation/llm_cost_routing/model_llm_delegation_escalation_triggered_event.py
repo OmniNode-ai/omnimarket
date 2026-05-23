@@ -15,7 +15,7 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 class ModelLlmDelegationEscalationTriggeredEvent(BaseModel):
     """Event emitted when output fails quality gate and escalation is triggered.
 
-    Published to onex.evt.omnimarket.delegation-escalation-triggered.v1.
+    Published to the delegation-escalation-triggered topic declared in contract.yaml.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
