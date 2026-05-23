@@ -15,6 +15,15 @@ handler:
   module: omnimarket.nodes.node_llm_delegation_projection.handlers.handler_llm_delegation_projection
   class: HandlerLlmDelegationProjection
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: project_delegation_call
+      handler:
+        name: HandlerLlmDelegationProjection
+        module: omnimarket.nodes.node_llm_delegation_projection.handlers.handler_llm_delegation_projection
+  default_handler: HandlerLlmDelegationProjection
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.delegation-call-completed.v1

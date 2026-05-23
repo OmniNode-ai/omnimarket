@@ -426,4 +426,12 @@ def test_contract_yaml_declares_correct_topics() -> None:
         "onex.evt.omnimarket.delegation-projection-snapshot.v1"
         in contract["externally_consumed_topics"]
     )
+    assert (
+        contract["handler_routing"]["handlers"][0]["handler"]["module"]
+        == contract["handler"]["module"]
+    )
+    assert (
+        contract["handler_routing"]["handlers"][0]["handler"]["name"]
+        == contract["handler"]["class"]
+    )
     assert contract["metadata"]["transport_type"] == "kafka"
