@@ -43,6 +43,9 @@ event_bus:
 
 terminal_event: onex.evt.omnimarket.swarm-decomposition-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-decomposition-completed.v1
+
 published_events:
   - event_type: SwarmDecompositionCompleted
     topic: onex.evt.omnimarket.swarm-decomposition-completed.v1
