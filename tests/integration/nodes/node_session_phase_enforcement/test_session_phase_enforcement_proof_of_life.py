@@ -12,7 +12,7 @@ wiring handler outputs directly (no Kafka) to simulate the event bus:
 Contract loaded, tick fires, evaluator runs, reducer projects state, hook
 injects directive — all paths exercised with real model instances.
 
-[OMN-11283]
+[OMN-11283] [OMN-11234]
 """
 
 from __future__ import annotations
