@@ -1,0 +1,14 @@
+{
+  "chain": "routing",
+  "head_topic": "onex.evt.omniclaude.llm-routing-decision.v1",
+  "tail_table": "llm_routing_decisions",
+  "expected_fields": [
+    "correlation_id",
+    "llm_agent",
+    "agreement",
+    "used_fallback",
+    "routing_prompt_version"
+  ],
+  "description": "Golden chain: llm-routing-decision event -> llm_routing_decisions table projection. UPSERT key: correlation_id. Closes OMN-8540 tail table gap.",
+  "related_tickets": ["OMN-11768", "OMN-11759", "OMN-8540"]
+}

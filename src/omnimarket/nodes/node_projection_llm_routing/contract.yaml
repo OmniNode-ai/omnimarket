@@ -1,0 +1,61 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_llm_routing
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Projects llm-routing-decision events into the llm_routing_decisions table.
+  Closes the golden chain routing tail: onex.evt.omniclaude.llm-routing-decision.v1
+  -> llm_routing_decisions (OMN-11768). UPSERT key: correlation_id.
+
+handler:
+  module: omnimarket.nodes.node_projection_llm_routing.handlers.handler_projection_llm_routing
+  class: HandlerProjectionLlmRouting
+
+terminal_event: onex.evt.omnimarket.projection-llm-routing-applied.v1
+
+golden_path:
+  - "Consume llm-routing-decision event from onex.evt.omniclaude.llm-routing-decision.v1"
+  - "Projection handler upserts row into llm_routing_decisions table"
+  - "Dedup by correlation_id (UPSERT semantics)"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-llm-routing-applied.v1"
+  - "Verify row exists with correlation_id, llm_agent fields"
+  - "Golden chain test: omnimarket/tests/integration/golden_chain/test_routing_e2e.py"
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.llm-routing-decision.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-llm-routing-applied.v1
+
+db_io:
+  db_tables:
+    - name: llm_routing_decisions
+      migration: "065_create_llm_routing_decisions.sql"
+      access: write
+      database: omnidash_analytics
+      role: projection
+
+dod_evidence:
+  - test: tests/integration/golden_chain/test_routing_e2e.py::TestRoutingProjection::test_project_single_event
+    description: Single llm-routing-decision event projects to llm_routing_decisions row
+  - test: tests/integration/golden_chain/test_routing_e2e.py::TestRoutingProjection::test_dedup_by_correlation_id
+    description: Duplicate correlation_id is idempotently upserted
+  - test: tests/integration/golden_chain/test_routing_e2e.py::TestRoutingProjection::test_event_bus_wiring
+    description: Contract subscribe_topics includes llm-routing-decision.v1
+
+metadata:
+  author: OmniNode Platform Team
+  license: MIT
+  created: "2026-05-23"
+  tags:
+    - projection
+    - routing
+    - llm
+    - golden-chain
+  related_tickets:
+    - "OMN-11768"
+    - "OMN-11759"
+    - "OMN-8540"
