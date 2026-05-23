@@ -35,12 +35,14 @@ def _load_decisions(decisions_file: Path, model_key: str) -> list[dict[str, obje
     decisions: list[dict[str, object]] = json.loads(
         decisions_file.read_text(encoding="utf-8")
     )
-    return [
-        d
-        for d in decisions
-        if isinstance(d, dict)
-        and d.get("extraction_metadata", {}).get("model_id") == model_key  # type: ignore[union-attr]
-    ]
+    result = []
+    for d in decisions:
+        if not isinstance(d, dict):
+            continue
+        metadata = d.get("extraction_metadata")
+        if isinstance(metadata, dict) and metadata.get("model_id") == model_key:
+            result.append(d)
+    return result
 
 
 class HandlerKBADRPublisher:
