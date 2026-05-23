@@ -26,7 +26,7 @@ descriptor:
   idempotent: true
   timeout_ms: 30000
   runtime_profiles:
-    - market
+    - effects
 
 event_bus:
   subscribe_topics:
