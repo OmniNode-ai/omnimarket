@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Unit tests for HandlerLlmDelegationCall (OMN-11776)."""
+"""Unit tests for handler_llm_delegation_call (OMN-11776)."""
 
 from __future__ import annotations
 
