@@ -1,0 +1,41 @@
+---
+name: node_llm_delegation_projection
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Materializes daily aggregate rows from LLM delegation-call-completed events
+  into the llm_delegation_daily_projection table. Replay-safe via idempotency
+  key on correlation_id + causation_id + terminal_event_id. Kafka
+  topic/partition/offset is the authoritative ordering authority.
+
+terminal_event: onex.evt.omnimarket.delegation-projection-snapshot.v1
+
+handler:
+  module: omnimarket.nodes.node_llm_delegation_projection.handlers.handler_llm_delegation_projection
+  class: HandlerLlmDelegationProjection
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegation-call-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-projection-snapshot.v1
+
+db_io:
+  db_tables:
+    - name: llm_delegation_daily_projection
+      migration: "0001_create_llm_delegation_daily_projection.sql"
+      access: write
+      database: omnidash_analytics
+      role: projection
+
+reducer_contract:
+  state_update: "delta(state, event) -> upserted_aggregate_row"
+  owns_state: true
+  idempotent: true
+  ordering_authority: kafka_topic_partition_offset
+  duplicate_key_fields:
+    - idempotency_key
+
+metadata:
+  transport_type: kafka
