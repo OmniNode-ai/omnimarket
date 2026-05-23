@@ -1,0 +1,97 @@
+---
+name: node_golden_chain_generator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Derives the expected golden chain from contract topology (primary) and
+  generated tests (secondary, AST-based). Fully deterministic: same contract
+  + node metadata + declared topology + generated tests + generator/template/profile
+  identity → same chain hash. Dynamic or unresolvable event expectations are
+  emitted as UNKNOWN markers, never guessed.
+
+handler:
+  module: omnimarket.nodes.node_golden_chain_generator.handlers.handler_golden_chain_generator
+  class: HandlerGoldenChainGenerator
+  input_model: omnimarket.nodes.node_golden_chain_generator.models.model_generation_request.ModelGoldenChainGenerationRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+
+inputs:
+  contract_yaml:
+    type: str
+    required: true
+    description: Raw YAML text of the node contract
+  node_metadata:
+    type: object
+    required: false
+    description: Optional node metadata (subscribes_to, publishes_to, node_type)
+  test_source:
+    type: str
+    required: false
+    default: ""
+    description: Generated test source (AST-analyzed for assertion structure)
+  test_hash:
+    type: str
+    required: false
+    default: ""
+    description: Hash of the generated test source
+  contract_hash:
+    type: str
+    required: true
+    description: SHA-256 hash of contract_yaml
+  generator_version:
+    type: str
+    required: true
+    description: Semver of this generator (determinism identity)
+  template_hash:
+    type: str
+    required: false
+    default: ""
+    description: Hash of the template set used by node_test_generator
+  generation_profile_hash:
+    type: str
+    required: false
+    default: ""
+    description: Hash of the profile configuration used by node_test_generator
+
+outputs:
+  status:
+    type: str
+    enum: [ok, error]
+  expected_chain:
+    type: array
+    description: Ordered list of ModelGoldenChainEntry dicts
+  chain_hash:
+    type: str
+    description: SHA-256 of the canonical JSON-serialized chain
+  contract_hash:
+    type: str
+  generator_version:
+    type: str
+  template_hash:
+    type: str
+  generation_profile_hash:
+    type: str
+  generated_at:
+    type: str
+    description: ISO8601 UTC timestamp
+  error:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.golden-chain-generation-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.golden-chain-generation-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.golden-chain-generation-completed.v1
+
+metadata:
+  transport_type: kafka

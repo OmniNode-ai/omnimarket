@@ -1,0 +1,19 @@
+name: node_golden_chain_generator
+version: "1.0.0"
+description: "AST-based deterministic golden chain generator — derives expected event chain from contract topology and generated tests"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_golden_chain_generator: "omnimarket.nodes.node_golden_chain_generator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "golden-chain", "deterministic", "ast"]
+pack: "core"
+display_name: "Golden Chain Generator"
+node_role: "compute"
