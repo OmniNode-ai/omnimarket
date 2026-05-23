@@ -152,8 +152,8 @@ def main() -> None:
     parser.add_argument(
         "--omni-home",
         type=Path,
-        default=Path("/Users/jonah/Code/omni_home"),
-        help="Path to omni_home repo root (default: /Users/jonah/Code/omni_home)",
+        default=Path.home() / "Code" / "omni_home",
+        help="Path to omni_home repo root (default: ~/Code/omni_home)",
     )
     args = parser.parse_args()
 

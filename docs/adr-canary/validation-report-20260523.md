@@ -12,7 +12,7 @@
 | Check | Result |
 |-------|--------|
 | Total entries | 60 |
-| ADR hash mismatches | 0 (5 fixed, see below) |
+| ADR hash mismatches | 0 (5 stale hashes fixed; 2 workspace path normalisations rehashed, see below) |
 | Schema version failures | 0 |
 | Missing required fields | 0 |
 | Duplicate IDs | 0 |
@@ -63,6 +63,19 @@ Root cause: all 5 entries span Phases 2A and 2B. The ADR text was lightly edited
 - The validator treats these as non-fatal warnings marked "source may have changed"
 
 The single entry with a fully-passing source hash is `omnimarket-adr-dispatch-architecture-foreground-only` — its root path is stable.
+
+---
+
+## Leak-Gate Normalisation
+
+Two inline ADR references used a developer-specific absolute workspace path. They were normalised to `$OMNI_HOME/...`, and their `ground_truth_adr_hash` / `source_file_hash` values were recomputed:
+
+| Entry ID | New hash (first 16 chars) |
+|----------|--------------------------|
+| `adr-2026-04-28-dispatch-lifecycle-canonical-omnibase_core` | `sha256:afeb5399fc57...` |
+| `adr-2026-04-28-skill-liveness-validator-home-omnibase_core` | `sha256:9fbc82e5da60...` |
+
+The validator default path was also changed to `Path.home() / "Code" / "omni_home"` so no developer-specific absolute path is embedded in the script.
 
 ---
 

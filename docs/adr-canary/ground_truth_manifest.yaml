@@ -988,12 +988,12 @@ entries:
 
       ## References
 
-      - Workspace ADR source: `/Users/jonah/Code/omni_home/docs/decisions/adr-2026-04-28-dispatch-lifecycle-canonical.md`
+      - Workspace ADR source: `$OMNI_HOME/docs/decisions/adr-2026-04-28-dispatch-lifecycle-canonical.md`
       - Canonical model: `src/omnibase_core/models/dispatch/model_dispatch_lifecycle_event.py` (commit `2ddc0971`)
       - Lifecycle chain model: `src/omnibase_core/models/dispatch/model_lifecycle_chain.py` (commit `2ddc0971`)
       - State-machine tests: `tests/unit/models/dispatch/test_model_dispatch_lifecycle_event.py` (commit `2ddc0971`)
-    ground_truth_adr_hash: "sha256:12b20b0e1702b5a25c57117887fbea9efc5114e4f1e4ed72d6d014b504dc585b"
-    source_file_hash: "sha256:12b20b0e1702b5a25c57117887fbea9efc5114e4f1e4ed72d6d014b504dc585b"
+    ground_truth_adr_hash: "sha256:afeb5399fc5738c4df54404cdffe8f2b5645c57a266acae16f70e28bb605bde2"
+    source_file_hash: "sha256:afeb5399fc5738c4df54404cdffe8f2b5645c57a266acae16f70e28bb605bde2"
     manifest_schema_version: "v1"
     models:
     - qwen3-coder
@@ -1099,12 +1099,12 @@ entries:
 
       ## References
 
-      - Workspace ADR source: `/Users/jonah/Code/omni_home/docs/decisions/adr-2026-04-28-skill-liveness-validator-home.md`
+      - Workspace ADR source: `$OMNI_HOME/docs/decisions/adr-2026-04-28-skill-liveness-validator-home.md`
       - Validation ownership precedent: `src/omnibase_core/nodes/node_validator.py` (commit `2ddc0971`)
       - Validation ownership precedent: `src/omnibase_core/mixins/mixin_node_type_validator.py` (commit `2ddc0971`)
       - Validation ownership precedent: `src/omnibase_core/models/core/model_node_action_validator.py` (commit `2ddc0971`)
-    ground_truth_adr_hash: "sha256:d113cf5c30080c85cfb10e5591640f94a9637f342ac9b39f27a4274e6dfff148"
-    source_file_hash: "sha256:d113cf5c30080c85cfb10e5591640f94a9637f342ac9b39f27a4274e6dfff148"
+    ground_truth_adr_hash: "sha256:9fbc82e5da60e6aa2d7701e0be1559dbd9b7a2ad1979c4ef854237a9ffa5c3e1"
+    source_file_hash: "sha256:9fbc82e5da60e6aa2d7701e0be1559dbd9b7a2ad1979c4ef854237a9ffa5c3e1"
     manifest_schema_version: "v1"
     models:
     - qwen3-coder
