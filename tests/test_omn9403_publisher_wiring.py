@@ -41,6 +41,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
 )
 
 TOPIC_FIXER_DISPATCH_START = "onex.cmd.omnimarket.fixer-dispatch-start.v1"
+EVENT_TYPE_FIXER_DISPATCH_START = "omnimarket.fixer-dispatch-start"
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +175,7 @@ class TestFixerDispatchStartPublished:
             assert envelope.correlation_id == correlation_id
             assert envelope.source_tool == "pr_lifecycle_orchestrator"
             assert envelope.target_tool == "node_fixer_dispatcher"
-            assert envelope.event_type == TOPIC_FIXER_DISPATCH_START
+            assert envelope.event_type == EVENT_TYPE_FIXER_DISPATCH_START
             assert payload["correlation_id"] == str(correlation_id)
             assert "stall_category" in payload
             assert "repo" in payload

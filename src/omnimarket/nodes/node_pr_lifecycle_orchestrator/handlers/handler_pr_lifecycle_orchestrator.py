@@ -75,6 +75,7 @@ TOPIC_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  
 TOPIC_FIXER_DISPATCH_START = (
     "onex.cmd.omnimarket.fixer-dispatch-start.v1"  # onex-topic-allow: OMN-9806
 )
+EVENT_TYPE_FIXER_DISPATCH_START = "omnimarket.fixer-dispatch-start"
 TOPIC_PR_LIFECYCLE_START = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: OMN-9806
 TOPIC_PR_LIFECYCLE_COMPLETED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"  # onex-topic-allow: OMN-9806
 TOPIC_PR_LIFECYCLE_FAILED = "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1"  # onex-topic-allow: OMN-9806
@@ -1480,12 +1481,12 @@ class HandlerPrLifecycleOrchestrator:
                 correlation_id=correlation_id,
                 source_tool="pr_lifecycle_orchestrator",
                 target_tool="node_fixer_dispatcher",
-                event_type=self._topic_fixer_dispatch_start,
+                event_type=EVENT_TYPE_FIXER_DISPATCH_START,
             )
             encoded = json.dumps(
                 {
                     **envelope.model_dump(mode="json"),
-                    "event_type": self._topic_fixer_dispatch_start,
+                    "event_type": EVENT_TYPE_FIXER_DISPATCH_START,
                 }
             ).encode()
             await self._event_bus.publish(
