@@ -78,6 +78,9 @@ class DatabaseSweepRequest(BaseModel):
     omni_home: str = Field(default="")
     table: str | None = None
     staleness_threshold_hours: int = 24
+    staleness_thresholds: dict[str, float] | None = (
+        None  # table_name → hours; overrides global
+    )
     dry_run: bool = False
 
 
@@ -93,6 +96,7 @@ class DatabaseSweepResult(BaseModel):
     tables_empty: int = 0
     tables_missing: int = 0
     tables_orphan: int = 0
+    tables_unknown: int = 0
     migrations_current: int = 0
     migrations_pending: int = 0
     migrations_failed: int = 0
@@ -176,9 +180,27 @@ def _check_table(
     database: str,
     staleness_hours: int,
     drizzle_tables: set[str],
+    staleness_thresholds: dict[str, float] | None = None,
 ) -> ModelTableHealthResult:
     """Check a single table's health."""
     drizzle_defined = table in drizzle_tables
+
+    # Tables not known to Drizzle and not in per-table thresholds have no freshness metadata
+    if not drizzle_defined and (
+        staleness_thresholds is None or table not in staleness_thresholds
+    ):
+        return ModelTableHealthResult(
+            table_name=table,
+            status="UNKNOWN",
+            drizzle_defined=False,
+            message="no freshness metadata: not in Drizzle schema and no per-table threshold",
+        )
+
+    effective_hours: float = (
+        staleness_thresholds[table]
+        if staleness_thresholds and table in staleness_thresholds
+        else staleness_hours
+    )
 
     # Try each timestamp column in priority order
     for ts_col in _TIMESTAMP_COLUMNS:
@@ -193,7 +215,7 @@ def _check_table(
                 f"SELECT count(*), max({ts_col})::text, "
                 f"CASE "
                 f"  WHEN count(*) = 0 THEN 'EMPTY' "
-                f"  WHEN max({ts_col}) < now() - interval '{staleness_hours} hours' THEN 'STALE' "
+                f"  WHEN max({ts_col}) < now() - interval '{effective_hours} hours' THEN 'STALE' "
                 f"  ELSE 'HEALTHY' "
                 f"END "
                 f"FROM {table};"
@@ -228,26 +250,12 @@ def _check_table(
                 drizzle_defined=drizzle_defined,
             )
 
-    # No timestamp column — classify by row count only
-    rc, out, err = _psql(f"SELECT count(*) FROM {table};", database)
-    if rc != 0:
-        return ModelTableHealthResult(
-            table_name=table,
-            status="MISSING",
-            drizzle_defined=drizzle_defined,
-            message=f"query error: {err[:200]}",
-        )
-    try:
-        row_count = int(out)
-    except ValueError:
-        row_count = 0
-    status = "EMPTY" if row_count == 0 else "NO_TIMESTAMP"
+    # No timestamp column found — table has no freshness metadata
     return ModelTableHealthResult(
         table_name=table,
-        row_count=row_count,
-        status=status,
+        status="UNKNOWN",
         drizzle_defined=drizzle_defined,
-        message="no timestamp column found",
+        message="no timestamp column found: freshness cannot be determined",
     )
 
 
@@ -395,7 +403,11 @@ class NodeDatabaseSweep:
 
         for tbl in scan_tables:
             result = _check_table(
-                tbl, analytics_db, request.staleness_threshold_hours, drizzle_tables
+                tbl,
+                analytics_db,
+                request.staleness_threshold_hours,
+                drizzle_tables,
+                request.staleness_thresholds,
             )
             table_results.append(result)
 
@@ -412,9 +424,9 @@ class NodeDatabaseSweep:
                     )
                 )
 
-        # Mark orphan tables
+        # Mark orphan tables — UNKNOWN tables stay UNKNOWN (no freshness metadata)
         for r in table_results:
-            if not r.drizzle_defined and r.status not in ("MISSING",):
+            if not r.drizzle_defined and r.status not in ("MISSING", "UNKNOWN"):
                 # Rebuild as ORPHAN
                 table_results[table_results.index(r)] = ModelTableHealthResult(
                     table_name=r.table_name,
@@ -461,6 +473,7 @@ class NodeDatabaseSweep:
             tables_empty=status_counts.get("EMPTY", 0),
             tables_missing=status_counts.get("MISSING", 0),
             tables_orphan=status_counts.get("ORPHAN", 0),
+            tables_unknown=status_counts.get("UNKNOWN", 0),
             migrations_current=mig_status_counts.get("CURRENT", 0),
             migrations_pending=mig_status_counts.get("PENDING", 0),
             migrations_failed=mig_status_counts.get("FAILED", 0),
