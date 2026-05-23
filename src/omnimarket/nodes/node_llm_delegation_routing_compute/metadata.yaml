@@ -1,0 +1,11 @@
+name: node_llm_delegation_routing_compute
+version: "0.1.0"
+node_type: compute
+description: "Pure compute node for LLM delegation model routing."
+author: "OmniNode Team"
+created: "2026-05-23"
+tags:
+  - compute
+  - delegation
+  - routing
+  - llm
