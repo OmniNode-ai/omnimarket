@@ -1,0 +1,62 @@
+---
+name: node_chain_diff_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic comparison of expected and observed golden-chain event
+  entries. The node performs no I/O and owns no runtime state.
+
+handler:
+  module: omnimarket.nodes.node_chain_diff_compute.handlers.handler_chain_diff
+  class: HandlerChainDiff
+  input_model: omnimarket.nodes.node_chain_diff_compute.models.model_chain_diff_request.ModelChainDiffRequest
+  output_model: omnibase_core.models.pipeline.model_chain_diff.ModelChainDiff
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+inputs:
+  expected:
+    type: array
+    required: true
+    items:
+      schema_ref: omnibase_core.models.pipeline.model_golden_chain_entry.ModelGoldenChainEntry
+  observed:
+    type: array
+    required: true
+    items:
+      schema_ref: omnibase_core.models.pipeline.model_golden_chain_entry.ModelGoldenChainEntry
+
+outputs:
+  matches:
+    type: bool
+  expected_count:
+    type: int
+  observed_count:
+    type: int
+  missing_events:
+    type: array
+  unexpected_events:
+    type: array
+  order_mismatches:
+    type: array
+  topic_mismatches:
+    type: array
+
+terminal_event: onex.evt.omnimarket.chain-diff-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.chain-diff-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.chain-diff-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.chain-diff-completed.v1
+
+metadata:
+  transport_type: kafka
