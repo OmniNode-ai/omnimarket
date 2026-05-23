@@ -1,0 +1,46 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_swarm_registry_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure compute node for swarm endpoint selection. Matches subtasks to
+  available endpoints based on affinity, capability, and health status.
+  Deterministic: same inputs produce same assignments.
+
+input_model:
+  name: ModelSwarmEndpointSelectionRequest
+  class: ModelSwarmEndpointSelectionRequest
+  module: omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_selection_request
+
+handler:
+  name: HandlerSwarmRegistry
+  module: omnimarket.nodes.node_swarm_registry_compute.handlers.handler_swarm_registry
+  class: HandlerSwarmRegistry
+  input_model: omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_selection_request.ModelSwarmEndpointSelectionRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [market]
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-select-endpoints.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-endpoints-selected.v1
+
+terminal_event: onex.evt.omnimarket.swarm-endpoints-selected.v1
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Platform Team
+  license: MIT
+  created: "2026-05-23"
+  tags: [compute, swarm, endpoint-selection, registry, deterministic, OMN-11811]
+  related_tickets:
+    - "OMN-11811"

@@ -1,0 +1,42 @@
+registry_schema_version: "1.0.0"
+endpoints:
+  - id: "qwen3-coder-30b"
+    base_url: "http://192.168.86.201:8000/v1"  # onex-allow-internal-ip
+    model_id: "Qwen/Qwen3-Coder-0.5B-Base"
+    provider: "vllm"
+    capabilities: [code_generation, structured_output, refactoring, analysis, general]
+    context_window: 112000
+    context_window_source: "model_card"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"
+  - id: "deepseek-r1-14b"
+    base_url: "http://192.168.86.201:8001/v1"  # onex-allow-internal-ip
+    model_id: "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+    provider: "vllm"
+    capabilities: [reasoning, analysis, math, general]
+    context_window: 24000
+    context_window_source: "model_card"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"
+  - id: "deepseek-r1-32b"
+    base_url: "http://192.168.86.200:8101/v1"  # onex-allow-internal-ip
+    model_id: "deepseek-ai/DeepSeek-R1-32B"
+    provider: "mlx"
+    capabilities: [reasoning, analysis, math, planning]
+    context_window: null
+    context_window_source: "unknown"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"
+  - id: "qwen3-next-80b"
+    base_url: "http://192.168.86.200:8102/v1"  # onex-allow-internal-ip
+    model_id: "Qwen/Qwen3-Next-80B"
+    provider: "mlx"
+    capabilities: [general, synthesis, planning, code_generation]
+    context_window: null
+    context_window_source: "unknown"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"
