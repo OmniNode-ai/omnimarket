@@ -21,6 +21,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.delegation-projection-snapshot.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-projection-snapshot.v1
+
 db_io:
   db_tables:
     - name: llm_delegation_daily_projection
