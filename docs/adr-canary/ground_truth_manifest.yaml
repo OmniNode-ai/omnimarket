@@ -64,7 +64,7 @@ entries:
         model_id: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
         external: false
 
-    ground_truth_adr_hash: "sha256:9297a4d1fd2cf67544383fcae4f15201c0722cc8764d522e73798e7c14a8417b"
+    ground_truth_adr_hash: "sha256:4309c3185711c95b032d80498b5468d03614e7b95164b3da88198f2255a20cdb"
     source_file_hash: "sha256:4309c3185711c95b032d80498b5468d03614e7b95164b3da88198f2255a20cdb"
     manifest_schema_version: "v1"
     expected_decision_types:
@@ -137,7 +137,7 @@ entries:
         model_id: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
         external: false
 
-    ground_truth_adr_hash: "sha256:8dd0e11944a95328b50aac25f2e4cfb7ffdafb88d6a5f13473fa7d50aea29dd9"
+    ground_truth_adr_hash: "sha256:711136706a5da21680c8aed6e729ecf5bbb8f6003afbfbca0e71c6699bc20396"
     source_file_hash: "sha256:e4b260a4555ff3eb42d0dbb34388829da9ac0f4432d745b917cd8e1890a6cda2"
     manifest_schema_version: "v1"
     expected_decision_types:
@@ -195,7 +195,7 @@ entries:
         model_id: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10698 reason="canary manifest pins local model under test"
         external: false
 
-    ground_truth_adr_hash: "sha256:4d86ea74494e0a7314f2db2b05723f520babeb6c91ec857fdf0a5d9f80baa536"
+    ground_truth_adr_hash: "sha256:cd4ba7978f9515b7602fd5f91ed5c49d1b890d0663ed801e820d1212f55782b6"
     source_file_hash: "sha256:34dac245758d1534f74ad76227e176995e6fa75403ae7ec9cabbebefe69a518a"
     manifest_schema_version: "v1"
     expected_decision_types:
@@ -1651,8 +1651,8 @@ entries:
       - follow-on tickets stop treating `node_service_registry` as target truth
       - focused verification covers the projection-backed registry consumer path
       - no new registry truth layer is introduced to satisfy downstream consumers
-    ground_truth_adr_hash: "sha256:efda15e0ce523d80afda64e3eee17a788a4f8c31dc01382c6572e6fb72bc274c"
-    source_file_hash: "sha256:efda15e0ce523d80afda64e3eee17a788a4f8c31dc01382c6572e6fb72bc274c"
+    ground_truth_adr_hash: "sha256:0450ba0e1face07e3a5101866267a4f41ab03837ae0ec8de62e67aff479d5a09"
+    source_file_hash: "sha256:0450ba0e1face07e3a5101866267a4f41ab03837ae0ec8de62e67aff479d5a09"
     manifest_schema_version: "v1"
     models:
     - qwen3-coder
@@ -10335,8 +10335,8 @@ entries:
       - runtime and registration ownership are reflected in code and verification
       - no unresolved contradiction remains between live runtime behavior, contract declarations, and verification expectations
       - registry projections are proven fit for durable dashboard/API reads
-    ground_truth_adr_hash: "sha256:dfd7113c97caab1852f9a1b14b167440156c12b3073da77aa1622bc730d45b5f"
-    source_file_hash: "sha256:dfd7113c97caab1852f9a1b14b167440156c12b3073da77aa1622bc730d45b5f"
+    ground_truth_adr_hash: "sha256:835b392f90d829c58d0cbfbc36f51752f7a46bbc5ae70bd841acacde8af4e095"
+    source_file_hash: "sha256:835b392f90d829c58d0cbfbc36f51752f7a46bbc5ae70bd841acacde8af4e095"
     manifest_schema_version: "v1"
     models:
       - qwen3-coder
