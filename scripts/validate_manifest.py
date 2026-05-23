@@ -51,6 +51,7 @@ def validate_manifest(manifest_path: Path, omni_home: Path) -> int:
     print(f"Loaded {len(entries)} entries from {manifest_path}\n")
 
     failures: list[str] = []
+    warnings: list[str] = []
     seen_ids: set[str] = set()
 
     for i, entry in enumerate(entries):
@@ -108,10 +109,10 @@ def validate_manifest(manifest_path: Path, omni_home: Path) -> int:
                     )
 
                 if computed_source_hash != source_hash_stored:
-                    # Document mismatch but don't hard-fail (source may have changed since manifest creation)
-                    entry_failures.append(
+                    warnings.append(
                         f"source_file_hash mismatch (source may have changed):"
-                        f" stored={source_hash_stored!r}, computed={computed_source_hash!r}"
+                        f" {prefix}: stored={source_hash_stored!r},"
+                        f" computed={computed_source_hash!r}"
                     )
             else:
                 entry_failures.append(f"root_path does not exist on disk: {first_path}")
@@ -127,8 +128,12 @@ def validate_manifest(manifest_path: Path, omni_home: Path) -> int:
         else:
             print(f"PASS {prefix}")
 
+    for warning in warnings:
+        print(f"WARN {warning}")
+
     print(f"\n{'=' * 60}")
     print(f"Entries checked : {len(entries)}")
+    print(f"Warnings        : {len(warnings)}")
     print(f"Failures        : {len(failures)}")
 
     if failures:

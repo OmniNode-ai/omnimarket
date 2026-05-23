@@ -30,7 +30,7 @@
 
 1. All required fields present: `id`, `root_paths`, `ground_truth_adr`, `ground_truth_adr_hash`, `source_file_hash`, `manifest_schema_version`, `models`, `expected_decision_types`, `expected_keywords`
 2. `ground_truth_adr_hash` == sha256 of inline `ground_truth_adr` text
-3. `source_file_hash` == sha256 of first `root_path` on disk (non-fatal if mismatch — point-in-time snapshot)
+3. Report `source_file_hash` drift from the first `root_path` on disk as a non-fatal warning — the manifest is a point-in-time snapshot
 4. `manifest_schema_version` == `"v1"` for every entry
 5. No duplicate `id` values
 6. Entries with `source_confidence: low` must have `curation_notes`
@@ -60,7 +60,7 @@ Root cause: all 5 entries span Phases 2A and 2B. The ADR text was lightly edited
 - The manifest is a **point-in-time snapshot** taken during Phases 2A–2C (May 2026)
 - Source directories (`omnibase_infra/docs/`, `omnibase_core/docs/`, `omniclaude/docs/`, `omnidash/docs/`) continue to evolve
 - The `source_file_hash` field documents what existed at manifest creation time, enabling future drift detection
-- The validator treats these as non-fatal (printed as `FAIL` but marked "source may have changed")
+- The validator treats these as non-fatal warnings marked "source may have changed"
 
 The single entry with a fully-passing source hash is `omnimarket-adr-dispatch-architecture-foreground-only` — its root path is stable.
 
