@@ -36,6 +36,9 @@ event_bus:
 
 terminal_event: onex.evt.omnimarket.swarm-endpoints-selected.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-endpoints-selected.v1
+
 metadata:
   transport_type: kafka
   author: OmniNode Platform Team
