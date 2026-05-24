@@ -13,8 +13,8 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,

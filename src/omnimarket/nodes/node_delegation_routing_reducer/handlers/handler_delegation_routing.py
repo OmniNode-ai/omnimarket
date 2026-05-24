@@ -227,17 +227,25 @@ def _get_config() -> ModelDelegationConfig:
 class BifrostBackendRef:
     """Resolved backend from the bifrost contract plus endpoint overlay."""
 
-    __slots__ = ("api_key_ref", "endpoint_url", "extra_headers", "model_name")
+    __slots__ = (
+        "api_key_ref",
+        "endpoint_url",
+        "extra_headers",
+        "model_name",
+        "timeout_ms",
+    )
 
     def __init__(
         self,
         endpoint_url: str,
         model_name: str,
+        timeout_ms: int,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.model_name = model_name
+        self.timeout_ms = timeout_ms
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
 
@@ -289,6 +297,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,
             model_name=backend.model_name,
+            timeout_ms=backend.timeout_ms,
             api_key_ref=api_key_ref,
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
@@ -570,6 +579,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             extra_headers=backend.extra_headers,
             cost_tier=cost_tier,
             max_context_tokens=selected.max_context_tokens,
+            timeout_ms=backend.timeout_ms,
             system_prompt=system_prompt,
             rationale=rationale,
             dod_deterministic=dod_deterministic,
