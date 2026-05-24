@@ -7,9 +7,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_knowledge_health_compute.models.model_knowledge_backend_probe import (
-    ModelKnowledgeBackendProbe,
-)
+from omnimarket.events.knowledge_health import ModelKnowledgeBackendProbe
 
 
 class ModelKnowledgeHealthComputeRequest(BaseModel):

@@ -13,9 +13,7 @@ from typing import Any
 import httpx
 
 from omnimarket.enums.enum_knowledge_freshness_state import EnumKnowledgeFreshnessState
-from omnimarket.nodes.node_knowledge_health_compute.models.model_knowledge_backend_probe import (
-    ModelKnowledgeBackendProbe,
-)
+from omnimarket.events.knowledge_health import ModelKnowledgeBackendProbe
 from omnimarket.nodes.node_knowledge_health_probe_effect.models.model_knowledge_health_probe_request import (
     ModelKnowledgeHealthProbeRequest,
 )

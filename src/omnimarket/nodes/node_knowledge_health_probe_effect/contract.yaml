@@ -14,6 +14,16 @@ handler:
   class: HandlerKnowledgeHealthProbeEffect
   input_model: omnimarket.nodes.node_knowledge_health_probe_effect.models.model_knowledge_health_probe_request.ModelKnowledgeHealthProbeRequest
 
+handler_routing:
+  handlers:
+    - operation: "probe_knowledge_backends"
+      handler_class: "HandlerKnowledgeHealthProbeEffect"
+      handler_module: "omnimarket.nodes.node_knowledge_health_probe_effect.handlers.handler_knowledge_health_probe_effect"
+      handler:
+        name: "HandlerKnowledgeHealthProbeEffect"
+        module: "omnimarket.nodes.node_knowledge_health_probe_effect.handlers.handler_knowledge_health_probe_effect"
+        handler_type: "HTTP"
+
 env_dependencies:
   REPOWISE_URL:
     required: false
@@ -47,6 +57,9 @@ event_bus:
     - onex.cmd.omnimarket.knowledge-health-probe-requested.v1
   publish_topics:
     - onex.evt.omnimarket.knowledge-health-probed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.knowledge-health-probed.v1
 
 metadata:
   transport_type: kafka
