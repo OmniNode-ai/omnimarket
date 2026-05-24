@@ -15,6 +15,10 @@ handler_routing:
   routes:
     - input_model: omniintelligence.models.events.ModelLLMCallCompletedEvent
       output_model: omniintelligence.models.events.ModelCostTokenUsageSnapshot
+  handlers:
+    - handler:
+        name: HandlerProjectionCostTokenUsage
+        module: omnimarket.nodes.node_projection_cost_token_usage.handlers.handler_projection_cost_token_usage
 
 idempotency:
   enabled: true

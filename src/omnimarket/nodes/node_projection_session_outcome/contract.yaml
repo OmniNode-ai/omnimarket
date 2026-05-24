@@ -12,6 +12,16 @@ handler:
   module: omnimarket.nodes.node_projection_session_outcome.handlers.handler_projection_session_outcome
   class: HandlerProjectionSessionOutcome
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerProjectionSessionOutcome
+        module: omnimarket.nodes.node_projection_session_outcome.handlers.handler_projection_session_outcome
+    - handler:
+        name: SessionOutcomeProjectionRunner
+        module: omnimarket.nodes.node_projection_session_outcome.handlers.handler_session_outcome
+
 terminal_event: onex.evt.omnimarket.projection-session-outcome-applied.v1
 
 db_io:

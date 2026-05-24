@@ -17,6 +17,10 @@ handler_routing:
       output_model: omniintelligence.models.events.ModelCostSummarySnapshot
     - input_model: omniintelligence.models.events.ModelSavingsEstimatedEvent
       output_model: omniintelligence.models.events.ModelCostSummarySnapshot
+  handlers:
+    - handler:
+        name: HandlerProjectionCostSummary
+        module: omnimarket.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
 
 idempotency:
   enabled: true
