@@ -1,0 +1,116 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Knowledge Query Federation ORCHESTRATOR - ONEX Contract
+# Routes knowledge queries to Memgraph, Repowise, and/or Qdrant using
+# deterministic keyword-based heuristics; merges and deduplicates results.
+
+name: "node_knowledge_query_federation_orchestrator"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Orchestrator node that federates knowledge queries across three backends
+  (Memgraph, Repowise, Qdrant) using deterministic keyword heuristics.
+  No LLM dependency. Results are merged with provenance tags and deduplicated
+  by content hash. Ambiguous queries fan out to all three backends.
+node_type: orchestrator
+input_model: "ModelKnowledgeQueryFederationRequest"
+output_model: "ModelKnowledgeQueryFederationResponse"
+
+# === ROUTING RULES (documentation) ===
+# "dependency", "imports", "blast radius", "affects"  → Memgraph
+# specific file path or "function", "class"           → Repowise
+# "pattern", "smell", "antipattern", "duplicate"      → Qdrant
+# no keyword match (ambiguous)                        → all three (fan-out)
+
+# === PERFORMANCE ===
+performance:
+  single_operation_max_ms: 8000
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  performance_validation_enabled: true
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: node_architecture_graph_query_effect
+    dependency_type: node
+    description: Memgraph graph query backend
+    required: false
+
+  - name: node_codebase_intelligence_bridge_effect
+    dependency_type: node
+    description: Repowise codebase intelligence backend
+    required: false
+
+  - name: node_antipattern_match_effect
+    dependency_type: node
+    description: Qdrant semantic pattern matching backend
+    required: false
+
+# === TAGS ===
+tags:
+  - knowledge
+  - federation
+  - routing
+  - orchestrator
+  - memgraph
+  - repowise
+  - qdrant
+  - deduplication
+  - provenance
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.knowledge-query-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.knowledge-query-federated.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.knowledge-query-requested.v1":
+      schema_ref: "omnimarket.nodes.node_knowledge_query_federation_orchestrator.models.model_request.ModelKnowledgeQueryFederationRequest"
+      description: "Incoming knowledge query requests for federation routing."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.knowledge-query-federated.v1":
+      schema_ref: "omnimarket.nodes.node_knowledge_query_federation_orchestrator.models.model_response.ModelKnowledgeQueryFederationResponse"
+      description: "Federated knowledge query results with provenance and deduplication."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    - operation: "knowledge_query"
+      handler:
+        name: "HandlerKnowledgeQueryFederation"
+        module: "omnimarket.nodes.node_knowledge_query_federation_orchestrator.handlers.handler_knowledge_query_federation"
+      priority: 0
+      output_events:
+        - "onex.evt.omnimarket.knowledge-query-federated.v1"
+  default_handler: "HandlerKnowledgeQueryFederation"
+
+# === IDEMPOTENCY ===
+idempotency:
+  enabled: true
+  strategy: "correlation_id_tracking"
+  key_field: "correlation_id"
+
+metadata:
+  transport_type: kafka

@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-05-24T23:25:39Z",
+  "captured_at": "2026-05-24T23:36:56Z",
   "graphify_version": "ast-fallback",
   "rule_version": "v1",
   "findings": [
@@ -3110,6 +3110,16 @@
       "file_path": "src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.knowledge-context-assembled.v1",
       "detail": "Topic 'onex.evt.omnimarket.knowledge-context-assembled.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_knowledge_query_federation_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.knowledge-query-federated.v1",
+      "detail": "Topic 'onex.evt.omnimarket.knowledge-query-federated.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
