@@ -210,6 +210,31 @@ def test_diff_graphify_version_in_composite_key(tmp_path: Path) -> None:
     assert len(result.resolved_findings) == 1
 
 
+def test_diff_ast_fallback_uses_baseline_graphify_version(tmp_path: Path) -> None:
+    """AST fallback does not make unchanged findings look new."""
+    finding = _make_finding(detail="same detail", file_path="src/a.py")
+
+    baseline = ModelBaselineSnapshot(
+        findings=[finding],
+        graphify_version="v0.8.2",
+        rule_version="v1",
+        captured_at="2025-01-01T00:00:00",
+    )
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(baseline.model_dump_json())
+
+    engine = BaselineDiffEngine()
+    result = engine.diff(
+        current=[finding],
+        baseline_path=baseline_path,
+        current_graphify_version="ast-fallback",
+    )
+
+    assert result.delta == 0
+    assert result.new_findings == []
+    assert result.resolved_findings == []
+
+
 # ---------------------------------------------------------------------------
 # Robustness
 # ---------------------------------------------------------------------------

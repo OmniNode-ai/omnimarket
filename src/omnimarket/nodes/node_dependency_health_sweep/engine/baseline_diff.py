@@ -101,9 +101,13 @@ class BaselineDiffEngine:
         baseline_keys = {
             _composite_key(f, baseline_graphify_version) for f in snapshot.findings
         }
+        effective_current_graphify_version = (
+            baseline_graphify_version
+            if current_graphify_version == "ast-fallback"
+            else current_graphify_version or baseline_graphify_version
+        )
         current_keys = {
-            _composite_key(f, current_graphify_version or baseline_graphify_version)
-            for f in current
+            _composite_key(f, effective_current_graphify_version) for f in current
         }
 
         # Map keys → findings for lookup
@@ -111,8 +115,7 @@ class BaselineDiffEngine:
             _composite_key(f, baseline_graphify_version): f for f in snapshot.findings
         }
         current_map = {
-            _composite_key(f, current_graphify_version or baseline_graphify_version): f
-            for f in current
+            _composite_key(f, effective_current_graphify_version): f for f in current
         }
 
         new_keys = current_keys - baseline_keys
