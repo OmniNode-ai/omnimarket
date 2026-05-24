@@ -17,7 +17,7 @@ handler:
   input_model: omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep.ModelMergeSweepRequest
 
 handler_routing:
-  default_handler: handler:NodeMergeSweep
+  default_handler: omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep:NodeMergeSweep
 
 descriptor:
   node_archetype: compute
