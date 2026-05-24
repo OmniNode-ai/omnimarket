@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_post_merge_knowledge_sync_orchestrator
+# ORCHESTRATOR node — fans out knowledge-sync backends after a PR merges to main.
+# [OMN-11930]
+
+name: "node_post_merge_knowledge_sync_orchestrator"
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+uuid: "f1e2d3c4-b5a6-7890-abcd-ef1234567890"
+node_type: orchestrator
+input_model: "ModelPostMergeSyncRequest"
+output_model: "ModelSyncFanoutCommands"
+handler:
+  module: omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.handlers.handler_post_merge_sync
+  class: HandlerPostMergeSyncOrchestrator
+  input_model: ModelPostMergeSyncRequest
+description: |
+  Subscribes to onex.cmd.omnimarket.post-merge-sync-requested.v1.
+  After a PR merges to main, conditionally fans out to knowledge backends:
+    (a) Repowise reindex — always triggered on every merge
+    (b) Memgraph graph repopulation — triggered when any contract.yaml was modified
+    (c) Qdrant antipattern reindex — triggered when any antipattern catalog file was modified
+    (d) KB ADR publisher canary — triggered when PR title/body contains ADR-relevant keywords
+  Produces durable evidence at .onex_state/knowledge-sync/<sync_run_id>.json.
+  Emits onex.evt.omnimarket.post-merge-sync-completed.v1 with fan-out decisions.
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-11930"
+  parent_epic: "OMN-11909"
+  node_type: orchestrator
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  no_bare_os_environ_get: true
+  unit_tests: true
+  all_config_in_contract: true
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  consumer_group: omnimarket.post_merge_knowledge_sync_orchestrator.consume.v1
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.post-merge-sync-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.post-merge-sync-completed.v1"
+    - "onex.cmd.omnimarket.repowise-reindex-requested.v1"
+    - "onex.cmd.omnimarket.memgraph-repopulation-requested.v1"
+    - "onex.cmd.omnimarket.qdrant-antipattern-reindex-requested.v1"
+    - "onex.cmd.omnimarket.adr-canary-requested.v1"
+
+  dlq_topics:
+    - "onex.dlq.omnimarket.post-merge-sync.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.post-merge-sync-requested.v1":
+      schema_ref: "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.models.model_sync_request.ModelPostMergeSyncRequest"
+      description: "Command to run post-merge knowledge sync after a PR merges to main."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.post-merge-sync-completed.v1":
+      schema_ref: "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.models.model_sync_request.ModelSyncFanoutCommands"
+      description: "Fan-out decisions emitted after sync — which backends were triggered."
+    "onex.cmd.omnimarket.repowise-reindex-requested.v1":
+      description: "Always emitted — triggers Repowise reindex for the affected repo."
+    "onex.cmd.omnimarket.memgraph-repopulation-requested.v1":
+      description: "Emitted when contract.yaml files were modified — triggers Memgraph graph repopulation."
+    "onex.cmd.omnimarket.qdrant-antipattern-reindex-requested.v1":
+      description: "Emitted when antipattern catalog files were modified — triggers Qdrant reindex."
+    "onex.cmd.omnimarket.adr-canary-requested.v1":
+      description: "Emitted when PR contains ADR-relevant keywords — triggers KB ADR publisher canary."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  default_handler: omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.handlers.handler_post_merge_sync:HandlerPostMergeSyncOrchestrator
+
+# === DESCRIPTOR ===
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+terminal_event: "onex.evt.omnimarket.post-merge-sync-completed.v1"
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 30000
+
+# === TAGS ===
+tags:
+  - knowledge-sync
+  - post-merge
+  - orchestrator
+  - repowise
+  - memgraph
+  - qdrant
+  - adr
+  - omn-11930
+
+metadata:
+  transport_type: kafka

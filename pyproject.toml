@@ -281,6 +281,7 @@ node_morning_handoff_generator = "omnimarket.nodes.node_morning_handoff_generato
 node_session_phase_dispatcher = "omnimarket.nodes.node_session_phase_dispatcher"
 node_chain_diff = "omnimarket.nodes.node_chain_diff"
 node_kb_adr_publisher = "omnimarket.nodes.node_kb_adr_publisher"
+node_post_merge_knowledge_sync_orchestrator = "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
