@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Semantic Antipattern Validator Orchestrator (OMN-11922)
+---
+name: node_semantic_antipattern_validator_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Orchestrates semantic antipattern validation. Receives a file validation request,
+  emits a ModelAntipatternMatchCommand for node_antipattern_match_effect (Qdrant
+  similarity lookup), and routes matches to node_semantic_antipattern_classifier_compute
+  for deterministic violation classification.
+
+handler:
+  module: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator
+  class: HandlerAntipatternValidatorOrchestrator
+  input_model: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_validator_request.ModelAntipatternValidatorRequest
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator:HandlerAntipatternValidatorOrchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles:
+    - effects
+
+config:
+  similarity_threshold:
+    description: "Minimum cosine similarity score; forwarded to classifier. Default 0.80."
+    required: false
+    default: 0.80
+
+terminal_event: onex.evt.omnimarket.antipattern-validated.v1
+
+event_bus:
+  consumer_group: omnimarket.semantic_antipattern_validator_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.antipattern-validate.v1
+  publish_topics:
+    - onex.cmd.omnimarket.antipattern-match.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.antipattern-validate.v1
+
+metadata:
+  transport_type: kafka
