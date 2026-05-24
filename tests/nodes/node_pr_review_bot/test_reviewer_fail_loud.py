@@ -86,3 +86,14 @@ def test_workflow_runner_raises_on_explicit_empty_list() -> None:
             repo="OmniNode-ai/test",
             reviewer_models=[],
         )
+
+
+def test_workflow_runner_raises_on_missing_judge_model() -> None:
+    """judge_model must be caller-provided; there is no default judge key."""
+    with pytest.raises(ValueError, match="judge_model must be provided"):
+        run_review(
+            pr_number=1,
+            repo="OmniNode-ai/test",
+            reviewer_models=["reviewer-logical-key"],
+            judge_model=None,
+        )

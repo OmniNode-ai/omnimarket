@@ -15,7 +15,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.nodes.node_hostile_reviewer.models.model_review_finding import (
     EnumFindingCategory,
@@ -104,12 +104,14 @@ class ReviewRequest(BaseModel):
     pr_number: int = Field(..., ge=1, description="GitHub PR number.")
     repo: str = Field(..., description="GitHub repo in owner/repo format.")
     reviewer_models: list[str] = Field(
-        default_factory=lambda: ["qwen3-coder-30b", "qwen3-14b"],
-        description="Reviewer model identifiers.",
+        ...,
+        min_length=1,
+        description="Required reviewer logical model keys.",
     )
     judge_model: str = Field(
-        default="deepseek-r1",
-        description="Judge model identifier. Must not be a build-loop model.",
+        ...,
+        min_length=1,
+        description="Required judge logical model key.",
     )
     severity_threshold: EnumFindingSeverity = Field(
         default=EnumFindingSeverity.MAJOR,
@@ -124,6 +126,20 @@ class ReviewRequest(BaseModel):
         description="Cap on review threads to prevent thread spam on large diffs.",
     )
     requested_at: datetime = Field(..., description="When the command was issued.")
+
+    @field_validator("reviewer_models")
+    @classmethod
+    def reviewer_models_not_blank(cls, v: list[str]) -> list[str]:
+        if any(not model_key.strip() for model_key in v):
+            raise ValueError("reviewer_models must contain non-empty logical keys")
+        return v
+
+    @field_validator("judge_model")
+    @classmethod
+    def judge_model_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("judge_model must be a non-empty logical key")
+        return v
 
 
 # ---------------------------------------------------------------------------

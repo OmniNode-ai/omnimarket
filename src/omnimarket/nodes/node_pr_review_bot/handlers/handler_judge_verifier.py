@@ -5,10 +5,8 @@ conversation, and the current diff to the judge model.  Returns a structured
 PASS/FAIL verdict per thread and updates ThreadState accordingly.
 
 Design constraints (per 2026-04-09-pr-review-bot-design.md):
-- Judge model must NEVER be a build-loop model (LLM_CODER_URL / LLM_CODER_FAST_URL).
-  Only LLM_DEEPSEEK_R1_URL (port 8101) or port 8102 fallback are permitted.
-- LLM endpoint is read from the env var supplied at construction time — never
-  hardcoded.
+- Judge model logical key must be supplied by the caller; the concrete endpoint
+  and served model ID are resolved by policy/config before construction.
 - Judge timeout is 90 s minimum (R4 — cold-start latency on M2 Ultra).
 - Malformed JSON from the judge is treated as FAIL with a clear error message (R7).
 - Max 3 re-verification attempts per finding (R6 anti-spam guard).
@@ -20,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -143,11 +140,10 @@ class HandlerJudgeVerifier(ProtocolJudgeVerifier):
     """Calls the judge LLM to verify each resolved review thread.
 
     Args:
-        judge_base_url_env: Environment variable name holding the judge LLM
-            base URL (e.g. ``"LLM_DEEPSEEK_R1_URL"``).  The value must be an
-            OpenAI-compatible endpoint.  Never hardcoded.
+        judge_base_url: OpenAI-compatible judge endpoint resolved from the
+            caller-provided logical key before construction. Required.
         judge_model_id: Model identifier string sent in the ``model`` field of
-            the chat completions request (e.g. ``"deepseek-r1"``).
+            the chat completions request. Required and resolved from config.
         timeout_seconds: HTTP request timeout.  Defaults to 90 s (R4).
         thread_conversations: Optional mapping of ``finding_id -> list[str]``
             with author reply text.  If not supplied the verifier treats each
@@ -159,27 +155,24 @@ class HandlerJudgeVerifier(ProtocolJudgeVerifier):
 
     def __init__(
         self,
-        judge_base_url_env: str = "LLM_DEEPSEEK_R1_URL",
-        judge_model_id: str = "deepseek-r1",
+        judge_base_url: str,
+        judge_model_id: str,
         timeout_seconds: float = JUDGE_TIMEOUT_SECONDS,
         thread_conversations: dict[UUID, list[str]] | None = None,
         diff_context_map: dict[UUID, str] | None = None,
     ) -> None:
-        self._judge_base_url_env = judge_base_url_env
+        if not judge_base_url.strip():
+            raise ValueError("judge_base_url must be provided")
+        if not judge_model_id.strip():
+            raise ValueError("judge_model_id must be provided")
+        self._judge_base_url = judge_base_url.rstrip("/")
         self._judge_model_id = judge_model_id
         self._timeout_seconds = max(timeout_seconds, JUDGE_TIMEOUT_SECONDS)
         self._thread_conversations: dict[UUID, list[str]] = thread_conversations or {}
         self._diff_context_map: dict[UUID, str] = diff_context_map or {}
 
     def _get_judge_url(self) -> str:
-        url = os.environ.get(self._judge_base_url_env, "")
-        if not url:
-            msg = (
-                f"Judge LLM endpoint not configured. "
-                f"Set {self._judge_base_url_env} env var to an OpenAI-compatible base URL."
-            )
-            raise RuntimeError(msg)
-        return url.rstrip("/")
+        return self._judge_base_url
 
     def _call_judge(self, system_prompt: str, user_prompt: str) -> str:
         """Synchronous HTTP call to the judge model."""

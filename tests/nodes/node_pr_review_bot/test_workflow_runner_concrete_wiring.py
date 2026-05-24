@@ -40,8 +40,10 @@ def test_build_inference_bridge_config_populates_coder(
 ) -> None:
     """model_configs must include qwen3-coder entry when LLM_CODER_URL is set."""
     monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-reviewer-served-model")
     monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-host:8001")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://test-host:8101")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-judge-served-model")
 
     cfg = load_inference_bridge_config_from_env()
 
@@ -147,6 +149,7 @@ def test_run_review_uses_concrete_thread_poster(
             repo="owner/repo",
             github_token="test-token",
             reviewer_models=["qwen3-coder"],
+            judge_model="deepseek-r1",
             dry_run=True,
         )
 
@@ -162,8 +165,10 @@ def test_run_review_no_value_error_on_model_key(
 ) -> None:
     """run_review must not raise ValueError: Unknown model_key when env vars are set."""
     monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-reviewer-served-model")
     monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-host:8001")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://test-host:8101")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-judge-served-model")
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
     with (
@@ -184,6 +189,7 @@ def test_run_review_no_value_error_on_model_key(
             repo="owner/repo",
             github_token="test-token",
             reviewer_models=["qwen3-coder"],
+            judge_model="deepseek-r1",
             dry_run=True,
         )
     assert result.correlation_id is not None
