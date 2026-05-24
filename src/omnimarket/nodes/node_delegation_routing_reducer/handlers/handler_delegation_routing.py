@@ -133,15 +133,6 @@ _SYSTEM_PROMPTS: dict[str, str] = {
     ),
 }
 
-# Approximate per-1k-token cost by tier (USD).
-# These are conservative estimates used to compare against pricing ceiling.
-_TIER_COST_PER_1K: dict[str, float] = {
-    "local": 0.0,
-    "cheap_cloud": 0.002,
-    "claude": 0.015,
-    "cli_agents": 0.002,
-}
-
 # cloud_routing_policy values that block routing to non-local tiers.
 _CLOUD_BLOCKED_POLICY = "blocked"
 _LOCAL_TIERS = {"local", "cli_agents"}
@@ -236,17 +227,25 @@ def _get_config() -> ModelDelegationConfig:
 class BifrostBackendRef:
     """Resolved backend from the bifrost contract plus endpoint overlay."""
 
-    __slots__ = ("api_key_ref", "endpoint_url", "extra_headers", "model_name")
+    __slots__ = (
+        "api_key_ref",
+        "endpoint_url",
+        "extra_headers",
+        "model_name",
+        "timeout_ms",
+    )
 
     def __init__(
         self,
         endpoint_url: str,
         model_name: str,
+        timeout_ms: int,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.model_name = model_name
+        self.timeout_ms = timeout_ms
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
 
@@ -298,6 +297,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,
             model_name=backend.model_name,
+            timeout_ms=backend.timeout_ms,
             api_key_ref=api_key_ref,
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
@@ -418,10 +418,12 @@ def _tier_allowed_by_contract(
         return False
 
     ceiling_raw = entry.get("pricing_ceiling_per_1k_tokens")
-    if ceiling_raw is not None and isinstance(ceiling_raw, (int, float)):
-        tier_cost = _TIER_COST_PER_1K.get(tier.name, 0.0)
-        if tier_cost > float(ceiling_raw):
-            return False
+    if (
+        ceiling_raw is not None
+        and isinstance(ceiling_raw, (int, float))
+        and tier.cost_per_1k_tokens > float(ceiling_raw)
+    ):
+        return False
 
     return True
 
@@ -577,6 +579,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             extra_headers=backend.extra_headers,
             cost_tier=cost_tier,
             max_context_tokens=selected.max_context_tokens,
+            timeout_ms=backend.timeout_ms,
             system_prompt=system_prompt,
             rationale=rationale,
             dod_deterministic=dod_deterministic,

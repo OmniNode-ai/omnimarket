@@ -20,8 +20,9 @@ class ModelHostileReviewerStartCommand(BaseModel):
         default=None, description="File path to review (alternative to PR)."
     )
     models: list[str] = Field(
-        default_factory=lambda: ["codex", "deepseek-r1"],
-        description="Models to use for review.",
+        ...,
+        min_length=1,
+        description="Caller-provided logical model route keys to use for review.",
     )
     max_passes: int = Field(default=10, ge=1, description="Max review passes.")
     dry_run: bool = Field(default=False)
