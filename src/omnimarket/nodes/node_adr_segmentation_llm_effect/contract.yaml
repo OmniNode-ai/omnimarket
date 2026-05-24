@@ -9,6 +9,13 @@ description: >
   into classified semantic units. Each segment is typed (decision, critique,
   proposal, etc.) with a deterministic segment_id and content hash.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSegmentation
+        module: omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation
+
 handler:
   module: omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation
   class: HandlerSegmentation

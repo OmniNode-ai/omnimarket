@@ -8,6 +8,13 @@ description: >
   Accepts a schema_key string and returns the model_json_schema() dict for the
   registered Pydantic model. No LLM calls, no I/O — deterministic and side-effect-free.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerOutputSchemaRegistry
+        module: omnimarket.nodes.node_output_schema_registry_compute.handlers.handler_output_schema_registry
+
 handler:
   module: omnimarket.nodes.node_output_schema_registry_compute.handlers.handler_output_schema_registry
   class: HandlerOutputSchemaRegistry
