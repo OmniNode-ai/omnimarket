@@ -406,6 +406,6 @@ def test_unknown_task_type_raises() -> None:
 def test_handler_returns_routing_output() -> None:
     handler = HandlerDelegationRouting()
     inp = _input()
-    result = asyncio.get_event_loop().run_until_complete(handler.handle(uuid4(), inp))
+    result = asyncio.run(handler.handle(uuid4(), inp))
     assert isinstance(result, ModelDelegationRoutingOutput)
     assert result.selection.model_id == "model-a"
