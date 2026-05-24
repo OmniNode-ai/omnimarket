@@ -1,0 +1,22 @@
+name: node_knowledge_health_compute
+version: "1.0.0"
+description: "Pure deterministic classification of knowledge backend probe results into a health report"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_knowledge_health_compute: "omnimarket.nodes.node_knowledge_health_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "knowledge", "health", "deterministic"]
+pack: "knowledge"
+display_name: "Knowledge Health Compute"
+node_role: "compute"
