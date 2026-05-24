@@ -53,6 +53,9 @@ handler_routing:
   routing_strategy: payload_type_match
   handlers:
     - operation: contract_registry.validate
+      handler:
+        name: ContractRegistryHandler
+        module: omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry
       handler_class: ContractRegistryHandler
       handler_module: omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry
       description: Validate, store, and publish contract registration results.

@@ -14,6 +14,14 @@ handler:
   class: NodeAislopSweep
   input_model: omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep.AislopSweepRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: sweep
+      handler:
+        name: NodeAislopSweep
+        module: omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep
+
 descriptor:
   node_archetype: compute
   purity: pure
