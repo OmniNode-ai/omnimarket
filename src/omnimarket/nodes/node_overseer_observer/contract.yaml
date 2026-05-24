@@ -20,11 +20,29 @@ description: >
   emitted by nodes (SideEffectObserver) and checks dod_evidence fields
   against observed outputs (EvidenceEvaluator). No Kafka wiring until Wave 3+.
 
+handler:
+  module: omnimarket.nodes.node_overseer_observer.handlers.handler_evidence_evaluator
+  class: NullEvidenceEvaluator
+
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   timeout_ms: 5000
+
+# Phase-0 stubs — no active bus subscription yet (Wave 3+). Declared here for
+# contract completeness so the compliance scanner can verify module paths (OMN-11907).
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: EvidenceEvaluator
+        module: omnimarket.nodes.node_overseer_observer.handlers.handler_evidence_evaluator
+      description: "Phase-0 stub: checks dod_evidence against observed outputs (Wave 3+)"
+    - handler:
+        name: SideEffectObserver
+        module: omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer
+      description: "Phase-0 stub: records Kafka side effects for downstream inspection (Wave 3+)"
 
 stub_interfaces:
   - name: SideEffectObserver
