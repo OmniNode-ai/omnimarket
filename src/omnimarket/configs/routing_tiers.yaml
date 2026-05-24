@@ -22,6 +22,7 @@
 #   - OMN-10717: Default contract + endpoint overlay merge semantics
 tiers:
   - name: local
+    cost_per_1k_tokens: 0.0
     models:
       - id: qwen3-coder-30b
         backend_id: local-qwen-coder-30b
@@ -47,6 +48,7 @@ tiers:
     eval_model: deepseek-r1-14b
     max_retries: 2
   - name: cheap_cloud
+    cost_per_1k_tokens: 0.002
     models:
       # OpenRouter GLM Flash — primary cheap-cloud code-gen backend (OMN-7980).
       # Requires OPENROUTER_API_KEY. Falls back to glm-z-ai when key absent.
@@ -78,6 +80,7 @@ tiers:
     eval_model: deepseek-r1-14b
     max_retries: 1
   - name: claude
+    cost_per_1k_tokens: 0.015
     models:
       - id: claude-sonnet-4-6
         backend_id: cloud-sonnet
@@ -98,6 +101,7 @@ tiers:
   # Models dispatched via subprocess rather than HTTP API.
   # Availability confirmed at dispatch time via shutil.which inside HandlerLlmCliSubprocess.
   - name: cli_agents
+    cost_per_1k_tokens: 0.002
     models:
       - id: claude-cli
         backend_id: cli-claude

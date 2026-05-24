@@ -133,15 +133,6 @@ _SYSTEM_PROMPTS: dict[str, str] = {
     ),
 }
 
-# Approximate per-1k-token cost by tier (USD).
-# These are conservative estimates used to compare against pricing ceiling.
-_TIER_COST_PER_1K: dict[str, float] = {
-    "local": 0.0,
-    "cheap_cloud": 0.002,
-    "claude": 0.015,
-    "cli_agents": 0.002,
-}
-
 # cloud_routing_policy values that block routing to non-local tiers.
 _CLOUD_BLOCKED_POLICY = "blocked"
 _LOCAL_TIERS = {"local", "cli_agents"}
@@ -418,10 +409,12 @@ def _tier_allowed_by_contract(
         return False
 
     ceiling_raw = entry.get("pricing_ceiling_per_1k_tokens")
-    if ceiling_raw is not None and isinstance(ceiling_raw, (int, float)):
-        tier_cost = _TIER_COST_PER_1K.get(tier.name, 0.0)
-        if tier_cost > float(ceiling_raw):
-            return False
+    if (
+        ceiling_raw is not None
+        and isinstance(ceiling_raw, (int, float))
+        and tier.cost_per_1k_tokens > float(ceiling_raw)
+    ):
+        return False
 
     return True
 
