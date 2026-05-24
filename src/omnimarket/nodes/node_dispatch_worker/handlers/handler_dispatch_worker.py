@@ -438,6 +438,92 @@ def _query_active_fences(
 
 
 # ---------------------------------------------------------------------------
+# KB context assembly
+# ---------------------------------------------------------------------------
+
+
+class _KBContextBundle:
+    """Result of KB context assembly for a dispatch."""
+
+    __slots__ = (
+        "bundle_hash",
+        "degraded_backends",
+        "markdown",
+        "source_backends_used",
+    )
+
+    def __init__(
+        self,
+        markdown: str,
+        source_backends_used: list[str],
+        degraded_backends: list[str],
+    ) -> None:
+        self.markdown = markdown
+        self.source_backends_used = source_backends_used
+        self.degraded_backends = degraded_backends
+        self.bundle_hash = hashlib.sha256(markdown.encode("utf-8")).hexdigest()[:16]
+
+
+# Level descriptions included in context when assembler is not yet wired
+_LEVEL_DESCRIPTIONS: dict[str, str] = {
+    "L0": "scope summary only",
+    "L1": "scope + target ticket context",
+    "L2": "scope + target ticket context + repo overview",
+    "L3": "scope + target ticket context + repo overview + related decisions",
+}
+
+
+def _assemble_kb_context(
+    command: ModelDispatchWorkerCommand,
+) -> _KBContextBundle:
+    """Assemble KB context bundle for the given level.
+
+    Integration point for node_knowledge_context_assembler_orchestrator.
+    Emits structured context from available local signals. When
+    node_knowledge_context_assembler_orchestrator is wired, it will supply
+    full KB retrieval results instead.
+
+    Levels:
+      L0 — scope summary
+      L1 — scope + target ticket identifiers
+      L2 — L1 + repo context hint
+      L3 — L2 + extended decision context hint
+    """
+    level = command.knowledge_context_level
+    ticket = _extract_primary_ticket(command.targets)
+    repo = _extract_primary_repo(command.targets)
+
+    lines: list[str] = [
+        f"_Level {level} ({_LEVEL_DESCRIPTIONS.get(level, level)}) — "
+        f"assembled at dispatch time. Replace with live assembler output when available._",
+        "",
+        f"**Scope:** {command.scope}",
+    ]
+
+    if level in ("L1", "L2", "L3"):
+        lines.append(f"**Primary ticket:** {ticket or '(none detected)'}")
+        lines.append(f"**Targets:** {', '.join(command.targets)}")
+
+    if level in ("L2", "L3"):
+        lines.append(f"**Primary repo:** {repo or '(none detected)'}")
+        lines.append(
+            "_Repo overview: run `onex introspect` or read the repo CLAUDE.md for current architecture._"
+        )
+
+    if level == "L3":
+        lines.append(
+            "_Extended decisions: consult docs/design/ and ADRs in the primary repo for relevant decisions._"
+        )
+
+    markdown = "\n".join(lines)
+    return _KBContextBundle(
+        markdown=markdown,
+        source_backends_used=["local"],
+        degraded_backends=[],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
 
@@ -491,8 +577,13 @@ class HandlerDispatchWorker:
                 command.team, command.targets, tasks_dir=tasks_dir
             )
 
+        # --- KB context assembly (opt-in, level != "none") ---
+        kb_bundle: _KBContextBundle | None = None
+        if command.knowledge_context_level != "none":
+            kb_bundle = _assemble_kb_context(command)
+
         # --- compile template ---
-        prompt = self._compile_prompt(command, fences)
+        prompt = self._compile_prompt(command, fences, kb_bundle=kb_bundle)
 
         # --- task description ---
         task_desc = f"[{command.role}] {command.name}: {command.scope}"
@@ -505,6 +596,27 @@ class HandlerDispatchWorker:
             parent_session_id=parent_session_id,
         )
 
+        # --- KB evidence ---
+        if kb_bundle is not None:
+            kb_section = self._extract_kb_section(prompt)
+            return ModelDispatchWorkerResult(
+                validated_task_description=task_desc,
+                validated_prompt_template=prompt,
+                proposed_agent_spawn_args={
+                    "name": command.name,
+                    "team_name": command.team,
+                    "model": command.model,
+                    "subagent_type": "general-purpose",
+                },
+                collision_fence_embeds=fences,
+                rejected_reason="",
+                knowledge_context_bundle_hash=kb_bundle.bundle_hash,
+                bundle_level=command.knowledge_context_level,
+                source_backends_used=list(kb_bundle.source_backends_used),
+                degraded_backends=list(kb_bundle.degraded_backends),
+                injected_context_char_count=len(kb_section),
+            )
+
         return ModelDispatchWorkerResult(
             validated_task_description=task_desc,
             validated_prompt_template=prompt,
@@ -516,7 +628,21 @@ class HandlerDispatchWorker:
             },
             collision_fence_embeds=fences,
             rejected_reason="",
+            bundle_level="none",
         )
+
+    def _extract_kb_section(self, prompt: str) -> str:
+        """Extract the ## Knowledge Context section text from a compiled prompt."""
+        kb_start = prompt.find("## Knowledge Context")
+        if kb_start == -1:
+            return ""
+        next_section = re.search(
+            r"^## ", prompt[kb_start + len("## Knowledge Context") :], re.MULTILINE
+        )
+        if next_section:
+            kb_end = kb_start + len("## Knowledge Context") + next_section.start()
+            return prompt[kb_start:kb_end]
+        return prompt[kb_start:]
 
     def _check_dedup(
         self, command: ModelDispatchWorkerCommand, existing_subjects: list[str]
@@ -537,7 +663,11 @@ class HandlerDispatchWorker:
         return ""
 
     def _compile_prompt(
-        self, command: ModelDispatchWorkerCommand, fences: list[str]
+        self,
+        command: ModelDispatchWorkerCommand,
+        fences: list[str],
+        *,
+        kb_bundle: _KBContextBundle | None = None,
     ) -> str:
         cap = command.wall_clock_cap_min or ROLE_CAP_DEFAULTS[command.role]
         report_cap = ROLE_REPORT_CAPS[command.role]
@@ -603,7 +733,17 @@ class HandlerDispatchWorker:
         role_body = _ROLE_TEMPLATES[command.role]
         preamble = _COMMON_PREAMBLE.format_map(ctx)
         body = role_body.format_map(ctx)
-        return preamble + "\n" + body
+        prompt = preamble + "\n" + body
+
+        if kb_bundle is not None:
+            kb_section = (
+                f"## Knowledge Context\n"
+                f"_Bundle hash: {kb_bundle.bundle_hash}_\n\n"
+                f"{kb_bundle.markdown}\n"
+            )
+            prompt = prompt + "\n" + kb_section
+
+        return prompt
 
     def _read_task_subjects(
         self, team: str, tasks_dir: Path | None = None
