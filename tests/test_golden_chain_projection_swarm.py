@@ -19,6 +19,8 @@ from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionSwarm()
 
+_LAB_MACHINE = "192.168.86.201"  # onex-allow-internal-ip OMN-11815 reason="test fixture for swarm machines_used field, not a runtime default"
+
 CONTRACT_PATH = "src/omnimarket/nodes/node_projection_swarm/contract.yaml"
 
 
@@ -33,7 +35,7 @@ def _completed_event(**overrides: object) -> ModelSwarmDispatchEvent:
         "failed_count": 0,
         "skipped_count": 0,
         "models_used": ("qwen3-coder-30b", "deepseek-r1-14b"),
-        "machines_used": ("192.168.86.201",),
+        "machines_used": (_LAB_MACHINE,),
         "total_cost_usd": 0.05,
         "cloud_equivalent_cost_usd": 2.50,
         "savings_usd": 2.45,
@@ -102,7 +104,7 @@ class TestProjectionSwarmCompletedEvent:
         HANDLER.project(event, db)
         row = db.query("swarm_runs")[0]
         assert "qwen3-coder-30b" in row["models_used"]
-        assert "192.168.86.201" in row["machines_used"]
+        assert _LAB_MACHINE in row["machines_used"]
 
 
 class TestProjectionSwarmFailedEvent:
