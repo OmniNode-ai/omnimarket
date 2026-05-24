@@ -24,6 +24,9 @@ handler_routing:
       handler:
         name: HandlerClaimResolver
         module: omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver
+      event_model:
+        name: ModelClaimResolutionRequest
+        module: omnimarket.nodes.node_claim_resolver.models.model_claim_resolution
 
 descriptor:
   node_archetype: compute
