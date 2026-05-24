@@ -1,0 +1,213 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Architecture Graph Query EFFECT - ONEX Contract
+# Queries Memgraph for architecture-level dependency relationships.
+
+name: "node_architecture_graph_query_effect"
+handler:
+  module: omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query
+  class: HandlerArchitectureGraphQuery
+  input_model: omnimarket.nodes.node_architecture_graph_query_effect.models.model_architecture_graph_query_events.ModelArchitectureGraphQueryRequestedEvent
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Effect node that queries Memgraph for architecture-level dependency relationships.
+  Supports dependency path traversal, blast radius analysis, cross-repo import
+  mapping, and circular dependency detection. All Cypher queries are parameterized.
+node_type: effect
+input_model: "ModelArchitectureGraphQueryRequestedEvent"
+output_model: "ModelArchitectureGraphQueryResponseEvent"
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "graph_traversal"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === NODE CONFIGURATION ===
+tool_specification:
+  tool_name: "architecture_graph_query_effect"
+  main_tool_class: "HandlerArchitectureGraphQuery"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === CONFIGURATION FIELDS ===
+# All connection parameters come from here — never hardcoded in handlers.
+config_fields:
+  graph_backend:
+    default: "memgraph"
+    description: "Graph backend identifier (memgraph or neo4j-compatible)"
+  bolt_uri:
+    default: "bolt://localhost:7687"
+    description: "Bolt protocol URI for the Memgraph instance"
+  timeout_seconds:
+    default: 30
+    description: "Query timeout in seconds"
+  max_path_depth:
+    default: 10
+    description: "Maximum traversal depth for path and blast-radius queries"
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["query_id", "operation"]
+  optional: ["from_node", "to_node", "target", "repo", "correlation_id"]
+
+output_state:
+  object_type: "object"
+  required: ["query_id", "operation", "status"]
+  optional: ["nodes", "edges", "path_length", "error_message", "execution_time_ms"]
+
+# === ACTIONS ===
+actions:
+  - name: "dependency_path"
+    description: "Shortest dependency path between two architecture nodes"
+    inputs: ["from_node", "to_node"]
+    outputs: ["nodes", "edges", "path_length"]
+
+  - name: "blast_radius"
+    description: "All nodes that transitively depend on a given target"
+    inputs: ["target"]
+    outputs: ["nodes", "edges"]
+
+  - name: "cross_repo_imports"
+    description: "Cross-repository import relationships for a given repo"
+    inputs: ["repo"]
+    outputs: ["nodes", "edges"]
+
+  - name: "circular_deps"
+    description: "Circular dependency chains within a repository"
+    inputs: ["repo"]
+    outputs: ["nodes", "edges"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: memgraph
+    dependency_type: service
+    protocol: bolt
+    description: "Memgraph graph database — Bolt protocol endpoint for architecture queries"
+    required: true
+
+  - name: kafka
+    dependency_type: service
+    description: "Kafka event bus for request/response events"
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 5000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["architecture_graph_queried"]
+  event_categories: ["architecture", "graph", "effect", "query"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "architecture"
+  invocation_mode: "subscription"
+
+# === INFRASTRUCTURE ===
+infrastructure:
+  query_backends:
+    - memgraph
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  constraint_definitions:
+    operation: "Literal['dependency_path','blast_radius','cross_repo_imports','circular_deps']"
+    query_id: "string — unique identifier for this query request"
+    from_node: "string — source node for dependency_path"
+    to_node: "string — target node for dependency_path"
+    target: "string — target node for blast_radius"
+    repo: "string — repository scope for cross_repo_imports or circular_deps"
+
+# === HANDLER ROUTING ===
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    - routing_key: "dependency_path"
+      handler_key: "HandlerArchitectureGraphQuery"
+      handler:
+        name: "HandlerArchitectureGraphQuery"
+        module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
+      priority: 0
+      output_events: []
+    - routing_key: "blast_radius"
+      handler_key: "HandlerArchitectureGraphQuery"
+      handler:
+        name: "HandlerArchitectureGraphQuery"
+        module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
+      priority: 0
+      output_events: []
+    - routing_key: "cross_repo_imports"
+      handler_key: "HandlerArchitectureGraphQuery"
+      handler:
+        name: "HandlerArchitectureGraphQuery"
+        module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
+      priority: 0
+      output_events: []
+    - routing_key: "circular_deps"
+      handler_key: "HandlerArchitectureGraphQuery"
+      handler:
+        name: "HandlerArchitectureGraphQuery"
+        module: "omnimarket.nodes.node_architecture_graph_query_effect.handlers.handler_architecture_graph_query"
+      priority: 0
+      output_events: []
+  default_handler: null
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+descriptor:
+  runtime_profiles:
+    - effects
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.architecture-graph-query-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.architecture-graph-query-response.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.architecture-graph-query-requested.v1":
+      schema_ref: "omnimarket.nodes.node_architecture_graph_query_effect.models.model_architecture_graph_query_events.ModelArchitectureGraphQueryRequestedEvent"
+      description: "Architecture graph query requests specifying operation and operands."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.architecture-graph-query-response.v1":
+      schema_ref: "omnimarket.nodes.node_architecture_graph_query_effect.models.model_architecture_graph_query_events.ModelArchitectureGraphQueryResponseEvent"
+      description: "Architecture graph query responses containing nodes, edges, and path data."
+
+# === TAGS ===
+tags:
+  - architecture
+  - graph
+  - memgraph
+  - effect
+  - kafka
+  - dependency-analysis
+  - bolt

@@ -35,7 +35,7 @@ dependencies:
   - name: "ModelRoutingPolicy"
     type: "config"
     required: true
-    module: "omnibase_compat.routing.model_routing_policy"
+    module: "omnibase_core.models.routing.model_routing_policy"
     description: "Typed routing policy injected into HandlerModelRouter."
   - name: "model_registry"
     type: "config"
@@ -84,11 +84,21 @@ outputs:
   used_fallback:
     type: bool
     description: "True if fallback model was used"
+  route_resolved_event:
+    type: ModelLlmRouteResolvedEvent
+    module: omnibase_core.models.routing.model_llm_route_resolved_event
+    description: "Canonical event emitted when routing resolves to a concrete model endpoint"
+  route_rejected_event:
+    type: ModelLlmRouteRejectedEvent
+    module: omnibase_core.models.routing.model_llm_route_rejected_event
+    description: "Canonical event emitted when routing fails closed without a served endpoint"
 
 event_bus:
   subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.model-routing-degraded.v1
+    - onex.evt.omnimarket.model-llm-route-resolved.v1
+    - onex.evt.omnimarket.model-llm-route-rejected.v1
 
 metadata:
   transport_type: kafka
