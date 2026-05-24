@@ -1,7 +1,4 @@
 {
-  "graphify_version": "0.8.2",
-  "rule_version": "v1",
-  "captured_at": "2026-05-23T23:01:42Z",
   "findings": [
     {
       "finding_type": "UNTESTED_HANDLER",
@@ -667,6 +664,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_codebase_intelligence_bridge_effect/handlers/handler_codebase_intelligence_bridge.py",
+      "symbol": "handler_codebase_intelligence_bridge",
+      "detail": "Contract-referenced handler 'handler_codebase_intelligence_bridge' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_gap_compute/handlers/handler_gap_compute.py",
       "symbol": "handler_gap_compute",
       "detail": "Contract-referenced handler 'handler_gap_compute' has no test file and no golden-chain fixture coverage.",
@@ -927,16 +934,6 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_omnigate_projection/reducers/reducer_omnigate_projection.py",
-      "symbol": "reducer_omnigate_projection",
-      "detail": "Contract-referenced handler 'reducer_omnigate_projection' has no test file and no golden-chain fixture coverage.",
-      "rule_id": "UNTESTED_HANDLER",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "UNTESTED_HANDLER",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py",
       "symbol": "handler_delegation_workflow",
       "detail": "Contract-referenced handler 'handler_delegation_workflow' has no test file and no golden-chain fixture coverage.",
@@ -970,6 +967,16 @@
       "file_path": "src/omnimarket/nodes/node_local_supervisor/handlers/handler_local_supervisor.py",
       "symbol": "handler_local_supervisor",
       "detail": "Contract-referenced handler 'handler_local_supervisor' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_overseer_observer/handlers/handler_evidence_evaluator.py",
+      "symbol": "handler_evidence_evaluator",
+      "detail": "Contract-referenced handler 'handler_evidence_evaluator' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -1177,6 +1184,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_architecture_graph_query_effect/handlers/handler_architecture_graph_query.py",
+      "symbol": "handler_architecture_graph_query",
+      "detail": "Contract-referenced handler 'handler_architecture_graph_query' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_ab_compare_reducer/handlers/handler_ab_compare_reducer.py",
       "symbol": "handler_ab_compare_reducer",
       "detail": "Contract-referenced handler 'handler_ab_compare_reducer' has no test file and no golden-chain fixture coverage.",
@@ -1330,6 +1347,16 @@
       "file_path": "src/omnimarket/nodes/node_projection_llm_routing/handlers/handler_projection_llm_routing.py",
       "symbol": "handler_projection_llm_routing",
       "detail": "Contract-referenced handler 'handler_projection_llm_routing' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_architecture_graph_populate_effect/handlers/handler_architecture_graph_populate.py",
+      "symbol": "handler_architecture_graph_populate",
+      "detail": "Contract-referenced handler 'handler_architecture_graph_populate' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -1718,16 +1745,6 @@
       "severity": "MAJOR",
       "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_emit_daemon/contract.yaml",
-      "symbol": "onex.evt.omniclaude.notification-blocked.v1",
-      "detail": "Topic 'onex.evt.omniclaude.notification-blocked.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_emit_daemon/contract.yaml",
       "symbol": "onex.evt.omniclaude.notification-completed.v1",
       "detail": "Topic 'onex.evt.omniclaude.notification-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
@@ -2057,6 +2074,26 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_architecture_graph_populate_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.architecture-graph-populated.v1",
+      "detail": "Topic 'onex.evt.omnimarket.architecture-graph-populated.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_architecture_graph_query_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.architecture-graph-query-response.v1",
+      "detail": "Topic 'onex.evt.omnimarket.architecture-graph-query-response.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_audit_trail_compactor/contract.yaml",
       "symbol": "onex.evt.omnimarket.audit-trail-compacted.v1",
       "detail": "Topic 'onex.evt.omnimarket.audit-trail-compacted.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -2337,6 +2374,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_codebase_intelligence_bridge_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.codebase-intelligence-query-response.v1",
+      "detail": "Topic 'onex.evt.omnimarket.codebase-intelligence-query-response.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_coderabbit_triage/contract.yaml",
       "symbol": "onex.evt.omnimarket.coderabbit-triage-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.coderabbit-triage-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -2557,16 +2604,6 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
-      "symbol": "onex.evt.omnimarket.delegation-all-tiers-failed.v1",
-      "detail": "Topic 'onex.evt.omnimarket.delegation-all-tiers-failed.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_build_loop_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.delegation-attempt.v1",
       "detail": "Topic 'onex.evt.omnimarket.delegation-attempt.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -2577,39 +2614,9 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
-      "symbol": "onex.evt.omnimarket.delegation-call-completed.v1",
-      "detail": "Topic 'onex.evt.omnimarket.delegation-call-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
-      "symbol": "onex.evt.omnimarket.delegation-escalation-triggered.v1",
-      "detail": "Topic 'onex.evt.omnimarket.delegation-escalation-triggered.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_build_loop_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.delegation-metrics.v1",
       "detail": "Topic 'onex.evt.omnimarket.delegation-metrics.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml",
-      "symbol": "onex.evt.omnimarket.delegation-model-degraded.v1",
-      "detail": "Topic 'onex.evt.omnimarket.delegation-model-degraded.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -2877,6 +2884,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_kb_repowise_index_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.kb-repowise-index-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.kb-repowise-index-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_ledger_state_reducer/contract.yaml",
       "symbol": "onex.evt.omnimarket.ledger-state-reduced.v1",
       "detail": "Topic 'onex.evt.omnimarket.ledger-state-reduced.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -2990,6 +3007,26 @@
       "file_path": "src/omnimarket/nodes/node_merge_sweep_state_reducer/contract.yaml",
       "symbol": "onex.evt.omnimarket.merge-sweep-state-reduced.v1",
       "detail": "Topic 'onex.evt.omnimarket.merge-sweep-state-reduced.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_model_router/contract.yaml",
+      "symbol": "onex.evt.omnimarket.model-llm-route-rejected.v1",
+      "detail": "Topic 'onex.evt.omnimarket.model-llm-route-rejected.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_model_router/contract.yaml",
+      "symbol": "onex.evt.omnimarket.model-llm-route-resolved.v1",
+      "detail": "Topic 'onex.evt.omnimarket.model-llm-route-resolved.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4114,26 +4151,6 @@
       "rule_version": "v1"
     },
     {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_omnigate_projection/contract.yaml",
-      "symbol": "onex.snapshot.projection.gate.activity.v1",
-      "detail": "Topic 'onex.snapshot.projection.gate.activity.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_omnigate_projection/contract.yaml",
-      "symbol": "onex.snapshot.projection.gate.metrics.v1",
-      "detail": "Topic 'onex.snapshot.projection.gate.metrics.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
       "finding_type": "UNDECLARED_TOPIC",
       "severity": "MAJOR",
       "repo": "omnimarket",
@@ -4163,5 +4180,8 @@
       "rule_id": "UNDECLARED_TOPIC",
       "rule_version": "v1"
     }
-  ]
+  ],
+  "graphify_version": "0.8.2",
+  "rule_version": "v1",
+  "captured_at": "2026-05-24T21:55:00Z"
 }
