@@ -4,15 +4,19 @@
 # Copyright (c) 2025 OmniNode Team
 """Handlers for Intelligence Reducer Node.
 
-Handler functions for FSM transitions in the intelligence
+Handler functions and classes for FSM transitions in the intelligence
 reducer. Each FSM type (INGESTION, PATTERN_LEARNING, QUALITY_ASSESSMENT,
 PATTERN_LIFECYCLE) has dedicated handler logic.
 
 Current Handlers:
+    - HandlerIntelligenceReducer: runtime-wirable class (handler_routing target)
     - PATTERN_LIFECYCLE: handle_pattern_lifecycle_transition
     - PROCESS: handle_pattern_lifecycle_process (builds ModelReducerOutput)
 """
 
+from omnimarket.nodes.node_intelligence_reducer.handlers.handler_intelligence_reducer import (
+    HandlerIntelligenceReducer,
+)
 from omnimarket.nodes.node_intelligence_reducer.handlers.handler_pattern_lifecycle import (
     ERROR_GUARD_CONDITION_FAILED,
     ERROR_INVALID_FROM_STATE,
@@ -43,6 +47,7 @@ __all__ = [
     "VALID_STATES",
     "VALID_TRANSITIONS",
     "VALID_TRIGGERS",
+    "HandlerIntelligenceReducer",
     "PatternLifecycleTransitionResult",
     "get_fsm_transition_table",
     "get_guard_conditions",

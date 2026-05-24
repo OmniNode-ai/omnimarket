@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.models.adr import (
     ModelAdrDocumentRef,
@@ -39,6 +40,16 @@ _MANIFEST_PATH = "docs/adr-canary/ground_truth_manifest.yaml"
 _OMNIMARKET_ROOT = Path(__file__).parents[
     4
 ]  # tests/integration/nodes/node_adr_canary_orchestrator/ -> omnimarket root
+_SAMPLE_ENTRY_IDS = [
+    "kafka-required-infrastructure",
+    "vault-to-infisical-migration",
+    "graceful-shutdown-drain-period",
+]
+
+
+def _manifest_entry_count() -> int:
+    manifest = yaml.safe_load((_OMNIMARKET_ROOT / _MANIFEST_PATH).read_text())
+    return len(manifest["entries"])
 
 
 # ---------------------------------------------------------------------------
@@ -160,8 +171,9 @@ def test_proof_of_life_full_pipeline() -> None:
 
         # Core report assertions
         assert report.success, f"Report failed: {report.error_message}"
-        assert report.entries_total == 3
-        assert report.entries_completed == 3
+        expected_entries = _manifest_entry_count()
+        assert report.entries_total == expected_entries
+        assert report.entries_completed == expected_entries
         assert report.entries_failed == 0
 
         # Scorecard written
@@ -174,13 +186,8 @@ def test_proof_of_life_full_pipeline() -> None:
         evidence_dir = Path(report.evidence_dir)
         assert evidence_dir.is_dir()
 
-        # All 3 entry subdirs exist with at least one evidence JSON
-        entry_ids = [
-            "kafka-required-infrastructure",
-            "vault-to-infisical-migration",
-            "graceful-shutdown-drain-period",
-        ]
-        for entry_id in entry_ids:
+        # Representative entry subdirs exist with at least one evidence JSON.
+        for entry_id in _SAMPLE_ENTRY_IDS:
             entry_dir = evidence_dir / entry_id
             assert entry_dir.is_dir(), f"Missing evidence dir for entry: {entry_id}"
             json_files = list(entry_dir.glob("*.json"))
@@ -228,7 +235,7 @@ def test_proof_of_life_dry_run() -> None:
         report = asyncio.run(handler.handle(request))
 
     assert report.dry_run is True
-    assert report.entries_total == 3
+    assert report.entries_total == _manifest_entry_count()
     assert report.success is True
 
 
@@ -266,14 +273,10 @@ def test_proof_of_life_extraction_failure_path() -> None:
         report = asyncio.run(handler.handle(request))
 
         # Entries complete at the entry level (extraction failure is per model, not per entry)
-        assert report.entries_total == 3
+        assert report.entries_total == _manifest_entry_count()
         # Evidence files should exist with extraction_error set
         evidence_dir = Path(report.evidence_dir)
-        for entry_id in [
-            "kafka-required-infrastructure",
-            "vault-to-infisical-migration",
-            "graceful-shutdown-drain-period",
-        ]:
+        for entry_id in _SAMPLE_ENTRY_IDS:
             entry_dir = evidence_dir / entry_id
             assert entry_dir.is_dir()
             json_files = list(entry_dir.glob("*.json"))

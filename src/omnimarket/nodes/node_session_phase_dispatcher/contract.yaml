@@ -15,6 +15,14 @@ handler:
   class: HandlerSessionPhaseDispatcher
   input_model: omnimarket.nodes.node_session_phase_dispatcher.models.model_dispatcher_input.ModelSessionPhaseDispatcherInput
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dispatch_session_phase
+      handler:
+        name: HandlerSessionPhaseDispatcher
+        module: omnimarket.nodes.node_session_phase_dispatcher.handlers.handler_session_phase_dispatcher
+
 descriptor:
   node_archetype: effect
   purity: impure

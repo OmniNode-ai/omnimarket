@@ -1,0 +1,73 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_swarm_aggregator_compute
+contract_name: node_swarm_aggregator_compute
+node_name: node_swarm_aggregator_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+description: >
+  Pure compute node for swarm result aggregation. Concatenates subtask outputs
+  into a unified response. For synthesis mode, receives pre-fetched synthesis
+  LLM output as explicit input. Never calls an LLM directly.
+
+input_model:
+  name: ModelSwarmAggregateRequest
+  class: ModelSwarmAggregateRequest
+  module: omnimarket.nodes.node_swarm_aggregator_compute.models.model_swarm_aggregate_request
+
+output_model:
+  name: ModelSwarmAggregateResult
+  class: ModelSwarmAggregateResult
+  module: omnimarket.nodes.node_swarm_aggregator_compute.models.model_swarm_aggregate_result
+
+handler:
+  name: HandlerSwarmAggregator
+  module: omnimarket.nodes.node_swarm_aggregator_compute.handlers.handler_swarm_aggregator
+  class: HandlerSwarmAggregator
+  input_model: omnimarket.nodes.node_swarm_aggregator_compute.models.model_swarm_aggregate_request.ModelSwarmAggregateRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSwarmAggregator
+        module: omnimarket.nodes.node_swarm_aggregator_compute.handlers.handler_swarm_aggregator
+      event_model:
+        name: ModelSwarmAggregateRequest
+        module: omnimarket.nodes.node_swarm_aggregator_compute.models.model_swarm_aggregate_request
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [market]
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  plugin_managed: false
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-aggregate.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-aggregation-completed.v1
+
+terminal_event: onex.evt.omnimarket.swarm-aggregation-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-aggregation-completed.v1
+
+published_events:
+  - event_type: SwarmAggregationCompleted
+    topic: onex.evt.omnimarket.swarm-aggregation-completed.v1
+    description: Swarm subtask results aggregated into unified output.
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-23"
+  tags: [compute, swarm, aggregator, pure, OMN-11813]
+  related_tickets:
+    - "OMN-11813"

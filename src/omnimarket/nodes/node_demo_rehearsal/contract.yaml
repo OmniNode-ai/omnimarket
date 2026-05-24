@@ -16,7 +16,12 @@ handler:
   input_model: omnimarket.nodes.node_demo_rehearsal.handlers.handler_demo_rehearsal.ModelDemoRehearsalRequest
 
 handler_routing:
-  default_handler: handler:HandlerDemoRehearsal
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_demo_rehearsal
+      handler:
+        name: HandlerDemoRehearsal
+        module: omnimarket.nodes.node_demo_rehearsal.handlers.handler_demo_rehearsal
 
 descriptor:
   node_archetype: effect

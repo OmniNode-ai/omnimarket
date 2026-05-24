@@ -15,6 +15,14 @@ handler:
   class: HandlerSessionPhaseOrchestrator
   input_model: omnimarket.nodes.node_session_phase_orchestrator.models.model_orchestrator_input.ModelSessionPhaseOrchestratorInput
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: orchestrate_session_phase
+      handler:
+        name: HandlerSessionPhaseOrchestrator
+        module: omnimarket.nodes.node_session_phase_orchestrator.handlers.handler_session_phase_orchestrator
+
 descriptor:
   node_archetype: orchestrator
   purity: impure

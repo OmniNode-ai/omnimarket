@@ -1,0 +1,49 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_swarm_endpoint_health_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Effect node for swarm endpoint health checking. Probes model endpoints
+  via HTTP to determine reachability and model availability.
+
+input_model:
+  name: ModelSwarmHealthCheckRequest
+  class: ModelSwarmHealthCheckRequest
+  module: omnimarket.nodes.node_swarm_endpoint_health_effect.models.model_swarm_health_check_request
+
+handler:
+  name: HandlerSwarmEndpointHealth
+  module: omnimarket.nodes.node_swarm_endpoint_health_effect.handlers.handler_swarm_endpoint_health
+  class: HandlerSwarmEndpointHealth
+  input_model: omnimarket.nodes.node_swarm_endpoint_health_effect.models.model_swarm_health_check_request.ModelSwarmHealthCheckRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-check-endpoint-health.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-endpoint-health-completed.v1
+
+terminal_event: onex.evt.omnimarket.swarm-endpoint-health-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-endpoint-health-completed.v1
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-23"
+  tags: [effect, swarm, endpoint-health, http-probe, OMN-11810]
+  related_tickets:
+    - "OMN-11810"

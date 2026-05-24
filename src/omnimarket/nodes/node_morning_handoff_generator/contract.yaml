@@ -15,7 +15,12 @@ handler:
   input_model: omnimarket.nodes.node_morning_handoff_generator.handlers.handler_morning_handoff_generator.ModelMorningHandoffRequest
 
 handler_routing:
-  default_handler: handler:HandlerMorningHandoffGenerator
+  routing_strategy: operation_match
+  handlers:
+    - operation: generate_morning_handoff
+      handler:
+        name: HandlerMorningHandoffGenerator
+        module: omnimarket.nodes.node_morning_handoff_generator.handlers.handler_morning_handoff_generator
 
 descriptor:
   node_archetype: compute
