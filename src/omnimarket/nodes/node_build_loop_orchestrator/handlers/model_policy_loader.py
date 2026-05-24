@@ -74,6 +74,32 @@ class ModelPolicyLoader:
         except RuntimeError:
             return None
 
+    def resolve_base_url(self, policy_id: str) -> str:
+        """Resolve a policy's base URL, falling back to base_url_default if env var is unset.
+
+        Prefers the env var value. Falls back to base_url_default declared in the policy.
+        Raises RuntimeError if neither is available.
+        """
+        try:
+            return self.resolve(policy_id)
+        except RuntimeError:
+            pass
+        data = _load_policy_file()
+        policies: dict[str, Any] = data.get("policies", {})
+        policy = policies.get(policy_id)
+        if policy is None:
+            raise RuntimeError(
+                f"Unknown model policy ID {policy_id!r}. "
+                f"Known policies: {list(policies.keys())}"
+            )
+        default: str = str(policy.get("base_url_default", ""))
+        if not default:
+            raise RuntimeError(
+                f"Policy {policy_id!r} has no env_var set and no base_url_default — "
+                "cannot resolve base URL."
+            )
+        return default.rstrip("/")
+
     def resolve_api_key(self, policy_id: str) -> str:
         """Resolve the API key env var for a policy. Returns empty string for local models."""
         data = _load_policy_file()

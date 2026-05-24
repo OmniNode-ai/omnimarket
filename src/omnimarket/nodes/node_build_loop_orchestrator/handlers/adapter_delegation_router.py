@@ -34,7 +34,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+    ModelPolicyLoader,
+)
+
 logger = logging.getLogger(__name__)
+
+_policy_loader = ModelPolicyLoader()
 
 
 class EnumModelTier(StrEnum):
@@ -228,19 +234,23 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
 
     # Frontier review: GLM-4.7-Flash — cheap frontier code reviewer (203K ctx)
+    # model_id resolved from model_policy.yaml delegation_review policy
     glm_review_key = os.environ.get("LLM_GLM_API_KEY", "")
-    glm_review_url = os.environ.get("LLM_GLM_URL") or "https://open.bigmodel.cn/api/paas/v4"  # contract-config-ok: config  # fmt: skip
+    glm_review_url = _policy_loader.resolve_base_url("delegation_review")
+    glm_review_model = _policy_loader.resolve_model_id("delegation_review")
     if glm_review_key:
         configs[EnumModelTier.FRONTIER_REVIEW] = ModelEndpointConfig(
             tier=EnumModelTier.FRONTIER_REVIEW,
             base_url=glm_review_url,
-            model_id="glm-4.7-flash",
+            model_id=glm_review_model,
             api_key=glm_review_key,
             max_tokens=2048,
             context_window=203000,
             timeout_seconds=30.0,
         )
-        logger.info("GLM reviewer configured: %s (model=glm-4.7-flash)", glm_review_url)
+        logger.info(
+            "GLM reviewer configured: %s (model=%s)", glm_review_url, glm_review_model
+        )
 
     # Local fast: Qwen3-14B — URL from model_policy.yaml (LLM_CODER_FAST_URL)
     local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")  # contract-config-ok: config  # fmt: skip
@@ -297,24 +307,29 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         logger.info("Gemini CLI binary not found on PATH — GEMINI_CLI tier skipped")
 
     # Frontier Google (Gemini API — fallback when CLI unavailable)
+    # model_id and base_url resolved from model_policy.yaml frontier_google policy
     if gemini_key:
+        google_base_url = _policy_loader.resolve_base_url("frontier_google")
+        google_model_id = _policy_loader.resolve_model_id("frontier_google")
         configs[EnumModelTier.FRONTIER_GOOGLE] = ModelEndpointConfig(
             tier=EnumModelTier.FRONTIER_GOOGLE,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
-            model_id="gemini-2.5-flash",
+            base_url=google_base_url,
+            model_id=google_model_id,
             api_key=gemini_key,
             max_tokens=8192,
             context_window=1000000,
             timeout_seconds=120.0,
         )
 
-    # Frontier OpenAI
+    # Frontier OpenAI — model_id and base_url from model_policy.yaml frontier_openai policy
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     if openai_key:
+        openai_base_url = _policy_loader.resolve_base_url("frontier_openai")
+        openai_model_id = _policy_loader.resolve_model_id("frontier_openai")
         configs[EnumModelTier.FRONTIER_OPENAI] = ModelEndpointConfig(
             tier=EnumModelTier.FRONTIER_OPENAI,
-            base_url="https://api.openai.com",
-            model_id="gpt-4.1",
+            base_url=openai_base_url,
+            model_id=openai_model_id,
             api_key=openai_key,
             max_tokens=8192,
             context_window=128000,

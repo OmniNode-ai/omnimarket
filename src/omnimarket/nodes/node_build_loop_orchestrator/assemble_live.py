@@ -48,6 +48,9 @@ from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     HandlerBuildLoopOrchestrator,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+    ModelPolicyLoader,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_live_runner_config import (
     ModelLlmClassificationResult,
 )
@@ -65,6 +68,8 @@ from omnimarket.nodes.node_closeout_effect.handlers.handler_closeout import (
 )
 
 logger = logging.getLogger(__name__)
+
+_policy_loader = ModelPolicyLoader()
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -86,9 +91,8 @@ LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
 LLM_GLM_URL = os.environ.get("LLM_GLM_URL", "")
 LLM_GLM_MODEL_NAME = os.environ.get("LLM_GLM_MODEL_NAME", "")
 
-# Frontier: OpenAI
+# Frontier: OpenAI — base URL resolved from model_policy.yaml frontier_openai policy
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 # Frontier: Google (Gemini via OpenAI-compat endpoint)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "") or os.environ.get(
@@ -887,8 +891,11 @@ class LiveBuildDispatchHandler:
                 return impl, LLM_GLM_MODEL_NAME
 
         # Tier 2: Local coder (Qwen3-Coder-30B, longer context)
+        # model name resolved from model_policy.yaml coder policy
         if LLM_CODER_URL:
-            coder_model = LLM_CODER_MODEL_NAME
+            coder_model = LLM_CODER_MODEL_NAME or _policy_loader.resolve_model_id(
+                "coder"
+            )
             impl = await self._call_llm(
                 url=f"{LLM_CODER_URL}/v1/chat/completions",
                 model=coder_model,
@@ -896,23 +903,26 @@ class LiveBuildDispatchHandler:
                 max_tokens=4096,
             )
             if impl and "_skip" not in impl:
-                return impl, "qwen3-coder-30b"
+                return impl, coder_model
 
         # Tier 3: Frontier fallback (OpenAI)
+        # model name and base URL resolved from model_policy.yaml frontier_openai policy
         if OPENAI_API_KEY:
             logger.info(
                 "[DISPATCH] Local LLM skipped/failed, trying OpenAI for %s",
                 target.ticket_id,
             )
+            openai_model = _policy_loader.resolve_model_id("frontier_openai")
+            openai_base_url = _policy_loader.resolve_base_url("frontier_openai")
             impl = await self._call_llm(
-                url=f"{OPENAI_BASE_URL}/chat/completions",
-                model="gpt-4o-mini",
+                url=f"{openai_base_url}/chat/completions",
+                model=openai_model,
                 prompt=prompt,
                 max_tokens=4096,
                 api_key=OPENAI_API_KEY,
             )
             if impl and "_skip" not in impl:
-                return impl, "gpt-4o-mini"
+                return impl, openai_model
 
         return None
 

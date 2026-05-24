@@ -22,6 +22,9 @@ from uuid import UUID, uuid4
 from omnimarket.inference.bridge_config_loader import (
     load_inference_bridge_config_from_env,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+    ModelPolicyLoader,
+)
 from omnimarket.nodes.node_pr_review_bot.adapter_github_bridge import (
     AdapterGitHubBridge,
 )
@@ -64,6 +67,8 @@ from omnimarket.nodes.node_pr_review_bot.models.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_policy_loader = ModelPolicyLoader()
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +156,7 @@ def run_review(
     github_token: str | None = None,
     *,
     reviewer_models: list[str] | None = None,
-    judge_model: str = "deepseek-r1",
+    judge_model: str | None = None,
     severity_threshold: EnumFindingSeverity = EnumFindingSeverity.MAJOR,
     dry_run: bool = False,
     max_findings_per_pr: int = 20,
@@ -190,12 +195,14 @@ def run_review(
             "Pass explicit model keys from ModelInferenceBridgeConfig.model_configs."
         )
 
+    resolved_judge_model = judge_model or _policy_loader.resolve_model_id("judge")
+
     request = ReviewRequest(
         correlation_id=run_id,
         pr_number=pr_number,
         repo=repo,
         reviewer_models=resolved_reviewer_models,
-        judge_model=judge_model,
+        judge_model=resolved_judge_model,
         severity_threshold=severity_threshold,
         dry_run=dry_run,
         max_findings_per_pr=max_findings_per_pr,

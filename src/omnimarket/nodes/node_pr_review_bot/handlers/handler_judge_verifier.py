@@ -26,6 +26,9 @@ from uuid import UUID
 
 import httpx
 
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+    ModelPolicyLoader,
+)
 from omnimarket.nodes.node_pr_review_bot.handlers.handler_fsm import (
     ProtocolJudgeVerifier,
 )
@@ -36,6 +39,8 @@ from omnimarket.nodes.node_pr_review_bot.models.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_policy_loader = ModelPolicyLoader()
 
 # Maximum re-verification attempts per thread (R6)
 MAX_VERIFY_ATTEMPTS = 3
@@ -159,14 +164,23 @@ class HandlerJudgeVerifier(ProtocolJudgeVerifier):
 
     def __init__(
         self,
-        judge_base_url_env: str = "LLM_DEEPSEEK_R1_URL",
-        judge_model_id: str = "deepseek-r1",
+        judge_base_url_env: str | None = None,
+        judge_model_id: str | None = None,
         timeout_seconds: float = JUDGE_TIMEOUT_SECONDS,
         thread_conversations: dict[UUID, list[str]] | None = None,
         diff_context_map: dict[UUID, str] | None = None,
     ) -> None:
-        self._judge_base_url_env = judge_base_url_env
-        self._judge_model_id = judge_model_id
+        from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+            _load_policy_file,
+        )
+
+        _judge_policy = _load_policy_file().get("policies", {}).get("judge", {})
+        self._judge_base_url_env = judge_base_url_env or _judge_policy.get(
+            "env_var", "LLM_DEEPSEEK_R1_URL"
+        )
+        self._judge_model_id = judge_model_id or _policy_loader.resolve_model_id(
+            "judge"
+        )
         self._timeout_seconds = max(timeout_seconds, JUDGE_TIMEOUT_SECONDS)
         self._thread_conversations: dict[UUID, list[str]] = thread_conversations or {}
         self._diff_context_map: dict[UUID, str] = diff_context_map or {}

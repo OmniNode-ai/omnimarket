@@ -95,6 +95,14 @@ class DiffHunk(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _default_judge_model() -> str:
+    from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+        ModelPolicyLoader,
+    )
+
+    return ModelPolicyLoader().resolve_model_id("judge")
+
+
 class ReviewRequest(BaseModel):
     """Command payload to start a PR review bot run."""
 
@@ -104,11 +112,11 @@ class ReviewRequest(BaseModel):
     pr_number: int = Field(..., ge=1, description="GitHub PR number.")
     repo: str = Field(..., description="GitHub repo in owner/repo format.")
     reviewer_models: list[str] = Field(
-        default_factory=lambda: ["qwen3-coder-30b", "qwen3-14b"],
-        description="Reviewer model identifiers.",
+        default_factory=list,
+        description="Reviewer model identifiers. Supply from contract.yaml model_routing.",
     )
     judge_model: str = Field(
-        default="deepseek-r1",
+        default_factory=_default_judge_model,
         description="Judge model identifier. Must not be a build-loop model.",
     )
     severity_threshold: EnumFindingSeverity = Field(
