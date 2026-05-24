@@ -5,7 +5,7 @@ node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  State persist effect node. Subscribes to the internal state-persist intent
+  State persist effect node. Subscribes to the internal state-persist command
   topic, writes the ModelStateEnvelope to ProtocolStateStore, and emits a
   ModelStatePersistedEvent confirming success or failure.
 
@@ -64,7 +64,7 @@ terminal_event: onex.evt.omnimarket.state-persisted.v1
 
 event_bus:
   subscribe_topics:
-    - onex.intent.omnimarket.state-persist.v1
+    - onex.cmd.omnimarket.state-persist.v1
   publish_topics:
     - onex.evt.omnimarket.state-persisted.v1
 

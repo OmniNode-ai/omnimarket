@@ -56,14 +56,8 @@ class HandlerRedeployKafka:
     Accepts any event bus that satisfies ProtocolEventBus (duck-typed):
     EventBusInmemory for tests, EventBusKafka for production.
 
-    Usage::
-
-        handler = HandlerRedeployKafka(event_bus=bus)
-        result = await handler.execute(
-            scope="full",
-            git_ref="origin/main",
-            requested_by="node_redeploy",
-        )
+    Construct with an event bus and call ``execute`` to publish a rebuild
+    request, then wait for the matching completion event.
     """
 
     def __init__(
