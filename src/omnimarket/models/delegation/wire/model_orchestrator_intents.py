@@ -39,6 +39,12 @@ class ModelInferenceIntent(BaseModel):
     prompt: str
     max_tokens: int
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    timeout_seconds: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=600.0,
+        description="Backend-owned timeout for the downstream inference call.",
+    )
     correlation_id: UUID
 
 
@@ -89,6 +95,10 @@ class ModelInferenceResponseData(BaseModel):
     prompt_tokens: int = Field(default=0, description="Prompt token count.")
     completion_tokens: int = Field(default=0, description="Completion token count.")
     total_tokens: int = Field(default=0, description="Total token count.")
+    error_message: str = Field(
+        default="",
+        description="Failure reason when inference could not produce content.",
+    )
 
 
 class ModelComplianceLoopResult(BaseModel):

@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,

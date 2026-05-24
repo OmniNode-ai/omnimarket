@@ -1,0 +1,25 @@
+---
+name: node_kb_repowise_index_effect
+version: "0.1.0"
+description: "KB Repowise index effect — clones knowledge-base repo and triggers Repowise CLI reindexing"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_kb_repowise_index_effect: "omnimarket.nodes.node_kb_repowise_index_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["kb", "repowise", "effect", "index"]
+pack: "kb"
+display_name: "KB Repowise Index Effect"
+node_role: "effect"
+tickets: ["OMN-11914"]
