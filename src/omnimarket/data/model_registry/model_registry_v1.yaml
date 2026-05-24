@@ -24,7 +24,7 @@ models:
     model_id: "qwen3-coder-30b"
     provider: "local"
     endpoint_env: "LLM_CODER_URL"
-    context_window: 112000
+    context_window: 114688
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
@@ -33,12 +33,13 @@ models:
     notes: >
       Local Qwen3-Coder-30B on .201:8000. Zero marginal API cost but electricity
       and hardware amortization not included. ZERO_MARGINAL_API_COST basis.
+      Context extended to 114688 via TurboQuant aither-kvcache K4/V3 compression.
 
   deepseek-r1-14b:
     model_id: "deepseek-r1-14b"
     provider: "local"
     endpoint_env: "LLM_CODER_FAST_URL"
-    context_window: 24000
+    context_window: 24576
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
@@ -51,28 +52,34 @@ models:
   deepseek-r1-32b:
     model_id: "deepseek-r1-32b"
     provider: "local"
-    endpoint_env: "LLM_QW3_80B_URL"
-    context_window: 32000
+    endpoint_env: "LLM_DEEPSEEK_R1_URL"
+    context_window: 8192
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-23T00:00:00Z"
+    observed_at: "2026-05-24T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Local DeepSeek-R1-32B on .200:8101. MLX-served.
+      Local DeepSeek-R1-32B on .200:8101. MLX-served. Topology slot: reasoning-deepseek-32b.
+      context_window_budgeted=8192 per llm_endpoints.yaml. LLM_DEEPSEEK_R1_URL is the
+      canonical env var (topology url_env_var). Note: .env/Infisical may currently point
+      LLM_DEEPSEEK_R1_URL at .201:8001 (14B) — known drift, out of this ticket scope.
 
   qwen3-next-80b:
     model_id: "qwen3-next-80b"
     provider: "local"
-    endpoint_env: "LLM_QW3_80B_URL"
-    context_window: 128000
+    endpoint_env: "LLM_QWEN3_NEXT_URL"
+    context_window: 8192
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-23T00:00:00Z"
+    observed_at: "2026-05-24T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Local Qwen3-Next-80B on .200:8102. Largest local model, MLX-served.
+      Slot reasoning-moe-35b on .200:8102. Actual served model is
+      mlx-community/Qwen3.6-35B-A3B-8bit (replaced Qwen3-Next-80B-A3B 2026-04-18).
+      Model key retained for routing key stability. context_window_budgeted=8192 per
+      llm_endpoints.yaml. LLM_QWEN3_NEXT_URL is the canonical env var.
 
   llama-3.3-70b-free:
     model_id: "llama-3.3-70b-free"
