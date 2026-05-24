@@ -73,9 +73,17 @@ class AdapterRepoWiseCLI:
             for inc in include:
                 cmd += ["--include", inc]
 
-        logger.debug("repowise cmd: %s", cmd)
+        logger.debug(
+            "repowise cmd prepared (subcommand=%s, targets=%d, include=%d)",
+            subcommand,
+            len(targets),
+            len(include),
+        )
+
+        proc: asyncio.subprocess.Process | None = None
 
         async def _run() -> dict[str, Any]:
+            nonlocal proc
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -92,7 +100,13 @@ class AdapterRepoWiseCLI:
                     f"repowise CLI returned non-JSON output: {exc}"
                 ) from exc
 
-        return await asyncio.wait_for(_run(), timeout=self._timeout)
+        try:
+            return await asyncio.wait_for(_run(), timeout=self._timeout)
+        except TimeoutError:
+            if proc is not None and proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise
 
 
 __all__ = ["AdapterRepoWiseCLI"]

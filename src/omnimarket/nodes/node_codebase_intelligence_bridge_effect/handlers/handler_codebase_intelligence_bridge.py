@@ -36,7 +36,8 @@ __all__ = ["HandlerCodebaseIntelligenceBridge"]
 
 def _extract_meta(raw: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
     """Pull confidence, retrieval_quality, stale_warning out of _meta."""
-    meta: dict[str, Any] = raw.get("_meta", {}) or {}
+    meta_raw = raw.get("_meta")
+    meta: dict[str, Any] = meta_raw if isinstance(meta_raw, dict) else {}
     confidence: str | None = meta.get("confidence")
     retrieval_quality: str | None = meta.get("retrieval_quality")
     stale_warning: str | None = meta.get("stale_warning")
