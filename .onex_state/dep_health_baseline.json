@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-05-24T22:07:13Z",
+  "captured_at": "2026-05-24T22:39:23Z",
   "graphify_version": "ast-fallback",
   "rule_version": "v1",
   "findings": [
@@ -237,6 +237,26 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_llm_cost.py",
+      "symbol": "handler_llm_cost",
+      "detail": "Contract-referenced handler 'handler_llm_cost' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_projection_llm_cost.py",
+      "symbol": "handler_projection_llm_cost",
+      "detail": "Contract-referenced handler 'handler_projection_llm_cost' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_baseline_compare/handlers/handler_baseline_compare.py",
       "symbol": "handler_baseline_compare",
       "detail": "Contract-referenced handler 'handler_baseline_compare' has no test file and no golden-chain fixture coverage.",
@@ -410,6 +430,36 @@
       "file_path": "src/omnimarket/nodes/node_projection_registration/handlers/handler_projection_registration.py",
       "symbol": "handler_projection_registration",
       "detail": "Contract-referenced handler 'handler_projection_registration' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_registration/handlers/handler_heartbeat_emitter.py",
+      "symbol": "handler_heartbeat_emitter",
+      "detail": "Contract-referenced handler 'handler_heartbeat_emitter' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_registration/handlers/handler_projection_registration.py",
+      "symbol": "handler_projection_registration",
+      "detail": "Contract-referenced handler 'handler_projection_registration' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_registration/handlers/handler_registration.py",
+      "symbol": "handler_registration",
+      "detail": "Contract-referenced handler 'handler_registration' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -647,6 +697,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py",
+      "symbol": "handler_projection_delegation",
+      "detail": "Contract-referenced handler 'handler_projection_delegation' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_thread_reply_effect/handlers/handler_thread_reply.py",
       "symbol": "handler_thread_reply",
       "detail": "Contract-referenced handler 'handler_thread_reply' has no test file and no golden-chain fixture coverage.",
@@ -777,6 +837,36 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_overnight/handlers/handler_projection_overnight.py",
+      "symbol": "handler_projection_overnight",
+      "detail": "Contract-referenced handler 'handler_projection_overnight' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_overnight/handlers/handler_projection_overnight.py",
+      "symbol": "handler_projection_overnight",
+      "detail": "Contract-referenced handler 'handler_projection_overnight' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_overnight/handlers/handler_projection_overnight.py",
+      "symbol": "handler_projection_overnight",
+      "detail": "Contract-referenced handler 'handler_projection_overnight' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_contract_registry/handlers/handler_contract_registry.py",
       "symbol": "handler_contract_registry",
       "detail": "Contract-referenced handler 'handler_contract_registry' has no test file and no golden-chain fixture coverage.",
@@ -820,6 +910,26 @@
       "file_path": "src/omnimarket/nodes/node_projection_session_outcome/handlers/handler_projection_session_outcome.py",
       "symbol": "handler_projection_session_outcome",
       "detail": "Contract-referenced handler 'handler_projection_session_outcome' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_session_outcome/handlers/handler_projection_session_outcome.py",
+      "symbol": "handler_projection_session_outcome",
+      "detail": "Contract-referenced handler 'handler_projection_session_outcome' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_session_outcome/handlers/handler_session_outcome.py",
+      "symbol": "handler_session_outcome",
+      "detail": "Contract-referenced handler 'handler_session_outcome' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -917,6 +1027,26 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_savings/handlers/handler_projection_savings.py",
+      "symbol": "handler_projection_savings",
+      "detail": "Contract-referenced handler 'handler_projection_savings' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py",
+      "symbol": "handler_savings",
+      "detail": "Contract-referenced handler 'handler_savings' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_process_watchdog/handlers/handler_process_watchdog.py",
       "symbol": "handler_process_watchdog",
       "detail": "Contract-referenced handler 'handler_process_watchdog' has no test file and no golden-chain fixture coverage.",
@@ -1000,6 +1130,26 @@
       "file_path": "src/omnimarket/nodes/node_evidence_dashboard_effect/handlers/handler_evidence_dashboard_effect.py",
       "symbol": "handler_evidence_dashboard_effect",
       "detail": "Contract-referenced handler 'handler_evidence_dashboard_effect' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_baselines/handlers/handler_projection_baselines.py",
+      "symbol": "handler_projection_baselines",
+      "detail": "Contract-referenced handler 'handler_projection_baselines' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_baselines/handlers/handler_baselines.py",
+      "symbol": "handler_baselines",
+      "detail": "Contract-referenced handler 'handler_baselines' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
