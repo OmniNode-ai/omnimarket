@@ -152,6 +152,13 @@ handler_routing:
     patch: 0
   routing_strategy: operation_match
   handlers:
+    # Primary handler declaration (OMN-11907)
+    - handler:
+        name: HandlerIntentQuery
+        module: omnimarket.nodes.node_intent_query_effect.handlers.handler_intent_query
+      event_model:
+        name: ModelIntentQueryRequestedEvent
+        module: omnibase_core.models.events
     # Get intent distribution across categories
     - routing_key: "query_distribution"
       handler_key: "HandlerIntentQuery"
