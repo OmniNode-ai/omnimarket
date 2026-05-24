@@ -29,6 +29,7 @@ from uuid import uuid4
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.topic_constants import (
+    TOPIC_DELEGATION_FAILED,
     TOPIC_DELEGATION_INFERENCE_RESPONSE,
     TOPIC_DELEGATION_QUALITY_GATE_RESULT,
     TOPIC_DELEGATION_ROUTING_DECISION,
@@ -77,6 +78,13 @@ class CountingLlmCaller(MockLlmCaller):
     async def call(self, intent: ModelInferenceIntent) -> ModelInferenceResponseData:
         self.call_count += 1
         return await super().call(intent)
+
+
+class FailingLlmCaller(MockLlmCaller):
+    """Mock caller that simulates a bounded inference failure."""
+
+    async def call(self, intent: ModelInferenceIntent) -> ModelInferenceResponseData:
+        raise TimeoutError("inference timed out")
 
 
 @pytest.mark.unit
@@ -376,6 +384,56 @@ class TestDelegationChainE2E:
             topic=TOPIC_DELEGATION_INFERENCE_RESPONSE
         )
         assert len(inference_history) == 1
+
+        await bus.close()
+
+    @pytest.mark.asyncio
+    async def test_bridge_publishes_failed_inference_response(
+        self,
+        handler: HandlerDelegationWorkflow,
+        delegation_request: ModelDelegationRequest,
+    ) -> None:
+        """LLM failures become observable inference responses, not hung tasks."""
+        bus = EventBusInmemory(environment="test", group="delegation-test")
+        await bus.start()
+        bridge = DelegationIntentBridge(event_bus=bus, llm_caller=FailingLlmCaller())
+
+        routing_intents = handler.handle_delegation_request(delegation_request)
+        decision = await bridge.handle_routing_intent(routing_intents[0])
+        inference_intent = handler.handle_routing_decision(decision)[0]
+
+        response = await bridge.handle_inference_intent(inference_intent)
+
+        assert response.error_message == "TimeoutError: inference timed out"
+        inference_history = await bus.get_event_history(
+            topic=TOPIC_DELEGATION_INFERENCE_RESPONSE
+        )
+        assert len(inference_history) == 1
+
+        await bus.close()
+
+    @pytest.mark.asyncio
+    async def test_inference_error_reduces_to_failed_terminal_event(
+        self,
+        handler: HandlerDelegationWorkflow,
+        delegation_request: ModelDelegationRequest,
+    ) -> None:
+        """Inference errors reduce into delegate-skill failure terminals."""
+        bus = EventBusInmemory(environment="test", group="delegation-test")
+        await bus.start()
+        bridge = DelegationIntentBridge(event_bus=bus, llm_caller=FailingLlmCaller())
+
+        routing_intents = handler.handle_delegation_request(delegation_request)
+        decision = await bridge.handle_routing_intent(routing_intents[0])
+        inference_intent = handler.handle_routing_decision(decision)[0]
+        response = await bridge.handle_inference_intent(inference_intent)
+
+        events = handler.handle_inference_response(response)
+
+        assert len(events) == 2
+        assert events[0].topic == TOPIC_DELEGATION_FAILED
+        workflow = handler.workflows[delegation_request.correlation_id]
+        assert workflow.state == EnumDelegationState.FAILED
 
         await bus.close()
 

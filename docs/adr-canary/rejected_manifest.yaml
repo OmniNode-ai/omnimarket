@@ -1,0 +1,25 @@
+# Rejected proposals — pipeline must not re-propose entries listed here
+# unless --force-repropose is explicitly passed to the extraction command.
+#
+# ticket: OMN-11841
+# schema_version: v1
+#
+# Entry schema:
+#   - id: proposal ID (must match discovery_manifest entry id or generated proposal id)
+#     rejection_reason: specific reason why this proposal was rejected
+#     rejected_by: human handle or "auto_filter" (for sanitization gate failures)
+#     rejected_at: ISO 8601 timestamp
+#     source_hashes: [sha256 of source documents used to generate this proposal]
+#     gate_failure: (optional) which sanitization_gate check triggered rejection
+#
+# Rejection reasons (use these canonical strings):
+#   - "duplicate: already in ground_truth_manifest"
+#   - "low_confidence: extractor confidence below threshold"
+#   - "sanitization_gate: <check_name> failed"
+#   - "stale: source documents no longer reflect current architecture"
+#   - "out_of_scope: not an architectural decision"
+#   - "superseded_by: <other-adr-id>"
+#   - "human_review: rejected after human review"
+
+schema_version: "v1"
+entries: []

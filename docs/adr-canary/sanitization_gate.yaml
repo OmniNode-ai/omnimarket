@@ -1,0 +1,119 @@
+# Sanitization gate specification for ADR extraction discovery pipeline
+# ticket: OMN-11841
+# epic: OMN-11833
+#
+# All checks must pass before a discovery extraction is published.
+# The gate runs on the generated artifact (proposed ADR YAML), NOT the source doc.
+# Source docs may contain private detail; generated artifacts must be clean.
+
+schema_version: "v1"
+generated_at: "2026-05-23"
+ticket: "OMN-11841"
+
+sanitization_checks:
+
+  - name: no_secrets
+    description: "No API keys, tokens, passwords, or credential material in generated artifacts"
+    severity: blocking
+    patterns:
+      - "(?i)(api[_-]?key|api_secret|token|password|passwd|credential|secret_key)\\s*[:=]\\s*['\"][^'\"]{8,}['\"]"
+      - "(?i)(bearer|authorization)\\s*[:=]\\s*['\"][^'\"]+['\"]"
+      - "(?i)sk-[a-zA-Z0-9]{20,}"
+      - "(?i)ghp_[a-zA-Z0-9]{36}"
+      - "(?i)xoxb-[0-9]+-[0-9]+"
+    applies_to: [generated_adr, proposed_adr]
+
+  - name: no_internal_topology
+    description: "No private IPs, internal hostnames, or internal port mappings"
+    severity: blocking
+    patterns:
+      - "192\\.168\\.[0-9]{1,3}\\.[0-9]{1,3}"
+      - "10\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}"
+      - "172\\.(1[6-9]|2[0-9]|3[01])\\.[0-9]{1,3}\\.[0-9]{1,3}"
+      - "localhost:[0-9]{4,5}"
+      - "127\\.0\\.0\\.1:[0-9]{4,5}"
+    applies_to: [generated_adr, proposed_adr]
+    exemptions:
+      - "localhost:9092 in context of Kafka bootstrap development defaults (non-blocking, note in artifact)"
+
+  - name: no_accepted_status
+    description: "Discovery proposals must use Status: Proposed — never Status: Accepted"
+    severity: blocking
+    check_type: field_value
+    field: "status"
+    forbidden_values: ["Accepted", "accepted", "ACCEPTED", "Approved", "Done"]
+    required_values: ["Proposed", "proposed", "Draft", "draft"]
+    applies_to: [generated_adr, proposed_adr]
+
+  - name: valid_frontmatter
+    description: "All required frontmatter fields present and correctly typed"
+    severity: blocking
+    required_fields:
+      - field: id
+        type: string
+        pattern: "^[a-z][a-z0-9-]+$"
+      - field: status
+        type: string
+      - field: date
+        type: date
+        format: "YYYY-MM-DD"
+      - field: topic_cluster
+        type: string
+      - field: source_documents
+        type: list
+        min_items: 1
+    applies_to: [generated_adr, proposed_adr]
+
+  - name: refs_resolve
+    description: "All refs entries resolve to existing files or known external URLs"
+    severity: blocking
+    check_type: path_resolution
+    field: "refs"
+    resolution_base: "OMNI_HOME"
+    allowed_url_prefixes:
+      - "https://linear.app/omninode/"
+      - "https://github.com/OmniNode-ai/"
+    applies_to: [generated_adr, proposed_adr]
+
+  - name: public_private_boundary
+    description: >
+      Source docs may contain private detail (IPs, ticket URLs, internal handles).
+      Generated artifacts must be stripped of private identifiers before publication.
+    severity: blocking
+    patterns:
+      - "linear\\.app/omninode/issue/[A-Z]+-[0-9]+"
+      - "github\\.com/OmniNode-ai/[^/]+/pull/[0-9]+"
+      - "OMN-[0-9]+"
+    applies_to: [generated_adr]
+    action: "strip_or_generalize"
+    note: >
+      ADR bodies should reference decision context, not ticket URLs or PR numbers.
+      The pipeline must rewrite or strip these before publishing the artifact.
+
+  - name: no_personal_identifiers
+    description: "No real names, email addresses, or handles in generated ADRs"
+    severity: warning
+    patterns:
+      - "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+      - "(?i)(authored by|written by|reviewed by|signed off by)\\s+[A-Z][a-z]+"
+    applies_to: [generated_adr, proposed_adr]
+    action: "replace_with_role"
+    note: "Use role identifiers (Platform Team, Engineering) not personal names"
+
+  - name: minimum_length
+    description: "Generated ADRs must have substantive content — no stubs or near-empty extractions"
+    severity: blocking
+    check_type: content_length
+    minimum_characters: 500
+    minimum_sections: 3
+    required_sections: ["Context", "Decision", "Consequences"]
+    applies_to: [generated_adr, proposed_adr]
+
+  - name: no_duplicate_id
+    description: "Proposed ADR id must not already exist in ground_truth_manifest.yaml or rejected_manifest.yaml"
+    severity: blocking
+    check_type: uniqueness
+    check_against:
+      - "docs/adr-canary/ground_truth_manifest.yaml"
+      - "docs/adr-canary/rejected_manifest.yaml"
+    applies_to: [generated_adr, proposed_adr]

@@ -1,0 +1,491 @@
+# Discovery manifest for ADR extraction pipeline (Phase 5.1+5.2)
+# ticket: OMN-11841
+# epic: OMN-11833
+#
+# These entries target sources where no ground-truth ADR exists yet.
+# Discovery mode: the pipeline extracts candidate ADRs for human review.
+# Entries are grouped by topic cluster — not one-per-file.
+#
+# Schema:
+#   id: unique slug for this cluster
+#   root_paths: glob or directory patterns relative to OMNI_HOME
+#   discovery_mode: true (always for discovery entries)
+#   models: [qwen3-coder] — local, free
+#   source_directory: primary source dir label
+#   topic_cluster: semantic grouping label
+#   rationale: why this cluster may contain undocumented decisions
+
+schema_version: "v1"
+generated_at: "2026-05-23"
+ticket: "OMN-11841"
+
+entries:
+
+  # ── Contract & Configuration ──────────────────────────────────────────
+
+  - id: "contract-first-enforcement"
+    root_paths:
+      - "docs/plans/2026-*contract*"
+      - "docs/deep-dives/2026-*contract*"
+      - "docs/design/2026-*contract*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "contract-first-enforcement"
+    rationale: "Multiple plans define contract-first authoring rules; not yet formalized as ADRs"
+
+  - id: "config-overlay-and-discovery"
+    root_paths:
+      - "docs/plans/2026-*config*"
+      - "docs/plans/2026-*overlay*"
+      - "docs/design/2026-*config*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "config-overlay-and-discovery"
+    rationale: "Contract overlay config design and runtime config discovery patterns"
+
+  - id: "infisical-config-migration"
+    root_paths:
+      - "docs/plans/2026-*infisical*"
+      - "docs/plans/2026-*secret*"
+      - "docs/deep-dives/2026-*infisical*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "infisical-config-migration"
+    rationale: "Infisical adoption and env-var deprecation decisions across platform"
+
+  # ── Event Bus & Kafka ─────────────────────────────────────────────────
+
+  - id: "event-bus-consumer-producer-design"
+    root_paths:
+      - "docs/plans/2026-*event*bus*"
+      - "docs/plans/2026-*consumer*"
+      - "docs/plans/2026-*producer*"
+      - "docs/deep-dives/2026-*event*"
+      - "docs/design/2026-*event*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "event-bus-consumer-producer-design"
+    rationale: "Consumer/producer ownership, DLQ routing, and dark-consumer patterns"
+
+  - id: "delegation-event-bus-migration"
+    root_paths:
+      - "docs/plans/2026-*delegation*event*"
+      - "docs/plans/2026-*delegation*migration*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "delegation-event-bus-migration"
+    rationale: "Delegation routing migration from HTTP to event bus transport"
+
+  # ── Delegation & Routing ──────────────────────────────────────────────
+
+  - id: "delegation-routing-architecture"
+    root_paths:
+      - "docs/plans/2026-*delegation*routing*"
+      - "docs/plans/2026-*delegation*architecture*"
+      - "docs/plans/2026-*delegation*thin*"
+      - "docs/design/2026-*delegation*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "delegation-routing-architecture"
+    rationale: "Delegation thin-shim architecture and routing production decisions"
+
+  - id: "delegation-contract-config"
+    root_paths:
+      - "docs/plans/2026-*delegation*contract*"
+      - "docs/plans/2026-*delegation*config*"
+      - "docs/plans/2026-*delegation*golden*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "delegation-contract-config"
+    rationale: "Delegation contract config phases 1 and 2, golden chain integration"
+
+  - id: "model-routing-and-selection"
+    root_paths:
+      - "docs/plans/2026-*model*rout*"
+      - "docs/plans/2026-*intelligent*model*"
+      - "docs/design/2026-*routing*"
+      - "omniclaude/docs/decisions/ADR-003-no-fallback-routing.md"
+      - "omniclaude/docs/decisions/ADR-006-llm-routing*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "model-routing-and-selection"
+    rationale: "LLM routing, fuzzy fallback, model selection decisions"
+
+  # ── Node Architecture ─────────────────────────────────────────────────
+
+  - id: "node-architecture-and-types"
+    root_paths:
+      - "docs/plans/2026-*node*activation*"
+      - "docs/plans/2026-*node*delegation*"
+      - "docs/design/2026-*node*"
+      - "docs/deep-dives/2026-*node*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "node-architecture-and-types"
+    rationale: "Node activation, delegation nodes, and node type boundary decisions"
+
+  - id: "node-consolidation-omnimarket"
+    root_paths:
+      - "docs/plans/2026-*omnimarket*"
+      - "docs/plans/2026-*consolidat*node*"
+      - "docs/plans/2026-*node*migration*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "node-consolidation-omnimarket"
+    rationale: "Node consolidation decisions: omniclaude→omnimarket migration"
+
+  # ── Runtime & Lifecycle ───────────────────────────────────────────────
+
+  - id: "runtime-host-and-lifecycle"
+    root_paths:
+      - "docs/plans/2026-*runtime*"
+      - "docs/deep-dives/2026-*runtime*"
+      - "docs/design/2026-*runtime*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "runtime-host-and-lifecycle"
+    rationale: "Runtime host process lifecycle, startup/shutdown, lane management"
+
+  - id: "runtime-lane-topology"
+    root_paths:
+      - "docs/plans/2026-*lane*"
+      - "docs/deep-dives/2026-*lane*"
+      - "docs/plans/2026-*stability*test*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "runtime-lane-topology"
+    rationale: "Dev/stability-test/prod lane separation and boundary decisions"
+
+  # ── CI & Deployment Gates ─────────────────────────────────────────────
+
+  - id: "ci-path-filtering-and-gates"
+    root_paths:
+      - "docs/plans/2026-*ci*"
+      - "docs/plans/2026-*deploy*gate*"
+      - "docs/plans/2026-*precommit*"
+      - "docs/design/2026-*ci*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "ci-path-filtering-and-gates"
+    rationale: "CI path filtering, deploy gate design, precommit enforcement decisions"
+
+  - id: "pr-review-and-merge-policy"
+    root_paths:
+      - "docs/plans/2026-*merge*"
+      - "docs/plans/2026-*pr*review*"
+      - "docs/plans/2026-*coderabbit*"
+      - "docs/plans/2026-*cr*thread*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "pr-review-and-merge-policy"
+    rationale: "PR review policy, CodeRabbit thread gating, merge queue behavior"
+
+  # ── Skills & Plugin Architecture ──────────────────────────────────────
+
+  - id: "skills-architecture-and-canonicalization"
+    root_paths:
+      - "docs/plans/2026-*skill*"
+      - "docs/deep-dives/2026-*skill*"
+      - "docs/design/2026-*skill*"
+      - "docs/decisions/adr-2026-04-28-skills-canonical*"
+      - "docs/decisions/adr-2026-04-28-skill-liveness*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "skills-architecture-and-canonicalization"
+    rationale: "Skill canonical path, liveness validation, and skill-to-node migration"
+
+  - id: "plugin-architecture"
+    root_paths:
+      - "docs/plans/2026-*plugin*"
+      - "docs/deep-dives/2026-*plugin*"
+      - "omniclaude/docs/decisions/2026-*plugin*"
+      - "omniclaude/docs/decisions/2026-*sibling*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "plugin-architecture"
+    rationale: "Plugin deploy, sibling plugin strategy, compute-only boundary decisions"
+
+  # ── Agent Orchestration ───────────────────────────────────────────────
+
+  - id: "agent-orchestration-and-dispatch"
+    root_paths:
+      - "docs/plans/2026-*agent*dispatch*"
+      - "docs/plans/2026-*dispatch*engine*"
+      - "docs/plans/2026-*autonomous*"
+      - "docs/design/2026-*agent*"
+      - "docs/deep-dives/2026-*agent*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "agent-orchestration-and-dispatch"
+    rationale: "Agent dispatch architecture, queue drainer, watchdog, autonomous execution"
+
+  - id: "agent-identity-and-session"
+    root_paths:
+      - "docs/plans/2026-*agent*identity*"
+      - "docs/plans/2026-*session*"
+      - "docs/plans/2026-*caia*"
+      - "docs/deep-dives/2026-*session*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "agent-identity-and-session"
+    rationale: "Agent identity, session continuity, persistent agent platform design"
+
+  - id: "multi-agent-coordination"
+    root_paths:
+      - "docs/plans/2026-*multi*agent*"
+      - "docs/plans/2026-*team*"
+      - "docs/plans/2026-*wave*"
+      - "docs/deep-dives/2026-*multi*agent*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "multi-agent-coordination"
+    rationale: "Multi-agent team coordination, wave scheduling, parallel dispatch patterns"
+
+  # ── Projection & Registry ─────────────────────────────────────────────
+
+  - id: "projection-and-materialized-views"
+    root_paths:
+      - "docs/plans/2026-*projection*"
+      - "docs/deep-dives/2026-*projection*"
+      - "docs/design/2026-*projection*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "projection-and-materialized-views"
+    rationale: "Projection nodes, materialized view design, critical projection decisions"
+
+  - id: "registry-and-node-registration"
+    root_paths:
+      - "docs/plans/2026-*registry*"
+      - "docs/decisions/2026-*registry*"
+      - "docs/decisions/2026-*registration*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "registry-and-node-registration"
+    rationale: "Node registry ownership, consumer surface boundary, registration decisions"
+
+  # ── Dashboard & Omnidash ──────────────────────────────────────────────
+
+  - id: "omnidash-architecture"
+    root_paths:
+      - "docs/plans/2026-*omnidash*"
+      - "docs/plans/2026-*dashboard*"
+      - "docs/deep-dives/2026-*dashboard*"
+      - "docs/design/2026-*dashboard*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "omnidash-architecture"
+    rationale: "Omnidash v2 composable widget design, view composer, grid config decisions"
+
+  - id: "intelligence-and-insights"
+    root_paths:
+      - "docs/plans/2026-*insight*"
+      - "docs/plans/2026-*pattern*intelligence*"
+      - "docs/plans/2026-*intelligence*"
+      - "docs/deep-dives/2026-*intelligence*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "intelligence-and-insights"
+    rationale: "Pattern intelligence, insights pipeline, and knowledge extraction decisions"
+
+  # ── Cloud & Deployment ────────────────────────────────────────────────
+
+  - id: "cloud-deployment-and-parity"
+    root_paths:
+      - "docs/plans/2026-*cloud*"
+      - "docs/plans/2026-*alpha*"
+      - "docs/plans/2026-*onboarding*cloud*"
+      - "docs/deep-dives/2026-*cloud*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "cloud-deployment-and-parity"
+    rationale: "Cloud deployment, alpha readiness, and cloud-local parity decisions"
+
+  - id: "infra-docker-compose-topology"
+    root_paths:
+      - "docs/plans/2026-*infra*"
+      - "docs/deep-dives/2026-*infra*"
+      - "omnibase_infra/docs/architecture"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "omnibase_infra/docs/architecture"
+    topic_cluster: "infra-docker-compose-topology"
+    rationale: "Docker Compose topology decisions not covered by ground-truth manifest"
+
+  # ── Memory & Knowledge ────────────────────────────────────────────────
+
+  - id: "memory-and-knowledge-fabric"
+    root_paths:
+      - "docs/plans/2026-*memory*"
+      - "docs/plans/2026-*knowledge*"
+      - "docs/plans/2026-*cross*agent*memory*"
+      - "docs/deep-dives/2026-*memory*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "memory-and-knowledge-fabric"
+    rationale: "Cross-agent memory fabric, knowledge base extraction, semantic memory decisions"
+
+  # ── Evaluation & Testing ──────────────────────────────────────────────
+
+  - id: "evaluation-pipeline-and-benchmarks"
+    root_paths:
+      - "docs/plans/2026-*evaluation*"
+      - "docs/plans/2026-*benchmark*"
+      - "docs/plans/2026-*canary*"
+      - "docs/plans/2026-*adr*extraction*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "evaluation-pipeline-and-benchmarks"
+    rationale: "Evaluation pipeline design, ADR extraction canary, benchmark decisions"
+
+  - id: "verification-and-dod"
+    root_paths:
+      - "docs/plans/2026-*verification*"
+      - "docs/plans/2026-*receipt*"
+      - "docs/plans/2026-*dod*"
+      - "docs/decisions/2026-*verification*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "verification-and-dod"
+    rationale: "DoD evidence, verification receipts, and data verification invocation decisions"
+
+  # ── Hooks & Observability ─────────────────────────────────────────────
+
+  - id: "hooks-and-precommit-architecture"
+    root_paths:
+      - "docs/plans/2026-*hook*"
+      - "docs/deep-dives/2026-*hook*"
+      - "docs/plans/2026-*precommit*"
+      - "omniclaude/docs/decisions/2026-*ai-slop*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "hooks-and-precommit-architecture"
+    rationale: "Hook health, precommit enforcement, and AI-slop checker decisions"
+
+  - id: "observability-and-monitoring"
+    root_paths:
+      - "docs/plans/2026-*observability*"
+      - "docs/plans/2026-*monitor*"
+      - "docs/plans/2026-*watchdog*"
+      - "docs/deep-dives/2026-*observability*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "observability-and-monitoring"
+    rationale: "Hook health observability, watchdog state system, monitoring decisions"
+
+  # ── Authentication & Security ─────────────────────────────────────────
+
+  - id: "authentication-and-security"
+    root_paths:
+      - "docs/plans/2026-*auth*"
+      - "docs/plans/2026-*security*"
+      - "docs/plans/2026-*openrouter*"
+      - "docs/decisions/2026-*dependabot*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "authentication-and-security"
+    rationale: "Auth decisions, openrouter passthrough, dependabot approval policy"
+
+  # ── Fan-out & App Catalogs ────────────────────────────────────────────
+
+  - id: "event-fan-out-and-app-catalogs"
+    root_paths:
+      - "omniclaude/docs/decisions/ADR-001-event-fan-out*"
+      - "omniclaude/docs/decisions/ADR-002-candidate*"
+      - "omniclaude/docs/decisions/ADR-004-dual-emission*"
+      - "omniclaude/docs/decisions/ADR-005-delegation*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "omniclaude/docs/decisions"
+    topic_cluster: "event-fan-out-and-app-catalogs"
+    rationale: "Omniclaude ADRs: fan-out design, candidate list injection, dual-emission privacy"
+
+  # ── Core Patterns ─────────────────────────────────────────────────────
+
+  - id: "core-architecture-patterns"
+    root_paths:
+      - "omnibase_core/docs/patterns"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "omnibase_core/docs/patterns"
+    topic_cluster: "core-architecture-patterns"
+    rationale: "Core patterns: FSM reducer, circuit breaker, lease management, event-driven arch, union patterns"
+
+  # ── Onboarding & Alpha ────────────────────────────────────────────────
+
+  - id: "customer-onboarding-and-alpha"
+    root_paths:
+      - "docs/plans/2026-*onboarding*"
+      - "docs/plans/2026-*alpha*"
+      - "docs/plans/2026-*customer*"
+      - "docs/deep-dives/2026-*onboarding*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "customer-onboarding-and-alpha"
+    rationale: "Alpha readiness, customer onboarding flow, and cloud launch decisions"
+
+  # ── Deep Dives (infrastructure) ───────────────────────────────────────
+
+  - id: "deep-dives-infrastructure-decisions"
+    root_paths:
+      - "docs/deep-dives/2026-*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/deep-dives"
+    topic_cluster: "deep-dives-infrastructure-decisions"
+    rationale: "Deep dive documents capture post-incident decisions and root cause analyses"
+
+  # ── Design Documents ──────────────────────────────────────────────────
+
+  - id: "design-documents-architecture"
+    root_paths:
+      - "docs/design/2026-*"
+      - "docs/design/2025-*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/design"
+    topic_cluster: "design-documents-architecture"
+    rationale: "Formal design documents covering architectural decisions across platform"
+
+  # ── Worktree & Repository Management ─────────────────────────────────
+
+  - id: "worktree-and-repo-management"
+    root_paths:
+      - "docs/plans/2026-*worktree*"
+      - "docs/decisions/adr-2026-04-28-dispatch-lifecycle-canonical.md"
+      - "docs/decisions/2026-*registration*runtime*"
+    discovery_mode: true
+    models: [qwen3-coder]
+    source_directory: "docs/plans"
+    topic_cluster: "worktree-and-repo-management"
+    rationale: "Worktree discipline, dispatch lifecycle canonical location decisions"

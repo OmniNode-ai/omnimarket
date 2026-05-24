@@ -53,4 +53,5 @@ def test_projection_contract_owns_dashboard_snapshot_topics() -> None:
         "onex.snapshot.projection.gate.activity.v1",
         "onex.snapshot.projection.gate.metrics.v1",
     }
+    assert set(contract["externally_consumed_topics"]) == topics
     assert contract["node_type"] == "reducer"

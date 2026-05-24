@@ -15,10 +15,10 @@ node_type: workflow
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  PR Review Bot WorkflowPackage. Triggers on every PR, uses Qwen3-Coder-30B-A3B
-  as primary reviewer to post structured GitHub review threads per MAJOR/CRITICAL
-  finding, then uses a separate judge model (DeepSeek-R1) to verify each thread
-  before it can be resolved. Phases: INIT -> FETCH_DIFF -> REVIEW ->
+  PR Review Bot WorkflowPackage. Triggers on every PR, uses caller-provided
+  reviewer logical model keys to post structured GitHub review threads per
+  MAJOR/CRITICAL finding, then uses a caller-provided judge logical model key
+  to verify each thread before it can be resolved. Phases: INIT -> FETCH_DIFF -> REVIEW ->
   POST_THREADS -> WATCH -> JUDGE_VERIFY -> REPORT -> DONE.
   Circuit breaker trips after 3 consecutive failures.
 runtime_profiles:
@@ -121,21 +121,20 @@ output_model:
 
 model_routing:
   reviewer:
-    primary: "qwen3-coder-30b"
-    fallback: "qwen3-14b"
-    endpoint_env: "LLM_CODER_URL"
-    context_window: 112000
+    schema: "required_caller_supplied_logical_keys"
+    input_field: "reviewer_models"
+    min_items: 1
+    resolution_source: "ModelInferenceBridgeConfig.model_configs"
+    context_window_source: "ModelInferenceBridgeConfig.model_configs[*].context_window"
     transport: "http"
+    description: "Ordered reviewer logical keys supplied by the command payload. The contract declares shape only; concrete endpoint/model IDs are resolved by policy/config."
   judge:
-    primary: "deepseek-r1"
-    endpoint_env: "LLM_DEEPSEEK_R1_URL"
-    context_window: 32000
+    schema: "required_caller_supplied_logical_key"
+    input_field: "judge_model"
+    resolution_source: "ModelInferenceBridgeConfig.model_configs"
+    context_window_source: "ModelInferenceBridgeConfig.model_configs[judge_model].context_window"
     transport: "http"
-
-env_dependencies:
-  LLM_DEEPSEEK_R1_URL:
-    required: false
-    description: "DeepSeek-R1 judge model endpoint URL (mirrors model_routing.judge.endpoint_env)"
+    description: "Judge logical key supplied by the command payload. The contract declares shape only; concrete endpoint/model IDs are resolved by policy/config."
 
 descriptor:
   node_archetype: workflow
@@ -156,14 +155,12 @@ inputs:
     required: true
   reviewer_models:
     type: list
-    description: "Models to use for review"
-    required: false
-    default: ["qwen3-coder-30b", "qwen3-14b"]
+    description: "Required reviewer logical model keys from ModelInferenceBridgeConfig.model_configs"
+    required: true
   judge_model:
     type: str
-    description: "Judge model for thread verification (must not be a build-loop model)"
-    required: false
-    default: "deepseek-r1"
+    description: "Required judge logical model key from ModelInferenceBridgeConfig.model_configs"
+    required: true
   severity_threshold:
     type: str
     description: "Minimum severity to post individual thread (major or critical)"
@@ -201,7 +198,7 @@ outputs:
     description: "Threads awaiting verification"
   judge_model_used:
     type: str
-    description: "Judge model endpoint used for verification"
+    description: "Judge logical model key used for verification"
   duration_ms:
     type: int
     description: "Total workflow duration in milliseconds"
