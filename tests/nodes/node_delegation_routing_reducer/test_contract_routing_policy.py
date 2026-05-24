@@ -387,3 +387,70 @@ class TestDeltaContractRouting:
         assert result == "qwen3-coder-30b", (
             f"Expected default qwen3-coder-30b for unknown task, got: {result!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Pricing ceiling enforcement via YAML config (OMN-11967)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPricingCeilingFromYamlConfig:
+    """_tier_allowed_by_contract reads tier cost from cost_per_1k_tokens on
+    ModelRoutingTier (declared in routing_tiers.yaml), not a hardcoded Python dict."""
+
+    def _make_tier(self, name: str, cost: float):  # type: ignore[no-untyped-def]
+        from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier import (
+            ModelRoutingTier,
+        )
+
+        return ModelRoutingTier(name=name, models=(), cost_per_1k_tokens=cost)
+
+    def test_tier_below_ceiling_is_allowed(self) -> None:
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            _tier_allowed_by_contract,
+        )
+
+        entry = {"pricing_ceiling_per_1k_tokens": 0.010}
+        tier = self._make_tier("cheap_cloud", 0.002)
+
+        assert _tier_allowed_by_contract(tier, entry) is True
+
+    def test_tier_at_ceiling_is_allowed(self) -> None:
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            _tier_allowed_by_contract,
+        )
+
+        entry = {"pricing_ceiling_per_1k_tokens": 0.002}
+        tier = self._make_tier("cheap_cloud", 0.002)
+
+        assert _tier_allowed_by_contract(tier, entry) is True
+
+    def test_tier_exceeding_ceiling_is_blocked(self) -> None:
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            _tier_allowed_by_contract,
+        )
+
+        entry = {"pricing_ceiling_per_1k_tokens": 0.002}
+        tier = self._make_tier("claude", 0.015)
+
+        assert _tier_allowed_by_contract(tier, entry) is False
+
+    def test_local_tier_zero_cost_always_passes_ceiling(self) -> None:
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            _tier_allowed_by_contract,
+        )
+
+        entry = {"pricing_ceiling_per_1k_tokens": 0.0}
+        tier = self._make_tier("local", 0.0)
+
+        assert _tier_allowed_by_contract(tier, entry) is True
+
+    def test_no_entry_allows_any_tier(self) -> None:
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            _tier_allowed_by_contract,
+        )
+
+        tier = self._make_tier("claude", 0.015)
+
+        assert _tier_allowed_by_contract(tier, None) is True
