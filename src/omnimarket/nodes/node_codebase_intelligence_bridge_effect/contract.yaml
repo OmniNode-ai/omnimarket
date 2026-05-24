@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Contract: codebase_intelligence_bridge_effect
+# Proxies codebase intelligence queries to a configured backend provider.
+
+name: node_codebase_intelligence_bridge_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "a3f72c91-4e85-4b2d-b8d1-f9c305e2d7a0"
+node_type: effect
+input_model: "ModelCodebaseIntelligenceQueryRequest"
+output_model: "ModelCodebaseIntelligenceQueryResponse"
+handler:
+  module: omnimarket.nodes.node_codebase_intelligence_bridge_effect.handlers.handler_codebase_intelligence_bridge
+  class: HandlerCodebaseIntelligenceBridge
+  input_model: ModelCodebaseIntelligenceQueryRequest
+description: |
+  CodebaseIntelligenceBridgeEffect proxies codebase intelligence queries to a
+  configured backend provider. The default adapter is Repowise, invoked via
+  CLI subprocess with a stable JSON contract. The node exposes five operations:
+  get_answer, get_context, get_symbol, search_codebase, get_why.
+
+  The handler delegates to a ProtocolCodebaseIntelligence-typed adapter — it
+  never imports Repowise internals directly.
+
+# === NODE CONFIGURATION ===
+config:
+  provider_type: "repowise"
+  timeout_seconds: 10
+
+tool_specification:
+  tool_name: "codebase_intelligence_bridge_effect"
+  main_tool_class: "HandlerCodebaseIntelligenceBridge"
+
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "external_process"
+    atomic: false
+    timeout_seconds: 10
+    validation_enabled: true
+
+transaction_management:
+  enabled: false
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["operation", "query"]
+  optional: ["targets", "include"]
+
+output_state:
+  object_type: "object"
+  required: ["operation", "status"]
+  optional: ["result", "confidence", "retrieval_quality", "stale_warning", "error_message"]
+
+# === ACTIONS ===
+actions:
+  - name: "get_answer"
+    description: "Synthesise answer with verified citations for a conceptual question"
+    inputs: ["query", "targets"]
+    outputs: ["result", "confidence", "retrieval_quality", "stale_warning"]
+
+  - name: "get_context"
+    description: "Triage card for files/modules/symbols with title, summary, and signatures"
+    inputs: ["query", "targets", "include"]
+    outputs: ["result", "retrieval_quality", "stale_warning"]
+
+  - name: "get_symbol"
+    description: "Raw source bytes for one indexed symbol with exact line bounds"
+    inputs: ["query", "targets"]
+    outputs: ["result", "stale_warning"]
+
+  - name: "search_codebase"
+    description: "Find pages by concept when you don't know the file"
+    inputs: ["query"]
+    outputs: ["result", "retrieval_quality"]
+
+  - name: "get_why"
+    description: "Architectural decision archaeology — why the code is shaped this way"
+    inputs: ["query", "targets"]
+    outputs: ["result", "stale_warning"]
+
+# === HANDLER ROUTING ===
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - routing_key: "get_answer"
+      handler_key: "HandlerCodebaseIntelligenceBridge"
+      priority: 0
+      output_events: []
+    - routing_key: "get_context"
+      handler_key: "HandlerCodebaseIntelligenceBridge"
+      priority: 0
+      output_events: []
+    - routing_key: "get_symbol"
+      handler_key: "HandlerCodebaseIntelligenceBridge"
+      priority: 0
+      output_events: []
+    - routing_key: "search_codebase"
+      handler_key: "HandlerCodebaseIntelligenceBridge"
+      priority: 0
+      output_events: []
+    - routing_key: "get_why"
+      handler_key: "HandlerCodebaseIntelligenceBridge"
+      priority: 0
+      output_events: []
+  default_handler: null
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["codebase_intelligence_query_responded"]
+  event_categories: ["intelligence", "effect", "query"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "intelligence"
+  invocation_mode: "subscription"
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT
+# =============================================================================
+descriptor:
+  runtime_profiles:
+    - effects
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.codebase-intelligence-query-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.codebase-intelligence-query-response.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.codebase-intelligence-query-requested.v1":
+      schema_ref: "omnimarket.nodes.node_codebase_intelligence_bridge_effect.models.model_codebase_intelligence_query_request.ModelCodebaseIntelligenceQueryRequest"
+      description: "Codebase intelligence query request with operation type and parameters."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.codebase-intelligence-query-response.v1":
+      schema_ref: "omnimarket.nodes.node_codebase_intelligence_bridge_effect.models.model_codebase_intelligence_query_response.ModelCodebaseIntelligenceQueryResponse"
+      description: "Codebase intelligence query response with result, confidence, and metadata."
+
+metadata:
+  transport_type: kafka
+
+tags:
+  - intelligence
+  - codebase
+  - repowise
+  - effect
+  - query
