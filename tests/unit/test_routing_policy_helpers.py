@@ -27,7 +27,7 @@ def _make_envelope(routing_policy: dict | None) -> ModelPolishTaskEnvelope:
 class TestResolveRoutingPolicy:
     def test_valid_policy_returns_model(self) -> None:
         """Valid policy dict → returns ModelRoutingPolicy with expected primary."""
-        from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+        from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
         envelope = _make_envelope({"primary": "qwen3-coder-30b"})
         result = resolve_routing_policy(envelope)
@@ -76,7 +76,7 @@ class TestResolveRoutingPolicy:
 
     def test_valid_policy_with_fallback_returns_model(self) -> None:
         """Valid policy with fallback fields → round-trips all fields correctly."""
-        from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+        from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
         policy_dict = {
             "primary": "qwen3-coder-30b",
