@@ -17,6 +17,10 @@ handler_routing:
       output_model: omniintelligence.models.events.ModelCostSummarySnapshot
     - input_model: omniintelligence.models.events.ModelSavingsEstimatedEvent
       output_model: omniintelligence.models.events.ModelCostSummarySnapshot
+  handlers:
+    - handler:
+        name: HandlerProjectionCostSummary
+        module: omnimarket.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
 
 idempotency:
   enabled: true
@@ -35,7 +39,7 @@ event_bus:
 
 projection_api:
   expose: true
-  topic: "onex.snapshot.projection.cost.summary.v1"
+  topic: "onex.snapshot.projection.cost.summary.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "llm_cost_aggregates"
   columns:
     - "aggregation_key"

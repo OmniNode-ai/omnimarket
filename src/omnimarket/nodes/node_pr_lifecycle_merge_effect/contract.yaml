@@ -34,6 +34,9 @@ handler_routing:
       event_model:
         name: ModelPrMergeCommand
         module: omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command
+    - handler:
+        name: GitHubMergeQueueAdapter
+        module: omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue
 
 descriptor:
   node_archetype: effect
