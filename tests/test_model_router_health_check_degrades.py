@@ -21,6 +21,7 @@ from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
+from tests.constants import MODEL_QWEN3_CODER_30B
 
 
 @pytest.mark.asyncio
@@ -52,7 +53,7 @@ async def test_model_router_health_check_marks_endpoint_degraded() -> None:
 
     with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
         mock_health.return_value = False
-        await router.refresh_health_cache("qwen3-coder-30b")
+        await router.refresh_health_cache(MODEL_QWEN3_CODER_30B)
 
     request = ModelRoutingRequest(
         prompt="Write a function",
@@ -64,5 +65,7 @@ async def test_model_router_health_check_marks_endpoint_degraded() -> None:
         mock_health2.return_value = False
         result = await router.route_async(request)
 
-    assert result.model_key != "qwen3-coder-30b", "Router must skip degraded primary"
+    assert result.model_key != MODEL_QWEN3_CODER_30B, (
+        "Router must skip degraded primary"
+    )
     assert result.model_key == "claude-sonnet"
