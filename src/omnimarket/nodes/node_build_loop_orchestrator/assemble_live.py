@@ -130,6 +130,7 @@ def _build_event_bus(settings: Settings | None = None) -> ProtocolEventBusPublis
 
 def _estimate_cost(_model: str, _total_tokens: int) -> float | None:
     """Return no cost estimate until a pricing manifest resolves this model."""
+    return None
 
 
 # Repo mapping: label/keyword -> repo name
