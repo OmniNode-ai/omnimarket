@@ -1,0 +1,235 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_antipattern_index_effect
+# EFFECT node — resolves the antipattern registry, embeds each vector_enabled entry,
+# and upserts into the onex_antipatterns Qdrant collection.
+# [OMN-11913, OMN-11909]
+
+name: "node_antipattern_index_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "b7c3e5a9-f2d4-4e8b-9c1a-2d6f8e0b3c7a"
+node_type: effect
+input_model: "ModelAntipatternIndexRequest"
+output_model: "ModelAntipatternIndexResult"
+handler:
+  module: omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern_index_effect
+  class: HandlerAntipatternIndexEffect
+  input_model: ModelAntipatternIndexRequest
+description: |
+  Resolves the effective antipattern registry (bundled defaults merged with optional
+  per-repo overrides), embeds each vector_enabled entry's description + rationale +
+  examples via a contract-configured embedding endpoint, and upserts into the
+  onex_antipatterns Qdrant collection.
+
+  Idempotent: checks collection metadata for the registry version; re-indexing an
+  already-indexed version is a no-op unless force_reindex=True is passed.
+
+  Point ID = SHA-256(name + registry version) truncated to uint64.
+  Qdrant unavailability is a graceful skip — logged as warning, not error.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 120000
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-11913"
+  parent_epic: "OMN-11909"
+  contract_driven_routing: true
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  correlation_id_required: true
+  unit_tests: true
+  integration_test_stubs: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "vector_write"
+    atomic: false
+    timeout_seconds: 60
+    validation_enabled: true
+  - operation_type: "embedding_query"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "antipattern_index_effect"
+  main_tool_class: "NodeAntipatternIndexEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === NODE CONFIGURATION ===
+config:
+  embedding_endpoint:
+    env_var: "EMBEDDING_MODEL_URL"
+    description: "Base URL for the embedding model OpenAI-compatible endpoint. Fail-fast if unset."
+    required: true
+  vector_backend:
+    env_var: "ANTIPATTERN_VECTOR_BACKEND"
+    default: "qdrant"
+    description: "Vector backend provider. Currently only 'qdrant' is supported."
+  qdrant_collection:
+    env_var: "ANTIPATTERN_QDRANT_COLLECTION"
+    default: "onex_antipatterns"
+    description: "Qdrant collection name for antipattern vectors."
+  qdrant_host:
+    env_var: "QDRANT_HOST"
+    description: "Qdrant host. Required when qdrant_client is not injected."
+    required: false
+  qdrant_port:
+    env_var: "QDRANT_PORT"
+    default: "6333"
+    description: "Qdrant port."
+  embedding_vector_size:
+    env_var: "ANTIPATTERN_EMBEDDING_VECTOR_SIZE"
+    default: "4096"
+    description: "Embedding vector dimension (must match model output)."
+  repo_root:
+    env_var: "OMNI_HOME"
+    description: "Repo root for per-repo override resolution. Defaults to cwd if unset."
+    required: false
+  EMBEDDING_MODEL_URL:
+    description: "Base URL for the embedding model endpoint (declared for contract-config compliance)."
+    required: false
+  ANTIPATTERN_VECTOR_BACKEND:
+    description: "Vector backend provider."
+    required: false
+  ANTIPATTERN_QDRANT_COLLECTION:
+    description: "Qdrant collection name for antipattern vectors."
+    required: false
+  QDRANT_HOST:
+    description: "Qdrant host."
+    required: false
+  QDRANT_PORT:
+    description: "Qdrant port."
+    required: false
+  ANTIPATTERN_EMBEDDING_VECTOR_SIZE:
+    description: "Embedding vector dimension."
+    required: false
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["correlation_id"]
+  optional: ["repo_root", "force_reindex", "embedding_endpoint_override", "qdrant_collection_override"]
+
+output_state:
+  object_type: "object"
+  required: ["correlation_id", "indexed_count", "skipped_count", "registry_version"]
+  optional: ["vector_ids", "qdrant_collection", "was_no_op"]
+
+# === ACTIONS ===
+actions:
+  - name: "index_registry"
+    description: "Embed all vector_enabled antipattern entries and upsert into Qdrant"
+    inputs: ["correlation_id", "repo_root", "force_reindex", "embedding_endpoint_override", "qdrant_collection_override"]
+    outputs: ["correlation_id", "indexed_count", "skipped_count", "registry_version", "vector_ids", "qdrant_collection", "was_no_op"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "qdrant"
+    dependency_type: "service"
+    description: "Qdrant vector store for antipattern similarity search"
+    required: false
+    notes: "Graceful skip when unavailable"
+
+  - name: "embedding_model"
+    dependency_type: "service"
+    description: "OpenAI-compatible embedding endpoint (EMBEDDING_MODEL_URL)"
+    required: true
+
+  - name: "omnibase_core.validation.antipattern_registry_loader"
+    dependency_type: "module"
+    description: "resolve_antipatterns() — resolves bundled defaults + per-repo overrides"
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 120000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["antipattern-index-completed"]
+  event_categories: ["intelligence", "embedding", "effect", "antipattern"]
+  publish_events: true
+  subscribe_events: true
+  invocation_mode: "subscription"
+  event_routing: "intelligence"
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.antipattern-index-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.antipattern-index-completed.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.antipattern-index-requested.v1":
+      schema_ref: "omnimarket.nodes.node_antipattern_index_effect.models.model_antipattern_index_request.ModelAntipatternIndexRequest"
+      description: "Command to trigger antipattern registry indexing into the vector store."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.antipattern-index-completed.v1":
+      schema_ref: "omnimarket.nodes.node_antipattern_index_effect.models.model_antipattern_index_result.ModelAntipatternIndexResult"
+      description: "Indexing completion — reports indexed_count, skipped_count, registry_version."
+
+externally_consumed_topics:
+  - "onex.evt.omnimarket.antipattern-index-completed.v1"
+
+# === HANDLER ROUTING ===
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "index_registry"
+      handler_class: "HandlerAntipatternIndexEffect"
+      handler_module: "omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern_index_effect"
+      handler:
+        name: "HandlerAntipatternIndexEffect"
+        module: "omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern_index_effect"
+        handler_type: "QDRANT"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  constraint_definitions:
+    correlation_id: "string (1-128) — required on input and output"
+    indexed_count: "int >= 0"
+    skipped_count: "int >= 0"
+
+# === TAGS ===
+tags:
+  - intelligence
+  - embedding
+  - effect
+  - antipattern
+  - qdrant
+  - vector
+  - omn-11909
+  - omn-11913
+
+metadata:
+  transport_type: http

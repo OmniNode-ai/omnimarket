@@ -131,6 +131,7 @@ def test_run_review_wires_populated_inference_bridge_config(
         "LLM_CODER_MODEL_NAME", "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
     )
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://127.0.0.1:9998")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-judge-served-model")
     monkeypatch.setenv("GITHUB_TOKEN", "test-token-not-real")
 
     captured_reviewer: list[object] = []
@@ -152,6 +153,7 @@ def test_run_review_wires_populated_inference_bridge_config(
             pr_number=1,
             repo="OmniNode-ai/test",
             reviewer_models=["qwen3-coder"],
+            judge_model="deepseek-r1",
             dry_run=True,
         )
 
@@ -172,7 +174,9 @@ def test_run_review_wires_concrete_handlers_not_stubs(
     """Regression: run_review() must wire the concrete sub-handlers, not the
     `_Stub*` placeholders (Bug 2 of OMN-9351)."""
     monkeypatch.setenv("LLM_CODER_URL", "http://127.0.0.1:9999")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-reviewer-served-model")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://127.0.0.1:9998")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-judge-served-model")
     monkeypatch.setenv("GITHUB_TOKEN", "test-token-not-real")
 
     captured_kwargs: dict[str, object] = {}
@@ -194,6 +198,7 @@ def test_run_review_wires_concrete_handlers_not_stubs(
             pr_number=1,
             repo="OmniNode-ai/test",
             reviewer_models=["qwen3-coder"],
+            judge_model="deepseek-r1",
             dry_run=True,
         )
 

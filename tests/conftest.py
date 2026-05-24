@@ -213,6 +213,7 @@ _ALLOWED_TABLES: frozenset[str] = frozenset(
         "consumer_health_events",
         "consumer_health_triage",
         "consumer_restart_state",
+        "delegation_events",
         "context_audit_events",
         "context_enrichment_events",
         "contracts",

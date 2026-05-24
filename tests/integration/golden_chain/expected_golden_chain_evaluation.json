@@ -1,0 +1,17 @@
+{
+  "chain_name": "evaluation",
+  "head_topic": "onex.evt.omniintelligence.run-evaluated.v1",
+  "tail_table": "session_outcomes",
+  "expected_fields": ["correlation_id"],
+  "projection_key": "session_id",
+  "projection_key_fallback": "correlation_id",
+  "outcome_field": "outcome",
+  "outcome_default": "unknown",
+  "upsert_conflict_key": "session_id",
+  "notes": [
+    "run-evaluated events carry both session_id and correlation_id.",
+    "The projection runner uses session_id when present; falls back to correlation_id.",
+    "The golden chain sweep asserts correlation_id is present in the projected row.",
+    "Source: node_projection_session_outcome/handlers/handler_session_outcome.py"
+  ]
+}

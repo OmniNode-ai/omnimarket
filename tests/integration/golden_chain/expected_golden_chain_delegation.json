@@ -1,0 +1,13 @@
+{
+  "chain_name": "delegation",
+  "head_topic": "onex.evt.omniclaude.task-delegated.v1",
+  "tail_table": "delegation_events",
+  "expected_reducer": "node_projection_delegation",
+  "terminal_event": "onex.evt.omnimarket.projection-delegation-applied.v1",
+  "replay_idempotent": true,
+  "dedup_key": "correlation_id",
+  "conflict_strategy": "DO NOTHING",
+  "database": "omnidash_analytics",
+  "migration": "0009_delegate_skill_projection_metrics.sql",
+  "test_file": "tests/integration/golden_chain/test_delegation_e2e.py"
+}

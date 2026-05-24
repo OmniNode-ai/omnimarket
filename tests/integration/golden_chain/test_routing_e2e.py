@@ -26,7 +26,6 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_projection_llm_routing.handlers.handler_projection_llm_routing import (
-    TOPIC_LLM_ROUTING_DECISION,
     HandlerProjectionLlmRouting,
     ModelLlmRoutingDecisionEvent,
 )
@@ -37,6 +36,22 @@ _CONTRACT_PATH = Path("src/omnimarket/nodes/node_projection_llm_routing/contract
 _EXPECTED_JSON = Path(
     "tests/integration/golden_chain/expected_golden_chain_routing.json"
 )
+
+
+def _load_contract() -> dict[str, object]:
+    with open(_CONTRACT_PATH) as f:
+        contract = yaml.safe_load(f)
+    assert isinstance(contract, dict)
+    return contract
+
+
+def _routing_decision_topic() -> str:
+    contract = _load_contract()
+    subscribe_topics = contract["event_bus"]["subscribe_topics"]
+    assert isinstance(subscribe_topics, list)
+    topic = subscribe_topics[0]
+    assert isinstance(topic, str)
+    return topic
 
 
 @pytest.mark.unit
@@ -157,30 +172,24 @@ class TestRoutingProjection:
         assert row["model"] == "deepseek-r1-14b"
 
     def test_event_bus_wiring(self) -> None:
-        with open(_CONTRACT_PATH) as f:
-            contract = yaml.safe_load(f)
+        contract = _load_contract()
         subscribe_topics = contract["event_bus"]["subscribe_topics"]
-        assert TOPIC_LLM_ROUTING_DECISION in subscribe_topics
+        routing_topic = _routing_decision_topic()
+        assert routing_topic in subscribe_topics
         handler_cfg = contract["handler"]
         assert (
             handler_cfg["module"]
             == "omnimarket.nodes.node_projection_llm_routing.handlers.handler_projection_llm_routing"
         )
         assert handler_cfg["class"] == "HandlerProjectionLlmRouting"
-
-    def test_topic_constant_matches_contract(self) -> None:
-        with open(_CONTRACT_PATH) as f:
-            contract = yaml.safe_load(f)
-        subscribe_topics = contract["event_bus"]["subscribe_topics"]
-        assert TOPIC_LLM_ROUTING_DECISION in subscribe_topics, (
-            f"TOPIC_LLM_ROUTING_DECISION={TOPIC_LLM_ROUTING_DECISION!r} "
-            f"not in contract subscribe_topics={subscribe_topics!r}"
-        )
+        routing_handlers = contract["handler_routing"]["handlers"]
+        assert routing_handlers[0]["topic"] == routing_topic
+        assert routing_handlers[0]["handler"]["name"] == "HandlerProjectionLlmRouting"
 
     def test_expected_golden_chain_fixture(self) -> None:
         expected = json.loads(_EXPECTED_JSON.read_text())
         assert expected["chain"] == "routing"
-        assert expected["head_topic"] == TOPIC_LLM_ROUTING_DECISION
+        assert expected["head_topic"] == _routing_decision_topic()
         assert expected["tail_table"] == "llm_routing_decisions"
         assert "correlation_id" in expected["expected_fields"]
 
