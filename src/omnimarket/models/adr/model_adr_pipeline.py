@@ -12,7 +12,9 @@ internally. No node imports another node's private models.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ModelAdrDocumentRef(BaseModel):
@@ -90,6 +92,34 @@ class ModelAdrManifestEntry(BaseModel):
     root_paths: list[str] = Field(..., min_length=1)
     ground_truth_adr: str = Field(..., description="Authoritative ADR text.")
     models: list[ModelAdrManifestModel] = Field(..., min_length=1)
+    ground_truth_adr_hash: str | None = Field(default=None)
+    source_file_hash: str | None = Field(default=None)
+    manifest_schema_version: str | None = Field(default=None)
+    expected_decision_types: list[str] = Field(default_factory=list)
+    expected_keywords: list[str] = Field(default_factory=list)
+    source_confidence: str | None = Field(default=None)
+    curation_notes: str | None = Field(default=None)
+
+    @field_validator("models", mode="before")
+    @classmethod
+    def _normalize_model_entries(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+
+        normalized: list[object] = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append(
+                    {
+                        "key": item,
+                        "provider": "local",
+                        "model_id": item,
+                        "external": False,
+                    }
+                )
+            else:
+                normalized.append(item)
+        return normalized
 
 
 class ModelAdrRunRequest(BaseModel):
