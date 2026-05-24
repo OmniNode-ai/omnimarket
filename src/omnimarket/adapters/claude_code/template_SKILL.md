@@ -81,3 +81,9 @@ output type. On timeout or error, report the failure clearly.
 This wrapper contains **no business logic**. Do not add domain logic here.
 All processing is handled by the `{{NODE_NAME}}` node in
 `omnimarket/nodes/{{NODE_DIR}}/`.
+
+Do not add concrete LLM provider names, served model IDs, endpoint URLs, or
+fallback model defaults to this skill. If the backing node requires LLM work,
+pass logical routing needs only when those fields are declared in the node
+contract; runtime model resolution belongs to `node_model_router` and
+contract/overlay policy.
