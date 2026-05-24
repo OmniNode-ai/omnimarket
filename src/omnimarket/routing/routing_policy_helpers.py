@@ -9,7 +9,7 @@ No inline model_validate(envelope.routing_policy) is permitted in handler source
 
 from __future__ import annotations
 
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 from pydantic import ValidationError
 
 from omnimarket.models.model_polish_task_envelope import ModelPolishTaskEnvelope
