@@ -210,12 +210,19 @@ event_bus:
       schema_ref: "omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match_response.ModelAntipatternMatchResponse"
       description: "Match response — matched antipatterns with similarity scores and freshness-adjusted ranking."
 
+externally_consumed_topics:
+  - "onex.evt.omnimarket.antipattern-match-response.v1"
+
 # === HANDLER ROUTING ===
 handler_routing:
   handlers:
     - operation: "match"
       handler_class: "HandlerAntipatternMatchEffect"
       handler_module: "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect"
+      handler:
+        name: "HandlerAntipatternMatchEffect"
+        module: "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect"
+        handler_type: "QDRANT"
 
 # === VALIDATION RULES ===
 validation_rules:
@@ -241,4 +248,4 @@ tags:
   - omn-11919
 
 metadata:
-  transport_type: postgres
+  transport_type: http
