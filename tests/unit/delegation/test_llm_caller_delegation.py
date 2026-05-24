@@ -10,6 +10,7 @@ ModelInferenceResponseData without hitting a real LLM endpoint.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -197,3 +198,57 @@ async def test_provider_constructed_with_correct_base_url() -> None:
             == "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM base URL"
         )
         assert call_kwargs["default_model"] == "deepseek-r1-14b"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_call_passes_contract_timeout_to_provider() -> None:
+    """The Bifrost-owned timeout reaches the downstream provider request."""
+    intent = _make_intent()
+    intent = intent.model_copy(update={"timeout_seconds": 7.5})
+    adapter_response = _make_adapter_response()
+    caller = LlmCallerDelegation()
+
+    captured_request = {}
+
+    async def _capture(req: object) -> ModelLlmAdapterResponse:
+        captured_request["timeout_seconds"] = getattr(req, "timeout_seconds", None)
+        return adapter_response
+
+    with patch(
+        "omnimarket.adapters.llm.adapter_llm_caller_delegation.AdapterLlmProviderOpenai"
+    ) as mock_provider:
+        instance = MagicMock()
+        instance.generate_async = _capture
+        instance.close = AsyncMock()
+        mock_provider.return_value = instance
+
+        await caller.call(intent)
+
+    assert captured_request["timeout_seconds"] == 7.5
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_call_enforces_application_timeout_and_closes_provider() -> None:
+    """A hung provider call is bounded and still closes the provider."""
+    intent = _make_intent()
+    intent = intent.model_copy(update={"timeout_seconds": 1.0})
+    caller = LlmCallerDelegation()
+
+    async def _hang(_req: object) -> ModelLlmAdapterResponse:
+        await asyncio.sleep(10)
+        return _make_adapter_response()
+
+    with patch(
+        "omnimarket.adapters.llm.adapter_llm_caller_delegation.AdapterLlmProviderOpenai"
+    ) as mock_provider:
+        instance = MagicMock()
+        instance.generate_async = _hang
+        instance.close = AsyncMock()
+        mock_provider.return_value = instance
+
+        with pytest.raises(TimeoutError):
+            await caller.call(intent)
+
+        instance.close.assert_awaited_once()

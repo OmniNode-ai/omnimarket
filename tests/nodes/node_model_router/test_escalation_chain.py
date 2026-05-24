@@ -16,7 +16,7 @@ import tempfile
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
@@ -28,6 +28,7 @@ from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
+from tests.constants import MODEL_QWEN3_CODER_30B
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -127,7 +128,7 @@ class TestModelEscalationChain:
             FULL_REGISTRY, max_attempts_per_tier=2
         )
         local_level = chain.levels[EscalationTier.local]
-        assert "qwen3-coder-30b" in local_level.model_keys
+        assert MODEL_QWEN3_CODER_30B in local_level.model_keys
         assert "deepseek-r1-14b" in local_level.model_keys
 
     def test_max_attempts_per_tier_respected(self) -> None:
@@ -184,7 +185,7 @@ class TestHandlerEscalationBehavior:
                 await router.route_with_escalation(request)
 
         local_checks = [
-            k for k in call_log if k in ("qwen3-coder-30b", "deepseek-r1-14b")
+            k for k in call_log if k in (MODEL_QWEN3_CODER_30B, "deepseek-r1-14b")
         ]
         assert len(local_checks) >= 1, "Expected at least one local tier health check"
 
@@ -198,7 +199,7 @@ class TestHandlerEscalationBehavior:
 
         async def failing_health(model_key: str) -> bool:
             attempted.append(model_key)
-            if model_key in ("qwen3-coder-30b", "deepseek-r1-14b"):
+            if model_key in (MODEL_QWEN3_CODER_30B, "deepseek-r1-14b"):
                 return False
             if model_key == "openrouter-sonnet":
                 return True
@@ -224,7 +225,7 @@ class TestHandlerEscalationBehavior:
         )
 
         async def health_for_mid(model_key: str) -> bool:
-            if model_key in ("qwen3-coder-30b", "deepseek-r1-14b"):
+            if model_key in (MODEL_QWEN3_CODER_30B, "deepseek-r1-14b"):
                 return False
             if model_key == "openrouter-sonnet":
                 return True
@@ -308,7 +309,7 @@ class TestHandlerEscalationBehavior:
             )
 
             async def local_fails_cloud_ok(model_key: str) -> bool:
-                if model_key in ("qwen3-coder-30b", "deepseek-r1-14b"):
+                if model_key in (MODEL_QWEN3_CODER_30B, "deepseek-r1-14b"):
                     return False
                 return True
 
@@ -356,7 +357,7 @@ class TestHandlerEscalationBehavior:
             request = make_request()
             result = await router.route_async(request)
 
-        assert result.model_key == "qwen3-coder-30b"
+        assert result.model_key == MODEL_QWEN3_CODER_30B
         assert result.used_fallback is False
 
 
@@ -432,7 +433,7 @@ class TestMaxAttemptsEnforcement:
 
         async def count_health(model_key: str) -> bool:
             call_counts[model_key] = call_counts.get(model_key, 0) + 1
-            if model_key == "qwen3-coder-30b":
+            if model_key == MODEL_QWEN3_CODER_30B:
                 return False
             return True
 
@@ -442,7 +443,7 @@ class TestMaxAttemptsEnforcement:
             )
             result = await router.route_with_escalation(request)
 
-        assert call_counts.get("qwen3-coder-30b", 0) == 3, (
+        assert call_counts.get(MODEL_QWEN3_CODER_30B, 0) == 3, (
             "Expected max_retries=3 attempts on local model before escalating"
         )
         assert result.model_key == "claude-sonnet"
@@ -459,7 +460,7 @@ class TestMaxAttemptsEnforcement:
             )
 
             async def local_fails(model_key: str) -> bool:
-                if model_key in ("qwen3-coder-30b", "deepseek-r1-14b"):
+                if model_key in (MODEL_QWEN3_CODER_30B, "deepseek-r1-14b"):
                     return False
                 return True
 

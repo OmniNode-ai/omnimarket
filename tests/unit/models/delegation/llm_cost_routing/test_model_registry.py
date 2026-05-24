@@ -191,8 +191,17 @@ class TestModelLlmModelRegistryLoader:
         registry = loader.load()
         assert registry.schema_version == "1.0.0"
         assert "qwen3-coder-30b" in registry.models
+        assert "qwen3.6-35b" in registry.models
         assert "claude-sonnet-4-6" in registry.models
         assert "llama-3.3-70b-free" in registry.models
+
+    def test_current_reasoning_model_is_canonical_qwen36(self) -> None:
+        loader = ModelLlmModelRegistryLoader(_REGISTRY_PATH)
+        registry = loader.load()
+        model = registry.get_model("qwen3.6-35b")
+
+        assert model.endpoint_env == "LLM_QWEN3_NEXT_URL"
+        assert model.model_name == "mlx-community/Qwen3.6-35B-A3B-8bit"
 
     def test_loaded_registry_has_hashes(self) -> None:
         loader = ModelLlmModelRegistryLoader(_REGISTRY_PATH)

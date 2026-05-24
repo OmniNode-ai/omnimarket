@@ -1,0 +1,19 @@
+name: node_projection_swarm
+version: "1.0.0"
+description: >
+  Reducer node for swarm run projection. Upserts swarm_runs table from
+  terminal swarm dispatch events. Tracks freshness SLA.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - swarm
+  - reducer
+pack: "data"
+display_name: "Projection: Swarm Runs"
+node_role: "effect"

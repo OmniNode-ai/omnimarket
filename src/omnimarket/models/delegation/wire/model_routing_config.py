@@ -54,6 +54,14 @@ class ModelRoutingTier(BaseModel):
         default=0,
         description="Max retry attempts within this tier before escalating.",
     )
+    cost_per_1k_tokens: float = Field(
+        default=0.0,
+        description=(
+            "Approximate USD cost per 1 000 tokens for this tier. "
+            "Used to compare against pricing_ceiling_per_1k_tokens in the "
+            "task-class contract.  Local tiers are 0.0."
+        ),
+    )
 
 
 class ModelDelegationConfig(BaseModel):

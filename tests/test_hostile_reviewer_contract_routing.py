@@ -1,147 +1,192 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Tests for OMN-7981: contract-driven model routing in node_hostile_reviewer.
-
-Covers:
-- build_model_configs loads from contract.yaml model_routing (not hardcoded env)
-- N-1 graceful degradation: missing endpoints produce a reduced config, not an error
-- build_from_contract returns a fully wired AdapterInferenceBridge
-- CLI transport models are included without requiring env vars
-"""
+"""Tests for hostile reviewer caller-supplied logical model routing."""
 
 from __future__ import annotations
 
+import asyncio
+import json
+from pathlib import Path
+from typing import Any
+from unittest.mock import AsyncMock, patch
+
 import pytest
+import yaml
 
 from omnimarket.nodes.node_hostile_reviewer.handlers.adapter_inference_bridge import (
     AdapterInferenceBridge,
+    ModelInferenceBridgeConfig,
     build_from_contract,
 )
 from omnimarket.nodes.node_hostile_reviewer.handlers.model_config_loader import (
     build_model_configs,
 )
 
+CONTRACT_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_hostile_reviewer"
+    / "contract.yaml"
+)
+ROUTE_CONFIG_ENV = "HOSTILE_REVIEWER_MODEL_CONFIGS_JSON"
+
+RUNTIME_ROUTE_CONFIGS: dict[str, dict[str, object]] = {
+    "review_primary": {
+        "transport": "http",
+        "base_url": "http://localhost:8000/",
+        "model_id": "runtime-supplied-model",
+        "context_window": 112000,
+        "timeout_seconds": 90.0,
+    },
+    "review_cli": {
+        "transport": "cli",
+        "cli_command": "codex",
+        "context_window": 64000,
+        "timeout_seconds": 120.0,
+    },
+}
+
+
+@pytest.fixture(scope="module")
+def contract() -> dict[str, Any]:
+    with CONTRACT_PATH.open() as fh:
+        return yaml.safe_load(fh)
+
+
+@pytest.mark.unit
+class TestHostileReviewerContractPolicy:
+    """contract.yaml declares routing policy, not served runtime defaults."""
+
+    def test_models_input_requires_caller_keys(self, contract: dict[str, Any]) -> None:
+        models_input = contract["inputs"]["models"]
+        assert models_input["required"] is True
+        assert "default" not in models_input
+
+    def test_contract_has_no_model_specific_endpoint_envs(
+        self, contract: dict[str, Any]
+    ) -> None:
+        rendered = yaml.safe_dump(contract["model_routing"])
+        assert "LLM_CODER_URL" not in rendered
+        assert "LLM_DEEPSEEK_R1_URL" not in rendered
+        assert "endpoint_env" not in rendered
+
+    def test_contract_declares_runtime_route_config_source(
+        self, contract: dict[str, Any]
+    ) -> None:
+        routing = contract["model_routing"]
+        assert routing["route_keys_input"] == "models"
+        assert routing["route_config_env"] == ROUTE_CONFIG_ENV
+        assert routing["route_schema"]["http"]["required_fields"] == [
+            "base_url or base_url_env",
+            "model_id",
+        ]
+
 
 @pytest.mark.unit
 class TestBuildModelConfigs:
-    """build_model_configs reads contract.yaml, not hardcoded env vars."""
+    """build_model_configs resolves caller-provided logical route keys."""
 
-    def test_all_http_missing_returns_empty_http_subset(
+    def test_requested_keys_are_required(self) -> None:
+        with pytest.raises(ValueError, match="logical model route keys"):
+            build_model_configs(requested_keys=None, runtime_model_configs={})
+
+    def test_runtime_route_configs_are_required(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When HTTP endpoint env vars are unset, HTTP models are skipped."""
-        monkeypatch.delenv("LLM_CODER_URL", raising=False)
-        monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
+        monkeypatch.delenv(ROUTE_CONFIG_ENV, raising=False)
 
-        configs = build_model_configs(requested_keys=["coder", "deepseek-r1"])
-        assert "coder" not in configs
-        assert "deepseek-r1" not in configs
+        with pytest.raises(ValueError, match=ROUTE_CONFIG_ENV):
+            build_model_configs(requested_keys=["review_primary"])
 
-    def test_http_model_included_when_env_set(
+    def test_http_route_included_from_runtime_configs(self) -> None:
+        configs = build_model_configs(
+            requested_keys=["review_primary"],
+            runtime_model_configs=RUNTIME_ROUTE_CONFIGS,
+        )
+
+        assert configs["review_primary"]["base_url"] == "http://localhost:8000"
+        assert configs["review_primary"]["model_id"] == "runtime-supplied-model"
+        assert configs["review_primary"]["transport"] == "http"
+
+    def test_http_route_included_from_env_json(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When LLM_CODER_URL is set, coder model is included with correct base_url."""
-        monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
+        monkeypatch.setenv(ROUTE_CONFIG_ENV, json.dumps(RUNTIME_ROUTE_CONFIGS))
 
-        configs = build_model_configs(requested_keys=["coder"])
-        assert "coder" in configs
-        assert configs["coder"]["base_url"] == "http://localhost:8000"
-        assert configs["coder"]["transport"] == "http"
+        configs = build_model_configs(requested_keys=["review_primary"])
 
-    def test_cli_model_included_without_env(self) -> None:
-        """CLI transport models (codex) are included regardless of env vars."""
-        configs = build_model_configs(requested_keys=["codex"])
-        assert "codex" in configs
-        assert configs["codex"]["transport"] == "cli"
-        assert configs["codex"]["cli_command"] == "codex"
+        assert configs["review_primary"]["base_url"] == "http://localhost:8000"
 
-    def test_n_minus_1_degradation(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """With one HTTP model down, only the available model is returned."""
-        monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
-        monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
+    def test_cli_route_requires_runtime_config(self) -> None:
+        configs = build_model_configs(
+            requested_keys=["review_cli"],
+            runtime_model_configs=RUNTIME_ROUTE_CONFIGS,
+        )
 
-        configs = build_model_configs(requested_keys=["coder", "deepseek-r1"])
-        assert "coder" in configs
-        assert "deepseek-r1" not in configs
+        assert configs["review_cli"]["transport"] == "cli"
+        assert configs["review_cli"]["cli_command"] == "codex"
 
-    def test_requested_keys_filters_contract(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Only requested_keys are returned even if other models are configured."""
-        monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
-        monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://localhost:8001")
+    def test_missing_requested_route_fails_loudly(self) -> None:
+        with pytest.raises(ValueError, match="not configured"):
+            build_model_configs(
+                requested_keys=["missing-route"],
+                runtime_model_configs=RUNTIME_ROUTE_CONFIGS,
+            )
 
-        configs = build_model_configs(requested_keys=["coder"])
-        assert "coder" in configs
-        assert "deepseek-r1" not in configs
+    def test_http_route_requires_base_url_or_env(self) -> None:
+        with pytest.raises(ValueError, match="base_url or base_url_env"):
+            build_model_configs(
+                requested_keys=["broken"],
+                runtime_model_configs={
+                    "broken": {"transport": "http", "model_id": "runtime-model"}
+                },
+            )
 
-    def test_url_trailing_slash_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Trailing slash on base_url is stripped."""
-        monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000/")
+    def test_http_route_requires_model_id(self) -> None:
+        with pytest.raises(ValueError, match="requires runtime model_id"):
+            build_model_configs(
+                requested_keys=["broken"],
+                runtime_model_configs={
+                    "broken": {
+                        "transport": "http",
+                        "base_url": "http://localhost:8000",
+                    }
+                },
+            )
 
-        configs = build_model_configs(requested_keys=["coder"])
-        assert configs["coder"]["base_url"] == "http://localhost:8000"
+    def test_context_window_from_runtime_config(self) -> None:
+        configs = build_model_configs(
+            requested_keys=["review_primary"],
+            runtime_model_configs=RUNTIME_ROUTE_CONFIGS,
+        )
 
-    def test_context_window_from_contract(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """context_window declared in contract.yaml is preserved in config."""
-        monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
-
-        configs = build_model_configs(requested_keys=["coder"])
-        assert configs["coder"]["context_window"] == 112000
-
-    def test_none_requested_keys_loads_all_available(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """None requested_keys loads every model in model_routing."""
-        monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
-        monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
-
-        configs = build_model_configs(requested_keys=None)
-        # codex (CLI) always available; coder (HTTP) present; deepseek-r1 (HTTP) absent
-        assert "codex" in configs
-        assert "coder" in configs
-        assert "deepseek-r1" not in configs
+        assert configs["review_primary"]["context_window"] == 112000
 
 
 @pytest.mark.unit
 class TestBuildFromContract:
     """build_from_contract returns a wired AdapterInferenceBridge."""
 
-    def test_returns_adapter_instance(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """build_from_contract always returns an AdapterInferenceBridge."""
-        monkeypatch.delenv("LLM_CODER_URL", raising=False)
-        monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
+    def test_requires_requested_keys(self) -> None:
+        with pytest.raises(ValueError, match="logical model route keys"):
+            build_from_contract(runtime_model_configs=RUNTIME_ROUTE_CONFIGS)
 
-        adapter = build_from_contract()
+    def test_returns_adapter_instance(self) -> None:
+        adapter = build_from_contract(
+            requested_keys=["review_primary"],
+            runtime_model_configs=RUNTIME_ROUTE_CONFIGS,
+        )
+
         assert isinstance(adapter, AdapterInferenceBridge)
+        assert "review_primary" in adapter._config.model_configs
 
-    def test_adapter_has_cli_model_when_all_http_down(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Even with all HTTP endpoints down, codex CLI model is available."""
-        monkeypatch.delenv("LLM_CODER_URL", raising=False)
-        monkeypatch.delenv("LLM_DEEPSEEK_R1_URL", raising=False)
-
-        adapter = build_from_contract()
-        assert "codex" in adapter._config.model_configs
-
-    def test_adapter_includes_http_when_env_set(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When LLM_CODER_URL is set, coder is wired into the adapter."""
-        monkeypatch.setenv("LLM_CODER_URL", "http://localhost:8000")
-
-        adapter = build_from_contract(requested_keys=["coder"])
-        assert "coder" in adapter._config.model_configs
-
-    def test_unknown_model_key_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Requesting a model key not in contract raises ValueError on infer()."""
-        monkeypatch.delenv("LLM_CODER_URL", raising=False)
-        adapter = build_from_contract(requested_keys=["codex"])
-
-        import asyncio
+    def test_unknown_model_key_raises(self) -> None:
+        adapter = build_from_contract(
+            requested_keys=["review_cli"],
+            runtime_model_configs=RUNTIME_ROUTE_CONFIGS,
+        )
 
         with pytest.raises(ValueError, match="Unknown model_key"):
             asyncio.run(
@@ -152,3 +197,48 @@ class TestBuildFromContract:
                     timeout_seconds=5.0,
                 )
             )
+
+    def test_adapter_does_not_fallback_to_model_key_as_model_id(self) -> None:
+        adapter = AdapterInferenceBridge(
+            ModelInferenceBridgeConfig(
+                model_configs={
+                    "review_primary": {
+                        "transport": "http",
+                        "base_url": "http://localhost:8000",
+                    }
+                }
+            )
+        )
+
+        with pytest.raises(ValueError, match="missing model_id"):
+            asyncio.run(
+                adapter.infer(
+                    model_key="review_primary",
+                    system_prompt="s",
+                    user_prompt="u",
+                    timeout_seconds=5.0,
+                )
+            )
+
+    def test_adapter_uses_runtime_model_id(self) -> None:
+        adapter = build_from_contract(
+            requested_keys=["review_primary"],
+            runtime_model_configs=RUNTIME_ROUTE_CONFIGS,
+        )
+
+        async def run() -> None:
+            with patch.object(
+                adapter, "_call_http_model", new_callable=AsyncMock
+            ) as mock_call:
+                mock_call.return_value = "ok"
+                result = await adapter.infer(
+                    model_key="review_primary",
+                    system_prompt="s",
+                    user_prompt="u",
+                    timeout_seconds=5.0,
+                )
+                assert result == "ok"
+                cfg = mock_call.call_args.args[1]
+                assert cfg["model_id"] == "runtime-supplied-model"
+
+        asyncio.run(run())

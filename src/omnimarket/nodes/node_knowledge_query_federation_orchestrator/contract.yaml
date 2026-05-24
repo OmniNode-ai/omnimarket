@@ -97,8 +97,10 @@ handler_routing:
     patch: 0
   routing_strategy: operation_match
   handlers:
-    - routing_key: "knowledge_query"
-      handler_key: "HandlerKnowledgeQueryFederation"
+    - operation: "knowledge_query"
+      handler:
+        name: "HandlerKnowledgeQueryFederation"
+        module: "omnimarket.nodes.node_knowledge_query_federation_orchestrator.handlers.handler_knowledge_query_federation"
       priority: 0
       output_events:
         - "onex.evt.omnimarket.knowledge-query-federated.v1"
