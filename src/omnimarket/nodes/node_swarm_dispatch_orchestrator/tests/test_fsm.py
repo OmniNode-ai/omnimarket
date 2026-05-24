@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast
+from unittest.mock import MagicMock
+
 import pytest
 
 from omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch import (
@@ -20,10 +23,17 @@ from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_swarm_dispat
     ModelSwarmDispatchRequest,
 )
 
+if TYPE_CHECKING:
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
 
 @pytest.fixture
 def handler() -> HandlerSwarmDispatchOrchestrator:
-    return HandlerSwarmDispatchOrchestrator(event_bus=None)
+    return HandlerSwarmDispatchOrchestrator(
+        event_bus=cast("ProtocolEventBusPublisher", MagicMock())
+    )
 
 
 @pytest.fixture
