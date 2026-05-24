@@ -80,9 +80,8 @@ inputs:
     required: false
   models:
     type: list
-    description: "Models to use for review"
-    required: false
-    default: ["codex", "deepseek-r1"]
+    description: "Caller-provided logical model route keys to use for review"
+    required: true
   dry_run:
     type: bool
     description: "Run without side effects"
@@ -117,28 +116,39 @@ event_bus:
     - onex.evt.omnimarket.hostile-reviewer-inference-dispatched.v1
 
 model_routing:
-  coder:
-    policy_id: "coder"
-    endpoint_env: "LLM_CODER_URL"
-    context_window: 112000
-    transport: "http"
-    timeout_seconds: 90.0
-    description: "Qwen3-Coder-30B — primary local code review backend"
-  deepseek-r1:
-    policy_id: "deepseek-r1"
-    endpoint_env: "LLM_DEEPSEEK_R1_URL"
-    context_window: 32000
-    transport: "http"
-    timeout_seconds: 90.0
-    description: "DeepSeek-R1 — reasoning specialist for adversarial review"
-  codex:
-    policy_id: "codex"
-    endpoint_env: ""
-    context_window: 64000
-    transport: "cli"
-    cli_command: "codex"
-    timeout_seconds: 120.0
-    description: "Codex CLI — code review via CLI subprocess"
+  policy_id: "hostile_reviewer.caller_supplied_routes.v1"
+  route_keys_input: "models"
+  route_config_env: "HOSTILE_REVIEWER_MODEL_CONFIGS_JSON"
+  description: >
+    Hostile reviewer accepts caller-provided logical route keys only. Runtime
+    route configs are injected separately and must map each requested key to a
+    concrete transport configuration; this contract intentionally does not
+    declare served model IDs or model-specific endpoint environment variables.
+  route_schema:
+    logical_key:
+      type: str
+      required: true
+      description: "Opaque logical route key supplied in inputs.models."
+    transport:
+      type: str
+      required: true
+      allowed_values: ["http", "cli"]
+    http:
+      required_fields:
+        - "base_url or base_url_env"
+        - "model_id"
+      optional_fields:
+        - "api_key"
+        - "extra_headers"
+        - "temperature"
+        - "context_window"
+        - "timeout_seconds"
+    cli:
+      required_fields:
+        - "cli_command"
+      optional_fields:
+        - "context_window"
+        - "timeout_seconds"
 
 config:
   openrouter_base_url:

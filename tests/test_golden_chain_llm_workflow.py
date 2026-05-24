@@ -537,7 +537,7 @@ class TestGoldenChainLlmWorkflow:
                 correlation_id=payload["correlation_id"],
                 pr_number=payload.get("pr_number"),
                 repo=payload.get("repo"),
-                models=payload.get("models", ["model-a", "model-b"]),
+                models=payload["models"],
                 dry_run=payload.get("dry_run", False),
                 requested_at=datetime.now(tz=UTC),
             )
@@ -603,6 +603,7 @@ class TestGoldenChainLlmWorkflow:
             correlation_id=uuid4(),
             pr_number=99,
             repo="OmniNode-ai/omnimarket",
+            models=["model-a", "model-b"],
             dry_run=False,
             requested_at=datetime.now(tz=UTC),
         )

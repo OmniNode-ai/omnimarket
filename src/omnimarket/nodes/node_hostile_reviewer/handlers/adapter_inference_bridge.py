@@ -5,8 +5,8 @@ via HTTP or CLI subprocess, and returns raw response text.
 
 Defines ``ModelInferenceAdapter`` ABC consumed by the review orchestrator.
 
-Use ``build_from_contract()`` to construct an adapter from contract.yaml
-model_routing declarations (contract-driven, no hardcoded URLs).
+Use ``build_from_contract()`` to construct an adapter from caller-provided
+logical route keys and contract-declared model_routing policy schema.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import Final
 
 import httpx
@@ -48,7 +49,7 @@ class ModelInferenceBridgeConfig(BaseModel):
 
     model_configs: dict[str, dict[str, object]] = Field(
         default_factory=dict,
-        description="Per-model config: base_url, model_id, transport, context_window, timeout_seconds",
+        description="Per-logical-route config: base_url, model_id, transport, context_window, timeout_seconds",
     )
 
 
@@ -98,7 +99,15 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         if not base_url:
             base_url_env = str(cfg.get("base_url_env", ""))
             base_url = os.environ.get(base_url_env, "")
-        model_id = str(cfg.get("model_id", model_key))
+        if not base_url:
+            msg = f"Model route {model_key!r} is missing base_url"
+            raise ValueError(msg)
+
+        model_id = str(cfg.get("model_id", ""))
+        if not model_id:
+            msg = f"Model route {model_key!r} is missing model_id"
+            raise ValueError(msg)
+
         api_key = str(cfg.get("api_key", "")) or None
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -148,7 +157,10 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         user_prompt: str,
         timeout_seconds: float,
     ) -> str:
-        cli_command = str(cfg.get("cli_command", model_key))
+        cli_command = str(cfg.get("cli_command", ""))
+        if not cli_command:
+            msg = f"Model route {model_key!r} is missing cli_command"
+            raise ValueError(msg)
         combined_prompt = f"{system_prompt}\n\n{user_prompt}"
         result = subprocess.run(
             [cli_command, combined_prompt],
@@ -162,25 +174,29 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
 
 def build_from_contract(
     requested_keys: list[str] | None = None,
+    runtime_model_configs: Mapping[str, Mapping[str, object]] | None = None,
 ) -> AdapterInferenceBridge:
-    """Build an AdapterInferenceBridge from contract.yaml model_routing.
+    """Build an AdapterInferenceBridge from logical route keys and runtime configs.
 
-    Reads model_routing declarations from the node contract and resolves
-    endpoint URLs from environment variables at runtime. Models whose endpoints
-    are not configured are silently skipped (N-1 graceful degradation). Logs
-    which models are unavailable so callers can surface the information.
+    The node contract owns the policy schema. Concrete route configs must be
+    supplied by the caller or via the contract-declared JSON env var. Missing
+    requested keys or incomplete route configs raise ValueError.
 
     Args:
-        requested_keys: Subset of model_routing keys to load. None means all.
+        requested_keys: Required logical route keys to load.
+        runtime_model_configs: Optional runtime configs keyed by logical route key.
 
     Returns:
-        AdapterInferenceBridge wired with available model configs.
+        AdapterInferenceBridge wired with requested model configs.
     """
     from omnimarket.nodes.node_hostile_reviewer.handlers.model_config_loader import (
         build_model_configs,
     )
 
-    configs = build_model_configs(requested_keys=requested_keys)
+    configs = build_model_configs(
+        requested_keys=requested_keys,
+        runtime_model_configs=runtime_model_configs,
+    )
     return AdapterInferenceBridge(ModelInferenceBridgeConfig(model_configs=configs))
 
 
