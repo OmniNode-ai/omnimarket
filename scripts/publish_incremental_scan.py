@@ -173,6 +173,19 @@ def _load_rejected_hashes(rejected_manifest_path: Path) -> set[str]:
         return set()
 
 
+def _resolve_workspace_config_path(raw_path: str, repos_root: Path) -> Path:
+    """Resolve scanner config paths without assuming they live at repos_root."""
+    candidate = Path(raw_path)
+    if candidate.is_absolute():
+        return candidate
+
+    cwd_candidate = Path.cwd() / candidate
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    return repos_root / candidate
+
+
 def _git_modified_files(repo_path: Path, since: str) -> list[Path]:
     """Return .md files added or modified in repo since the given timestamp."""
     cmd = [
@@ -195,7 +208,11 @@ def _git_modified_files(repo_path: Path, since: str) -> list[Path]:
             timeout=30,
         )
         if result.returncode != 0:
-            logger.error("git log failed for %s: %s", repo_path, result.stderr.strip())
+            stderr = result.stderr.strip()
+            if "does not have any commits yet" in stderr:
+                logger.warning("Skipping git repo with no commits yet: %s", repo_path)
+                return []
+            logger.error("git log failed for %s: %s", repo_path, stderr)
             return []
         lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         # Deduplicate (git log may list same file multiple times across commits)
@@ -291,12 +308,11 @@ async def _run(args: argparse.Namespace) -> int:
     }
 
     # Load rejection hashes
-    rejected_manifest_path = Path(args.rejected_manifest)
-    if not rejected_manifest_path.is_absolute():
-        rejected_manifest_path = repos_root / rejected_manifest_path
-
     rejected_hashes: set[str] = set()
     if not args.force_repropose:
+        rejected_manifest_path = _resolve_workspace_config_path(
+            args.rejected_manifest, repos_root
+        )
         rejected_hashes = _load_rejected_hashes(rejected_manifest_path)
 
     repos = _discover_repos(repos_root)
@@ -362,9 +378,10 @@ async def _run(args: argparse.Namespace) -> int:
     topic = args.topic or _load_command_topic()
 
     # Publish one scoped canary command covering the modified files
+    manifest_path = _resolve_workspace_config_path(args.manifest, repos_root)
     file_paths = [str(f) for f in all_new_files]
     payload = {
-        "manifest_path": args.manifest,
+        "manifest_path": str(manifest_path),
         "scoped_files": file_paths,
         "dry_run": False,
         "source": "incremental_scan",
