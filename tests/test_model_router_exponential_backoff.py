@@ -13,7 +13,7 @@ import contextlib
 from unittest.mock import patch
 
 import pytest
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
