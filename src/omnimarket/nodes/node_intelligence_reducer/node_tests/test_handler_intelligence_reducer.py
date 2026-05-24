@@ -54,7 +54,7 @@ class TestHandlerIntelligenceReducerRouting:
         from collections.abc import Callable
 
         assert callable(make_reducer_input)
-        factory: Callable[..., ModelReducerInputPatternLifecycle] = make_reducer_input  # type: ignore[assignment]
+        factory: Callable[..., ModelReducerInputPatternLifecycle] = make_reducer_input
         handler = HandlerIntelligenceReducer()
         input_data = factory(
             from_status="candidate",
@@ -120,4 +120,4 @@ class TestHandlerIntelligenceReducerRouting:
         bad_input.fsm_type = "INGESTION"
 
         with pytest.raises(TypeError, match="unexpected FSM type"):
-            handler.handle(bad_input)  # type: ignore[arg-type]
+            handler.handle(bad_input)
