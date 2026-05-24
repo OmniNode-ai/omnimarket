@@ -12,7 +12,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
@@ -20,6 +20,7 @@ from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
+from tests.constants import MODEL_QWEN3_CODER_30B
 
 
 @pytest.mark.asyncio
@@ -57,5 +58,5 @@ async def test_model_router_routes_to_local_first() -> None:
         )
         result = await router.route_async(request)
 
-    assert result.model_key == "qwen3-coder-30b"
+    assert result.model_key == MODEL_QWEN3_CODER_30B
     assert "localhost:8000" in result.endpoint_url

@@ -55,6 +55,17 @@ output_model:
   description: >-
     Reducer output containing success status, state transition details, typed intents (ModelReducerIntent),
     and typed metadata (ModelReducerMetadata). All fields use strong typing without dict[str, Any].
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: handle_pattern_lifecycle_process
+        module: omnimarket.nodes.node_intelligence_reducer.handlers.handler_process
+      description: "FSM transition handler for PATTERN_LIFECYCLE events (OMN-11907)"
+    - handler:
+        name: PatternLifecycleTransitionResult
+        module: omnimarket.nodes.node_intelligence_reducer.handlers.handler_pattern_lifecycle
+      description: "Pattern lifecycle transition result and routing (OMN-11907)"
 # FSM State Machine Definition
 # ============================
 # The intelligence reducer manages three FSM types, each with its own state machine.
@@ -611,6 +622,31 @@ event_bus:
         success rates and pattern confidence scores."
       content_type: "application/json"
 
+# Handler Routing
+# ===============
+# Maps subscribe topics to the handler class the runtime wires.
+# HandlerIntelligenceReducer.handle() dispatches PATTERN_LIFECYCLE inputs
+# to handle_pattern_lifecycle_process; all other FSM types are handled by
+# the NodeReducer base class in node.py.
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "pattern_lifecycle_process"
+      handler:
+        name: "HandlerIntelligenceReducer"
+        module: "omnimarket.nodes.node_intelligence_reducer.handlers.handler_intelligence_reducer"
+      subscribe_topic: "onex.cmd.omnimarket.pattern-lifecycle-process.v1"
+      input_model: "ModelReducerInputPatternLifecycle"
+      output_model: "ModelReducerOutput"
+      description: "Handle PATTERN_LIFECYCLE FSM transitions and emit update-pattern-status intents."
+    - operation: "intent_outcome_labeled"
+      handler:
+        name: "HandlerIntelligenceReducer"
+        module: "omnimarket.nodes.node_intelligence_reducer.handlers.handler_intelligence_reducer"
+      subscribe_topic: "onex.evt.omnimarket.intent-outcome-labeled.v1"
+      input_model: "ModelIntentOutcomeLabeledEnvelope"
+      output_model: "ModelReducerOutput"
+      description: "Receive labeled session outcomes and drive FSM state transitions for intent tracking."
 # Health Check
 # ============
 health_check:

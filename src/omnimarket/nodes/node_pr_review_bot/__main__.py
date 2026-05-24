@@ -5,8 +5,8 @@
 Runs the full PR review bot pipeline and outputs the verdict as JSON.
 
 Usage:
-    python -m omnimarket.nodes.node_pr_review_bot --pr-number 42 --repo owner/repo --models qwen3-coder-30b qwen3-14b
-    python -m omnimarket.nodes.node_pr_review_bot --pr-number 42 --repo owner/repo --models qwen3-coder-30b --dry-run
+    python -m omnimarket.nodes.node_pr_review_bot --pr-number 42 --repo owner/repo --models reviewer-primary reviewer-secondary --judge-model judge-primary
+    python -m omnimarket.nodes.node_pr_review_bot --pr-number 42 --repo owner/repo --models reviewer-primary --judge-model judge-primary --dry-run
 """
 
 from __future__ import annotations
@@ -52,8 +52,8 @@ def main() -> None:
     parser.add_argument(
         "--judge-model",
         type=str,
-        default="deepseek-r1",
-        help="Judge model identifier (default: deepseek-r1)",
+        required=True,
+        help="Judge logical model key",
     )
     parser.add_argument(
         "--severity-threshold",

@@ -9,7 +9,7 @@ import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
@@ -17,6 +17,7 @@ from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
+from tests.constants import MODEL_QWEN3_CODER_30B
 
 _REGISTRY = {
     "qwen3-coder-30b": {
@@ -98,7 +99,7 @@ async def test_model_router_health_cache_expires_after_ttl() -> None:
         )
         result = await router.route_async(request)
 
-    assert result.model_key == "qwen3-coder-30b"
+    assert result.model_key == MODEL_QWEN3_CODER_30B
     assert http_call_count >= 1, "Expected real HTTP health check after TTL expiry"
 
 
@@ -137,8 +138,8 @@ async def test_model_router_recovery_clears_health_cache() -> None:
 
     router._record_success("qwen3-coder-30b")
 
-    assert "qwen3-coder-30b" not in router._degraded
-    assert "qwen3-coder-30b" not in router._health_cache
+    assert MODEL_QWEN3_CODER_30B not in router._degraded
+    assert MODEL_QWEN3_CODER_30B not in router._health_cache
 
 
 def test_model_router_missing_primary_in_registry_raises() -> None:

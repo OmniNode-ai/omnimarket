@@ -1,0 +1,61 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_swarm_decomposer_compute
+contract_name: node_swarm_decomposer_compute
+node_name: node_swarm_decomposer_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+description: >
+  Pure compute node for swarm task decomposition. Parses pre-fetched planner
+  LLM output into typed subtasks with validation. Never calls an LLM directly.
+
+input_model:
+  name: ModelSwarmDecomposeRequest
+  class: ModelSwarmDecomposeRequest
+  module: omnimarket.nodes.node_swarm_decomposer_compute.models.model_swarm_decompose_request
+
+output_model:
+  name: ModelSwarmDecomposeResult
+  class: ModelSwarmDecomposeResult
+  module: omnimarket.nodes.node_swarm_decomposer_compute.models.model_swarm_decompose_result
+
+handler:
+  name: HandlerSwarmDecomposer
+  module: omnimarket.nodes.node_swarm_decomposer_compute.handlers.handler_swarm_decomposer
+  class: HandlerSwarmDecomposer
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [market]
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  plugin_managed: false
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-decompose.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-decomposition-completed.v1
+
+terminal_event: onex.evt.omnimarket.swarm-decomposition-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-decomposition-completed.v1
+
+published_events:
+  - event_type: SwarmDecompositionCompleted
+    topic: onex.evt.omnimarket.swarm-decomposition-completed.v1
+    description: Swarm decomposition completed with typed subtasks.
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-23"
+  tags: [compute, swarm, decomposition, OMN-11809]
+  related_tickets:
+    - "OMN-11809"

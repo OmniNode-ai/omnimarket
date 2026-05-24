@@ -1,0 +1,24 @@
+name: node_swarm_endpoint_health_effect
+version: "1.0.0"
+description: "Effect node for swarm endpoint health checking via HTTP probes"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_swarm_endpoint_health_effect: "omnimarket.nodes.node_swarm_endpoint_health_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["effect", "swarm", "endpoint-health", "http-probe", "OMN-11810"]
+pack: "swarm"
+display_name: "Swarm Endpoint Health Effect"
+node_role: "effect"

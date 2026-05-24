@@ -18,7 +18,12 @@ handler:
   input_model: omnimarket.nodes.node_demo_fix_dispatcher.handlers.handler_demo_fix_dispatcher.ModelDemoFixDispatchRequest
 
 handler_routing:
-  default_handler: handler:HandlerDemoFixDispatcher
+  routing_strategy: operation_match
+  handlers:
+    - operation: dispatch_demo_fix
+      handler:
+        name: HandlerDemoFixDispatcher
+        module: omnimarket.nodes.node_demo_fix_dispatcher.handlers.handler_demo_fix_dispatcher
 
 descriptor:
   node_archetype: effect

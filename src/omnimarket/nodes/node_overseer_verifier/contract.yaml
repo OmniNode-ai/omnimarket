@@ -28,6 +28,20 @@ handler:
   class: HandlerOverseerVerifier
   input_model: omnimarket.nodes.node_overseer_verifier.models.model_verifier_request.ModelVerifierRequest
 
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerOverseerVerifier
+        module: omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier
+      event_model:
+        name: ModelVerifierRequest
+        module: omnimarket.nodes.node_overseer_verifier.models.model_verifier_request
+    - handler:
+        name: HandlerOverseerVerifierConsumer
+        module: omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer
+      description: "Kafka consumer wrapper bridging bus wire format to HandlerOverseerVerifier"
+
 descriptor:
   node_archetype: compute
   purity: pure

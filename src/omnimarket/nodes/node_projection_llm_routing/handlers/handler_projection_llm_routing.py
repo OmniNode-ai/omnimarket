@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerProjectionLlmRouting — project llm-routing-decision events to DB.
+"""HandlerProjectionLlmRouting — project contract-routed LLM decisions to DB.
 
-Consumes onex.evt.omniclaude.llm-routing-decision.v1 and UPSERTs into
-the llm_routing_decisions table. Dedup by correlation_id.
+Consumes contract-declared routing decision events and UPSERTs into the
+llm_routing_decisions table. Dedup by correlation_id.
 
 Target table schema (from omnibase_infra migration 065_create_llm_routing_decisions.sql):
   id UUID PRIMARY KEY DEFAULT gen_random_uuid()
@@ -36,11 +36,9 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 TABLE = "llm_routing_decisions"
 CONFLICT_KEY = "correlation_id"
 
-TOPIC_LLM_ROUTING_DECISION: str = "onex.evt.omniclaude.llm-routing-decision.v1"  # onex-topic-allow: canonical topic declared in node_emit_daemon contract.yaml publish_topics
-
 
 class ModelLlmRoutingDecisionEvent(BaseModel):
-    """Inbound event from onex.evt.omniclaude.llm-routing-decision.v1."""
+    """Inbound event payload for the contract-declared routing decision topic."""
 
     model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
 
@@ -136,7 +134,6 @@ class HandlerProjectionLlmRouting:
 
 
 __all__: list[str] = [
-    "TOPIC_LLM_ROUTING_DECISION",
     "HandlerProjectionLlmRouting",
     "ModelLlmRoutingDecisionEvent",
     "ModelProjectionResult",
