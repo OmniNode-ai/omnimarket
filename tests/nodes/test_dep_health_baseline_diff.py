@@ -114,6 +114,34 @@ def test_diff_no_changes(tmp_path: Path) -> None:
     assert len(result.resolved_findings) == 0
 
 
+def test_diff_normalizes_absolute_src_paths(tmp_path: Path) -> None:
+    """Absolute worktree paths and repo-relative src paths compare equal."""
+    baseline_finding = _make_finding(
+        detail="finding A",
+        file_path="src/omnimarket/nodes/node_example/contract.yaml",
+    )
+    current_finding = _make_finding(
+        detail="finding A",
+        file_path="/home/runner/work/omnimarket/omnimarket/src/omnimarket/nodes/node_example/contract.yaml",
+    )
+
+    baseline = ModelBaselineSnapshot(
+        findings=[baseline_finding],
+        graphify_version="v0.8.2",
+        rule_version="v1",
+        captured_at="2025-01-01T00:00:00",
+    )
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(baseline.model_dump_json())
+
+    engine = BaselineDiffEngine()
+    result = engine.diff(current=[current_finding], baseline_path=baseline_path)
+
+    assert result.delta == 0
+    assert result.new_findings == []
+    assert result.resolved_findings == []
+
+
 def test_diff_no_baseline_path_returns_none_delta() -> None:
     """When baseline_path is None, diff is skipped and None is returned."""
     finding_a = _make_finding(detail="finding A", file_path="src/a.py")

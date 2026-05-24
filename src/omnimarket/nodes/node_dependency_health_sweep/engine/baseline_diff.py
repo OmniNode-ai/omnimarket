@@ -32,6 +32,15 @@ from omnimarket.nodes.node_dependency_health_sweep.models.model_graph_types impo
 logger = logging.getLogger(__name__)
 
 
+def _normalized_file_path(file_path: str | None) -> str | None:
+    if file_path is None:
+        return None
+    marker = "/src/"
+    if marker in file_path:
+        return "src/" + file_path.rsplit(marker, maxsplit=1)[1]
+    return file_path
+
+
 def _composite_key(
     finding: ModelDepHealthFinding,
     graphify_version: str,
@@ -41,7 +50,7 @@ def _composite_key(
         finding.repo,
         finding.finding_type.value,
         finding.severity.value,
-        finding.file_path,
+        _normalized_file_path(finding.file_path),
         finding.symbol,
         detail_hash,
         graphify_version,
