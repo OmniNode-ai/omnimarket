@@ -86,8 +86,11 @@ outputs:
     description: "True if fallback model was used"
 
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.model-route-requested.v1
   publish_topics:
+    - onex.evt.omnimarket.model-route-resolved.v1
+    - onex.evt.omnimarket.model-route-rejected.v1
     - onex.evt.omnimarket.model-routing-degraded.v1
 
 metadata:
