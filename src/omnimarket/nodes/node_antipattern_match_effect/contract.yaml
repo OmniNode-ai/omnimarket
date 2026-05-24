@@ -1,0 +1,250 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_antipattern_match_effect
+# EFFECT node — embeds query input and searches onex_antipatterns Qdrant collection
+# for nearest-neighbor antipattern matches with freshness decay reranking.
+# [OMN-11919, OMN-11909]
+
+name: "node_antipattern_match_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "c4d2f7b1-e8a3-4f9c-b0d5-3e7a9c1f4b8e"
+node_type: effect
+input_model: "ModelAntipatternMatchRequest"
+output_model: "ModelAntipatternMatchResponse"
+handler:
+  module: omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect
+  class: HandlerAntipatternMatchEffect
+  input_model: ModelAntipatternMatchRequest
+description: |
+  Embeds the query (code_text and/or description) via a contract-configured
+  embedding endpoint and searches the onex_antipatterns Qdrant collection for
+  nearest-neighbor antipattern entries.
+
+  Results are filtered by min_similarity threshold, reranked by freshness decay
+  (recently-discovered antipatterns rank higher), and returned as a typed tuple
+  of ModelAntipatternMatch entries with similarity_score, adjusted_score,
+  antipattern_entry metadata, and explanation.
+
+  Uses ProtocolVectorStore SPI boundary — Qdrant is the configured provider.
+  Qdrant unavailability is a graceful skip (empty matches + error_message).
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-11919"
+  parent_epic: "OMN-11909"
+  contract_driven_routing: true
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  correlation_id_required: true
+  unit_tests: true
+  integration_test_stubs: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "vector_query"
+    atomic: false
+    timeout_seconds: 15
+    validation_enabled: true
+  - operation_type: "embedding_query"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "antipattern_match_effect"
+  main_tool_class: "NodeAntipatternMatchEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === NODE CONFIGURATION ===
+config:
+  embedding_endpoint:
+    env_var: "EMBEDDING_MODEL_URL"
+    description: "Base URL for the embedding model OpenAI-compatible endpoint. Fail-fast if unset."
+    required: true
+  vector_backend:
+    env_var: "ANTIPATTERN_VECTOR_BACKEND"
+    default: "qdrant"
+    description: "Vector backend provider. Currently only 'qdrant' is supported."
+  qdrant_collection:
+    env_var: "ANTIPATTERN_QDRANT_COLLECTION"
+    default: "onex_antipatterns"
+    description: "Qdrant collection name for antipattern vectors."
+  qdrant_host:
+    env_var: "QDRANT_HOST"
+    description: "Qdrant host. Required when qdrant_client is not injected."
+    required: false
+  qdrant_port:
+    env_var: "QDRANT_PORT"
+    default: "6333"
+    description: "Qdrant port."
+  EMBEDDING_MODEL_URL:
+    description: "Base URL for the embedding model endpoint (declared for contract-config compliance)."
+    required: false
+  ANTIPATTERN_VECTOR_BACKEND:
+    description: "Vector backend provider."
+    required: false
+  ANTIPATTERN_QDRANT_COLLECTION:
+    description: "Qdrant collection name for antipattern vectors."
+    required: false
+  QDRANT_HOST:
+    description: "Qdrant host."
+    required: false
+  QDRANT_PORT:
+    description: "Qdrant port."
+    required: false
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["correlation_id"]
+  optional:
+    - "code_text"
+    - "description"
+    - "min_similarity"
+    - "max_results"
+    - "freshness_decay_factor"
+    - "qdrant_collection_override"
+    - "embedding_endpoint_override"
+
+output_state:
+  object_type: "object"
+  required: ["matches"]
+  optional:
+    - "query_text_used"
+    - "qdrant_collection"
+    - "total_candidates_searched"
+    - "error_message"
+
+# === ACTIONS ===
+actions:
+  - name: "match"
+    description: "Embed query and search for similar antipatterns in Qdrant"
+    inputs:
+      - "correlation_id"
+      - "code_text"
+      - "description"
+      - "min_similarity"
+      - "max_results"
+      - "freshness_decay_factor"
+      - "qdrant_collection_override"
+      - "embedding_endpoint_override"
+    outputs:
+      - "matches"
+      - "query_text_used"
+      - "qdrant_collection"
+      - "total_candidates_searched"
+      - "error_message"
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "qdrant"
+    dependency_type: "service"
+    description: "Qdrant vector store for antipattern similarity search (onex_antipatterns collection)"
+    required: false
+    notes: "Graceful skip when unavailable — returns empty matches with error_message"
+
+  - name: "embedding_model"
+    dependency_type: "service"
+    description: "OpenAI-compatible embedding endpoint (EMBEDDING_MODEL_URL) — same model as node_antipattern_index_effect"
+    required: true
+
+  - name: "ProtocolVectorStore"
+    dependency_type: "protocol"
+    description: "SPI boundary for vector store operations. Qdrant is the configured provider."
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 45000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["antipattern-match-response"]
+  event_categories: ["intelligence", "embedding", "effect", "antipattern"]
+  publish_events: true
+  subscribe_events: true
+  invocation_mode: "subscription"
+  event_routing: "intelligence"
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 45000
+  runtime_profiles:
+    - effects
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.antipattern-match-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.antipattern-match-response.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.antipattern-match-requested.v1":
+      schema_ref: "omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match_request.ModelAntipatternMatchRequest"
+      description: "Command to trigger antipattern similarity search. Contains query code_text and/or description."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.antipattern-match-response.v1":
+      schema_ref: "omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match_response.ModelAntipatternMatchResponse"
+      description: "Match response — matched antipatterns with similarity scores and freshness-adjusted ranking."
+
+externally_consumed_topics:
+  - "onex.evt.omnimarket.antipattern-match-response.v1"
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "match"
+      handler_class: "HandlerAntipatternMatchEffect"
+      handler_module: "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect"
+      handler:
+        name: "HandlerAntipatternMatchEffect"
+        module: "omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect"
+        handler_type: "QDRANT"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  constraint_definitions:
+    correlation_id: "string (1-128) — required on input and output"
+    min_similarity: "float (0.0-1.0) — cosine similarity threshold"
+    max_results: "int (1-100) — maximum matches to return"
+    freshness_decay_factor: "float (0.0-1.0) — recency boost weight"
+
+# === TAGS ===
+tags:
+  - intelligence
+  - search
+  - effect
+  - antipattern
+  - qdrant
+  - vector
+  - similarity
+  - omn-11909
+  - omn-11919
+
+metadata:
+  transport_type: http

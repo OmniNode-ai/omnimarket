@@ -1,4 +1,7 @@
 {
+  "captured_at": "2026-05-24T22:07:13Z",
+  "graphify_version": "ast-fallback",
+  "rule_version": "v1",
   "findings": [
     {
       "finding_type": "UNTESTED_HANDLER",
@@ -667,6 +670,16 @@
       "file_path": "src/omnimarket/nodes/node_codebase_intelligence_bridge_effect/handlers/handler_codebase_intelligence_bridge.py",
       "symbol": "handler_codebase_intelligence_bridge",
       "detail": "Contract-referenced handler 'handler_codebase_intelligence_bridge' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_swarm/handlers/handler_projection_swarm.py",
+      "symbol": "handler_projection_swarm",
+      "detail": "Contract-referenced handler 'handler_projection_swarm' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -3544,6 +3557,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_projection_swarm/contract.yaml",
+      "symbol": "onex.evt.omnimarket.projection-swarm-applied.v1",
+      "detail": "Topic 'onex.evt.omnimarket.projection-swarm-applied.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_quality_scoring_compute/contract.yaml",
       "symbol": "onex.evt.omnimarket.quality-assessment-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.quality-assessment-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -4180,8 +4203,5 @@
       "rule_id": "UNDECLARED_TOPIC",
       "rule_version": "v1"
     }
-  ],
-  "graphify_version": "0.8.2",
-  "rule_version": "v1",
-  "captured_at": "2026-05-24T21:55:00Z"
+  ]
 }
