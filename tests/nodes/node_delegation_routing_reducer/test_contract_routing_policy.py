@@ -26,6 +26,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     parse_delegation_config_yaml,
 )
+from tests.constants import MODEL_DEEPSEEK_R1_14B, MODEL_QWEN3_CODER_30B
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -207,7 +208,7 @@ class TestGetContractModelRef:
 
         result = _get_contract_model_ref("reasoning", contract_file)
 
-        assert result == "deepseek-r1-14b"
+        assert result == MODEL_DEEPSEEK_R1_14B
 
     def test_code_generation_returns_default(self, tmp_path: Path) -> None:
         """code_generation has no override — falls back to default_task_model_ref."""
@@ -216,7 +217,7 @@ class TestGetContractModelRef:
 
         result = _get_contract_model_ref("code_generation", contract_file)
 
-        assert result == "qwen3-coder-30b"
+        assert result == MODEL_QWEN3_CODER_30B
 
     def test_test_task_returns_default(self, tmp_path: Path) -> None:
         """test task has no override — falls back to default_task_model_ref."""
@@ -225,7 +226,7 @@ class TestGetContractModelRef:
 
         result = _get_contract_model_ref("test", contract_file)
 
-        assert result == "qwen3-coder-30b"
+        assert result == MODEL_QWEN3_CODER_30B
 
     def test_document_task_returns_default(self, tmp_path: Path) -> None:
         """document task has no override — falls back to default_task_model_ref."""
@@ -234,7 +235,7 @@ class TestGetContractModelRef:
 
         result = _get_contract_model_ref("document", contract_file)
 
-        assert result == "qwen3-coder-30b"
+        assert result == MODEL_QWEN3_CODER_30B
 
     def test_complex_reasoning_returns_deepseek(self, tmp_path: Path) -> None:
         """complex_reasoning has an override to deepseek."""
@@ -243,7 +244,7 @@ class TestGetContractModelRef:
 
         result = _get_contract_model_ref("complex_reasoning", contract_file)
 
-        assert result == "deepseek-r1-14b"
+        assert result == MODEL_DEEPSEEK_R1_14B
 
     def test_unknown_task_falls_back_to_default(self, tmp_path: Path) -> None:
         """Unknown task_type uses default_task_model_ref when no override declared."""
@@ -252,7 +253,7 @@ class TestGetContractModelRef:
 
         result = _get_contract_model_ref("unknown_future_task_type", contract_file)
 
-        assert result == "qwen3-coder-30b"
+        assert result == MODEL_QWEN3_CODER_30B
 
     def test_contract_without_overrides_returns_none(self, tmp_path: Path) -> None:
         """Contract without task_model_overrides or default returns None (graceful degrade)."""
@@ -384,7 +385,7 @@ class TestDeltaContractRouting:
         contract_file.write_text(_CONTRACT_WITH_OVERRIDES)
 
         result = _get_contract_model_ref("totally_unknown_task_xyz", contract_file)
-        assert result == "qwen3-coder-30b", (
+        assert result == MODEL_QWEN3_CODER_30B, (
             f"Expected default qwen3-coder-30b for unknown task, got: {result!r}"
         )
 
