@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_knowledge_context_assembler_reducer.models.model_knowledge_context_bundle import (
+from omnimarket.events.knowledge_context import (
     ModelKnowledgeContextBundle,
 )
 

@@ -17,6 +17,13 @@ import asyncio
 import logging
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from omnimarket.events.knowledge_context import (
+    EnumBundleStatus,
+    EnumFragmentSource,
+    ModelKnowledgeContextBundle,
+    ModelKnowledgeContextFragment,
+    ModelKnowledgeContextState,
+)
 from omnimarket.nodes.node_knowledge_context_assembler_orchestrator.models.model_knowledge_context_orchestrator_result import (
     ModelKnowledgeContextOrchestratorResult,
     OrchestratorStatus,
@@ -27,17 +34,6 @@ from omnimarket.nodes.node_knowledge_context_assembler_orchestrator.models.model
 )
 from omnimarket.nodes.node_knowledge_context_assembler_reducer.handlers.handler_knowledge_context_assembler_reducer import (
     HandlerKnowledgeContextAssemblerReducer,
-)
-from omnimarket.nodes.node_knowledge_context_assembler_reducer.models.model_knowledge_context_bundle import (
-    EnumBundleStatus,
-    ModelKnowledgeContextBundle,
-)
-from omnimarket.nodes.node_knowledge_context_assembler_reducer.models.model_knowledge_context_fragment import (
-    EnumFragmentSource,
-    ModelKnowledgeContextFragment,
-)
-from omnimarket.nodes.node_knowledge_context_assembler_reducer.models.model_knowledge_context_state import (
-    ModelKnowledgeContextState,
 )
 
 logger = logging.getLogger(__name__)

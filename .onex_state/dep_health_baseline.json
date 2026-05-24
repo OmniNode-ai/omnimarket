@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-05-24T22:30:05Z",
+  "captured_at": "2026-05-24T22:58:47Z",
   "graphify_version": "ast-fallback",
   "rule_version": "v1",
   "findings": [
@@ -310,6 +310,16 @@
       "file_path": "src/omnimarket/nodes/node_projection_query/handlers/handler_projection_query.py",
       "symbol": "handler_projection_query",
       "detail": "Contract-referenced handler 'handler_projection_query' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_knowledge_context_assembler_reducer/handlers/handler_knowledge_context_assembler_reducer.py",
+      "symbol": "handler_knowledge_context_assembler_reducer",
+      "detail": "Contract-referenced handler 'handler_knowledge_context_assembler_reducer' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -3050,6 +3060,16 @@
       "file_path": "src/omnimarket/nodes/node_kb_repowise_index_effect/contract.yaml",
       "symbol": "onex.evt.omnimarket.kb-repowise-index-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.kb-repowise-index-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.knowledge-context-assembled.v1",
+      "detail": "Topic 'onex.evt.omnimarket.knowledge-context-assembled.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
