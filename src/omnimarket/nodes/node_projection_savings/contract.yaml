@@ -19,9 +19,11 @@ handler_routing:
     - handler:
         name: HandlerProjectionSavings
         module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
     - handler:
         name: SavingsProjectionRunner
         module: omnimarket.nodes.node_projection_savings.handlers.handler_savings
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_savings
 
 terminal_event: onex.evt.omnimarket.projection-savings-applied.v1
 

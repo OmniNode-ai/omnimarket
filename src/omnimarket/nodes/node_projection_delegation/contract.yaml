@@ -19,9 +19,11 @@ handler_routing:
     - handler:
         name: DelegationProjectionRunner
         module: omnimarket.nodes.node_projection_delegation.handlers.handler_delegation
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_delegation
     - handler:
         name: HandlerProjectionDelegation
         module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 

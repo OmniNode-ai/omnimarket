@@ -19,9 +19,11 @@ handler_routing:
     - handler:
         name: BaselinesProjectionRunner
         module: omnimarket.nodes.node_projection_baselines.handlers.handler_baselines
+      handler_module: omnimarket.nodes.node_projection_baselines.handlers.handler_baselines
     - handler:
         name: HandlerProjectionBaselines
         module: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines
+      handler_module: omnimarket.nodes.node_projection_baselines.handlers.handler_projection_baselines
 
 terminal_event: onex.evt.omnimarket.projection-baselines-applied.v1
 

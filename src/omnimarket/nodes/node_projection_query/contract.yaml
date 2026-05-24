@@ -102,7 +102,7 @@ dod_evidence:
     assertion: golden_path declares all 10 query shapes
   - type: entry_point
     path: pyproject.toml
-    assertion: node_projection_query registered in onex.nodes
+    assertion: node_projection_query registered in the node registry
   - type: integration_test
     path: tests/test_golden_chain_projection_query.py
     assertion: HTTP call per shape returns correct DB rows

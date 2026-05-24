@@ -18,9 +18,11 @@ handler_routing:
     - handler:
         name: LlmCostProjectionRunner
         module: omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost
+      handler_module: omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost
     - handler:
         name: HandlerProjectionLlmCost
         module: omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost
+      handler_module: omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost
 
 env_dependencies:
   POSTGRES_HOST:
