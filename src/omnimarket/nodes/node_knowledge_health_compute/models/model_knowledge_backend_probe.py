@@ -7,5 +7,4 @@ from __future__ import annotations
 
 from omnimarket.events.knowledge_health import ModelKnowledgeBackendProbe
 
-
 __all__ = ["ModelKnowledgeBackendProbe"]
