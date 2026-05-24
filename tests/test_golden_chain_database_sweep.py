@@ -53,7 +53,7 @@ class TestDatabaseSweepGoldenChain:
         assert result.drizzle_defined is True
 
     async def test_empty_table(self, event_bus: EventBusInmemory) -> None:
-        """A table with 0 rows should be EMPTY."""
+        """A Drizzle-defined table with 0 rows should be EMPTY."""
         with patch(
             "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
         ) as mock_psql:
@@ -61,16 +61,18 @@ class TestDatabaseSweepGoldenChain:
                 (0, "1", ""),  # created_at exists
                 (0, "0||EMPTY", ""),  # health query
             ]
-            result = _check_table("empty_table", "omnidash_analytics", 24, set())
+            result = _check_table(
+                "empty_table", "omnidash_analytics", 24, {"empty_table"}
+            )
 
         assert result.status == "EMPTY"
         assert result.row_count == 0
-        assert result.drizzle_defined is False
+        assert result.drizzle_defined is True
 
     async def test_missing_table_on_query_error(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """A table that errors on query should be classified as MISSING."""
+        """A Drizzle-defined table that errors on query should be classified as MISSING."""
         with patch(
             "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
         ) as mock_psql:
@@ -78,12 +80,14 @@ class TestDatabaseSweepGoldenChain:
                 (0, "1", ""),  # created_at exists
                 (1, "", "relation does not exist"),  # health query fails
             ]
-            result = _check_table("ghost_table", "omnidash_analytics", 24, set())
+            result = _check_table(
+                "ghost_table", "omnidash_analytics", 24, {"ghost_table"}
+            )
 
         assert result.status == "MISSING"
 
     async def test_no_timestamp_column(self, event_bus: EventBusInmemory) -> None:
-        """A table with no timestamp column should be classified as NO_TIMESTAMP or EMPTY."""
+        """A Drizzle-defined table with no timestamp column should be classified as UNKNOWN."""
         with patch(
             "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
         ) as mock_psql:
@@ -96,13 +100,13 @@ class TestDatabaseSweepGoldenChain:
                 "recorded_at",
             ]
             no_col_responses = [(0, "", "")] * len(ts_cols)
-            # Final row count query
-            no_col_responses += [(0, "42", "")]
             mock_psql.side_effect = no_col_responses
-            result = _check_table("no_ts_table", "omnidash_analytics", 24, set())
+            result = _check_table(
+                "no_ts_table", "omnidash_analytics", 24, {"no_ts_table"}
+            )
 
-        assert result.status == "NO_TIMESTAMP"
-        assert result.row_count == 42
+        assert result.status == "UNKNOWN"
+        assert "no timestamp column" in result.message
 
     async def test_alembic_current(
         self, event_bus: EventBusInmemory, tmp_path: Path

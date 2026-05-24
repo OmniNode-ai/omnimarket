@@ -7,8 +7,9 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Projection table health and migration tracking — checks row count and staleness
   for every table in omnidash_analytics, plus migration state across all ONEX
-  databases (Alembic + Drizzle). Reports HEALTHY/STALE/EMPTY/MISSING/ORPHAN status
-  per table and CURRENT/PENDING/AHEAD/FAILED/NO_TABLE per database.
+  databases (Alembic + Drizzle). Reports HEALTHY/STALE/EMPTY/MISSING/ORPHAN/UNKNOWN
+  status per table and CURRENT/PENDING/AHEAD/FAILED/NO_TABLE per database.
+  Supports per-table staleness thresholds with fallback to a global default.
 
 handler:
   module: omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep
@@ -35,6 +36,10 @@ inputs:
     description: "Hours before data is considered stale (default: 24)"
     required: false
     default: 24
+  staleness_thresholds:
+    type: "dict[str, float]"
+    description: "Per-table staleness thresholds in hours (table_name -> hours); overrides global staleness_threshold_hours for matched tables"
+    required: false
   dry_run:
     type: bool
     description: "If true, report findings without creating Linear tickets"
