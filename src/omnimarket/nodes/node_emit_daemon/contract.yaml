@@ -135,3 +135,4 @@ event_bus:
 
 externally_consumed_topics:
   - onex.cmd.omniintelligence.tool-content.v1
+  - onex.evt.omniclaude.notification-blocked.v1
