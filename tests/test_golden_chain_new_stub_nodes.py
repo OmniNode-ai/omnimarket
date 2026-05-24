@@ -87,10 +87,18 @@ def test_pr_watch_stub_declares_runtime_routing_surface() -> None:
     )
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
 
-    assert raw["handler_routing"]["default_handler"] == (
-        "omnimarket.nodes.node_pr_watch_orchestrator.handlers."
-        "handler_pr_watch_orchestrator:HandlerPrWatchOrchestrator"
-    )
+    assert raw["handler_routing"]["routing_strategy"] == "operation_match"
+    assert raw["handler_routing"]["handlers"] == [
+        {
+            "handler": {
+                "name": "HandlerPrWatchOrchestrator",
+                "module": (
+                    "omnimarket.nodes.node_pr_watch_orchestrator.handlers."
+                    "handler_pr_watch_orchestrator"
+                ),
+            }
+        }
+    ]
     assert raw["event_bus"] == {
         "consumer_group": "omnimarket.pr_watch_orchestrator.consume.v1",
         "subscribe_topics": ["onex.cmd.omnimarket.pr-watch-start.v1"],

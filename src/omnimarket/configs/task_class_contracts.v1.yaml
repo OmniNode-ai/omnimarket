@@ -37,11 +37,11 @@ task_model_overrides:
   code_generation: "openrouter-glm-flash"
   test: "openrouter-glm-flash"
   refactor: "openrouter-glm-flash"
-  reasoning: "deepseek-r1-14b"
-  complex_reasoning: "deepseek-r1-14b"
-  planning: "deepseek-r1-14b"
-  review: "deepseek-r1-14b"
-  research: "deepseek-r1-14b"
+  reasoning: "qwen3.6-35b"
+  complex_reasoning: "qwen3.6-35b"
+  planning: "qwen3.6-35b"
+  review: "qwen3.6-35b"
+  research: "qwen3.6-35b"
 task_classes:
   code_generation:
     required_capabilities:
