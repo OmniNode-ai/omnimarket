@@ -1,8 +1,8 @@
 ---
 name: node_dispatch_worker
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 template_version: "1.2.0"
 template_steward: "team-lead"
@@ -13,6 +13,9 @@ description: >
   collision fences, and returns structured spawn args. Does NOT call Agent(),
   TaskCreate, or any external APIs.
 
+  When knowledge_context_level is set (L0–L3), the handler assembles a KB context
+  bundle and injects it as a ## Knowledge Context section before returning.
+
 handler:
   module: omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker
   class: HandlerDispatchWorker
@@ -22,7 +25,7 @@ descriptor:
   node_archetype: compute
   purity: impure
   idempotent: false
-  timeout_ms: 10000
+  timeout_ms: 12000
 
 inputs:
   name:
@@ -69,6 +72,18 @@ inputs:
     required: false
     default: false
     description: "Kill existing in_progress worker with same name and restart"
+  knowledge_context_level:
+    type: str
+    required: false
+    default: "none"
+    description: >
+      KB context injection level. One of: none, L0, L1, L2, L3.
+      'none' = no context injected (default, backward-compatible).
+      L0 = scope summary only.
+      L1 = scope + target ticket context.
+      L2 = L1 + repo overview.
+      L3 = L2 + extended decision context.
+      When != 'none', assembles KB bundle and injects ## Knowledge Context into prompt.
 
 outputs:
   validated_task_description:
@@ -86,6 +101,21 @@ outputs:
   rejected_reason:
     type: str
     description: "Non-empty string if the node rejected the request"
+  knowledge_context_bundle_hash:
+    type: str
+    description: "SHA-256[:16] of the injected KB bundle. Empty when level='none'."
+  bundle_level:
+    type: str
+    description: "The knowledge_context_level applied. Mirrors command input."
+  source_backends_used:
+    type: list
+    description: "KB backends that contributed context (e.g. ['repowise', 'wiki'])."
+  degraded_backends:
+    type: list
+    description: "Backends requested but unavailable or timed out."
+  injected_context_char_count:
+    type: int
+    description: "Character count of the injected ## Knowledge Context section."
 
 env_dependencies:
   CLAUDE_TASKS_DIR:
@@ -102,9 +132,9 @@ event_bus:
 
 dod_evidence:
   PYTEST:
-    description: all 8 integration tests pass
-    command: uv run pytest tests/ -k "test_dispatch_worker" -v
-    pass_criteria: all 8 tests pass; golden template outputs match fixtures
+    description: all dispatch_worker tests pass including KB context tests
+    command: uv run pytest tests/ -k "dispatch_worker" -v
+    pass_criteria: all 51+ tests pass; KB context injection verified
   CI:
     description: template behavioral invariants check passes
     command: python check_template_behavioral_invariants.py
