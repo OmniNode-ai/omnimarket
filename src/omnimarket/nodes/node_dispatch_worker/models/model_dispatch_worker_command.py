@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -48,6 +49,13 @@ class ModelDispatchWorkerCommand(BaseModel):
     replace: bool = Field(
         default=False,
         description="Kill existing in_progress worker with same name and restart",
+    )
+    knowledge_context_level: Literal["none", "L0", "L1", "L2", "L3"] = Field(
+        default="none",
+        description=(
+            "KB context injection level. 'none' = no context (default, backward-compat). "
+            "L0-L3 = progressively richer context bundles from the KB assembler."
+        ),
     )
 
     @field_validator("name")

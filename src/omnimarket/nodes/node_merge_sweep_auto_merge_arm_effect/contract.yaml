@@ -18,7 +18,11 @@ handler:
   input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelAutoMergeArmCommand
 
 handler_routing:
-  default_handler: omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_auto_merge_arm:HandlerAutoMergeArmEffect
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerAutoMergeArmEffect
+        module: omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.handlers.handler_auto_merge_arm
 
 descriptor:
   node_archetype: effect

@@ -73,6 +73,7 @@ def parse_delegation_config_yaml(yaml_text: str) -> ModelDelegationConfig:
                 eval_before_accept=tier_data.get("eval_before_accept", False),
                 eval_model=tier_data.get("eval_model"),
                 max_retries=tier_data.get("max_retries", 0),
+                cost_per_1k_tokens=float(tier_data.get("cost_per_1k_tokens", 0.0)),
             )
         )
     return ModelDelegationConfig(tiers=tuple(tiers))

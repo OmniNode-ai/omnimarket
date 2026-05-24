@@ -16,6 +16,7 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     ModelSavingsEstimatedEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.constants import MODEL_CLAUDE_OPUS_4_6, MODEL_QWEN3_CODER_30B
 
 HANDLER = HandlerProjectionSavings()
 _DELEGATE_SKILL_TEST_MODEL = "test-model-local"
@@ -27,7 +28,7 @@ class TestSavingsProjection:
         event = ModelSavingsEstimatedEvent(
             event_timestamp=datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
             session_id="sess-001",
-            model_local="qwen3-coder-30b",
+            model_local=MODEL_QWEN3_CODER_30B,
             model_cloud_baseline="claude-opus-4",
             local_cost_usd=Decimal("0.000000"),
             cloud_cost_usd=Decimal("12.340000"),
@@ -42,7 +43,7 @@ class TestSavingsProjection:
         assert rows[0] == {
             "event_timestamp": "2026-04-29T12:00:00+00:00",
             "session_id": "sess-001",
-            "model_local": "qwen3-coder-30b",
+            "model_local": MODEL_QWEN3_CODER_30B,
             "model_cloud_baseline": "claude-opus-4",
             "local_cost_usd": Decimal("0.000000"),
             "cloud_cost_usd": Decimal("12.340000"),
@@ -60,7 +61,7 @@ class TestSavingsProjection:
             ModelSavingsEstimatedEvent(
                 event_timestamp=datetime(2026, 4, 29, 8, 0, tzinfo=offset_tz),
                 session_id="sess-offset",
-                model_local="qwen3-coder-30b",
+                model_local=MODEL_QWEN3_CODER_30B,
                 model_cloud_baseline="claude-opus-4",
                 local_cost_usd=Decimal("1.000000"),
                 cloud_cost_usd=Decimal("2.000000"),
@@ -72,7 +73,7 @@ class TestSavingsProjection:
             ModelSavingsEstimatedEvent(
                 event_timestamp=datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
                 session_id="sess-offset",
-                model_local="qwen3-coder-30b",
+                model_local=MODEL_QWEN3_CODER_30B,
                 model_cloud_baseline="claude-opus-4",
                 local_cost_usd=Decimal("0.500000"),
                 cloud_cost_usd=Decimal("2.000000"),
@@ -99,7 +100,7 @@ class TestSavingsProjection:
                 "latency_ms": 12,
                 "event_timestamp": "2026-04-29T12:00:00Z",
                 "session_id": "sess-transport",
-                "model_local": "qwen3-coder-30b",
+                "model_local": MODEL_QWEN3_CODER_30B,
                 "model_cloud_baseline": "claude-opus-4",
                 "local_cost_usd": "0.100000",
                 "cloud_cost_usd": "0.300000",
@@ -126,7 +127,7 @@ class TestSavingsProjection:
             ModelSavingsEstimatedEvent(
                 event_timestamp=datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
                 session_id="s1",
-                model_local="qwen3-coder-30b",
+                model_local=MODEL_QWEN3_CODER_30B,
                 model_cloud_baseline="claude-opus-4",
                 local_cost_usd=Decimal("1.000000"),
                 cloud_cost_usd=Decimal("2.000000"),
@@ -138,7 +139,7 @@ class TestSavingsProjection:
             ModelSavingsEstimatedEvent(
                 event_timestamp=datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
                 session_id="s1",
-                model_local="qwen3-coder-30b",
+                model_local=MODEL_QWEN3_CODER_30B,
                 model_cloud_baseline="claude-opus-4",
                 local_cost_usd=Decimal("0.500000"),
                 cloud_cost_usd=Decimal("2.000000"),
@@ -171,7 +172,7 @@ class TestSavingsProjection:
         event = ModelSavingsEstimatedEvent(
             event_timestamp=datetime(2026, 4, 29, 12, 0, tzinfo=UTC),
             session_id="s1",
-            model_local="qwen3-coder-30b",
+            model_local=MODEL_QWEN3_CODER_30B,
             model_cloud_baseline="claude-opus-4",
             local_cost_usd=Decimal("1.000000"),
             cloud_cost_usd=Decimal("2.000000"),
@@ -201,7 +202,7 @@ class TestSavingsProjection:
             ModelSavingsEstimatedEvent(
                 event_timestamp=datetime(2026, 4, 29, 12, i, tzinfo=UTC),
                 session_id=f"sess-{i:03d}",
-                model_local="qwen3-coder-30b",
+                model_local=MODEL_QWEN3_CODER_30B,
                 model_cloud_baseline="claude-opus-4",
                 local_cost_usd=Decimal("0.000000"),
                 cloud_cost_usd=Decimal(f"{i}.000000"),
@@ -286,7 +287,7 @@ class TestSavingsProjection:
         assert result["rows_upserted"] == 1
         row = db.query("savings_estimates")[0]
         assert row["session_id"] == "f9243395-5cb6-4036-8ffb-39dd25547413"
-        assert row["model_cloud_baseline"] == "claude-opus-4-6"
+        assert row["model_cloud_baseline"] == MODEL_CLAUDE_OPUS_4_6
         assert row["savings_usd"] == Decimal("0.006003")
 
     def test_fixture_replay_matches_golden_checksums(self) -> None:
