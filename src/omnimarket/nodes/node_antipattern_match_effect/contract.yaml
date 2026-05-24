@@ -120,7 +120,7 @@ input_state:
 
 output_state:
   object_type: "object"
-  required: ["correlation_id", "matches"]
+  required: ["matches"]
   optional:
     - "query_text_used"
     - "qdrant_collection"
@@ -141,7 +141,6 @@ actions:
       - "qdrant_collection_override"
       - "embedding_endpoint_override"
     outputs:
-      - "correlation_id"
       - "matches"
       - "query_text_used"
       - "qdrant_collection"

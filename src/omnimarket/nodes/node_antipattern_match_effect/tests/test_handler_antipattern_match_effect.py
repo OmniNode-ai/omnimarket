@@ -11,6 +11,7 @@ Integration stub: @pytest.mark.integration — skipped unless .201 is available.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -83,6 +84,10 @@ def _make_mock_http_client(fake_embedding: list[float]) -> AsyncMock:
     return mock_http
 
 
+def _iso_days_ago(days: int) -> str:
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
+
+
 # =============================================================================
 # Unit tests: helper functions
 # =============================================================================
@@ -124,7 +129,7 @@ class TestApplyFreshnessBoost:
     def test_recent_entry_gets_boost(self) -> None:
         score = _apply_freshness_boost(
             base_score=0.85,
-            discovered_at="2026-05-24T00:00:00Z",
+            discovered_at=_iso_days_ago(1),
             decay_factor=0.05,
         )
         assert score >= 0.85
@@ -132,12 +137,12 @@ class TestApplyFreshnessBoost:
     def test_old_entry_no_significant_boost(self) -> None:
         score_old = _apply_freshness_boost(
             base_score=0.85,
-            discovered_at="2020-01-01T00:00:00Z",
+            discovered_at=_iso_days_ago(3650),
             decay_factor=0.05,
         )
         score_recent = _apply_freshness_boost(
             base_score=0.85,
-            discovered_at="2026-05-24T00:00:00Z",
+            discovered_at=_iso_days_ago(1),
             decay_factor=0.05,
         )
         assert score_recent > score_old
@@ -258,7 +263,7 @@ class TestHandlerAntipatternMatchEffect:
                 embedding_endpoint_override="http://test-embed:8100",
             )
 
-        assert len(result.matches) <= 3
+        assert len(result.matches) == 3
 
     @pytest.mark.asyncio
     async def test_search_called_with_correct_params(self) -> None:
@@ -393,12 +398,12 @@ class TestHandlerAntipatternMatchEffect:
             _make_qdrant_hit(
                 score=0.90,
                 name="old_ap",
-                discovered_at="2020-01-01T00:00:00Z",
+                discovered_at=_iso_days_ago(3650),
             ),
             _make_qdrant_hit(
                 score=0.85,
                 name="recent_ap",
-                discovered_at="2026-05-24T00:00:00Z",
+                discovered_at=_iso_days_ago(1),
             ),
         ]
         qdrant = _make_mock_qdrant(results=hits)
@@ -426,11 +431,9 @@ class TestHandlerAntipatternMatchEffect:
     @pytest.mark.asyncio
     async def test_zero_freshness_decay_preserves_original_order(self) -> None:
         hits = [
+            _make_qdrant_hit(score=0.90, name="higher", discovered_at=_iso_days_ago(1)),
             _make_qdrant_hit(
-                score=0.90, name="higher", discovered_at="2026-05-24T00:00:00Z"
-            ),
-            _make_qdrant_hit(
-                score=0.80, name="lower", discovered_at="2020-01-01T00:00:00Z"
+                score=0.80, name="lower", discovered_at=_iso_days_ago(3650)
             ),
         ]
         qdrant = _make_mock_qdrant(results=hits)

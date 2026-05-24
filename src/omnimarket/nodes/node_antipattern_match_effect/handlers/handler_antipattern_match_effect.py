@@ -46,14 +46,16 @@ def _build_query_text(
     description: str | None,
 ) -> str:
     """Combine code_text and/or description into a single embedding input."""
-    if code_text is None and description is None:
+    normalized_description = (description or "").strip()
+    normalized_code_text = (code_text or "").strip()
+    if not normalized_description and not normalized_code_text:
         raise ValueError("At least one of code_text or description must be provided.")
     parts = []
-    if description:
-        parts.append(description.strip())
-    if code_text:
-        parts.append(code_text.strip())
-    return "\n".join(p for p in parts if p)
+    if normalized_description:
+        parts.append(normalized_description)
+    if normalized_code_text:
+        parts.append(normalized_code_text)
+    return "\n".join(parts)
 
 
 def _apply_freshness_boost(
@@ -185,8 +187,8 @@ class HandlerAntipatternMatchEffect:
                 discovered_at=discovered_at,
                 decay_factor=freshness_decay_factor,
             )
-            ap_name = payload.get("name", "unknown")
-            ap_description = payload.get("description", "")
+            ap_name = str(payload.get("name") or "unknown").strip() or "unknown"
+            ap_description = str(payload.get("description") or "").strip()
             matches.append(
                 ModelAntipatternMatch(
                     similarity_score=score,
@@ -240,7 +242,14 @@ def _build_qdrant_client() -> Any | None:
         logger.info("QDRANT_HOST not set; antipattern match will be a no-op")
         return None
 
-    port = int(os.environ.get("QDRANT_PORT", "6333"))  # contract-config-ok: config
+    raw_port = os.environ.get("QDRANT_PORT", "6333")  # contract-config-ok: config
+    try:
+        port = int(raw_port)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid QDRANT_PORT=%r; antipattern match will be a no-op", raw_port
+        )
+        return None
     try:
         client = QdrantClient(host=host, port=port)
         client.get_collections()
