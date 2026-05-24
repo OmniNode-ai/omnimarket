@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-05-24T23:36:56Z",
+  "captured_at": "2026-05-24T23:53:41Z",
   "graphify_version": "ast-fallback",
   "rule_version": "v1",
   "findings": [
@@ -630,6 +630,16 @@
       "file_path": "src/omnimarket/nodes/node_close_out/handlers/handler_close_out.py",
       "symbol": "handler_close_out",
       "detail": "Contract-referenced handler 'handler_close_out' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_design_plan_context_compute/handlers/handler_design_plan_context.py",
+      "symbol": "handler_design_plan_context",
+      "detail": "Contract-referenced handler 'handler_design_plan_context' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
