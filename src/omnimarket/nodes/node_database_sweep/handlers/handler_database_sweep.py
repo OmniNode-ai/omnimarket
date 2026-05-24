@@ -201,6 +201,13 @@ def _check_table(
         if staleness_thresholds and table in staleness_thresholds
         else staleness_hours
     )
+    if effective_hours <= 0:
+        return ModelTableHealthResult(
+            table_name=table,
+            status="UNKNOWN",
+            drizzle_defined=drizzle_defined,
+            message="invalid staleness threshold: expected hours > 0",
+        )
 
     # Try each timestamp column in priority order
     for ts_col in _TIMESTAMP_COLUMNS:

@@ -135,6 +135,23 @@ class TestCheckTableFreshnessStates:
         query = call_args[0][0]
         assert "48" in query  # global threshold applied
 
+    def test_invalid_per_table_threshold_is_unknown_without_sql(self) -> None:
+        """Invalid per-table thresholds are rejected before freshness SQL."""
+        with patch(
+            "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._psql"
+        ) as mock_psql:
+            result = _check_table(
+                "node_service_registry",
+                "omnidash_analytics",
+                24,
+                {"node_service_registry"},
+                staleness_thresholds={"node_service_registry": -1.0},
+            )
+
+        assert result.status == "UNKNOWN"
+        assert "invalid staleness threshold" in result.message
+        mock_psql.assert_not_called()
+
     def test_unknown_not_reclassified_as_orphan(self) -> None:
         """UNKNOWN tables are not re-classified as ORPHAN by the handler."""
         handler = NodeDatabaseSweep()
