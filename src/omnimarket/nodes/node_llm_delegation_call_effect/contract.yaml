@@ -1,0 +1,162 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# LLM Delegation Call EFFECT - ONEX Contract
+# EFFECT node that executes LLM calls via httpx with health probes, event emission, and cost telemetry.
+
+# === REQUIRED ROOT FIELDS ===
+name: "node_llm_delegation_call_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "a3f7c821-9e4d-4b82-bc01-d5e6f2a38c14"
+node_type: effect
+input_model: "ModelLlmDelegationCallRequest"
+output_model: "ModelLlmDelegationCallResult"
+handler:
+  module: omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call
+  class: HandlerLlmDelegationCall
+  input_model: omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request.ModelLlmDelegationCallRequest
+description: |
+  LLM delegation call effect node. Executes LLM API calls via httpx against
+  OpenAI-compatible endpoints, with health probe caching (60s TTL), per-call
+  cost telemetry derived from the pricing manifest, and typed terminal event
+  emission on success, escalation, or total failure.
+
+  Endpoints are resolved from env vars declared in this contract — no raw
+  URL strings in handler code.
+
+# === RUNTIME PROFILES ===
+descriptor:
+  runtime_profiles:
+    - local_macos_claude_hooks
+    - omninode_runtime
+    - effects
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "http_request"
+    atomic: false
+    timeout_seconds: 120
+    validation_enabled: true
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "llm_delegation_call_effect"
+  main_tool_class: "NodeLlmDelegationCallEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["request_id", "correlation_id", "causation_id", "model_id", "endpoint_ref", "prompt", "prompt_hash"]
+  optional: ["max_tokens", "temperature", "task_type", "task_id", "routing_policy_hash", "registry_hash", "pricing_manifest_version", "pricing_manifest_hash"]
+
+output_state:
+  object_type: "object"
+  required: ["success", "request_id"]
+  optional: ["content", "tokens_in", "tokens_out", "latency_ms", "actual_cost_usd", "failure_class", "error_message"]
+
+# === ENV VARS (resolved at runtime — never hardcoded URLs) ===
+# Each endpoint_ref in ModelLlmDelegationCallRequest is the name of one of these env vars.
+env_vars:
+  - name: "LLM_LOCAL_PRIMARY_URL"
+    required: false
+    description: "Base URL for primary local inference endpoint"
+  - name: "LLM_LOCAL_FAST_URL"
+    required: false
+    description: "Base URL for fast local inference endpoint"
+  - name: "LLM_CODER_FAST_URL"
+    required: false
+    description: "Base URL for fast coder inference endpoint"
+  - name: "LLM_GLM_URL"
+    required: false
+    description: "Base URL for GLM cloud endpoint"
+  - name: "LLM_REMOTE_FRONTIER_URL"
+    required: false
+    description: "Base URL for frontier remote endpoint"
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.delegation-execute.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.delegation-call-completed.v1"
+    - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
+    - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
+    - "onex.evt.omnimarket.delegation-model-degraded.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.delegation-execute.v1":
+      schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request.ModelLlmDelegationCallRequest"
+      description: "Command to execute a single LLM delegation call for the given model/endpoint."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.delegation-call-completed.v1":
+      schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_completed_event.ModelLlmDelegationCompletedEvent"
+      description: "Emitted when the LLM call succeeds. Carries full cost provenance."
+    "onex.evt.omnimarket.delegation-escalation-triggered.v1":
+      schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event.ModelLlmDelegationEscalationTriggeredEvent"
+      description: "Emitted when output fails quality gate and escalation to the next tier is triggered."
+    "onex.evt.omnimarket.delegation-all-tiers-failed.v1":
+      schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event.ModelLlmDelegationAllTiersFailedEvent"
+      description: "Emitted when all model tiers fail. Terminal event — caller must handle error path."
+    "onex.evt.omnimarket.delegation-model-degraded.v1":
+      schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event.ModelLlmDelegationModelDegradedEvent"
+      description: "Emitted when a model exceeds the escalation rate threshold for a task type."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "execute_delegation_call"
+      handler:
+        name: "HandlerLlmDelegationCall"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call"
+  default_handler: "HandlerLlmDelegationCall"
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: httpx
+    dependency_type: library
+    description: Async HTTP client for OpenAI-compatible API calls
+    required: true
+  - name: omnimarket.models.delegation.llm_cost_routing
+    dependency_type: internal
+    description: Typed event models from OMN-11772
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 120000
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  performance_validation_enabled: false
+
+# === TAGS ===
+tags:
+  - llm
+  - delegation
+  - effect
+  - httpx
+  - cost-telemetry
+  - health-probe
+
+metadata:
+  transport_type: kafka

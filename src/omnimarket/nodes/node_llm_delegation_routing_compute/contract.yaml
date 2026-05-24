@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - LLM Delegation Routing Compute
+#
+# Pure compute node: selects a target LLM model from a routing policy given
+# delegation request, degradation state, and health state. No I/O, no Kafka,
+# no database access.
+#
+# Related Tickets:
+#   - OMN-11771: LLM delegation routing epic
+#   - OMN-11775: Routing compute node implementation
+name: "node_llm_delegation_routing_compute"
+node_type: compute
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Pure compute node that selects a target LLM model from a routing policy. Takes a DelegationRequest, RoutingPolicy, degradation state, and health state; returns a ModelSelection. Fully deterministic, no I/O."
+input_model:
+  name: "ModelDelegationRoutingInput"
+  module: "omnimarket.nodes.node_llm_delegation_routing_compute.models.model_delegation_routing_input"
+  description: "Delegation request, routing policy, degradation state, and health state."
+output_model:
+  name: "ModelDelegationRoutingOutput"
+  module: "omnimarket.nodes.node_llm_delegation_routing_compute.models.model_delegation_routing_output"
+  description: "Selected model with selection reason and audit trail of skipped alternatives."
+handler:
+  module: omnimarket.nodes.node_llm_delegation_routing_compute.handlers.handler_delegation_routing
+  class: HandlerDelegationRouting
+  input_model: omnimarket.nodes.node_llm_delegation_routing_compute.models.model_delegation_routing_input.ModelDelegationRoutingInput
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "route"
+      handler:
+        name: "HandlerDelegationRouting"
+        module: "omnimarket.nodes.node_llm_delegation_routing_compute.handlers.handler_delegation_routing"
+metadata:
+  description: "LLM delegation routing compute node"
+  author: "OmniNode Team"
+  created: "2026-05-23"
+  tags:
+    - "compute"
+    - "delegation"
+    - "routing"
+    - "llm"
+    - "cost-routing"
+    - "OMN-11771"
+    - "OMN-11775"
+  related_tickets:
+    - "OMN-11771"
+    - "OMN-11775"

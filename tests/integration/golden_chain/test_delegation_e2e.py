@@ -29,7 +29,7 @@ pytestmark = [
     pytest.mark.integration,
     pytest.mark.kafka,
     pytest.mark.skipif(
-        not os.environ.get("OMN_ALLOW_LIVE_INTEGRATION_TESTS"),
+        os.environ.get("OMN_ALLOW_LIVE_INTEGRATION_TESTS", "").lower() != "true",
         reason="Requires OMN_ALLOW_LIVE_INTEGRATION_TESTS=true",
     ),
 ]
@@ -42,7 +42,7 @@ _PG_HOST = os.environ.get(
     "INTEGRATION_POSTGRES_HOST",
     "192.168.86.201",  # onex-allow-internal-ip OMN-11765 reason="stability-test lane lab GPU server; read from env at runtime"
 )
-_PG_PORT = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5436"))
+_PG_PORT = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "15436"))
 _PG_USER = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
 _PG_PASSWORD = os.environ.get(
     "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
@@ -137,6 +137,14 @@ def _build_delegation_event(correlation_id: str) -> dict[str, Any]:
 async def _publish_to_kafka(topic: str, payload: dict[str, Any]) -> tuple[int, int]:
     """Publish JSON payload to Kafka; return (partition, offset) metadata."""
     from aiokafka import AIOKafkaProducer
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+    envelope = ModelEventEnvelope[dict[str, Any]](
+        payload=payload,
+        correlation_id=uuid.UUID(str(payload["correlation_id"])),
+        source_tool="omnimarket.omn-11765-e2e",
+        event_type="omniclaude.task-delegated",
+    )
 
     producer = AIOKafkaProducer(
         bootstrap_servers=_KAFKA_BOOTSTRAP,
@@ -144,7 +152,9 @@ async def _publish_to_kafka(topic: str, payload: dict[str, Any]) -> tuple[int, i
     )
     await producer.start()
     try:
-        record_metadata = await producer.send_and_wait(topic, payload)
+        record_metadata = await producer.send_and_wait(
+            topic, envelope.model_dump(mode="json")
+        )
         return record_metadata.partition, record_metadata.offset
     finally:
         await producer.stop()
