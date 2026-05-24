@@ -13,6 +13,13 @@ handler:
   class: HandlerDesignToPlan
   input_model: omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state.ModelDesignToPlanStartCommand
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDesignToPlan
+        module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan
+
 descriptor:
   node_archetype: compute
   purity: impure

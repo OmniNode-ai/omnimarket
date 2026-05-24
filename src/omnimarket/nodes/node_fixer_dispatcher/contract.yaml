@@ -15,6 +15,13 @@ handler:
   class: HandlerFixerDispatcher
   input_model: omnimarket.nodes.node_fixer_dispatcher.models.model_fixer_dispatch.ModelFixerDispatchRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerFixerDispatcher
+        module: omnimarket.nodes.node_fixer_dispatcher.handlers.handler_fixer_dispatcher
+
 descriptor:
   node_archetype: compute
   purity: pure

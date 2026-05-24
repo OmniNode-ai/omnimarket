@@ -20,7 +20,11 @@ handler:
   input_model: omnimarket.nodes.node_worker_stall_recovery.models.model_stall_recovery_command.ModelStallRecoveryCommand
 
 handler_routing:
-  default_handler: omnimarket.nodes.node_worker_stall_recovery.handlers.handler_stall_recovery:HandlerStallRecovery
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerStallRecovery
+        module: omnimarket.nodes.node_worker_stall_recovery.handlers.handler_stall_recovery
 
 descriptor:
   node_archetype: effect

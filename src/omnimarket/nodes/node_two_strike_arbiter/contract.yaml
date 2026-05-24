@@ -16,6 +16,13 @@ handler:
   class: HandlerTwoStrikeArbiter
   input_model: omnimarket.nodes.node_two_strike_arbiter.models.model_two_strike_input.ModelTwoStrikeCommand
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerTwoStrikeArbiter
+        module: omnimarket.nodes.node_two_strike_arbiter.handlers.handler_two_strike_arbiter
+
 descriptor:
   node_archetype: effect
   purity: impure
