@@ -466,15 +466,33 @@ class HandlerModelRouter:
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
     def _served_model_id(self, model_key: str, entry: RegistryEntry) -> str:
-        return entry.get("served_model_id") or entry.get("model_id") or model_key
+        served_model_id = entry.get("served_model_id")
+        if served_model_id:
+            return served_model_id
+        model_id = entry.get("model_id")
+        if model_id:
+            return model_id
+        return model_key
 
     def _endpoint_ref(self, entry: RegistryEntry) -> str:
-        return entry.get("endpoint_ref") or entry.get("env_key") or ""
+        endpoint_ref = entry.get("endpoint_ref")
+        if endpoint_ref:
+            return endpoint_ref
+        env_key = entry.get("env_key")
+        if env_key:
+            return env_key
+        return ""
 
     def _pricing_manifest_hash(self, entry: RegistryEntry) -> str:
-        return entry.get("pricing_manifest_hash") or getattr(
+        pricing_manifest_hash = entry.get("pricing_manifest_hash")
+        if pricing_manifest_hash:
+            return pricing_manifest_hash
+        policy_pricing_manifest_hash = getattr(
             self._policy, "pricing_manifest_hash", ""
         )
+        if isinstance(policy_pricing_manifest_hash, str):
+            return policy_pricing_manifest_hash
+        return ""
 
     def _write_escalation_event(
         self, from_tier: EscalationTier, to_tier: EscalationTier, correlation_id: str
