@@ -58,8 +58,10 @@ def test_build_inference_bridge_config_populates_deepseek(
 ) -> None:
     """model_configs must include deepseek-r1 entry when LLM_DEEPSEEK_R1_URL is set."""
     monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-reviewer-served-model")
     monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-host:8001")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://test-host:8101")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-judge-served-model")
 
     cfg = load_inference_bridge_config_from_env()
 
@@ -117,8 +119,10 @@ def test_run_review_uses_concrete_thread_poster(
 ) -> None:
     """run_review must wire HandlerThreadPoster, not _StubThreadPoster."""
     monkeypatch.setenv("LLM_CODER_URL", "http://test-host:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-reviewer-served-model")
     monkeypatch.setenv("LLM_CODER_FAST_URL", "http://test-host:8001")
     monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://test-host:8101")
+    monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "test-judge-served-model")
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
     captured: dict[str, object] = {}
