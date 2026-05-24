@@ -27,10 +27,11 @@ import asyncio
 import logging
 import re
 import time
+import tomllib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import uuid4
 
 import yaml
@@ -239,11 +240,6 @@ class HandlerArchitectureGraphPopulate:
             if op in ("populate_from_pyproject", "populate_all"):
                 pyproject_path = repo_path / "pyproject.toml"
                 if pyproject_path.exists():
-                    try:
-                        import tomllib
-                    except ImportError:
-                        import tomli as tomllib  # type: ignore[no-redef,import-untyped]
-
                     with open(pyproject_path, "rb") as f:
                         pyproject_data = tomllib.load(f)
                     edges = self._parse_pyproject_deps(
@@ -286,11 +282,13 @@ class HandlerArchitectureGraphPopulate:
         if not request.dry_run:
             await self._write_to_graph(deduped_nodes, deduped_edges, snapshot_meta)
 
-        status: str = "dry_run" if request.dry_run else "success"
+        status: Literal["dry_run", "success"] = (
+            "dry_run" if request.dry_run else "success"
+        )
         return ModelArchitectureGraphPopulateResponseEvent(
             populate_id=request.populate_id,
             operation=request.operation,
-            status=status,  # type: ignore[arg-type]
+            status=status,
             snapshot_meta=snapshot_meta,
             nodes_written=tuple(deduped_nodes),
             edges_written=tuple(deduped_edges),
@@ -551,8 +549,8 @@ class HandlerArchitectureGraphPopulate:
         async with _open_session(self._driver) as session:
             # Write nodes in batches
             for i in range(0, len(nodes), batch_size):
-                batch = nodes[i : i + batch_size]
-                for node in batch:
+                node_batch = nodes[i : i + batch_size]
+                for node in node_batch:
                     cypher = self._build_node_merge_cypher(node)
                     params: dict[str, Any] = {"node_id": node.node_id}
                     params.update(node.properties)
@@ -560,8 +558,8 @@ class HandlerArchitectureGraphPopulate:
 
             # Write edges in batches
             for i in range(0, len(edges), batch_size):
-                batch = edges[i : i + batch_size]
-                for edge in batch:
+                edge_batch = edges[i : i + batch_size]
+                for edge in edge_batch:
                     cypher = self._build_edge_merge_cypher(edge)
                     await session.run(
                         cypher,
