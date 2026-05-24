@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
@@ -37,6 +38,7 @@ from omnibase_infra.event_bus.topic_constants import (
     TOPIC_DELEGATION_QUALITY_GATE_RESULT,
     TOPIC_DELEGATION_ROUTING_DECISION,
 )
+from omnibase_infra.utils import sanitize_error_message
 
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -156,7 +158,26 @@ class DelegationIntentBridge:
         if self._llm_caller is None:
             msg = "No LLM caller configured — cannot execute inference intent"
             raise RuntimeError(msg)
-        response = await self._llm_caller.call(intent)
+        started_at = time.monotonic()
+        try:
+            response = await self._llm_caller.call(intent)
+        except Exception as exc:
+            latency_ms = int((time.monotonic() - started_at) * 1000)
+            error_message = sanitize_error_message(exc)
+            logger.warning(
+                "Inference intent failed: model=%s latency=%dms correlation_id=%s error=%s",
+                intent.model,
+                latency_ms,
+                intent.correlation_id,
+                error_message,
+            )
+            response = ModelInferenceResponseData(
+                correlation_id=intent.correlation_id,
+                content="",
+                model_used=intent.model,
+                latency_ms=latency_ms,
+                error_message=error_message,
+            )
         logger.info(
             "Inference intent resolved: model=%s, tokens=%d, correlation_id=%s",
             response.model_used,
