@@ -58,6 +58,12 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 If a dry run depends on GitHub or Linear and those systems are unreachable,
 report that degraded condition explicitly rather than inventing remote state.
 
+Do not add concrete LLM provider names, served model IDs, endpoint URLs, or
+fallback model defaults to this skill. If the backing node requires LLM work,
+pass logical routing needs only when those fields are declared in the node
+contract; runtime model resolution belongs to `node_model_router` and
+contract/overlay policy.
+
 ### Step 4 - Format output
 
 On success: prefer `output_payloads[0]`; if it is absent, render the runtime
@@ -81,3 +87,9 @@ On error: surface the runtime adapter error code and message.
 Do not implement any business logic. All processing runs in the OmniMarket
 `{{NODE_NAME}}` node. These instructions only cover argument mapping, node
 dispatch, and output formatting.
+
+Do not add concrete LLM provider names, served model IDs, endpoint URLs, or
+fallback model defaults to this skill. If the backing node requires LLM work,
+pass logical routing needs only when those fields are declared in the node
+contract; runtime model resolution belongs to `node_model_router` and
+contract/overlay policy.
