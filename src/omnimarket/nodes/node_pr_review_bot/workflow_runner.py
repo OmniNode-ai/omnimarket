@@ -19,6 +19,9 @@ import os
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceBridgeConfig,
+)
 from omnimarket.inference.bridge_config_loader import (
     load_inference_bridge_config_from_env,
 )
@@ -151,7 +154,7 @@ def run_review(
     github_token: str | None = None,
     *,
     reviewer_models: list[str] | None = None,
-    judge_model: str = "deepseek-r1",
+    judge_model: str | None = None,
     severity_threshold: EnumFindingSeverity = EnumFindingSeverity.MAJOR,
     dry_run: bool = False,
     max_findings_per_pr: int = 20,
@@ -170,7 +173,9 @@ def run_review(
             ``ModelInferenceBridgeConfig.model_configs``. Raises ``ValueError``
             if empty/None (no defaults: unknown keys previously produced a
             silent-clean verdict).
-        judge_model: Judge model identifier. Must not be a build-loop model.
+        judge_model: Judge logical model key. Required — must be provided by
+            the caller and registered in
+            ``ModelInferenceBridgeConfig.model_configs``.
         severity_threshold: Minimum severity to post a review thread.
         dry_run: If True, no GitHub comments are posted.
         max_findings_per_pr: Cap on review threads to prevent spam.
@@ -189,13 +194,30 @@ def run_review(
             "reviewer_models must be provided — no default model keys are registered. "
             "Pass explicit model keys from ModelInferenceBridgeConfig.model_configs."
         )
+    resolved_judge_model = (judge_model or "").strip()
+    if not resolved_judge_model:
+        raise ValueError(  # error-ok: CLI argument validation at caller boundary
+            "judge_model must be provided — no default judge model key is registered. "
+            "Pass an explicit model key from ModelInferenceBridgeConfig.model_configs."
+        )
+
+    inference_bridge_config = load_inference_bridge_config_from_env()
+    _reviewer_context_windows = _resolve_reviewer_context_windows(
+        inference_bridge_config,
+        resolved_reviewer_models,
+    )
+    judge_base_url, judge_model_id = _resolve_http_model_endpoint(
+        inference_bridge_config,
+        resolved_judge_model,
+        role="judge",
+    )
 
     request = ReviewRequest(
         correlation_id=run_id,
         pr_number=pr_number,
         repo=repo,
         reviewer_models=resolved_reviewer_models,
-        judge_model=judge_model,
+        judge_model=resolved_judge_model,
         severity_threshold=severity_threshold,
         dry_run=dry_run,
         max_findings_per_pr=max_findings_per_pr,
@@ -216,10 +238,7 @@ def run_review(
 
     # Reviewer wiring — populate inference_bridge_config from env so
     # caller-supplied reviewer_models keys resolve to real endpoints.
-    # context_window per reviewer model comes from contract.yaml
-    # model_routing.reviewer.context_window (112K).
-    inference_bridge_config = load_inference_bridge_config_from_env()
-    _reviewer_context_windows = dict.fromkeys(request.reviewer_models, 112_000)
+    # context_window per reviewer model comes from the resolved bridge config.
     _reviewer_config = LlmReviewerConfig(
         reviewer_models=request.reviewer_models,
         model_context_windows=_reviewer_context_windows,
@@ -236,7 +255,8 @@ def run_review(
         github_bridge=github_bridge,
     )
     judge_verifier: ProtocolJudgeVerifier = HandlerJudgeVerifier(
-        judge_model_id=request.judge_model,
+        judge_base_url=judge_base_url,
+        judge_model_id=judge_model_id,
     )
     report_poster: ProtocolReportPoster = HandlerReportPoster(
         github_bridge=_ReportPosterBridgeAdapter(github_bridge),
@@ -283,6 +303,73 @@ def _inject_token_env(token: str) -> str:
     env_var = "GITHUB_TOKEN"
     os.environ[env_var] = token
     return env_var
+
+
+def _resolve_reviewer_context_windows(
+    config: ModelInferenceBridgeConfig,
+    reviewer_models: list[str],
+) -> dict[str, int]:
+    context_windows: dict[str, int] = {}
+    for model_key in reviewer_models:
+        _resolve_http_model_endpoint(config, model_key, role="reviewer")
+        raw_context_window = config.model_configs[model_key].get("context_window")
+        if not isinstance(raw_context_window, int | str):
+            raise ValueError(
+                f"reviewer model key {model_key!r} is missing a valid context_window "
+                "in ModelInferenceBridgeConfig.model_configs."
+            )
+        try:
+            context_window = int(raw_context_window)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"reviewer model key {model_key!r} is missing a valid context_window "
+                "in ModelInferenceBridgeConfig.model_configs."
+            ) from exc
+        if context_window <= 0:
+            raise ValueError(
+                f"reviewer model key {model_key!r} has invalid context_window "
+                f"{context_window!r}; expected a positive integer."
+            )
+        context_windows[model_key] = context_window
+    return context_windows
+
+
+def _resolve_http_model_endpoint(
+    config: ModelInferenceBridgeConfig,
+    model_key: str,
+    *,
+    role: str,
+) -> tuple[str, str]:
+    model_config = config.model_configs.get(model_key)
+    if model_config is None:
+        raise ValueError(
+            f"{role} model key {model_key!r} is not configured in "
+            "ModelInferenceBridgeConfig.model_configs."
+        )
+
+    transport = str(model_config.get("transport", "")).strip()
+    if transport and transport != "http":
+        raise ValueError(
+            f"{role} model key {model_key!r} uses unsupported transport "
+            f"{transport!r}; PR review bot requires http inference endpoints."
+        )
+
+    base_url = str(model_config.get("base_url", "")).strip()
+    if not base_url:
+        raise ValueError(
+            f"{role} model key {model_key!r} is missing base_url in "
+            "ModelInferenceBridgeConfig.model_configs."
+        )
+
+    model_id = str(model_config.get("model_id", "")).strip()
+    if not model_id:
+        raise ValueError(
+            f"{role} model key {model_key!r} is missing model_id in "
+            "ModelInferenceBridgeConfig.model_configs. Set the matching "
+            "model-name env var for that logical key."
+        )
+
+    return base_url.rstrip("/"), model_id
 
 
 __all__: list[str] = [

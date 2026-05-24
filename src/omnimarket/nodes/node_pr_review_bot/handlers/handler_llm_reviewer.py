@@ -52,7 +52,8 @@ class LlmReviewerConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     reviewer_models: list[str] = Field(
-        default_factory=lambda: ["qwen3-coder-30b"],
+        ...,
+        min_length=1,
         description="Ordered list of reviewer model keys.",
     )
     model_context_windows: dict[str, int] = Field(
