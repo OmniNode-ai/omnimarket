@@ -67,9 +67,6 @@ if TYPE_CHECKING:
         ProtocolEventBusPublisher,
     )
 
-TOPIC_OVERSEER_VERIFIER_COMPLETED = "onex.evt.omnimarket.overseer-verifier-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_OVERSEER_VERIFY = "onex.cmd.omnimarket.overseer-verify.v1"  # onex-topic-allow: pending contract auto-wiring
-
 logger = logging.getLogger(__name__)
 
 
@@ -81,6 +78,20 @@ def _load_contract(contract_path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+def _topic_overseer_verifier_completed() -> str:
+    publish_topics: list[str] = (
+        _load_contract().get("event_bus", {}).get("publish_topics", [])
+    )
+    return next((t for t in publish_topics if "overseer-verifier-completed" in t), "")
+
+
+def _topic_overseer_verify() -> str:
+    subscribe_topics: list[str] = (
+        _load_contract().get("event_bus", {}).get("subscribe_topics", [])
+    )
+    return next((t for t in subscribe_topics if "overseer-verify" in t), "")
+
+
 def _topic_verification_receipt_start() -> str:
     """Load the verification-receipt-start topic from contract.yaml at import time."""
     publish_topics: list[str] = (
@@ -89,6 +100,8 @@ def _topic_verification_receipt_start() -> str:
     return next((t for t in publish_topics if "verification-receipt-start" in t), "")
 
 
+TOPIC_OVERSEER_VERIFIER_COMPLETED = _topic_overseer_verifier_completed()
+TOPIC_OVERSEER_VERIFY = _topic_overseer_verify()
 TOPIC_VERIFICATION_RECEIPT_START = _topic_verification_receipt_start()
 
 # Re-export canonical topic names for callers that import from this module.
