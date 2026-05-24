@@ -21,6 +21,18 @@ handler:
   class: HandlerSwarmRegistry
   input_model: omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_selection_request.ModelSwarmEndpointSelectionRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: select_endpoints
+      handler:
+        name: HandlerSwarmRegistry
+        module: omnimarket.nodes.node_swarm_registry_compute.handlers.handler_swarm_registry
+      event_model:
+        name: ModelSwarmEndpointSelectionRequest
+        module: omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_selection_request
+  default_handler: HandlerSwarmRegistry
+
 descriptor:
   node_archetype: compute
   purity: pure
