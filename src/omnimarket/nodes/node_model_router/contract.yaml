@@ -7,8 +7,9 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Contract-driven LLM endpoint router. Every LLM call in the platform routes
   through this node — no hardcoded model IDs, base URLs, or timeout literals
-  in handler source. Endpoints are resolved from model_registry.yaml via
-  model_id keys declared in the caller's ModelRoutingPolicy.
+  in handler source or node contracts. Endpoints are resolved from the runtime
+  model registry via logical model keys declared in the caller's
+  ModelRoutingPolicy.
 
 handler:
   module: omnimarket.nodes.node_model_router.handlers.handler_model_router
@@ -46,19 +47,26 @@ dependencies:
 env_dependencies:
   ONEX_CI_MODE:
     required: false
-    description: "When set to '1' or 'true' (case-insensitive), activates CI override policy and uses ci_override.primary model instead of the default primary"
+    description: "When set to '1' or 'true' (case-insensitive), activates CI override policy and uses ci_override.primary from the injected routing policy."
 
-model_routing:
-  primary: qwen3-coder-30b
-  fallback: claude-sonnet
-  timeout_per_attempt_s: 60
-  max_retries: 2
-  reason_for_fallback: "local timeout or unavailable"
-  fallback_allowed_roles:
-    - reviewer
-    - designer
-    - fixer
-  call_style: async
+model_routing_policy_schema:
+  source: injected_ModelRoutingPolicy
+  no_contract_model_defaults: true
+  required_fields:
+    - primary
+    - timeout_per_attempt_s
+    - max_retries
+  optional_fields:
+    - fallback
+    - fallback_allowed_roles
+    - reason_for_fallback
+    - ci_override
+    - call_style
+  description: >
+    The node contract declares policy shape only. Logical model keys, served
+    model IDs, endpoint URLs, fallback targets, and environment-specific
+    runtime defaults are supplied by ModelRoutingPolicy, registry, topology,
+    or approved overlays.
 
 inputs:
   prompt:
@@ -109,13 +117,13 @@ model_escalation:
     - name: local
       description: "Self-hosted models on local GPU infrastructure"
     - name: cheap_cloud
-      description: "Low-cost cloud API models (e.g. OpenRouter)"
+      description: "Low-cost cloud API routing tier."
       required_env_keys:
         - OPENROUTER_API_KEY
     - name: mid_frontier
-      description: "Mid-tier frontier models (e.g. Claude Sonnet)"
+      description: "Mid-tier frontier routing tier."
     - name: expensive_frontier
-      description: "High-cost frontier models (e.g. Claude Opus) — excluded from auto-escalation"
+      description: "High-cost frontier routing tier — excluded from auto-escalation."
   max_attempts_per_tier: 2
   auto_escalation_excludes:
     - expensive_frontier
