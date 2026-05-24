@@ -57,7 +57,7 @@ def test_fails_llm_endpoint_literal(tmp_path: Path) -> None:
         """
 name: node_example
 config:
-  endpoint: http://192.168.86.201:8000
+  endpoint: http://llm-endpoint.example.invalid:8000
 """,
     )
 
