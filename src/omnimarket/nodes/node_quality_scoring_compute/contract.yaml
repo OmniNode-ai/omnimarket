@@ -80,6 +80,18 @@ handler_routing:
       event_model:
         name: "ModelQualityScoringInput"
         module: "omnimarket.nodes.node_quality_scoring_compute.models"
+  # Support modules used by HandlerQualityScoringCompute (OMN-11907)
+  internal_modules:
+    - module: omnimarket.nodes.node_quality_scoring_compute.handlers.handler_quality_scoring
+      description: "Core scoring algorithm functions"
+    - module: omnimarket.nodes.node_quality_scoring_compute.handlers.enum_onex_strictness_level
+      description: "OnexStrictnessLevel enum"
+    - module: omnimarket.nodes.node_quality_scoring_compute.handlers.exceptions
+      description: "QualityScoringValidationError, QualityScoringComputeError"
+    - module: omnimarket.nodes.node_quality_scoring_compute.handlers.presets
+      description: "Strictness level preset weight/threshold helpers"
+    - module: omnimarket.nodes.node_quality_scoring_compute.handlers.protocols
+      description: "DimensionScores, QualityScoringResult TypedDicts"
 dependencies: []
 # Future dependency (when #13 is implemented):
 # - name: "quality_analyzer"
