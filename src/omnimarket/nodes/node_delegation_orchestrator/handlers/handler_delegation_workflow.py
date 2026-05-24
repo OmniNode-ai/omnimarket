@@ -137,6 +137,13 @@ def _record_inference_response(
     workflow.inference_llm_call_id = response.llm_call_id
 
 
+def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
+    """Return the selected backend timeout in seconds, within wire-model bounds."""
+    if workflow.routing_decision is None:
+        return 30.0
+    return max(1.0, min(600.0, workflow.routing_decision.timeout_ms / 1000.0))
+
+
 def _evaluate_compliance(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
@@ -204,6 +211,7 @@ def _evaluate_compliance(
             prompt=result.repair_prompt,
             max_tokens=workflow.request.max_tokens,
             temperature=temperature,
+            timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
         )
     ]
@@ -362,6 +370,7 @@ class HandlerDelegationWorkflow:
                 prompt=workflow.request.prompt,
                 max_tokens=workflow.request.max_tokens,
                 temperature=temperature,
+                timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,
             )
         ]
@@ -394,6 +403,55 @@ class HandlerDelegationWorkflow:
 
         assert workflow.request is not None
         assert workflow.routing_decision is not None
+
+        if response.error_message:
+            self._transition(workflow, EnumDelegationState.FAILED)
+            _record_inference_response(workflow, response)
+            elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+            delegation_result = ModelDelegationResult(
+                correlation_id=response.correlation_id,
+                task_type=workflow.request.task_type,
+                model_used=response.model_used
+                or workflow.routing_decision.selected_model,
+                endpoint_url=workflow.routing_decision.endpoint_url,
+                content=response.content,
+                quality_passed=False,
+                quality_score=0.0,
+                latency_ms=elapsed_ms,
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
+                total_tokens=response.total_tokens,
+                fallback_to_claude=False,
+                failure_reason=response.error_message,
+                tokens_to_compliance=workflow.accumulated_tokens,
+                compliance_attempts=workflow.compliance_attempts or 1,
+            )
+            compat_event = ModelTaskDelegatedEvent(
+                topic=TOPIC_DELEGATION_TASK_DELEGATED,
+                timestamp=datetime.now(UTC).isoformat(),
+                correlation_id=response.correlation_id,
+                session_id=None,
+                task_type=workflow.request.task_type,
+                delegated_to=response.model_used
+                or workflow.routing_decision.selected_model,
+                model_name=workflow.routing_decision.selected_model,
+                quality_gate_passed=False,
+                quality_gates_failed=[response.error_message],
+                cost_usd=0.0,
+                cost_savings_usd=0.0,
+                delegation_latency_ms=elapsed_ms,
+                llm_call_id=response.llm_call_id,
+                tokens_to_compliance=workflow.accumulated_tokens,
+                compliance_attempts=workflow.compliance_attempts or 1,
+                pricing_manifest_version=get_manifest_version_int(),
+            )
+            return [
+                ModelDelegationEvent(
+                    topic=TOPIC_DELEGATION_FAILED,
+                    payload=delegation_result,
+                ),
+                compat_event,
+            ]
 
         # Legacy path: no compliance loop, single attempt.
         if workflow.request.output_schema_key is None:
