@@ -15,6 +15,12 @@ handler:
   class: NodeVersionSkewDetector
   input_model: omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector.VersionSkewCheckRequest
 
+handler_routing:
+  handlers:
+    - handler:
+        name: NodeVersionSkewDetector
+        module: omnimarket.nodes.node_version_skew_detector.handlers.handler_version_skew_detector
+
 descriptor:
   node_archetype: compute
   purity: pure

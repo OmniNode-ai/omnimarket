@@ -37,8 +37,12 @@ from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
     ModelRedeployResult,
 )
 
-TOPIC_DEPLOY_REBUILD_COMPLETED = "onex.evt.deploy.rebuild-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_DEPLOY_REBUILD_REQUESTED = "onex.cmd.deploy.rebuild-requested.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_DEPLOY_REBUILD_COMPLETED = (
+    "onex.evt.deploy.rebuild-completed.v1"  # onex-topic-allow: contract-declared
+)
+TOPIC_DEPLOY_REBUILD_REQUESTED = (
+    "onex.cmd.deploy.rebuild-requested.v1"  # onex-topic-allow: contract-declared
+)
 
 logger = logging.getLogger(__name__)
 

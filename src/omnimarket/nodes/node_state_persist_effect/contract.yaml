@@ -14,6 +14,12 @@ handler:
   class: HandlerStatePersistEffect
   input_model: omnimarket.nodes.node_state_persist_effect.models.model_state_persist_input.ModelStatePersistInput
 
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerStatePersistEffect
+        module: omnimarket.nodes.node_state_persist_effect.handlers.handler_state_persist_effect
+
 descriptor:
   node_archetype: effect
   purity: impure

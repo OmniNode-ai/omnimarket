@@ -15,7 +15,10 @@ handler:
   input_model: omnimarket.nodes.node_kafka_topic_emit_probe.handlers.handler_kafka_probe.ModelKafkaProbeRequest
 
 handler_routing:
-  default_handler: handler:HandlerKafkaProbe
+  handlers:
+    - handler:
+        name: HandlerKafkaProbe
+        module: omnimarket.nodes.node_kafka_topic_emit_probe.handlers.handler_kafka_probe
 
 descriptor:
   node_archetype: compute
