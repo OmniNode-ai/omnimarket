@@ -288,6 +288,7 @@ node_chain_diff = "omnimarket.nodes.node_chain_diff"
 node_kb_adr_publisher = "omnimarket.nodes.node_kb_adr_publisher"
 node_swarm_decomposer_compute = "omnimarket.nodes.node_swarm_decomposer_compute"
 node_llm_delegation_projection = "omnimarket.nodes.node_llm_delegation_projection"
+node_swarm_registry_compute = "omnimarket.nodes.node_swarm_registry_compute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
