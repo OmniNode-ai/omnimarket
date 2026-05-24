@@ -47,5 +47,15 @@ dod_evidence:
     command: "uv run pytest tests/unit/nodes/node_session_phase_orchestrator/ -q"
     pass_criteria: "all 4 tests pass"
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSessionPhaseOrchestrator
+        module: omnimarket.nodes.node_session_phase_orchestrator.handlers.handler_session_phase_orchestrator
+      event_model:
+        name: ModelSessionPhaseOrchestratorInput
+        module: omnimarket.nodes.node_session_phase_orchestrator.models.model_orchestrator_input
+
 metadata:
   transport_type: kafka

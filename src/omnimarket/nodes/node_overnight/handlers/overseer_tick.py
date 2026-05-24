@@ -25,7 +25,9 @@ from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightHaltCondition,
 )
 
-TOPIC_OVERSEER_TICK = "onex.evt.omnimarket.overseer-tick.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_OVERSEER_TICK = (
+    "onex.evt.omnimarket.overseer-tick.v1"  # onex-topic-allow: contract-declared
+)
 
 logger = logging.getLogger(__name__)
 
