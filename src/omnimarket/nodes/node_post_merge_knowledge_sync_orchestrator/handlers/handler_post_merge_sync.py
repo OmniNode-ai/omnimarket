@@ -31,13 +31,6 @@ from omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.models.model_s
 
 _log = logging.getLogger(__name__)
 
-# Topics from contract.yaml — never inline elsewhere
-TOPIC_REPOWISE_REINDEX = "onex.cmd.omnimarket.repowise-reindex-requested.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_MEMGRAPH_REPOPULATE = "onex.cmd.omnimarket.memgraph-repopulation-requested.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_QDRANT_ANTIPATTERN = "onex.cmd.omnimarket.qdrant-antipattern-reindex-requested.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_KB_ADR_CANARY = "onex.cmd.omnimarket.adr-canary-requested.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_SYNC_COMPLETED = "onex.evt.omnimarket.post-merge-sync-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-
 # Evidence output directory — patchable in tests
 EVIDENCE_BASE_DIR: Path = (
     Path(os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home")))
