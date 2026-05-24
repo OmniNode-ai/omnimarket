@@ -1,0 +1,19 @@
+name: node_semantic_antipattern_classifier_compute
+version: "1.0.0"
+description: "Pure deterministic antipattern violation classifier over Qdrant match candidates"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_semantic_antipattern_classifier_compute: "omnimarket.nodes.node_semantic_antipattern_classifier_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "semantic", "antipattern", "classification", "deterministic", "OMN-11922"]
+pack: "validation"
+display_name: "Semantic Antipattern Classifier Compute"
+node_role: "compute"

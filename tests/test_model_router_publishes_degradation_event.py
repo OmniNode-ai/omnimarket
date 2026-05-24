@@ -13,8 +13,8 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
@@ -22,6 +22,7 @@ from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
 )
+from tests.constants import MODEL_QWEN3_CODER_30B
 
 DEGRADED_TOPIC = "onex.evt.omnimarket.model-routing-degraded.v1"
 
@@ -71,8 +72,8 @@ async def test_model_router_publishes_degradation_event() -> None:
     )
 
     payload = json.loads(history[0].value)
-    assert payload["primary"] == "qwen3-coder-30b"
-    assert payload["model_key"] == "qwen3-coder-30b"
+    assert payload["primary"] == MODEL_QWEN3_CODER_30B
+    assert payload["model_key"] == MODEL_QWEN3_CODER_30B
     assert payload["correlation_id"] == "test-corr-3"
     assert payload["attempts"] >= 3
     assert "reason" in payload

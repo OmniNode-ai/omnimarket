@@ -16,6 +16,13 @@ handler:
   class: HandlerPrHealthMonitor
   input_model: omnimarket.nodes.node_pr_health_monitor.models.model_pr_health_input.ModelPrHealthInput
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerPrHealthMonitor
+        module: omnimarket.nodes.node_pr_health_monitor.handlers.handler_pr_health_monitor
+
 descriptor:
   node_archetype: compute
   purity: pure

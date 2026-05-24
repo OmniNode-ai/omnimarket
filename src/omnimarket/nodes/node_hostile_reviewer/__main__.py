@@ -58,8 +58,8 @@ def main() -> None:
     parser.add_argument(
         "--models",
         nargs="+",
-        default=["codex", "deepseek-r1"],
-        help="Models to use for review",
+        required=True,
+        help="Logical model route keys to use for review",
     )
     parser.add_argument(
         "--max-passes",

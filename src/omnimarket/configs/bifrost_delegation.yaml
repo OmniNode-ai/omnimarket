@@ -39,6 +39,18 @@ backends:
       - deep_reasoning
       - research
       - classification
+  - backend_id: local-qwen3-6-35b
+    endpoint_url: ""
+    # onex-allow-model-id OMN-11925 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    model_name: mlx-community/Qwen3.6-35B-A3B-8bit # onex-allow-model-id OMN-11925 reason="newer local reasoning model served by the Qwen3.6 slot"
+    tier: local
+    timeout_ms: 60000
+    capabilities:
+      - deep_reasoning
+      - reasoning
+      - research
+      - classification
+      - documentation
   # Cloud fallback backends
   - backend_id: cloud-sonnet
     endpoint_url: ""
@@ -167,8 +179,8 @@ routing_rules:
       on_exhaust: return_error
     shadow_policy_id: "e5f6a7b8-0002-4000-8000-000000000002"
   # ── research ─────────────────────────────────────────────────────────────
-  # Research tasks require deep reasoning; route to DeepSeek-R1 locally
-  # (reasoning-optimized), fall back to Sonnet for complex analysis.
+  # Research tasks require deep reasoning; route to the current Qwen3.6 local
+  # slot first, then retain DeepSeek-R1-14B as a compatibility fallback.
   - rule_id: "d4e5f6a7-0003-4000-8000-000000000003"
     priority: 30
     task_class: research
@@ -180,6 +192,7 @@ routing_rules:
     match_capabilities:
       - deep_reasoning
     backend_ids:
+      - local-qwen3-6-35b
       - local-deepseek-r1-14b
       - cloud-sonnet
     fallback_policy:
