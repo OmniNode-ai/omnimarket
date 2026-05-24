@@ -19,7 +19,14 @@ handler:
   input_model: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_validator_request.ModelAntipatternValidatorRequest
 
 handler_routing:
-  default_handler: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator:HandlerAntipatternValidatorOrchestrator
+  handlers:
+    - operation: "validate_semantic_antipatterns"
+      handler_class: "HandlerAntipatternValidatorOrchestrator"
+      handler_module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator"
+      handler:
+        name: "HandlerAntipatternValidatorOrchestrator"
+        module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator"
+  default_handler: HandlerAntipatternValidatorOrchestrator
 
 descriptor:
   node_archetype: orchestrator
@@ -42,7 +49,7 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.antipattern-validate.v1
   publish_topics:
-    - onex.cmd.omnimarket.antipattern-match.v1
+    - onex.cmd.omnimarket.antipattern-match-requested.v1
   dlq_topics:
     - onex.dlq.omnimarket.antipattern-validate.v1
 

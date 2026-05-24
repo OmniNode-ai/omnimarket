@@ -18,6 +18,15 @@ handler:
   class: HandlerAntipatternClassifier
   input_model: omnimarket.nodes.node_semantic_antipattern_classifier_compute.models.model_antipattern_classify_request.ModelAntipatternClassifyRequest
 
+handler_routing:
+  handlers:
+    - operation: "classify_antipattern_matches"
+      handler_class: "HandlerAntipatternClassifier"
+      handler_module: "omnimarket.nodes.node_semantic_antipattern_classifier_compute.handlers.handler_antipattern_classifier"
+      handler:
+        name: "HandlerAntipatternClassifier"
+        module: "omnimarket.nodes.node_semantic_antipattern_classifier_compute.handlers.handler_antipattern_classifier"
+
 descriptor:
   node_archetype: compute
   purity: pure
@@ -51,6 +60,9 @@ event_bus:
     - onex.cmd.omnimarket.antipattern-classify.v1
   publish_topics:
     - onex.evt.omnimarket.antipattern-classified.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.antipattern-classified.v1
 
 metadata:
   transport_type: kafka
