@@ -27,6 +27,21 @@ handler_routing:
       event_model:
         name: ModelPrLifecycleFixCommand
         module: omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command
+    - handler:
+        name: GitHubCliAdapter
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli
+    - handler:
+        name: PrPolishDispatchAdapter
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch
+    - handler:
+        name: HandlerAdminMerge
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge
+    - handler:
+        name: HandlerAutoRebase
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_auto_rebase
+    - handler:
+        name: HandlerCommentResolution
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_comment_resolution
 
 descriptor:
   node_archetype: effect

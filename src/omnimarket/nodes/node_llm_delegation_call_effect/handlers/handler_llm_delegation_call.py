@@ -8,6 +8,11 @@ hammering unhealthy endpoints on every call.
 
 Endpoint URLs are resolved from env vars at call time (fail-fast on missing).
 Raw prompt is NEVER logged, persisted, or emitted to Kafka — only prompt_hash.
+
+Pricing for cost telemetry is resolved from routing_tiers.yaml (the model
+registry) at call time using the tier name from the request. The hardcoded
+_FALLBACK_PRICE_PER_1M dict is retained as a safe default when the tier is
+absent, unknown, or the registry is unavailable.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
@@ -68,15 +74,57 @@ _HEALTH_CACHE_TTL_SECONDS = 60
 _health_cache: dict[str, tuple[float, bool]] = {}
 
 # Pricing is expressed as cost per 1M tokens in USD.
-# These are fallback values; production should use the pricing manifest.
+# These are FALLBACK values used when the tier is unknown or the routing
+# registry is unavailable. Registry-sourced pricing from routing_tiers.yaml
+# (via _get_tier_price_per_1m) takes precedence at call time.
 _FALLBACK_PRICE_PER_1M: dict[str, tuple[Decimal, Decimal]] = {
-    # model_id_fragment -> (price_in_per_1M, price_out_per_1M)
+    # tier_name -> (price_in_per_1M, price_out_per_1M)
+    # Values derived from routing_tiers.yaml cost_per_1k_tokens * 1000.
+    "local": (Decimal("0.00"), Decimal("0.00")),
+    "cheap_cloud": (Decimal("2.00"), Decimal("2.00")),
+    "claude": (Decimal("15.00"), Decimal("75.00")),
+    "cli_agents": (Decimal("2.00"), Decimal("2.00")),
+    # Generic default for unknown tiers
     "default": (Decimal("0.15"), Decimal("0.60")),
 }
+
+# Path to the routing registry (routing_tiers.yaml).
+_ROUTING_TIERS_PATH = (
+    Path(__file__).parent.parent.parent.parent / "configs" / "routing_tiers.yaml"
+)
 
 # Opus 3.5 pricing for savings calculation baseline (per 1M tokens)
 _OPUS_PRICE_IN_PER_1M = Decimal("15.00")
 _OPUS_PRICE_OUT_PER_1M = Decimal("75.00")
+
+
+def _get_tier_price_per_1m(tier_name: str) -> tuple[Decimal, Decimal] | None:
+    """Look up per-1M token pricing for a tier from routing_tiers.yaml.
+
+    Reads the registry directly via yaml.safe_load to avoid cross-node imports.
+    Returns (price_in_per_1M, price_out_per_1M) derived from the tier's
+    cost_per_1k_tokens field (multiplied by 1000), or None when the tier
+    cannot be resolved from the registry. Callers must fall back to
+    _FALLBACK_PRICE_PER_1M when this returns None.
+    """
+    try:
+        raw = yaml.safe_load(_ROUTING_TIERS_PATH.read_text())
+        if not isinstance(raw, dict):
+            return None
+        for tier in raw.get("tiers") or []:
+            if isinstance(tier, dict) and tier.get("name") == tier_name:
+                cost_per_1k = tier.get("cost_per_1k_tokens")
+                if cost_per_1k is None:
+                    return None
+                # cost_per_1k_tokens → per-1M by multiplying by 1000
+                price_per_1m = Decimal(str(cost_per_1k)) * Decimal("1000")
+                return (price_per_1m, price_per_1m)
+    except Exception:
+        logger.debug(
+            "routing_tiers.yaml unavailable — falling back to hardcoded pricing for tier %r",
+            tier_name,
+        )
+    return None
 
 
 def _resolve_endpoint(endpoint_ref: str) -> str:
@@ -121,11 +169,25 @@ def _compute_cost(
     model_id: str,
     tokens_in: int,
     tokens_out: int,
+    model_tier: str = "unknown",
 ) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
-    """Return (actual_cost, opus_equivalent_cost, savings, cost_basis)."""
-    price_in, price_out = _FALLBACK_PRICE_PER_1M.get(
-        "default", _FALLBACK_PRICE_PER_1M["default"]
-    )
+    """Return (actual_cost, opus_equivalent_cost, savings, cost_basis).
+
+    Pricing is resolved in priority order:
+      1. routing_tiers.yaml registry lookup by tier name (authoritative)
+      2. _FALLBACK_PRICE_PER_1M[tier_name] (hardcoded mirror of registry values)
+      3. _FALLBACK_PRICE_PER_1M["default"] (generic catch-all)
+
+    The registry path gracefully degrades to fallback when the YAML file is
+    missing or the tier is not declared.
+    """
+    registry_price = _get_tier_price_per_1m(model_tier)
+    if registry_price is not None:
+        price_in, price_out = registry_price
+    else:
+        price_in, price_out = _FALLBACK_PRICE_PER_1M.get(
+            model_tier, _FALLBACK_PRICE_PER_1M["default"]
+        )
 
     try:
         actual = (
@@ -244,7 +306,7 @@ class HandlerLlmDelegationCall:
         output_hash = _sha256(content)
         tokens_in, tokens_out = _extract_usage(response_json)
         actual_cost, opus_cost, savings, cost_basis = _compute_cost(
-            request.model_id, tokens_in, tokens_out
+            request.model_id, tokens_in, tokens_out, model_tier=request.model_tier
         )
 
         completed_event = ModelLlmDelegationCompletedEvent(

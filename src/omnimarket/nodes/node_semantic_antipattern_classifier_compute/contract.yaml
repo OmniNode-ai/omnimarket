@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Semantic Antipattern Classifier Compute (OMN-11922)
+---
+name: node_semantic_antipattern_classifier_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure deterministic antipattern violation classifier. Receives candidate matches
+  from node_antipattern_match_effect (Qdrant lookup) as explicit input and
+  classifies them into blocking or advisory violations. No network, no file I/O.
+  Same input always produces same output.
+
+handler:
+  module: omnimarket.nodes.node_semantic_antipattern_classifier_compute.handlers.handler_antipattern_classifier
+  class: HandlerAntipatternClassifier
+  input_model: omnimarket.nodes.node_semantic_antipattern_classifier_compute.models.model_antipattern_classify_request.ModelAntipatternClassifyRequest
+
+handler_routing:
+  handlers:
+    - operation: "classify_antipattern_matches"
+      handler_class: "HandlerAntipatternClassifier"
+      handler_module: "omnimarket.nodes.node_semantic_antipattern_classifier_compute.handlers.handler_antipattern_classifier"
+      handler:
+        name: "HandlerAntipatternClassifier"
+        module: "omnimarket.nodes.node_semantic_antipattern_classifier_compute.handlers.handler_antipattern_classifier"
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+config:
+  similarity_threshold:
+    description: "Minimum cosine similarity score to classify a match as a violation."
+    required: false
+    default: 0.80
+
+inputs:
+  matches:
+    type: array
+    required: true
+  config:
+    type: object
+    required: false
+
+outputs:
+  violations:
+    type: array
+  has_blocking_violation:
+    type: bool
+
+terminal_event: onex.evt.omnimarket.antipattern-classified.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.antipattern-classify.v1
+  publish_topics:
+    - onex.evt.omnimarket.antipattern-classified.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.antipattern-classified.v1
+
+metadata:
+  transport_type: kafka

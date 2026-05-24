@@ -11,6 +11,7 @@ from scripts.validate_catalog import (
     check_catalog_fresh,
     check_node_naming,
     check_pack_fields,
+    check_skill_llm_boundary,
     find_metadata_files,
     run,
 )
@@ -274,6 +275,72 @@ class TestCheckCatalogFresh:
 
 
 # ---------------------------------------------------------------------------
+# check_skill_llm_boundary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCheckSkillLlmBoundary:
+    def test_repo_active_skill_surfaces_have_no_concrete_llm_config(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+
+        assert check_skill_llm_boundary(repo_root) == []
+
+    def test_concrete_model_id_in_skill_fails(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "plugins" / "onex" / "skills" / "review"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "Use model_id: qwen3-coder-30b for review.\n",
+            encoding="utf-8",
+        )
+
+        errors = check_skill_llm_boundary(tmp_path)
+
+        assert len(errors) == 1
+        assert "SKILL_LLM_BOUNDARY:CONCRETE_MODEL_ID" in errors[0]
+
+    def test_direct_endpoint_url_in_skill_fails(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "plugins" / "onex" / "skills" / "review"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "Call https://api.openai.com/v1/chat/completions directly.\n",
+            encoding="utf-8",
+        )
+
+        errors = check_skill_llm_boundary(tmp_path)
+
+        assert len(errors) == 1
+        assert "SKILL_LLM_BOUNDARY:DIRECT_LLM_ENDPOINT_URL" in errors[0]
+
+    def test_logical_routing_needs_are_allowed(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "plugins" / "onex" / "skills" / "review"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "\n".join(
+                [
+                    "Declare logical routing needs only.",
+                    "logical_model_key: reviewer_fast",
+                    "capability: code_review",
+                    "target_runtime_address uses runtime:// when supplied.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        assert check_skill_llm_boundary(tmp_path) == []
+
+    def test_ticketed_allowlist_requires_reason(self, tmp_path: Path) -> None:
+        skill_dir = tmp_path / "plugins" / "onex" / "skills" / "review"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            'Historical note: qwen3-coder-30b  # onex-allow-skill-llm-boundary OMN-11942 reason="compatibility fixture"\n',
+            encoding="utf-8",
+        )
+
+        assert check_skill_llm_boundary(tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
 # run() integration — using temp fixtures
 # ---------------------------------------------------------------------------
 
@@ -367,3 +434,27 @@ class TestRunIntegration:
             check_catalog=False,
         )
         assert result == 0
+
+    def test_check_skill_llm_boundary_flag_returns_one(self, tmp_path: Path) -> None:
+        _write_metadata(
+            tmp_path,
+            "node_core_effect",
+            {"name": "node_core_effect", "version": "1.0.0", "pack": "core"},
+        )
+        skill_dir = tmp_path / "plugins" / "onex" / "skills" / "review"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "default_model: claude-sonnet\n",
+            encoding="utf-8",
+        )
+
+        result = run(
+            root=tmp_path,
+            catalog_path=None,
+            check_pack=False,
+            check_naming=False,
+            check_catalog=False,
+            check_skill_llm=True,
+        )
+
+        assert result == 1
