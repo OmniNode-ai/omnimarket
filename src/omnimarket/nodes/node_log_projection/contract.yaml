@@ -14,6 +14,13 @@ handler:
   module: omnimarket.nodes.node_log_projection.handlers.handler_log_projection
   class: NodeLogProjection
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: NodeLogProjection
+        module: omnimarket.nodes.node_log_projection.handlers.handler_log_projection
+
 event_bus:
   subscribe_topics:
     - onex.evt.platform.log-entry.v1

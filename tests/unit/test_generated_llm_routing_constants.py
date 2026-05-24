@@ -34,7 +34,13 @@ def test_generated_endpoint_refs_include_registry_endpoint_envs() -> None:
 
 def test_generated_constants_are_up_to_date() -> None:
     result = subprocess.run(
-        [sys.executable, "scripts/generate_llm_routing_constants.py", "--check"],
+        [
+            sys.executable,
+            "scripts/generate_llm_routing_constants.py",
+            "--topology",
+            "/tmp/nonexistent-llm-endpoints.yaml",
+            "--check",
+        ],
         capture_output=True,
         text=True,
         timeout=30,

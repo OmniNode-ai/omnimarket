@@ -1,0 +1,26 @@
+name: node_antipattern_match_effect
+version: "0.1.0"
+description: "Antipattern similarity search — embeds query and returns nearest antipatterns from onex_antipatterns Qdrant collection with freshness decay reranking"
+omnibase_core_compat: ">=0.42.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_antipattern_match_effect: "omnimarket.nodes.node_antipattern_match_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.42.0"
+  - "qdrant-client"
+  - "httpx"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["intelligence", "search", "effect", "antipattern", "qdrant", "vector", "similarity"]
+pack: "intelligence"
+display_name: "Antipattern Match Effect"
+node_role: "effect"
+tickets: ["OMN-11909", "OMN-11919"]

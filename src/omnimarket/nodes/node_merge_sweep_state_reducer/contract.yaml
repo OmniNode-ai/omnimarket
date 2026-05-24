@@ -19,7 +19,11 @@ handler:
   input_model: omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome.ModelSweepOutcomeClassified
 
 handler_routing:
-  default_handler: omnimarket.nodes.node_merge_sweep_state_reducer.handlers.handler_sweep_state:HandlerMergeSweepStateReducer
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerMergeSweepStateReducer
+        module: omnimarket.nodes.node_merge_sweep_state_reducer.handlers.handler_sweep_state
 
 descriptor:
   node_archetype: reducer

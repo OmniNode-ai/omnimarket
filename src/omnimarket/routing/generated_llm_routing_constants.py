@@ -28,6 +28,7 @@ class EnumLogicalModelKey(StrEnum):
     LLAMA_3_3_70B_FREE = "llama-3.3-70b-free"
     QWEN3_CODER_30B = "qwen3-coder-30b"
     QWEN3_NEXT_80B = "qwen3-next-80b"
+    QWEN3_6_35B = "qwen3.6-35b"
 
 
 @unique
@@ -37,7 +38,8 @@ class EnumLlmEndpointRef(StrEnum):
     ANTHROPIC_DELEGATION_URL = "ANTHROPIC_DELEGATION_URL"
     LLM_CODER_FAST_URL = "LLM_CODER_FAST_URL"
     LLM_CODER_URL = "LLM_CODER_URL"
-    LLM_QW3_80B_URL = "LLM_QW3_80B_URL"
+    LLM_DEEPSEEK_R1_URL = "LLM_DEEPSEEK_R1_URL"
+    LLM_QWEN3_NEXT_URL = "LLM_QWEN3_NEXT_URL"
     OPENROUTER_URL = "OPENROUTER_URL"
 
 

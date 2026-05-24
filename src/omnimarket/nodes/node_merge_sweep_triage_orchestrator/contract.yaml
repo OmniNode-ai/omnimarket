@@ -23,7 +23,11 @@ handler:
   input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelTriageRequest
 
 handler_routing:
-  default_handler: omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage:HandlerTriageOrchestrator
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerTriageOrchestrator
+        module: omnimarket.nodes.node_merge_sweep_triage_orchestrator.handlers.handler_triage
 
 descriptor:
   node_archetype: orchestrator
