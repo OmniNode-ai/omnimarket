@@ -261,6 +261,12 @@ output type. On timeout or error, report the failure clearly.
 This wrapper contains **no business logic**. Do not add domain logic here.
 All processing is handled by the `{node_name}` node in
 `omnimarket/nodes/{node_name}/`.
+
+Do not add concrete LLM provider names, served model IDs, endpoint URLs, or
+fallback model defaults to this skill. If the backing node requires LLM work,
+the skill may pass logical routing needs only when those fields are declared in
+the node contract; runtime model resolution belongs to `node_model_router` and
+contract/overlay policy.
 """
 
 
@@ -346,6 +352,12 @@ formatting, progress, error, timeout, and environment diagnostics.
 This rule contains **no business logic**. All processing executes in the
 `{node_name}` OmniMarket node. This rule only handles event publish/subscribe
 and output formatting.
+
+Do not add concrete LLM provider names, served model IDs, endpoint URLs, or
+fallback model defaults to this skill. If the backing node requires LLM work,
+the skill may pass logical routing needs only when those fields are declared in
+the node contract; runtime model resolution belongs to `node_model_router` and
+contract/overlay policy.
 """
 
 
@@ -423,6 +435,12 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 If a dry run depends on GitHub or Linear and those systems are unreachable,
 report that degraded condition explicitly rather than inventing remote state.
 
+Do not add concrete LLM provider names, served model IDs, endpoint URLs, or
+fallback model defaults to this skill. If the backing node requires LLM work,
+pass logical routing needs only when those fields are declared in the node
+contract; runtime model resolution belongs to `node_model_router` and
+contract/overlay policy.
+
 ### Step 4 - Format output
 
 On success: prefer `output_payloads[0]`; if it is absent, render the runtime
@@ -446,6 +464,12 @@ On error: surface the runtime adapter error code and message.
 Do not implement any business logic. All processing runs in the OmniMarket
 `{node_name}` node. These instructions only cover argument mapping, node
 dispatch, and output formatting.
+
+Do not add concrete LLM provider names, served model IDs, endpoint URLs, or
+fallback model defaults to this skill. If the backing node requires LLM work,
+pass logical routing needs only when those fields are declared in the node
+contract; runtime model resolution belongs to `node_model_router` and
+contract/overlay policy.
 """
 
 
