@@ -313,6 +313,11 @@ def _resolve_reviewer_context_windows(
     for model_key in reviewer_models:
         _resolve_http_model_endpoint(config, model_key, role="reviewer")
         raw_context_window = config.model_configs[model_key].get("context_window")
+        if not isinstance(raw_context_window, int | str):
+            raise ValueError(
+                f"reviewer model key {model_key!r} is missing a valid context_window "
+                "in ModelInferenceBridgeConfig.model_configs."
+            )
         try:
             context_window = int(raw_context_window)
         except (TypeError, ValueError) as exc:
