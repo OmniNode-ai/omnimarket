@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_knowledge_context_assembler_orchestrator
+contract_version: {major: 0, minor: 1, patch: 0}
+node_type: orchestrator
+node_version: {major: 0, minor: 1, patch: 0}
+
+description: >
+  Fans out parallel knowledge context requests to up to four backends:
+  (a) node_codebase_intelligence_bridge_effect — architecture context,
+  (b) node_antipattern_match_effect — applicable antipatterns,
+  (c) node_agent_learning_retrieval_effect — prior agent learnings,
+  (d) node_architecture_graph_query_effect — dependency graph (L3 only).
+  Collects responses via node_knowledge_context_assembler_reducer and
+  assembles a ModelKnowledgeContextBundle with graceful degradation
+  (2 of 4 backends responding is a valid PARTIAL bundle).
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerKnowledgeContextAssemblerOrchestrator
+        module: omnimarket.nodes.node_knowledge_context_assembler_orchestrator.handlers.handler_knowledge_context_assembler_orchestrator
+      event_model:
+        name: ModelKnowledgeContextRequest
+        module: omnimarket.nodes.node_knowledge_context_assembler_orchestrator.models.model_knowledge_context_request
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.knowledge-context-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.knowledge-context-assembled.v1
+
+terminal_event: onex.evt.omnimarket.knowledge-context-assembled.v1
+
+dependencies:
+  - name: node_knowledge_context_assembler_reducer
+    type: node
+    module: omnimarket.nodes.node_knowledge_context_assembler_reducer
+    description: Reducer that accumulates backend fragments into a context bundle.
+  - name: node_codebase_intelligence_bridge_effect
+    type: node
+    module: omnimarket.nodes.node_codebase_intelligence_bridge_effect
+    description: Effect node providing architecture context from Repowise.
+    optional: true
+  - name: node_antipattern_match_effect
+    type: node
+    module: omnimarket.nodes.node_antipattern_match_effect
+    description: Effect node matching applicable antipatterns for the repo.
+    optional: true
+  - name: node_agent_learning_retrieval_effect
+    type: node
+    module: omnimarket.nodes.node_agent_learning_retrieval_effect
+    description: Effect node retrieving prior agent learnings from Qdrant.
+    optional: true
+  - name: node_architecture_graph_query_effect
+    type: node
+    module: omnimarket.nodes.node_architecture_graph_query_effect
+    description: Effect node querying the architecture dependency graph (L3 only).
+    optional: true
+
+metadata:
+  transport_type: kafka
+  author: "OmniNode Platform Team"
+  created: "2026-05-24"
+  tags:
+    - orchestrator
+    - knowledge-context
+    - fan-out
+    - graceful-degradation
+    - OMN-11935
+  related_tickets:
+    - OMN-11935
+    - OMN-11909
