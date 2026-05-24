@@ -193,6 +193,7 @@ node_filesystem_crawler_effect = "omnimarket.nodes.node_filesystem_crawler_effec
 node_kreuzberg_parse_effect = "omnimarket.nodes.node_kreuzberg_parse_effect"
 node_intent_storage_effect = "omnimarket.nodes.node_intent_storage_effect"
 node_intent_query_effect = "omnimarket.nodes.node_intent_query_effect"
+node_architecture_graph_query_effect = "omnimarket.nodes.node_architecture_graph_query_effect"
 node_intent_event_consumer_effect = "omnimarket.nodes.node_intent_event_consumer_effect"
 node_memory_lifecycle_orchestrator = "omnimarket.nodes.node_memory_lifecycle_orchestrator"
 node_navigation_history_reducer = "omnimarket.nodes.node_navigation_history_reducer"
