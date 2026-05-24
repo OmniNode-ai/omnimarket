@@ -74,6 +74,24 @@ handler_routing:
         name: "HandlerVerificationLoop"
         module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_verification_loop"
       description: "Commit-citation parser + hostile_reviewer gate + conditional resolveReviewThread. Triggered on push to open PR. Side-effect (I/O)."
+
+    - operation: "llm_review"
+      handler:
+        name: "HandlerLlmReviewer"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_llm_reviewer"
+      description: "Fans out review to configured models via AdapterInferenceBridge. Side-effect (I/O)."
+
+    - operation: "commit_citation_verify"
+      handler:
+        name: "HandlerCommitCitationVerifier"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_commit_citation_verifier"
+      description: "Parses commit citations, runs hostile_reviewer, resolves threads on pass. Side-effect (I/O)."
+
+    - operation: "webhook_reconcile"
+      handler:
+        name: "HandlerWebhookReconciler"
+        module: "omnimarket.nodes.node_pr_review_bot.handlers.handler_webhook_reconciler"
+      description: "Re-opens PR threads resolved by non-bot actors and emits Kafka event. Side-effect (I/O)."
       payload:
         commit_body:
           type: str
