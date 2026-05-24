@@ -17,6 +17,16 @@ handler:
   class: NodeOverseerBenchmarker
   input_model: omnimarket.nodes.node_overseer_benchmarker.handlers.handler_overseer_benchmarker.BenchmarkRequest
 
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: NodeOverseerBenchmarker
+        module: omnimarket.nodes.node_overseer_benchmarker.handlers.handler_overseer_benchmarker
+      event_model:
+        name: BenchmarkRequest
+        module: omnimarket.nodes.node_overseer_benchmarker.handlers.handler_overseer_benchmarker
+
 descriptor:
   node_archetype: compute
   purity: nondeterministic
