@@ -1,0 +1,52 @@
+---
+name: node_knowledge_health_probe_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Collects raw health probe data from knowledge backends: Repowise index age,
+  Qdrant collection point counts, Memgraph node/edge counts, KB repo last commit
+  vs last index, and agent learning retrieval metrics. Probe results are passed
+  to node_knowledge_health_compute for classification.
+
+handler:
+  module: omnimarket.nodes.node_knowledge_health_probe_effect.handlers.handler_knowledge_health_probe_effect
+  class: HandlerKnowledgeHealthProbeEffect
+  input_model: omnimarket.nodes.node_knowledge_health_probe_effect.models.model_knowledge_health_probe_request.ModelKnowledgeHealthProbeRequest
+
+env_dependencies:
+  REPOWISE_URL:
+    required: false
+    description: "Repowise API base URL for index health queries"
+  QDRANT_URL:
+    required: false
+    description: "Qdrant REST API base URL for collection point counts"
+  MEMGRAPH_BOLT_URL:
+    required: false
+    description: "Memgraph Bolt connection URL"
+  MEMGRAPH_HTTP_URL:
+    required: false
+    description: "Memgraph HTTP health endpoint base URL"
+  KB_REPO_PATH:
+    required: false
+    description: "Path to the KB repository for last-commit staleness checks"
+  OMNIMEMORY_HEALTH_URL:
+    required: false
+    description: "Omnimemory health endpoint URL for agent learning retrieval metrics"
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.knowledge-health-probe-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.knowledge-health-probed.v1
+
+metadata:
+  transport_type: kafka

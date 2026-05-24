@@ -1,0 +1,53 @@
+---
+name: node_knowledge_health_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic classification of knowledge backend probe results.
+  Receives pre-collected probe data as explicit input and classifies overall
+  health using shared freshness states. Performs no I/O.
+
+handler:
+  module: omnimarket.nodes.node_knowledge_health_compute.handlers.handler_knowledge_health_compute
+  class: HandlerKnowledgeHealthCompute
+  input_model: omnimarket.nodes.node_knowledge_health_compute.models.model_knowledge_health_compute_request.ModelKnowledgeHealthComputeRequest
+  output_model: omnimarket.nodes.node_knowledge_health_compute.models.model_knowledge_health_report.ModelKnowledgeHealthReport
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+inputs:
+  backend_probes:
+    type: array
+    required: true
+    items:
+      schema_ref: omnimarket.nodes.node_knowledge_health_compute.models.model_knowledge_backend_probe.ModelKnowledgeBackendProbe
+
+outputs:
+  overall_status:
+    type: string
+    description: "Aggregate status: healthy | degraded | unhealthy"
+  backend_statuses:
+    type: array
+    description: "Per-backend classified health status"
+  recommendations:
+    type: array
+    description: "Actionable remediation recommendations"
+
+terminal_event: onex.evt.omnimarket.knowledge-health-classified.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.knowledge-health-classify-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.knowledge-health-classified.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.knowledge-health-classified.v1
+
+metadata:
+  transport_type: kafka
