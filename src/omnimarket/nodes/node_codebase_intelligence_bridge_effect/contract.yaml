@@ -89,27 +89,26 @@ actions:
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
-    - routing_key: "get_answer"
-      handler_key: "HandlerCodebaseIntelligenceBridge"
-      priority: 0
-      output_events: []
-    - routing_key: "get_context"
-      handler_key: "HandlerCodebaseIntelligenceBridge"
-      priority: 0
-      output_events: []
-    - routing_key: "get_symbol"
-      handler_key: "HandlerCodebaseIntelligenceBridge"
-      priority: 0
-      output_events: []
-    - routing_key: "search_codebase"
-      handler_key: "HandlerCodebaseIntelligenceBridge"
-      priority: 0
-      output_events: []
-    - routing_key: "get_why"
-      handler_key: "HandlerCodebaseIntelligenceBridge"
-      priority: 0
-      output_events: []
-  default_handler: null
+    - operation: "get_answer"
+      handler:
+        name: "HandlerCodebaseIntelligenceBridge"
+        module: "omnimarket.nodes.node_codebase_intelligence_bridge_effect.handlers.handler_codebase_intelligence_bridge"
+    - operation: "get_context"
+      handler:
+        name: "HandlerCodebaseIntelligenceBridge"
+        module: "omnimarket.nodes.node_codebase_intelligence_bridge_effect.handlers.handler_codebase_intelligence_bridge"
+    - operation: "get_symbol"
+      handler:
+        name: "HandlerCodebaseIntelligenceBridge"
+        module: "omnimarket.nodes.node_codebase_intelligence_bridge_effect.handlers.handler_codebase_intelligence_bridge"
+    - operation: "search_codebase"
+      handler:
+        name: "HandlerCodebaseIntelligenceBridge"
+        module: "omnimarket.nodes.node_codebase_intelligence_bridge_effect.handlers.handler_codebase_intelligence_bridge"
+    - operation: "get_why"
+      handler:
+        name: "HandlerCodebaseIntelligenceBridge"
+        module: "omnimarket.nodes.node_codebase_intelligence_bridge_effect.handlers.handler_codebase_intelligence_bridge"
 
 # === EVENT TYPE CONFIGURATION ===
 event_type:
