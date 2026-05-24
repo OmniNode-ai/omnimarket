@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import time
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import yaml
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
@@ -382,3 +384,17 @@ class TestHandlerLlmDelegationCall:
         assert result.actual_cost_usd > Decimal("0")
         assert result.opus_equivalent_cost_usd > result.actual_cost_usd
         assert result.savings_usd > Decimal("0")
+
+    @pytest.mark.unit
+    def test_terminal_followup_events_declared_external_consumed(self) -> None:
+        contract_path = (
+            Path(__file__).resolve().parents[4]
+            / "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml"
+        )
+        with contract_path.open(encoding="utf-8") as fh:
+            contract = yaml.safe_load(fh)
+
+        externally_consumed = set(contract["externally_consumed_topics"])
+        assert TOPIC_DELEGATION_ESCALATION_TRIGGERED in externally_consumed
+        assert TOPIC_DELEGATION_ALL_TIERS_FAILED in externally_consumed
+        assert "onex.evt.omnimarket.delegation-model-degraded.v1" in externally_consumed
