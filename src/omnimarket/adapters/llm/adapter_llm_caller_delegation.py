@@ -25,6 +25,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -87,6 +88,7 @@ class LlmCallerDelegation:
             model_name=intent.model,
             max_tokens=intent.max_tokens,
             temperature=intent.temperature,
+            timeout_seconds=intent.timeout_seconds,
         )
 
         provider = AdapterLlmProviderOpenai(
@@ -105,7 +107,10 @@ class LlmCallerDelegation:
         )
 
         try:
-            response = await provider.generate_async(request)
+            response = await asyncio.wait_for(
+                provider.generate_async(request),
+                timeout=intent.timeout_seconds,
+            )
         finally:
             await provider.close()
 
