@@ -67,6 +67,40 @@ config:
     assert findings[0].reason == "FORBIDDEN_ENDPOINT_LITERAL"
 
 
+def test_fails_provider_endpoint_literal_without_port(tmp_path: Path) -> None:
+    _write_contract(
+        tmp_path,
+        "src/omnimarket/nodes/node_example/contract.yaml",
+        """
+name: node_example
+config:
+  endpoint: https://api.openai.com/v1
+""",
+    )
+
+    findings = validate_contract_overlay_boundary(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].reason == "FORBIDDEN_ENDPOINT_LITERAL"
+
+
+def test_fails_endpoint_literal_on_arbitrary_port(tmp_path: Path) -> None:
+    _write_contract(
+        tmp_path,
+        "src/omnimarket/nodes/node_example/contract.yaml",
+        """
+name: node_example
+config:
+  endpoint: http://llm-endpoint.example.invalid:9000
+""",
+    )
+
+    findings = validate_contract_overlay_boundary(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].reason == "FORBIDDEN_ENDPOINT_LITERAL"
+
+
 def test_allows_policy_schema_without_defaults(tmp_path: Path) -> None:
     _write_contract(
         tmp_path,

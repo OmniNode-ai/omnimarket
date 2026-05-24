@@ -26,12 +26,7 @@ MODEL_LITERAL_RE = re.compile(
     r"|gemini-[\w.-]+"
     r"|text-embedding-[\w.-]+"
 )
-LLM_ENDPOINT_RE = re.compile(
-    r"(?i)https?://(?:"
-    r"(?:localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):(?:80[0-4]\d|81[0-9]\d)"
-    r"|[^/\s\"']+:(?:80[0-4]\d|81[0-9]\d)"
-    r")[^\s\"']*"
-)
+LLM_ENDPOINT_RE = re.compile(r"(?i)\bhttps?://[^\s\"']+")
 MODEL_ENV_DEFAULT_RE = re.compile(
     r"\b[A-Z0-9_]*MODEL[A-Z0-9_]*\b\s*[:=]\s*['\"]?[^'\"\s]+"
 )
