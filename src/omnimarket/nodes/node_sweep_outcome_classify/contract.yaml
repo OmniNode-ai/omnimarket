@@ -18,6 +18,14 @@ handler:
   input_model: omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome.ModelSweepOutcomeInput
 
 handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerSweepOutcomeClassify
+        module: omnimarket.nodes.node_sweep_outcome_classify.handlers.handler_outcome_classify
+      event_model:
+        name: ModelSweepOutcomeInput
+        module: omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome
   default_handler: omnimarket.nodes.node_sweep_outcome_classify.handlers.handler_outcome_classify:HandlerSweepOutcomeClassify
 
 descriptor:
