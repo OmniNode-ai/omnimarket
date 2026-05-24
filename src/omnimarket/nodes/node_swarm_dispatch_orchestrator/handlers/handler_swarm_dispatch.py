@@ -87,16 +87,16 @@ class HandlerSwarmDispatchOrchestrator:
 
     All transition_* methods are synchronous and return (new_state, publishes).
     The `publishes` list contains (topic, payload) pairs to emit after the
-    transition. This keeps the FSM logic testable without an event bus.
+    transition. This keeps the FSM logic unit-testable via a MagicMock bus.
 
-    `handle` runs the FSM with event_bus=None (no publishes).
+    `handle` runs the FSM and discards all pending publishes (test/standalone mode).
     `handle_async` runs the FSM and awaits each publish on the real bus.
     """
 
     def __init__(
         self,
         *,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher,
         contract_path: Path | None = None,
     ) -> None:
         contract = _load_contract(contract_path)

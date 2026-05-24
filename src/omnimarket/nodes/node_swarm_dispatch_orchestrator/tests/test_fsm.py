@@ -89,7 +89,7 @@ _FANOUT_EVENT = {
             "failure_reason": "",
             "wave": 0,
             "model_id": "qwen3",
-            "base_url": "http://192.168.86.201:8000",  # local-path-ok
+            "base_url": "https://endpoint-a.example.invalid",
         },
         {
             "subtask_id": "st-2",
@@ -100,7 +100,7 @@ _FANOUT_EVENT = {
             "failure_reason": "",
             "wave": 1,
             "model_id": "deepseek",
-            "base_url": "http://192.168.86.201:8001",  # local-path-ok
+            "base_url": "https://endpoint-b.example.invalid",
         },
     ]
 }

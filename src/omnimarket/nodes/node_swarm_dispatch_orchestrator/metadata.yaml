@@ -12,3 +12,6 @@ author: OmniNode Team
 license: MIT
 created: "2026-05-24"
 tags: [orchestrator, swarm, dispatch, fsm, OMN-11814]
+pack: "swarm"
+display_name: "Swarm Dispatch Orchestrator"
+node_role: "orchestrator"

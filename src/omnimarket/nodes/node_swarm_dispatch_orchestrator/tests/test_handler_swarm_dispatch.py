@@ -82,7 +82,7 @@ _FANOUT_SUCCEEDED = {
             "failure_reason": "",
             "wave": 0,
             "model_id": "qwen3",
-            "base_url": "http://192.168.86.201:8000",  # local-path-ok
+            "base_url": "https://endpoint-a.example.invalid",
         },
     ]
 }
@@ -98,7 +98,7 @@ _FANOUT_ALL_FAILED = {
             "failure_reason": "connection refused",
             "wave": 0,
             "model_id": "qwen3",
-            "base_url": "http://192.168.86.201:8000",  # local-path-ok
+            "base_url": "https://endpoint-a.example.invalid",
         },
     ]
 }
