@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_knowledge_context_assembler_reducer
+contract_version: {major: 0, minor: 1, patch: 0}
+node_type: reducer
+node_version: {major: 0, minor: 1, patch: 0}
+
+description: >
+  Pure reducer that collects backend response fragments for a correlation_id
+  and materializes a ModelKnowledgeContextBundle. Handles partial failures:
+  any mix of ok/error fragments produces a valid bundle with COMPLETE,
+  PARTIAL, or DEGRADED status. No I/O — callers own the state.
+
+handler:
+  module: omnimarket.nodes.node_knowledge_context_assembler_reducer.handlers.handler_knowledge_context_assembler_reducer
+  class: HandlerKnowledgeContextAssemblerReducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.knowledge-context-fragment-ready.v1
+  publish_topics:
+    - onex.evt.omnimarket.knowledge-context-assembled.v1
+
+metadata:
+  transport_type: kafka
+  author: "OmniNode Platform Team"
+  created: "2026-05-24"
+  tags:
+    - reducer
+    - knowledge-context
+    - pure
+    - graceful-degradation
+    - OMN-11935
+  related_tickets:
+    - OMN-11935
+    - OMN-11909
