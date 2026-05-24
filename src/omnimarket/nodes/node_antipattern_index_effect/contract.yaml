@@ -30,6 +30,13 @@ description: |
   Point ID = SHA-256(name + registry version) truncated to uint64.
   Qdrant unavailability is a graceful skip — logged as warning, not error.
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 120000
+
 # === DOD EVIDENCE ===
 dod_evidence:
   ticket: "OMN-11913"
