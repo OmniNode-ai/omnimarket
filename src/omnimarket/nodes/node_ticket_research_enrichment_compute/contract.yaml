@@ -1,0 +1,72 @@
+---
+name: node_ticket_research_enrichment_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Queries the knowledge context assembler during ticket-work RESEARCH phase.
+  Writes assembled context to .onex_state/knowledge-context/<ticket_id>.md for audit.
+  Timeout > context_timeout_s causes non-blocking TIMEOUT result so research proceeds.
+
+handler:
+  module: omnimarket.nodes.node_ticket_research_enrichment_compute.handlers.handler_ticket_research_enrichment
+  class: HandlerTicketResearchEnrichment
+  input_model: omnimarket.nodes.node_ticket_research_enrichment_compute.models.model_ticket_research_enrichment_request.ModelTicketResearchEnrichmentRequest
+  output_model: omnimarket.nodes.node_ticket_research_enrichment_compute.models.model_ticket_research_enrichment_result.ModelTicketResearchEnrichmentResult
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 15000
+
+inputs:
+  ticket_id:
+    type: str
+    required: true
+    description: "Linear ticket ID (e.g., OMN-11941)"
+  repo:
+    type: str
+    required: true
+    description: "Target repo slug (e.g., omnimarket)"
+  description:
+    type: str
+    required: false
+    default: ""
+    description: "Ticket description text"
+  linked_files:
+    type: array
+    required: false
+    default: []
+    description: "Repo-relative file paths linked to the ticket"
+  context_timeout_s:
+    type: float
+    required: false
+    default: 10.0
+    description: "Max seconds to wait for context assembler before research proceeds"
+
+outputs:
+  status:
+    type: str
+    enum: [ok, timeout, error, skipped]
+  context_path:
+    type: str
+    required: false
+    nullable: true
+    description: "Absolute path to the written context file"
+  error_message:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.ticket-research-enrichment-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ticket-research-enrichment-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ticket-research-enrichment-completed.v1
+
+metadata:
+  transport_type: kafka
