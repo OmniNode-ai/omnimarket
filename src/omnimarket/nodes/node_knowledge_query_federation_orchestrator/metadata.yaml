@@ -1,0 +1,23 @@
+name: node_knowledge_query_federation_orchestrator
+version: "0.1.0"
+description: "Federated knowledge query routing across Memgraph, Repowise, and Qdrant"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_knowledge_query_federation_orchestrator: "omnimarket.nodes.node_knowledge_query_federation_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrator
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["knowledge", "federation", "routing", "orchestrator", "memgraph", "repowise", "qdrant"]
+pack: "knowledge"
+display_name: "Knowledge Query Federation Orchestrator"
+node_role: "orchestrator"

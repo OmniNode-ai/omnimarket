@@ -304,6 +304,7 @@ node_kb_repowise_index_effect = "omnimarket.nodes.node_kb_repowise_index_effect"
 node_swarm_decomposer_compute = "omnimarket.nodes.node_swarm_decomposer_compute"
 node_llm_delegation_projection = "omnimarket.nodes.node_llm_delegation_projection"
 node_swarm_registry_compute = "omnimarket.nodes.node_swarm_registry_compute"
+node_knowledge_query_federation_orchestrator = "omnimarket.nodes.node_knowledge_query_federation_orchestrator"
 node_antipattern_index_effect = "omnimarket.nodes.node_antipattern_index_effect"
 
 [project.scripts]
