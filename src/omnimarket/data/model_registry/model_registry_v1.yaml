@@ -65,10 +65,28 @@ models:
       canonical env var (topology url_env_var). Note: .env/Infisical may currently point
       LLM_DEEPSEEK_R1_URL at .201:8001 (14B) — known drift, out of this ticket scope.
 
+  qwen3.6-35b:
+    model_id: "qwen3.6-35b"
+    provider: "local"
+    endpoint_env: "LLM_QWEN3_NEXT_URL"
+    model_name: "mlx-community/Qwen3.6-35B-A3B-8bit"
+    context_window: 8192
+    pricing_per_1m_input: "0.00"
+    pricing_per_1m_output: "0.00"
+    cost_basis: "zero_marginal_api_cost"
+    observed_at: "2026-05-24T00:00:00Z"
+    source: "manual benchmark"
+    notes: >
+      Canonical reasoning-moe-35b local slot on .200:8102. This is the newer
+      served model replacing the previous qwen3-next-80b routing key. Use this
+      key for new routing policies; keep qwen3-next-80b only as a compatibility
+      alias until downstream contracts are migrated.
+
   qwen3-next-80b:
     model_id: "qwen3-next-80b"
     provider: "local"
     endpoint_env: "LLM_QWEN3_NEXT_URL"
+    model_name: "mlx-community/Qwen3.6-35B-A3B-8bit"
     context_window: 8192
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
