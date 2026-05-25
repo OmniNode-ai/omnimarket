@@ -15,3 +15,4 @@ class ModelSwarmFanoutResult(BaseModel):
     dispatches: tuple[ModelSwarmDispatch, ...]
     wall_latency_ms: int
     sum_subtask_latency_ms: int
+    run_id: str = ""

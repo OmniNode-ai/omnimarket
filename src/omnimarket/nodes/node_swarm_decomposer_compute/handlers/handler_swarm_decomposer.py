@@ -187,7 +187,8 @@ class HandlerSwarmDecomposer:
             if original_task
             else _task_hash(request.planner_output_hash)
         )
-        run_id = str(uuid_mod.uuid4())
+        internal_run_id = str(uuid_mod.uuid4())
+        run_id = request.run_id or internal_run_id
         corr = request.correlation_id or str(uuid_mod.uuid4())
 
         if not request.decompose:
@@ -199,12 +200,13 @@ class HandlerSwarmDecomposer:
                 decomposition_endpoint_id=endpoint_ids[0] if endpoint_ids else "",
                 decomposition_latency_ms=0,
                 decomposition_status=EnumDecompositionStatus.PASSTHROUGH_CALLER_DISABLED,
-                decomposition_run_id=run_id,
+                decomposition_run_id=internal_run_id,
                 correlation_id=corr,
             )
             return ModelSwarmDecomposeResult(
                 decomposition=decomposition,
                 status=EnumDecompositionStatus.PASSTHROUGH_CALLER_DISABLED,
+                run_id=run_id,
             )
 
         if original_task and len(original_task) < request.token_threshold:
@@ -216,12 +218,13 @@ class HandlerSwarmDecomposer:
                 decomposition_endpoint_id=endpoint_ids[0] if endpoint_ids else "",
                 decomposition_latency_ms=0,
                 decomposition_status=EnumDecompositionStatus.PASSTHROUGH_TOKEN_THRESHOLD,
-                decomposition_run_id=run_id,
+                decomposition_run_id=internal_run_id,
                 correlation_id=corr,
             )
             return ModelSwarmDecomposeResult(
                 decomposition=decomposition,
                 status=EnumDecompositionStatus.PASSTHROUGH_TOKEN_THRESHOLD,
+                run_id=run_id,
             )
 
         try:
@@ -238,12 +241,13 @@ class HandlerSwarmDecomposer:
                 decomposition_endpoint_id=endpoint_ids[0] if endpoint_ids else "",
                 decomposition_latency_ms=0,
                 decomposition_status=EnumDecompositionStatus.FAILED_FALLBACK_PASSTHROUGH,
-                decomposition_run_id=run_id,
+                decomposition_run_id=internal_run_id,
                 correlation_id=corr,
             )
             return ModelSwarmDecomposeResult(
                 decomposition=decomposition,
                 status=EnumDecompositionStatus.FAILED_FALLBACK_PASSTHROUGH,
+                run_id=run_id,
             )
 
         cleaned, warns, rejection = validate_decomposition(
@@ -258,7 +262,7 @@ class HandlerSwarmDecomposer:
                 decomposition_endpoint_id=endpoint_ids[0] if endpoint_ids else "",
                 decomposition_latency_ms=0,
                 decomposition_status=EnumDecompositionStatus.FAILED_FALLBACK_PASSTHROUGH,
-                decomposition_run_id=run_id,
+                decomposition_run_id=internal_run_id,
                 correlation_id=corr,
                 warnings=(rejection,),
             )
@@ -266,6 +270,7 @@ class HandlerSwarmDecomposer:
                 decomposition=decomposition,
                 status=EnumDecompositionStatus.FAILED_FALLBACK_PASSTHROUGH,
                 warnings=(rejection,),
+                run_id=run_id,
             )
 
         decomposition = ModelDecomposition(
@@ -276,7 +281,7 @@ class HandlerSwarmDecomposer:
             decomposition_endpoint_id=endpoint_ids[0] if endpoint_ids else "",
             decomposition_latency_ms=0,
             decomposition_status=EnumDecompositionStatus.SUCCEEDED,
-            decomposition_run_id=run_id,
+            decomposition_run_id=internal_run_id,
             correlation_id=corr,
             warnings=tuple(warns),
         )
@@ -284,4 +289,5 @@ class HandlerSwarmDecomposer:
             decomposition=decomposition,
             status=EnumDecompositionStatus.SUCCEEDED,
             warnings=tuple(warns),
+            run_id=run_id,
         )

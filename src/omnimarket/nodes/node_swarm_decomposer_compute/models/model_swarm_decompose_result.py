@@ -18,3 +18,4 @@ class ModelSwarmDecomposeResult(BaseModel):
     decomposition: ModelDecomposition
     status: EnumDecompositionStatus
     warnings: tuple[str, ...] = Field(default=())
+    run_id: str = Field(default="")

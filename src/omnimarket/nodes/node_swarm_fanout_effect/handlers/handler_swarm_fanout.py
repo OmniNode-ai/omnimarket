@@ -5,10 +5,13 @@
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import threading
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
+
+import yaml
 
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -41,7 +44,41 @@ from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_subtask_result
     ModelSwarmSubtaskResult,
 )
 
+logger = logging.getLogger(__name__)
+
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+
+# Shared endpoint registry used for ID-only requests from the orchestrator.
+_DEFAULT_REGISTRY_PATH = (
+    Path(__file__).parent.parent.parent
+    / "node_swarm_registry_compute"
+    / "contracts"
+    / "endpoint_registry.yaml"
+)
+
+
+def _load_endpoint_registry(
+    registry_path: Path | None = None,
+) -> dict[str, ModelSwarmEndpoint]:
+    """Load the endpoint registry and return a map of endpoint_id -> ModelSwarmEndpoint."""
+    path = registry_path or _DEFAULT_REGISTRY_PATH
+    try:
+        raw: dict[str, Any] = yaml.safe_load(path.read_text())
+        endpoints: dict[str, ModelSwarmEndpoint] = {}
+        for ep_data in raw.get("endpoints", []):
+            ep_id = str(ep_data.get("id", ""))
+            if not ep_id:
+                continue
+            endpoints[ep_id] = ModelSwarmEndpoint(
+                endpoint_id=ep_id,
+                base_url=str(ep_data.get("base_url", "")),
+                model_id=str(ep_data.get("model_id", "")),
+                status="reachable",
+            )
+        return endpoints
+    except Exception as exc:
+        logger.warning("Failed to load endpoint registry from %s: %s", path, exc)
+        return {}
 
 
 class _HttpResponse(Protocol):
@@ -106,10 +143,33 @@ class HandlerSwarmFanout:
         http_client: ProtocolHttpClient | None = None,
         queue_publisher: ProtocolQueuePublisher | None = None,
         queue_subscriber: ProtocolQueueSubscriber | None = None,
+        registry_path: Path | None = None,
     ) -> None:
         self._http_client = http_client
         self._queue_publisher = queue_publisher
         self._queue_subscriber = queue_subscriber
+        self._registry_path = registry_path
+
+    def _resolve_endpoint_map(
+        self, request: ModelSwarmFanoutRequest
+    ) -> dict[str, ModelSwarmEndpoint]:
+        """Return endpoint_id -> ModelSwarmEndpoint from request or registry."""
+        if request.endpoints:
+            return {ep.endpoint_id: ep for ep in request.endpoints}
+        # Orchestrator sent endpoint_health dict (keyed by ID) — resolve from registry.
+        if request.endpoint_health:
+            registry = _load_endpoint_registry(self._registry_path)
+            resolved: dict[str, ModelSwarmEndpoint] = {}
+            for ep_id in request.endpoint_health:
+                ep = registry.get(ep_id)
+                if ep is not None:
+                    resolved[ep_id] = ep
+                else:
+                    logger.warning(
+                        "endpoint_id %r not found in registry — skipping", ep_id
+                    )
+            return resolved
+        return {}
 
     def handle(self, request: ModelSwarmFanoutRequest) -> ModelSwarmFanoutResult:
         if request.dispatch_mode == EnumDispatchMode.QUEUE:
@@ -123,7 +183,7 @@ class HandlerSwarmFanout:
 
         client: ProtocolHttpClient = self._http_client or httpx.Client()
         config = request.config
-        endpoint_map = {ep.endpoint_id: ep for ep in request.endpoints}
+        endpoint_map = self._resolve_endpoint_map(request)
 
         endpoint_semaphores: dict[str, threading.Semaphore] = {
             ep_id: threading.Semaphore(config.max_subtasks_per_endpoint)
@@ -182,6 +242,7 @@ class HandlerSwarmFanout:
             dispatches=tuple(all_dispatches),
             wall_latency_ms=wall_latency_ms,
             sum_subtask_latency_ms=sum_latency,
+            run_id=request.run_id,
         )
 
     def _handle_queue(self, request: ModelSwarmFanoutRequest) -> ModelSwarmFanoutResult:
@@ -249,6 +310,7 @@ class HandlerSwarmFanout:
             dispatches=tuple(all_dispatches),
             wall_latency_ms=wall_latency_ms,
             sum_subtask_latency_ms=sum_latency,
+            run_id=request.run_id,
         )
 
     def _dispatch_wave_queue(
@@ -264,7 +326,7 @@ class HandlerSwarmFanout:
         assert self._queue_subscriber is not None
 
         config = request.config
-        endpoint_map = {ep.endpoint_id: ep for ep in request.endpoints}
+        endpoint_map = self._resolve_endpoint_map(request)
         published: dict[str, ModelSwarmSubtaskAssignment] = {}
 
         for subtask in subtasks:
