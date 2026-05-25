@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_swarm_fanout_effect.models.enums import EnumExecutionStatus
+from omnimarket.nodes.node_swarm_fanout_orchestrator.models.enums import (
+    EnumExecutionStatus,
+)
 
 
 class ModelSwarmDispatch(BaseModel):

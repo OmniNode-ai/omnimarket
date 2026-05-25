@@ -3,6 +3,7 @@ endpoints:
   - id: "qwen3.6-35b-a3b"
     base_url: "http://192.168.86.201:8000/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
     model_id: "Qwen3.6-35B-A3B"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact vLLM-served model ID"
+    endpoint_ref: "LLM_LOCAL_PRIMARY_URL"
     provider: "vllm"
     capabilities: [code_generation, structured_output, refactoring, analysis, general]
     context_window: 131072
@@ -13,6 +14,7 @@ endpoints:
   - id: "qwen3.6-27b-mtp-iq4xs"
     base_url: "http://192.168.86.201:8001/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
     model_id: "Qwen3.6-27B-MTP-IQ4_XS.gguf"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact vLLM-served model ID"
+    endpoint_ref: "LLM_CODER_FAST_URL"
     provider: "vllm"
     capabilities: [reasoning, analysis, math, general]
     context_window: 98304
@@ -23,6 +25,7 @@ endpoints:
   - id: "text-embedding-gte"
     base_url: "http://192.168.86.201:8002/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
     model_id: "text-embedding-gte"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact vLLM-served model ID"
+    endpoint_ref: "LLM_LOCAL_EMBEDDINGS_URL"
     provider: "vllm"
     capabilities: [embeddings]
     context_window: 8192
@@ -33,6 +36,7 @@ endpoints:
   - id: "deepseek-v4-flash"
     base_url: "http://192.168.86.200:8101/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
     model_id: "deepseek-v4-flash"
+    endpoint_ref: "LLM_LOCAL_FAST_URL"
     provider: "ds4"
     capabilities: [reasoning, analysis, math, planning, general]
     context_window: 131072
@@ -43,6 +47,7 @@ endpoints:
   - id: "deepseek-v4-pro"
     base_url: "http://192.168.86.200:8101/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
     model_id: "deepseek-v4-pro"
+    endpoint_ref: "LLM_REMOTE_FRONTIER_URL"
     provider: "ds4"
     capabilities: [reasoning, analysis, math, planning, general]
     context_window: 131072

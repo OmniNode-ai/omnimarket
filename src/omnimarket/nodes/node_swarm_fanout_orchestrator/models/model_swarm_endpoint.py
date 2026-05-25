@@ -11,5 +11,7 @@ class ModelSwarmEndpoint(BaseModel):
     endpoint_id: str
     base_url: str
     model_id: str
+    endpoint_ref: str = ""
+    """Name of env var holding the base URL (e.g. 'LLM_LOCAL_PRIMARY_URL')."""
     status: str = "reachable"
     capabilities: tuple[str, ...] = ()
