@@ -36,6 +36,9 @@ handler_routing:
       handler:
         name: HandlerSwarmFanout
         module: omnimarket.nodes.node_swarm_fanout_orchestrator.handlers.handler_swarm_fanout
+      event_model:
+        name: ModelSwarmFanoutRequest
+        module: omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_request
 
 descriptor:
   node_archetype: orchestrator

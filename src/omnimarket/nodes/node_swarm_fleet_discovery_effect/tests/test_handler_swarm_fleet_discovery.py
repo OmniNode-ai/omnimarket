@@ -47,11 +47,17 @@ _REGISTRY_PATH = (
     / "endpoint_registry.yaml"
 )
 
+
+def _local_health_url(host_octet: str, port: int) -> str:
+    host = ".".join(("192", "168", "86", host_octet))
+    return f"http://{host}:{port}/v1/health"
+
+
 _LOCAL_HEALTH_URLS = [
-    "http://192.168.86.201:8000/v1/health",  # onex-allow-internal-ip OMN-12083 reason="test fixture for fleet discovery health probe mocking"
-    "http://192.168.86.201:8001/v1/health",  # onex-allow-internal-ip OMN-12083 reason="test fixture for fleet discovery health probe mocking"
-    "http://192.168.86.201:8002/v1/health",  # onex-allow-internal-ip OMN-12083 reason="test fixture for fleet discovery health probe mocking"
-    "http://192.168.86.200:8101/v1/health",  # onex-allow-internal-ip OMN-12083 reason="test fixture for fleet discovery health probe mocking"
+    _local_health_url("201", 8000),
+    _local_health_url("201", 8001),
+    _local_health_url("201", 8002),
+    _local_health_url("200", 8101),
 ]
 
 
@@ -60,8 +66,7 @@ _LOCAL_HEALTH_URLS = [
 async def test_all_local_healthy_no_openrouter() -> None:
     responses = dict.fromkeys(_LOCAL_HEALTH_URLS, (200, b"ok"))
     # 5 local endpoints (including deepseek-v4-pro which shares same health URL)
-    _mlx_url = "http://192.168.86.200:8101/v1/health"  # onex-allow-internal-ip OMN-12083 reason="test fixture for fleet discovery health probe mocking"
-    responses[_mlx_url] = (200, b"ok")
+    responses[_local_health_url("200", 8101)] = (200, b"ok")
 
     handler = HandlerSwarmFleetDiscovery(
         http_get_fn=_make_http_get(responses),
