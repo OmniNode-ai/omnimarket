@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import pytest
-
-import omnimarket.models.delegation.wire as wire
-from omnimarket.models.delegation.wire.model_delegation_request import (
+from omnibase_compat.contracts.delegation.wire.model_delegation_request import (
     ModelDelegationRequest,
 )
-from omnimarket.models.delegation.wire.model_task_delegated_event import (
+from omnibase_compat.contracts.delegation.wire.model_task_delegated_event import (
     TASK_DELEGATED_TOPIC_V1,
 )
+
+import omnimarket.models.delegation.wire as wire
 
 
 @pytest.mark.unit
