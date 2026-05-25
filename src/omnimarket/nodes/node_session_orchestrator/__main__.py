@@ -36,7 +36,7 @@ from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchest
     ModelSessionOrchestratorCommand,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

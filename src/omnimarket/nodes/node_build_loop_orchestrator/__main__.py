@@ -42,7 +42,7 @@ _EVENT_BUS = cast(ProtocolEventBusPublisher, EventBusInmemory())
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
         description="Run the autonomous build loop (close-out -> verify -> fill -> classify -> build)."
