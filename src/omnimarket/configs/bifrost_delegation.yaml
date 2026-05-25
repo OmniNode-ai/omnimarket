@@ -14,15 +14,15 @@
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657
-config_version: "1.3.0"
+config_version: "1.4.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 backends:
-  # Local backends (AIPC)
+  # Local backends (vLLM on .201)
   - backend_id: local-qwen-coder-30b
     endpoint_url: ""
-    # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
-    model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    # onex-allow-model-id OMN-12006 reason="delegation config must pin exact vLLM-served model ID for local inference routing"
+    model_name: Qwen3.6-35B-A3B # onex-allow-model-id OMN-12006 reason="delegation config must pin exact vLLM-served model ID for local inference routing"
     tier: local
     timeout_ms: 30000
     capabilities:
