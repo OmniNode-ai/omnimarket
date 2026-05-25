@@ -16,6 +16,7 @@ handler_routing:
   routing_strategy: topic_match
   handlers:
     - topic: onex.evt.omnimarket.swarm-dispatch-completed.v1
+      operation: swarm_dispatch_completed
       event_model:
         name: ModelSwarmDispatchEvent
         module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
@@ -23,6 +24,7 @@ handler_routing:
         name: HandlerProjectionSwarm
         module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
     - topic: onex.evt.omnimarket.swarm-dispatch-failed.v1
+      operation: swarm_dispatch_failed
       event_model:
         name: ModelSwarmDispatchEvent
         module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
