@@ -9,8 +9,8 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   LLM-routed CI fix effect. Receives a ModelCiFixCommand, uses the routing
-  policy's primary model (deepseek-r1-14b) to diagnose the failing CI job and
-  generate a patch. Applies the patch locally and re-runs tests as a gate.
+  policy's primary logical route to diagnose the failing CI job and generate a
+  patch. Applies the patch locally and re-runs tests as a gate.
   Scaffold only — real LLM + patch logic lands in OMN-8994 (Wave 2).
 
 handler:
@@ -31,8 +31,8 @@ descriptor:
 
 model_routing:
   ci_fixer:
-    primary: "deepseek-r1-14b"
-    fallback: "qwen3-coder-30b"
+    primary: "ci_fixer_primary"
+    fallback: "ci_fixer_fallback"
     fallback_allowed_roles:
       - "ci_fixer"
     max_tokens: 2048
@@ -46,16 +46,16 @@ model_routing:
       # vars at load time. Operators MUST configure LLM_CODER_FAST_URL /
       # LLM_CODER_URL (and matching *_MODEL_NAME) for this node to function;
       # the handler fails loud at contract load when an env var is unset.
-      deepseek-r1-14b:
+      ci_fixer_primary:
         base_url_env: LLM_CODER_FAST_URL
         model_id_env: LLM_CODER_FAST_MODEL_NAME
         timeout_seconds: 120.0
-      qwen3-coder-30b:
+      ci_fixer_fallback:
         base_url_env: LLM_CODER_URL
         model_id_env: LLM_CODER_MODEL_NAME
         timeout_seconds: 120.0
     ci_override:
-      primary: "deepseek-r1-14b"
+      primary: "ci_fixer_primary"
 
 event_bus:
   consumer_group: omnimarket.ci_fix_effect.consume.v1

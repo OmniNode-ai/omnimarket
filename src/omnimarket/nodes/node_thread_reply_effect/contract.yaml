@@ -25,10 +25,10 @@ handler:
 env_dependencies:
   LLM_CODER_URL:
     required: false
-    description: "vLLM Qwen3-Coder-30B endpoint URL (primary model)"
+    description: "Primary thread-reply endpoint URL supplied by runtime overlay"
   LLM_GLM_URL:
     required: false
-    description: "GLM cloud API base URL (fallback model)"
+    description: "Fallback thread-reply endpoint URL supplied by runtime overlay"
   LLM_CODER_FAST_URL:
     required: false
     description: "vLLM fast model endpoint URL (secondary local option)"
@@ -45,13 +45,13 @@ descriptor:
     - effects
 
 model_routing:
-  primary: qwen3-coder-30b
-  fallback: glm-4.5
+  primary: thread_replier_primary
+  fallback: thread_replier_fallback
   fallback_allowed_roles:
     - thread_replier
   max_tokens: 2048
   ci_override:
-    primary: qwen3-coder-30b
+    primary: thread_replier_primary
 
 inputs:
   correlation_id:
@@ -115,10 +115,10 @@ metadata:
 
 config:
   LLM_CODER_URL:
-    description: "Qwen3-Coder endpoint URL (primary model)."
+    description: "Primary thread-reply endpoint URL."
     required: false
   LLM_GLM_URL:
-    description: "GLM cloud API base URL (fallback model)."
+    description: "Fallback thread-reply endpoint URL."
     required: false
   LLM_CODER_FAST_URL:
     description: "Fast model endpoint URL."

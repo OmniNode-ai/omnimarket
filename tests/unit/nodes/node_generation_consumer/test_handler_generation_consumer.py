@@ -459,7 +459,7 @@ async def test_registration_not_emitted_when_deploy_publisher_raises() -> None:
 
 @pytest.mark.unit
 def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) -> None:
-    """Handler must derive endpoint_env from contract.yaml model_routing section."""
+    """Handler must derive runtime env names from contract.yaml model_routing."""
     contract = {
         "name": "node_generation_consumer",
         "contract_version": {"major": 1, "minor": 0, "patch": 0},
@@ -468,7 +468,7 @@ def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) 
         "event_bus": {"publish_topics": [], "subscribe_topics": []},
         "model_routing": {
             "endpoint_env": "LLM_CODER_URL",
-            "model_id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+            "served_model_id_env": "LLM_CODER_MODEL_NAME",
         },
     }
     contract_path = tmp_path / "contract.yaml"
@@ -480,14 +480,14 @@ def test_handler_reads_endpoint_env_from_contract_model_routing(tmp_path: Path) 
     )
 
     assert handler._endpoint_env == "LLM_CODER_URL"
-    assert "Qwen3-Coder" in handler._model_id
+    assert handler._model_id_env == "LLM_CODER_MODEL_NAME"
 
 
 @pytest.mark.unit
-def test_handler_falls_back_to_llm_coder_url_when_model_routing_absent(
+def test_handler_rejects_contract_without_served_model_id_env(
     tmp_path: Path,
 ) -> None:
-    """When contract has no model_routing section, handler defaults to LLM_CODER_URL."""
+    """The handler must not silently supply a served model ID default."""
     contract = {
         "name": "node_generation_consumer",
         "contract_version": {"major": 1, "minor": 0, "patch": 0},
@@ -498,12 +498,11 @@ def test_handler_falls_back_to_llm_coder_url_when_model_routing_absent(
     contract_path = tmp_path / "contract.yaml"
     contract_path.write_text(yaml.dump(contract))
 
-    handler = HandlerGenerationConsumer(
-        effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
-        contract_path=contract_path,
-    )
-
-    assert handler._endpoint_env == "LLM_CODER_URL"
+    with pytest.raises(ValueError, match="served_model_id_env is required"):
+        HandlerGenerationConsumer(
+            effect_handler=FakeLlmEffect([_VALID_LLM_RESPONSE]),
+            contract_path=contract_path,
+        )
 
 
 @pytest.mark.unit
@@ -520,6 +519,11 @@ def test_production_contract_declares_llm_coder_url_endpoint_env() -> None:
     assert model_routing.get("endpoint_env") == "LLM_CODER_URL", (
         "contract.yaml model_routing.endpoint_env must be 'LLM_CODER_URL'; "
         f"got: {model_routing.get('endpoint_env')!r}"
+    )
+    assert model_routing.get("served_model_id_env") == "LLM_CODER_MODEL_NAME", (
+        "contract.yaml model_routing.served_model_id_env must be "
+        "'LLM_CODER_MODEL_NAME'; "
+        f"got: {model_routing.get('served_model_id_env')!r}"
     )
 
 
@@ -540,6 +544,7 @@ def test_production_contract_declares_required_env_dependencies() -> None:
     }
     required = {
         "LLM_CODER_URL",
+        "LLM_CODER_MODEL_NAME",
         "LOCAL_LLM_SHARED_SECRET",
         "LLM_ENDPOINT_CIDR_ALLOWLIST",
     }

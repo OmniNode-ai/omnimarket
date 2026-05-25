@@ -205,7 +205,7 @@ class HandlerSegmentation:
     def __init__(
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
-        segmentation_model_key: str = "qwen3-coder",
+        segmentation_model_key: str = "adr_segmentation",
         segmentation_temperature: float = 0.1,
         segmentation_timeout_seconds: float = 120.0,
         low_confidence_threshold: float = 0.4,
@@ -360,7 +360,7 @@ class HandlerSegmentation:
         cfg = contract.get("config", {})
         return cls(
             segmentation_model_key=str(
-                cfg.get("segmentation_model_key", {}).get("default", "qwen3-coder")
+                cfg.get("segmentation_model_key", {}).get("default", "adr_segmentation")
             ),
             segmentation_temperature=float(
                 cfg.get("segmentation_temperature", {}).get("default", 0.1)
