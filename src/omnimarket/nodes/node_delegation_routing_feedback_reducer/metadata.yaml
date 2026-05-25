@@ -1,0 +1,25 @@
+name: node_delegation_routing_feedback_reducer
+version: "0.1.0"
+description: "Routing feedback reducer — accumulates per-(model_id, task_type) success/failure rates from delegation terminal events"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_routing_feedback_reducer: "omnimarket.nodes.node_delegation_routing_feedback_reducer"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-compat>=0.3.1"
+  - "omnibase-infra>=0.34.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["delegation", "routing", "feedback", "reducer"]
+pack: "delegation"
+display_name: "Delegation Routing Feedback Reducer"
+node_role: "reducer"
