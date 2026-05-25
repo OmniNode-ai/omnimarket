@@ -7,8 +7,17 @@ Fan-out targets:
   L2: codebase_intelligence, antipattern_match, agent_learning_retrieval
   L3: + architecture_graph
 
-Graceful degradation: any backend failure is recorded as an error fragment.
-The reducer assembles the final bundle from all fragments (success + error).
+Graceful degradation:
+  - Backend protocol params are optional (default None); missing backends are
+    recorded as UNAVAILABLE error fragments rather than raising at construction.
+  - Any backend runtime failure is also recorded as an error fragment.
+  - The reducer assembles the final bundle from all fragments (success + error).
+    2 of 4 backends responding is a valid PARTIAL bundle.
+
+DI note: backends are injected by the ONEX DI container.  If a backend node has
+not been wired yet the handler silently degrades rather than crashing the
+runtime.  This satisfies OMN-8735 (no unresolvable TypeError at boot) while
+keeping the contract dependency list accurate.
 """
 
 from __future__ import annotations
@@ -69,10 +78,10 @@ class HandlerKnowledgeContextAssemblerOrchestrator:
 
     def __init__(
         self,
-        codebase_intelligence_backend: ProtocolKnowledgeBackend,
-        antipattern_backend: ProtocolKnowledgeBackend,
-        agent_learning_backend: ProtocolKnowledgeBackend,
-        arch_graph_backend: ProtocolKnowledgeBackend,
+        codebase_intelligence_backend: ProtocolKnowledgeBackend | None = None,
+        antipattern_backend: ProtocolKnowledgeBackend | None = None,
+        agent_learning_backend: ProtocolKnowledgeBackend | None = None,
+        arch_graph_backend: ProtocolKnowledgeBackend | None = None,
     ) -> None:
         self._codebase = codebase_intelligence_backend
         self._antipattern = antipattern_backend
@@ -83,21 +92,42 @@ class HandlerKnowledgeContextAssemblerOrchestrator:
     async def handle(
         self, request: ModelKnowledgeContextRequest
     ) -> ModelKnowledgeContextOrchestratorResult:
-        backends: list[tuple[EnumFragmentSource, ProtocolKnowledgeBackend]] = [
+        # Build the active backend list, skipping any that were not injected.
+        # Contract dependencies are marked optional: true; absent backends produce
+        # UNAVAILABLE error fragments rather than hard failures.
+        candidate_backends: list[
+            tuple[EnumFragmentSource, ProtocolKnowledgeBackend | None]
+        ] = [
             (EnumFragmentSource.CODEBASE_INTELLIGENCE, self._codebase),
             (EnumFragmentSource.ANTIPATTERN_MATCH, self._antipattern),
             (EnumFragmentSource.AGENT_LEARNING_RETRIEVAL, self._learning),
         ]
         if request.level == EnumContextLevel.L3:
-            backends.append((EnumFragmentSource.ARCHITECTURE_GRAPH, self._arch_graph))
+            candidate_backends.append(
+                (EnumFragmentSource.ARCHITECTURE_GRAPH, self._arch_graph)
+            )
 
-        expected_count = len(backends)
+        active_backends: list[tuple[EnumFragmentSource, ProtocolKnowledgeBackend]] = [
+            (src, be) for src, be in candidate_backends if be is not None
+        ]
+        unavailable_sources: list[EnumFragmentSource] = [
+            src for src, be in candidate_backends if be is None
+        ]
 
-        # Fan out all backend calls in parallel
+        if unavailable_sources:
+            logger.warning(
+                "KnowledgeContextAssembler: %d backend(s) unavailable (not injected): %s",
+                len(unavailable_sources),
+                [s.value for s in unavailable_sources],
+            )
+
+        expected_count = len(candidate_backends)
+
+        # Fan out all active backend calls in parallel
         raw_results = await asyncio.gather(
             *(
                 self._call_backend(source, backend, request)
-                for source, backend in backends
+                for source, backend in active_backends
             ),
             return_exceptions=True,
         )
@@ -107,7 +137,18 @@ class HandlerKnowledgeContextAssemblerOrchestrator:
             correlation_id=request.correlation_id,
             expected_count=expected_count,
         )
-        for (source, _), result in zip(backends, raw_results, strict=True):
+
+        # Record unavailable backends as error fragments
+        for source in unavailable_sources:
+            fragment = ModelKnowledgeContextFragment(
+                fragment_source=source,
+                content={},
+                correlation_id=request.correlation_id,
+                error="backend unavailable: not injected",
+            )
+            state = self._reducer.accumulate(state, fragment)
+
+        for (source, _), result in zip(active_backends, raw_results, strict=True):
             if isinstance(result, BaseException):
                 fragment = ModelKnowledgeContextFragment(
                     fragment_source=source,
