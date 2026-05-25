@@ -190,6 +190,12 @@ class HandlerProjectionDelegation:
     ) -> ModelProjectionResult:
         """UPSERT a typed delegate-skill terminal event into delegation_events."""
         row_model = ModelDelegationEventProjectionRow.from_terminal_event(event)
+        if (
+            not row_model.tokens_input
+            and not row_model.tokens_output
+            and not row_model.cost_usd
+        ):
+            return ModelProjectionResult(rows_upserted=0)
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
             "session_id": (
