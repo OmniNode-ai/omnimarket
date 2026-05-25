@@ -28,7 +28,7 @@ class ModelSwarmDispatchRequest(BaseModel):
 
     task: str = Field(..., min_length=1)
     endpoint_ids: tuple[str, ...] = ()
-    max_subtasks: int = 5
+    max_subtasks: int = 6
     decompose: bool = True
     correlation_id: str
     run_id: str
@@ -58,7 +58,7 @@ class ModelSwarmDecomposeCommand(BaseModel):
     correlation_id: str
     run_id: str
     decompose: bool = True
-    max_subtasks: int = 5
+    max_subtasks: int = 6
 
 
 class ModelSwarmSelectEndpointsCommand(BaseModel):
