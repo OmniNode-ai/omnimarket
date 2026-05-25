@@ -19,10 +19,6 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - handler:
-        name: PeriodicHeartbeatEmitter
-        module: omnimarket.nodes.node_projection_registration.handlers.handler_heartbeat_emitter
-      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_heartbeat_emitter
-    - handler:
         name: HandlerProjectionRegistration
         module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
       handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
