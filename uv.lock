@@ -4,7 +4,7 @@ requires-python = "==3.12.*"
 
 [manifest]
 overrides = [
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=3e34ab94fad0a9db1c3b59f0e100c5da659b0792" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=d1bd88b5a384a0a94692860baba961a23cf703c0" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=e9d88717eb48c0296409f57d4e49261589aeb1cb" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7895d802b6cbd9fa16d97d0b5873560188d3ae44" },
     { name = "omnibase-spi", specifier = ">=0.20.6,<0.22.0" },
@@ -1259,8 +1259,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-compat"
-version = "0.3.1"
-source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=3e34ab94fad0a9db1c3b59f0e100c5da659b0792#3e34ab94fad0a9db1c3b59f0e100c5da659b0792" }
+version = "0.4.1"
+source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=d1bd88b5a384a0a94692860baba961a23cf703c0#d1bd88b5a384a0a94692860baba961a23cf703c0" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
@@ -1409,7 +1409,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=3e34ab94fad0a9db1c3b59f0e100c5da659b0792" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?rev=d1bd88b5a384a0a94692860baba961a23cf703c0" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=e9d88717eb48c0296409f57d4e49261589aeb1cb" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=7895d802b6cbd9fa16d97d0b5873560188d3ae44" },
     { name = "omnibase-spi", specifier = ">=0.20.6,<0.22.0" },
