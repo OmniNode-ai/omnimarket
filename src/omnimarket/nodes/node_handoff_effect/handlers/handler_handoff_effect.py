@@ -10,7 +10,6 @@ import hashlib
 import logging
 import os
 import subprocess
-import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,7 +42,7 @@ class HandoffGateError(RuntimeError):
         self.source = source
         full_msg = f"HANDOFF_GATE_FAILURE: {source} — {message}"
         super().__init__(full_msg)
-        sys.stderr.write(full_msg + "\n")
+        logger.error(full_msg)
 
 
 def validate_infra_sources(
