@@ -360,9 +360,7 @@ class HandlerSegmentation:
         cfg = contract.get("config", {})
         return cls(
             segmentation_model_key=str(
-                cfg.get("segmentation_model_key", {}).get(
-                    "default", "adr_segmentation"
-                )
+                cfg.get("segmentation_model_key", {}).get("default", "adr_segmentation")
             ),
             segmentation_temperature=float(
                 cfg.get("segmentation_temperature", {}).get("default", 0.1)

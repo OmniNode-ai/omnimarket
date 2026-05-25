@@ -330,7 +330,9 @@ class HandlerGenerationConsumer:
         # Derive metadata from contract-resolved routing config.
         # endpoint_env is always LLM_CODER_URL (or whatever the contract declares);
         # "local" provider means no per-token cost.
-        model_id = "injected_effect" if self._injected_effect else self._resolve_model_id()
+        model_id = (
+            "injected_effect" if self._injected_effect else self._resolve_model_id()
+        )
         provider = "local"
         endpoint_class = "local"
 
