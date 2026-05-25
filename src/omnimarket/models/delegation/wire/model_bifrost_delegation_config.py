@@ -131,12 +131,13 @@ class ModelDelegationBackendConfig(BaseModel):
         default=None,
         description="Env var name holding the backend base URL (local backends).",
     )
-    endpoint_url: str = Field(
-        default="",
-        description="Endpoint URL populated by the user overlay at load time.",
+    endpoint_url: str | None = Field(
+        default=None,
+        description="Endpoint URL populated by the deploy-time overlay. Null for local backends until overlay is applied.",
     )
-    model_name: str = Field(
-        ..., description="Model identifier sent in outbound requests."
+    model_name: str | None = Field(
+        default=None,
+        description="Model identifier sent in outbound requests. Null for local backends resolved at deploy time.",
     )
     api_key_env: str | None = Field(
         default=None,
