@@ -1,0 +1,76 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Swarm Subtask State Reducer
+#
+# Pure reducer: materializes per-subtask lifecycle state from delegation events.
+# Makes fan-out/fan-in replay-safe and observable.
+# Idempotency key: run_id + subtask_id + terminal_event_id
+#
+# Related Tickets:
+#   - OMN-12120: node_swarm_subtask_state_reducer
+name: node_swarm_subtask_state_reducer
+node_type: reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+runtime_profiles: [main]
+
+description: >
+  Pure reducer that materializes per-subtask lifecycle state from delegation events.
+  delta(state, event) -> (new_state, projection_applied_event).
+  Idempotent: replaying the same terminal event produces the same state with no
+  duplicate transitions. Ordering authority is topic/partition/offset, not timestamps.
+
+handler:
+  module: omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state
+  class: HandlerSwarmSubtaskState
+
+input_model:
+  name: ModelSwarmSubtaskReducerInput
+  module: omnimarket.nodes.node_swarm_subtask_state_reducer.models.model_swarm_subtask_input
+  description: "Wrapper for incoming delegation event + current run state."
+
+output_model:
+  name: ModelSwarmSubtaskReducerOutput
+  module: omnimarket.nodes.node_swarm_subtask_state_reducer.models.model_swarm_subtask_output
+  description: "New run state + projection freshness fields."
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reduce_subtask_state
+      handler:
+        name: HandlerSwarmSubtaskState
+        module: omnimarket.nodes.node_swarm_subtask_state_reducer.handlers.handler_swarm_subtask_state
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-execute.v1
+    - onex.evt.omnimarket.delegation-call-completed.v1
+    - onex.evt.omnimarket.delegation-escalation-triggered.v1
+    - onex.evt.omnimarket.delegation-all-tiers-failed.v1
+    - onex.evt.omnimarket.swarm-fanout-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-subtask-state-changed.v1
+    - onex.evt.omnimarket.swarm-subtask-projection-applied.v1
+
+metadata:
+  transport_type: kafka
+  description: "Swarm subtask lifecycle state reducer — replay-safe, idempotent"
+  author: "OmniNode Team"
+  created: "2026-05-25"
+  tags:
+    - reducer
+    - swarm
+    - subtask
+    - idempotent
+    - OMN-12120
+  related_tickets:
+    - OMN-12120
