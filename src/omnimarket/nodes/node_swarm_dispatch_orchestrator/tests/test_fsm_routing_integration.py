@@ -76,11 +76,11 @@ class _MemoryStateStore:
 _RUN_ID = "run-integration-001"
 _CORR_ID = "corr-integration-001"
 
-_HEALTH_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-endpoint-health-completed.v1"
-_DECOMPOSITION_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-decomposition-completed.v1"
-_ENDPOINTS_SELECTED_TOPIC = "onex.evt.omnimarket.swarm-endpoints-selected.v1"
-_FANOUT_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-fanout-completed.v1"
-_AGGREGATION_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-aggregation-completed.v1"
+_HEALTH_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-endpoint-health-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
+_DECOMPOSITION_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-decomposition-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
+_ENDPOINTS_SELECTED_TOPIC = "onex.evt.omnimarket.swarm-endpoints-selected.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
+_FANOUT_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-fanout-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
+_AGGREGATION_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-aggregation-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
 
 _HEALTH_EVENT: dict[str, Any] = {
     "run_id": _RUN_ID,
@@ -201,9 +201,10 @@ class TestFSMRoutingIntegration:
         """Full integration: RECEIVED → HEALTH_CHECKED → DECOMPOSED →
         ENDPOINTS_SELECTED → DISPATCHING → AGGREGATING → COMPLETED."""
 
-        # Step 1: handle_async — creates run state at RECEIVED, emits health-check cmd
+        # Step 1: handle_async — creates run state at RECEIVED, emits health-check cmd.
+        # Returns None for non-terminal RECEIVED state (OMN-12151).
         result = await handler.handle_async(dispatch_request)
-        assert result.run_id == _RUN_ID
+        assert result is None
 
         # State must be persisted after handle_async
         assert await state_store.exists(
@@ -286,7 +287,7 @@ class TestFSMRoutingIntegration:
         await handler.handle_async(dispatch_request)
         with pytest.raises(ValueError, match="No FSM routing for topic"):
             await handler.route_event(
-                "onex.evt.omnimarket.unknown-topic.v1",
+                "onex.evt.omnimarket.unknown-topic.v1",  # onex-topic-allow: intentionally unknown topic for negative-path test
                 {"run_id": _RUN_ID},
             )
 
@@ -372,7 +373,7 @@ class TestFSMRoutingIntegration:
         mock_bus: MagicMock,
         dispatch_request: ModelSwarmDispatchRequest,
     ) -> None:
-        """Without a state_store, handle_async runs without error (no persistence)."""
+        """Without a state_store, handle_async runs without error and returns None (OMN-12151)."""
         handler_no_store = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
         result = await handler_no_store.handle_async(dispatch_request)
-        assert result.run_id == _RUN_ID
+        assert result is None
