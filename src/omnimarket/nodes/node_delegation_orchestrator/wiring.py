@@ -105,7 +105,7 @@ async def wire_delegation_handlers(
 async def wire_delegation_bridge(
     event_bus: ProtocolEventBusSubscriber,
     llm_caller: object | None = None,
-) -> dict[str, list[str] | str]:
+) -> dict[str, object]:
     """Subscribe DelegationIntentBridge to the three intermediate intent topics.
 
     The orchestrator emits ModelRoutingIntent, ModelInferenceIntent, and
@@ -252,6 +252,7 @@ async def wire_delegation_bridge(
     return {
         "bridge_topics": subscribed_topics,
         "status": "success" if subscribed_topics else "skipped",
+        "bridge": bridge,
     }
 
 
