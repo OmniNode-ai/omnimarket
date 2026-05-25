@@ -10,7 +10,7 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   LLM-routed conflict resolution effect. Receives a ModelConflictHunkCommand,
   creates an ephemeral git worktree, scans for conflict markers, resolves each hunk
-  via LLM (qwen3-coder-30b primary, glm-4.5 fallback), validates the patch, commits,
+  via logical LLM routing, validates the patch, commits,
   and emits ModelConflictResolvedEvent. Branch guard prevents pushing to main/master/develop.
   pytest gate runs in worktree before commit. No shell=True anywhere.
 
@@ -32,15 +32,15 @@ descriptor:
 
 model_routing:
   conflict_resolver:
-    primary: "qwen3-coder-30b"
-    fallback: "glm-4.5"
+    primary: "conflict_resolver_primary"
+    fallback: "conflict_resolver_fallback"
     fallback_allowed_roles:
       - "conflict_resolver"
     endpoint_env: "LLM_CODER_URL"
     max_tokens: 8192
     transport: "http"
     ci_override:
-      primary: "qwen3-coder-30b"
+      primary: "conflict_resolver_primary"
 
 event_bus:
   consumer_group: omnimarket.conflict_hunk_effect.consume.v1

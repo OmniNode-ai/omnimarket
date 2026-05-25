@@ -174,8 +174,7 @@ model_routing:
 config:
   openrouter_base_url:
     env_var: "OPENROUTER_BASE_URL"
-    default: "https://openrouter.ai/api"
-    description: "Base URL for OpenRouter API. Override for testing or proxy routing."
+    description: "Optional API base URL supplied by runtime overlay for testing or proxy routing."
     required: false
 
 dependencies:

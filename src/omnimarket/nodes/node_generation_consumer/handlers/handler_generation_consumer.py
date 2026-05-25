@@ -60,11 +60,9 @@ _REQUIRED_CONTRACT_FIELDS = [
     "output_model",
 ]
 
-_DEFAULT_MODEL_ID = "Qwen/Qwen3-Coder-480B-A35B-Instruct"
-
 # Contract model_routing keys — resolved at construction from contract.yaml
 _MODEL_ROUTING_ENDPOINT_ENV_KEY = "endpoint_env"
-_MODEL_ROUTING_MODEL_ID_KEY = "model_id"
+_MODEL_ROUTING_MODEL_ID_ENV_KEY = "served_model_id_env"
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
@@ -240,9 +238,23 @@ class HandlerGenerationConsumer:
         self._endpoint_env: str = model_routing.get(
             _MODEL_ROUTING_ENDPOINT_ENV_KEY, "LLM_CODER_URL"
         )
-        self._model_id: str = model_routing.get(
-            _MODEL_ROUTING_MODEL_ID_KEY, _DEFAULT_MODEL_ID
+        self._model_id_env: str = str(
+            model_routing.get(_MODEL_ROUTING_MODEL_ID_ENV_KEY, "")
         )
+        if not self._model_id_env:
+            raise ValueError(
+                "contract.yaml model_routing.served_model_id_env is required; "
+                "served model IDs must come from overlays, not handler defaults"
+            )
+
+    def _resolve_model_id(self) -> str:
+        model_id = os.environ.get(self._model_id_env, "").strip()
+        if not model_id:
+            raise RuntimeError(
+                f"{self._model_id_env} is unset/empty; served model ID must be "
+                "provided by the runtime overlay"
+            )
+        return model_id
 
     def _ensure_effect(self) -> None:
         if self._effect is not None:
@@ -296,7 +308,7 @@ class HandlerGenerationConsumer:
             request = ModelLlmInferenceRequest(
                 base_url=endpoint,
                 operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                model=self._model_id,
+                model=self._resolve_model_id(),
                 messages=(
                     {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
                     {"role": "user", "content": user_content},
@@ -318,7 +330,7 @@ class HandlerGenerationConsumer:
         # Derive metadata from contract-resolved routing config.
         # endpoint_env is always LLM_CODER_URL (or whatever the contract declares);
         # "local" provider means no per-token cost.
-        model_id = self._model_id
+        model_id = "injected_effect" if self._injected_effect else self._resolve_model_id()
         provider = "local"
         endpoint_class = "local"
 
