@@ -1,9 +1,13 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Graduation tests for delegation DTO imports (OMN-11183).
+"""Import identity tests for delegation DTO shim paths (OMN-11969).
 
 Verifies that omnimarket shim paths resolve to models whose canonical home is
-omnimarket.models.delegation.wire — not the temporary omnibase_compat staging area.
+omnibase_compat.contracts.delegation.wire — the single source of truth for
+platform-primitive delegation wire DTOs.
+
+Omnimarket-specific projection models (ModelDelegateSkillResponse,
+ModelDelegateSkillTerminalProjection, etc.) remain in omnimarket.
 """
 
 from __future__ import annotations
@@ -15,33 +19,36 @@ from typing import Any
 import pytest
 import yaml
 
+# Each entry maps an omnimarket shim import path to the canonical compat path.
+# The test verifies that following the shim yields the exact same class object
+# as importing directly from compat.
 DTO_IMPORTS = {
-    "omnimarket.events.delegation.ModelDelegationRequest": "omnimarket.models.delegation.wire.model_delegation_request.ModelDelegationRequest",
-    "omnimarket.events.delegation.ModelDelegationResult": "omnimarket.models.delegation.wire.model_delegation_result.ModelDelegationResult",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelBaselineIntent": "omnimarket.models.delegation.wire.model_orchestrator_intents.ModelBaselineIntent",
-    "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result.ModelComplianceLoopResult": "omnimarket.models.delegation.wire.model_orchestrator_intents.ModelComplianceLoopResult",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationRequest": "omnimarket.models.delegation.wire.model_delegation_request.ModelDelegationRequest",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationResult": "omnimarket.models.delegation.wire.model_delegation_result.ModelDelegationResult",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationEvent": "omnimarket.models.delegation.wire.model_event_envelope.ModelDelegationEventEnvelope",
-    "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event.ModelDelegationEvent": "omnimarket.models.delegation.wire.model_event_envelope.ModelDelegationEventEnvelope",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceIntent": "omnimarket.models.delegation.wire.model_orchestrator_intents.ModelInferenceIntent",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceResponseData": "omnimarket.models.delegation.wire.model_orchestrator_intents.ModelInferenceResponseData",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelQualityGateIntent": "omnimarket.models.delegation.wire.model_orchestrator_intents.ModelQualityGateIntent",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelRoutingIntent": "omnimarket.models.delegation.wire.model_orchestrator_intents.ModelRoutingIntent",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelTaskDelegatedEvent": "omnimarket.models.delegation.wire.model_task_delegated_event.ModelTaskDelegatedEvent",
-    "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateInput": "omnimarket.models.delegation.wire.model_quality_gate.ModelQualityGateInput",
-    "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateResult": "omnimarket.models.delegation.wire.model_quality_gate.ModelQualityGateResult",
-    "omnimarket.nodes.node_delegation_routing_reducer.models.ModelDelegationConfig": "omnimarket.models.delegation.wire.model_routing_config.ModelDelegationConfig",
-    "omnimarket.nodes.node_delegation_routing_reducer.models.ModelRoutingTier": "omnimarket.models.delegation.wire.model_routing_config.ModelRoutingTier",
-    "omnimarket.nodes.node_delegation_routing_reducer.models.ModelTierModel": "omnimarket.models.delegation.wire.model_routing_config.ModelTierModel",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelBifrostDelegationConfig": "omnimarket.models.delegation.wire.model_bifrost_delegation_config.ModelBifrostDelegationConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationBackendConfig": "omnimarket.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationBackendConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationCircuitBreakerConfig": "omnimarket.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationCircuitBreakerConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationFailoverConfig": "omnimarket.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationFailoverConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationFallbackPolicy": "omnimarket.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationFallbackPolicy",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationRoutingRule": "omnimarket.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationRoutingRule",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationShadowConfig": "omnimarket.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationShadowConfig",
-    "omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits.ModelBudgetLimits": "omnimarket.models.delegation.wire.model_budget.ModelBudgetLimits",
+    "omnimarket.events.delegation.ModelDelegationRequest": "omnibase_compat.contracts.delegation.wire.model_delegation_request.ModelDelegationRequest",
+    "omnimarket.events.delegation.ModelDelegationResult": "omnibase_compat.contracts.delegation.wire.model_delegation_result.ModelDelegationResult",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelBaselineIntent": "omnibase_compat.contracts.delegation.wire.model_orchestrator_intents.ModelBaselineIntent",
+    "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result.ModelComplianceLoopResult": "omnibase_compat.contracts.delegation.wire.model_orchestrator_intents.ModelComplianceLoopResult",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationRequest": "omnibase_compat.contracts.delegation.wire.model_delegation_request.ModelDelegationRequest",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationResult": "omnibase_compat.contracts.delegation.wire.model_delegation_result.ModelDelegationResult",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationEvent": "omnibase_compat.contracts.delegation.wire.model_event_envelope.ModelDelegationEventEnvelope",
+    "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event.ModelDelegationEvent": "omnibase_compat.contracts.delegation.wire.model_event_envelope.ModelDelegationEventEnvelope",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceIntent": "omnibase_compat.contracts.delegation.wire.model_orchestrator_intents.ModelInferenceIntent",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceResponseData": "omnibase_compat.contracts.delegation.wire.model_orchestrator_intents.ModelInferenceResponseData",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelQualityGateIntent": "omnibase_compat.contracts.delegation.wire.model_orchestrator_intents.ModelQualityGateIntent",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelRoutingIntent": "omnibase_compat.contracts.delegation.wire.model_orchestrator_intents.ModelRoutingIntent",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelTaskDelegatedEvent": "omnibase_compat.contracts.delegation.wire.model_task_delegated_event.ModelTaskDelegatedEvent",
+    "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateInput": "omnibase_compat.contracts.delegation.wire.model_quality_gate.ModelQualityGateInput",
+    "omnimarket.nodes.node_delegation_quality_gate_reducer.models.ModelQualityGateResult": "omnibase_compat.contracts.delegation.wire.model_quality_gate.ModelQualityGateResult",
+    "omnimarket.nodes.node_delegation_routing_reducer.models.ModelDelegationConfig": "omnibase_compat.contracts.delegation.wire.model_routing_config.ModelDelegationConfig",
+    "omnimarket.nodes.node_delegation_routing_reducer.models.ModelRoutingTier": "omnibase_compat.contracts.delegation.wire.model_routing_config.ModelRoutingTier",
+    "omnimarket.nodes.node_delegation_routing_reducer.models.ModelTierModel": "omnibase_compat.contracts.delegation.wire.model_routing_config.ModelTierModel",
+    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelBifrostDelegationConfig": "omnibase_compat.contracts.delegation.wire.model_bifrost_delegation_config.ModelBifrostDelegationConfig",
+    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationBackendConfig": "omnibase_compat.contracts.delegation.wire.model_bifrost_delegation_config.ModelDelegationBackendConfig",
+    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationCircuitBreakerConfig": "omnibase_compat.contracts.delegation.wire.model_bifrost_delegation_config.ModelDelegationCircuitBreakerConfig",
+    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationFailoverConfig": "omnibase_compat.contracts.delegation.wire.model_bifrost_delegation_config.ModelDelegationFailoverConfig",
+    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationFallbackPolicy": "omnibase_compat.contracts.delegation.wire.model_bifrost_delegation_config.ModelDelegationFallbackPolicy",
+    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationRoutingRule": "omnibase_compat.contracts.delegation.wire.model_bifrost_delegation_config.ModelDelegationRoutingRule",
+    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationShadowConfig": "omnibase_compat.contracts.delegation.wire.model_bifrost_delegation_config.ModelDelegationShadowConfig",
+    "omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits.ModelBudgetLimits": "omnibase_compat.contracts.delegation.wire.model_budget.ModelBudgetLimits",
 }
 
 DELEGATION_CONTRACTS = [
@@ -77,15 +84,17 @@ def _model_refs(value: object) -> list[str]:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(("market_ref", "canonical_ref"), DTO_IMPORTS.items())
-def test_delegation_dto_market_paths_resolve_to_omnimarket_wire(
+def test_delegation_dto_market_paths_resolve_to_compat(
     market_ref: str, canonical_ref: str
 ) -> None:
-    """omnimarket shim paths resolve to canonical delegation wire DTOs in omnimarket (OMN-11183)."""
+    """omnimarket shim paths resolve to canonical delegation wire DTOs in compat (OMN-11969)."""
     market_model = _resolve(market_ref)
     canonical_model = _resolve(canonical_ref)
 
     assert market_model is canonical_model
-    assert market_model.__module__.startswith("omnimarket.models.delegation.wire.")
+    assert market_model.__module__.startswith(
+        "omnibase_compat.contracts.delegation.wire."
+    )
 
 
 @pytest.mark.unit
@@ -93,7 +102,7 @@ def test_delegation_dto_market_paths_resolve_to_omnimarket_wire(
 def test_delegation_contract_model_refs_keep_compatibility_paths(
     node_name: str,
 ) -> None:
-    """Contract model refs resolve through omnimarket shims to omnimarket.models.delegation.wire."""
+    """Contract model refs resolve through omnimarket shims to compat wire DTOs."""
     contract_path = Path(
         resources.files("omnimarket.nodes") / node_name / "contract.yaml"  # type: ignore[arg-type]
     )
@@ -109,6 +118,8 @@ def test_delegation_contract_model_refs_keep_compatibility_paths(
     model_refs = [ref for ref in omnimarket_refs if ref in DTO_IMPORTS]
     assert model_refs
     assert all(
-        _resolve(model_ref).__module__.startswith("omnimarket.models.delegation.wire.")
+        _resolve(model_ref).__module__.startswith(
+            "omnibase_compat.contracts.delegation.wire."
+        )
         for model_ref in model_refs
     )

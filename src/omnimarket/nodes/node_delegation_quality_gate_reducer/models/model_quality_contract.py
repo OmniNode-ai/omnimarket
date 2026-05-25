@@ -2,13 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Compatibility imports for canonical delegation quality contract primitives."""
 
-from omnimarket.models.delegation.wire import (
-    EnumQualityContractMode,
-    validate_acceptance_criteria,
-)
-from omnimarket.models.delegation.wire.model_delegation_request import (
+from omnibase_compat.contracts.delegation.wire import (
     MAX_WORDS_PER_SENTENCE_RE,
     SUPPORTED_ACCEPTANCE_CRITERIA,
+    EnumQualityContractMode,
+    validate_acceptance_criteria,
 )
 
 __all__: list[str] = [
