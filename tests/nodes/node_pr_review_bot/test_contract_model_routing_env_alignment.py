@@ -17,6 +17,7 @@ _CONTRACT_PATH = (
     Path(__file__).parents[3] / "src/omnimarket/nodes/node_pr_review_bot/contract.yaml"
 )
 
+
 def test_contract_model_routing_declares_logical_key_policy_without_defaults() -> None:
     data = yaml.safe_load(_CONTRACT_PATH.read_text())
     model_routing: dict[str, object] = data.get("model_routing", {})
