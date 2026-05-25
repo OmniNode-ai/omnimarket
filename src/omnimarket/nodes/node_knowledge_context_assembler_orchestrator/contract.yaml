@@ -32,6 +32,14 @@ event_bus:
 
 terminal_event: onex.evt.omnimarket.knowledge-context-assembled.v1
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: assemble_knowledge_context
+      handler:
+        name: HandlerKnowledgeContextAssemblerOrchestrator
+        module: omnimarket.nodes.node_knowledge_context_assembler_orchestrator.handlers.handler_knowledge_context_assembler_orchestrator
+
 dependencies:
   - name: node_knowledge_context_assembler_reducer
     type: node
