@@ -47,10 +47,10 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     handler_delegation_routing._get_task_class_contract.cache_clear()
     contract_path = tmp_path / "bifrost_delegation.yaml"
     contract_path.write_text(
-        "config_version: '1.1.0'\n"
+        "config_version: '2.0.0'\n"
         "schema_version: bifrost_delegation.v1\n"
         "backends:\n"
-        "  - backend_id: local-deepseek-r1-14b\n"
+        "  - backend_id: local-coder\n"
         '    endpoint_url: "http://test-document:8001"\n'
         '    model_name: "test-model-placeholder"\n'
         "    tier: local\n"
@@ -61,17 +61,17 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "    priority: 10\n"
         "    task_class: document\n"
         '    task_class_contract_version: "1.0.0"\n'
-        '    backend_policy_version: "1.0.0"\n'
+        '    backend_policy_version: "2.0.0"\n'
         "    match_operation_types: [chat_completion]\n"
         "    match_capabilities: [document]\n"
-        "    backend_ids: [local-deepseek-r1-14b]\n"
+        "    backend_ids: [local-coder]\n"
         "    fallback_policy:\n"
         "      action: return_error\n"
         "      max_retries: 0\n"
         "      on_exhaust: return_error\n"
         '    shadow_policy_id: "44444444-4444-4444-8444-444444444444"\n'
         "default_backends:\n"
-        "  - local-deepseek-r1-14b\n"
+        "  - local-coder\n"
         "circuit_breaker:\n"
         "  failure_threshold: 5\n"
         "  window_seconds: 30\n"

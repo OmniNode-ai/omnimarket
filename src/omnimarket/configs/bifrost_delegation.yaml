@@ -14,35 +14,35 @@
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657
-config_version: "1.4.0"
+config_version: "2.0.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
+# model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
+# backend_ids are capability-named (not model-named) so the public config never
+# embeds site-specific model identifiers.
 backends:
-  # Local backends (vLLM on .201)
-  - backend_id: local-qwen-coder-30b
-    endpoint_url: ""
-    # onex-allow-model-id OMN-12006 reason="delegation config must pin exact vLLM-served model ID for local inference routing"
-    model_name: Qwen3.6-35B-A3B # onex-allow-model-id OMN-12006 reason="delegation config must pin exact vLLM-served model ID for local inference routing"
+  # Local backends (vLLM on .201) — capability-named, model_name resolved via overlay
+  - backend_id: local-coder
+    endpoint_url: null
+    model_name: null
     tier: local
     timeout_ms: 30000
     capabilities:
       - code_generation
       - refactoring
       - documentation
-  - backend_id: local-deepseek-r1-14b
-    endpoint_url: ""
-    # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
-    model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+  - backend_id: local-reasoner
+    endpoint_url: null
+    model_name: null
     tier: local
     timeout_ms: 30000
     capabilities:
       - deep_reasoning
       - research
       - classification
-  - backend_id: local-qwen3-6-35b
-    endpoint_url: ""
-    # onex-allow-model-id OMN-11925 reason="delegation config must pin exact private HF model ID for local AIPC routing"
-    model_name: mlx-community/Qwen3.6-35B-A3B-8bit # onex-allow-model-id OMN-11925 reason="newer local reasoning model served by the Qwen3.6 slot"
+  - backend_id: local-heavy-reasoning
+    endpoint_url: null
+    model_name: null
     tier: local
     timeout_ms: 60000
     capabilities:
@@ -51,6 +51,13 @@ backends:
       - research
       - classification
       - documentation
+  - backend_id: local-embedding
+    endpoint_url: null
+    model_name: null
+    tier: local
+    timeout_ms: 30000
+    capabilities:
+      - embedding
   # Cloud fallback backends
   - backend_id: cloud-sonnet
     endpoint_url: ""
@@ -135,13 +142,13 @@ backends:
 #   shadow_policy_id: UUID of the shadow policy used for A/B evaluation
 routing_rules:
   # ── code_generation ──────────────────────────────────────────────────────
-  # Route code generation to local Qwen coder first (zero API cost),
+  # Route code generation to local coder first (zero API cost),
   # fall back to cloud Sonnet for reliability.
   - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
     priority: 10
     task_class: code_generation
     task_class_contract_version: "1.0.0"
-    backend_policy_version: "1.0.0"
+    backend_policy_version: "2.0.0"
     match_operation_types:
       - chat_completion
       - completion
@@ -149,7 +156,7 @@ routing_rules:
       - code_generation
     latency_sla_ms: 30000
     backend_ids:
-      - local-qwen-coder-30b
+      - local-coder
       - cloud-sonnet
     fallback_policy:
       action: escalate_to_next_tier
@@ -157,13 +164,13 @@ routing_rules:
       on_exhaust: return_error
     shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
   # ── documentation ────────────────────────────────────────────────────────
-  # Documentation tasks: local Qwen coder is capable; haiku is cheaper
+  # Documentation tasks: local coder is capable; haiku is cheaper
   # cloud fallback for cost-sensitive runs.
   - rule_id: "d4e5f6a7-0002-4000-8000-000000000002"
     priority: 20
     task_class: documentation
     task_class_contract_version: "1.0.0"
-    backend_policy_version: "1.0.0"
+    backend_policy_version: "2.0.0"
     match_operation_types:
       - chat_completion
       - completion
@@ -171,7 +178,7 @@ routing_rules:
       - documentation
     cost_ceiling_usd_per_1k_tokens: 0.004
     backend_ids:
-      - local-qwen-coder-30b
+      - local-coder
       - cloud-haiku
     fallback_policy:
       action: escalate_to_next_tier
@@ -179,21 +186,21 @@ routing_rules:
       on_exhaust: return_error
     shadow_policy_id: "e5f6a7b8-0002-4000-8000-000000000002"
   # ── research ─────────────────────────────────────────────────────────────
-  # Research tasks require deep reasoning; route to the current Qwen3.6 local
-  # slot first, then retain DeepSeek-R1-14B as a compatibility fallback.
+  # Research tasks require deep reasoning; route to the heavy-reasoning local
+  # slot first, then reasoner as secondary, then cloud Sonnet as fallback.
   - rule_id: "d4e5f6a7-0003-4000-8000-000000000003"
     priority: 30
     task_class: research
     task_class_contract_version: "1.0.0"
-    backend_policy_version: "1.0.0"
+    backend_policy_version: "2.0.0"
     match_operation_types:
       - chat_completion
       - reasoning
     match_capabilities:
       - deep_reasoning
     backend_ids:
-      - local-qwen3-6-35b
-      - local-deepseek-r1-14b
+      - local-heavy-reasoning
+      - local-reasoner
       - cloud-sonnet
     fallback_policy:
       action: escalate_to_next_tier
@@ -203,7 +210,7 @@ routing_rules:
 # Default fallback when no routing rule matches.
 # Attempts backends in order.
 default_backends:
-  - local-qwen-coder-30b
+  - local-coder
   - cloud-sonnet
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:
