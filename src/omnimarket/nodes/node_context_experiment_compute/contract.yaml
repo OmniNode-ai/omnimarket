@@ -1,0 +1,85 @@
+---
+name: node_context_experiment_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic compute node that assembles ModelContextPackExtended
+  instances for context-factor experimentation. Given a task, model ID, and
+  a set of factor subsets, returns an ordered pack per subset for comparison.
+  No I/O; all context artifacts are caller-supplied.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerContextExperiment
+        module: omnimarket.nodes.node_context_experiment_compute.handlers.handler_context_experiment
+
+handler:
+  module: omnimarket.nodes.node_context_experiment_compute.handlers.handler_context_experiment
+  class: HandlerContextExperiment
+  input_model: omnimarket.nodes.node_context_experiment_compute.models.model_context_experiment_request.ModelContextExperimentRequest
+  output_model: omnimarket.nodes.node_context_experiment_compute.models.model_context_experiment_result.ModelContextExperimentResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+inputs:
+  task_id:
+    type: str
+    required: true
+  model_id:
+    type: str
+    required: true
+  factor_subsets:
+    type: array
+    required: true
+    description: List of factor subsets to experiment with; each is an ordered list of EnumContextFactor values.
+  artifacts:
+    type: array
+    required: true
+  contract_hash:
+    type: str
+    required: true
+  generated_at:
+    type: str
+    required: true
+    description: Caller-supplied timezone-aware ISO8601 UTC timestamp.
+
+outputs:
+  status:
+    type: str
+    enum: [ok, failed]
+  packs:
+    type: array
+    required: false
+    nullable: true
+    description: One ModelContextPackExtended per factor subset.
+  failure_class:
+    type: str
+    required: false
+    nullable: true
+  errors:
+    type: array
+  warnings:
+    type: array
+
+terminal_event: onex.evt.omnimarket.context-experiment-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-experiment-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-experiment-completed.v1
+    - onex.evt.omnimarket.context-experiment-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-experiment-completed.v1
+  - onex.evt.omnimarket.context-experiment-failed.v1
+
+metadata:
+  transport_type: kafka
