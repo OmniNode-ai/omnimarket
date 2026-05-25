@@ -1,0 +1,19 @@
+name: node_context_experiment_compute
+version: "1.0.0"
+description: "Pure deterministic context experimentation compute node"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_context_experiment_compute: "omnimarket.nodes.node_context_experiment_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context-experiment", "context-pack", "deterministic"]
+pack: "pipeline"
+display_name: "Context Experiment Compute"
+node_role: "compute"

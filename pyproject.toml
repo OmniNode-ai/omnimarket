@@ -87,6 +87,7 @@ node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_co
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
+node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_compute"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_worker_stall_recovery = "omnimarket.nodes.node_worker_stall_recovery"
