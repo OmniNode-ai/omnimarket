@@ -7,9 +7,17 @@ from __future__ import annotations
 import concurrent.futures
 import threading
 import time
+from pathlib import Path
 from typing import Protocol
 
-from omnimarket.nodes.node_swarm_fanout_effect.models.enums import EnumExecutionStatus
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
+from omnimarket.nodes.node_swarm_fanout_effect.models.enums import (
+    EnumDispatchMode,
+    EnumExecutionStatus,
+)
 from omnimarket.nodes.node_swarm_fanout_effect.models.model_subtask import ModelSubtask
 from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_config import (
     ModelSwarmConfig,
@@ -26,6 +34,14 @@ from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_fanout_request
 from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_fanout_result import (
     ModelSwarmFanoutResult,
 )
+from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_subtask_assignment import (
+    ModelSwarmSubtaskAssignment,
+)
+from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_subtask_result import (
+    ModelSwarmSubtaskResult,
+)
+
+_CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 
 
 class _HttpResponse(Protocol):
@@ -43,6 +59,16 @@ class ProtocolHttpClient(Protocol):
         json: dict[str, object],
         timeout: float,
     ) -> _HttpResponse: ...
+
+
+class ProtocolQueuePublisher(Protocol):
+    def publish(self, topic: str, payload: dict[str, object]) -> None: ...
+
+
+class ProtocolQueueSubscriber(Protocol):
+    def poll(
+        self, topic: str, run_id: str, timeout_seconds: float
+    ) -> list[dict[str, object]]: ...
 
 
 def _compute_waves(subtasks: tuple[ModelSubtask, ...]) -> list[list[ModelSubtask]]:
@@ -75,17 +101,30 @@ def _compute_waves(subtasks: tuple[ModelSubtask, ...]) -> list[list[ModelSubtask
 
 
 class HandlerSwarmFanout:
-    def __init__(self, http_client: ProtocolHttpClient | None = None) -> None:
+    def __init__(
+        self,
+        http_client: ProtocolHttpClient | None = None,
+        queue_publisher: ProtocolQueuePublisher | None = None,
+        queue_subscriber: ProtocolQueueSubscriber | None = None,
+    ) -> None:
         self._http_client = http_client
+        self._queue_publisher = queue_publisher
+        self._queue_subscriber = queue_subscriber
 
     def handle(self, request: ModelSwarmFanoutRequest) -> ModelSwarmFanoutResult:
+        if request.dispatch_mode == EnumDispatchMode.QUEUE:
+            return self._handle_queue(request)
+        return self._handle_direct(request)
+
+    def _handle_direct(
+        self, request: ModelSwarmFanoutRequest
+    ) -> ModelSwarmFanoutResult:
         import httpx
 
         client: ProtocolHttpClient = self._http_client or httpx.Client()
         config = request.config
         endpoint_map = {ep.endpoint_id: ep for ep in request.endpoints}
 
-        # Per-endpoint semaphores for bounded concurrency
         endpoint_semaphores: dict[str, threading.Semaphore] = {
             ep_id: threading.Semaphore(config.max_subtasks_per_endpoint)
             for ep_id in endpoint_map
@@ -144,6 +183,177 @@ class HandlerSwarmFanout:
             wall_latency_ms=wall_latency_ms,
             sum_subtask_latency_ms=sum_latency,
         )
+
+    def _handle_queue(self, request: ModelSwarmFanoutRequest) -> ModelSwarmFanoutResult:
+        if self._queue_publisher is None or self._queue_subscriber is None:
+            raise ValueError(
+                "queue_publisher and queue_subscriber are required for dispatch_mode=queue"
+            )
+
+        publish_topics = contract_publish_topics(_CONTRACT_PATH)
+        assignment_topic = next(
+            t for t in publish_topics if "swarm-subtask-assigned" in t
+        )
+        subscribe_topics = contract_subscribe_topics(_CONTRACT_PATH)
+        completion_topic = next(
+            t for t in subscribe_topics if "swarm-subtask-completed" in t
+        )
+
+        config = request.config
+        waves = _compute_waves(request.subtasks)
+        total_deadline = time.monotonic() + config.total_run_timeout_seconds
+        all_dispatches: list[ModelSwarmDispatch] = []
+        failed_ids: set[str] = set()
+
+        wall_start = time.monotonic()
+
+        for wave_num, wave_subtasks in enumerate(waves):
+            runnable: list[ModelSubtask] = []
+            for subtask in wave_subtasks:
+                if any(dep in failed_ids for dep in subtask.depends_on):
+                    all_dispatches.append(
+                        ModelSwarmDispatch(
+                            subtask_id=subtask.subtask_id,
+                            endpoint_id="",
+                            model_id="",
+                            base_url="",
+                            execution_status=EnumExecutionStatus.SKIPPED_DEPENDENCY_FAILED,
+                            failure_reason="dependency_failed",
+                            wave=wave_num,
+                        )
+                    )
+                    failed_ids.add(subtask.subtask_id)
+                else:
+                    runnable.append(subtask)
+
+            if not runnable:
+                continue
+
+            wave_dispatches = self._dispatch_wave_queue(
+                wave_num=wave_num,
+                subtasks=runnable,
+                request=request,
+                assignment_topic=assignment_topic,
+                completion_topic=completion_topic,
+                total_deadline=total_deadline,
+            )
+            for d in wave_dispatches:
+                all_dispatches.append(d)
+                if d.execution_status != EnumExecutionStatus.SUCCEEDED:
+                    failed_ids.add(d.subtask_id)
+
+        wall_latency_ms = int((time.monotonic() - wall_start) * 1000)
+        sum_latency = sum(d.latency_ms for d in all_dispatches)
+
+        return ModelSwarmFanoutResult(
+            dispatches=tuple(all_dispatches),
+            wall_latency_ms=wall_latency_ms,
+            sum_subtask_latency_ms=sum_latency,
+        )
+
+    def _dispatch_wave_queue(
+        self,
+        wave_num: int,
+        subtasks: list[ModelSubtask],
+        request: ModelSwarmFanoutRequest,
+        assignment_topic: str,
+        completion_topic: str,
+        total_deadline: float,
+    ) -> list[ModelSwarmDispatch]:
+        assert self._queue_publisher is not None
+        assert self._queue_subscriber is not None
+
+        config = request.config
+        endpoint_map = {ep.endpoint_id: ep for ep in request.endpoints}
+        published: dict[str, ModelSwarmSubtaskAssignment] = {}
+
+        for subtask in subtasks:
+            time_left = total_deadline - time.monotonic()
+            if time_left <= 0:
+                continue
+
+            endpoint_id = request.assignments.get(subtask.subtask_id, "")
+            endpoint = endpoint_map.get(endpoint_id)
+            worker_id = request.worker_assignments.get(subtask.subtask_id, "")
+
+            assignment = ModelSwarmSubtaskAssignment(
+                run_id=request.run_id,
+                subtask_id=subtask.subtask_id,
+                worker_id=worker_id,
+                description=subtask.description,
+                model_id=endpoint.model_id if endpoint else "",
+                endpoint_url=endpoint.base_url if endpoint else "",
+                timeout_seconds=min(
+                    config.per_endpoint_timeout_seconds, int(time_left)
+                ),
+                correlation_id=request.correlation_id,
+            )
+            self._queue_publisher.publish(assignment_topic, assignment.model_dump())
+            published[subtask.subtask_id] = assignment
+
+        if not published:
+            return [
+                _immediate_timeout(s, wave_num, "budget_exhausted") for s in subtasks
+            ]
+
+        time_left = max(total_deadline - time.monotonic(), 1.0)
+        raw_results = self._queue_subscriber.poll(
+            completion_topic,
+            request.run_id,
+            timeout_seconds=time_left,
+        )
+
+        result_by_subtask: dict[str, ModelSwarmSubtaskResult] = {}
+        for raw in raw_results:
+            try:
+                r = ModelSwarmSubtaskResult.model_validate(raw)
+                result_by_subtask[r.subtask_id] = r
+            except Exception:
+                pass
+
+        dispatches: list[ModelSwarmDispatch] = []
+        for subtask in subtasks:
+            published_assignment: ModelSwarmSubtaskAssignment | None = published.get(
+                subtask.subtask_id
+            )
+            if published_assignment is None:
+                dispatches.append(
+                    _immediate_timeout(subtask, wave_num, "budget_exhausted")
+                )
+                continue
+
+            result = result_by_subtask.get(subtask.subtask_id)
+            endpoint_id = request.assignments.get(subtask.subtask_id, "")
+            endpoint = endpoint_map.get(endpoint_id)
+
+            if result is None:
+                dispatches.append(
+                    ModelSwarmDispatch(
+                        subtask_id=subtask.subtask_id,
+                        endpoint_id=endpoint_id,
+                        model_id=endpoint.model_id if endpoint else "",
+                        base_url=endpoint.base_url if endpoint else "",
+                        execution_status=EnumExecutionStatus.TIMEOUT,
+                        failure_reason="no_result_from_worker",
+                        wave=wave_num,
+                    )
+                )
+            else:
+                dispatches.append(
+                    ModelSwarmDispatch(
+                        subtask_id=subtask.subtask_id,
+                        endpoint_id=endpoint_id,
+                        model_id=result.model_id
+                        or (endpoint.model_id if endpoint else ""),
+                        base_url=endpoint.base_url if endpoint else "",
+                        execution_status=result.execution_status,
+                        response_text=result.response_text,
+                        failure_reason=result.failure_reason,
+                        latency_ms=result.latency_ms,
+                        wave=wave_num,
+                    )
+                )
+        return dispatches
 
     def _dispatch_wave(
         self,

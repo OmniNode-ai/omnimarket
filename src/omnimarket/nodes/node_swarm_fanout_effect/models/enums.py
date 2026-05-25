@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from omnimarket.models.swarm.enum_execution_status import EnumExecutionStatus
 
-class EnumExecutionStatus(StrEnum):
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    TIMEOUT = "timeout"
-    SKIPPED_DEPENDENCY_FAILED = "skipped_dependency_failed"
+__all__ = ["EnumDispatchMode", "EnumExecutionStatus"]
+
+
+class EnumDispatchMode(StrEnum):
+    DIRECT = "direct"
+    QUEUE = "queue"
