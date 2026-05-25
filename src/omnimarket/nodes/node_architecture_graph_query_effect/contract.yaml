@@ -144,6 +144,7 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - routing_key: "dependency_path"
+      operation: "dependency_path"
       handler_key: "HandlerArchitectureGraphQuery"
       handler:
         name: "HandlerArchitectureGraphQuery"
@@ -151,6 +152,7 @@ handler_routing:
       priority: 0
       output_events: []
     - routing_key: "blast_radius"
+      operation: "blast_radius"
       handler_key: "HandlerArchitectureGraphQuery"
       handler:
         name: "HandlerArchitectureGraphQuery"
@@ -158,6 +160,7 @@ handler_routing:
       priority: 0
       output_events: []
     - routing_key: "cross_repo_imports"
+      operation: "cross_repo_imports"
       handler_key: "HandlerArchitectureGraphQuery"
       handler:
         name: "HandlerArchitectureGraphQuery"
@@ -165,6 +168,7 @@ handler_routing:
       priority: 0
       output_events: []
     - routing_key: "circular_deps"
+      operation: "circular_deps"
       handler_key: "HandlerArchitectureGraphQuery"
       handler:
         name: "HandlerArchitectureGraphQuery"

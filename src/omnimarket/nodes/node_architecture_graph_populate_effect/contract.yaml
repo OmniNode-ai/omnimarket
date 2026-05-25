@@ -184,6 +184,7 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - routing_key: "populate_from_contracts"
+      operation: "populate_from_contracts"
       handler_key: "HandlerArchitectureGraphPopulate"
       handler:
         name: "HandlerArchitectureGraphPopulate"
@@ -191,6 +192,7 @@ handler_routing:
       priority: 0
       output_events: []
     - routing_key: "populate_from_imports"
+      operation: "populate_from_imports"
       handler_key: "HandlerArchitectureGraphPopulate"
       handler:
         name: "HandlerArchitectureGraphPopulate"
@@ -198,6 +200,7 @@ handler_routing:
       priority: 0
       output_events: []
     - routing_key: "populate_from_pyproject"
+      operation: "populate_from_pyproject"
       handler_key: "HandlerArchitectureGraphPopulate"
       handler:
         name: "HandlerArchitectureGraphPopulate"
@@ -205,6 +208,7 @@ handler_routing:
       priority: 0
       output_events: []
     - routing_key: "populate_all"
+      operation: "populate_all"
       handler_key: "HandlerArchitectureGraphPopulate"
       handler:
         name: "HandlerArchitectureGraphPopulate"
