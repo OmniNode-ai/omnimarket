@@ -323,6 +323,7 @@ class HandlerSwarmDispatchOrchestrator:
     ) -> tuple[ModelOrchestratorState, list[_PendingPublish]]:
         """RECEIVED: build swarm-check-endpoint-health command payload."""
         self._assert_state(state, EnumSwarmOrchestratorState.RECEIVED)
+        state = state.with_max_subtasks(request.max_subtasks)
         cmd = ModelSwarmHealthCheckCommand(
             endpoint_ids=request.endpoint_ids,
             correlation_id=request.correlation_id,
@@ -357,7 +358,7 @@ class HandlerSwarmDispatchOrchestrator:
             correlation_id=state.correlation_id,
             run_id=state.run_id,
             decompose=True,
-            max_subtasks=5,
+            max_subtasks=state.max_subtasks,
         )
         publishes: list[_PendingPublish] = [
             (self._topic_decompose_cmd, cmd.model_dump())
@@ -428,7 +429,10 @@ class HandlerSwarmDispatchOrchestrator:
         """DISPATCHING: parse fanout event → build swarm-aggregate command."""
         self._assert_state(state, EnumSwarmOrchestratorState.ENDPOINTS_SELECTED)
         dispatches = self._parse_fanout_event(fanout_event)
-        state = state.with_dispatches(dispatches)
+        wall_latency_ms: int = int(fanout_event.get("wall_latency_ms", 0))
+        state = state.with_dispatches(
+            dispatches, dispatch_wall_latency_ms=wall_latency_ms
+        )
 
         mode = (
             EnumAggregationMode.SYNTHESIS
@@ -606,6 +610,26 @@ class HandlerSwarmDispatchOrchestrator:
         )
         run_status = self._determine_run_status(state.dispatches)
         models_used = sorted({d.model_id for d in state.dispatches if d.model_id})
+
+        # Cost accounting: local/free endpoints are $0.00 actual cost.
+        # Cloud-equivalent cost uses a fixed Opus-4-rate proxy: $0.015/1K output tokens.
+        # parallelism_speedup = sum(subtask_latency) / wall_latency (serial vs parallel).
+        total_cost_usd = 0.0
+        # Approximate output tokens from latency: 150 t/s average → tokens = latency_ms / 1000 * 150
+        approx_tokens = sum(
+            int(d.latency_ms / 1000 * 150) for d in state.dispatches if d.latency_ms > 0
+        )
+        cloud_equivalent_cost_usd = round(approx_tokens / 1000 * 0.015, 4)
+        savings_usd = cloud_equivalent_cost_usd  # local cost = $0.00
+
+        sum_subtask_latency = sum(
+            d.latency_ms for d in state.dispatches if d.latency_ms > 0
+        )
+        wall_ms = state.dispatch_wall_latency_ms or state.total_latency_ms or 1
+        parallelism_speedup_ratio = (
+            round(sum_subtask_latency / wall_ms, 2) if wall_ms > 0 else 1.0
+        )
+
         return {
             "run_id": state.run_id,
             "correlation_id": state.correlation_id,
@@ -616,7 +640,12 @@ class HandlerSwarmDispatchOrchestrator:
             "failed_count": failed,
             "skipped_count": skipped,
             "total_latency_ms": state.total_latency_ms,
+            "dispatch_wall_latency_ms": state.dispatch_wall_latency_ms,
             "models_used": list(models_used),
+            "total_cost_usd": total_cost_usd,
+            "cloud_equivalent_cost_usd": cloud_equivalent_cost_usd,
+            "savings_usd": savings_usd,
+            "parallelism_speedup_ratio": parallelism_speedup_ratio,
         }
 
     # ------------------------------------------------------------------

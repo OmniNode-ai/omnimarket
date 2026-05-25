@@ -190,7 +190,7 @@ class TestCommandModels:
             run_id="r1",
         )
         assert cmd.decompose is True
-        assert cmd.max_subtasks == 5
+        assert cmd.max_subtasks == 6
 
     def test_select_endpoints_command(self) -> None:
         subtask = ModelSubtask(subtask_id="st-1", description="desc")
