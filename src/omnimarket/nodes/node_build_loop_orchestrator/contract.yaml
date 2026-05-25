@@ -67,19 +67,46 @@ outputs:
 env_dependencies:
   LLM_CODER_URL:
     required: false
-    description: "vLLM Qwen3-Coder-30B endpoint URL (primary coder model)"
+    description: "Primary local coder endpoint URL"
+  LLM_CODER_MODEL_NAME:
+    required: false
+    description: "Served model ID for LLM_CODER_URL"
   LLM_CODER_FAST_URL:
     required: false
-    description: "vLLM fast/reasoning model endpoint URL (used for ticket classification)"
+    description: "Fast local endpoint URL used for ticket classification"
+  LLM_CODER_FAST_MODEL_NAME:
+    required: false
+    description: "Served model ID for LLM_CODER_FAST_URL"
   LLM_GLM_URL:
     required: false
-    description: "GLM cloud API base URL (cloud fallback)"
+    description: "Cloud frontier API base URL"
   LLM_GLM_MODEL_NAME:
     required: false
-    description: "GLM model name to use with LLM_GLM_URL"
+    description: "Primary frontier served model ID for LLM_GLM_URL"
+  LLM_GLM_REVIEW_MODEL_NAME:
+    required: false
+    description: "Review frontier served model ID for LLM_GLM_URL"
   LLM_DEEPSEEK_R1_URL:
     required: false
-    description: "DeepSeek-R1 reasoning model endpoint URL (judge/reasoning tasks)"
+    description: "Local reasoning endpoint URL"
+  LLM_DEEPSEEK_R1_MODEL_NAME:
+    required: false
+    description: "Served model ID for LLM_DEEPSEEK_R1_URL"
+  LLM_GOOGLE_URL:
+    required: false
+    description: "Google frontier OpenAI-compatible endpoint URL"
+  LLM_GOOGLE_MODEL_NAME:
+    required: false
+    description: "Served model ID for LLM_GOOGLE_URL"
+  GEMINI_CLI_MODEL_NAME:
+    required: false
+    description: "Served model/profile ID for the Gemini CLI transport adapter"
+  LLM_OPENAI_URL:
+    required: false
+    description: "OpenAI-compatible frontier endpoint URL"
+  LLM_OPENAI_MODEL_NAME:
+    required: false
+    description: "Served model ID for LLM_OPENAI_URL"
   BUILD_LOOP_OUTPUT_DIR:
     required: false
     description: "Directory path for build loop output artifacts (defaults to empty string)"
@@ -98,19 +125,46 @@ env_dependencies:
 
 config:
   LLM_CODER_URL:
-    description: "vLLM Qwen3-Coder-30B endpoint URL (primary coder model)"
+    description: "Primary local coder endpoint URL"
+    required: false
+  LLM_CODER_MODEL_NAME:
+    description: "Served model ID for LLM_CODER_URL"
     required: false
   LLM_CODER_FAST_URL:
-    description: "vLLM fast model endpoint URL (ticket classification)"
+    description: "Fast local endpoint URL used for ticket classification"
+    required: false
+  LLM_CODER_FAST_MODEL_NAME:
+    description: "Served model ID for LLM_CODER_FAST_URL"
     required: false
   LLM_GLM_URL:
-    description: "GLM cloud API base URL (cloud fallback)"
+    description: "Cloud frontier API base URL"
     required: false
   LLM_GLM_MODEL_NAME:
-    description: "GLM model name to use with LLM_GLM_URL"
+    description: "Primary frontier served model ID for LLM_GLM_URL"
+    required: false
+  LLM_GLM_REVIEW_MODEL_NAME:
+    description: "Review frontier served model ID for LLM_GLM_URL"
     required: false
   LLM_DEEPSEEK_R1_URL:
-    description: "DeepSeek-R1 reasoning model endpoint URL"
+    description: "Local reasoning endpoint URL"
+    required: false
+  LLM_DEEPSEEK_R1_MODEL_NAME:
+    description: "Served model ID for LLM_DEEPSEEK_R1_URL"
+    required: false
+  LLM_GOOGLE_URL:
+    description: "Google frontier OpenAI-compatible endpoint URL"
+    required: false
+  LLM_GOOGLE_MODEL_NAME:
+    description: "Served model ID for LLM_GOOGLE_URL"
+    required: false
+  GEMINI_CLI_MODEL_NAME:
+    description: "Served model/profile ID for the Gemini CLI transport adapter"
+    required: false
+  LLM_OPENAI_URL:
+    description: "OpenAI-compatible frontier endpoint URL"
+    required: false
+  LLM_OPENAI_MODEL_NAME:
+    description: "Served model ID for LLM_OPENAI_URL"
     required: false
   BUILD_LOOP_OUTPUT_DIR:
     description: "Directory path for build loop output artifacts"

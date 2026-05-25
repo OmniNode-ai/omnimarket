@@ -81,14 +81,15 @@ LLM_FAST_MODEL_NAME = os.environ.get("LLM_CODER_FAST_MODEL_NAME", "")
 LLM_CODER_URL = os.environ.get("LLM_CODER_URL", "")
 LLM_CODER_MODEL_NAME = os.environ.get("LLM_CODER_MODEL_NAME", "")
 
-# Frontier: GLM-4.5 (primary code generation backend)
+# Frontier GLM endpoint/profile resolved from runtime overlay.
 LLM_GLM_API_KEY = os.environ.get("LLM_GLM_API_KEY", "")
 LLM_GLM_URL = os.environ.get("LLM_GLM_URL", "")
 LLM_GLM_MODEL_NAME = os.environ.get("LLM_GLM_MODEL_NAME", "")
 
-# Frontier: OpenAI
+# Frontier OpenAI endpoint/profile resolved from runtime overlay.
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = "https://api.openai.com/v1"
+OPENAI_BASE_URL = os.environ.get("LLM_OPENAI_URL", "")
+OPENAI_MODEL_NAME = os.environ.get("LLM_OPENAI_MODEL_NAME", "")
 
 # Frontier: Google (Gemini via OpenAI-compat endpoint)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "") or os.environ.get(
@@ -96,14 +97,6 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "") or os.environ.get(
 )
 
 LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
-
-# Per-token cost estimates (USD per 1K tokens) for cost tracking
-_MODEL_COST_PER_1K: dict[str, float] = {
-    "glm-4.5": 0.0005,
-    "glm-4.7-flash": 0.0001,
-    "gpt-4o-mini": 0.00015,
-    "qwen3-coder-30b": 0.0,  # local — no cost
-}
 
 
 def _build_event_bus(settings: Settings | None = None) -> ProtocolEventBusPublisher:
@@ -135,10 +128,9 @@ def _build_event_bus(settings: Settings | None = None) -> ProtocolEventBusPublis
         ) from exc
 
 
-def _estimate_cost(model: str, total_tokens: int) -> float:
-    """Estimate USD cost for an LLM call based on model and token count."""
-    per_1k = _MODEL_COST_PER_1K.get(model, 0.001)  # conservative default
-    return round(per_1k * total_tokens / 1000, 6)
+def _estimate_cost(_model: str, _total_tokens: int) -> float | None:
+    """Return no cost estimate until a pricing manifest resolves this model."""
+    return None
 
 
 # Repo mapping: label/keyword -> repo name
@@ -477,15 +469,15 @@ class LiveTicketClassifyHandler:
             Respond with ONLY the classification word, nothing else.
         """)
 
-        if not LLM_FAST_URL:
+        if not LLM_FAST_URL or not LLM_FAST_MODEL_NAME:
             logger.warning(
-                "[CLASSIFY] LLM_CODER_FAST_URL not set — falling back to keyword heuristic for %s",
+                "[CLASSIFY] fast LLM endpoint/model not set — falling back to keyword heuristic for %s",
                 ticket.ticket_id,
             )
             return (
                 self._keyword_fallback(ticket),
                 "keyword_fallback",
-                "LLM_CODER_FAST_URL not set",
+                "LLM_CODER_FAST_URL or LLM_CODER_FAST_MODEL_NAME not set",
             )
 
         try:
@@ -869,10 +861,10 @@ class LiveBuildDispatchHandler:
             If you cannot determine what to implement, respond with: {{"_skip": "reason"}}
         """)
 
-        # Tier 1: GLM-4.5 (primary frontier code gen)
-        if LLM_GLM_API_KEY and LLM_GLM_URL:
+        # Tier 1: configured frontier code generation endpoint.
+        if LLM_GLM_API_KEY and LLM_GLM_URL and LLM_GLM_MODEL_NAME:
             logger.info(
-                "[DISPATCH] Trying GLM-4.5 (%s) for %s",
+                "[DISPATCH] Trying frontier GLM profile (%s) for %s",
                 LLM_GLM_MODEL_NAME,
                 target.ticket_id,
             )
@@ -886,8 +878,8 @@ class LiveBuildDispatchHandler:
             if impl and "_skip" not in impl:
                 return impl, LLM_GLM_MODEL_NAME
 
-        # Tier 2: Local coder (Qwen3-Coder-30B, longer context)
-        if LLM_CODER_URL:
+        # Tier 2: configured local coder endpoint.
+        if LLM_CODER_URL and LLM_CODER_MODEL_NAME:
             coder_model = LLM_CODER_MODEL_NAME
             impl = await self._call_llm(
                 url=f"{LLM_CODER_URL}/v1/chat/completions",
@@ -896,23 +888,23 @@ class LiveBuildDispatchHandler:
                 max_tokens=4096,
             )
             if impl and "_skip" not in impl:
-                return impl, "qwen3-coder-30b"
+                return impl, coder_model
 
-        # Tier 3: Frontier fallback (OpenAI)
-        if OPENAI_API_KEY:
+        # Tier 3: configured OpenAI-compatible frontier fallback.
+        if OPENAI_API_KEY and OPENAI_BASE_URL and OPENAI_MODEL_NAME:
             logger.info(
                 "[DISPATCH] Local LLM skipped/failed, trying OpenAI for %s",
                 target.ticket_id,
             )
             impl = await self._call_llm(
                 url=f"{OPENAI_BASE_URL}/chat/completions",
-                model="gpt-4o-mini",
+                model=OPENAI_MODEL_NAME,
                 prompt=prompt,
                 max_tokens=4096,
                 api_key=OPENAI_API_KEY,
             )
             if impl and "_skip" not in impl:
-                return impl, "gpt-4o-mini"
+                return impl, OPENAI_MODEL_NAME
 
         return None
 
@@ -1010,6 +1002,8 @@ class LiveBuildDispatchHandler:
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "pricing_status": "UNKNOWN",
+            "cost_basis": "UNKNOWN",
             "usage_source": (
                 EnumUsageSource.MEASURED.value
                 if usage
