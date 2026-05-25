@@ -34,7 +34,7 @@ event_bus:
 
 projection_api:
   expose: true
-  topic: "onex.snapshot.projection.ab-compare.v1"
+  topic: "onex.snapshot.projection.ab-compare.v1"  # onex-topic-allow: projection-snapshot
   table: "llm_call_metrics"
   schema: "public"
   columns:
