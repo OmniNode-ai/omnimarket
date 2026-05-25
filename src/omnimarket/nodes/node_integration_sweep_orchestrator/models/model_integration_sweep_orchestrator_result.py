@@ -16,3 +16,7 @@ class ModelIntegrationSweepOrchestratorResult(BaseModel):
         default_factory=dict,
         description="Machine-readable sweep details.",
     )
+    surfaces: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="Structured results from each surface probe (RUNTIME_HEALTH, KAFKA, DB).",
+    )
