@@ -6,9 +6,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   CI watch WorkflowPackage. Polls GitHub Actions for a PR's CI status,
-  classifies the terminal state (passed, failed, timeout), and emits a
-  completion event with failure details. No LLM involvement — pure GitHub
-  CLI polling with hardcoded terminal-state detection.
+  classifies the terminal state (passed, failed, fixed, unfixable), and
+  emits a completion event with failure details. When auto_fix=true,
+  dispatches a fixer worker on failures and re-polls after each cycle up
+  to max_fix_cycles times.
 
 handler:
   module: omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch
@@ -46,6 +47,11 @@ inputs:
     description: "Max minutes to wait for CI (default 60)"
     required: false
     default: 60
+  auto_fix:
+    type: bool
+    description: "When true, dispatch a fixer worker on failures and re-poll"
+    required: false
+    default: false
   max_fix_cycles:
     type: int
     description: "Max auto-fix attempts before escalating (default 3)"
@@ -60,13 +66,19 @@ inputs:
 outputs:
   terminal_status:
     type: str
-    description: "passed | failed | timeout | error"
+    description: "passed | failed | timeout | error | fixed | unfixable"
   failed_checks:
     type: list
     description: "Names of failed CI checks"
   failure_summary:
     type: str
     description: "Condensed failure log excerpt"
+  auto_fix_status:
+    type: str
+    description: "Human-readable auto-fix outcome summary"
+  cycles:
+    type: list
+    description: "Per-cycle fix attempt records (cycle_number, checks before/after, dispatch status)"
 
 terminal_event: onex.evt.omnimarket.ci-watch-completed.v1
 
