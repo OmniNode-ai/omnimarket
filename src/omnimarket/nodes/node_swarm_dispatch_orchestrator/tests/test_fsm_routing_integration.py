@@ -201,9 +201,10 @@ class TestFSMRoutingIntegration:
         """Full integration: RECEIVED → HEALTH_CHECKED → DECOMPOSED →
         ENDPOINTS_SELECTED → DISPATCHING → AGGREGATING → COMPLETED."""
 
-        # Step 1: handle_async — creates run state at RECEIVED, emits health-check cmd
+        # Step 1: handle_async — creates run state at RECEIVED, emits health-check cmd.
+        # Returns None for non-terminal RECEIVED state (OMN-12151).
         result = await handler.handle_async(dispatch_request)
-        assert result.run_id == _RUN_ID
+        assert result is None
 
         # State must be persisted after handle_async
         assert await state_store.exists(
@@ -372,7 +373,7 @@ class TestFSMRoutingIntegration:
         mock_bus: MagicMock,
         dispatch_request: ModelSwarmDispatchRequest,
     ) -> None:
-        """Without a state_store, handle_async runs without error (no persistence)."""
+        """Without a state_store, handle_async runs without error and returns None (OMN-12151)."""
         handler_no_store = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
         result = await handler_no_store.handle_async(dispatch_request)
-        assert result.run_id == _RUN_ID
+        assert result is None
