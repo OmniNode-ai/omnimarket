@@ -21,6 +21,9 @@ handler_routing:
       event_model:
         name: ModelNightlyLoopConfig
         module: omnimarket.nodes.node_nightly_loop_controller.models.model_nightly_loop
+    - handler:
+        name: HandlerProjectionNightlyLoop
+        module: omnimarket.nodes.node_nightly_loop_controller.handlers.handler_projection_nightly_loop
 
 descriptor:
   node_archetype: orchestrator

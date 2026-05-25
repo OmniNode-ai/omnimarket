@@ -21,6 +21,9 @@ handler_routing:
       handler:
         name: HandlerMorningHandoffGenerator
         module: omnimarket.nodes.node_morning_handoff_generator.handlers.handler_morning_handoff_generator
+      event_model:
+        name: ModelMorningHandoffRequest
+        module: omnimarket.nodes.node_morning_handoff_generator.handlers.handler_morning_handoff_generator
 
 descriptor:
   node_archetype: compute
