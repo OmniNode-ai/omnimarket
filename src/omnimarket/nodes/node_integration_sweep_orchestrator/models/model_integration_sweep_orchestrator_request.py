@@ -40,3 +40,19 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
         default=False,
         description="When true, compute the artifact path but do not write it.",
     )
+    run_surface_probes: bool = Field(
+        default=True,
+        description="When true, execute RUNTIME_HEALTH, CONTAINER_HEALTH, and GITHUB_CI surface probes.",
+    )
+    stability_test_runtime_url: str = Field(
+        default="http://192.168.86.201:18085",  # onex-allow-internal-ip OMN-7538 reason="stability-test lane health endpoint; overridden by caller; not a shipping connection string"
+        description="URL for the stability-test runtime health endpoint (RUNTIME_HEALTH probe).",
+    )
+    container_health_host: str = Field(
+        default="192.168.86.201",  # onex-allow-internal-ip OMN-7538 reason="stability-test Docker host for container health probe; overridden by caller; not a shipping connection string"
+        description="SSH host for the CONTAINER_HEALTH probe (docker ps).",
+    )
+    github_ci_repo: str = Field(
+        default="omnimarket",
+        description="GitHub repo name (without org prefix) used by the GITHUB_CI probe.",
+    )
