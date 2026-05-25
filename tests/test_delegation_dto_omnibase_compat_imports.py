@@ -61,7 +61,11 @@ def _model_refs(value: object) -> list[str]:
     if isinstance(value, dict):
         name = value.get("name")
         module = value.get("module")
-        if isinstance(name, str) and isinstance(module, str):
+        if (
+            isinstance(name, str)
+            and isinstance(module, str)
+            and (".models" in module or module.startswith("omnimarket.models."))
+        ):
             refs.append(f"{module}.{name}")
         for child in value.values():
             refs.extend(_model_refs(child))
