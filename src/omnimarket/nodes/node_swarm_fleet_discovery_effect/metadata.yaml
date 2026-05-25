@@ -1,0 +1,24 @@
+name: node_swarm_fleet_discovery_effect
+version: "1.0.0"
+description: "Effect node for model fleet discovery via local registry + OpenRouter free-tier probe"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_swarm_fleet_discovery_effect: "omnimarket.nodes.node_swarm_fleet_discovery_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["effect", "swarm", "fleet-discovery", "openrouter", "http-probe", "OMN-12083"]
+pack: "swarm"
+display_name: "Swarm Fleet Discovery Effect"
+node_role: "effect"
