@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_handler_correctness_gate
+contract_name: node_handler_correctness_gate
+node_name: node_handler_correctness_gate
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+description: >
+  Pure compute node that scores pre-computed handler outputs against an eval
+  set and returns pass/fail with a correctness score. The gate itself never
+  invokes the handler — it only compares outputs.
+
+input_model:
+  name: ModelCorrectnessCheckRequest
+  class: ModelCorrectnessCheckRequest
+  module: omnimarket.nodes.node_handler_correctness_gate.models.model_correctness_check_request
+
+output_model:
+  name: ModelCorrectnessCheckResult
+  class: ModelCorrectnessCheckResult
+  module: omnimarket.nodes.node_handler_correctness_gate.models.model_correctness_check_result
+
+handler:
+  name: HandlerCorrectnessGate
+  module: omnimarket.nodes.node_handler_correctness_gate.handlers.handler_correctness_gate
+  class: HandlerCorrectnessGate
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerCorrectnessGate
+        module: omnimarket.nodes.node_handler_correctness_gate.handlers.handler_correctness_gate
+      event_model:
+        name: ModelCorrectnessCheckRequest
+        module: omnimarket.nodes.node_handler_correctness_gate.models.model_correctness_check_request
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [main]
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  plugin_managed: false
+  subscribe_topics:
+    - onex.cmd.omnimarket.handler-correctness-check.v1
+  publish_topics:
+    - onex.evt.omnimarket.handler-correctness-result.v1
+
+terminal_event: onex.evt.omnimarket.handler-correctness-result.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.handler-correctness-result.v1
+
+published_events:
+  - event_type: HandlerCorrectnessResult
+    topic: onex.evt.omnimarket.handler-correctness-result.v1
+    description: Handler correctness gate result with score and failure details.
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-25"
+  tags: [compute, eval, correctness, gate, OMN-12130]
+  related_tickets:
+    - "OMN-12130"
