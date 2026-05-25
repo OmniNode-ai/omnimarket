@@ -203,13 +203,18 @@ class HandlerSwarmDispatchOrchestrator:
     # Async entry point (uses real event bus)
     # ------------------------------------------------------------------
 
-    async def handle_async(
-        self, request: ModelSwarmDispatchRequest
-    ) -> ModelSwarmDispatchResult:
+    async def handle_async(self, request: ModelSwarmDispatchRequest) -> None:
         """Handle the initial swarm-dispatch command.
 
         Creates fresh FSM state for the run_id, emits the health-check command,
         and persists state so subsequent response events can resume this run.
+
+        Returns None (OMN-12151): the FSM is not complete after RECEIVED — the
+        orchestrator has only enqueued the swarm-check-endpoint-health sub-command.
+        Returning None suppresses DispatchResultApplier from publishing a terminal
+        event prematurely, before the full FSM traversal (RECEIVED → HEALTH_CHECKED
+        → DECOMPOSED → ENDPOINTS_SELECTED → DISPATCHING → AGGREGATING → COMPLETED)
+        is finished via subsequent ``route_event`` calls on response topics.
         """
         logger.info(
             "[SWARM-DISPATCH] === ASYNC ENTRY === run_id=%s correlation_id=%s",
@@ -226,15 +231,18 @@ class HandlerSwarmDispatchOrchestrator:
             state, publishes = self.transition_received(state, request)
             await self._persist_state(state)
             await self._flush(publishes)
-            return self._build_result(state, request)
+            # Return None: RECEIVED is non-terminal. The terminal event is emitted
+            # by route_event when aggregating → COMPLETED fires.
+            return
         except Exception as exc:
             logger.error(
                 "[SWARM-DISPATCH] ASYNC FAILED run_id=%s error=%s", request.run_id, exc
             )
-            failed_state = state.with_error(str(exc))
             _, fail_publishes = self.transition_failed(state, str(exc), request)
             await self._flush(fail_publishes)
-            return self._build_result(failed_state, request)
+            # Return None even on failure: transition_failed already published
+            # the swarm-dispatch-failed terminal event via _flush above.
+            return
 
     # ------------------------------------------------------------------
     # Multi-topic event router (OMN-12003)

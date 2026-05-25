@@ -335,3 +335,87 @@ class TestTerminalEventEmission:
         assert len(publishes) == 1
         _, payload = publishes[0]
         assert payload["status"] == EnumSwarmRunStatus.FAILED.value
+
+
+class TestHandleAsyncReturnsNone:
+    """Verify handle_async returns None for non-terminal FSM states (OMN-12151).
+
+    The swarm dispatch orchestrator is a multi-step FSM.  After the initial
+    swarm-dispatch command arrives, the orchestrator is only in the RECEIVED
+    state — it has emitted one sub-command (swarm-check-endpoint-health) and is
+    waiting for response events on other topics.  Returning a non-None result
+    at this point would cause DispatchResultApplier to publish a premature
+    terminal event, short-circuiting the FSM before any real work is done.
+    """
+
+    @pytest.mark.asyncio
+    async def test_handle_async_returns_none_for_received_state(
+        self,
+        mock_bus: MagicMock,
+        request_fixture: ModelSwarmDispatchRequest,
+    ) -> None:
+        """handle_async must return None so the result applier skips terminal publish."""
+        from unittest.mock import AsyncMock
+
+        mock_bus.publish = AsyncMock()
+        handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
+
+        result = await handler.handle_async(request_fixture)
+
+        assert result is None, (
+            "handle_async must return None for non-terminal RECEIVED state. "
+            "A non-None return causes DispatchResultApplier to fire a terminal "
+            "event prematurely, short-circuiting the 7-state FSM (OMN-12151)."
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_async_still_flushes_health_check_command(
+        self,
+        mock_bus: MagicMock,
+        request_fixture: ModelSwarmDispatchRequest,
+    ) -> None:
+        """handle_async must still publish the health-check sub-command even though it returns None."""
+        from unittest.mock import AsyncMock
+
+        publish_mock = AsyncMock()
+        mock_bus.publish = publish_mock
+        handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
+
+        await handler.handle_async(request_fixture)
+
+        assert publish_mock.call_count == 1, (
+            "Expected exactly one publish call for the health-check sub-command"
+        )
+        call_kwargs = publish_mock.call_args
+        topic = call_kwargs.kwargs.get(
+            "topic", call_kwargs.args[0] if call_kwargs.args else ""
+        )
+        assert "swarm-check-endpoint-health" in topic, (
+            f"Expected health-check topic, got: {topic!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_async_returns_none_on_exception(
+        self,
+        mock_bus: MagicMock,
+        request_fixture: ModelSwarmDispatchRequest,
+    ) -> None:
+        """handle_async must return None even when an exception occurs during RECEIVED.
+
+        The transition_failed method already published a swarm-dispatch-failed
+        terminal event via _flush; returning None here prevents the result applier
+        from also firing a terminal event.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        mock_bus.publish = AsyncMock()
+        handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
+
+        with patch.object(
+            handler,
+            "transition_received",
+            side_effect=RuntimeError("injected failure"),
+        ):
+            result = await handler.handle_async(request_fixture)
+
+        assert result is None
