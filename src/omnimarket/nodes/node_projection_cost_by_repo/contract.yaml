@@ -15,6 +15,10 @@ handler_routing:
   routes:
     - input_model: omniintelligence.models.events.ModelLLMCallCompletedEvent
       output_model: omniintelligence.models.events.ModelCostByRepoSnapshot
+  handlers:
+    - handler:
+        name: HandlerProjectionCostByRepo
+        module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo
 
 idempotency:
   enabled: true

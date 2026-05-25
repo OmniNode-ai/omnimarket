@@ -358,6 +358,7 @@ class TestHandlerLlmDelegationCall:
     def test_cost_calculation_nonzero_for_nonzero_tokens(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """cheap_cloud tier has nonzero pricing in registry → actual_cost_usd > 0."""
         monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
         api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
 
@@ -379,11 +380,83 @@ class TestHandlerLlmDelegationCall:
             mock_client_cls.return_value = mock_client
 
             handler = HandlerLlmDelegationCall()
-            result = handler(_make_request())
+            # Use cheap_cloud tier which has cost_per_1k_tokens=0.002 in routing_tiers.yaml
+            result = handler(_make_request(model_tier="cheap_cloud"))
 
         assert result.actual_cost_usd > Decimal("0")
         assert result.opus_equivalent_cost_usd > result.actual_cost_usd
         assert result.savings_usd > Decimal("0")
+
+    @pytest.mark.unit
+    def test_cost_calculation_uses_registry_price_for_local_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Local tier has cost_per_1k_tokens=0.0 in registry → actual_cost should be 0."""
+        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
+        api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = api_resp
+        mock_response.raise_for_status.return_value = None
+
+        with (
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
+                return_value=True,
+            ),
+            patch("httpx.Client") as mock_client_cls,
+        ):
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            handler = HandlerLlmDelegationCall()
+            result = handler(_make_request(model_tier="local"), event_publisher=None)
+
+        assert result.success is True
+        assert result.actual_cost_usd == Decimal("0")
+        assert result.savings_usd > Decimal("0")
+
+    @pytest.mark.unit
+    def test_cost_calculation_falls_back_when_registry_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When registry YAML is unreadable, falls back to _FALLBACK_PRICE_PER_1M."""
+        from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+            handler_llm_delegation_call as h,
+        )
+
+        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
+        api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = api_resp
+        mock_response.raise_for_status.return_value = None
+
+        with (
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
+                return_value=True,
+            ),
+            patch("httpx.Client") as mock_client_cls,
+            patch.object(h, "_get_tier_price_per_1m", return_value=None),
+        ):
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            handler = HandlerLlmDelegationCall()
+            result = handler(
+                _make_request(model_tier="unknown_tier"), event_publisher=None
+            )
+
+        assert result.success is True
+        # With fallback default pricing, cost > 0 for nonzero tokens
+        assert result.actual_cost_usd > Decimal("0")
 
     @pytest.mark.unit
     def test_terminal_followup_events_declared_external_consumed(self) -> None:

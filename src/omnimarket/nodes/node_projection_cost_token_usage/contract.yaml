@@ -15,6 +15,10 @@ handler_routing:
   routes:
     - input_model: omniintelligence.models.events.ModelLLMCallCompletedEvent
       output_model: omniintelligence.models.events.ModelCostTokenUsageSnapshot
+  handlers:
+    - handler:
+        name: HandlerProjectionCostTokenUsage
+        module: omnimarket.nodes.node_projection_cost_token_usage.handlers.handler_projection_cost_token_usage
 
 idempotency:
   enabled: true
@@ -32,7 +36,7 @@ event_bus:
 
 projection_api:
   expose: true
-  topic: "onex.snapshot.projection.cost.token_usage.v1"
+  topic: "onex.snapshot.projection.cost.token_usage.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "llm_call_metrics"
   columns:
     - "model_id"

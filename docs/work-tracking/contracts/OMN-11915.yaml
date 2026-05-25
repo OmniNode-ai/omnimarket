@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-11915"
+title: "Codebase Intelligence Bridge Node (Task 2.1)"
+summary: >-
+  New ONEX effect node that proxies codebase intelligence queries to a configured
+  backend provider (default: Repowise via CLI subprocess). Exposes five operations:
+  get_answer, get_context, get_symbol, search_codebase, get_why. Handler delegates
+  to ProtocolCodebaseIntelligence adapter — never imports Repowise internals directly.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "16 unit tests pass: all five operations, error path, timeout path, missing _meta, CLI subprocess mocking."
+    command: "uv run pytest tests/nodes/node_codebase_intelligence_bridge_effect/ -v -m unit"
+  - kind: "manual"
+    description: "Effect node that proxies CLI subprocess calls — no live Kafka, docker exec, or rpk topic produce required pre-merge."
+    command: "printf '%s\n' 'deploy-assessment: node_codebase_intelligence_bridge_effect is a new effect node with no live deployment dependency; no docker exec or rpk topic produce performed pre-merge; 16 golden-chain unit tests pass as integration proof'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-unit-tests"
+    description: "16 unit tests covering all five operations, error path, timeout path, and missing _meta fields."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_codebase_intelligence_bridge_effect/ -v -m unit --tb=short"
+  - id: "dod-deploy-assessment"
+    description: "New effect node proxying CLI subprocess — no live deploy, docker exec, or rpk topic produce required pre-merge."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy-assessment: node_codebase_intelligence_bridge_effect is a new effect node with no live deployment dependency; no docker exec or rpk topic produce performed pre-merge; 16 golden-chain unit tests pass as integration proof'"

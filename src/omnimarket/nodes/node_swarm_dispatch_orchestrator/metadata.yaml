@@ -1,0 +1,17 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_swarm_dispatch_orchestrator
+version: 1.0.0
+node_type: orchestrator
+description: >
+  FSM orchestrator for swarm dispatch. Coordinates health check, decomposition,
+  endpoint selection, fan-out, and aggregation through command/event pairs.
+  Pure coordination — all I/O delegated to effect nodes.
+author: OmniNode Team
+license: MIT
+created: "2026-05-24"
+tags: [orchestrator, swarm, dispatch, fsm, OMN-11814]
+pack: "swarm"
+display_name: "Swarm Dispatch Orchestrator"
+node_role: "orchestrator"

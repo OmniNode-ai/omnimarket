@@ -1,0 +1,24 @@
+name: node_knowledge_health_probe_effect
+version: "1.0.0"
+description: "Effect node that probes knowledge backends and returns raw health probe data"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_knowledge_health_probe_effect: "omnimarket.nodes.node_knowledge_health_probe_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "knowledge", "health", "probe", "repowise", "qdrant", "memgraph"]
+pack: "knowledge"
+display_name: "Knowledge Health Probe Effect"
+node_role: "effect"

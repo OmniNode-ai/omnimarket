@@ -19,7 +19,11 @@ handler:
   input_model: omnimarket.nodes.node_merge_effect.models.model_merge_command.ModelMergeCommand
 
 handler_routing:
-  default_handler: omnimarket.nodes.node_merge_effect.handlers.handler_merge:HandlerMergeEffect
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerMergeEffect
+        module: omnimarket.nodes.node_merge_effect.handlers.handler_merge
 
 descriptor:
   node_archetype: effect

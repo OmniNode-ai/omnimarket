@@ -1,0 +1,26 @@
+name: node_antipattern_index_effect
+version: "0.1.0"
+description: "Antipattern registry indexer — embeds vector_enabled entries into the onex_antipatterns Qdrant collection"
+omnibase_core_compat: ">=0.42.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_antipattern_index_effect: "omnimarket.nodes.node_antipattern_index_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.42.0"
+  - "qdrant-client"
+  - "httpx"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["intelligence", "embedding", "effect", "antipattern", "qdrant", "vector"]
+pack: "intelligence"
+display_name: "Antipattern Index Effect"
+node_role: "effect"
+tickets: ["OMN-11909", "OMN-11913"]

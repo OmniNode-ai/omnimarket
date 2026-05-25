@@ -77,6 +77,25 @@ def test_canonical_bifrost_contract_has_empty_endpoint_urls() -> None:
 
 
 @pytest.mark.unit
+def test_research_route_prefers_current_qwen36_backend() -> None:
+    path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
+    data = yaml.safe_load(path.read_text())
+
+    by_id = {backend["backend_id"]: backend for backend in data["backends"]}
+    research_rule = next(
+        rule for rule in data["routing_rules"] if rule["task_class"] == "research"
+    )
+
+    assert by_id["local-qwen3-6-35b"]["model_name"] == (
+        "mlx-community/Qwen3.6-35B-A3B-8bit"
+    )
+    assert research_rule["backend_ids"][:2] == [
+        "local-qwen3-6-35b",
+        "local-deepseek-r1-14b",
+    ]
+
+
+@pytest.mark.unit
 def test_deep_merge_preserves_new_default_backend_with_overlay_endpoint() -> None:
     default = yaml.safe_load(_DEFAULT_CONTRACT)
     overlay = {
