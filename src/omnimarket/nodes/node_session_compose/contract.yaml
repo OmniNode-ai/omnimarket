@@ -75,6 +75,16 @@ dependencies:
     module: omnimarket.nodes.node_session_compose.handlers
     pluggable: false
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSessionCompose
+        module: omnimarket.nodes.node_session_compose.handlers.handler_session_compose
+      event_model:
+        name: ModelSessionComposeCommand
+        module: omnimarket.nodes.node_session_compose.models.model_session_compose_command
+
 error_handling:
   retry_policy:
     max_retries: 0

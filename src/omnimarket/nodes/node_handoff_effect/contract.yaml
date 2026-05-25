@@ -64,6 +64,13 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.handoff-effect-completed.v1
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerHandoffEffect
+        module: omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect
+
 metadata:
   transport_type: kafka
 

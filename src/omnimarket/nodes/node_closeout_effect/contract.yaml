@@ -54,5 +54,15 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.closeout-effect-completed.v1
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerCloseout
+        module: omnimarket.nodes.node_closeout_effect.handlers.handler_closeout
+      event_model:
+        name: ModelCloseoutInput
+        module: omnimarket.nodes.node_closeout_effect.models.model_closeout_input
+
 metadata:
   transport_type: kafka
