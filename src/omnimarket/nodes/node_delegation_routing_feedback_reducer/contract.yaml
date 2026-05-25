@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 OmniNode Team
+#
+# ONEX Node Contract
+# Node: NodeDelegationRoutingFeedbackReducer
+#
+# Accumulates per-(model_id, task_type) success/failure/escalation rates
+# over a sliding window and materializes a ModelRoutingFeedback projection.
+#
+# Related Tickets:
+#   - OMN-12129: Routing feedback loop — runtime success/failure rates
+name: "node_delegation_routing_feedback_reducer"
+contract_name: "node_delegation_routing_feedback_reducer"
+node_name: "node_delegation_routing_feedback_reducer"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: "REDUCER_GENERIC"
+description: >
+  Routing feedback reducer for the delegation pipeline. Consumes delegation
+  terminal events (completed, escalation-triggered, all-tiers-failed) and
+  accumulates per-(model_id, task_type) counters. Materializes a
+  ModelRoutingFeedback projection that downstream routing reducers can use to
+  skip models with poor success rates.
+
+input_model:
+  name: "ModelDelegationFeedbackEvent"
+  module: "omnimarket.nodes.node_delegation_routing_feedback_reducer.models.model_delegation_feedback_event"
+  description: "Union input for delegation terminal events."
+output_model:
+  name: "ModelRoutingFeedback"
+  module: "omnimarket.nodes.node_delegation_routing_feedback_reducer.models.model_routing_feedback"
+  description: "Accumulated per-(model_id, task_type) routing feedback."
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.evt.omnimarket.delegation-call-completed.v1"
+    - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
+    - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.routing-feedback-updated.v1"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "delegation.feedback.accumulate"
+      handler:
+        name: "HandlerDelegationRoutingFeedback"
+        module: "omnimarket.nodes.node_delegation_routing_feedback_reducer.handlers.handler_delegation_routing_feedback"
+      description: "Accumulate terminal event into per-model feedback counters"
+      input_model:
+        name: "ModelDelegationFeedbackEvent"
+        module: "omnimarket.nodes.node_delegation_routing_feedback_reducer.models.model_delegation_feedback_event"
+        description: "Delegation terminal event (completed, escalated, or all-failed)."
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+error_handling:
+  retry_policy:
+    max_retries: 0
+    initial_delay_ms: 0
+    max_delay_ms: 0
+    exponential_base: 1
+    retry_on: []
+  error_types:
+    - name: "FeedbackAccumulationError"
+      description: "Failed to accumulate routing feedback from terminal event"
+      recoverable: false
+
+health_check:
+  enabled: true
+  endpoint: "/health"
+  interval_seconds: 30
+  checks:
+    - name: "feedback_handler_loaded"
+      type: "handler"
+      critical: true
+
+metadata:
+  description: "Routing feedback reducer that accumulates delegation success/failure rates per model and task type."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-05-25"
+  tags:
+    - reducer
+    - routing
+    - feedback
+    - delegation
+    - llm
+  related_tickets:
+    - "OMN-12129"
