@@ -11,7 +11,10 @@ description: >
   breaker protection. Health endpoint responds within 100ms and never hangs.
 
 handler_routing:
-  default_handler: handler:HandlerEmitDaemon
+  handlers:
+    - handler:
+        name: HandlerEmitDaemon
+        module: omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon
 
 descriptor:
   node_archetype: service

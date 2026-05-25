@@ -13,6 +13,12 @@ handler:
   class: HandlerRelease
   input_model: omnimarket.nodes.node_release.models.model_release_state.ModelReleaseStartCommand
 
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerRelease
+        module: omnimarket.nodes.node_release.handlers.handler_release
+
 descriptor:
   node_archetype: compute
   purity: impure

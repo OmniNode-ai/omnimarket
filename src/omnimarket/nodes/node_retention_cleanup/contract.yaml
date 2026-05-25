@@ -18,6 +18,12 @@ handler:
   module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
   class: NodeRetentionCleanup
   input_model: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup.RetentionCleanupRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: NodeRetentionCleanup
+        module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
 descriptor:
   node_archetype: effect
   purity: impure
