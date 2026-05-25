@@ -14,15 +14,16 @@
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657
-config_version: "1.3.0"
+config_version: "1.4.0"
 schema_version: "bifrost_delegation.v1"
-# Backend definitions — endpoint_url values are merged from the overlay at load time.
+# Backend definitions — endpoint_url and model_name values are resolved from the
+# deploy-time overlay at load time (~/.omninode/delegation/bifrost_overrides.yaml).
+# Never hardcode site-specific model IDs here — this is a public repo.
 backends:
-  # Local backends (AIPC)
+  # Local backends — model_name resolved via overlay at deploy time
   - backend_id: local-qwen-coder-30b
     endpoint_url: ""
-    # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
-    model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    model_name: null
     tier: local
     timeout_ms: 30000
     capabilities:
@@ -31,8 +32,7 @@ backends:
       - documentation
   - backend_id: local-deepseek-r1-14b
     endpoint_url: ""
-    # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
-    model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ # onex-allow-model-id OMN-10865 reason="delegation config must pin exact private HF model ID for local AIPC routing"
+    model_name: null
     tier: local
     timeout_ms: 30000
     capabilities:
@@ -41,8 +41,7 @@ backends:
       - classification
   - backend_id: local-qwen3-6-35b
     endpoint_url: ""
-    # onex-allow-model-id OMN-11925 reason="delegation config must pin exact private HF model ID for local AIPC routing"
-    model_name: mlx-community/Qwen3.6-35B-A3B-8bit # onex-allow-model-id OMN-11925 reason="newer local reasoning model served by the Qwen3.6 slot"
+    model_name: null
     tier: local
     timeout_ms: 60000
     capabilities:

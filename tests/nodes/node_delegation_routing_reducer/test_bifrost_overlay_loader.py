@@ -86,9 +86,8 @@ def test_research_route_prefers_current_qwen36_backend() -> None:
         rule for rule in data["routing_rules"] if rule["task_class"] == "research"
     )
 
-    assert by_id["local-qwen3-6-35b"]["model_name"] == (
-        "mlx-community/Qwen3.6-35B-A3B-8bit"
-    )
+    # model_name is null in the public source; resolved via overlay at deploy time
+    assert by_id["local-qwen3-6-35b"]["model_name"] is None
     assert research_rule["backend_ids"][:2] == [
         "local-qwen3-6-35b",
         "local-deepseek-r1-14b",
