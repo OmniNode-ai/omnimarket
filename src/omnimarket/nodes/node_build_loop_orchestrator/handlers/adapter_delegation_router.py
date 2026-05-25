@@ -225,13 +225,30 @@ _COMPLEX_KEYWORDS: frozenset[str] = frozenset(
 )
 
 
+# Frontier cloud context windows — no registry entry yet (OMN-11856).
+# Declared as module-level constants so they are visible and auditable.
+# Move each to model_registry_v1.yaml when the provider is verified.
+_GLM_CONTEXT_WINDOW: int = 128_000  # GLM-4.5
+_GLM_REVIEW_CONTEXT_WINDOW: int = 203_000  # GLM-4.7-Flash
+_GEMINI_CONTEXT_WINDOW: int = 1_000_000  # Gemini 2.5 Flash / CLI
+_OPENAI_CONTEXT_WINDOW: int = 128_000  # GPT-4.1
+
+
 def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     """Build endpoint configurations from environment variables.
 
     Endpoint URLs and served model IDs must both be supplied by runtime
     overlays. Missing values skip the tier instead of silently substituting a
     hardcoded provider default.
+    Context windows for local tiers are resolved from the model registry via
+    get_context_window_for_endpoint_env (OMN-11856). Frontier cloud tiers
+    (GLM, Gemini, OpenAI) have no registry entries yet; their context windows
+    come from the module-level _*_CONTEXT_WINDOW constants declared above.
     """
+    from omnimarket.inference.registry_context_windows import (
+        get_context_window_for_endpoint_env,
+    )
+
     configs: dict[EnumModelTier, ModelEndpointConfig] = {}
 
     # Frontier GLM (primary code gen) — reads LLM_GLM_* from env.
@@ -246,7 +263,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id=glm_model,
             api_key=glm_key,
             max_tokens=8192,
-            context_window=128000,
+            context_window=_GLM_CONTEXT_WINDOW,
             timeout_seconds=120.0,
         )
         logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
@@ -263,7 +280,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id=glm_review_model,
             api_key=glm_review_key,
             max_tokens=2048,
-            context_window=203000,
+            context_window=_GLM_REVIEW_CONTEXT_WINDOW,
             timeout_seconds=30.0,
         )
         logger.info(
@@ -282,7 +299,9 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             base_url=local_fast_url,
             model_id=local_fast_model,
             max_tokens=2048,
-            context_window=40000,
+            context_window=get_context_window_for_endpoint_env(
+                "LLM_CODER_FAST_URL", fallback=24_576
+            ),
             timeout_seconds=60.0,
         )
 
@@ -296,7 +315,9 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             base_url=local_coder_url,
             model_id=local_coder_model,
             max_tokens=4096,
-            context_window=64000,
+            context_window=get_context_window_for_endpoint_env(
+                "LLM_CODER_URL", fallback=114_688
+            ),
             timeout_seconds=120.0,
         )
 
@@ -310,7 +331,9 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             base_url=local_reasoning_url,
             model_id=local_reasoning_model,
             max_tokens=4096,
-            context_window=32000,
+            context_window=get_context_window_for_endpoint_env(
+                "LLM_DEEPSEEK_R1_URL", fallback=8_192
+            ),
             timeout_seconds=120.0,
         )
 
@@ -327,7 +350,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id=gemini_cli_model,
             api_key=gemini_key,
             max_tokens=8192,
-            context_window=1000000,
+            context_window=_GEMINI_CONTEXT_WINDOW,
             timeout_seconds=300.0,
         )
         logger.info("Gemini CLI tier configured (gemini binary available)")
@@ -345,7 +368,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id=google_model,
             api_key=gemini_key,
             max_tokens=8192,
-            context_window=1000000,
+            context_window=_GEMINI_CONTEXT_WINDOW,
             timeout_seconds=120.0,
         )
 
@@ -361,7 +384,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id=openai_model,
             api_key=openai_key,
             max_tokens=8192,
-            context_window=128000,
+            context_window=_OPENAI_CONTEXT_WINDOW,
             timeout_seconds=120.0,
         )
 
