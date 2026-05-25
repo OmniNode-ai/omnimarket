@@ -2,6 +2,7 @@ import os
 import re
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import yaml
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
@@ -10,6 +11,11 @@ from omnibase_core.validation.runtime_sha_match import CHECK_TYPE_RUNTIME_SHA_MA
 from omnimarket.nodes.node_dod_verify.handlers.handler_runtime_sha_verify import (
     HandlerRuntimeShaVerify,
     ModelRuntimeShaVerifyRequest,
+)
+from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes import (
+    probe_container_health,
+    probe_github_ci,
+    probe_runtime_health,
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
     ModelIntegrationSweepOrchestratorRequest,
@@ -69,6 +75,12 @@ class HandlerIntegrationSweepOrchestrator:
         )
         status = "blocked" if stale_count else "recorded"
 
+        surface_results: list[dict[str, Any]] = (
+            []
+            if request.dry_run or not request.run_surface_probes
+            else self._run_surface_probes(request)
+        )
+
         payload = {
             "artifact_type": "ModelIntegrationRecord",
             "artifact_version": "1.0.0",
@@ -77,7 +89,7 @@ class HandlerIntegrationSweepOrchestrator:
             "status": status,
             "tickets": tickets,
             "runtime_sha_match": runtime_sha_records,
-            "surfaces": [],
+            "surfaces": surface_results,
         }
 
         artifact_written = False
@@ -94,13 +106,26 @@ class HandlerIntegrationSweepOrchestrator:
             artifact_path=str(artifact_path),
             artifact_written=artifact_written,
             ticket_count=len(tickets),
+            surfaces=surface_results,
             details={
                 "dry_run": str(request.dry_run).lower(),
                 "artifact_date": artifact_date,
                 "runtime_sha_checks": str(len(runtime_sha_records)),
                 "runtime_sha_stale": str(stale_count),
+                "surface_probe_count": str(len(surface_results)),
             },
         )
+
+    @staticmethod
+    def _run_surface_probes(
+        request: ModelIntegrationSweepOrchestratorRequest,
+    ) -> list[dict[str, Any]]:
+        """Execute RUNTIME_HEALTH, CONTAINER_HEALTH, and GITHUB_CI surface probes."""
+        results: list[dict[str, Any]] = []
+        results.append(probe_runtime_health(request.stability_test_runtime_url))
+        results.append(probe_container_health(request.container_health_host))
+        results.append(probe_github_ci(request.github_ci_repo))
+        return results
 
     @staticmethod
     def _resolve_root(configured: str) -> Path:
