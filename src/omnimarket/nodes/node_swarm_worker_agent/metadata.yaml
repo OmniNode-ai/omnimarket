@@ -1,0 +1,28 @@
+name: node_swarm_worker_agent
+version: "1.0.0"
+description: "Worker agent that pulls subtask assignments from queue and executes against local model endpoint"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_swarm_worker_agent: "omnimarket.nodes.node_swarm_worker_agent"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["swarm", "worker", "worker-pull", "effect", "multi-site", "OMN-12000"]
+pack: "swarm"
+display_name: "Swarm Worker Agent"
+node_role: "effect"
+consumed_topics:
+  - onex.cmd.omnimarket.swarm-subtask-assigned.v1
+produced_topics:
+  - onex.evt.omnimarket.swarm-subtask-completed.v1
