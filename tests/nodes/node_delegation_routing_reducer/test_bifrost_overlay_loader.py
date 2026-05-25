@@ -66,18 +66,18 @@ _DEFAULT_CONTRACT = textwrap.dedent(
 
 
 @pytest.mark.unit
-def test_canonical_bifrost_contract_has_empty_endpoint_urls() -> None:
+def test_canonical_bifrost_contract_has_empty_or_null_endpoint_urls() -> None:
     path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
     data = yaml.safe_load(path.read_text())
 
     endpoints = [backend.get("endpoint_url") for backend in data["backends"]]
 
     assert endpoints
-    assert all(endpoint == "" for endpoint in endpoints)
+    assert all(endpoint in ("", None) for endpoint in endpoints)
 
 
 @pytest.mark.unit
-def test_research_route_prefers_current_qwen36_backend() -> None:
+def test_research_route_prefers_capability_named_backends() -> None:
     path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
     data = yaml.safe_load(path.read_text())
 
@@ -86,12 +86,11 @@ def test_research_route_prefers_current_qwen36_backend() -> None:
         rule for rule in data["routing_rules"] if rule["task_class"] == "research"
     )
 
-    assert by_id["local-qwen3-6-35b"]["model_name"] == (
-        "mlx-community/Qwen3.6-35B-A3B-8bit"
-    )
+    assert "local-heavy-reasoning" in by_id
+    assert "local-reasoner" in by_id
     assert research_rule["backend_ids"][:2] == [
-        "local-qwen3-6-35b",
-        "local-deepseek-r1-14b",
+        "local-heavy-reasoning",
+        "local-reasoner",
     ]
 
 

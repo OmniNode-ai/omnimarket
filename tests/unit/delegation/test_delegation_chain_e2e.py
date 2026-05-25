@@ -102,16 +102,16 @@ class TestDelegationChainE2E:
         _h._load_bifrost_endpoints.cache_clear()
         contract_path = tmp_path / "bifrost_delegation.yaml"
         contract_path.write_text(
-            "config_version: '1.1.0'\n"
+            "config_version: '2.0.0'\n"
             "schema_version: bifrost_delegation.v1\n"
             "backends:\n"
-            "  - backend_id: local-qwen-coder-30b\n"
+            "  - backend_id: local-coder\n"
             '    endpoint_url: "http://test-coder:8000"\n'
             '    model_name: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"\n'
             "    tier: local\n"
             "    timeout_ms: 30000\n"
             "    capabilities: [research]\n"
-            "  - backend_id: local-deepseek-r1-14b\n"
+            "  - backend_id: local-reasoner\n"
             '    endpoint_url: "http://test-fast:8001"\n'
             '    model_name: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"\n'
             "    tier: local\n"
@@ -122,18 +122,18 @@ class TestDelegationChainE2E:
             "    priority: 10\n"
             "    task_class: research\n"
             '    task_class_contract_version: "1.0.0"\n'
-            '    backend_policy_version: "1.0.0"\n'
+            '    backend_policy_version: "2.0.0"\n'
             "    match_operation_types: [chat_completion]\n"
             "    match_capabilities: [research]\n"
-            "    backend_ids: [local-qwen-coder-30b, local-deepseek-r1-14b]\n"
+            "    backend_ids: [local-coder, local-reasoner]\n"
             "    fallback_policy:\n"
             "      action: escalate_to_next_tier\n"
             "      max_retries: 1\n"
             "      on_exhaust: return_error\n"
             '    shadow_policy_id: "22222222-2222-4222-8222-222222222222"\n'
             "default_backends:\n"
-            "  - local-qwen-coder-30b\n"
-            "  - local-deepseek-r1-14b\n"
+            "  - local-coder\n"
+            "  - local-reasoner\n"
             "circuit_breaker:\n"
             "  failure_threshold: 5\n"
             "  window_seconds: 30\n"
