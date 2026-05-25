@@ -203,6 +203,9 @@ handler_routing:
     - handler:
         name: HandlerDelegateSkill
         module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill
+      event_model:
+        name: ModelDelegateSkillRequest
+        module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request
 
 error_handling:
   retry_policy:
