@@ -19,6 +19,7 @@ class ModelSwarmEndpointSelectionResult(BaseModel):
     assignments: dict[str, str]
     unroutable_subtasks: tuple[str, ...] = ()
     selection_evidence: tuple[ModelEndpointSelectionEvidence, ...] = ()
+    run_id: str = ""
 
     @field_validator("unroutable_subtasks", mode="before")
     @classmethod

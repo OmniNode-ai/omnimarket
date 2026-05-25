@@ -9,9 +9,11 @@ import logging
 import time
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
 import httpx
+import yaml
 
 from omnimarket.nodes.node_swarm_endpoint_health_effect.models.enums import (
     EnumEndpointStatus,
@@ -37,6 +39,39 @@ _HttpGetFn = Callable[
 
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
+# Shared endpoint registry used for ID-only requests from the orchestrator.
+_DEFAULT_REGISTRY_PATH = (
+    Path(__file__).parent.parent.parent
+    / "node_swarm_registry_compute"
+    / "contracts"
+    / "endpoint_registry.yaml"
+)
+
+
+def _load_endpoint_registry(
+    registry_path: Path | None = None,
+) -> dict[str, ModelSwarmEndpoint]:
+    """Load the endpoint registry and return a map of id → ModelSwarmEndpoint."""
+    path = registry_path or _DEFAULT_REGISTRY_PATH
+    try:
+        raw: dict[str, Any] = yaml.safe_load(path.read_text())
+        endpoints: dict[str, ModelSwarmEndpoint] = {}
+        for ep_data in raw.get("endpoints", []):
+            ep_id = str(ep_data.get("id", ""))
+            if not ep_id:
+                continue
+            endpoints[ep_id] = ModelSwarmEndpoint(
+                id=ep_id,
+                base_url=str(ep_data.get("base_url", "")),
+                health_check_path=str(ep_data.get("health_check_path", "/health")),
+                model_id=str(ep_data.get("model_id", "")),
+                provider=str(ep_data.get("provider", "")),
+            )
+        return endpoints
+    except Exception as exc:
+        logger.warning("Failed to load endpoint registry from %s: %s", path, exc)
+        return {}
+
 
 async def _default_http_get(url: str, timeout: float) -> tuple[int, bytes]:
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -46,6 +81,11 @@ async def _default_http_get(url: str, timeout: float) -> tuple[int, bytes]:
 
 class HandlerSwarmEndpointHealth:
     """Probes each endpoint's health path and /v1/models, returning typed health per endpoint.
+
+    Accepts requests in two forms:
+    - ``endpoints`` populated (direct caller / test mode): probe each endpoint object directly.
+    - ``endpoint_ids`` populated (orchestrator mode): resolve full endpoint objects from the
+      shared endpoint registry contract, then probe.
 
     Inject ``http_get_fn`` in tests to avoid real network calls.
     """
@@ -57,22 +97,43 @@ class HandlerSwarmEndpointHealth:
         self,
         http_get_fn: _HttpGetFn | None = None,
         timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        registry_path: Path | None = None,
     ) -> None:
         self._http_get = http_get_fn or _default_http_get
         self._timeout_seconds = timeout_seconds
+        self._registry_path = registry_path
+
+    def _resolve_endpoints(
+        self, request: ModelSwarmHealthCheckRequest
+    ) -> tuple[ModelSwarmEndpoint, ...]:
+        """Return the endpoints to probe, resolving from registry when needed."""
+        if request.endpoints:
+            return request.endpoints
+        if not request.endpoint_ids:
+            return ()
+        registry = _load_endpoint_registry(self._registry_path)
+        resolved: list[ModelSwarmEndpoint] = []
+        for ep_id in request.endpoint_ids:
+            ep = registry.get(ep_id)
+            if ep is not None:
+                resolved.append(ep)
+            else:
+                logger.warning("endpoint_id %r not found in registry — skipping", ep_id)
+        return tuple(resolved)
 
     async def handle(
         self, request: ModelSwarmHealthCheckRequest
     ) -> ModelSwarmHealthCheckResult:
         now = datetime.now(UTC).isoformat()
+        endpoints = self._resolve_endpoints(request)
         logger.info(
             "swarm-endpoint-health started (correlation_id=%s, endpoint_count=%d)",
             request.correlation_id,
-            len(request.endpoints),
+            len(endpoints),
         )
 
         results: dict[str, EndpointHealth] = {}
-        for endpoint in request.endpoints:
+        for endpoint in endpoints:
             health = await self._probe_endpoint(endpoint)
             results[endpoint.id] = health
 
@@ -80,7 +141,11 @@ class HandlerSwarmEndpointHealth:
             "swarm-endpoint-health complete (correlation_id=%s)",
             request.correlation_id,
         )
-        return ModelSwarmHealthCheckResult(endpoint_health=results, checked_at=now)
+        return ModelSwarmHealthCheckResult(
+            endpoint_health=results,
+            checked_at=now,
+            run_id=request.run_id,
+        )
 
     async def _probe_endpoint(self, endpoint: ModelSwarmEndpoint) -> EndpointHealth:
         checked_at = datetime.now(UTC).isoformat()
