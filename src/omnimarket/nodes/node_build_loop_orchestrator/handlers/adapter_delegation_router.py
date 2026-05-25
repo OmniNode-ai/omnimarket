@@ -203,12 +203,30 @@ _COMPLEX_KEYWORDS: frozenset[str] = frozenset(
 )
 
 
+# Frontier cloud context windows — no registry entry yet (OMN-11856).
+# Declared as module-level constants so they are visible and auditable.
+# Move each to model_registry_v1.yaml when the provider is verified.
+_GLM_CONTEXT_WINDOW: int = 128_000  # GLM-4.5
+_GLM_REVIEW_CONTEXT_WINDOW: int = 203_000  # GLM-4.7-Flash
+_GEMINI_CONTEXT_WINDOW: int = 1_000_000  # Gemini 2.5 Flash / CLI
+_OPENAI_CONTEXT_WINDOW: int = 128_000  # GPT-4.1
+
+
 def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     """Build endpoint configurations from environment variables.
 
     GLM-4.5 (Zhipu API) is the primary code generation backend when
     LLM_GLM_API_KEY is set. Local models serve as fallbacks.
+
+    Context windows for local tiers are resolved from the model registry via
+    get_context_window_for_endpoint_env (OMN-11856). Frontier cloud tiers
+    (GLM, Gemini, OpenAI) have no registry entries yet; their context windows
+    come from the module-level _*_CONTEXT_WINDOW constants declared above.
     """
+    from omnimarket.inference.registry_context_windows import (
+        get_context_window_for_endpoint_env,
+    )
+
     configs: dict[EnumModelTier, ModelEndpointConfig] = {}
 
     # Frontier GLM (primary code gen) — reads LLM_GLM_* from env
@@ -222,7 +240,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id=glm_model,
             api_key=glm_key,
             max_tokens=8192,
-            context_window=128000,
+            context_window=_GLM_CONTEXT_WINDOW,
             timeout_seconds=120.0,
         )
         logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
@@ -237,12 +255,12 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id="glm-4.7-flash",
             api_key=glm_review_key,
             max_tokens=2048,
-            context_window=203000,
+            context_window=_GLM_REVIEW_CONTEXT_WINDOW,
             timeout_seconds=30.0,
         )
         logger.info("GLM reviewer configured: %s (model=glm-4.7-flash)", glm_review_url)
 
-    # Local fast: Qwen3-14B — URL from model_policy.yaml (LLM_CODER_FAST_URL)
+    # Local fast: deepseek-r1-14b — URL from LLM_CODER_FAST_URL; context window from registry
     local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")  # contract-config-ok: config  # fmt: skip
     if local_fast_url:
         configs[EnumModelTier.LOCAL_FAST] = ModelEndpointConfig(
@@ -250,11 +268,13 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             base_url=local_fast_url,
             model_id="default",
             max_tokens=2048,
-            context_window=40000,
+            context_window=get_context_window_for_endpoint_env(
+                "LLM_CODER_FAST_URL", fallback=24_576
+            ),
             timeout_seconds=60.0,
         )
 
-    # Local coder: Qwen3-Coder-30B — URL from model_policy.yaml (LLM_CODER_URL)
+    # Local coder: qwen3-coder-30b — URL from LLM_CODER_URL; context window from registry
     local_coder_url = os.environ.get("LLM_CODER_URL", "")  # contract-config-ok: config  # fmt: skip
     if local_coder_url:
         configs[EnumModelTier.LOCAL_CODER] = ModelEndpointConfig(
@@ -262,11 +282,13 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             base_url=local_coder_url,
             model_id="default",
             max_tokens=4096,
-            context_window=64000,
+            context_window=get_context_window_for_endpoint_env(
+                "LLM_CODER_URL", fallback=114_688
+            ),
             timeout_seconds=120.0,
         )
 
-    # Local reasoning: DeepSeek-R1 — URL from model_policy.yaml (LLM_DEEPSEEK_R1_URL)
+    # Local reasoning: deepseek-r1-32b — URL from LLM_DEEPSEEK_R1_URL; context window from registry
     local_reasoning_url = os.environ.get("LLM_DEEPSEEK_R1_URL", "")  # contract-config-ok: config  # fmt: skip
     if local_reasoning_url:
         configs[EnumModelTier.LOCAL_REASONING] = ModelEndpointConfig(
@@ -274,7 +296,9 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             base_url=local_reasoning_url,
             model_id="default",
             max_tokens=4096,
-            context_window=32000,
+            context_window=get_context_window_for_endpoint_env(
+                "LLM_DEEPSEEK_R1_URL", fallback=8_192
+            ),
             timeout_seconds=120.0,
         )
 
@@ -289,7 +313,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id="gemini-cli",
             api_key=gemini_key,
             max_tokens=8192,
-            context_window=1000000,
+            context_window=_GEMINI_CONTEXT_WINDOW,
             timeout_seconds=300.0,
         )
         logger.info("Gemini CLI tier configured (gemini binary available)")
@@ -304,7 +328,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id="gemini-2.5-flash",
             api_key=gemini_key,
             max_tokens=8192,
-            context_window=1000000,
+            context_window=_GEMINI_CONTEXT_WINDOW,
             timeout_seconds=120.0,
         )
 
@@ -317,7 +341,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             model_id="gpt-4.1",
             api_key=openai_key,
             max_tokens=8192,
-            context_window=128000,
+            context_window=_OPENAI_CONTEXT_WINDOW,
             timeout_seconds=120.0,
         )
 

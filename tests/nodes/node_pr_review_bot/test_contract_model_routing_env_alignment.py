@@ -25,7 +25,7 @@ _CONTRACT_PATH = (
 )
 
 _BRIDGE_LOADER_ENV_VARS: frozenset[str] = frozenset(
-    url_env for _, url_env, _, _ in _MODEL_KEY_REGISTRY
+    url_env for _, url_env, _ in _MODEL_KEY_REGISTRY
 )
 
 
