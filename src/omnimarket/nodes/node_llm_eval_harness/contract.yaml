@@ -11,6 +11,13 @@ description: >
   corpus. Produces structured eval results that feed the delegation router's
   scoring system, replacing heuristic seed values once >=20 samples exist.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: NodeLlmEvalHarness
+        module: omnimarket.nodes.node_llm_eval_harness.handlers.handler_llm_eval_harness
+
 handler:
   module: omnimarket.nodes.node_llm_eval_harness.handlers.handler_llm_eval_harness
   class: NodeLlmEvalHarness

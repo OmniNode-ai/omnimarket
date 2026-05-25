@@ -8,6 +8,13 @@ description: >
   report artifacts. Live service probes and destructive fixes are explicit
   follow-on effect surfaces, not silent fallbacks.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerGapCompute
+        module: omnimarket.nodes.node_gap_compute.handlers.handler_gap_compute
+
 handler:
   module: omnimarket.nodes.node_gap_compute.handlers.handler_gap_compute
   class: HandlerGapCompute

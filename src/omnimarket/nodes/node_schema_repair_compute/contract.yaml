@@ -8,6 +8,13 @@ description: >
   Pydantic validation errors and returns a targeted repair prompt for re-dispatch.
   No LLM calls — pure prompt construction. Same input always produces identical output.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSchemaRepair
+        module: omnimarket.nodes.node_schema_repair_compute.handlers.handler_schema_repair
+
 handler:
   module: omnimarket.nodes.node_schema_repair_compute.handlers.handler_schema_repair
   class: HandlerSchemaRepair

@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-05-24T23:53:41Z",
+  "captured_at": "2026-05-25T00:16:36Z",
   "graphify_version": "ast-fallback",
   "rule_version": "v1",
   "findings": [
@@ -1220,6 +1220,16 @@
       "file_path": "src/omnimarket/nodes/node_merge_effect/handlers/handler_merge.py",
       "symbol": "handler_merge",
       "detail": "Contract-referenced handler 'handler_merge' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_ticket_research_enrichment_compute/handlers/handler_ticket_research_enrichment.py",
+      "symbol": "handler_ticket_research_enrichment",
+      "detail": "Contract-referenced handler 'handler_ticket_research_enrichment' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -4140,6 +4150,16 @@
       "file_path": "src/omnimarket/nodes/node_ticket_pipeline/contract.yaml",
       "symbol": "onex.evt.omnimarket.ticket-pipeline-phase-transition.v1",
       "detail": "Topic 'onex.evt.omnimarket.ticket-pipeline-phase-transition.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_ticket_research_enrichment_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.ticket-research-enrichment-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.ticket-research-enrichment-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },

@@ -6,6 +6,13 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Generates canonical OmniGate receipts bound to diff hash, config hash, repository authority, and commit SHAs.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerReceiptGenerator
+        module: omnimarket.nodes.node_omnigate_receipt_generator.handlers.handler_receipt_generator
+
 handler:
   module: omnimarket.nodes.node_omnigate_receipt_generator.handlers.handler_receipt_generator
   class: HandlerReceiptGenerator
