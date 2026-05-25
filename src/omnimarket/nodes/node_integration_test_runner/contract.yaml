@@ -5,7 +5,7 @@ node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Discovers all onex.nodes entry points, finds each node's golden chain test module,
+  Discovers all OmniNode entry points, finds each node's golden chain test module,
   and re-runs those tests with a configurable DI profile. Local profile uses
   EventBusInmemory (unit mode). Staging/production profiles swap to EventBusKafka
   and real clients — the same test code runs against real infrastructure without
@@ -15,6 +15,14 @@ handler:
   module: omnimarket.nodes.node_integration_test_runner.handlers.handler_integration_test_runner
   class: HandlerIntegrationTestRunner
   input_model: omnimarket.nodes.node_integration_test_runner.models.model_test_runner_request.ModelIntegrationTestRunnerRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run
+      handler:
+        name: HandlerIntegrationTestRunner
+        module: omnimarket.nodes.node_integration_test_runner.handlers.handler_integration_test_runner
 
 descriptor:
   node_archetype: compute
