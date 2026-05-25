@@ -5,7 +5,7 @@ node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Discovers all onex.nodes entry points, finds each node's golden chain test module,
+  Discovers all OmniNode entry points, finds each node's golden chain test module,
   and re-runs those tests with a configurable DI profile. Local profile uses
   EventBusInmemory (unit mode). Staging/production profiles swap to EventBusKafka
   and real clients — the same test code runs against real infrastructure without
