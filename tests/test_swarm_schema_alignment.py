@@ -46,10 +46,10 @@ from omnimarket.nodes.node_swarm_endpoint_health_effect.models.model_swarm_healt
 from omnimarket.nodes.node_swarm_endpoint_health_effect.models.model_swarm_health_check_result import (
     ModelSwarmHealthCheckResult,
 )
-from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_fanout_request import (
+from omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_request import (
     ModelSwarmFanoutRequest,
 )
-from omnimarket.nodes.node_swarm_fanout_effect.models.model_swarm_fanout_result import (
+from omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_result import (
     ModelSwarmFanoutResult,
 )
 from omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_selection_request import (

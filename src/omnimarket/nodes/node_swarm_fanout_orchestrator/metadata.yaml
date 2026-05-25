@@ -1,0 +1,33 @@
+name: node_swarm_fanout_orchestrator
+version: "2.0.0"
+description: "Orchestrator node for swarm parallel fan-out dispatch via delegation-execute commands"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_swarm_fanout_orchestrator: "omnimarket.nodes.node_swarm_fanout_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrating
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["swarm", "fanout", "orchestrator", "dispatch", "parallel", "OMN-12118"]
+pack: "swarm"
+display_name: "Swarm Fan-out Orchestrator"
+node_role: "orchestrator"
+consumed_topics:
+  - onex.cmd.omnimarket.swarm-fanout.v1
+  - onex.evt.omnimarket.delegation-call-completed.v1
+  - onex.evt.omnimarket.delegation-escalation-triggered.v1
+  - onex.evt.omnimarket.delegation-all-tiers-failed.v1
+produced_topics:
+  - onex.evt.omnimarket.swarm-fanout-completed.v1
+  - onex.cmd.omnimarket.delegation-execute.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-fanout-completed.v1
