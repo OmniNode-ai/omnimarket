@@ -4,13 +4,13 @@
 name: node_swarm_fanout_effect
 contract_name: node_swarm_fanout_effect
 node_name: node_swarm_fanout_effect
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 node_type: effect
 description: >
   Effect node for swarm parallel fan-out dispatch. Sends subtask prompts
-  to model endpoints via HTTP, managing wave scheduling, bounded concurrency,
-  retry, and fallback.
+  to model endpoints via HTTP (direct mode) or via a work queue (queue mode)
+  for multi-site deployments where workers connect out to the runtime.
 
 input_model:
   name: ModelSwarmFanoutRequest
@@ -35,15 +35,18 @@ descriptor:
   runtime_profiles: [effects]
 
 event_bus:
-  version: {major: 1, minor: 0, patch: 0}
+  version: {major: 1, minor: 1, patch: 0}
   plugin_managed: false
   subscribe_topics:
     - onex.cmd.omnimarket.swarm-fanout.v1
+    - onex.evt.omnimarket.swarm-subtask-completed.v1
   publish_topics:
     - onex.evt.omnimarket.swarm-fanout-completed.v1
+    - onex.cmd.omnimarket.swarm-subtask-assigned.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.swarm-fanout-completed.v1
+  - onex.evt.omnimarket.swarm-subtask-completed.v1
 
 terminal_event: onex.evt.omnimarket.swarm-fanout-completed.v1
 
@@ -51,9 +54,14 @@ published_events:
   - event_type: SwarmFanoutCompleted
     topic: onex.evt.omnimarket.swarm-fanout-completed.v1
     description: Swarm fan-out completed with all dispatch results.
+  - event_type: SwarmSubtaskAssigned
+    topic: onex.cmd.omnimarket.swarm-subtask-assigned.v1
+    description: Subtask assignment published to work queue for worker-pull dispatch.
 
 io_operations:
   - http_call
+  - kafka_publish
+  - kafka_subscribe
 
 error_handling:
   retry_policy:
@@ -84,6 +92,7 @@ metadata:
   author: OmniNode Team
   license: MIT
   created: "2026-05-23"
-  tags: [effect, swarm, fanout, dispatch, parallel, OMN-11812]
+  tags: [effect, swarm, fanout, dispatch, parallel, worker-pull, OMN-11812, OMN-12000]
   related_tickets:
     - "OMN-11812"
+    - "OMN-12000"
