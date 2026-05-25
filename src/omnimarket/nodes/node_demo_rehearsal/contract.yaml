@@ -81,3 +81,6 @@ event_bus:
     - onex.cmd.omnimarket.demo-rehearsal-start.v1
   publish_topics:
     - onex.evt.omnimarket.demo-rehearsed.v1
+
+metadata:
+  transport_type: kafka

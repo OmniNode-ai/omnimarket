@@ -8,6 +8,13 @@ description: >
   ModelTicketContract. The node writes no files and executes no tests; effect
   nodes own persistence and runtime execution.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerTestGenerator
+        module: omnimarket.nodes.node_test_generator_compute.handlers.handler_test_generator
+
 handler:
   module: omnimarket.nodes.node_test_generator_compute.handlers.handler_test_generator
   class: HandlerTestGenerator
