@@ -242,3 +242,25 @@ class TestPrPolishDispatchAdapter:
         run_dirs = list((tmp_path / "pr-polish").iterdir())
         assert len(run_dirs) == 2
         assert run_dirs[0].name != run_dirs[1].name
+
+    def test_resolve_state_dir_raises_when_onex_state_dir_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_resolve_state_dir must fail-fast when ONEX_STATE_DIR is unset.
+
+        Regression lock for OMN-12150: previously returned Path("") on unset
+        env, silently writing breadcrumbs relative to CWD.
+        """
+        monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+
+        with pytest.raises(RuntimeError, match="ONEX_STATE_DIR is not set"):
+            PrPolishDispatchAdapter._resolve_state_dir()
+
+    def test_resolve_state_dir_returns_path_when_set(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+
+        result = PrPolishDispatchAdapter._resolve_state_dir()
+
+        assert result == tmp_path
