@@ -41,18 +41,31 @@ from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     get_openrouter_models,
 )
+from omnimarket.inference.registry_context_windows import (
+    get_context_window_for_endpoint_env,
+)
 
-# key -> (url env var, model_id env var, context window)
+# key -> (url env var, model_id env var)
+# Context windows are resolved from the model registry at load time via
+# get_context_window_for_endpoint_env.  The fallback dict below covers
+# endpoint env vars not yet in model_registry_v1.yaml (e.g. frontier cloud).
 # model_id is always resolved from the env var — no hardcoded defaults.
 # If the model-name env var is unset, model_id resolves to "" and the
 # downstream API call will fail immediately with an invalid-model error.
-_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str, int], ...]] = (
-    ("qwen3-coder", "LLM_CODER_URL", "LLM_CODER_MODEL_NAME", 112_000),
-    ("qwen3-14b", "LLM_CODER_FAST_URL", "LLM_CODER_FAST_MODEL_NAME", 24_000),
-    ("deepseek-r1", "LLM_DEEPSEEK_R1_URL", "LLM_DEEPSEEK_R1_MODEL_NAME", 8_192),
-    ("qwen3-next", "LLM_QWEN3_NEXT_URL", "LLM_QWEN3_NEXT_MODEL_NAME", 8_192),
-    ("glm", "LLM_GLM_URL", "LLM_GLM_MODEL_NAME", 128_000),
+_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str], ...]] = (
+    ("qwen3-coder", "LLM_CODER_URL", "LLM_CODER_MODEL_NAME"),
+    ("qwen3-14b", "LLM_CODER_FAST_URL", "LLM_CODER_FAST_MODEL_NAME"),
+    ("deepseek-r1", "LLM_DEEPSEEK_R1_URL", "LLM_DEEPSEEK_R1_MODEL_NAME"),
+    ("qwen3-next", "LLM_QWEN3_NEXT_URL", "LLM_QWEN3_NEXT_MODEL_NAME"),
+    ("glm", "LLM_GLM_URL", "LLM_GLM_MODEL_NAME"),
 )
+
+# Fallback context windows for endpoint env vars that have no registry entry.
+# Add entries here only when the provider is not yet in model_registry_v1.yaml.
+# Remove entries when the provider graduates to the registry.
+_CONTEXT_WINDOW_FALLBACKS: Final[dict[str, int]] = {
+    "LLM_GLM_URL": 128_000,
+}
 
 # Contract-declared OpenRouter base URL. OPENROUTER_API_KEY stays in env (secret).
 _OPENROUTER_BASE_URL_DEFAULT: Final[str] = "https://openrouter.ai/api"
@@ -74,11 +87,15 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     """
     model_configs: dict[str, dict[str, object]] = {}
 
-    for key, url_env, model_env, context_window in _MODEL_KEY_REGISTRY:
+    for key, url_env, model_env in _MODEL_KEY_REGISTRY:
         base_url = os.environ.get(url_env, "").strip()
         if not base_url:
             continue
 
+        context_window = get_context_window_for_endpoint_env(
+            url_env,
+            fallback=_CONTEXT_WINDOW_FALLBACKS.get(url_env, 32_000),
+        )
         cfg: dict[str, object] = {
             "base_url": base_url,
             "model_id": os.environ.get(model_env, ""),
