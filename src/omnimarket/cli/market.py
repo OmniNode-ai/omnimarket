@@ -315,3 +315,9 @@ def search(query: str, json_output: bool, index_path: Path | None) -> None:
         click.echo(f"  package: {item.package}")
         click.echo(f"  tags: {', '.join(item.tags)}")
         click.echo(f"  capabilities: {_capability_flags(item.capabilities)}")
+
+
+# Subcommand groups — imported after `market` is defined to avoid circular imports.
+from omnimarket.cli.commands import (  # noqa: E402
+    trace as _trace_commands,  # noqa: F401  # registers trace group via @market.group decorator
+)
