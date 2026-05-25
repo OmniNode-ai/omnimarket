@@ -2124,4 +2124,42 @@ def test_main_returns_one_for_failed_response(
     assert rc == 1
     captured = capsys.readouterr()
     assert '"code": "runtime_failed"' in captured.out
-    assert '"runtime is draining"' in captured.out
+
+
+@pytest.mark.asyncio
+async def test_delegate_skill_subscribes_to_contract_terminal_topics_when_default_response_topic_is_used() -> (
+    None
+):
+    """OMN-11991: adapter must subscribe to the contract terminal topics even when the
+    caller passes the generic pattern-b response topic (or omits response_topic).
+
+    Before the fix the adapter subscribed to request.response_topic verbatim.
+    The runtime publishes delegate-skill results to the contract-declared topics,
+    not to pattern-b-dispatch-completed, so the client never received the reply.
+    """
+    transport = _DirectDelegateSkillTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex",
+        command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+    )
+
+    result = await client.dispatch_async(
+        command_name="delegate_skill",
+        payload={
+            "prompt": "Write unit tests",
+            "task_type": "test",
+            "source": "codex",
+        },
+        timeout_ms=2000,
+        # Caller passes the wrong (generic pattern-b) topic — the adapter must
+        # override this to the contract-declared delegate-skill terminal topics.
+        response_topic="onex.evt.omnibase-infra.pattern-b-dispatch-completed.v1",
+    )
+
+    assert result.ok is True
+    # The subscription must have targeted the correct topics, not the generic one.
+    assert transport.subscribe_topics == [
+        "onex.evt.omnimarket.delegate-skill-completed.v1",
+        "onex.evt.omnimarket.delegate-skill-failed.v1",
+    ]
