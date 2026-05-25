@@ -33,16 +33,16 @@ from tests.constants import MODEL_DEEPSEEK_R1_14B, MODEL_QWEN3_CODER_30B
 # ---------------------------------------------------------------------------
 
 _MINIMAL_BIFROST = textwrap.dedent("""\
-    config_version: "1.0.0"
+    config_version: "2.0.0"
     schema_version: "bifrost_delegation.v1"
     backends:
-      - backend_id: local-qwen-coder-30b
+      - backend_id: local-coder
         endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10942 reason="test fixture for contract-driven routing to lab AIPC endpoint"
         model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit  # onex-allow-model-id OMN-10942 reason="test fixture verifying contract-driven routing to lab AIPC model"
         tier: local
         timeout_ms: 30000
         capabilities: []
-      - backend_id: local-deepseek-r1-14b
+      - backend_id: local-reasoner
         endpoint_url: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10942 reason="test fixture for contract-driven routing to lab AIPC endpoint"
         model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ  # onex-allow-model-id OMN-10942 reason="test fixture verifying contract-driven routing to lab AIPC model"
         tier: local
@@ -53,17 +53,17 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
         priority: 10
         task_class: code_generation
         task_class_contract_version: "1.0.0"
-        backend_policy_version: "1.0.0"
+        backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-qwen-coder-30b, local-deepseek-r1-14b]
+        backend_ids: [local-coder, local-reasoner]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
           on_exhaust: return_error
         shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
     default_backends:
-      - local-qwen-coder-30b
+      - local-coder
     circuit_breaker:
       failure_threshold: 5
       window_seconds: 30

@@ -66,18 +66,28 @@ _DEFAULT_CONTRACT = textwrap.dedent(
 
 
 @pytest.mark.unit
-def test_canonical_bifrost_contract_has_empty_endpoint_urls() -> None:
+def test_canonical_bifrost_contract_has_null_endpoint_and_model_for_local_backends() -> (
+    None
+):
     path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
     data = yaml.safe_load(path.read_text())
 
-    endpoints = [backend.get("endpoint_url") for backend in data["backends"]]
+    local_backends = [b for b in data["backends"] if b.get("tier") == "local"]
 
-    assert endpoints
-    assert all(endpoint == "" for endpoint in endpoints)
+    assert local_backends
+    # Public source must have null endpoint_url and model_name for local backends;
+    # these are resolved from the overlay at deploy time (OMN-12006).
+    for backend in local_backends:
+        assert backend.get("endpoint_url") is None, (
+            f"backend {backend['backend_id']!r} must have null endpoint_url in public source"
+        )
+        assert backend.get("model_name") is None, (
+            f"backend {backend['backend_id']!r} must have null model_name in public source"
+        )
 
 
 @pytest.mark.unit
-def test_research_route_prefers_current_qwen36_backend() -> None:
+def test_research_route_prefers_reasoner_then_heavy_reasoning() -> None:
     path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
     data = yaml.safe_load(path.read_text())
 
@@ -86,11 +96,12 @@ def test_research_route_prefers_current_qwen36_backend() -> None:
         rule for rule in data["routing_rules"] if rule["task_class"] == "research"
     )
 
-    # model_name is null in the public source; resolved via overlay at deploy time
-    assert by_id["local-qwen3-6-35b"]["model_name"] is None
+    # Capability-based backend IDs — model_name null in public source
+    assert by_id["local-reasoner"]["model_name"] is None
+    assert by_id["local-heavy-reasoning"]["model_name"] is None
     assert research_rule["backend_ids"][:2] == [
-        "local-qwen3-6-35b",
-        "local-deepseek-r1-14b",
+        "local-reasoner",
+        "local-heavy-reasoning",
     ]
 
 
