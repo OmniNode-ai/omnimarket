@@ -1,12 +1,13 @@
 """HandlerPrLifecycleFix — routes PR remediation by block reason.
 
 Routes fix actions:
-  ci_failure        -> flaky/infra rerun via ``gh run rerun --failed``
-  code_failure      -> lint/type/test failure, delegate to pr_polish
-  receipt_failure   -> OCC/receipt-gate failure, delegate to pr_polish
-  conflict          -> ``gh pr update-branch``, then pr_polish if still failing
-  changes_requested -> review-comment fix via pr_polish
-  coderabbit        -> CodeRabbit thread auto-reply via dispatch_coderabbit_reply
+  ci_failure                     -> flaky/infra rerun via ``gh run rerun --failed``
+  code_failure                   -> lint/type/test failure, delegate to pr_polish
+  receipt_failure                -> OCC/receipt-gate failure, delegate to pr_polish
+  conflict                       -> ``gh pr update-branch``, then pr_polish if still failing
+  changes_requested              -> review-comment fix via pr_polish
+  coderabbit                     -> CodeRabbit thread auto-reply via dispatch_coderabbit_reply
+  deploy_gate_contract_not_found -> auto-create missing OCC contract via create_occ_contract
 
 Protocol-injected adapters for GitHub operations and agent dispatch allow
 mock substitution in tests with zero infrastructure.
@@ -63,6 +64,32 @@ class ProtocolAgentDispatchAdapter(Protocol):
         ...
 
 
+@runtime_checkable
+class ProtocolOccContractAdapter(Protocol):
+    """OCC contract creation adapter required by the fix effect.
+
+    Called when a PR fails deploy-gate because the OCC contract YAML
+    ``onex_change_control/contracts/<ticket_id>.yaml`` does not exist.
+    """
+
+    async def create_occ_contract(
+        self, repo: str, pr_number: int, ticket_id: str
+    ) -> str:
+        """Create a minimal OCC contract + receipt for the given ticket.
+
+        Creates:
+          - ``contracts/<ticket_id>.yaml`` — minimal ModelTicketContract YAML
+          - ``drift/dod_receipts/<ticket_id>/dod-<repo_slug>-pr-<pr_number>/command.yaml``
+            — receipt binding the contract to this PR
+
+        Commits, pushes, opens an OCC PR, and updates the original PR body with
+        ``Evidence-Source: OCC#<num>`` and ``Evidence-Ticket: <ticket_id>``.
+
+        Returns a human-readable action string describing what was created.
+        """
+        ...
+
+
 # ---------------------------------------------------------------------------
 # Default no-op adapters (used in standalone / dry-run mode)
 # ---------------------------------------------------------------------------
@@ -90,6 +117,15 @@ class _NoopAgentDispatchAdapter:
         return f"[noop] would dispatch coderabbit-reply agent on {repo}#{pr_number}"
 
 
+class _NoopOccContractAdapter:
+    """No-op OCC contract adapter for dry_run and standalone execution."""
+
+    async def create_occ_contract(
+        self, repo: str, pr_number: int, ticket_id: str
+    ) -> str:
+        return f"[noop] would create OCC contract for {ticket_id} on {repo}#{pr_number}"
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -106,10 +142,14 @@ class HandlerPrLifecycleFix:
         self,
         github_adapter: ProtocolGitHubAdapter | None = None,
         agent_dispatch_adapter: ProtocolAgentDispatchAdapter | None = None,
+        occ_contract_adapter: ProtocolOccContractAdapter | None = None,
     ) -> None:
         self._github: ProtocolGitHubAdapter = github_adapter or _NoopGitHubAdapter()
         self._agent: ProtocolAgentDispatchAdapter = (
             agent_dispatch_adapter or _NoopAgentDispatchAdapter()
+        )
+        self._occ: ProtocolOccContractAdapter = (
+            occ_contract_adapter or _NoopOccContractAdapter()
         )
 
     async def handle(
@@ -183,6 +223,17 @@ class HandlerPrLifecycleFix:
         if reason == EnumPrBlockReason.CODERABBIT:
             return await self._agent.dispatch_coderabbit_reply(repo, pr)
 
+        if reason == EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND:
+            # deploy-gate failed because the OCC contract YAML is missing.
+            # ticket_id is required; raise if absent so the caller gets a clear error.
+            if not command.ticket_id:
+                msg = (
+                    f"deploy_gate_contract_not_found fix requires ticket_id "
+                    f"on {repo}#{pr}"
+                )
+                raise ValueError(msg)
+            return await self._occ.create_occ_contract(repo, pr, command.ticket_id)
+
         msg = f"Unhandled block_reason: {reason!r}"
         raise ValueError(msg)
 
@@ -212,4 +263,5 @@ __all__: list[str] = [
     "HandlerPrLifecycleFix",
     "ProtocolAgentDispatchAdapter",
     "ProtocolGitHubAdapter",
+    "ProtocolOccContractAdapter",
 ]

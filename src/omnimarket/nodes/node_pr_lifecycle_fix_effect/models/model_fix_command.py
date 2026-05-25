@@ -12,12 +12,14 @@ from pydantic import BaseModel, ConfigDict, Field
 class EnumPrBlockReason(StrEnum):
     """Block reasons that drive fix routing.
 
-    ci_failure       → flaky/infra rerun via ``gh run rerun --failed``
-    code_failure     → lint/type/test failure, delegate to pr_polish
-    receipt_failure  → OCC/receipt-gate failure, delegate to pr_polish
-    conflict         → merge conflict, resolve via ``gh pr update-branch``
-    changes_requested → review comment fix, delegate to pr_polish
-    coderabbit       → CR thread auto-reply via dispatch_coderabbit_reply
+    ci_failure                     → flaky/infra rerun via ``gh run rerun --failed``
+    code_failure                   → lint/type/test failure, delegate to pr_polish
+    receipt_failure                → OCC/receipt-gate failure, delegate to pr_polish
+    conflict                       → merge conflict, resolve via ``gh pr update-branch``
+    changes_requested              → review comment fix, delegate to pr_polish
+    coderabbit                     → CR thread auto-reply via dispatch_coderabbit_reply
+    deploy_gate_contract_not_found → deploy-gate failed because OCC contract YAML is
+                                     missing; auto-create it via create_occ_contract
     """
 
     CI_FAILURE = "ci_failure"
@@ -26,6 +28,7 @@ class EnumPrBlockReason(StrEnum):
     CONFLICT = "conflict"
     CHANGES_REQUESTED = "changes_requested"
     CODERABBIT = "coderabbit"
+    DEPLOY_GATE_CONTRACT_NOT_FOUND = "deploy_gate_contract_not_found"
 
 
 class ModelPrLifecycleFixCommand(BaseModel):
