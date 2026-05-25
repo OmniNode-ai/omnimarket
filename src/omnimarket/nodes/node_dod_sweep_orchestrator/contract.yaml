@@ -11,6 +11,14 @@ handler:
   class: HandlerDodSweepOrchestrator
   input_model: omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request.ModelDodSweepOrchestratorRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: sweep
+      handler:
+        name: HandlerDodSweepOrchestrator
+        module: omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator
+
 env_dependencies:
   ONEX_CC_REPO_PATH:
     required: false

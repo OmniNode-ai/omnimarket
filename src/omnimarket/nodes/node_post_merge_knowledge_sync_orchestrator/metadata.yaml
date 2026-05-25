@@ -1,0 +1,23 @@
+name: node_post_merge_knowledge_sync_orchestrator
+version: "1.0.0"
+description: "Conditionally fans out knowledge-sync backends after a PR merges to main"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_post_merge_knowledge_sync_orchestrator: "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["knowledge-sync", "post-merge", "orchestrator", "repowise", "memgraph", "qdrant"]
+pack: "knowledge-sync"
+display_name: "Post-Merge Knowledge Sync Orchestrator"
+node_role: "orchestrator"

@@ -4,6 +4,13 @@
 
 from omnimarket.events.daemon_health_probe import ModelDaemonHealthProbeResult
 from omnimarket.events.evidence_dashboard import ModelDashboardProjectionEvent
+from omnimarket.events.knowledge_context import (
+    EnumBundleStatus,
+    EnumFragmentSource,
+    ModelKnowledgeContextBundle,
+    ModelKnowledgeContextFragment,
+    ModelKnowledgeContextState,
+)
 from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
 from omnimarket.intelligence.events import (
     ModelIntentClassifiedEnvelope,
@@ -13,12 +20,17 @@ from omnimarket.intelligence.events import (
 )
 
 __all__ = [
+    "EnumBundleStatus",
+    "EnumFragmentSource",
     "ModelDaemonHealthProbeResult",
     "ModelDashboardProjectionEvent",
     "ModelIntentClassifiedEnvelope",
     "ModelIntentDriftDetectedEnvelope",
     "ModelIntentOutcomeLabeledEnvelope",
     "ModelIntentPatternPromotedEnvelope",
+    "ModelKnowledgeContextBundle",
+    "ModelKnowledgeContextFragment",
+    "ModelKnowledgeContextState",
     "ModelLedgerAppendedEvent",
     "ModelLedgerHashComputed",
 ]

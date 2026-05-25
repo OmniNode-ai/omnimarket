@@ -55,6 +55,17 @@ output_model:
   description: >-
     Reducer output containing success status, state transition details, typed intents (ModelReducerIntent),
     and typed metadata (ModelReducerMetadata). All fields use strong typing without dict[str, Any].
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: handle_pattern_lifecycle_process
+        module: omnimarket.nodes.node_intelligence_reducer.handlers.handler_process
+      description: "FSM transition handler for PATTERN_LIFECYCLE events (OMN-11907)"
+    - handler:
+        name: PatternLifecycleTransitionResult
+        module: omnimarket.nodes.node_intelligence_reducer.handlers.handler_pattern_lifecycle
+      description: "Pattern lifecycle transition result and routing (OMN-11907)"
 # FSM State Machine Definition
 # ============================
 # The intelligence reducer manages three FSM types, each with its own state machine.

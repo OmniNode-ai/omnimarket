@@ -1,0 +1,169 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# ONEX Contract: node_kb_repowise_index_effect
+# EFFECT node — clones KB repo, invokes Repowise CLI to reindex, publishes completion event.
+# [OMN-11914]
+
+name: "node_kb_repowise_index_effect"
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+node_type: effect
+input_model: "ModelKBRepoIndexRequest"
+output_model: "ModelKBRepoIndexResult"
+handler:
+  module: omnimarket.nodes.node_kb_repowise_index_effect.handlers.handler_kb_repowise_index
+  class: HandlerKBRepoWiseIndex
+  input_model: ModelKBRepoIndexRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  runtime_profiles:
+    - effects
+description: |
+  Subscribes to kb-repowise-index-requested.v1 commands. Clones
+  OmniNode-ai/knowledge-base (or another kb_repo slug) into a temporary
+  directory, reads the HEAD commit SHA via git, then shells out to the
+  Repowise CLI (`repowise index <path>`) to trigger a full reindex.
+  Parses the entry count from CLI stdout and emits
+  kb-repowise-index-completed.v1 with commit_sha and entry_count.
+  dry_run=true logs the intended invocation and returns success without
+  any filesystem writes or subprocess calls.
+
+# === DOD EVIDENCE ===
+dod_evidence:
+  ticket: "OMN-11914"
+  parent_epic: "OMN-11909"
+  node_type: effect
+  no_hardcoded_paths: true
+  no_hardcoded_topic_literals: true
+  no_bare_os_environ_get: true
+  unit_tests: true
+  bus_bypass_free: true
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "filesystem_read"
+    atomic: false
+    timeout_seconds: 30
+    description: "Temporary clone directory for KB repo checkout"
+  - operation_type: "subprocess"
+    atomic: false
+    timeout_seconds: 300
+    description: "gh repo clone + repowise index CLI invocation"
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === TOOL SPECIFICATION ===
+tool_specification:
+  tool_name: "kb_repowise_index_effect"
+  main_tool_class: "NodeKBRepoWiseIndexEffect"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === NODE CONFIGURATION ===
+config: {}
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: []
+  optional: ["kb_repo", "dry_run"]
+
+output_state:
+  object_type: "object"
+  required: ["success", "entry_count"]
+
+# === ACTIONS ===
+actions:
+  - name: "index_kb_repo"
+    description: "Clone KB repo and invoke Repowise CLI reindexing"
+    inputs: ["kb_repo", "dry_run"]
+    outputs: ["success", "commit_sha", "entry_count", "error"]
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: "gh"
+    dependency_type: "subprocess"
+    description: "GitHub CLI for repo clone"
+    required: true
+  - name: "git"
+    dependency_type: "subprocess"
+    description: "git CLI for HEAD commit SHA extraction"
+    required: true
+  - name: "repowise"
+    dependency_type: "subprocess"
+    description: "Repowise CLI for triggering index update"
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 300000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["kb-repowise-index-completed"]
+  event_categories: ["kb", "repowise", "effect", "index"]
+  publish_events: true
+  subscribe_events: true
+  invocation_mode: "subscription"
+  event_routing: "kb"
+
+# === EVENT BUS SUBCONTRACT ===
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.kb-repowise-index-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.kb-repowise-index-completed.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.kb-repowise-index-requested.v1":
+      schema_ref: "omnimarket.nodes.node_kb_repowise_index_effect.models.model_index_request.ModelKBRepoIndexRequest"
+      description: "Command to clone and reindex the KB repo via Repowise."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.kb-repowise-index-completed.v1":
+      schema_ref: "omnimarket.nodes.node_kb_repowise_index_effect.models.model_index_result.ModelKBRepoIndexResult"
+      description: "Completed reindex — commit SHA and entry count."
+
+# === HANDLER ROUTING ===
+handler_routing:
+  handlers:
+    - operation: "index_kb_repo"
+      handler_class: "HandlerKBRepoWiseIndex"
+      handler_module: "omnimarket.nodes.node_kb_repowise_index_effect.handlers.handler_kb_repowise_index"
+      handler:
+        name: "HandlerKBRepoWiseIndex"
+        module: "omnimarket.nodes.node_kb_repowise_index_effect.handlers.handler_kb_repowise_index"
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+
+# === TAGS ===
+tags:
+  - kb
+  - repowise
+  - effect
+  - index
+  - omn-11914
+
+metadata:
+  transport_type: kafka

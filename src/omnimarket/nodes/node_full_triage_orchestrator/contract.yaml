@@ -16,7 +16,11 @@ handler:
   input_model: omnimarket.nodes.node_full_triage_orchestrator.handlers.handler_full_triage.ModelFullTriageRequest
 
 handler_routing:
-  default_handler: handler:NodeFullTriageOrchestrator
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: NodeFullTriageOrchestrator
+        module: omnimarket.nodes.node_full_triage_orchestrator.handlers.handler_full_triage
 
 descriptor:
   node_archetype: orchestrator

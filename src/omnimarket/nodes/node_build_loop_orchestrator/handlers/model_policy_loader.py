@@ -87,19 +87,28 @@ class ModelPolicyLoader:
         return os.environ.get(api_key_env, "")
 
     def resolve_model_id(self, policy_id: str) -> str:
-        """Resolve the model ID for a policy."""
+        """Resolve the served model ID for a policy from its declared env var."""
         data = _load_policy_file()
         policies: dict[str, Any] = data.get("policies", {})
         policy = policies.get(policy_id)
         if policy is None:
-            return "default"
-        # Support env-var override for model ID
+            raise RuntimeError(
+                f"Unknown model policy ID {policy_id!r}. "
+                f"Known policies: {list(policies.keys())}"
+            )
         model_id_env: str = policy.get("model_id_env_var", "")
-        if model_id_env:
-            val = os.environ.get(model_id_env, "")
-            if val:
-                return val
-        return str(policy.get("model_id", policy.get("model_id_default", "default")))
+        if not model_id_env:
+            raise RuntimeError(
+                f"Policy {policy_id!r} has no model_id_env_var declared in "
+                "model_policy.yaml."
+            )
+        model_id = os.environ.get(model_id_env, "")
+        if not model_id:
+            raise RuntimeError(
+                f"Served model ID for policy {policy_id!r} not configured. "
+                f"Set {model_id_env} env var."
+            )
+        return model_id
 
 
 __all__: list[str] = ["ModelPolicyLoader"]

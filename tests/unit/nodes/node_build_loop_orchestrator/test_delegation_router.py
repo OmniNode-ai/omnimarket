@@ -229,12 +229,21 @@ _ENDPOINT_ENV_KEYS = (
     "LLM_GLM_API_KEY",
     "LLM_GLM_URL",
     "LLM_GLM_MODEL_NAME",
+    "LLM_GLM_REVIEW_MODEL_NAME",
     "LLM_CODER_FAST_URL",
+    "LLM_CODER_FAST_MODEL_NAME",
     "LLM_CODER_URL",
+    "LLM_CODER_MODEL_NAME",
     "LLM_DEEPSEEK_R1_URL",
+    "LLM_DEEPSEEK_R1_MODEL_NAME",
     "GEMINI_API_KEY",
+    "GEMINI_CLI_MODEL_NAME",
     "GOOGLE_API_KEY",
+    "LLM_GOOGLE_URL",
+    "LLM_GOOGLE_MODEL_NAME",
     "OPENAI_API_KEY",
+    "LLM_OPENAI_URL",
+    "LLM_OPENAI_MODEL_NAME",
 )
 
 
@@ -265,15 +274,59 @@ class TestBuildEndpointConfigs:
         assert EnumModelTier.FRONTIER_GLM not in build_endpoint_configs()
 
         monkeypatch.setenv("LLM_GLM_URL", "https://glm.example/v4")
+        assert EnumModelTier.FRONTIER_GLM not in build_endpoint_configs()
+
         monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-4.5")
+        monkeypatch.setenv("LLM_GLM_REVIEW_MODEL_NAME", "glm-review")
 
         configs = build_endpoint_configs()
 
         assert configs[EnumModelTier.FRONTIER_GLM].base_url == "https://glm.example/v4"
         assert configs[EnumModelTier.FRONTIER_GLM].model_id == "glm-4.5"
-        assert configs[EnumModelTier.FRONTIER_REVIEW].model_id == "glm-4.7-flash"
+        assert configs[EnumModelTier.FRONTIER_REVIEW].model_id == "glm-review"
+
+    def test_local_endpoints_require_model_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _clear_endpoint_env(monkeypatch)
+        monkeypatch.setenv("LLM_CODER_FAST_URL", "http://fast.example/v1")
+        monkeypatch.setenv("LLM_CODER_URL", "http://coder.example/v1")
+        monkeypatch.setenv("LLM_DEEPSEEK_R1_URL", "http://reason.example/v1")
+
+        assert build_endpoint_configs() == {}
+
+        monkeypatch.setenv("LLM_CODER_FAST_MODEL_NAME", "fast-model")
+        monkeypatch.setenv("LLM_CODER_MODEL_NAME", "coder-model")
+        monkeypatch.setenv("LLM_DEEPSEEK_R1_MODEL_NAME", "reason-model")
+
+        configs = build_endpoint_configs()
+
+        assert configs[EnumModelTier.LOCAL_FAST].model_id == "fast-model"
+        assert configs[EnumModelTier.LOCAL_CODER].model_id == "coder-model"
+        assert configs[EnumModelTier.LOCAL_REASONING].model_id == "reason-model"
 
     def test_gemini_key_uses_cli_when_binary_is_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _clear_endpoint_env(monkeypatch)
+        monkeypatch.setenv("GEMINI_API_KEY", "secret")
+        monkeypatch.setenv("GEMINI_CLI_MODEL_NAME", "gemini-cli-profile")
+        monkeypatch.setenv("LLM_GOOGLE_URL", "https://google.example/openai")
+        monkeypatch.setenv("LLM_GOOGLE_MODEL_NAME", "google-frontier")
+        monkeypatch.setattr(
+            adapter_delegation_router, "_gemini_cli_available", lambda: True
+        )
+
+        configs = build_endpoint_configs()
+
+        assert configs[EnumModelTier.GEMINI_CLI].base_url == "cli://gemini"
+        assert configs[EnumModelTier.GEMINI_CLI].model_id == "gemini-cli-profile"
+        assert configs[EnumModelTier.FRONTIER_GOOGLE].base_url == (
+            "https://google.example/openai"
+        )
+        assert configs[EnumModelTier.FRONTIER_GOOGLE].model_id == "google-frontier"
+
+    def test_gemini_key_without_model_names_adds_no_endpoint(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_endpoint_env(monkeypatch)
@@ -284,14 +337,17 @@ class TestBuildEndpointConfigs:
 
         configs = build_endpoint_configs()
 
-        assert configs[EnumModelTier.GEMINI_CLI].base_url == "cli://gemini"
-        assert configs[EnumModelTier.FRONTIER_GOOGLE].model_id == "gemini-2.5-flash"
+        assert EnumModelTier.GEMINI_CLI not in configs
+        assert EnumModelTier.FRONTIER_GOOGLE not in configs
 
     def test_gemini_key_skips_cli_when_binary_is_missing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_endpoint_env(monkeypatch)
         monkeypatch.setenv("GOOGLE_API_KEY", "secret")
+        monkeypatch.setenv("GEMINI_CLI_MODEL_NAME", "gemini-cli-profile")
+        monkeypatch.setenv("LLM_GOOGLE_URL", "https://google.example/openai")
+        monkeypatch.setenv("LLM_GOOGLE_MODEL_NAME", "google-frontier")
         monkeypatch.setattr(
             adapter_delegation_router, "_gemini_cli_available", lambda: False
         )
@@ -300,3 +356,22 @@ class TestBuildEndpointConfigs:
 
         assert EnumModelTier.GEMINI_CLI not in configs
         assert configs[EnumModelTier.FRONTIER_GOOGLE].api_key == "secret"
+        assert configs[EnumModelTier.FRONTIER_GOOGLE].model_id == "google-frontier"
+
+    def test_openai_endpoint_requires_url_and_model_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _clear_endpoint_env(monkeypatch)
+        monkeypatch.setenv("OPENAI_API_KEY", "secret")
+
+        assert EnumModelTier.FRONTIER_OPENAI not in build_endpoint_configs()
+
+        monkeypatch.setenv("LLM_OPENAI_URL", "https://openai.example/v1")
+        monkeypatch.setenv("LLM_OPENAI_MODEL_NAME", "openai-frontier")
+
+        configs = build_endpoint_configs()
+
+        assert configs[EnumModelTier.FRONTIER_OPENAI].base_url == (
+            "https://openai.example/v1"
+        )
+        assert configs[EnumModelTier.FRONTIER_OPENAI].model_id == "openai-frontier"

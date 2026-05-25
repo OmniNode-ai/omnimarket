@@ -14,6 +14,14 @@ handler:
   class: NodeRuntimeSweep
   input_model: omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep.RuntimeSweepRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: sweep
+      handler:
+        name: NodeRuntimeSweep
+        module: omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep
+
 descriptor:
   node_archetype: compute
   purity: pure

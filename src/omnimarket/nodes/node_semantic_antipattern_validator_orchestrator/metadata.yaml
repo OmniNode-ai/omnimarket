@@ -1,0 +1,19 @@
+name: node_semantic_antipattern_validator_orchestrator
+version: "1.0.0"
+description: "Orchestrates semantic antipattern validation via Qdrant match effect and classifier compute"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_semantic_antipattern_validator_orchestrator: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "semantic", "antipattern", "validation", "OMN-11922"]
+pack: "validation"
+display_name: "Semantic Antipattern Validator Orchestrator"
+node_role: "orchestrator"

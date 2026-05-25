@@ -26,8 +26,8 @@ from typing import Any, cast
 from uuid import uuid4
 
 import yaml
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
     AdapterLlmProviderOpenai,
 )
