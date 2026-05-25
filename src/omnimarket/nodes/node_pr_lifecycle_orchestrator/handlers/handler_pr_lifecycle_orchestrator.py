@@ -592,6 +592,9 @@ class HandlerPrLifecycleOrchestrator:
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
                     GitHubCliAdapter,
                 )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
+                    OccContractAdapter,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch import (
                     PrPolishDispatchAdapter,
                 )
@@ -602,6 +605,7 @@ class HandlerPrLifecycleOrchestrator:
                 fix_handler = HandlerPrLifecycleFix(
                     github_adapter=GitHubCliAdapter(),
                     agent_dispatch_adapter=PrPolishDispatchAdapter(),
+                    occ_contract_adapter=OccContractAdapter(),
                 )
                 self._check_protocol_conformance(fix_handler, ProtocolFixHandler, "fix")
                 self._fix = fix_handler
