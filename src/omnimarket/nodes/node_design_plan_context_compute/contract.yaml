@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_design_plan_context_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure deterministic assembly of architecture context for the design-to-plan
+  workflow. Given a plan topic and pre-resolved query results (Repowise
+  architectural decisions, antipattern entries, and Memgraph dependency
+  impact), produces a structured Architecture Context block with four
+  sections: Systems affected, Architecture decisions to honor, Antipatterns
+  to avoid, and Dependency impact. The node performs no I/O; all query
+  results are injected by the caller.
+
+handler:
+  module: omnimarket.nodes.node_design_plan_context_compute.handlers.handler_design_plan_context
+  class: HandlerDesignPlanContext
+  input_model: omnimarket.nodes.node_design_plan_context_compute.models.model_design_plan_context_request.ModelDesignPlanContextRequest
+  output_model: omnimarket.nodes.node_design_plan_context_compute.models.model_design_plan_context_result.ModelDesignPlanContextResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: design_plan_context
+      handler:
+        name: HandlerDesignPlanContext
+        module: omnimarket.nodes.node_design_plan_context_compute.handlers.handler_design_plan_context
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+inputs:
+  topic:
+    type: str
+    required: true
+    description: The design topic or problem statement.
+  repos_mentioned:
+    type: array
+    required: false
+    description: Repository names mentioned in the description — scopes all queries.
+    items:
+      type: str
+  architectural_decisions:
+    type: array
+    required: false
+    description: Pre-resolved Repowise get_why results (one entry per repo or decision).
+    items:
+      type: str
+  antipatterns:
+    type: array
+    required: false
+    description: Pre-resolved antipattern registry entries to avoid.
+    items:
+      type: str
+  dependency_impact:
+    type: array
+    required: false
+    description: Pre-resolved Memgraph dependency impact statements.
+    items:
+      type: str
+
+outputs:
+  architecture_context_block:
+    type: str
+    description: >
+      Formatted ## Architecture Context markdown block ready for injection into
+      a design-to-plan prompt.
+  systems_affected:
+    type: array
+    description: Repository or service names identified as affected.
+  decisions_to_honor:
+    type: array
+    description: Architectural decisions that the plan must respect.
+  antipatterns_to_avoid:
+    type: array
+    description: Antipatterns that the plan must not introduce.
+  impact_summary:
+    type: array
+    description: Dependency impact statements from Memgraph.
+
+terminal_event: onex.evt.omnimarket.design-plan-context-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.design-plan-context-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.design-plan-context-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.design-plan-context-completed.v1
+
+metadata:
+  transport_type: kafka
