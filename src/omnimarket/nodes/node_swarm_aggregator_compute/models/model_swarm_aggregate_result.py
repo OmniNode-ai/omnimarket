@@ -17,3 +17,4 @@ class ModelSwarmAggregateResult(BaseModel):
     degraded_reason: str = ""
     synthesis_input_hash: str = ""
     synthesis_model_id: str = ""
+    run_id: str = ""

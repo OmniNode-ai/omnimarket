@@ -14,6 +14,7 @@ class ModelSwarmDecomposeRequest(BaseModel):
     endpoint_ids: tuple[str, ...] = Field(default=())
     original_task: str = Field(default="")
     correlation_id: str = Field(default="")
+    run_id: str = Field(default="")
     decompose: bool = Field(default=True)
     token_threshold: int = Field(default=2000)
     context_window_limit: int = Field(default=0)
