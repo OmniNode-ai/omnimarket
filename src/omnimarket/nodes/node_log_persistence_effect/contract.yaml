@@ -1,0 +1,38 @@
+---
+name: log_persistence_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Persists structured log events to Postgres for historical trace queries.
+  Enables the trace explorer to query beyond live Kafka retention window.
+
+terminal_event: onex.evt.omnimarket.log-persistence-completed.v1
+
+handler:
+  module: omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect
+  class: NodeLogPersistenceEffect
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: NodeLogPersistenceEffect
+        module: omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.log-entry.v1
+  publish_topics:
+    - onex.evt.omnimarket.log-persistence-completed.v1
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles:
+    - effects
+
+metadata:
+  transport_type: kafka
