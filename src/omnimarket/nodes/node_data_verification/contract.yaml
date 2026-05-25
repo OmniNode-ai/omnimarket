@@ -16,6 +16,15 @@ handler:
   class: HandlerDataVerification
   input_model: omnimarket.nodes.node_data_verification.models.model_data_verification_start_command.ModelDataVerificationStartCommand
 
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerDataVerification
+        module: omnimarket.nodes.node_data_verification.handlers.handler_data_verification
+    - handler:
+        name: datasource_postgres
+        module: omnimarket.nodes.node_data_verification.handlers.datasource_postgres
+
 descriptor:
   node_archetype: compute
   purity: pure

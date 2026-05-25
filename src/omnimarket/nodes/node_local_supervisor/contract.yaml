@@ -28,6 +28,13 @@ handler:
   class: HandlerLocalSupervisor
   input_model: ModelLocalSupervisorRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerLocalSupervisor
+        module: omnimarket.nodes.node_local_supervisor.handlers.handler_local_supervisor
+
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -37,8 +44,8 @@ descriptor:
     - effects
 
 model_routing:
-  primary: qwen3-coder-30b
-  fallback: claude-sonnet
+  primary: local_supervisor_primary
+  fallback: local_supervisor_fallback
   timeout_per_attempt_s: 60
   max_retries: 3
   reason_for_fallback: "local timeout or unavailable"
@@ -49,7 +56,7 @@ model_routing:
 inputs:
   routing_decision:
     type: object
-    description: "Pre-made routing decision: model_key, endpoint_url, role, correlation_id"
+    description: "Pre-made routing decision: logical_model_key, endpoint_ref, role, correlation_id"
     required: true
   prompt:
     type: str

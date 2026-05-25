@@ -1,0 +1,89 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_swarm_dispatch_orchestrator
+contract_name: node_swarm_dispatch_orchestrator
+node_name: node_swarm_dispatch_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+description: >
+  FSM orchestrator for swarm dispatch. Coordinates health check, decomposition,
+  endpoint selection, fan-out, and aggregation through command/event pairs.
+  Pure coordination — all I/O delegated to effect nodes.
+
+handler:
+  name: HandlerSwarmDispatchOrchestrator
+  module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+  class: HandlerSwarmDispatchOrchestrator
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSwarmDispatchOrchestrator
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+      event_model:
+        name: ModelSwarmDispatchRequest
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_swarm_dispatch_request
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 900000
+  runtime_profiles: [effects]
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  plugin_managed: false
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-dispatch.v1
+    - onex.evt.omnimarket.swarm-endpoint-health-completed.v1
+    - onex.evt.omnimarket.swarm-decomposition-completed.v1
+    - onex.evt.omnimarket.swarm-endpoints-selected.v1
+    - onex.evt.omnimarket.swarm-fanout-completed.v1
+    - onex.evt.omnimarket.swarm-aggregation-completed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.swarm-check-endpoint-health.v1
+    - onex.cmd.omnimarket.swarm-decompose.v1
+    - onex.cmd.omnimarket.swarm-select-endpoints.v1
+    - onex.cmd.omnimarket.swarm-fanout.v1
+    - onex.cmd.omnimarket.swarm-aggregate.v1
+    - onex.evt.omnimarket.swarm-dispatch-completed.v1
+    - onex.evt.omnimarket.swarm-dispatch-failed.v1
+
+terminal_event: onex.evt.omnimarket.swarm-dispatch-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-dispatch-completed.v1
+  - onex.evt.omnimarket.swarm-dispatch-failed.v1
+
+published_events:
+  - event_type: SwarmDispatchCompleted
+    topic: onex.evt.omnimarket.swarm-dispatch-completed.v1
+    description: Swarm dispatch completed successfully with aggregated output.
+  - event_type: SwarmDispatchFailed
+    topic: onex.evt.omnimarket.swarm-dispatch-failed.v1
+    description: Swarm dispatch failed at some FSM stage.
+
+fsm:
+  states: [RECEIVED, HEALTH_CHECKED, DECOMPOSED, ENDPOINTS_SELECTED, DISPATCHING, AGGREGATING, COMPLETED, FAILED]
+  initial_state: RECEIVED
+  terminal_states: [COMPLETED, FAILED]
+  transitions:
+    - {from: RECEIVED, to: HEALTH_CHECKED, trigger: "endpoint-health-completed"}
+    - {from: HEALTH_CHECKED, to: DECOMPOSED, trigger: "decomposition-completed"}
+    - {from: DECOMPOSED, to: ENDPOINTS_SELECTED, trigger: "endpoints-selected"}
+    - {from: ENDPOINTS_SELECTED, to: DISPATCHING, trigger: "fanout-completed"}
+    - {from: DISPATCHING, to: AGGREGATING, trigger: "aggregation-completed"}
+    - {from: AGGREGATING, to: COMPLETED, trigger: "terminal"}
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-24"
+  tags: [orchestrator, swarm, dispatch, fsm, OMN-11814]
+  related_tickets:
+    - "OMN-11814"

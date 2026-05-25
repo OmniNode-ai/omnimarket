@@ -38,7 +38,7 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 10000
-  runtime_profiles: [market]
+  runtime_profiles: []
 
 event_bus:
   subscribe_topics:

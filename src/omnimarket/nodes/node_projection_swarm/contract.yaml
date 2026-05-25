@@ -1,0 +1,63 @@
+---
+name: node_projection_swarm
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Reducer node for swarm run projection. Upserts swarm_runs table from
+  terminal swarm dispatch events. Tracks freshness SLA and evidence bundles.
+
+handler:
+  name: HandlerProjectionSwarm
+  module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
+  class: HandlerProjectionSwarm
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.evt.omnimarket.swarm-dispatch-completed.v1
+      operation: swarm_dispatch_completed
+      event_model:
+        name: ModelSwarmDispatchEvent
+        module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
+      handler:
+        name: HandlerProjectionSwarm
+        module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
+    - topic: onex.evt.omnimarket.swarm-dispatch-failed.v1
+      operation: swarm_dispatch_failed
+      event_model:
+        name: ModelSwarmDispatchEvent
+        module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
+      handler:
+        name: HandlerProjectionSwarm
+        module: omnimarket.nodes.node_projection_swarm.handlers.handler_projection_swarm
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.swarm-dispatch-completed.v1
+    - onex.evt.omnimarket.swarm-dispatch-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-swarm-applied.v1
+
+terminal_event: onex.evt.omnimarket.projection-swarm-applied.v1
+
+freshness_sla:
+  max_lag_seconds: 30
+  degraded_after_seconds: 60
+
+db_io:
+  db_tables:
+    - name: swarm_runs
+      access: write
+      database: omnidash_analytics
+      role: projection
+
+metadata:
+  transport_type: kafka

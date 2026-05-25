@@ -2,14 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Delegation router — routes tickets to the appropriate model tier.
 
-Routes based on ticket complexity, with GLM-4.5 as the primary frontier
-code generation backend:
-- Tier 1 (primary): GLM-4.5 via Zhipu API — best quality, 20 concurrent
-- Tier 2 (architecture/multi-file): Gemini CLI — repo-aware, SSO auth
-- Tier 3 (fallback): local Qwen3-Coder-30B — 64K ctx, zero cost
-- Tier 4 (classification only): local Qwen3-14B — fast, routing/simple tasks
-- Review: DeepSeek-R1 (reasoning specialist)
-- Complex overflow: Gemini API, OpenAI (when GLM and Gemini CLI unavailable)
+Routes based on ticket complexity and configured logical tiers. Served model
+IDs and endpoint URLs are runtime overlay inputs, not source-code defaults.
 
 All endpoints speak OpenAI-compatible chat/completions API, except GEMINI_CLI
 which is invoked via subprocess using the installed `gemini` CLI binary.
@@ -40,14 +34,14 @@ logger = logging.getLogger(__name__)
 class EnumModelTier(StrEnum):
     """Model tier for delegation routing."""
 
-    FRONTIER_GLM = "frontier_glm"  # GLM-4.5 — primary code gen (Zhipu API)
-    FRONTIER_REVIEW = "frontier_review"  # GLM-4.7-Flash — cheap frontier code reviewer
+    FRONTIER_GLM = "frontier_glm"  # Primary frontier code generation tier
+    FRONTIER_REVIEW = "frontier_review"  # Frontier code review tier
     GEMINI_CLI = "gemini-cli"  # Gemini CLI — architecture/multi-file tasks, repo-aware
-    LOCAL_FAST = "local_fast"  # Qwen3-14B — classification, simple tasks
-    LOCAL_CODER = "local_coder"  # Qwen3-Coder-30B — medium code tasks
-    LOCAL_REASONING = "local_reasoning"  # DeepSeek-R1 — review, reasoning
-    FRONTIER_GOOGLE = "frontier_google"  # Gemini API — complex tasks (API path)
-    FRONTIER_OPENAI = "frontier_openai"  # GPT/Codex — complex tasks
+    LOCAL_FAST = "local_fast"  # Classification and simple task tier
+    LOCAL_CODER = "local_coder"  # Medium code task tier
+    LOCAL_REASONING = "local_reasoning"  # Review and reasoning tier
+    FRONTIER_GOOGLE = "frontier_google"  # Google API frontier tier
+    FRONTIER_OPENAI = "frontier_openai"  # OpenAI frontier tier
 
 
 class ModelEndpointConfig(BaseModel):
@@ -107,6 +101,34 @@ def _gemini_cli_available() -> bool:
     import shutil
 
     return shutil.which("gemini") is not None
+
+
+def _add_endpoint_config(
+    configs: dict[EnumModelTier, ModelEndpointConfig],
+    *,
+    tier: EnumModelTier,
+    base_url: str,
+    model_id: str,
+    api_key: str = "",
+    max_tokens: int,
+    context_window: int,
+    timeout_seconds: float,
+) -> None:
+    if not base_url or not model_id:
+        logger.info(
+            "%s tier skipped: endpoint URL and served model ID must both be configured",
+            tier.value,
+        )
+        return
+    configs[tier] = ModelEndpointConfig(
+        tier=tier,
+        base_url=base_url,
+        model_id=model_id,
+        api_key=api_key,
+        max_tokens=max_tokens,
+        context_window=context_window,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def load_llm_eval_harness_samples(
@@ -215,9 +237,9 @@ _OPENAI_CONTEXT_WINDOW: int = 128_000  # GPT-4.1
 def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     """Build endpoint configurations from environment variables.
 
-    GLM-4.5 (Zhipu API) is the primary code generation backend when
-    LLM_GLM_API_KEY is set. Local models serve as fallbacks.
-
+    Endpoint URLs and served model IDs must both be supplied by runtime
+    overlays. Missing values skip the tier instead of silently substituting a
+    hardcoded provider default.
     Context windows for local tiers are resolved from the model registry via
     get_context_window_for_endpoint_env (OMN-11856). Frontier cloud tiers
     (GLM, Gemini, OpenAI) have no registry entries yet; their context windows
@@ -229,12 +251,13 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     configs: dict[EnumModelTier, ModelEndpointConfig] = {}
 
-    # Frontier GLM (primary code gen) — reads LLM_GLM_* from env
+    # Frontier GLM (primary code gen) — reads LLM_GLM_* from env.
     glm_key = os.environ.get("LLM_GLM_API_KEY", "")
     glm_url = os.environ.get("LLM_GLM_URL", "")  # contract-config-ok: config  # fmt: skip
     glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
-    if glm_key and glm_url:
-        configs[EnumModelTier.FRONTIER_GLM] = ModelEndpointConfig(
+    if glm_key:
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.FRONTIER_GLM,
             base_url=glm_url,
             model_id=glm_model,
@@ -245,28 +268,36 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         )
         logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
 
-    # Frontier review: GLM-4.7-Flash — cheap frontier code reviewer (203K ctx)
+    # Frontier review — explicit served model ID required.
     glm_review_key = os.environ.get("LLM_GLM_API_KEY", "")
-    glm_review_url = os.environ.get("LLM_GLM_URL") or "https://open.bigmodel.cn/api/paas/v4"  # contract-config-ok: config  # fmt: skip
+    glm_review_url = os.environ.get("LLM_GLM_URL", "")  # contract-config-ok: config  # fmt: skip
+    glm_review_model = os.environ.get("LLM_GLM_REVIEW_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
     if glm_review_key:
-        configs[EnumModelTier.FRONTIER_REVIEW] = ModelEndpointConfig(
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.FRONTIER_REVIEW,
             base_url=glm_review_url,
-            model_id="glm-4.7-flash",
+            model_id=glm_review_model,
             api_key=glm_review_key,
             max_tokens=2048,
             context_window=_GLM_REVIEW_CONTEXT_WINDOW,
             timeout_seconds=30.0,
         )
-        logger.info("GLM reviewer configured: %s (model=glm-4.7-flash)", glm_review_url)
+        logger.info(
+            "GLM reviewer configured: %s (model=%s)",
+            glm_review_url,
+            glm_review_model,
+        )
 
-    # Local fast: deepseek-r1-14b — URL from LLM_CODER_FAST_URL; context window from registry
+    # Local fast — endpoint and served model are overlay-owned.
     local_fast_url = os.environ.get("LLM_CODER_FAST_URL", "")  # contract-config-ok: config  # fmt: skip
-    if local_fast_url:
-        configs[EnumModelTier.LOCAL_FAST] = ModelEndpointConfig(
+    local_fast_model = os.environ.get("LLM_CODER_FAST_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
+    if local_fast_url or local_fast_model:
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.LOCAL_FAST,
             base_url=local_fast_url,
-            model_id="default",
+            model_id=local_fast_model,
             max_tokens=2048,
             context_window=get_context_window_for_endpoint_env(
                 "LLM_CODER_FAST_URL", fallback=24_576
@@ -274,13 +305,15 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             timeout_seconds=60.0,
         )
 
-    # Local coder: qwen3-coder-30b — URL from LLM_CODER_URL; context window from registry
+    # Local coder — endpoint and served model are overlay-owned.
     local_coder_url = os.environ.get("LLM_CODER_URL", "")  # contract-config-ok: config  # fmt: skip
-    if local_coder_url:
-        configs[EnumModelTier.LOCAL_CODER] = ModelEndpointConfig(
+    local_coder_model = os.environ.get("LLM_CODER_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
+    if local_coder_url or local_coder_model:
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.LOCAL_CODER,
             base_url=local_coder_url,
-            model_id="default",
+            model_id=local_coder_model,
             max_tokens=4096,
             context_window=get_context_window_for_endpoint_env(
                 "LLM_CODER_URL", fallback=114_688
@@ -288,13 +321,15 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             timeout_seconds=120.0,
         )
 
-    # Local reasoning: deepseek-r1-32b — URL from LLM_DEEPSEEK_R1_URL; context window from registry
+    # Local reasoning — endpoint and served model are overlay-owned.
     local_reasoning_url = os.environ.get("LLM_DEEPSEEK_R1_URL", "")  # contract-config-ok: config  # fmt: skip
-    if local_reasoning_url:
-        configs[EnumModelTier.LOCAL_REASONING] = ModelEndpointConfig(
+    local_reasoning_model = os.environ.get("LLM_DEEPSEEK_R1_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
+    if local_reasoning_url or local_reasoning_model:
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.LOCAL_REASONING,
             base_url=local_reasoning_url,
-            model_id="default",
+            model_id=local_reasoning_model,
             max_tokens=4096,
             context_window=get_context_window_for_endpoint_env(
                 "LLM_DEEPSEEK_R1_URL", fallback=8_192
@@ -306,11 +341,13 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     # Auth: GEMINI_API_KEY or GOOGLE_API_KEY (both same value per ticket description)
     # Availability: requires `gemini` CLI binary on PATH
     gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")  # contract-config-ok: config  # fmt: skip
+    gemini_cli_model = os.environ.get("GEMINI_CLI_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
     if gemini_key and _gemini_cli_available():
-        configs[EnumModelTier.GEMINI_CLI] = ModelEndpointConfig(
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.GEMINI_CLI,
             base_url="cli://gemini",  # sentinel: dispatched via subprocess, not HTTP
-            model_id="gemini-cli",
+            model_id=gemini_cli_model,
             api_key=gemini_key,
             max_tokens=8192,
             context_window=_GEMINI_CONTEXT_WINDOW,
@@ -321,11 +358,14 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         logger.info("Gemini CLI binary not found on PATH — GEMINI_CLI tier skipped")
 
     # Frontier Google (Gemini API — fallback when CLI unavailable)
-    if gemini_key:
-        configs[EnumModelTier.FRONTIER_GOOGLE] = ModelEndpointConfig(
+    google_url = os.environ.get("LLM_GOOGLE_URL", "")  # contract-config-ok: config  # fmt: skip
+    google_model = os.environ.get("LLM_GOOGLE_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
+    if gemini_key or google_url or google_model:
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.FRONTIER_GOOGLE,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
-            model_id="gemini-2.5-flash",
+            base_url=google_url,
+            model_id=google_model,
             api_key=gemini_key,
             max_tokens=8192,
             context_window=_GEMINI_CONTEXT_WINDOW,
@@ -334,11 +374,14 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     # Frontier OpenAI
     openai_key = os.environ.get("OPENAI_API_KEY", "")
-    if openai_key:
-        configs[EnumModelTier.FRONTIER_OPENAI] = ModelEndpointConfig(
+    openai_url = os.environ.get("LLM_OPENAI_URL", "")  # contract-config-ok: config  # fmt: skip
+    openai_model = os.environ.get("LLM_OPENAI_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
+    if openai_key or openai_url or openai_model:
+        _add_endpoint_config(
+            configs,
             tier=EnumModelTier.FRONTIER_OPENAI,
-            base_url="https://api.openai.com",
-            model_id="gpt-4.1",
+            base_url=openai_url,
+            model_id=openai_model,
             api_key=openai_key,
             max_tokens=8192,
             context_window=_OPENAI_CONTEXT_WINDOW,
@@ -358,16 +401,16 @@ def route_ticket_to_tier(
 ) -> EnumModelTier:
     """Route a ticket to the appropriate model tier based on complexity.
 
-    GLM-4.5 is the primary code generation backend for all buildable tickets.
-    Gemini CLI is preferred over other frontier options for architecture and
+    FRONTIER_GLM is the primary code generation tier for buildable tickets.
+    GEMINI_CLI is preferred over other frontier options for architecture and
     multi-file tasks due to its repo-context awareness.
 
     Routing priority:
-    1. GLM-4.5 (primary frontier, best quality) for all code gen tasks
+    1. FRONTIER_GLM for all code gen tasks
     2. Architecture/multi-file complex keywords with no GLM -> Gemini CLI
     3. Complex keywords with no GLM/Gemini CLI -> Gemini API, OpenAI
-    4. Simple keywords with no frontier -> local fast (Qwen3-14B)
-    5. Default fallback -> local coder (Qwen3-Coder-30B)
+    4. Simple keywords with no frontier -> LOCAL_FAST
+    5. Default fallback -> LOCAL_CODER
     """
     text = f"{title} {description} {' '.join(labels)}".lower()
     available = available_tiers or frozenset(EnumModelTier)

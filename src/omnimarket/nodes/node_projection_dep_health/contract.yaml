@@ -16,6 +16,13 @@ handler:
   module: omnimarket.nodes.node_projection_dep_health.handlers.handler_projection_dep_health
   class: HandlerProjectionDepHealth
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerProjectionDepHealth
+        module: omnimarket.nodes.node_projection_dep_health.handlers.handler_projection_dep_health
+
 db_io:
   db_tables:
     - name: dep_health_findings

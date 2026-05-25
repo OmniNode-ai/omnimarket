@@ -13,6 +13,12 @@ handler:
   class: HandlerEnvParityCompute
   input_model: omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_request.ModelEnvParityComputeRequest
 
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerEnvParityCompute
+        module: omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute
+
 descriptor:
   node_archetype: compute
   purity: pure

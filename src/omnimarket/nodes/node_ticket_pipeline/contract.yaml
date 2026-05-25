@@ -15,6 +15,16 @@ handler:
   class: HandlerTicketPipeline
   input_model: omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command.ModelPipelineStartCommand
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerTicketPipeline
+        module: omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline
+    - handler:
+        name: HandlerReportPoster
+        module: omnimarket.nodes.node_ticket_pipeline.handlers.handler_report_poster
+
 descriptor:
   node_archetype: compute
   purity: pure

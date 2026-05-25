@@ -72,7 +72,7 @@ event_bus:
 model_routing:
   provider: local
   endpoint_env: LLM_CODER_URL
-  model_id: "Qwen/Qwen3-Coder-480B-A35B-Instruct"
+  served_model_id_env: LLM_CODER_MODEL_NAME
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
@@ -81,7 +81,12 @@ dependencies:
   - name: llm_coder_url
     type: environment
     key: LLM_CODER_URL
-    description: "Base URL for the Qwen3-Coder LLM endpoint — set via overlay from Infisical"
+    description: "Base URL for the generation LLM endpoint — set via overlay from Infisical"
+    required: true
+  - name: llm_coder_model_name
+    type: environment
+    key: LLM_CODER_MODEL_NAME
+    description: "Served model ID for the generation LLM endpoint — set via overlay from Infisical"
     required: true
   - name: llm_shared_secret
     type: environment

@@ -36,6 +36,7 @@ def _make_command(
         correlation_id=uuid4(),
         pr_number=pr_number,
         repo="OmniNode-ai/test",
+        models=["test-review-route"],
         dry_run=dry_run,
         requested_at=datetime.now(tz=UTC),
     )
@@ -127,6 +128,7 @@ class TestHostileReviewerGoldenChain:
             command = ModelHostileReviewerStartCommand(
                 correlation_id=payload["correlation_id"],
                 pr_number=payload.get("pr_number"),
+                models=payload["models"],
                 dry_run=payload.get("dry_run", False),
                 requested_at=datetime.now(tz=UTC),
             )
@@ -155,7 +157,11 @@ class TestHostileReviewerGoldenChain:
         )
 
         cmd_payload = json.dumps(
-            {"correlation_id": str(uuid4()), "pr_number": 42}
+            {
+                "correlation_id": str(uuid4()),
+                "pr_number": 42,
+                "models": ["test-review-route"],
+            }
         ).encode()
         await event_bus.publish(CMD_TOPIC, key=None, value=cmd_payload)
 

@@ -7,6 +7,7 @@ TDD-first: these tests must fail before the policy loader exists, then pass afte
 
 from __future__ import annotations
 
+import importlib
 import re
 from pathlib import Path
 
@@ -78,6 +79,20 @@ class TestModelPolicyFileExists:
             "policies.judge must declare the env_var for URL resolution"
         )
 
+    def test_policies_do_not_own_served_model_defaults(self) -> None:
+        import yaml
+
+        path = _find_model_policy()
+        data = yaml.safe_load(path.read_text())
+        for policy_id, policy in data["policies"].items():
+            assert "model_id" not in policy, f"{policy_id} must not declare model_id"
+            assert "model_id_default" not in policy, (
+                f"{policy_id} must not declare model_id_default"
+            )
+            assert "model_id_env_var" in policy, (
+                f"{policy_id} must declare model_id_env_var"
+            )
+
 
 class TestModelPolicyLoader:
     """Tests for the ModelPolicyLoader that resolves policy IDs to URLs."""
@@ -134,6 +149,31 @@ class TestModelPolicyLoader:
         with pytest.raises(RuntimeError, match="not configured"):
             loader.resolve("coder")
 
+    def test_loader_resolves_model_id_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-coder-model")
+        from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+            ModelPolicyLoader,
+        )
+
+        loader = ModelPolicyLoader()
+
+        assert loader.resolve_model_id("coder") == "test-coder-model"
+
+    def test_loader_raises_on_missing_model_id_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LLM_CODER_MODEL_NAME", raising=False)
+        from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
+            ModelPolicyLoader,
+        )
+
+        loader = ModelPolicyLoader()
+
+        with pytest.raises(RuntimeError, match="Served model ID"):
+            loader.resolve_model_id("coder")
+
     def test_no_hardcoded_ips_in_loader(self) -> None:
         """The policy loader must never contain hardcoded 192.168.x.x IPs."""
         # parents[1] = node_build_loop_orchestrator
@@ -185,3 +225,28 @@ class TestNoHardcodedIpsInHandlers:
         assert "/Volumes/" not in content, (
             "Hardcoded /Volumes/ path found in assemble_live.py — use Path.home() or env var"
         )
+
+    def test_assemble_live_does_not_default_served_models(self) -> None:
+        path = Path(__file__).parents[1] / "assemble_live.py"
+        if not path.exists():
+            pytest.skip("assemble_live.py not found")
+        content = path.read_text()
+        forbidden = ("gpt-4o-mini", "qwen3-coder-30b", "glm-4.5", "glm-4.7-flash")
+        for literal in forbidden:
+            assert literal not in content, (
+                f"assemble_live.py must not default served model {literal!r}"
+            )
+
+    def test_assemble_live_cost_is_unknown_without_pricing_manifest(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        omni_home = tmp_path / "omni_home"
+        omni_home.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(omni_home))
+        module = importlib.import_module(
+            "omnimarket.nodes.node_build_loop_orchestrator.assemble_live"
+        )
+
+        estimate_cost = module.__dict__["_estimate_cost"]
+
+        assert estimate_cost("unpriced-runtime-model", 1000) is None

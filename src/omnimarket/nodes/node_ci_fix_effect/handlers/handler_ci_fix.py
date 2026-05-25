@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Handler for node_ci_fix_effect [OMN-8994].
 
-EFFECT node. Receives ModelCiFixCommand, fetches failing CI log, routes to LLM
-(deepseek-r1-14b primary), parses unified diff, applies patch, runs test gate.
-Model routing: primary=deepseek-r1-14b, fallback=qwen3-coder-30b per contract.yaml.
+EFFECT node. Receives ModelCiFixCommand, fetches failing CI log, routes to the
+logical LLM route selected by policy, parses unified diff, applies patch, and
+runs the test gate.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from typing import Any, cast
 from uuid import uuid4
 
 import yaml
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
     AdapterLlmProviderOpenai,
 )

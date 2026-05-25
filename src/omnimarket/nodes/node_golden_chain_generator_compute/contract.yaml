@@ -14,6 +14,14 @@ handler:
   input_model: omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_request.ModelGoldenChainGenerationRequest
   output_model: omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_result.ModelGoldenChainGenerationResult
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: generate
+      handler:
+        name: HandlerGoldenChainGenerator
+        module: omnimarket.nodes.node_golden_chain_generator_compute.handlers.handler_golden_chain_generator
+
 descriptor:
   node_archetype: compute
   purity: pure

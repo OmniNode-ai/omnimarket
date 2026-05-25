@@ -22,6 +22,13 @@ description: >
   The grant is read by the PermissionRequest authorization gate hook; missing
   file or expired grant both collapse to "no grant".
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerAuthorize
+        module: omnimarket.nodes.node_authorize.handlers.handler_authorize
+
 handler:
   module: omnimarket.nodes.node_authorize.handlers.handler_authorize
   class: HandlerAuthorize

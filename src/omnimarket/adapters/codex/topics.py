@@ -8,3 +8,5 @@
 TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND = "onex.cmd.omnibase-infra.pattern-b-dispatch.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED = "onex.evt.omnibase-infra.pattern-b-dispatch-completed.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_CODEX_DELEGATE_SKILL_COMMAND = "onex.cmd.omnimarket.delegate-skill.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_CODEX_DELEGATE_SKILL_COMPLETED = "onex.evt.omnimarket.delegate-skill-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_CODEX_DELEGATE_SKILL_FAILED = "onex.evt.omnimarket.delegate-skill-failed.v1"  # onex-topic-allow: pending contract auto-wiring

@@ -12,6 +12,13 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerContentIngestion
+        module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion
+
 handler:
   module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion
   class: HandlerContentIngestion

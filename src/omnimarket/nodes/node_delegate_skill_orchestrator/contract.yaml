@@ -197,6 +197,13 @@ handler:
   class: HandlerDelegateSkill
   input_model: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request.ModelDelegateSkillRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDelegateSkill
+        module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill
+
 error_handling:
   retry_policy:
     max_retries: 1

@@ -27,6 +27,7 @@ Escalation chain (route_with_escalation):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -34,6 +35,7 @@ import random
 import re
 import time
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +43,14 @@ import httpx
 from omnibase_compat.routing.model_routing_degraded_event import (
     ModelRoutingDegradedEvent,
 )
-from omnibase_compat.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.enums.enum_routing_error_class import RoutingErrorClass
+from omnibase_core.models.routing.model_llm_route_rejected_event import (
+    ModelLlmRouteRejectedEvent,
+)
+from omnibase_core.models.routing.model_llm_route_resolved_event import (
+    ModelLlmRouteResolvedEvent,
+)
+from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
 from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
     EscalationTier,
@@ -55,7 +64,9 @@ from omnimarket.nodes.node_model_router.models.model_routing_result import (
     ModelRoutingResult,
 )
 
-TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"  # onex-topic-allow: contract-declared
+TOPIC_MODEL_LLM_ROUTE_RESOLVED = "onex.evt.omnimarket.model-llm-route-resolved.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_MODEL_LLM_ROUTE_REJECTED = "onex.evt.omnimarket.model-llm-route-rejected.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
 
@@ -140,25 +151,35 @@ class HandlerModelRouter:
             await self._record_failure(primary_key, request.correlation_id)
             if self._should_fallback(primary_key, request.role):
                 assert fallback_key is not None
-                return ModelRoutingResult(
+                result = ModelRoutingResult(
                     model_key=fallback_key,
                     endpoint_url=self._registry[fallback_key]["base_url"],
                     used_fallback=True,
                     correlation_id=request.correlation_id,
                 )
+                await self._emit_route_resolved_event(result, request)
+                return result
             msg = (
                 f"Primary {primary_key!r} degraded and role {request.role!r} "
                 f"is not in fallback_allowed_roles {self._policy.fallback_allowed_roles}"
             )
+            await self._emit_route_rejected_event(
+                request=request,
+                model_key=primary_key,
+                failure_class=RoutingErrorClass.FALLBACK_UNAUTHORIZED,
+                failure_reason=msg,
+            )
             raise RuntimeError(msg)
 
         self._record_success(primary_key)
-        return ModelRoutingResult(
+        result = ModelRoutingResult(
             model_key=primary_key,
             endpoint_url=self._registry[primary_key]["base_url"],
             used_fallback=False,
             correlation_id=request.correlation_id,
         )
+        await self._emit_route_resolved_event(result, request)
+        return result
 
     async def route_with_escalation(
         self, request: ModelRoutingRequest
@@ -196,6 +217,12 @@ class HandlerModelRouter:
         msg = (
             f"Escalation chain exhausted all eligible tiers "
             f"{[t.name for t in eligible_tiers]} for correlation_id={request.correlation_id}"
+        )
+        await self._emit_route_rejected_event(
+            request=request,
+            model_key=self._resolve_primary_key(),
+            failure_class=RoutingErrorClass.NO_ELIGIBLE_MODEL,
+            failure_reason=msg,
         )
         raise RuntimeError(msg)
 
@@ -235,13 +262,15 @@ class HandlerModelRouter:
                 self._health_cache.pop(model_key, None)
             if await self._check_health(model_key):
                 self._record_success(model_key)
-                return ModelRoutingResult(
+                result = ModelRoutingResult(
                     model_key=model_key,
                     endpoint_url=self._registry[model_key]["base_url"],
                     used_fallback=tier != EscalationTier.local,
                     correlation_id=request.correlation_id,
                     escalation_tier=tier,
                 )
+                await self._emit_route_resolved_event(result, request)
+                return result
             await self._record_failure(model_key, request.correlation_id)
             if attempt + 1 < max_attempts:
                 logger.info(
@@ -333,6 +362,137 @@ class HandlerModelRouter:
                 logger.exception(
                     "Failed to publish degradation event for %s", model_key
                 )
+
+    async def _emit_route_resolved_event(
+        self, result: ModelRoutingResult, request: ModelRoutingRequest
+    ) -> None:
+        """Emit canonical route-resolution event when an event bus is configured."""
+        if self._event_bus is None:
+            return
+        entry = self._registry.get(result.model_key, {})
+        policy_hash = self._routing_policy_hash()
+        event = ModelLlmRouteResolvedEvent(
+            routing_decision_id=self._routing_decision_id(
+                request.correlation_id, result.model_key, "resolved"
+            ),
+            correlation_id=request.correlation_id,
+            logical_model_key=result.model_key,
+            served_model_id=self._served_model_id(result.model_key, entry),
+            endpoint_ref=self._endpoint_ref(entry),
+            provider=entry.get("provider", ""),
+            registry_hash=self._registry_hash(),
+            routing_policy_hash=policy_hash,
+            policy_hash=policy_hash,
+            pricing_manifest_hash=self._pricing_manifest_hash(entry),
+            fallback_reason=(
+                self._policy.reason_for_fallback if result.used_fallback else ""
+            ),
+            used_fallback=result.used_fallback,
+            created_at=datetime.now(UTC),
+        )
+        await self._publish_model_route_event(
+            TOPIC_MODEL_LLM_ROUTE_RESOLVED,
+            result.model_key,
+            event,
+        )
+
+    async def _emit_route_rejected_event(
+        self,
+        request: ModelRoutingRequest,
+        model_key: str,
+        failure_class: RoutingErrorClass,
+        failure_reason: str,
+    ) -> None:
+        """Emit canonical route-rejection event when an event bus is configured."""
+        if self._event_bus is None:
+            return
+        entry = self._registry.get(model_key, {})
+        policy_hash = self._routing_policy_hash()
+        event = ModelLlmRouteRejectedEvent(
+            routing_decision_id=self._routing_decision_id(
+                request.correlation_id, model_key, failure_class.value
+            ),
+            correlation_id=request.correlation_id,
+            logical_model_key=model_key,
+            served_model_id=self._served_model_id(model_key, entry),
+            endpoint_ref=self._endpoint_ref(entry),
+            provider=entry.get("provider", ""),
+            registry_hash=self._registry_hash(),
+            routing_policy_hash=policy_hash,
+            policy_hash=policy_hash,
+            pricing_manifest_hash=self._pricing_manifest_hash(entry),
+            fallback_reason=self._policy.reason_for_fallback,
+            failure_class=failure_class,
+            failure_reason=failure_reason,
+            created_at=datetime.now(UTC),
+        )
+        await self._publish_model_route_event(
+            TOPIC_MODEL_LLM_ROUTE_REJECTED,
+            model_key,
+            event,
+        )
+
+    async def _publish_model_route_event(
+        self,
+        topic: str,
+        key: str,
+        event: ModelLlmRouteResolvedEvent | ModelLlmRouteRejectedEvent,
+    ) -> None:
+        try:
+            payload = json.dumps(event.model_dump(mode="json")).encode()
+            await self._event_bus.publish(
+                topic=topic,
+                key=key.encode(),
+                value=payload,
+            )
+        except Exception:
+            logger.exception("Failed to publish model route event on %s", topic)
+
+    def _routing_decision_id(
+        self, correlation_id: str, model_key: str, outcome: str
+    ) -> str:
+        digest = hashlib.sha256(
+            f"{correlation_id}|{model_key}|{outcome}".encode()
+        ).hexdigest()
+        return f"sha256:{digest}"
+
+    def _routing_policy_hash(self) -> str:
+        data = self._policy.model_dump(mode="json")
+        canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
+        return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+
+    def _registry_hash(self) -> str:
+        canonical = json.dumps(self._registry, sort_keys=True, separators=(",", ":"))
+        return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
+
+    def _served_model_id(self, model_key: str, entry: RegistryEntry) -> str:
+        served_model_id = entry.get("served_model_id")
+        if served_model_id:
+            return served_model_id
+        model_id = entry.get("model_id")
+        if model_id:
+            return model_id
+        return model_key
+
+    def _endpoint_ref(self, entry: RegistryEntry) -> str:
+        endpoint_ref = entry.get("endpoint_ref")
+        if endpoint_ref:
+            return endpoint_ref
+        env_key = entry.get("env_key")
+        if env_key:
+            return env_key
+        return ""
+
+    def _pricing_manifest_hash(self, entry: RegistryEntry) -> str:
+        pricing_manifest_hash = entry.get("pricing_manifest_hash")
+        if pricing_manifest_hash:
+            return pricing_manifest_hash
+        policy_pricing_manifest_hash = getattr(
+            self._policy, "pricing_manifest_hash", ""
+        )
+        if isinstance(policy_pricing_manifest_hash, str):
+            return policy_pricing_manifest_hash
+        return ""
 
     def _write_escalation_event(
         self, from_tier: EscalationTier, to_tier: EscalationTier, correlation_id: str

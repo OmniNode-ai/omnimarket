@@ -125,7 +125,7 @@ handler_routing:
 # === CONFIGURATION FIELDS ===
 config_fields:
   KREUZBERG_URL:
-    default: "http://localhost:8090"
+    required: true
     description: "Base URL of the kreuzberg Docker service"
   KREUZBERG_TEXT_STORE_PATH:
     required: true

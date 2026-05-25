@@ -22,6 +22,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from omnimarket.adapters.codex.topics import (
     TOPIC_CODEX_DELEGATE_SKILL_COMMAND,
+    TOPIC_CODEX_DELEGATE_SKILL_COMPLETED,
+    TOPIC_CODEX_DELEGATE_SKILL_FAILED,
     TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND,
     TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED,
 )
@@ -42,6 +44,11 @@ _DELEGATE_SKILL_EVENT_TYPE = "omnimarket.delegate-skill"
 _DELEGATE_SKILL_COMMAND_NAMES = frozenset(
     {"delegate_skill", "delegate_skill.orchestrate"}
 )
+# The runtime publishes delegate-skill results to the contract-declared terminal
+# topics, not to the generic pattern-b-dispatch-completed topic.  Subscribing to
+# the wrong topic is the Pattern B ephemeral consumer race (OMN-11991).
+_DELEGATE_SKILL_COMPLETED_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_COMPLETED
+_DELEGATE_SKILL_FAILED_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_FAILED
 _RUNTIME_SELECTION_VALUES = frozenset({"deployed", "local", "deployed_or_local"})
 
 
@@ -608,16 +615,34 @@ class CodexRuntimeRequestAdapter:
             dispatch_adapter = CodexDispatchBusAdapter(
                 transport, source=self._requester
             )
+            command = _build_dispatch_command(request, requester=self._requester)
+            # For delegate-skill commands the runtime publishes terminal results to
+            # the contract-declared topics (delegate-skill-completed/failed), not to
+            # the generic pattern-b-dispatch-completed topic stored in
+            # request.response_topic.  Subscribing to the wrong topic causes the
+            # client to never receive the reply (OMN-11991).
+            is_delegate_skill = (
+                self._command_topic == _DELEGATE_SKILL_COMMAND_TOPIC
+                and request.command_name in _DELEGATE_SKILL_COMMAND_NAMES
+            )
+            if is_delegate_skill:
+                terminal_topic = _DELEGATE_SKILL_COMPLETED_TOPIC
+                extra_topics = (
+                    _DELEGATE_SKILL_FAILED_TOPIC,
+                    *additional_response_topics,
+                )
+            else:
+                terminal_topic = request.response_topic
+                extra_topics = additional_response_topics
             route = ModelDispatchBusRoute(
                 contract_path=Path("codex-runtime-request-adapter"),
                 command_topic=self._command_topic,
-                terminal_topic=request.response_topic,
+                terminal_topic=terminal_topic,
             )
-            command = _build_dispatch_command(request, requester=self._requester)
             unsubscribe, result_queue = await dispatch_adapter.wait_for_result(
                 route,
                 correlation_id=str(command.correlation_id),
-                additional_terminal_topics=additional_response_topics,
+                additional_terminal_topics=extra_topics,
             )
             try:
                 await dispatch_adapter.publish_command(route, command)

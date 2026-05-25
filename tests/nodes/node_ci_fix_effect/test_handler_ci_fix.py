@@ -864,6 +864,6 @@ class TestEndpointEnvVarRequired:
         monkeypatch.setenv("LLM_CODER_URL", "http://test-coder:8000")
         monkeypatch.setenv("LLM_CODER_MODEL_NAME", "test-qwen3-coder-30b")
         cfg = _load_contract_routing_config()
-        endpoint = cfg.model_endpoints["deepseek-r1-14b"]
+        endpoint = cfg.model_endpoints["ci_fixer_primary"]
         assert endpoint.base_url == "http://test-fast:8001"
         assert endpoint.model_id == "test-deepseek-r1-distill-14b"

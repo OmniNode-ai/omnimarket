@@ -22,6 +22,13 @@ handler:
   module: omnimarket.nodes.node_evidence_dashboard_effect.handlers.handler_evidence_dashboard_effect
   class: HandlerEvidenceDashboardEffect
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerEvidenceDashboardEffect
+        module: omnimarket.nodes.node_evidence_dashboard_effect.handlers.handler_evidence_dashboard_effect
+
 descriptor:
   node_archetype: effect
   purity: effectful

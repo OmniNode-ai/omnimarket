@@ -13,6 +13,18 @@ handler:
   module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
   class: HandlerProjectionSavings
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerProjectionSavings
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
+    - handler:
+        name: SavingsProjectionRunner
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_savings
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_savings
+
 terminal_event: onex.evt.omnimarket.projection-savings-applied.v1
 
 db_io:
@@ -34,4 +46,4 @@ event_bus:
 
 metadata:
   transport_type: kafka
-  delegate_skill_baseline_model: claude-opus-4-6
+  delegate_skill_baseline_model_source: pricing_manifest

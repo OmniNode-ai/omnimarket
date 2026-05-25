@@ -15,6 +15,18 @@ handler:
   module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
   class: HandlerProjectionRegistration
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerProjectionRegistration
+        module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
+      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
+    - handler:
+        name: RegistrationProjectionRunner
+        module: omnimarket.nodes.node_projection_registration.handlers.handler_registration
+      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_registration
+
 terminal_event: onex.evt.omnimarket.projection-registration-applied.v1
 
 # Golden path: registration chain (node introspection -> node_service_registry table)
@@ -58,7 +70,7 @@ event_bus:
 
 projection_api:
   expose: true
-  topic: "onex.snapshot.projection.registration.v1"
+  topic: "onex.snapshot.projection.registration.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "node_service_registry"
   schema: "omnidash_analytics"
   columns:

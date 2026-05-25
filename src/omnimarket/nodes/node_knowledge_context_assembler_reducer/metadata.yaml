@@ -1,0 +1,23 @@
+name: node_knowledge_context_assembler_reducer
+version: "0.1.0"
+description: "Knowledge context assembler reducer — pure function that materializes a ModelKnowledgeContextBundle from backend fragments"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_knowledge_context_assembler_reducer: "omnimarket.nodes.node_knowledge_context_assembler_reducer"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "knowledge-context", "pure", "OMN-11935"]
+pack: "knowledge_context"
+display_name: "Knowledge Context Assembler Reducer"
+node_role: "reducer"

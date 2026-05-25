@@ -72,6 +72,12 @@ class ModelRoutingDecision(BaseModel):
         ...,
         description="Maximum context window for the selected model.",
     )
+    timeout_ms: int = Field(
+        default=30000,
+        ge=100,
+        le=600000,
+        description="Per-backend inference timeout in milliseconds.",
+    )
     system_prompt: str = Field(
         ...,
         description="System prompt tailored to the task type.",

@@ -1,0 +1,259 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+# Architecture Graph Populate EFFECT - ONEX Contract
+# Builds and maintains the ONEX architecture graph in Memgraph.
+
+name: "node_architecture_graph_populate_effect"
+handler:
+  module: omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate
+  class: HandlerArchitectureGraphPopulate
+  input_model: omnimarket.nodes.node_architecture_graph_populate_effect.models.model_architecture_graph_populate_events.ModelArchitectureGraphPopulateRequestedEvent
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Effect node that populates and maintains the ONEX architecture graph in Memgraph.
+  Sources: contract.yaml files (authoritative), Python import analysis (evidence),
+  pyproject.toml dependencies (evidence). All Cypher statements use MERGE for
+  idempotency. Tracks graph_schema_version, graph_snapshot_id, and
+  populated_from_commit_set per run. Completes full 12-repo registry in <60s.
+node_type: effect
+input_model: "ModelArchitectureGraphPopulateRequestedEvent"
+output_model: "ModelArchitectureGraphPopulateResponseEvent"
+
+# === IO OPERATIONS ===
+io_operations:
+  - operation_type: "graph_write"
+    atomic: false
+    timeout_seconds: 60
+    validation_enabled: true
+
+# === TRANSACTION MANAGEMENT ===
+transaction_management:
+  enabled: false
+
+# === NODE CONFIGURATION ===
+tool_specification:
+  tool_name: "architecture_graph_populate_effect"
+  main_tool_class: "HandlerArchitectureGraphPopulate"
+
+# === SERVICE CONFIGURATION ===
+service_configuration:
+  is_persistent_service: false
+  requires_external_dependencies: true
+
+# === CONFIGURATION FIELDS ===
+config_fields:
+  graph_backend:
+    default: "memgraph"
+    description: "Graph backend identifier (memgraph or neo4j-compatible)"
+  bolt_uri:
+    default: "bolt://localhost:7687"
+    description: "Bolt protocol URI for the Memgraph instance (from ARCH_GRAPH_BOLT_URI)"
+  timeout_seconds:
+    default: 60
+    description: "Populate timeout in seconds"
+  graph_schema_version:
+    default: "1.0.0"
+    description: "Schema version stamped on every snapshot"
+  batch_size:
+    default: 100
+    description: "Number of MERGE statements per transaction batch"
+
+# === INPUT/OUTPUT STATE ===
+input_state:
+  object_type: "object"
+  required: ["populate_id", "operation", "omni_home"]
+  optional: ["correlation_id", "dry_run", "repos"]
+
+output_state:
+  object_type: "object"
+  required: ["populate_id", "operation", "status"]
+  optional:
+    - "snapshot_meta"
+    - "nodes_written"
+    - "edges_written"
+    - "error_message"
+    - "execution_time_ms"
+
+# === ACTIONS ===
+actions:
+  - name: "populate_from_contracts"
+    description: "Parse contract.yaml files across all repos; MERGE ONEXNode, KafkaTopic, and topic edges"
+    inputs: ["omni_home", "repos"]
+    outputs: ["nodes_written", "edges_written", "snapshot_meta"]
+
+  - name: "populate_from_imports"
+    description: "Analyse Python imports; MERGE PythonModule nodes and IMPORTS edges"
+    inputs: ["omni_home", "repos"]
+    outputs: ["edges_written", "snapshot_meta"]
+
+  - name: "populate_from_pyproject"
+    description: "Parse pyproject.toml dependencies; MERGE Repository DEPENDS_ON edges"
+    inputs: ["omni_home", "repos"]
+    outputs: ["edges_written", "snapshot_meta"]
+
+  - name: "populate_all"
+    description: "Run all three sources in sequence"
+    inputs: ["omni_home", "repos"]
+    outputs: ["nodes_written", "edges_written", "snapshot_meta"]
+
+# === NODE TYPES ===
+graph_node_types:
+  - label: Repository
+    description: "A git repository under omni_home"
+    key_property: node_id
+  - label: ONEXNode
+    description: "An ONEX node defined by a contract.yaml"
+    key_property: node_id
+  - label: KafkaTopic
+    description: "A Kafka topic referenced in a contract event_bus section"
+    key_property: node_id
+  - label: PythonModule
+    description: "A Python module identified via static import analysis"
+    key_property: node_id
+
+# === EDGE TYPES ===
+graph_edge_types:
+  - type: CONTAINS
+    source_authority: authoritative
+    description: "Repository contains ONEXNode"
+  - type: SUBSCRIBES_TO
+    source_authority: authoritative
+    description: "ONEXNode subscribes to KafkaTopic (from contract event_bus)"
+  - type: PUBLISHES_TO
+    source_authority: authoritative
+    description: "ONEXNode publishes to KafkaTopic (from contract event_bus)"
+  - type: IMPORTS
+    source_authority: evidence
+    description: "PythonModule imports from another repo (static analysis)"
+  - type: DEPENDS_ON
+    source_authority: evidence
+    description: "Repository depends on a package (pyproject.toml)"
+
+# === DEPENDENCIES ===
+dependencies:
+  - name: memgraph
+    dependency_type: service
+    protocol: bolt
+    description: "Memgraph graph database — Bolt protocol endpoint for architecture graph writes"
+    required: true
+
+  - name: kafka
+    dependency_type: service
+    description: "Kafka event bus for request/response events"
+    required: true
+
+# === PERFORMANCE ===
+performance:
+  max_response_time_ms: 60000
+
+# === EVENT TYPE CONFIGURATION ===
+event_type:
+  version: {major: 1, minor: 0, patch: 0}
+  primary_events: ["architecture_graph_populated"]
+  event_categories: ["architecture", "graph", "effect", "populate"]
+  publish_events: true
+  subscribe_events: true
+  event_routing: "architecture"
+  invocation_mode: "subscription"
+
+# === INFRASTRUCTURE ===
+infrastructure:
+  graph_backends:
+    - memgraph
+
+# === VALIDATION RULES ===
+validation_rules:
+  strict_typing_enabled: true
+  input_validation_enabled: true
+  output_validation_enabled: true
+  constraint_definitions:
+    operation: "Literal['populate_from_contracts','populate_from_imports','populate_from_pyproject','populate_all']"
+    populate_id: "string — unique identifier for this populate run"
+    omni_home: "string — absolute path to omni_home root"
+    dry_run: "boolean — skip graph writes when true"
+
+# === HANDLER ROUTING ===
+handler_routing:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  routing_strategy: operation_match
+  handlers:
+    - routing_key: "populate_from_contracts"
+      operation: "populate_from_contracts"
+      handler_key: "HandlerArchitectureGraphPopulate"
+      handler:
+        name: "HandlerArchitectureGraphPopulate"
+        module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
+      priority: 0
+      output_events: []
+    - routing_key: "populate_from_imports"
+      operation: "populate_from_imports"
+      handler_key: "HandlerArchitectureGraphPopulate"
+      handler:
+        name: "HandlerArchitectureGraphPopulate"
+        module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
+      priority: 0
+      output_events: []
+    - routing_key: "populate_from_pyproject"
+      operation: "populate_from_pyproject"
+      handler_key: "HandlerArchitectureGraphPopulate"
+      handler:
+        name: "HandlerArchitectureGraphPopulate"
+        module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
+      priority: 0
+      output_events: []
+    - routing_key: "populate_all"
+      operation: "populate_all"
+      handler_key: "HandlerArchitectureGraphPopulate"
+      handler:
+        name: "HandlerArchitectureGraphPopulate"
+        module: "omnimarket.nodes.node_architecture_graph_populate_effect.handlers.handler_architecture_graph_populate"
+      priority: 0
+      output_events: []
+  default_handler: null
+
+# =============================================================================
+# EVENT BUS SUBCONTRACT - Runtime Routing Layer
+# =============================================================================
+descriptor:
+  runtime_profiles:
+    - effects
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+
+  subscribe_topics:
+    - "onex.cmd.omnimarket.architecture-graph-populate-requested.v1"
+
+  publish_topics:
+    - "onex.evt.omnimarket.architecture-graph-populated.v1"
+
+  subscribe_topic_metadata:
+    "onex.cmd.omnimarket.architecture-graph-populate-requested.v1":
+      schema_ref: "omnimarket.nodes.node_architecture_graph_populate_effect.models.model_architecture_graph_populate_events.ModelArchitectureGraphPopulateRequestedEvent"
+      description: "Trigger for graph populate runs specifying operation, omni_home, and optional repo scope."
+
+  publish_topic_metadata:
+    "onex.evt.omnimarket.architecture-graph-populated.v1":
+      schema_ref: "omnimarket.nodes.node_architecture_graph_populate_effect.models.model_architecture_graph_populate_events.ModelArchitectureGraphPopulateResponseEvent"
+      description: "Populate completion event with snapshot metadata, node/edge counts, and authority classifications."
+
+# === TAGS ===
+tags:
+  - architecture
+  - graph
+  - memgraph
+  - effect
+  - kafka
+  - dependency-analysis
+  - bolt
+  - populate
+  - idempotent
