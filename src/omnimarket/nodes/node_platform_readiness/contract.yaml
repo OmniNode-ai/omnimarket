@@ -15,7 +15,13 @@ handler:
   input_model: omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness.ModelPlatformReadinessRequest
 
 handler_routing:
-  default_handler: handler:NodePlatformReadiness
+  handlers:
+    - handler:
+        name: NodePlatformReadiness
+        module: omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness
+    - handler:
+        name: dimension_checks
+        module: omnimarket.nodes.node_platform_readiness.handlers.dimension_checks
 
 descriptor:
   node_archetype: compute

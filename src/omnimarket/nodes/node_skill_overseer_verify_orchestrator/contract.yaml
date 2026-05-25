@@ -86,6 +86,13 @@ io_operations:
       - correlation_id: UUID
     idempotent: false
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSkillRequested
+        module: omnimarket.nodes.node_skill_overseer_verify_orchestrator.handlers.handler_skill_requested
+
 # Dependencies
 dependencies:
   - name: handler_skill_requested

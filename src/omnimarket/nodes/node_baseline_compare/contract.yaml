@@ -16,7 +16,10 @@ handler:
   input_model: omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare.ModelBaselineCompareRequest
 
 handler_routing:
-  default_handler: handler:HandlerBaselineCompare
+  handlers:
+    - handler:
+        name: HandlerBaselineCompare
+        module: omnimarket.nodes.node_baseline_compare.handlers.handler_baseline_compare
 
 descriptor:
   node_archetype: compute

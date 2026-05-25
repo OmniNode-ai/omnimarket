@@ -64,7 +64,7 @@ from omnimarket.nodes.node_model_router.models.model_routing_result import (
     ModelRoutingResult,
 )
 
-TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"  # onex-topic-allow: contract-declared
 TOPIC_MODEL_LLM_ROUTE_RESOLVED = "onex.evt.omnimarket.model-llm-route-resolved.v1"  # onex-topic-allow: pending contract auto-wiring
 TOPIC_MODEL_LLM_ROUTE_REJECTED = "onex.evt.omnimarket.model-llm-route-rejected.v1"  # onex-topic-allow: pending contract auto-wiring
 

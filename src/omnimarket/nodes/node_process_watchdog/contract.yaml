@@ -15,6 +15,21 @@ handler:
   class: HandlerProcessWatchdog
   input_model: omnimarket.nodes.node_process_watchdog.models.model_watchdog_start_command.ModelWatchdogStartCommand
 
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerProcessWatchdog
+        module: omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog
+    - handler:
+        name: check_daemon_health
+        module: omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health
+    - handler:
+        name: check_socket
+        module: omnimarket.nodes.node_process_watchdog.handlers.check_socket
+    - handler:
+        name: checktargets_production
+        module: omnimarket.nodes.node_process_watchdog.handlers.checktargets_production
+
 descriptor:
   node_archetype: compute
   purity: impure

@@ -38,7 +38,7 @@ from omnimarket.nodes.node_state_persist_effect.models.model_state_persisted_eve
     ModelStatePersistedEvent,
 )
 
-SUBSCRIBE_TOPIC = "onex.intent.omnimarket.state-persist.v1"
+SUBSCRIBE_TOPIC = "onex.cmd.omnimarket.state-persist.v1"
 PUBLISH_TOPIC = "onex.evt.omnimarket.state-persisted.v1"
 
 

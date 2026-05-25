@@ -5,7 +5,7 @@ node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  State persist effect node. Subscribes to the internal state-persist intent
+  State persist effect node. Subscribes to the internal state-persist command
   topic, writes the ModelStateEnvelope to ProtocolStateStore, and emits a
   ModelStatePersistedEvent confirming success or failure.
 
@@ -14,10 +14,17 @@ handler:
   class: HandlerStatePersistEffect
   input_model: omnimarket.nodes.node_state_persist_effect.models.model_state_persist_input.ModelStatePersistInput
 
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerStatePersistEffect
+        module: omnimarket.nodes.node_state_persist_effect.handlers.handler_state_persist_effect
+
 descriptor:
   node_archetype: effect
   purity: impure
   idempotent: true
+  runtime_profiles: [effects]
   timeout_ms: 10000
 
 inputs:
@@ -58,7 +65,7 @@ terminal_event: onex.evt.omnimarket.state-persisted.v1
 
 event_bus:
   subscribe_topics:
-    - onex.intent.omnimarket.state-persist.v1
+    - onex.cmd.omnimarket.state-persist.v1
   publish_topics:
     - onex.evt.omnimarket.state-persisted.v1
 

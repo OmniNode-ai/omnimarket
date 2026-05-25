@@ -128,16 +128,18 @@ handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
     - operation: "delegation.orchestrate"
-      handler_class: "HandlerDelegationWorkflow"
-      handler_module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
       description: "Coordinate delegation through routing, inference, and quality gate"
       input_model:
         name: "ModelDelegationRequest"
         module: "omnimarket.nodes.node_delegation_orchestrator.models"
         description: "Delegation request to orchestrate."
     - operation: "delegation.evaluate_compliance"
-      handler_class: "HandlerComplianceLoop"
-      handler_module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop"
+      handler:
+        name: "HandlerComplianceLoop"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop"
       description: "Per-attempt schema-compliance evaluator (OMN-10792). Composes omnimarket schema-registry, schema-repair, and budget-policy nodes; returns compliant=True, repair_prompt+CONTINUE, or ABORT. Invoked in-process by HandlerDelegationWorkflow per inference attempt — not routed via the bus."
       input_model:
         name: "ModelComplianceLoopResult"

@@ -22,6 +22,7 @@ handler_routing:
     - handler:
         name: HandlerModelRouter
         module: omnimarket.nodes.node_model_router.handlers.handler_model_router
+        handler_type: http
       event_model:
         name: ModelRoutingRequest
         module: omnimarket.nodes.node_model_router.models.model_routing_request

@@ -21,10 +21,10 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 SOW_PHASE2_REQUIRED_TOPICS: list[str] = [
-    "onex.evt.savings.estimation-completed.v1",  # onex-topic-allow: declared in platform_readiness contract.yaml subscribe_topics
-    "onex.evt.model-router.routing-decision.v1",  # onex-topic-allow: declared in platform_readiness contract.yaml subscribe_topics
-    "onex.evt.baselines.computation-completed.v1",  # onex-topic-allow: declared in platform_readiness contract.yaml subscribe_topics
-    "onex.evt.omnimarket.build-loop-dod-checked.v1",  # onex-topic-allow: declared in platform_readiness contract.yaml subscribe_topics
+    "onex.evt.savings.estimation-completed.v1",  # onex-topic-allow: contract-declared
+    "onex.evt.model-router.routing-decision.v1",  # onex-topic-allow: contract-declared
+    "onex.evt.baselines.computation-completed.v1",  # onex-topic-allow: contract-declared
+    "onex.evt.omnimarket.build-loop-dod-checked.v1",  # onex-topic-allow: contract-declared
 ]
 
 # SSH target for .201 infra checks — must be set via ONEX_INFRA_SSH_TARGET env var

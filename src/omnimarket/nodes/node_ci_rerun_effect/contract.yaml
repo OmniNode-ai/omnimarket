@@ -18,7 +18,11 @@ handler:
   input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelCiRerunCommand
 
 handler_routing:
-  default_handler: omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun:HandlerCiRerunEffect
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerCiRerunEffect
+        module: omnimarket.nodes.node_ci_rerun_effect.handlers.handler_ci_rerun
 
 descriptor:
   node_archetype: effect
