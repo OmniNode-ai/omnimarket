@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Handler that dispatches ticket-pipeline builds via delegation.
+"""Handler that dispatches ticket-pipeline builds via Kafka.
 
 This is an EFFECT handler - performs external I/O (delegation dispatch).
 
@@ -12,7 +12,14 @@ Behavior change (OMN-7582): filesystem fallback REMOVED. Kafka is the
 canonical transport. ModelInfraErrorContext removed in favor of structured
 logging with the same correlation context.
 
+Behavior change (OMN-7720): dispatch target changed from delegation-request
+to ticket-pipeline-start. Each auto-buildable ticket gets a
+ModelPipelineStartCommand-shaped message published to the ticket-pipeline
+consumer. The delegation-request path was never wired to a ticket-pipeline
+consumer — this wires the real path.
+
 Related:
+    - OMN-7720: Build loop dispatches real ticket-pipeline worker via Kafka
     - OMN-7582: Migrate node_build_dispatch_effect to omnimarket
     - OMN-7381: Wire handler_build_dispatch to delegation orchestrator
     - OMN-5113: Autonomous Build Loop epic
@@ -53,18 +60,18 @@ HandlerType = Literal["node_handler"]
 HandlerCategory = Literal["effect"]
 
 # ---------------------------------------------------------------------------
-# Resolve delegation topic from contract.yaml (single source of truth)
+# Resolve ticket-pipeline-start topic from contract.yaml (single source of truth)
 # ---------------------------------------------------------------------------
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
-_DELEGATION_TOPIC_SUFFIX = "delegation-request"
+_TICKET_PIPELINE_TOPIC_SUFFIX = "ticket-pipeline-start"
 
 
-def _load_delegation_topic() -> str:
-    """Load the delegation-request publish topic from contract.yaml.
+def _load_ticket_pipeline_topic() -> str:
+    """Load the ticket-pipeline-start publish topic from contract.yaml.
 
     Raises:
         RuntimeError: If contract.yaml is missing or does not declare a
-            publish topic containing 'delegation-request'.
+            publish topic containing 'ticket-pipeline-start'.
     """
     if not _CONTRACT_PATH.exists():
         msg = f"contract.yaml not found at {_CONTRACT_PATH}"
@@ -77,29 +84,33 @@ def _load_delegation_topic() -> str:
     publish_topics: list[str] = event_bus.get("publish_topics", []) or []
 
     for topic in publish_topics:
-        if _DELEGATION_TOPIC_SUFFIX in topic:
+        if _TICKET_PIPELINE_TOPIC_SUFFIX in topic:
             return topic
 
     msg = (
         f"contract.yaml at {_CONTRACT_PATH} does not declare a "
-        f"publish topic containing {_DELEGATION_TOPIC_SUFFIX!r}"
+        f"publish topic containing {_TICKET_PIPELINE_TOPIC_SUFFIX!r}"
     )
     raise RuntimeError(msg)
 
 
-_TOPIC_DELEGATION_REQUEST: str = _load_delegation_topic()
+_TOPIC_TICKET_PIPELINE_START: str = _load_ticket_pipeline_topic()
 
-# Event type used by the delegation dispatcher for message routing.
-# Must match DispatcherDelegationRequest.message_types.
-_DELEGATION_EVENT_TYPE = "omnimarket.delegation-request"
+# Event type for the ticket-pipeline start command.
+_TICKET_PIPELINE_EVENT_TYPE = "omnimarket.ticket-pipeline-start"
 
 
 class HandlerBuildDispatch:
-    """Dispatches ticket-pipeline builds for AUTO_BUILDABLE tickets via delegation.
+    """Dispatches ticket-pipeline builds for AUTO_BUILDABLE tickets via Kafka.
 
-    Primary path: builds ``ModelDelegationPayload`` objects for each ticket
-    and returns them in the result.  The orchestrator publishes these to
-    Kafka (architectural rule: only orchestrators may access the event bus).
+    Primary path: builds ``ModelDelegationPayload`` objects (carrying a
+    ModelPipelineStartCommand-shaped payload) for each ticket and returns them
+    in the result.  The orchestrator publishes these to the ticket-pipeline-start
+    Kafka topic (architectural rule: only orchestrators may access the event bus).
+
+    The ticket-pipeline consumer (node_ticket_pipeline) subscribes to
+    ``onex.cmd.omnimarket.ticket-pipeline-start.v1`` and will start a
+    per-ticket execution pipeline for each message received.
 
     Failures on individual tickets do not block other dispatches.
     """
@@ -168,7 +179,7 @@ class HandlerBuildDispatch:
                 continue
 
             try:
-                payload = self._build_delegation_payload(
+                payload = self._build_pipeline_start_payload(
                     target=target,
                     correlation_id=correlation_id,
                 )
@@ -205,7 +216,7 @@ class HandlerBuildDispatch:
             except Exception as exc:
                 logger.warning(
                     "Failed to dispatch %s: %s "
-                    "(correlation_id=%s, transport=kafka, operation=delegation_payload_build)",
+                    "(correlation_id=%s, transport=kafka, operation=pipeline_start_payload_build)",
                     target.ticket_id,
                     exc,
                     correlation_id,
@@ -235,34 +246,38 @@ class HandlerBuildDispatch:
         )
 
     # ------------------------------------------------------------------
-    # Primary dispatch: build delegation payload (orchestrator publishes)
+    # Primary dispatch: build ticket-pipeline start payload (orchestrator publishes)
     # ------------------------------------------------------------------
 
-    def _build_delegation_payload(
+    def _build_pipeline_start_payload(
         self,
         *,
         target: ModelBuildTarget,
         correlation_id: UUID,
     ) -> ModelDelegationPayload:
-        """Build a delegation request payload for a single ticket.
+        """Build a ticket-pipeline start payload for a single ticket.
 
         Returns a ``ModelDelegationPayload`` that the orchestrator will
-        publish to the delegation-request Kafka topic.
+        publish to the ticket-pipeline-start Kafka topic
+        (``onex.cmd.omnimarket.ticket-pipeline-start.v1``).
+
+        The payload matches the ``ModelPipelineStartCommand`` wire shape:
+        ticket_id, correlation_id, dry_run, requested_at.  The
+        ticket-pipeline consumer (``node_ticket_pipeline``) validates this
+        shape on receipt.
         """
         now = datetime.now(tz=UTC)
         payload: dict[str, object] = {
-            "prompt": f"Run ticket-pipeline for {target.ticket_id}",
-            "task_type": "research",
-            "source_session_id": None,
-            "source_file_path": None,
+            "ticket_id": target.ticket_id,
             "correlation_id": str(correlation_id),
-            "max_tokens": 4096,
-            "emitted_at": now.isoformat(),
+            "dry_run": False,
+            "skip_test_iterate": False,
+            "requested_at": now.isoformat(),
         }
 
         return ModelDelegationPayload(
-            event_type=_DELEGATION_EVENT_TYPE,
-            topic=_TOPIC_DELEGATION_REQUEST,
+            event_type=_TICKET_PIPELINE_EVENT_TYPE,
+            topic=_TOPIC_TICKET_PIPELINE_START,
             payload=payload,
             correlation_id=correlation_id,
         )

@@ -82,11 +82,6 @@ logger = logging.getLogger(__name__)
 # Load topics from contract.yaml — never hardcode topics inside handlers.
 # ---------------------------------------------------------------------------
 _ORCHESTRATOR_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
-_DISPATCH_CONTRACT_PATH = (
-    Path(__file__).resolve().parent.parent.parent
-    / "node_build_dispatch_effect"
-    / "contract.yaml"
-)
 
 
 def _load_topic_from_contract(contract_path: Path, fragment: str) -> str:
@@ -115,7 +110,7 @@ _DELEGATION_METRICS_TOPIC: str = _load_topic_from_contract(
 )
 
 _DEFAULT_DELEGATION_TOPIC: str = _load_topic_from_contract(
-    _DISPATCH_CONTRACT_PATH,
+    _ORCHESTRATOR_CONTRACT_PATH,
     "delegation-request",
 )
 

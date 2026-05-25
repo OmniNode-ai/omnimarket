@@ -96,7 +96,9 @@ allowlist:
     expires_at: "2026-08-15"
 
   # --- delegation-request (omnimarket prefix) ---
-  # Published by: node_dispatch_worker_execution_effect, node_build_dispatch_effect (omnimarket)
+  # Published by: node_dispatch_worker_execution_effect (omnimarket)
+  # NOTE: node_build_dispatch_effect was removed from this list in OMN-7720 —
+  #       it now publishes to onex.cmd.omnimarket.ticket-pipeline-start.v1.
   # Intended consumer: delegation orchestration layer
   # Status: genuinely_unwired — omnimarket node_delegation_orchestrator subscribes
   #         to onex.cmd.omnibase-infra.delegation-request.v1 (different service prefix).
