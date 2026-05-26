@@ -1,0 +1,64 @@
+---
+name: node_skill_functional_audit_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Stub detection and connectivity checks across registered skills. Identifies
+  skills with unimplemented handlers, missing contracts, broken wiring, or
+  unreachable dispatch paths. Returns per-skill verdicts and a gap summary.
+  Pure deterministic static analysis — no LLM calls.
+  STUB — not yet implemented.
+
+handler:
+  module: omnimarket.nodes.node_skill_functional_audit_compute.handlers.handler_skill_functional_audit_compute
+  class: HandlerSkillFunctionalAuditCompute
+  input_model: omnimarket.nodes.node_skill_functional_audit_compute.models.model_skill_functional_audit_compute_request.ModelSkillFunctionalAuditComputeRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerSkillFunctionalAuditCompute
+        module: omnimarket.nodes.node_skill_functional_audit_compute.handlers.handler_skill_functional_audit_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  skills_filter:
+    type: list[str] | null
+    required: false
+    default: null
+    description: "Optional list of skill names to audit; null means all registered skills"
+
+outputs:
+  verdicts:
+    type: list[object]
+    description: "Per-skill audit verdict with name, status, stubs_found, and gaps"
+  stubs_found:
+    type: list[str]
+    description: "Skill names whose handlers raise NotImplementedError"
+  gaps:
+    type: list[str]
+    description: "Skill names with missing contracts, broken wiring, or unreachable paths"
+  total_audited:
+    type: int
+    description: "Total number of skills audited"
+  status:
+    type: str
+    enum: [ok, error]
+
+terminal_event: onex.evt.omnimarket.skill-functional-audit-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.skill-functional-audit-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.skill-functional-audit-completed.v1
+
+metadata:
+  transport_type: kafka

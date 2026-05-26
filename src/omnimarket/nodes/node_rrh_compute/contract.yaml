@@ -1,0 +1,64 @@
+---
+name: node_rrh_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Release Readiness Handshake validator. Evaluates a set of named readiness
+  checks for a given release identifier and produces a per-check pass/fail
+  result with an overall readiness verdict. Pure deterministic transform —
+  no LLM calls. STUB — not yet implemented.
+
+handler:
+  module: omnimarket.nodes.node_rrh_compute.handlers.handler_rrh_compute
+  class: HandlerRrhCompute
+  input_model: omnimarket.nodes.node_rrh_compute.models.model_rrh_compute_request.ModelRrhComputeRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerRrhCompute
+        module: omnimarket.nodes.node_rrh_compute.handlers.handler_rrh_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  release_id:
+    type: str
+    required: true
+    description: "Release identifier (e.g. semver tag or release branch name)"
+  checks:
+    type: list[str]
+    required: false
+    default: []
+    description: "Named readiness checks to evaluate; empty means all registered checks"
+
+outputs:
+  ready:
+    type: bool
+    description: "True when all required checks pass"
+  results:
+    type: list[object]
+    description: "Per-check validation result with name, passed, and detail"
+  blocking_checks:
+    type: list[str]
+    description: "Names of checks that failed and block the release"
+  status:
+    type: str
+    enum: [ok, error]
+
+terminal_event: onex.evt.omnimarket.rrh-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.rrh-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.rrh-completed.v1
+
+metadata:
+  transport_type: kafka

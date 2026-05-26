@@ -340,6 +340,12 @@ node_checkpoint_compute = "omnimarket.nodes.node_checkpoint_compute"
 node_env_sync_alert_effect = "omnimarket.nodes.node_env_sync_alert_effect"
 node_feature_dashboard_compute = "omnimarket.nodes.node_feature_dashboard_compute"
 node_ticket_plan_compute = "omnimarket.nodes.node_ticket_plan_compute"
+node_insights_to_plan_compute = "omnimarket.nodes.node_insights_to_plan_compute"
+node_plan_audit_compute = "omnimarket.nodes.node_plan_audit_compute"
+node_resume_session_compute = "omnimarket.nodes.node_resume_session_compute"
+node_rewind_compute = "omnimarket.nodes.node_rewind_compute"
+node_rrh_compute = "omnimarket.nodes.node_rrh_compute"
+node_skill_functional_audit_compute = "omnimarket.nodes.node_skill_functional_audit_compute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

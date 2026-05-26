@@ -1,0 +1,59 @@
+---
+name: node_plan_audit_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Validate a plan YAML file: field presence checks, schema validation, and
+  dependency cycle detection. Produces a per-check pass/fail report with
+  violation details. Pure deterministic transform — no LLM calls.
+  STUB — not yet implemented.
+
+handler:
+  module: omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute
+  class: HandlerPlanAuditCompute
+  input_model: omnimarket.nodes.node_plan_audit_compute.models.model_plan_audit_compute_request.ModelPlanAuditComputeRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerPlanAuditCompute
+        module: omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  plan_path:
+    type: str
+    required: true
+    description: "Absolute path to the plan YAML file to audit"
+
+outputs:
+  passed:
+    type: bool
+    description: "True when all checks pass"
+  checks:
+    type: list[object]
+    description: "Per-check result objects with name, passed, and violation detail"
+  violations:
+    type: list[str]
+    description: "Human-readable list of violation messages"
+  status:
+    type: str
+    enum: [ok, error]
+
+terminal_event: onex.evt.omnimarket.plan-audit-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.plan-audit-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.plan-audit-completed.v1
+
+metadata:
+  transport_type: kafka

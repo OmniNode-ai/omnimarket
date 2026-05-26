@@ -1,0 +1,68 @@
+---
+name: node_rewind_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Query the event stream for a named agent within a timestamp window. Returns
+  all matching events and a summary of actions taken. Pure deterministic
+  projection — no LLM calls, same inputs yield identical output.
+  STUB — not yet implemented.
+
+handler:
+  module: omnimarket.nodes.node_rewind_compute.handlers.handler_rewind_compute
+  class: HandlerRewindCompute
+  input_model: omnimarket.nodes.node_rewind_compute.models.model_rewind_compute_request.ModelRewindComputeRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerRewindCompute
+        module: omnimarket.nodes.node_rewind_compute.handlers.handler_rewind_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  agent_name:
+    type: str
+    required: true
+    description: "Name of the agent whose event stream to query"
+  timestamp:
+    type: str
+    required: true
+    description: "ISO 8601 anchor timestamp for the rewind window"
+  window_seconds:
+    type: int
+    required: false
+    default: 3600
+    description: "Look-back window in seconds from the anchor timestamp"
+
+outputs:
+  events:
+    type: list[object]
+    description: "Matching events within the window, ordered by timestamp ascending"
+  actions_taken:
+    type: list[str]
+    description: "Human-readable summary of actions the agent took in the window"
+  event_count:
+    type: int
+    description: "Total number of events returned"
+  status:
+    type: str
+    enum: [ok, not_found, error]
+
+terminal_event: onex.evt.omnimarket.rewind-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.rewind-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.rewind-completed.v1
+
+metadata:
+  transport_type: kafka
