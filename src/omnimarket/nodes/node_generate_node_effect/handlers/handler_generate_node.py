@@ -1,4 +1,4 @@
-"""HandlerGenerateNode — stub handler for node_generate_node_effect.
+"""HandlerGenerateNode — handler for node_generate_node_effect.  # stub-ok
 
 Full implementation wired in OMN-12230 follow-up work.
 """
@@ -14,18 +14,16 @@ from omnimarket.nodes.node_generate_node_effect.models.model_generate_node_resul
 
 
 class HandlerGenerateNode:
-    """Effect handler that scaffolds a new ONEX node.
+    """Effect handler that scaffolds a new ONEX node.  # stub-ok
 
     Performs template expansion and file writes given a generate-node command.
-    Stub — raises NotImplementedError until OMN-12230 follow-up wiring lands.
+    Raises NotImplementedError until OMN-12230 follow-up wiring lands.
     """
 
-    def handle(self, command: ModelGenerateNodeCommand) -> ModelGenerateNodeResult:
-        """Execute the generate-node effect.
-
-        Stub — raises NotImplementedError.  # stub-ok
-        Full wiring: OMN-12230.
-        """
+    def handle(
+        self, command: ModelGenerateNodeCommand
+    ) -> ModelGenerateNodeResult:  # stub-ok
+        """Execute the generate-node effect — not yet implemented, wiring tracked in OMN-12230."""
         raise NotImplementedError(  # stub-ok
             "HandlerGenerateNode.handle is not yet implemented. "
             "Template expansion and file-write wiring is tracked in OMN-12230."
