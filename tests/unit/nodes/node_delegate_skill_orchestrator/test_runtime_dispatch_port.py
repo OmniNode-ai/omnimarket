@@ -64,6 +64,56 @@ async def _publish_terminal_response(
 
 
 @pytest.mark.unit
+async def test_runtime_dispatch_port_publishes_message_type_not_topic_as_event_type() -> (
+    None
+):
+    """Envelope event_type must be the routing key, not the full topic string.
+
+    The MessageDispatchEngine matches on envelope.event_type against the route's
+    message_type filter ("omnibase-infra.delegation-request"). When event_type is
+    set to the full topic string ("onex.cmd.omnibase-infra.delegation-request.v1"),
+    the route-level filter rejects the message and no dispatcher runs (OMN-12197).
+    """
+    bus = EventBusInmemory(environment="test", group="delegate-skill-port")
+    captured_envelopes: list[dict[str, object]] = []
+    await bus.start()
+
+    async def on_command(message: ModelEventMessage) -> None:
+        import json
+
+        raw = json.loads(message.value)
+        captured_envelopes.append(raw)
+
+    try:
+        await bus.subscribe(
+            TOPIC_DELEGATION_REQUEST,
+            group_id=f"delegate-skill-port-event-type-test-{uuid4()}",
+            on_message=on_command,
+        )
+        port = RuntimeDelegationDispatchPort(event_bus=bus)
+        await port.dispatch(
+            prompt="Write tests",
+            task_type="test",
+            correlation_id=uuid4(),
+            max_tokens=512,
+            source_file_path=None,
+            source_session_id=None,
+            wait=False,
+            quality_contract_mode="replace_task_class",
+            acceptance_criteria=(),
+        )
+    finally:
+        await bus.close()
+
+    assert len(captured_envelopes) == 1
+    env = captured_envelopes[0]
+    assert env.get("event_type") == "omnibase-infra.delegation-request", (
+        f"envelope event_type must be the routing key, not the full topic string, "
+        f"got: {env.get('event_type')!r}"
+    )
+
+
+@pytest.mark.unit
 async def test_runtime_dispatch_port_round_trips_internal_delegation_result() -> None:
     bus = EventBusInmemory(environment="test", group="delegate-skill-port")
     received_requests: list[ModelDelegationRequest] = []
