@@ -34,7 +34,7 @@ class ModelContextPackExtended(ModelContextPack):
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
 
     # Override chunks to use the extended type
-    chunks: tuple[ModelContextChunkExtended, ...]  # type: ignore[assignment]
+    chunks: tuple[ModelContextChunkExtended, ...]
 
     # Factor precedence tuple used during assembly (research doc §2.3)
     factor_ordering: tuple[EnumContextFactor, ...]

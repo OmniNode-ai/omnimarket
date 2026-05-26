@@ -33,7 +33,7 @@ class HandlerDecomposeEpicOrchestrator:
     Stub implementation. Full implementation tracked in OMN-12214.
     """
 
-    async def handle(  # type: ignore[return]
+    async def handle(
         self, request: ModelDecomposeEpicRequest
     ) -> ModelHandlerOutput:  # type: ignore[type-arg]
         """Decompose a Linear epic into sub-tickets."""
