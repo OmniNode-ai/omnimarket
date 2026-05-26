@@ -1,0 +1,23 @@
+name: node_multi_agent_orchestrator
+version: "1.0.0"
+description: "Fan-out/fan-in multi-agent workflow coordinator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_multi_agent_orchestrator: "omnimarket.nodes.node_multi_agent_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["multi-agent", "parallel", "orchestrator", "fan-out", "fan-in"]
+pack: "multi-agent"
+display_name: "Multi-Agent Orchestrator"
+node_role: "orchestrator"
