@@ -700,6 +700,12 @@ class HandlerDelegationWorkflow:
             compat_event,
         ]
 
+    def handle(self, payload: object) -> None:
+        # Auto-wired by handler_routing for delegation.orchestrate alias generation.
+        # PluginDelegation's DispatcherDelegationRequest processes the real request
+        # first; this no-op prevents AttributeError when auto-wired dispatcher fires.
+        return None
+
     @staticmethod
     def _render_lifecycle_content(
         lifecycle_event: ModelAgentTaskLifecycleEvent,

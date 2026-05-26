@@ -84,6 +84,13 @@ class HandlerComplianceLoop:
     def handler_category(self) -> EnumHandlerTypeCategory:
         return EnumHandlerTypeCategory.COMPUTE
 
+    def handle(self, payload: object) -> None:
+        # Auto-wired by handler_routing for delegation.evaluate_compliance alias.
+        # HandlerComplianceLoop is pure compute, invoked in-process by
+        # HandlerDelegationWorkflow — never routed via the bus. No-op prevents
+        # AttributeError when auto-wired dispatcher fires. See OMN-12249.
+        return None
+
     def evaluate(
         self,
         *,
