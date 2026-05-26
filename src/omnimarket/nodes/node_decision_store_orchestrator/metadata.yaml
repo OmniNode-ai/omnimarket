@@ -1,0 +1,19 @@
+name: node_decision_store_orchestrator
+version: "1.0.0"
+description: "Decision store orchestrator — conflict check, LLM review, persist, notify (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_decision_store_orchestrator: "omnimarket.nodes.node_decision_store_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "decision-store", "conflict-detection", "architecture", "governance"]
+pack: "build"
+display_name: "Decision Store Orchestrator"
+node_role: "orchestrator"
