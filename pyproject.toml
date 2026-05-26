@@ -272,6 +272,7 @@ node_evidence_publisher_effect = "omnimarket.nodes.node_evidence_publisher_effec
 node_deployment_evidence_reducer = "omnimarket.nodes.node_deployment_evidence_reducer"
 node_pr_watch_orchestrator = "omnimarket.nodes.node_pr_watch_orchestrator"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
+node_friction_triage_orchestrator = "omnimarket.nodes.node_friction_triage_orchestrator"
 node_test_generator = "omnimarket.nodes.node_test_generator"
 node_version_skew_detector = "omnimarket.nodes.node_version_skew_detector"
 node_e2e_orchestrator = "omnimarket.nodes.node_e2e_orchestrator"

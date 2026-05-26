@@ -1,0 +1,51 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Friction Triage Orchestrator (OMN-12205)
+#
+# Orchestrator: reads friction registry, deduplicates against Linear tickets,
+# creates new tickets for friction surfaces crossing threshold.
+name: node_friction_triage_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Friction triage orchestrator. Reads the friction registry (NDJSON), aggregates
+  events by skill:surface over a rolling window, deduplicates against open Linear
+  tickets via stable surface-key markers, and creates new tickets for surfaces where
+  count >= 3 OR severity_score >= 9. STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_friction_triage_orchestrator.handlers.handler_friction_triage_orchestrator
+  class: HandlerFrictionTriageOrchestrator
+  input_model: omnimarket.nodes.node_friction_triage_orchestrator.models.model_friction_triage_request.ModelFrictionTriageRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerFrictionTriageOrchestrator
+        module: omnimarket.nodes.node_friction_triage_orchestrator.handlers.handler_friction_triage_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  consumer_group: omnimarket.friction_triage_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.friction-triage-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.friction-triage-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.friction-triage.v1
+
+metadata:
+  transport_type: kafka

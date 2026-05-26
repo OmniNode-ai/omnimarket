@@ -1,0 +1,19 @@
+name: node_friction_triage_orchestrator
+version: "1.0.0"
+description: "Friction triage orchestrator — reads registry, deduplicates, creates Linear tickets (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_friction_triage_orchestrator: "omnimarket.nodes.node_friction_triage_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "friction", "triage", "linear", "observability"]
+pack: "build"
+display_name: "Friction Triage Orchestrator"
+node_role: "orchestrator"
