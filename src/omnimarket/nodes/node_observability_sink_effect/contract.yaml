@@ -1,0 +1,54 @@
+---
+name: node_observability_sink_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 4 effect node that persists observability events (action
+  logs, execution records, agent-tracking metrics) to the configured storage
+  backends (Kafka and/or PostgreSQL). Replaces the direct ActionLogger + Postgres
+  writes currently made inline by the observability skill, routing all I/O through
+  the node dispatch bus and eliminating the architectural bypass.
+
+input_model:
+  name: ModelObservabilitySinkInput
+  module: omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_input
+  description: "Batch of action events and session context to persist."
+output_model:
+  name: ModelObservabilitySinkOutput
+  module: omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_output
+  description: "Persistence acknowledgement with event count and trace IDs."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 30000
+
+terminal_event: onex.evt.omnimarket.observability-persisted.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.observability-sink.v1
+  publish_topics:
+    - onex.evt.omnimarket.observability-persisted.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.observability-persisted.v1
+
+side_effects:
+  reads: []
+  writes:
+    - kafka_publish
+    - postgres_insert
+  duplicate_key_fields:
+    - correlation_id
+    - session_id
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 4
+  handlers_deferred_until_wave: 5
+  related_tickets: ["OMN-12217"]
