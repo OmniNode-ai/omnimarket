@@ -1,0 +1,93 @@
+---
+name: node_contract_drift_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Compute cross-repo contract drift by hashing all contracts against pinned baselines
+  and classifying field-level changes as BREAKING, ADDITIVE, or NON_BREAKING. Also
+  validates Kafka boundary parity from kafka_boundaries.yaml. Pure compute node —
+  no external I/O, no LLM calls.
+
+handler:
+  module: omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute
+  class: NodeContractDriftCompute
+  input_model: omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute.ModelContractDriftComputeRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute
+      handler:
+        name: NodeContractDriftCompute
+        module: omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  repos:
+    type: list[str]
+    description: "Repository names to scan for contract drift (default: all 8 canonical repos)"
+    required: false
+    default: []
+  baseline_path:
+    type: str
+    description: "Path to the snapshot directory containing pinned contract hashes"
+    required: false
+    default: ""
+  dry_run:
+    type: bool
+    description: "If true, return findings without creating tickets"
+    required: false
+    default: false
+  sensitivity:
+    type: str
+    description: "Drift sensitivity: STRICT | STANDARD | LAX (default: STANDARD)"
+    required: false
+    default: "STANDARD"
+  severity_threshold:
+    type: str
+    description: "Minimum severity for reporting: BREAKING | ADDITIVE | NON_BREAKING (default: BREAKING)"
+    required: false
+    default: "BREAKING"
+  check_boundaries:
+    type: bool
+    description: "When true, also validate Kafka boundary parity from kafka_boundaries.yaml"
+    required: false
+    default: true
+
+outputs:
+  drifted_contracts:
+    type: list[ModelContractDriftFinding]
+    description: "List of contract drift findings with field-level change analysis"
+  boundary_findings:
+    type: list[ModelBoundaryFinding]
+    description: "List of Kafka boundary staleness findings"
+  staleness_scores:
+    type: dict[str, float]
+    description: "Per-repo staleness score (0.0 = clean, 1.0 = fully stale)"
+  violations:
+    type: list[str]
+    description: "Flat list of violation summaries for quick triage"
+  overall_status:
+    type: str
+    description: "clean | drifted | breaking"
+
+terminal_event: onex.evt.omnimarket.contract-drift-compute-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-drift-compute-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-drift-finding.v1
+    - onex.evt.omnimarket.contract-drift-compute-completed.v1
+    - onex.evt.omnimarket.sweep-result.v1
+
+metadata:
+  transport_type: kafka
