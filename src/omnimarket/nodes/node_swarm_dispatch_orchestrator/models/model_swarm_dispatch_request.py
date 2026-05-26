@@ -33,6 +33,8 @@ class ModelSwarmDispatchRequest(BaseModel):
     correlation_id: str
     run_id: str
     config: ModelSwarmConfig | None = None
+    # Caller hint for model-tier routing; not consumed by the FSM itself.
+    model_tier: str | None = None
 
 
 class ModelSwarmHealthCheckCommand(BaseModel):
