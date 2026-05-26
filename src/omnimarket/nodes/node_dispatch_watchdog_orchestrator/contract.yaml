@@ -1,0 +1,75 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dispatch Watchdog Orchestrator (OMN-12209)
+#
+# Epic-level sidecar: monitors all Task() subagents in a wave for stalls,
+# triggers recovery (report | cancel | redispatch), and escalates blocked tasks
+# to Linear when max_redispatches is exceeded.
+name: node_dispatch_watchdog_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Dispatch watchdog orchestrator. Epic-level sidecar that monitors ALL Task()
+  subagents in an epic wave for stalls (inactivity beyond a configurable timeout),
+  triggers recovery actions (report | cancel | redispatch), and escalates
+  repeatedly-stalling tasks to Blocked in Linear. Complementary to
+  node_worker_stall_recovery (single-agent scope); this node covers the full wave.
+
+  Stall detection criteria:
+    1. No tool calls for `check_interval * stall_multiplier` seconds.
+    2. Task status is still in_progress (not completed or failed).
+    3. Bash long-timeout exemption: if the agent's last tool was Bash with
+       timeout_ms > 120000, stall threshold extends to (bash_timeout_ms/1000 + 60s).
+
+  Recovery modes:
+    - report     : Log stall event; do not intervene.
+    - cancel     : Send shutdown_request; leave ticket incomplete.
+    - redispatch : Kill stalled agent; redispatch with narrower scope (default).
+
+  Escalation: when a task exceeds max_redispatches, move ticket to Blocked in
+  Linear, write a friction event to .onex_state/friction/, and log escalation
+  to .onex_state/dispatch-log/{date}.ndjson.
+
+handler:
+  module: omnimarket.nodes.node_dispatch_watchdog_orchestrator.handlers.handler_watchdog
+  class: HandlerDispatchWatchdogOrchestrator
+  input_model: omnimarket.nodes.node_dispatch_watchdog_orchestrator.handlers.handler_watchdog.ModelWatchdogRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDispatchWatchdogOrchestrator
+        module: omnimarket.nodes.node_dispatch_watchdog_orchestrator.handlers.handler_watchdog
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.watchdog-check-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.dispatch_watchdog_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.watchdog-check.v1
+  publish_topics:
+    - onex.evt.omnimarket.watchdog-check-completed.v1
+    - onex.evt.omnimarket.watchdog-stall-detected.v1
+    - onex.evt.omnimarket.watchdog-task-escalated.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.watchdog-check.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 2
+  related_tickets: ["OMN-12209"]
+  skill_source: omniclaude/plugins/onex/skills/dispatch_watchdog/
