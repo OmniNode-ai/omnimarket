@@ -2,11 +2,15 @@
 
 Verifies the handler can classify pages, triage problem domains,
 and emit completion events via EventBusInmemory.
+
+Also covers Phase 1 HTTP recon via a lightweight stub that replaces
+_fetch_page so no live network calls are required in unit tests.
 """
 
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -16,11 +20,42 @@ from omnimarket.nodes.node_dashboard_sweep.handlers.handler_dashboard_sweep impo
     EnumFixTier,
     EnumPageStatus,
     ModelPageInput,
+    ModelReconResult,
     NodeDashboardSweep,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.dashboard-sweep-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.dashboard-sweep-completed.v1"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_HOME_HTML = """<!DOCTYPE html>
+<html><body>
+  <nav>
+    <a href="/agents">Agents</a>
+    <a href="/events">Events</a>
+  </nav>
+</body></html>"""
+
+_NORMAL_BODY = "<html><body><p>Real content here</p></body></html>"
+
+
+def _stub_fetch(url: str) -> tuple[int, str, int, str]:
+    """Return deterministic HTTP responses keyed on URL suffix."""
+    if url.endswith("/"):
+        return 200, "text/html", len(_HOME_HTML), _HOME_HTML
+    if url.endswith("/error-page"):
+        return 500, "text/html", 50, "500 Internal Server Error"
+    if url.endswith("/mock-page"):
+        return 200, "text/html", 80, "Sample Agent count: 42 placeholder"
+    return 200, "text/html", len(_NORMAL_BODY), _NORMAL_BODY
+
+
+# ---------------------------------------------------------------------------
+# Classification tests (pass-through / pre-classified pages mode)
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
@@ -189,3 +224,164 @@ class TestDashboardSweepGoldenChain:
         result = handler.handle(request)
 
         assert result.page_statuses[0].status == EnumPageStatus.BROKEN
+
+    async def test_recon_results_empty_without_base_url(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """recon_results should be empty when no base_url is supplied."""
+        handler = NodeDashboardSweep()
+        request = DashboardSweepRequest(
+            pages=[
+                ModelPageInput(route="/agents", has_data=True, has_live_timestamps=True)
+            ]
+        )
+        result = handler.handle(request)
+
+        assert result.recon_results == []
+
+
+# ---------------------------------------------------------------------------
+# Recon phase tests (Phase 1 HTTP recon — _fetch_page stubbed)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDashboardSweepRecon:
+    """Unit tests for Phase 1 HTTP recon logic (network calls stubbed)."""
+
+    def test_recon_discovers_routes_from_home_html(self) -> None:
+        """Phase 1 discovers routes from <a href> links in the home page."""
+        handler = NodeDashboardSweep()
+        module_path = (
+            "omnimarket.nodes.node_dashboard_sweep"
+            ".handlers.handler_dashboard_sweep._fetch_page"
+        )
+        with patch(module_path, side_effect=_stub_fetch):
+            results = handler._run_recon("http://localhost:3000", [])
+
+        routes = {r.route for r in results}
+        # /agents and /events are in _HOME_HTML links.
+        assert "/agents" in routes
+        assert "/events" in routes
+        # Known default routes are always included.
+        assert "/" in routes
+
+    def test_recon_5xx_sets_network_error_on_page_input(self) -> None:
+        """A 500 response from recon should produce has_network_errors=True."""
+        handler = NodeDashboardSweep()
+        recon = ModelReconResult(
+            route="/error-page",
+            status_code=500,
+            content_type="text/html",
+            body_size=50,
+            body_snippet="500 Internal Server Error",
+            has_error_text=True,
+        )
+        page_input = handler._recon_to_page_input(recon)
+
+        assert page_input.has_network_errors is True
+        assert page_input.has_js_errors is False
+
+    def test_recon_error_text_sets_js_error_when_status_ok(self) -> None:
+        """has_error_text on a 200 response should produce has_js_errors=True."""
+        handler = NodeDashboardSweep()
+        recon = ModelReconResult(
+            route="/broken-js",
+            status_code=200,
+            content_type="text/html",
+            body_size=80,
+            body_snippet="<!DOCTYPE html>...ChunkLoadError: loading chunk 42 failed",
+            has_error_text=True,
+        )
+        page_input = handler._recon_to_page_input(recon)
+
+        assert page_input.has_js_errors is True
+        assert page_input.has_network_errors is False
+
+    def test_recon_mock_body_sets_mock_flag(self) -> None:
+        """Mock patterns in the recon body snippet should set has_mock_patterns."""
+        handler = NodeDashboardSweep()
+        recon = ModelReconResult(
+            route="/mock-page",
+            status_code=200,
+            content_type="text/html",
+            body_size=60,
+            body_snippet="Sample Agent with count: 42 placeholder",
+            has_error_text=False,
+        )
+        page_input = handler._recon_to_page_input(recon)
+
+        assert page_input.has_mock_patterns is True
+
+    def test_recon_integration_with_base_url(self) -> None:
+        """Full handle() with base_url stub: recon_results populated, pages classified."""
+        handler = NodeDashboardSweep()
+        module_path = (
+            "omnimarket.nodes.node_dashboard_sweep"
+            ".handlers.handler_dashboard_sweep._fetch_page"
+        )
+        with patch(module_path, side_effect=_stub_fetch):
+            request = DashboardSweepRequest(
+                base_url="http://localhost:3000",
+                dry_run=True,
+            )
+            result = handler.handle(request)
+
+        assert len(result.recon_results) > 0
+        assert result.pages_total > 0
+        # All discovered pages have a classification.
+        assert len(result.page_statuses) == result.pages_total
+
+    def test_pre_supplied_pages_take_priority_over_recon(self) -> None:
+        """Pre-supplied pages should not be overwritten by recon for the same route."""
+        handler = NodeDashboardSweep()
+        module_path = (
+            "omnimarket.nodes.node_dashboard_sweep"
+            ".handlers.handler_dashboard_sweep._fetch_page"
+        )
+        with patch(module_path, side_effect=_stub_fetch):
+            # /agents would be discovered by recon with no semantic flags set,
+            # but we pre-supply it as HEALTHY (has_data+has_live_timestamps).
+            request = DashboardSweepRequest(
+                base_url="http://localhost:3000",
+                pages=[
+                    ModelPageInput(
+                        route="/agents",
+                        has_data=True,
+                        has_live_timestamps=True,
+                    )
+                ],
+            )
+            result = handler.handle(request)
+
+        # Find the /agents classification.
+        agents_status = next(ps for ps in result.page_statuses if ps.route == "/agents")
+        assert agents_status.status == EnumPageStatus.HEALTHY
+
+    def test_recon_unreachable_host_returns_network_error(self) -> None:
+        """A connection failure (status_code=0) maps to has_network_errors=True."""
+        handler = NodeDashboardSweep()
+        recon = ModelReconResult(
+            route="/unreachable",
+            status_code=0,
+            content_type="",
+            body_size=0,
+            body_snippet="",
+            has_error_text=False,
+        )
+        page_input = handler._recon_to_page_input(recon)
+
+        assert page_input.has_network_errors is True
+
+    def test_extra_routes_included_in_recon(self) -> None:
+        """extra_routes supplied to the request are probed during recon."""
+        handler = NodeDashboardSweep()
+        module_path = (
+            "omnimarket.nodes.node_dashboard_sweep"
+            ".handlers.handler_dashboard_sweep._fetch_page"
+        )
+        with patch(module_path, side_effect=_stub_fetch):
+            results = handler._run_recon("http://localhost:3000", ["/custom-route"])
+
+        routes = {r.route for r in results}
+        assert "/custom-route" in routes
