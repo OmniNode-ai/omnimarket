@@ -1,0 +1,19 @@
+name: node_feature_dashboard_compute
+version: "1.0.0"
+description: "Pure skill connectivity audit across 8 platform layers (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_feature_dashboard_compute: "omnimarket.nodes.node_feature_dashboard_compute"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "feature", "dashboard", "coverage", "skills", "audit"]
+pack: "audit"
+display_name: "Feature Dashboard Compute"
+node_role: "compute"
