@@ -1,0 +1,66 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Demo Cost Compute (OMN-12235)
+#
+# Pure COMPUTE node: pricing lookup + cost calculation from inference results.
+name: node_demo_cost_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Demo cost compute node. Accepts per-model inference results with token counts,
+  applies per-model pricing tables, and returns costs per model plus the cheapest
+  model identifier. Pure, deterministic, no LLM calls, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_demo_cost_compute.handlers.handler_cost_compute
+  class: NodeDemoCostCompute
+  input_model: omnimarket.nodes.node_demo_cost_compute.models.model_cost_request.ModelDemoCostRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute
+      handler:
+        name: NodeDemoCostCompute
+        module: omnimarket.nodes.node_demo_cost_compute.handlers.handler_cost_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+inputs:
+  inference_results:
+    type: list[ModelDemoInferenceResult]
+    description: "Per-model inference results containing token counts"
+    required: true
+  pricing_table:
+    type: dict[str, ModelDemoModelPricing]
+    description: "Per-model pricing config keyed by model_id"
+    required: true
+
+outputs:
+  costs:
+    type: list[ModelDemoCostEntry]
+    description: "Cost per model with breakdown"
+  cheapest_model_id:
+    type: str | null
+    description: "model_id of the lowest-cost model, or null if no results"
+
+terminal_event: onex.evt.omnimarket.demo-cost-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.demo-cost-compute.v1
+  publish_topics:
+    - onex.evt.omnimarket.demo-cost-computed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 7
+  related_tickets: ["OMN-12235"]

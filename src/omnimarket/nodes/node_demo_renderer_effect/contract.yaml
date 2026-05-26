@@ -1,0 +1,69 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Demo Renderer Effect (OMN-12235)
+#
+# EFFECT_GENERIC node: renders cost data as an ASCII bar chart.
+name: node_demo_renderer_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Demo renderer effect node. Accepts per-model cost data and renders it as
+  an ASCII bar chart with one bar per model, scaled to the highest cost.
+  Outputs a list of rendered chart lines suitable for terminal display.
+
+handler:
+  module: omnimarket.nodes.node_demo_renderer_effect.handlers.handler_renderer
+  class: NodeDemoRendererEffect
+  input_model: omnimarket.nodes.node_demo_renderer_effect.models.model_render_request.ModelDemoRenderRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: NodeDemoRendererEffect
+        module: omnimarket.nodes.node_demo_renderer_effect.handlers.handler_renderer
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles: [effects]
+  timeout_ms: 10000
+
+inputs:
+  cost_result:
+    type: ModelDemoCostResult
+    description: "Cost data from node_demo_cost_compute"
+    required: true
+  bar_width:
+    type: int
+    description: "Maximum width of chart bars in characters"
+    required: false
+    default: 40
+
+outputs:
+  chart_lines:
+    type: list[str]
+    description: "Rendered ASCII bar chart lines, one per model"
+
+terminal_event: onex.evt.omnimarket.demo-chart-rendered.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.demo-cost-computed.v1
+  publish_topics:
+    - onex.evt.omnimarket.demo-chart-rendered.v1
+
+side_effects:
+  reads: []
+  writes:
+    - stdout_terminal
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 7
+  related_tickets: ["OMN-12235"]

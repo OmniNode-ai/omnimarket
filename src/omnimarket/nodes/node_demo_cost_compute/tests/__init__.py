@@ -1,0 +1,1 @@
+"""Tests for node_demo_cost_compute."""
