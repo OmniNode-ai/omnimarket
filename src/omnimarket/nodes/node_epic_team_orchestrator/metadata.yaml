@@ -1,0 +1,23 @@
+name: node_epic_team_orchestrator
+version: "1.0.0"
+description: "Multi-repo sprint orchestrator: epic → DAG → wave dispatch → stall recovery → DoD gate (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_epic_team_orchestrator: "omnimarket.nodes.node_epic_team_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrates
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "epic", "team", "multi-repo", "wave-dispatch", "OMN-12206"]
+pack: "build"
+display_name: "Epic Team Orchestrator"
+node_role: "orchestrator"
