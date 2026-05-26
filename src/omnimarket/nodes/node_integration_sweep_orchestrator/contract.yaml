@@ -18,6 +18,10 @@ handler_routing:
       handler:
         name: HandlerIntegrationSweepOrchestrator
         module: omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integration_sweep_orchestrator
+    - operation: surface_probes
+      handler:
+        name: surface_probes
+        module: omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes
 
 env_dependencies:
   ONEX_CC_REPO_PATH:

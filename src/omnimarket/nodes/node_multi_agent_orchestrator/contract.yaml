@@ -1,0 +1,68 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Multi-Agent Orchestrator (OMN-12207)
+#
+# Fan-out/fan-in orchestrator: dispatches parallel or sequential sub-agent tasks,
+# collects results, reconciles conflicts, and emits an aggregated findings event.
+name: node_multi_agent_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Multi-agent coordination orchestrator. Implements three workflow modes from the
+  multi_agent skill: parallel-debug (fan out independent failure investigations),
+  parallel-build (fan out independent implementation tasks with quality validation),
+  and sequential-review (chain tasks sequentially with code review between each).
+
+  Fan-out: emits one sub-agent dispatch command per independent task.
+  Fan-in: collects agent results, reconciles conflicts via geometric classification,
+  and emits an aggregated findings event.
+
+  Phase 1 (Wave 2): contract + typed I/O models + handler stub.
+  Full implementation deferred to Wave 3 (OMN-12207).
+
+handler:
+  module: omnimarket.nodes.node_multi_agent_orchestrator.handlers.handler_multi_agent
+  class: HandlerMultiAgentOrchestrator
+  input_model: omnimarket.nodes.node_multi_agent_orchestrator.handlers.handler_multi_agent.ModelMultiAgentRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerMultiAgentOrchestrator
+        module: omnimarket.nodes.node_multi_agent_orchestrator.handlers.handler_multi_agent
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.multi-agent-workflow-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.multi_agent_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.multi-agent-start.v1
+  publish_topics:
+    - onex.cmd.omnimarket.agent-task-dispatch.v1
+    - onex.evt.omnimarket.multi-agent-workflow-completed.v1
+    - onex.evt.omnimarket.agent-task-result.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.multi-agent-start.v1
+
+externally_consumed_topics:
+  - onex.cmd.omnimarket.agent-task-dispatch.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 3
+  handlers_deferred_until_wave: 3
+  related_tickets: ["OMN-12207"]
+  skill_source: omniclaude/plugins/onex/skills/multi_agent/

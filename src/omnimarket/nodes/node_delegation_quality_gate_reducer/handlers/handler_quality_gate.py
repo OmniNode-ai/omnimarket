@@ -115,6 +115,14 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
+_THINKING_TRACE_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def _strip_thinking_traces(content: str) -> str:
+    """Remove <think>...</think> blocks produced by thinking-capable models."""
+    return _THINKING_TRACE_RE.sub("", content)
+
+
 def _strip_markdown_code_fence(content: str) -> str:
     """Return fenced code body when content is a single markdown code block."""
     stripped = content.strip()
@@ -282,7 +290,7 @@ def _evaluate_deterministic_checks(
             reason = _check_uses_pytest_mark_unit(content)
         elif check == "docstring_present":
             reason = _check_docstring_present(content)
-        elif check in ("response_non_empty", "task_completed"):
+        elif check in ("response_non_empty", "task_completed", "passes_existing_tests"):
             reason = _check_response_non_empty(content)
         elif check == "exactly_two_sentences":
             reason = _check_exactly_two_sentences(content)
@@ -375,7 +383,7 @@ def _run_legacy_checks(
     gate_input: ModelQualityGateInput,
 ) -> ModelQualityGateResult:
     """Fallback: run the original hardcoded heuristic checks."""
-    content = gate_input.llm_response_content
+    content = _strip_thinking_traces(gate_input.llm_response_content)
     task_type = gate_input.task_type
     failure_reasons: list[str] = []
     scores: dict[str, float] = {}
@@ -468,7 +476,7 @@ def delta(gate_input: ModelQualityGateInput) -> ModelQualityGateResult:
     if not has_contract_dod:
         return _run_legacy_checks(gate_input)
 
-    content = gate_input.llm_response_content
+    content = _strip_thinking_traces(gate_input.llm_response_content)
     det_failures, heuristic_failures = _run_contract_checks(
         content, dod_deterministic, dod_heuristic
     )

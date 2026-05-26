@@ -335,3 +335,235 @@ class TestTerminalEventEmission:
         assert len(publishes) == 1
         _, payload = publishes[0]
         assert payload["status"] == EnumSwarmRunStatus.FAILED.value
+
+
+class TestHandleAsyncReturnsNone:
+    """Verify handle_async returns None for non-terminal FSM states (OMN-12151).
+
+    The swarm dispatch orchestrator is a multi-step FSM.  After the initial
+    swarm-dispatch command arrives, the orchestrator is only in the RECEIVED
+    state — it has emitted one sub-command (swarm-check-endpoint-health) and is
+    waiting for response events on other topics.  Returning a non-None result
+    at this point would cause DispatchResultApplier to publish a premature
+    terminal event, short-circuiting the FSM before any real work is done.
+    """
+
+    @pytest.mark.asyncio
+    async def test_handle_async_returns_none_for_received_state(
+        self,
+        mock_bus: MagicMock,
+        request_fixture: ModelSwarmDispatchRequest,
+    ) -> None:
+        """handle_async must return None so the result applier skips terminal publish."""
+        from unittest.mock import AsyncMock
+
+        mock_bus.publish = AsyncMock()
+        handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
+
+        result = await handler.handle_async(request_fixture)  # type: ignore[func-returns-value]
+
+        assert result is None, (
+            "handle_async must return None for non-terminal RECEIVED state. "
+            "A non-None return causes DispatchResultApplier to fire a terminal "
+            "event prematurely, short-circuiting the 7-state FSM (OMN-12151)."
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_async_still_flushes_health_check_command(
+        self,
+        mock_bus: MagicMock,
+        request_fixture: ModelSwarmDispatchRequest,
+    ) -> None:
+        """handle_async must still publish the health-check sub-command even though it returns None."""
+        from unittest.mock import AsyncMock
+
+        publish_mock = AsyncMock()
+        mock_bus.publish = publish_mock
+        handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
+
+        await handler.handle_async(request_fixture)
+
+        assert publish_mock.call_count == 1, (
+            "Expected exactly one publish call for the health-check sub-command"
+        )
+        call_kwargs = publish_mock.call_args
+        topic = call_kwargs.kwargs.get(
+            "topic", call_kwargs.args[0] if call_kwargs.args else ""
+        )
+        assert "swarm-check-endpoint-health" in topic, (
+            f"Expected health-check topic, got: {topic!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_async_returns_none_on_exception(
+        self,
+        mock_bus: MagicMock,
+        request_fixture: ModelSwarmDispatchRequest,
+    ) -> None:
+        """handle_async must return None even when an exception occurs during RECEIVED.
+
+        The transition_failed method already published a swarm-dispatch-failed
+        terminal event via _flush; returning None here prevents the result applier
+        from also firing a terminal event.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        mock_bus.publish = AsyncMock()
+        handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
+
+        with patch.object(
+            handler,
+            "transition_received",
+            side_effect=RuntimeError("injected failure"),
+        ):
+            result = await handler.handle_async(request_fixture)  # type: ignore[func-returns-value]
+
+        assert result is None
+
+
+class TestMaxSubtasksThreading:
+    """max_subtasks from request flows through to the decompose command."""
+
+    def test_max_subtasks_stored_in_state(
+        self, handler: HandlerSwarmDispatchOrchestrator
+    ) -> None:
+        req = ModelSwarmDispatchRequest(
+            task="demo task",
+            endpoint_ids=("ep-1", "ep-2", "ep-3", "ep-4", "ep-5", "ep-6"),
+            max_subtasks=6,
+            run_id="run-ms",
+            correlation_id="corr-ms",
+        )
+        state = ModelOrchestratorState(
+            fsm_state=EnumSwarmOrchestratorState.RECEIVED,
+            run_id=req.run_id,
+            correlation_id=req.correlation_id,
+            original_task=req.task,
+        )
+        new_state, _ = handler.transition_received(state, req)
+        assert new_state.max_subtasks == 6
+
+    def test_max_subtasks_propagates_to_decompose_command(
+        self, handler: HandlerSwarmDispatchOrchestrator
+    ) -> None:
+        req = ModelSwarmDispatchRequest(
+            task="demo task",
+            endpoint_ids=("ep-1", "ep-2"),
+            max_subtasks=6,
+            run_id="run-ms2",
+            correlation_id="corr-ms2",
+        )
+        state = ModelOrchestratorState(
+            fsm_state=EnumSwarmOrchestratorState.RECEIVED,
+            run_id=req.run_id,
+            correlation_id=req.correlation_id,
+            original_task=req.task,
+        )
+        state_after_received, _ = handler.transition_received(state, req)
+        _state, publishes = handler.transition_health_checked(
+            state_after_received, _HEALTH_EVENT
+        )
+        assert len(publishes) == 1
+        _, decompose_payload = publishes[0]
+        assert decompose_payload["max_subtasks"] == 6
+
+    def test_default_max_subtasks_is_six(
+        self, handler: HandlerSwarmDispatchOrchestrator
+    ) -> None:
+        req = ModelSwarmDispatchRequest(
+            task="demo task",
+            endpoint_ids=("ep-1",),
+            run_id="run-ms3",
+            correlation_id="corr-ms3",
+        )
+        state = ModelOrchestratorState(
+            fsm_state=EnumSwarmOrchestratorState.RECEIVED,
+            run_id=req.run_id,
+            correlation_id=req.correlation_id,
+            original_task=req.task,
+        )
+        new_state, _ = handler.transition_received(state, req)
+        assert new_state.max_subtasks == 6
+
+
+class TestCostFieldsInCompletedPayload:
+    """Completed payload includes T4 cost/savings/speedup fields."""
+
+    def _build_aggregating_state_with_latency(
+        self,
+        handler: HandlerSwarmDispatchOrchestrator,
+        wall_latency_ms: int,
+        subtask_latency_ms: int,
+    ) -> ModelOrchestratorState:
+        fanout_event: dict[str, Any] = {
+            "dispatches": [
+                {
+                    "subtask_id": f"st-{i}",
+                    "endpoint_id": f"ep-{i}",
+                    "status": "succeeded",
+                    "latency_ms": subtask_latency_ms,
+                    "result_text": "done",
+                    "failure_reason": "",
+                    "wave": 0,
+                    "model_id": f"model-{i}",
+                    "base_url": f"https://ep-{i}.example.invalid",
+                }
+                for i in range(6)
+            ],
+            "wall_latency_ms": wall_latency_ms,
+        }
+        state = ModelOrchestratorState(
+            fsm_state=EnumSwarmOrchestratorState.ENDPOINTS_SELECTED,
+            run_id="run-cost",
+            correlation_id="corr-cost",
+            original_task="task",
+            subtasks=tuple(
+                ModelSubtask(subtask_id=f"st-{i}", description=f"sub {i}")
+                for i in range(6)
+            ),
+            assignments={f"st-{i}": f"ep-{i}" for i in range(6)},
+            endpoint_health={},
+        )
+        dispatching_state, _ = handler.transition_dispatching(state, fanout_event)
+        agg_state, _ = handler.transition_aggregating(
+            dispatching_state, {"aggregated_output": "merged"}
+        )
+        return agg_state
+
+    def test_total_cost_usd_is_zero(
+        self, handler: HandlerSwarmDispatchOrchestrator
+    ) -> None:
+        agg_state = self._build_aggregating_state_with_latency(handler, 8000, 5000)
+        _, publishes = handler.transition_completed(agg_state)
+        _, payload = publishes[0]
+        assert payload["total_cost_usd"] == 0.0
+
+    def test_cloud_equivalent_cost_positive(
+        self, handler: HandlerSwarmDispatchOrchestrator
+    ) -> None:
+        agg_state = self._build_aggregating_state_with_latency(handler, 8000, 5000)
+        _, publishes = handler.transition_completed(agg_state)
+        _, payload = publishes[0]
+        assert payload["cloud_equivalent_cost_usd"] > 0.0
+        assert payload["savings_usd"] == payload["cloud_equivalent_cost_usd"]
+
+    def test_parallelism_speedup_ratio_gt_one_when_parallel(
+        self, handler: HandlerSwarmDispatchOrchestrator
+    ) -> None:
+        # 6 subtasks x 5s each = 30s serial; wall = 8s parallel -> speedup ~3.75
+        agg_state = self._build_aggregating_state_with_latency(
+            handler, wall_latency_ms=8000, subtask_latency_ms=5000
+        )
+        _, publishes = handler.transition_completed(agg_state)
+        _, payload = publishes[0]
+        assert payload["parallelism_speedup_ratio"] > 1.0
+
+    def test_dispatch_wall_latency_in_payload(
+        self, handler: HandlerSwarmDispatchOrchestrator
+    ) -> None:
+        agg_state = self._build_aggregating_state_with_latency(
+            handler, wall_latency_ms=8000, subtask_latency_ms=5000
+        )
+        _, publishes = handler.transition_completed(agg_state)
+        _, payload = publishes[0]
+        assert payload["dispatch_wall_latency_ms"] == 8000

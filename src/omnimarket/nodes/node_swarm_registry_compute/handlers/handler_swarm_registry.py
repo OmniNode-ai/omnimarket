@@ -156,6 +156,7 @@ class HandlerSwarmRegistry:
             assignments=assignments,
             unroutable_subtasks=tuple(unroutable),
             selection_evidence=tuple(evidence),
+            run_id=request.run_id,
         )
 
 

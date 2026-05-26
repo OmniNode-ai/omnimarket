@@ -1,0 +1,64 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Epic Team Orchestrator (OMN-12206)
+#
+# Multi-repo sprint orchestrator: decompose epic → build DAG →
+# dispatch waves of ticket-pipeline agents → monitor stalls → verify completion.
+name: node_epic_team_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Epic team orchestrator. Consumes a Linear epic ID and autonomously drives it
+  to completion by: (1) fetching child tickets or invoking decompose-epic if
+  none exist, (2) assigning tickets to repos via repo_manifest keyword matching,
+  (3) constructing a dependency DAG and serialising it into parallel waves
+  (max 5 tickets per wave), (4) dispatching ticket-pipeline workers per ticket
+  via Agent Teams (TeamCreate + Agent with team_name), (5) monitoring for stalls
+  with a 5-minute inactivity timeout, (6) collecting per-wave results and
+  persisting checkpoint state, and (7) running the post-wave DoD compliance gate.
+  Handlers are deferred to the implementation wave (OMN-12206 stub).
+
+handler:
+  module: omnimarket.nodes.node_epic_team_orchestrator.handlers.handler_epic_team_orchestrator
+  class: HandlerEpicTeamOrchestrator
+  input_model: omnimarket.nodes.node_epic_team_orchestrator.models.model_epic_team_request.ModelEpicTeamRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerEpicTeamOrchestrator
+        module: omnimarket.nodes.node_epic_team_orchestrator.handlers.handler_epic_team_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 7200000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.epic-team-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.epic_team_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.epic-team-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.epic-team-wave-dispatched.v1
+    - onex.evt.omnimarket.epic-team-wave-completed.v1
+    - onex.evt.omnimarket.epic-team-completed.v1
+    - onex.evt.omnimarket.epic-team-stall-detected.v1
+    - onex.evt.omnimarket.epic-team-dod-gate-result.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.epic-team.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred: true
+  related_tickets: ["OMN-12206"]

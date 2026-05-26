@@ -25,6 +25,7 @@ class ModelSwarmHealthCheckResult(BaseModel):
 
     endpoint_health: dict[str, EndpointHealth]
     checked_at: str
+    run_id: str = ""
 
 
 __all__: list[str] = ["EndpointHealth", "ModelSwarmHealthCheckResult"]

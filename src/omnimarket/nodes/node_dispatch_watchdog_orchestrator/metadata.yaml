@@ -1,0 +1,24 @@
+name: node_dispatch_watchdog_orchestrator
+version: "1.0.0"
+description: "Epic-level watchdog for stalled dispatch tasks with report, cancel, and redispatch recovery modes"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dispatch_watchdog_orchestrator: "omnimarket.nodes.node_dispatch_watchdog_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: mutating
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "dispatch", "watchdog", "recovery", "OMN-12209"]
+pack: "orchestration"
+display_name: "Dispatch Watchdog Orchestrator"
+node_role: "orchestrator"
+node_not_implemented: true

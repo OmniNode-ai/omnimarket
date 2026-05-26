@@ -43,7 +43,7 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 30000
-  runtime_profiles: [market]
+  runtime_profiles: []
 
 event_bus:
   version: {major: 1, minor: 0, patch: 0}

@@ -1,0 +1,53 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Tech Debt Sweep Orchestrator (OMN-12212)
+#
+# Orchestrator: scans Python repos for tech debt, deduplicates against open
+# Linear tickets, creates epics + tickets by category.
+name: node_tech_debt_sweep_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Tech debt sweep orchestrator. Scans all Python repos under omni_home for 6
+  categories of tech debt (type-ignore, noqa, todo-fixme, any-types,
+  skipped-tests, stale-ignores), deduplicates findings against open Linear
+  tickets via stable content-hash dedup keys, and creates one Linear epic per
+  category with closeable tickets grouped by repo and top-level source
+  directory. STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_tech_debt_sweep_orchestrator.handlers.handler_tech_debt_sweep_orchestrator
+  class: HandlerTechDebtSweepOrchestrator
+  input_model: omnimarket.nodes.node_tech_debt_sweep_orchestrator.models.model_tech_debt_sweep_request.ModelTechDebtSweepRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerTechDebtSweepOrchestrator
+        module: omnimarket.nodes.node_tech_debt_sweep_orchestrator.handlers.handler_tech_debt_sweep_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  consumer_group: omnimarket.tech_debt_sweep_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.tech-debt-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.tech-debt-sweep-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.tech-debt-sweep.v1
+
+metadata:
+  transport_type: kafka

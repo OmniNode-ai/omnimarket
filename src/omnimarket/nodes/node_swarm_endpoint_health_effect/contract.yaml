@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_swarm_endpoint_health_effect
+contract_name: node_swarm_endpoint_health_effect
+node_name: node_swarm_endpoint_health_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
@@ -20,6 +22,16 @@ handler:
   class: HandlerSwarmEndpointHealth
   input_model: omnimarket.nodes.node_swarm_endpoint_health_effect.models.model_swarm_health_check_request.ModelSwarmHealthCheckRequest
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSwarmEndpointHealth
+        module: omnimarket.nodes.node_swarm_endpoint_health_effect.handlers.handler_swarm_endpoint_health
+      event_model:
+        name: ModelSwarmHealthCheckRequest
+        module: omnimarket.nodes.node_swarm_endpoint_health_effect.models.model_swarm_health_check_request
+
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -29,6 +41,8 @@ descriptor:
     - effects
 
 event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  plugin_managed: false
   subscribe_topics:
     - onex.cmd.omnimarket.swarm-check-endpoint-health.v1
   publish_topics:
@@ -38,6 +52,11 @@ terminal_event: onex.evt.omnimarket.swarm-endpoint-health-completed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.swarm-endpoint-health-completed.v1
+
+published_events:
+  - event_type: SwarmEndpointHealthCompleted
+    topic: onex.evt.omnimarket.swarm-endpoint-health-completed.v1
+    description: Endpoint health check completed with per-endpoint reachability and model status.
 
 metadata:
   transport_type: kafka

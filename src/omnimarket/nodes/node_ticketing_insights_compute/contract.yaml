@@ -1,0 +1,153 @@
+---
+name: node_ticketing_insights_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Pure compute node that transforms Linear ticket data, GitHub PR metrics, and git
+  history into structured velocity metrics, trend analysis, and completion estimates.
+  Consolidates the multi-mode reporting logic currently embedded in the ticketing_insights
+  skill (deep-dive, project, velocity, suggest, pipeline, github modes). No mutations —
+  read-only analytics over externally-fetched data.
+
+handler:
+  module: omnimarket.nodes.node_ticketing_insights_compute.handlers.handler_ticketing_insights
+  class: NodeTicketingInsightsCompute
+  input_model: omnimarket.nodes.node_ticketing_insights_compute.handlers.handler_ticketing_insights.TicketingInsightsRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: analyze
+      handler:
+        name: NodeTicketingInsightsCompute
+        module: omnimarket.nodes.node_ticketing_insights_compute.handlers.handler_ticketing_insights
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles: [compute]
+
+inputs:
+  mode:
+    type: str
+    description: >
+      Report mode: deep-dive | close-day | project | velocity | suggest | pipeline | github | all
+    required: false
+    default: "deep-dive"
+  team_filter:
+    type: str | null
+    description: "Optional Linear team key to scope the analysis"
+    required: false
+    default: null
+  project_filter:
+    type: str | null
+    description: "Optional Linear project shortcut or name to scope the analysis"
+    required: false
+    default: null
+  date_from:
+    type: str | null
+    description: "ISO 8601 start date for the analysis window (YYYY-MM-DD)"
+    required: false
+    default: null
+  date_to:
+    type: str | null
+    description: "ISO 8601 end date for the analysis window (YYYY-MM-DD)"
+    required: false
+    default: null
+  ticket_ids:
+    type: list[str] | null
+    description: "Optional explicit list of ticket IDs to include in the analysis"
+    required: false
+    default: null
+  ticket_data:
+    type: list[object]
+    description: "Pre-fetched ticket payloads from Linear MCP (agent-supplied)"
+    required: false
+    default: []
+  pr_data:
+    type: list[object]
+    description: "Pre-fetched GitHub PR payloads (agent-supplied)"
+    required: false
+    default: []
+  git_commit_data:
+    type: list[object]
+    description: "Pre-fetched git commit log entries (agent-supplied)"
+    required: false
+    default: []
+  include_confidence_intervals:
+    type: bool
+    description: "Include velocity confidence intervals in output"
+    required: false
+    default: false
+  output_format:
+    type: str
+    description: "Output format: markdown | json"
+    required: false
+    default: "markdown"
+
+outputs:
+  mode:
+    type: str
+    description: "The mode that was executed"
+  velocity_metrics:
+    type: object
+    description: >
+      Velocity data: issues/day per window (7d/14d/30d), weighted average,
+      burn rate, and confidence classification
+  completion_estimates:
+    type: list[object]
+    description: >
+      Per-project completion estimates with ETA, confidence level, and remaining
+      issue count
+  trend_data:
+    type: object
+    description: >
+      Historical trend series: daily velocity, fix-vs-feature ratio, CI clean rate,
+      and rework cycle count
+  pipeline_metrics:
+    type: object
+    description: >
+      Cycle time P50/P90, CI stability rate, rework ratio, and feature velocity
+  github_metrics:
+    type: object
+    description: "PR counts, commit velocity, contributor activity, and LOC deltas"
+  report_markdown:
+    type: str | null
+    description: "Full report as markdown string when output_format=markdown"
+  summary:
+    type: object
+    description: "High-level summary: velocity score, effectiveness score, key findings"
+
+terminal_event: onex.evt.omnimarket.ticketing-insights-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ticketing-insights-analyze.v1
+  publish_topics:
+    - onex.evt.omnimarket.ticketing-insights-completed.v1
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 2
+  related_tickets: ["OMN-12201"]
+  skill_source: omniclaude/plugins/onex/skills/ticketing_insights/
+  modes:
+    - deep-dive
+    - close-day
+    - project
+    - velocity
+    - suggest
+    - pipeline
+    - github
+    - all

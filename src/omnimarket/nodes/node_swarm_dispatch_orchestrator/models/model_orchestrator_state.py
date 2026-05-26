@@ -59,9 +59,14 @@ class ModelOrchestratorState(BaseModel):
     aggregated_output: str = ""
     error: str = ""
     total_latency_ms: int = 0
+    dispatch_wall_latency_ms: int = 0
+    max_subtasks: int = 6
 
     def with_state(self, state: EnumSwarmOrchestratorState) -> ModelOrchestratorState:
         return self.model_copy(update={"fsm_state": state})
+
+    def with_max_subtasks(self, max_subtasks: int) -> ModelOrchestratorState:
+        return self.model_copy(update={"max_subtasks": max_subtasks})
 
     def with_health(
         self, health: dict[str, ModelEndpointHealth]
@@ -92,12 +97,15 @@ class ModelOrchestratorState(BaseModel):
         )
 
     def with_dispatches(
-        self, dispatches: tuple[ModelSubtaskDispatch, ...]
+        self,
+        dispatches: tuple[ModelSubtaskDispatch, ...],
+        dispatch_wall_latency_ms: int = 0,
     ) -> ModelOrchestratorState:
         return self.model_copy(
             update={
                 "fsm_state": EnumSwarmOrchestratorState.DISPATCHING,
                 "dispatches": dispatches,
+                "dispatch_wall_latency_ms": dispatch_wall_latency_ms,
             }
         )
 

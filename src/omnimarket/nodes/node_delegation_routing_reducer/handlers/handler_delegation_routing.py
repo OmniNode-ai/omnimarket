@@ -283,7 +283,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
 
     backends: dict[str, BifrostBackendRef] = {}
     for backend in config.backends:
-        url = backend.endpoint_url.strip()
+        url = (backend.endpoint_url or "").strip()
         if not (backend.backend_id and url):
             continue
 
@@ -296,7 +296,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
 
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,
-            model_name=backend.model_name,
+            model_name=backend.model_name or backend.backend_id,
             timeout_ms=backend.timeout_ms,
             api_key_ref=api_key_ref,
             extra_headers=dict(backend.extra_headers)

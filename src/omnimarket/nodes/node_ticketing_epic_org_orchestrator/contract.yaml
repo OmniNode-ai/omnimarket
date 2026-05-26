@@ -1,0 +1,68 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ticketing Epic Org Orchestrator (OMN-12202)
+#
+# Orchestrator node: groups orphaned Linear tickets by naming pattern,
+# auto-creates epics for obvious groupings, gates on human approval for
+# ambiguous cases. Backing node for the ticketing_epic_org skill.
+name: node_ticketing_epic_org_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Ticketing epic organization orchestrator. Consumes a list of orphaned Linear
+  tickets (no parent epic), groups them by naming prefix, repo, and label patterns,
+  classifies each proposed group via structural guards (auto_create / human_gate /
+  structural_violation), and fans out epic-creation commands for auto-eligible groups.
+  Implements the multi-phase algorithm from the ticketing_epic_org skill:
+  Phase 1 load → Phase 2 group → Phase 3 classify → Phase 4 present proposal →
+  Phase 5 create epics → Phase 6 report. Wave 1 stub — full implementation in
+  Wave 2 (OMN-12202).
+
+handler:
+  module: omnimarket.nodes.node_ticketing_epic_org_orchestrator.handlers.handler_ticketing_epic_org
+  class: HandlerTicketingEpicOrg
+  input_model: omnimarket.nodes.node_ticketing_epic_org_orchestrator.models.model_ticketing_epic_org.ModelTicketingEpicOrgRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerTicketingEpicOrg
+        module: omnimarket.nodes.node_ticketing_epic_org_orchestrator.handlers.handler_ticketing_epic_org
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.ticketing-epic-org-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.ticketing_epic_org_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.ticketing-epic-org-start.v1
+  publish_topics:
+    - onex.cmd.omnimarket.linear-epic-create.v1
+    - onex.cmd.omnimarket.linear-ticket-reparent.v1
+    - onex.evt.omnimarket.ticketing-epic-org-completed.v1
+    - onex.evt.omnimarket.ticketing-epic-org-proposal-ready.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.ticketing-epic-org.v1
+
+externally_consumed_topics:
+  - onex.cmd.omnimarket.linear-epic-create.v1
+  - onex.cmd.omnimarket.linear-ticket-reparent.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 2
+  related_tickets: ["OMN-12202"]
+  skill_source: omniclaude/plugins/onex/skills/ticketing_epic_org/

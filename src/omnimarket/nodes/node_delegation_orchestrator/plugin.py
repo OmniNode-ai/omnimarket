@@ -397,8 +397,53 @@ class PluginDelegation:
                 "DelegationIntentBridge wired llm_caller=%s (correlation_id=%s): %s",
                 type(llm_caller).__name__ if llm_caller else "None",
                 correlation_id,
-                bridge_result,
+                {k: v for k, v in bridge_result.items() if k != "bridge"},
             )
+
+            # Register DirectBridgeDelegationDispatchPort in the container so that
+            # ContainerBackedDelegationDispatchPort (injected into HandlerDelegateSkill
+            # at auto-wiring time) can lazy-resolve it at first dispatch() call.
+            # This drives the delegation chain in-process without Kafka round-trips.
+            wired_bridge = bridge_result.get("bridge")
+            if (
+                wired_bridge is not None
+                and config.container.service_registry is not None
+            ):
+                try:
+                    from omnibase_core.enums import EnumInjectionScope
+
+                    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_bridge_dispatch import (
+                        DirectBridgeDelegationDispatchPort,
+                    )
+                    from omnimarket.nodes.node_delegation_orchestrator.wiring import (
+                        get_shared_delegation_workflow_handler,
+                    )
+
+                    workflow_handler = get_shared_delegation_workflow_handler()
+                    direct_port = DirectBridgeDelegationDispatchPort(
+                        workflow=workflow_handler,
+                        bridge=wired_bridge,  # type: ignore[arg-type]
+                    )
+                    await config.container.service_registry.register_instance(
+                        interface="DirectBridgeDelegationDispatchPort",
+                        instance=direct_port,
+                        scope=EnumInjectionScope.GLOBAL,
+                        metadata={
+                            "description": "In-process delegation dispatch port (bridge-backed)",
+                        },
+                    )
+                    logger.info(
+                        "DirectBridgeDelegationDispatchPort registered in container "
+                        "(correlation_id=%s)",
+                        correlation_id,
+                    )
+                except Exception as _exc:
+                    logger.warning(
+                        "Failed to register DirectBridgeDelegationDispatchPort: %s "
+                        "(correlation_id=%s)",
+                        _exc,
+                        correlation_id,
+                    )
 
             self._wiring = wiring
 

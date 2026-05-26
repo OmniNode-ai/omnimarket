@@ -1,0 +1,23 @@
+name: node_swarm_subtask_state_reducer
+version: "1.0.0"
+description: "Swarm subtask lifecycle state reducer — pure, idempotent, replay-safe"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_swarm_subtask_state_reducer: "omnimarket.nodes.node_swarm_subtask_state_reducer"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "swarm", "subtask", "idempotent"]
+pack: "swarm"
+display_name: "Swarm Subtask State Reducer"
+node_role: "reducer"

@@ -11,6 +11,17 @@ All I/O is delegated to effect nodes via command publication.
 Design note: all FSM transition methods are synchronous and return the next
 state plus a list of pending publish payloads. `handle_async` drives the full
 chain with the real event bus; `handle` drives it in test mode (no publishes).
+
+Multi-topic routing (OMN-12003):
+  The orchestrator subscribes to 6 topics (one command + 5 response events).
+  Each topic maps to a distinct FSM transition via `_TOPIC_TRANSITION_MAP`.
+  FSM state is persisted per run_id via `ProtocolStateStore` (injected) so
+  that each incoming event can resume the correct in-flight run.
+
+  Entry points:
+    - ``handle_async(request)``  — called for the initial swarm-dispatch command
+    - ``route_event(topic, payload)`` — called for subsequent response events;
+      loads FSM state from store, advances it, persists new state, flushes publishes
 """
 
 from __future__ import annotations
@@ -18,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -49,9 +61,11 @@ from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_swarm_dispat
 )
 
 if TYPE_CHECKING:
+    from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
         ProtocolEventBusPublisher,
     )
+    from omnibase_core.protocols.storage.protocol_state_store import ProtocolStateStore
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +79,9 @@ _FAILED_STATUSES = frozenset(
 
 # (topic, payload) pairs queued by transition methods
 _PendingPublish = tuple[str, dict[str, Any]]
+
+# Node-id used as the namespace key in ProtocolStateStore
+_STATE_NODE_ID = "node_swarm_dispatch_orchestrator"
 
 
 def _load_contract(contract_path: Path | None = None) -> dict[str, Any]:
@@ -82,6 +99,10 @@ class InvalidFSMTransitionError(Exception):
     pass
 
 
+class MissingRunStateError(Exception):
+    """Raised when a response event arrives for an unknown run_id."""
+
+
 class HandlerSwarmDispatchOrchestrator:
     """FSM orchestrator for swarm dispatch.
 
@@ -89,18 +110,31 @@ class HandlerSwarmDispatchOrchestrator:
     The `publishes` list contains (topic, payload) pairs to emit after the
     transition. This keeps the FSM logic unit-testable via a MagicMock bus.
 
-    `handle` runs the FSM and discards all pending publishes (test/standalone mode).
-    `handle_async` runs the FSM and awaits each publish on the real bus.
+    ``handle`` runs the FSM and discards all pending publishes (test/standalone mode).
+    ``handle_async`` handles the initial swarm-dispatch command: creates run state,
+    calls transition_received, persists state, flushes publishes.
+    ``route_event`` handles subsequent response events: loads run state from store,
+    routes to the matching transition, persists updated state, flushes publishes.
+
+    Topic → transition routing (loaded from contract.yaml subscribe_topics):
+      - swarm-dispatch              → handle_async (initial command; creates new run)
+      - swarm-endpoint-health-completed → transition_health_checked
+      - swarm-decomposition-completed   → transition_decomposed
+      - swarm-endpoints-selected        → transition_endpoints_selected
+      - swarm-fanout-completed          → transition_dispatching → persist
+      - swarm-aggregation-completed     → transition_aggregating → transition_completed
     """
 
     def __init__(
         self,
         *,
         event_bus: ProtocolEventBusPublisher,
+        state_store: ProtocolStateStore | None = None,
         contract_path: Path | None = None,
     ) -> None:
         contract = _load_contract(contract_path)
         pub: list[str] = contract.get("event_bus", {}).get("publish_topics", [])
+        sub: list[str] = contract.get("event_bus", {}).get("subscribe_topics", [])
         self._topic_health_cmd = next(
             (t for t in pub if "swarm-check-endpoint-health" in t), ""
         )
@@ -115,6 +149,27 @@ class HandlerSwarmDispatchOrchestrator:
         )
         self._topic_failed = next((t for t in pub if "swarm-dispatch-failed" in t), "")
         self._event_bus = event_bus
+        self._state_store = state_store
+
+        # Build topic → transition-key map from contract subscribe_topics.
+        # Each entry maps a full topic string to a short routing key.
+        self._topic_routing: dict[str, str] = {}
+        for topic in sub:
+            if "swarm-endpoint-health-completed" in topic:
+                self._topic_routing[topic] = "health_checked"
+            elif "swarm-decomposition-completed" in topic:
+                self._topic_routing[topic] = "decomposed"
+            elif "swarm-endpoints-selected" in topic:
+                self._topic_routing[topic] = "endpoints_selected"
+            elif "swarm-fanout-completed" in topic:
+                self._topic_routing[topic] = "dispatching"
+            elif "swarm-aggregation-completed" in topic:
+                self._topic_routing[topic] = "aggregating"
+
+    @property
+    def subscribed_event_topics(self) -> tuple[str, ...]:
+        """Return the response event topics that this handler routes via route_event."""
+        return tuple(self._topic_routing.keys())
 
     # ------------------------------------------------------------------
     # Sync entry point (no bus; used in tests and standalone mode)
@@ -148,10 +203,19 @@ class HandlerSwarmDispatchOrchestrator:
     # Async entry point (uses real event bus)
     # ------------------------------------------------------------------
 
-    async def handle_async(
-        self, request: ModelSwarmDispatchRequest
-    ) -> ModelSwarmDispatchResult:
-        """Drive the FSM entry point and emit the initial health-check command."""
+    async def handle_async(self, request: ModelSwarmDispatchRequest) -> None:
+        """Handle the initial swarm-dispatch command.
+
+        Creates fresh FSM state for the run_id, emits the health-check command,
+        and persists state so subsequent response events can resume this run.
+
+        Returns None (OMN-12151): the FSM is not complete after RECEIVED — the
+        orchestrator has only enqueued the swarm-check-endpoint-health sub-command.
+        Returning None suppresses DispatchResultApplier from publishing a terminal
+        event prematurely, before the full FSM traversal (RECEIVED → HEALTH_CHECKED
+        → DECOMPOSED → ENDPOINTS_SELECTED → DISPATCHING → AGGREGATING → COMPLETED)
+        is finished via subsequent ``route_event`` calls on response topics.
+        """
         logger.info(
             "[SWARM-DISPATCH] === ASYNC ENTRY === run_id=%s correlation_id=%s",
             request.run_id,
@@ -165,16 +229,96 @@ class HandlerSwarmDispatchOrchestrator:
         )
         try:
             state, publishes = self.transition_received(state, request)
+            await self._persist_state(state)
             await self._flush(publishes)
-            return self._build_result(state, request)
+            # Return None: RECEIVED is non-terminal. The terminal event is emitted
+            # by route_event when aggregating → COMPLETED fires.
+            return
         except Exception as exc:
             logger.error(
                 "[SWARM-DISPATCH] ASYNC FAILED run_id=%s error=%s", request.run_id, exc
             )
-            failed_state = state.with_error(str(exc))
             _, fail_publishes = self.transition_failed(state, str(exc), request)
             await self._flush(fail_publishes)
-            return self._build_result(failed_state, request)
+            # Return None even on failure: transition_failed already published
+            # the swarm-dispatch-failed terminal event via _flush above.
+            return
+
+    # ------------------------------------------------------------------
+    # Multi-topic event router (OMN-12003)
+    # ------------------------------------------------------------------
+
+    async def route_event(
+        self,
+        topic: str,
+        payload: dict[str, Any],
+    ) -> ModelOrchestratorState:
+        """Route a response event to the correct FSM transition.
+
+        Looks up the run_id from payload, loads persisted FSM state, dispatches
+        to the appropriate transition_* method, persists the new state, and
+        flushes pending publishes.
+
+        Args:
+            topic:   The Kafka topic the event arrived on.
+            payload: Decoded event payload (must contain ``run_id``).
+
+        Returns:
+            The updated FSM state after the transition.
+
+        Raises:
+            MissingRunStateError: No persisted state found for the run_id.
+            InvalidFSMTransitionError: Transition guard rejected current state.
+        """
+        run_id: str = payload.get("run_id", "")
+        if not run_id:
+            logger.warning("[SWARM-DISPATCH] route_event: missing run_id in payload")
+            raise ValueError("route_event payload missing run_id")
+
+        routing_key = self._topic_routing.get(topic, "")
+        if not routing_key:
+            logger.warning(
+                "[SWARM-DISPATCH] route_event: unmapped topic=%s run_id=%s",
+                topic,
+                run_id,
+            )
+            raise ValueError(f"No FSM routing for topic: {topic!r}")
+
+        state = await self._load_state(run_id)
+        if state is None:
+            raise MissingRunStateError(
+                f"No FSM state for run_id={run_id!r} on topic={topic!r}"
+            )
+
+        logger.info(
+            "[SWARM-DISPATCH] route_event run_id=%s topic=%s routing_key=%s "
+            "current_state=%s",
+            run_id,
+            topic,
+            routing_key,
+            state.fsm_state.value,
+        )
+
+        publishes: list[_PendingPublish]
+
+        if routing_key == "health_checked":
+            state, publishes = self.transition_health_checked(state, payload)
+        elif routing_key == "decomposed":
+            state, publishes = self.transition_decomposed(state, payload)
+        elif routing_key == "endpoints_selected":
+            state, publishes = self.transition_endpoints_selected(state, payload)
+        elif routing_key == "dispatching":
+            state, publishes = self.transition_dispatching(state, payload)
+        elif routing_key == "aggregating":
+            # aggregation-completed advances through AGGREGATING → COMPLETED in one shot
+            state, _ = self.transition_aggregating(state, payload)
+            state, publishes = self.transition_completed(state)
+        else:
+            raise ValueError(f"Unhandled routing_key: {routing_key!r}")
+
+        await self._persist_state(state)
+        await self._flush(publishes)
+        return state
 
     # ------------------------------------------------------------------
     # FSM transition methods — synchronous, return (state, publishes)
@@ -187,6 +331,7 @@ class HandlerSwarmDispatchOrchestrator:
     ) -> tuple[ModelOrchestratorState, list[_PendingPublish]]:
         """RECEIVED: build swarm-check-endpoint-health command payload."""
         self._assert_state(state, EnumSwarmOrchestratorState.RECEIVED)
+        state = state.with_max_subtasks(request.max_subtasks)
         cmd = ModelSwarmHealthCheckCommand(
             endpoint_ids=request.endpoint_ids,
             correlation_id=request.correlation_id,
@@ -221,7 +366,7 @@ class HandlerSwarmDispatchOrchestrator:
             correlation_id=state.correlation_id,
             run_id=state.run_id,
             decompose=True,
-            max_subtasks=5,
+            max_subtasks=state.max_subtasks,
         )
         publishes: list[_PendingPublish] = [
             (self._topic_decompose_cmd, cmd.model_dump())
@@ -292,7 +437,10 @@ class HandlerSwarmDispatchOrchestrator:
         """DISPATCHING: parse fanout event → build swarm-aggregate command."""
         self._assert_state(state, EnumSwarmOrchestratorState.ENDPOINTS_SELECTED)
         dispatches = self._parse_fanout_event(fanout_event)
-        state = state.with_dispatches(dispatches)
+        wall_latency_ms: int = int(fanout_event.get("wall_latency_ms", 0))
+        state = state.with_dispatches(
+            dispatches, dispatch_wall_latency_ms=wall_latency_ms
+        )
 
         mode = (
             EnumAggregationMode.SYNTHESIS
@@ -366,6 +514,40 @@ class HandlerSwarmDispatchOrchestrator:
         return state, publishes
 
     # ------------------------------------------------------------------
+    # State persistence helpers (OMN-12003)
+    # ------------------------------------------------------------------
+
+    async def _persist_state(self, state: ModelOrchestratorState) -> None:
+        """Serialize FSM state to ProtocolStateStore keyed by run_id."""
+        if self._state_store is None:
+            return
+        from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
+
+        envelope = ModelStateEnvelope(
+            node_id=_STATE_NODE_ID,
+            scope_id=state.run_id,
+            data=state.model_dump(mode="json"),
+            written_at=datetime.now(UTC),
+        )
+        await self._state_store.put(envelope)
+        logger.debug(
+            "[SWARM-DISPATCH] state persisted run_id=%s fsm_state=%s",
+            state.run_id,
+            state.fsm_state.value,
+        )
+
+    async def _load_state(self, run_id: str) -> ModelOrchestratorState | None:
+        """Load persisted FSM state for a run_id from ProtocolStateStore."""
+        if self._state_store is None:
+            return None
+        envelope: ModelStateEnvelope | None = await self._state_store.get(
+            _STATE_NODE_ID, scope_id=run_id
+        )
+        if envelope is None:
+            return None
+        return ModelOrchestratorState.model_validate(envelope.data)
+
+    # ------------------------------------------------------------------
     # Event parsing helpers
     # ------------------------------------------------------------------
 
@@ -436,6 +618,26 @@ class HandlerSwarmDispatchOrchestrator:
         )
         run_status = self._determine_run_status(state.dispatches)
         models_used = sorted({d.model_id for d in state.dispatches if d.model_id})
+
+        # Cost accounting: local/free endpoints are $0.00 actual cost.
+        # Cloud-equivalent cost uses a fixed Opus-4-rate proxy: $0.015/1K output tokens.
+        # parallelism_speedup = sum(subtask_latency) / wall_latency (serial vs parallel).
+        total_cost_usd = 0.0
+        # Approximate output tokens from latency: 150 t/s average → tokens = latency_ms / 1000 * 150
+        approx_tokens = sum(
+            int(d.latency_ms / 1000 * 150) for d in state.dispatches if d.latency_ms > 0
+        )
+        cloud_equivalent_cost_usd = round(approx_tokens / 1000 * 0.015, 4)
+        savings_usd = cloud_equivalent_cost_usd  # local cost = $0.00
+
+        sum_subtask_latency = sum(
+            d.latency_ms for d in state.dispatches if d.latency_ms > 0
+        )
+        wall_ms = state.dispatch_wall_latency_ms or state.total_latency_ms or 1
+        parallelism_speedup_ratio = (
+            round(sum_subtask_latency / wall_ms, 2) if wall_ms > 0 else 1.0
+        )
+
         return {
             "run_id": state.run_id,
             "correlation_id": state.correlation_id,
@@ -446,7 +648,12 @@ class HandlerSwarmDispatchOrchestrator:
             "failed_count": failed,
             "skipped_count": skipped,
             "total_latency_ms": state.total_latency_ms,
+            "dispatch_wall_latency_ms": state.dispatch_wall_latency_ms,
             "models_used": list(models_used),
+            "total_cost_usd": total_cost_usd,
+            "cloud_equivalent_cost_usd": cloud_equivalent_cost_usd,
+            "savings_usd": savings_usd,
+            "parallelism_speedup_ratio": parallelism_speedup_ratio,
         }
 
     # ------------------------------------------------------------------

@@ -1,0 +1,81 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_swarm_fleet_discovery_effect
+contract_name: node_swarm_fleet_discovery_effect
+node_name: node_swarm_fleet_discovery_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Effect node for model fleet discovery. Probes local endpoints from the
+  registry contract and OpenRouter free-tier /models API. Returns unified
+  health-checked endpoint list for the swarm orchestrator.
+
+input_model:
+  name: ModelFleetDiscoveryRequest
+  class: ModelFleetDiscoveryRequest
+  module: omnimarket.nodes.node_swarm_fleet_discovery_effect.models.model_fleet_discovery_request
+
+handler:
+  name: HandlerSwarmFleetDiscovery
+  module: omnimarket.nodes.node_swarm_fleet_discovery_effect.handlers.handler_swarm_fleet_discovery
+  class: HandlerSwarmFleetDiscovery
+  input_model: omnimarket.nodes.node_swarm_fleet_discovery_effect.models.model_fleet_discovery_request.ModelFleetDiscoveryRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSwarmFleetDiscovery
+        module: omnimarket.nodes.node_swarm_fleet_discovery_effect.handlers.handler_swarm_fleet_discovery
+        handler_type: http
+      event_model:
+        name: ModelFleetDiscoveryRequest
+        module: omnimarket.nodes.node_swarm_fleet_discovery_effect.models.model_fleet_discovery_request
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  plugin_managed: false
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-discover-fleet.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-fleet-discovered.v1
+
+terminal_event: onex.evt.omnimarket.swarm-fleet-discovered.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-fleet-discovered.v1
+
+published_events:
+  - event_type: SwarmFleetDiscovered
+    topic: onex.evt.omnimarket.swarm-fleet-discovered.v1
+    description: Swarm fleet discovery completed with local and OpenRouter endpoint health.
+
+io_operations:
+  - operation_type: "http_request"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+
+secrets:
+  - env_var: OPENROUTER_API_KEY
+    required: false
+    description: "OpenRouter API key for authenticated model listing (optional for free-tier discovery)"
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-25"
+  tags: [effect, swarm, fleet-discovery, openrouter, http-probe, OMN-12083]
+  related_tickets:
+    - "OMN-12083"

@@ -31,11 +31,25 @@ descriptor:
 inputs:
   flows:
     type: list[FlowInput]
-    description: "List of data flows to verify with topic, handler, table info"
-    required: true
+    description: >
+      List of pre-collected data flows to verify. When empty (default), the
+      CLI entry point uses --collect to populate live producer status,
+      consumer lag, and DB row counts via rpk/psql probes before invoking
+      the pure handler. Passing flows directly skips live collection.
+    required: false
+    default: []
   dry_run:
     type: bool
     description: "If true, report findings without creating tickets"
+    required: false
+    default: false
+  collect:
+    type: bool
+    description: >
+      CLI-only flag. When true, the entry point runs live rpk/psql probes to
+      populate flow metadata for the built-in critical chain stubs before
+      passing them to the pure handler. Mutually exclusive with a non-empty
+      flows list. Default: false.
     required: false
     default: false
 

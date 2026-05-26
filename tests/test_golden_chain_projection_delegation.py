@@ -488,3 +488,108 @@ class TestTerminalEventEmission:
             runner._terminal_topic
             == "onex.evt.omnimarket.projection-delegation-applied.v1"
         )
+
+
+class TestZeroTokenGuard:
+    """Synthetic test events with no token/cost data must not pollute the projection table."""
+
+    _CORR_ZERO = "00000000-0000-0000-0000-000000000001"
+    _CORR_REAL = "00000000-0000-0000-0000-000000000002"
+    _CORR_COST = "00000000-0000-0000-0000-000000000003"
+    _SESSION = "00000000-0000-0000-0000-000000000099"
+
+    def _make_zero_token_terminal_payload(
+        self, correlation_id: str
+    ) -> dict[str, object]:
+        return {
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": correlation_id,
+            "session_id": self._SESSION,
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": "test-model",
+            "response": "ok",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "tokens_to_compliance": 0,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.0,
+                "latency_ms": 100,
+            },
+            "pricing_manifest_version": 0,
+        }
+
+    def test_zero_token_terminal_event_skipped(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload = self._make_zero_token_terminal_payload(self._CORR_ZERO)
+        payload["_db"] = db
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 0
+        assert db.query("delegation_events") == []
+
+    def test_real_token_terminal_event_accepted(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": self._CORR_REAL,
+            "session_id": self._SESSION,
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": "test-model",
+            "response": "ok",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_tokens": 150,
+                "tokens_to_compliance": 150,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.005,
+                "latency_ms": 500,
+            },
+            "pricing_manifest_version": 1,
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        assert len(db.query("delegation_events")) == 1
+
+    def test_zero_tokens_but_nonzero_cost_accepted(self) -> None:
+        """Events with cost data but zero tokens are real (cost-only tracking)."""
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": self._CORR_COST,
+            "session_id": self._SESSION,
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": "test-model",
+            "response": "ok",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "tokens_to_compliance": 0,
+                "compliance_attempts": 1,
+                "cost_usd": 0.001,
+                "cost_savings_usd": 0.0,
+                "latency_ms": 200,
+            },
+            "pricing_manifest_version": 1,
+        }
+        result = HANDLER.handle(payload)
+        assert result["rows_upserted"] == 1
+        assert len(db.query("delegation_events")) == 1

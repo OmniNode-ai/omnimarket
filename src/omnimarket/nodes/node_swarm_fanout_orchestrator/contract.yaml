@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_swarm_fanout_orchestrator
+contract_name: node_swarm_fanout_orchestrator
+node_name: node_swarm_fanout_orchestrator
+contract_version: {major: 2, minor: 0, patch: 0}
+node_version: {major: 2, minor: 0, patch: 0}
+node_type: orchestrator
+description: >
+  Orchestrator node for swarm parallel fan-out dispatch. Publishes N
+  delegation-execute commands (one per subtask) to
+  onex.cmd.omnimarket.delegation-execute.v1, then collects completion
+  events by correlation_id. All inference I/O is handled by
+  node_llm_delegation_call_effect. This node owns only coordination.
+
+input_model:
+  name: ModelSwarmFanoutRequest
+  class: ModelSwarmFanoutRequest
+  module: omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_request
+
+output_model:
+  name: ModelSwarmFanoutResult
+  class: ModelSwarmFanoutResult
+  module: omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_result
+
+handler:
+  name: HandlerSwarmFanout
+  module: omnimarket.nodes.node_swarm_fanout_orchestrator.handlers.handler_swarm_fanout
+  class: HandlerSwarmFanout
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: fanout
+      handler:
+        name: HandlerSwarmFanout
+        module: omnimarket.nodes.node_swarm_fanout_orchestrator.handlers.handler_swarm_fanout
+      event_model:
+        name: ModelSwarmFanoutRequest
+        module: omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_request
+
+descriptor:
+  node_archetype: orchestrator
+  purity: orchestrating
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles: [main]
+
+fsm:
+  states: [PLANNING, DISPATCHING, COLLECTING, COMPLETED, FAILED]
+  initial: PLANNING
+  transitions:
+    - from: PLANNING
+      to: DISPATCHING
+      on: commands_built
+    - from: DISPATCHING
+      to: COLLECTING
+      on: all_commands_published
+    - from: COLLECTING
+      to: COMPLETED
+      on: all_subtasks_terminal
+    - from: COLLECTING
+      to: FAILED
+      on: fatal_error
+
+event_bus:
+  version: {major: 2, minor: 0, patch: 0}
+  plugin_managed: false
+  subscribe_topics:
+    - onex.cmd.omnimarket.swarm-fanout.v1
+    - onex.evt.omnimarket.delegation-call-completed.v1
+    - onex.evt.omnimarket.delegation-escalation-triggered.v1
+    - onex.evt.omnimarket.delegation-all-tiers-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.swarm-fanout-completed.v1
+    - onex.cmd.omnimarket.delegation-execute.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.swarm-fanout-completed.v1
+
+terminal_event: onex.evt.omnimarket.swarm-fanout-completed.v1
+
+published_events:
+  - event_type: SwarmFanoutCompleted
+    topic: onex.evt.omnimarket.swarm-fanout-completed.v1
+    description: Swarm fan-out completed; all subtasks terminal.
+  - event_type: DelegationExecute
+    topic: onex.cmd.omnimarket.delegation-execute.v1
+    description: Per-subtask delegation command forwarded to node_llm_delegation_call_effect.
+
+io_operations:
+  - kafka_publish
+  - kafka_subscribe
+
+error_handling:
+  retry_policy:
+    max_retries: 0
+    initial_delay_ms: 0
+    max_delay_ms: 0
+    exponential_base: 1
+    retry_on: []
+  error_types:
+    - name: TimeoutError
+      description: Per-subtask or total run timeout exceeded
+      recoverable: false
+
+timeout_behavior:
+  default_ms: 600000
+  max_ms: 600000
+  terminal_response:
+    status: timeout
+    error_message: "Swarm fan-out timed out"
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-05-25"
+  tags: [orchestrator, swarm, fanout, dispatch, parallel, OMN-12118]
+  related_tickets:
+    - "OMN-12118"
+    - "OMN-11812"

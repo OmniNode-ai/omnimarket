@@ -26,12 +26,22 @@ handler:
   module: omnimarket.nodes.node_swarm_decomposer_compute.handlers.handler_swarm_decomposer
   class: HandlerSwarmDecomposer
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSwarmDecomposer
+        module: omnimarket.nodes.node_swarm_decomposer_compute.handlers.handler_swarm_decomposer
+      event_model:
+        name: ModelSwarmDecomposeRequest
+        module: omnimarket.nodes.node_swarm_decomposer_compute.models.model_swarm_decompose_request
+
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   timeout_ms: 30000
-  runtime_profiles: [market]
+  runtime_profiles: []
 
 event_bus:
   version: {major: 1, minor: 0, patch: 0}

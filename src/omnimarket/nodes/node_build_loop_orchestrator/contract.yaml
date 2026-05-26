@@ -236,6 +236,7 @@ event_bus:
     - onex.evt.omnimarket.build-loop-orchestrator-completed.v1
     - onex.evt.omnimarket.delegation-attempt.v1
     - onex.evt.omnimarket.delegation-metrics.v1
+    - onex.cmd.omnimarket.delegation-request.v1
     - onex.evt.omnimarket.build-loop-started.v1
     - onex.evt.omnimarket.build-loop-fill-completed.v1
     - onex.evt.omnimarket.build-loop-classify-completed.v1

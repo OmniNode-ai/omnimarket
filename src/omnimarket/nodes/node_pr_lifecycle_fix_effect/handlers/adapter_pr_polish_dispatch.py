@@ -114,7 +114,13 @@ class PrPolishDispatchAdapter:
 
     @staticmethod
     def _resolve_state_dir() -> Path:
-        return Path(os.environ.get("ONEX_STATE_DIR", ""))
+        raw = os.environ.get("ONEX_STATE_DIR")
+        if not raw:
+            raise RuntimeError(
+                "ONEX_STATE_DIR is not set; pr_polish dispatch cannot write "
+                "breadcrumbs or worker logs. Set ONEX_STATE_DIR before invoking."
+            )
+        return Path(raw)
 
     async def dispatch_review_fix(
         self, repo: str, pr_number: int, ticket_id: str | None

@@ -62,5 +62,14 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.design-to-plan-completed.v1
 
+env_dependencies:
+  KAFKA_BOOTSTRAP_SERVERS:
+    required: true
+    description: >
+      Kafka broker addresses (host:port). Required for onex run-node dispatch.
+      Must resolve to the remote Redpanda instance — never localhost (OMN-11757).
+      Set via ~/.omnibase/.env; read by cli_run_node with os.environ key access
+      (KeyError on missing, no silent fallback).
+
 metadata:
   transport_type: kafka

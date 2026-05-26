@@ -1,0 +1,74 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Demo Fan-out Orchestrator (OMN-12235)
+#
+# Fan-out orchestrator: dispatches LLM inference requests to multiple models
+# in parallel and collects per-model results with token counts and latency.
+name: node_demo_fanout_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Demo fan-out orchestrator. Accepts a list of tasks and model configs,
+  dispatches inference requests to each model in parallel, and collects
+  per-model results including token counts and latency measurements.
+  Emits a command event per model inference request; a reducer assembles
+  the final result set.
+
+handler:
+  module: omnimarket.nodes.node_demo_fanout_orchestrator.handlers.handler_fanout
+  class: HandlerDemoFanoutOrchestrator
+  input_model: omnimarket.nodes.node_demo_fanout_orchestrator.models.model_fanout_request.ModelDemoFanoutRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDemoFanoutOrchestrator
+        module: omnimarket.nodes.node_demo_fanout_orchestrator.handlers.handler_fanout
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+inputs:
+  tasks:
+    type: list[str]
+    description: "Prompts or task descriptions to send to each model"
+    required: true
+  model_configs:
+    type: list[ModelDemoModelConfig]
+    description: "List of model configurations to fan out across"
+    required: true
+
+outputs:
+  results:
+    type: list[ModelDemoInferenceResult]
+    description: "Per-model inference results with token counts and latency"
+
+terminal_event: onex.evt.omnimarket.demo-fanout-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.demo_fanout_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.demo-fanout-start.v1
+  publish_topics:
+    - onex.cmd.omnimarket.demo-inference-request.v1
+    - onex.evt.omnimarket.demo-fanout-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.demo-fanout.v1
+
+externally_consumed_topics:
+  - onex.cmd.omnimarket.demo-inference-request.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 7
+  related_tickets: ["OMN-12235"]

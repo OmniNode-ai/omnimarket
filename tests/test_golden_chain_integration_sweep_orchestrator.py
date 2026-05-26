@@ -6,7 +6,9 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import pytest
 import yaml
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
@@ -14,6 +16,11 @@ from omnibase_core.validation.runtime_sha_match import CHECK_TYPE_RUNTIME_SHA_MA
 
 from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integration_sweep_orchestrator import (
     HandlerIntegrationSweepOrchestrator,
+)
+from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes import (
+    probe_container_health,
+    probe_github_ci,
+    probe_runtime_health,
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
     ModelIntegrationSweepOrchestratorRequest,
@@ -27,6 +34,7 @@ def test_integration_sweep_writes_drift_artifact(tmp_path: Path) -> None:
             tickets=["OMN-10409"],
             artifact_root=str(tmp_path),
             artifact_date="2026-04-30",
+            run_surface_probes=False,
         )
     )
 
@@ -63,6 +71,7 @@ def test_integration_sweep_writes_runtime_sha_receipt_for_stale_runtime(
             tickets=["OMN-9334"],
             artifact_root=str(tmp_path),
             artifact_date="2026-04-30",
+            run_surface_probes=False,
         )
     )
 
@@ -113,6 +122,205 @@ def test_contract_declares_node_as_implemented() -> None:
 
     assert raw.get("node_not_implemented") is not True
     assert raw["terminal_event"] == "onex.evt.omnimarket.integration-sweep-completed.v1"
+
+
+# --- Surface probe unit tests ---
+
+
+@pytest.mark.unit
+def test_probe_runtime_health_pass() -> None:
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = '{"status": "ok"}'
+    mock_result.stderr = ""
+
+    url = "http://192.168.86.201:18085"  # onex-allow-internal-ip: test fixture
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        return_value=mock_result,
+    ):
+        result = probe_runtime_health(url)
+
+    assert result["surface"] == "RUNTIME_HEALTH"
+    assert result["status"] == "pass"
+    assert "response" in result["details"]
+
+
+@pytest.mark.unit
+def test_probe_runtime_health_fail_on_nonzero_exit() -> None:
+    mock_result = MagicMock()
+    mock_result.returncode = 7
+    mock_result.stdout = ""
+    mock_result.stderr = "Connection refused"
+
+    url = "http://192.168.86.201:18085"  # onex-allow-internal-ip: test fixture
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        return_value=mock_result,
+    ):
+        result = probe_runtime_health(url)
+
+    assert result["surface"] == "RUNTIME_HEALTH"
+    assert result["status"] == "fail"
+
+
+@pytest.mark.unit
+def test_probe_runtime_health_error_on_exception() -> None:
+    url = "http://192.168.86.201:18085"  # onex-allow-internal-ip: test fixture
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        side_effect=TimeoutError("timed out"),
+    ):
+        result = probe_runtime_health(url)
+
+    assert result["surface"] == "RUNTIME_HEALTH"
+    assert result["status"] == "error"
+    assert "error" in result["details"]
+
+
+@pytest.mark.unit
+def test_probe_container_health_pass() -> None:
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "omnibase-runtime\tUp 2 hours\nomnibase-postgres\tUp 2 hours\n"
+    mock_result.stderr = ""
+
+    host = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        return_value=mock_result,
+    ):
+        result = probe_container_health(host)
+
+    assert result["surface"] == "CONTAINER_HEALTH"
+    assert result["status"] == "pass"
+    assert result["details"]["total_containers"] == 2
+    assert result["details"]["running"] == 2
+    assert result["details"]["unhealthy"] == 0
+
+
+@pytest.mark.unit
+def test_probe_container_health_fail_on_unhealthy() -> None:
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "omnibase-runtime\tUp 2 hours (unhealthy)\n"
+    mock_result.stderr = ""
+
+    host = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        return_value=mock_result,
+    ):
+        result = probe_container_health(host)
+
+    assert result["surface"] == "CONTAINER_HEALTH"
+    assert result["status"] == "fail"
+    assert result["details"]["unhealthy"] == 1
+
+
+@pytest.mark.unit
+def test_probe_container_health_error_on_exception() -> None:
+    host = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        side_effect=TimeoutError("ssh timeout"),
+    ):
+        result = probe_container_health(host)
+
+    assert result["surface"] == "CONTAINER_HEALTH"
+    assert result["status"] == "error"
+    assert "error" in result["details"]
+
+
+@pytest.mark.unit
+def test_probe_github_ci_pass() -> None:
+    runs = [
+        {"conclusion": "success", "name": "CI", "status": "completed"},
+        {"conclusion": "success", "name": "CI", "status": "completed"},
+    ]
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = json.dumps(runs)
+    mock_result.stderr = ""
+
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        return_value=mock_result,
+    ):
+        result = probe_github_ci("omnimarket")
+
+    assert result["surface"] == "GITHUB_CI"
+    assert result["status"] == "pass"
+    assert result["details"]["pass"] == 2
+    assert result["details"]["fail"] == 0
+
+
+@pytest.mark.unit
+def test_probe_github_ci_fail_on_failure_runs() -> None:
+    runs = [
+        {"conclusion": "failure", "name": "CI", "status": "completed"},
+        {"conclusion": "success", "name": "CI", "status": "completed"},
+    ]
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = json.dumps(runs)
+    mock_result.stderr = ""
+
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        return_value=mock_result,
+    ):
+        result = probe_github_ci("omnimarket")
+
+    assert result["surface"] == "GITHUB_CI"
+    assert result["status"] == "fail"
+    assert result["details"]["fail"] == 1
+
+
+@pytest.mark.unit
+def test_probe_github_ci_error_on_exception() -> None:
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
+        side_effect=FileNotFoundError("gh not found"),
+    ):
+        result = probe_github_ci("omnimarket")
+
+    assert result["surface"] == "GITHUB_CI"
+    assert result["status"] == "error"
+    assert "error" in result["details"]
+
+
+@pytest.mark.unit
+def test_handler_surface_probes_written_to_artifact(tmp_path: Path) -> None:
+    """Verify surface probe results appear in the written artifact YAML."""
+    mock_probes = [
+        {"surface": "RUNTIME_HEALTH", "status": "pass", "details": {"response": "ok"}},
+        {"surface": "CONTAINER_HEALTH", "status": "pass", "details": {"running": 2}},
+        {"surface": "GITHUB_CI", "status": "pass", "details": {"pass": 3, "fail": 0}},
+    ]
+
+    with patch(
+        "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integration_sweep_orchestrator.HandlerIntegrationSweepOrchestrator._run_surface_probes",
+        return_value=mock_probes,
+    ):
+        result = HandlerIntegrationSweepOrchestrator().handle(
+            ModelIntegrationSweepOrchestratorRequest(
+                scope="explicit",
+                tickets=[],
+                artifact_root=str(tmp_path),
+                artifact_date="2026-05-25",
+                run_surface_probes=True,
+            )
+        )
+
+    artifact = yaml.safe_load(Path(result.artifact_path).read_text(encoding="utf-8"))
+    assert len(artifact["surfaces"]) == 3
+    surface_names = [s["surface"] for s in artifact["surfaces"]]
+    assert "RUNTIME_HEALTH" in surface_names
+    assert "CONTAINER_HEALTH" in surface_names
+    assert "GITHUB_CI" in surface_names
+    assert result.details["surface_probe_count"] == "3"
+    assert len(result.surfaces) == 3
 
 
 class _StubRuntimeShaHandler:

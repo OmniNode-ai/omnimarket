@@ -119,6 +119,13 @@ class NodeContractSweep:
             for contract_path in repo_dir.rglob("contract.yaml"):
                 if "nodes" not in str(contract_path):
                     continue
+                # Skip installed packages and virtual environments — they
+                # contain stale snapshots of contracts from prior releases and
+                # are not source-of-truth. Only source trees under src/ are
+                # authoritative.
+                contract_parts = contract_path.parts
+                if ".venv" in contract_parts or "site-packages" in contract_parts:
+                    continue
                 contracts_checked += 1
                 violations.extend(self._check_contract(contract_path))
 

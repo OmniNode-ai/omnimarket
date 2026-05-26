@@ -1,0 +1,23 @@
+name: node_demo_renderer_effect
+version: "1.0.0"
+description: "Render per-model cost data as an ASCII bar chart"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_demo_renderer_effect: "omnimarket.nodes.node_demo_renderer_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["demo", "renderer", "effect", "ascii"]
+pack: "demo"
+display_name: "Demo Renderer Effect"
+node_role: "effect"

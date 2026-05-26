@@ -34,6 +34,9 @@ handler_routing:
         name: PrPolishDispatchAdapter
         module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch
     - handler:
+        name: OccContractAdapter
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract
+    - handler:
         name: HandlerAdminMerge
         module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge
     - handler:

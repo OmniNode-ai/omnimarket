@@ -117,7 +117,7 @@ def test_context_window_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv(var, raising=False)
     cfg = load_inference_bridge_config_from_env()
-    assert cfg.model_configs["qwen3-coder"]["context_window"] == 112_000
+    assert cfg.model_configs["qwen3-coder"]["context_window"] == 114_688
 
 
 @pytest.mark.unit

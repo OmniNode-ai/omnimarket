@@ -1,0 +1,64 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Wave Scheduler Orchestrator (OMN-12210)
+#
+# Dependency-aware wave scheduler: parse plan file → build dependency DAG →
+# compute execution waves with configurable max concurrency → dispatch parallel
+# agents per wave → monitor stalls → collect results.
+name: node_wave_scheduler_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Wave scheduler orchestrator. Consumes a ModelWaveSchedulerRequest carrying
+  a plan file path and max_concurrency cap, builds a dependency DAG from
+  ticket `depends_on` relationships, computes execution waves via topological
+  sort (Kahn's algorithm), and dispatches parallel ticket-pipeline workers per
+  wave. Serialises dependent work across waves; detects cycles and dependency
+  violations; propagates failure cascades so blocked tickets are not dispatched.
+  Integrates with agent_healthcheck for stall detection. Handlers are deferred
+  to the implementation wave (OMN-12210 stub).
+
+handler:
+  module: omnimarket.nodes.node_wave_scheduler_orchestrator.handlers.handler_wave_scheduler_orchestrator
+  class: HandlerWaveSchedulerOrchestrator
+  input_model: omnimarket.nodes.node_wave_scheduler_orchestrator.models.model_wave_scheduler_request.ModelWaveSchedulerRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerWaveSchedulerOrchestrator
+        module: omnimarket.nodes.node_wave_scheduler_orchestrator.handlers.handler_wave_scheduler_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 14400000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.wave-scheduler-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.wave_scheduler_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.wave-scheduler-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.wave-scheduler-wave-dispatched.v1
+    - onex.evt.omnimarket.wave-scheduler-wave-completed.v1
+    - onex.evt.omnimarket.wave-scheduler-completed.v1
+    - onex.evt.omnimarket.wave-scheduler-stall-detected.v1
+    - onex.evt.omnimarket.wave-scheduler-dependency-violation.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.wave-scheduler.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred: true
+  related_tickets: ["OMN-12210"]

@@ -264,3 +264,63 @@ async def test_correlation_id_preserved_in_result() -> None:
     result = await handler.handle(req)
 
     assert result.correlation_id == req.correlation_id
+
+
+# ---------------------------------------------------------------------------
+# Optional (None) backends — DI not yet wired
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_handler_constructible_with_no_backends() -> None:
+    """Handler is constructible with all backends as None (DI not yet wired)."""
+    # Must not raise — this is the exact scenario that crashed the effects runtime.
+    handler = HandlerKnowledgeContextAssemblerOrchestrator()
+    assert handler is not None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_all_none_backends_l2_produces_degraded() -> None:
+    """All-None L2 backends produce a DEGRADED bundle with zero succeeded backends."""
+    handler = HandlerKnowledgeContextAssemblerOrchestrator()
+    req = _make_request(level=EnumContextLevel.L2)
+    result = await handler.handle(req)
+
+    assert result.status == "DEGRADED"
+    assert result.bundle is not None
+    assert result.succeeded_backend_count == 0
+    assert result.failed_backend_count == 3  # 3 L2 candidates, all unavailable
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_all_none_backends_l3_produces_degraded() -> None:
+    """All-None L3 backends produce a DEGRADED bundle with zero succeeded backends."""
+    handler = HandlerKnowledgeContextAssemblerOrchestrator()
+    req = _make_request(level=EnumContextLevel.L3)
+    result = await handler.handle(req)
+
+    assert result.status == "DEGRADED"
+    assert result.succeeded_backend_count == 0
+    assert result.failed_backend_count == 4  # 4 L3 candidates, all unavailable
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_one_injected_backend_rest_none_produces_partial() -> None:
+    """One injected backend + three None backends produces a PARTIAL bundle."""
+    ok_codebase = FakeBackend({"summary": "partial context"})
+    handler = HandlerKnowledgeContextAssemblerOrchestrator(
+        codebase_intelligence_backend=ok_codebase,
+        antipattern_backend=None,
+        agent_learning_backend=None,
+        arch_graph_backend=None,
+    )
+    req = _make_request(level=EnumContextLevel.L2)
+    result = await handler.handle(req)
+
+    assert ok_codebase.call_count == 1
+    assert result.status == "PARTIAL"
+    assert result.succeeded_backend_count == 1
+    assert result.failed_backend_count == 2

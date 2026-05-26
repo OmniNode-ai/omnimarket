@@ -12,7 +12,6 @@ Covers scenarios not addressed in test_handoff_validation_gate.py:
 
 from __future__ import annotations
 
-import io
 import subprocess
 import uuid
 from pathlib import Path
@@ -211,26 +210,32 @@ class TestUnconfiguredSshTarget:
 
 @pytest.mark.unit
 class TestStderrOutput:
-    """HandoffGateError.__init__ writes to stderr — callers can capture and log it."""
+    """HandoffGateError.__init__ emits log error — callers can capture via caplog."""
 
-    def test_gate_error_writes_to_stderr(self, valid_log: Path) -> None:
-        fake_stderr = io.StringIO()
+    def test_gate_error_logs_gate_failure(
+        self, valid_log: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
         with (
             patch(
                 _PATCH_SSH_PROBE,
                 return_value=("", "timed out after 5s"),
             ),
-            patch("sys.stderr", fake_stderr),
+            caplog.at_level(logging.ERROR),
             pytest.raises(HandoffGateError),
         ):
             validate_infra_sources(
                 env_sync_log_path=valid_log,
                 ssh_target=_SSH_TARGET,
             )
-        written = fake_stderr.getvalue()
-        assert "HANDOFF_GATE_FAILURE" in written
+        assert "HANDOFF_GATE_FAILURE" in caplog.text
 
-    def test_gate_error_stderr_names_failing_source(self, valid_log: Path) -> None:
+    def test_gate_error_log_names_failing_source(
+        self, valid_log: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
         def _postgres_fails(
             ssh_target: str, remote_cmd: str, timeout_s: int
         ) -> tuple[str, str | None]:
@@ -238,18 +243,16 @@ class TestStderrOutput:
                 return "", "exit 1: container not found"
             return _healthy_probe_mock(ssh_target, remote_cmd, timeout_s)
 
-        fake_stderr = io.StringIO()
         with (
             patch(_PATCH_SSH_PROBE, side_effect=_postgres_fails),
-            patch("sys.stderr", fake_stderr),
+            caplog.at_level(logging.ERROR),
             pytest.raises(HandoffGateError),
         ):
             validate_infra_sources(
                 env_sync_log_path=valid_log,
                 ssh_target=_SSH_TARGET,
             )
-        written = fake_stderr.getvalue()
-        assert "postgres" in written
+        assert "postgres" in caplog.text
 
 
 @pytest.mark.unit
