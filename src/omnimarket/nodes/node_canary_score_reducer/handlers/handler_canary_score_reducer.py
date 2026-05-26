@@ -14,6 +14,7 @@ from __future__ import annotations
 from omnimarket.events.canary import ModelCanaryReport
 from omnimarket.nodes.node_canary_score_reducer.models.model_score_reducer_state import (
     ModelCapabilityScoreRow,
+    ModelMaterializeResult,
     ModelScoreReducerState,
 )
 
@@ -65,12 +66,13 @@ class HandlerCanaryScoreReducer:
             )
         return ModelScoreReducerState(scores=new_scores)
 
-    def materialize(self, state: ModelScoreReducerState) -> list[dict[str, object]]:
-        """Produce rows matching the capability_scores table schema."""
-        rows: list[dict[str, object]] = []
+    def materialize(self, state: ModelScoreReducerState) -> ModelMaterializeResult:
+        """Produce typed rows for capability_scores and routing_outcomes tables."""
+        capability_rows: list[dict[str, object]] = []
+        routing_rows: list[dict[str, object]] = []
         for row in state.scores.values():
             success_count = max(row.entries_evaluated - row.entries_failed, 0)
-            rows.append(
+            capability_rows.append(
                 {
                     "model_key": row.model_key,
                     "task_type": row.task_type,
@@ -83,7 +85,18 @@ class HandlerCanaryScoreReducer:
                     "failure_count": row.entries_failed,
                 }
             )
-        return rows
+            routing_rows.append(
+                {
+                    "model_key": row.model_key,
+                    "task_type": row.task_type,
+                    "quality_score": row.composite_score,
+                    "canary_run_id": row.canary_run_id,
+                }
+            )
+        return ModelMaterializeResult(
+            capability_score_rows=tuple(capability_rows),
+            routing_outcome_rows=tuple(routing_rows),
+        )
 
     def compute_composite(
         self,
