@@ -86,6 +86,16 @@ class TestModelSwarmDispatchRequest:
                 task="t", run_id="r", correlation_id="c", extra_field="x"
             )  # type: ignore[call-arg]
 
+    def test_model_tier_accepted(self) -> None:
+        req = ModelSwarmDispatchRequest(
+            task="task", run_id="r1", correlation_id="c1", model_tier="LOCAL_CODER"
+        )
+        assert req.model_tier == "LOCAL_CODER"
+
+    def test_model_tier_defaults_to_none(self) -> None:
+        req = ModelSwarmDispatchRequest(task="task", run_id="r1", correlation_id="c1")
+        assert req.model_tier is None
+
 
 class TestModelSwarmDispatchResult:
     def test_valid_result(self) -> None:
