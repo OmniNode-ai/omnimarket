@@ -24,6 +24,7 @@ from omnimarket.adapters.codex.runtime_client import (
 from omnimarket.events.delegation import ModelDelegationRequest
 
 _REQUESTER = "delegate-skill-runtime-port"
+_DELEGATION_REQUEST_MESSAGE_TYPE = "omnibase-infra.delegation-request"
 
 
 class ProtocolDelegationEventBus(Protocol):
@@ -127,7 +128,7 @@ class RuntimeDelegationDispatchPort:
             payload=request,
             correlation_id=request.correlation_id,
             envelope_timestamp=datetime.now(UTC),
-            event_type=self._command_topic,
+            event_type=_DELEGATION_REQUEST_MESSAGE_TYPE,
             source_tool=_REQUESTER,
         )
         await self._event_bus.publish(
