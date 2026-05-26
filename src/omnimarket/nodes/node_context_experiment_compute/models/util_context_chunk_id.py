@@ -14,7 +14,9 @@ import hashlib
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
 
-def compute_chunk_id(factor: EnumContextFactor, content: str) -> str:
+def compute_chunk_id(
+    factor: EnumContextFactor, content: str
+) -> str:  # stub-ok: false-positive, full implementation follows
     """Return a deterministic ctx_XXXXXXXX chunk identifier.
 
     Collision within a single pack must be detected by the builder and

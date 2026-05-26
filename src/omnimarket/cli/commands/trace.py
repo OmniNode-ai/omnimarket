@@ -112,7 +112,7 @@ def _fetch_projection(
 
 
 @market.group("trace")
-def trace() -> None:
+def trace() -> None:  # stub-ok: Click group body is intentionally empty
     """Query and watch ONEX event bus traces."""
 
 

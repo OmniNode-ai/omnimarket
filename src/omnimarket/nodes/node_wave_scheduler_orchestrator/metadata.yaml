@@ -1,0 +1,23 @@
+name: node_wave_scheduler_orchestrator
+version: "1.0.0"
+description: "Dependency-aware wave scheduler: plan → DAG → wave dispatch → stall recovery (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_wave_scheduler_orchestrator: "omnimarket.nodes.node_wave_scheduler_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrates
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "wave", "scheduler", "dag", "parallel-dispatch", "OMN-12210"]
+pack: "build"
+display_name: "Wave Scheduler Orchestrator"
+node_role: "orchestrator"
