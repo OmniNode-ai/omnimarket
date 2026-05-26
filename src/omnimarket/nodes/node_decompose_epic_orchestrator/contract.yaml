@@ -1,0 +1,54 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Decompose Epic Orchestrator (OMN-12214)
+#
+# Orchestrator: fetches a Linear epic, generates sub-ticket specs via LLM,
+# creates tickets as Linear children, and optionally generates OCC contract files.
+name: node_decompose_epic_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_not_implemented: true
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Decompose-epic orchestrator. Fetches a Linear epic by ID, analyzes its
+  description and goals via LLM to generate atomic sub-ticket specs, creates
+  each sub-ticket as a Linear child of the epic, and optionally generates OCC
+  contract YAML stubs for each created ticket. Implements the algorithm
+  described in the decompose_epic skill (SKILL.md).
+
+handler:
+  module: omnimarket.nodes.node_decompose_epic_orchestrator.handlers.handler_decompose_epic
+  class: HandlerDecomposeEpicOrchestrator
+  input_model: omnimarket.nodes.node_decompose_epic_orchestrator.models.model_decompose_epic_request.ModelDecomposeEpicRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDecomposeEpicOrchestrator
+        module: omnimarket.nodes.node_decompose_epic_orchestrator.handlers.handler_decompose_epic
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.epic-decomposed.v1
+
+event_bus:
+  consumer_group: omnimarket.decompose_epic_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.decompose-epic.v1
+  publish_topics:
+    - onex.evt.omnimarket.epic-decomposed.v1
+    - onex.cmd.omnimarket.contract-generate.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.decompose-epic.v1
+
+metadata:
+  transport_type: kafka
