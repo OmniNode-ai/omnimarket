@@ -335,6 +335,11 @@ node_antipattern_index_effect = "omnimarket.nodes.node_antipattern_index_effect"
 node_handler_correctness_gate = "omnimarket.nodes.node_handler_correctness_gate"
 node_adversarial_pipeline_orchestrator = "omnimarket.nodes.node_adversarial_pipeline_orchestrator"
 node_decision_store_orchestrator = "omnimarket.nodes.node_decision_store_orchestrator"
+node_changelog_audit_compute = "omnimarket.nodes.node_changelog_audit_compute"
+node_checkpoint_compute = "omnimarket.nodes.node_checkpoint_compute"
+node_env_sync_alert_effect = "omnimarket.nodes.node_env_sync_alert_effect"
+node_feature_dashboard_compute = "omnimarket.nodes.node_feature_dashboard_compute"
+node_ticket_plan_compute = "omnimarket.nodes.node_ticket_plan_compute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"

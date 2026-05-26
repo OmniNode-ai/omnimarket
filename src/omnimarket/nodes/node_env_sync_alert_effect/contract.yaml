@@ -1,0 +1,72 @@
+---
+name: node_env_sync_alert_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+description: >
+  Scans runtime logs for environment sync drift, emits friction YAML events,
+  and creates Linear tickets for unresolved alerts. Side-effecting — writes to
+  Linear and emits friction events. STUB — not yet implemented. Returns
+  SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_env_sync_alert_effect.handlers.handler_env_sync_alert_effect
+  class: HandlerEnvSyncAlertEffect
+  input_model: omnimarket.nodes.node_env_sync_alert_effect.models.model_env_sync_alert_request.ModelEnvSyncAlertRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerEnvSyncAlertEffect
+        module: omnimarket.nodes.node_env_sync_alert_effect.handlers.handler_env_sync_alert_effect
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  log_paths:
+    type: list[str]
+    description: "Filesystem paths to runtime log files to scan for sync drift"
+    required: true
+  alert_threshold:
+    type: int
+    description: "Minimum number of drift occurrences before raising an alert"
+    required: false
+    default: 1
+
+outputs:
+  alerts_created:
+    type: int
+    description: "Number of Linear tickets created"
+  friction_events:
+    type: list[object]
+    description: "Friction YAML events emitted"
+
+terminal_event: onex.evt.omnimarket.env-sync-alert-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.env-sync-alert-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.env-sync-alert-completed.v1
+    - onex.evt.omnimarket.friction-emitted.v1
+
+side_effects:
+  reads:
+    - filesystem_logs
+  writes:
+    - linear_ticket
+    - friction_yaml
+  duplicate_key_fields:
+    - log_path
+    - drift_signature
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12227"]
