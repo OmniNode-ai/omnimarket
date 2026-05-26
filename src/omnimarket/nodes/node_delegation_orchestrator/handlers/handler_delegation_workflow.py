@@ -20,6 +20,7 @@ Related:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -52,6 +53,9 @@ from omnimarket.nodes.node_delegation_orchestrator.lifecycle_reactor import (
 from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent import (
     ModelBaselineIntent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
+    ModelDelegationEscalationAttempt,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
     ModelDelegationEvent,
 )
@@ -81,6 +85,9 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    next_eligible_tier,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -140,8 +147,13 @@ _VALID_TRANSITIONS: dict[EnumDelegationState, frozenset[EnumDelegationState]] = 
         {EnumDelegationState.GATE_EVALUATED}
     ),
     EnumDelegationState.GATE_EVALUATED: frozenset(
-        {EnumDelegationState.COMPLETED, EnumDelegationState.FAILED}
+        {
+            EnumDelegationState.ESCALATING,
+            EnumDelegationState.COMPLETED,
+            EnumDelegationState.FAILED,
+        }
     ),
+    EnumDelegationState.ESCALATING: frozenset({EnumDelegationState.ROUTED}),
     EnumDelegationState.COMPLETED: frozenset(),
     EnumDelegationState.FAILED: frozenset(),
 }
@@ -271,6 +283,15 @@ class DelegationWorkflowState:
     accumulated_tokens: int = 0
     inference_intent_in_flight: bool = False
     routing_intent_replayed: bool = False
+    # Escalation state (OMN-12254). Tracks tier escalation across quality gate
+    # failures. ``escalation_count`` is incremented on each escalation;
+    # ``current_tier_name`` is set from ModelRoutingDecision.tier_name;
+    # ``escalation_history`` records each tier attempt as a typed model.
+    escalation_count: int = 0
+    current_tier_name: str | None = None
+    escalation_history: list[ModelDelegationEscalationAttempt] = field(
+        default_factory=list
+    )
 
 
 class HandlerDelegationWorkflow:
@@ -371,7 +392,16 @@ class HandlerDelegationWorkflow:
         if workflow.state == EnumDelegationState.RECEIVED:
             self._transition(workflow, EnumDelegationState.ROUTED)
             workflow.routing_decision = decision
+            workflow.current_tier_name = decision.tier_name or None
             workflow.compliance_attempts = 1
+        elif (
+            workflow.state == EnumDelegationState.ROUTED
+            and workflow.routing_decision is None
+        ):
+            # Escalation re-entry: ESCALATING -> ROUTED with a new routing decision.
+            workflow.routing_decision = decision
+            workflow.current_tier_name = decision.tier_name or None
+            workflow.compliance_attempts += 1
         elif (
             workflow.state == EnumDelegationState.ROUTED
             and workflow.routing_decision is not None
@@ -507,14 +537,21 @@ class HandlerDelegationWorkflow:
     def handle_gate_result(
         self,
         result: ModelQualityGateResult,
+        *,
+        max_escalation_attempts: int = 2,
+        excluded_tiers: frozenset[str] = frozenset({"cli_agents"}),
     ) -> list[BaseModel]:
-        """Handle quality gate result.
+        """Handle quality gate result with escalation support (OMN-12254).
 
-        Transitions INFERENCE_COMPLETED -> GATE_EVALUATED, then evaluates
-        pass/fail to transition to COMPLETED or FAILED. Returns:
+        Transitions INFERENCE_COMPLETED -> GATE_EVALUATED, then evaluates:
+        - Passed -> COMPLETED (unchanged)
+        - Failed + escalation possible -> ESCALATING -> ROUTED (new)
+        - Failed + escalation impossible -> FAILED (with terminal_failure_reason)
+
+        Returns:
         1. The delegation result event (completed or failed)
-        2. A backward-compatible task-delegated.v1 event for omnidash (Task 12)
-        3. A baseline comparison intent for savings computation (Task 11, pass only)
+        2. A backward-compatible task-delegated.v1 event for omnidash
+        3. A baseline comparison intent for savings computation (pass only)
         """
         cid = result.correlation_id
         workflow = self._workflows.get(cid)
@@ -542,37 +579,229 @@ class HandlerDelegationWorkflow:
             workflow.accumulated_tokens or workflow.inference_total_tokens
         )
 
+        events: list[BaseModel] = []
+
+        if result.passed:
+            # --- PASSED: complete as before ---
+            escalation_metadata = self._escalation_metadata(workflow)
+            delegation_result = ModelDelegationResult(
+                correlation_id=cid,
+                task_type=workflow.request.task_type,
+                model_used=workflow.inference_model_used,
+                endpoint_url=workflow.routing_decision.endpoint_url,
+                content=workflow.inference_content,
+                quality_passed=True,
+                quality_score=result.quality_score,
+                latency_ms=elapsed_ms,
+                prompt_tokens=workflow.inference_prompt_tokens,
+                completion_tokens=workflow.inference_completion_tokens,
+                total_tokens=workflow.inference_total_tokens,
+                fallback_to_claude=result.fallback_recommended,
+                failure_reason="",
+                tokens_to_compliance=tokens_to_compliance,
+                compliance_attempts=compliance_attempts,
+                **escalation_metadata,
+            )
+
+            estimated_claude_cost = estimate_baseline_cost_usd(
+                prompt_tokens=workflow.inference_prompt_tokens,
+                completion_tokens=workflow.inference_completion_tokens,
+            )
+
+            compat_event = self._build_compat_event(
+                workflow,
+                result,
+                elapsed_ms,
+                tokens_to_compliance,
+                compliance_attempts,
+            )
+
+            self._transition(workflow, EnumDelegationState.COMPLETED)
+            events.append(
+                ModelDelegationEvent(
+                    topic=TOPIC_DELEGATION_COMPLETED,
+                    payload=delegation_result,
+                )
+            )
+            events.append(
+                ModelBaselineIntent(
+                    correlation_id=cid,
+                    task_type=workflow.request.task_type,
+                    baseline_cost_usd=estimated_claude_cost,
+                    candidate_cost_usd=0.0,
+                    prompt_tokens=workflow.inference_prompt_tokens,
+                    completion_tokens=workflow.inference_completion_tokens,
+                    total_tokens=workflow.inference_total_tokens,
+                )
+            )
+            events.append(compat_event)
+            return events
+
+        # --- FAILED: evaluate escalation (OMN-12254) ---
+
+        # Record this tier attempt in escalation history.
+        workflow.escalation_history.append(
+            ModelDelegationEscalationAttempt(
+                tier_name=workflow.current_tier_name or "unknown",
+                model_used=workflow.inference_model_used or "unknown",
+                quality_score=result.quality_score,
+                failure_reasons=tuple(result.failure_reasons),
+                latency_ms=elapsed_ms,
+                fallback_recommended=result.fallback_recommended,
+                attempted_at=result.evaluated_at
+                if hasattr(result, "evaluated_at") and result.evaluated_at is not None
+                else datetime.now(UTC),
+                routing_decision_id=workflow.routing_decision.selected_backend_id,
+            )
+        )
+
+        # Determine why escalation cannot proceed (for audit trail).
+        terminal_failure_reason: str | None = None
+        next_tier: str | None = None
+
+        if not result.fallback_recommended:
+            terminal_failure_reason = "fallback_not_recommended"
+        elif workflow.escalation_count >= max_escalation_attempts:
+            terminal_failure_reason = "max_escalation_attempts_reached"
+        elif workflow.current_tier_name is None:
+            terminal_failure_reason = "current_tier_unknown"
+        else:
+            next_tier = next_eligible_tier(
+                workflow.current_tier_name,
+                excluded_tiers,
+            )
+            if next_tier is None:
+                terminal_failure_reason = "no_higher_tier_available"
+
+        can_escalate = terminal_failure_reason is None and next_tier is not None
+
+        if can_escalate:
+            assert next_tier is not None
+            self._transition(workflow, EnumDelegationState.ESCALATING)
+            workflow.escalation_count += 1
+
+            # Reset inference state for the new attempt.
+            workflow.inference_content = None
+            workflow.inference_model_used = None
+            workflow.inference_intent_in_flight = False
+            workflow.routing_decision = None
+
+            # Transition to ROUTED and emit new routing intent with tier override.
+            self._transition(workflow, EnumDelegationState.ROUTED)
+            assert workflow.request is not None
+            return [
+                ModelRoutingIntent(
+                    payload=workflow.request,
+                    min_tier_name=next_tier,
+                ),
+            ]
+
+        # Cannot escalate: terminal FAILED with reason.
+        escalation_metadata = self._escalation_metadata(
+            workflow,
+            terminal_failure_reason=terminal_failure_reason,
+        )
         delegation_result = ModelDelegationResult(
             correlation_id=cid,
             task_type=workflow.request.task_type,
             model_used=workflow.inference_model_used,
             endpoint_url=workflow.routing_decision.endpoint_url,
             content=workflow.inference_content,
-            quality_passed=result.passed,
+            quality_passed=False,
             quality_score=result.quality_score,
             latency_ms=elapsed_ms,
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
             total_tokens=workflow.inference_total_tokens,
             fallback_to_claude=result.fallback_recommended,
-            failure_reason="; ".join(result.failure_reasons)
-            if not result.passed
-            else "",
+            failure_reason="; ".join(result.failure_reasons),
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
+            **escalation_metadata,
         )
 
-        # Estimate Claude baseline cost for savings comparison (OMN-11301)
+        compat_event = self._build_compat_event(
+            workflow,
+            result,
+            elapsed_ms,
+            tokens_to_compliance,
+            compliance_attempts,
+        )
+
+        self._transition(workflow, EnumDelegationState.FAILED)
+        events.append(
+            ModelDelegationEvent(
+                topic=TOPIC_DELEGATION_FAILED,
+                payload=delegation_result,
+            )
+        )
+        events.append(compat_event)
+        return events
+
+    def _escalation_metadata(
+        self,
+        workflow: DelegationWorkflowState,
+        *,
+        terminal_failure_reason: str | None = None,
+    ) -> dict[str, object]:
+        """Build escalation metadata fields for terminal events."""
+        history_dicts = tuple(
+            attempt.model_dump(mode="json") for attempt in workflow.escalation_history
+        )
+        return {
+            "escalation_count": workflow.escalation_count,
+            "escalation_history": history_dicts,
+            "terminal_failure_reason": terminal_failure_reason,
+            "routing_tiers_hash": self._routing_tiers_hash(),
+            "escalation_config_hash": None,
+            "attempts_count": workflow.escalation_count + 1,
+            "cumulative_attempt_cost": 0.0,
+            "cumulative_input_tokens": 0,
+            "cumulative_output_tokens": 0,
+            "final_attempt_cost": 0.0,
+        }
+
+    @staticmethod
+    def _routing_tiers_hash() -> str | None:
+        """SHA-256 of routing_tiers.yaml for replay determinism."""
+        from pathlib import Path
+
+        config_path = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "configs"
+            / "routing_tiers.yaml"
+        )
+        if not config_path.exists():
+            return None
+        content = config_path.read_bytes()
+        return hashlib.sha256(content).hexdigest()
+
+    def _build_compat_event(
+        self,
+        workflow: DelegationWorkflowState,
+        result: ModelQualityGateResult,
+        elapsed_ms: int,
+        tokens_to_compliance: int,
+        compliance_attempts: int,
+    ) -> ModelTaskDelegatedEvent:
+        """Build backward-compatible task-delegated.v1 event for omnidash."""
+        assert workflow.request is not None
+        assert workflow.routing_decision is not None
+        assert workflow.inference_model_used is not None
+
         estimated_claude_cost = estimate_baseline_cost_usd(
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
         )
 
-        # Backward-compatible task-delegated.v1 event for omnidash (Task 12)
-        compat_event = ModelTaskDelegatedEvent(
+        history_dicts = tuple(
+            attempt.model_dump(mode="json") for attempt in workflow.escalation_history
+        )
+
+        return ModelTaskDelegatedEvent(
             topic=TOPIC_DELEGATION_TASK_DELEGATED,
             timestamp=datetime.now(UTC).isoformat(),
-            correlation_id=cid,
+            correlation_id=result.correlation_id,
             session_id=None,
             task_type=workflow.request.task_type,
             delegated_to=workflow.inference_model_used,
@@ -586,43 +815,11 @@ class HandlerDelegationWorkflow:
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=compliance_attempts,
             pricing_manifest_version=get_manifest_version_int(),
+            escalation_count=workflow.escalation_count,
+            escalation_history=history_dicts,
+            routing_tiers_hash=self._routing_tiers_hash(),
+            attempts_count=workflow.escalation_count + 1,
         )
-
-        events: list[BaseModel] = []
-
-        if result.passed:
-            self._transition(workflow, EnumDelegationState.COMPLETED)
-            events.append(
-                ModelDelegationEvent(
-                    topic=TOPIC_DELEGATION_COMPLETED,
-                    payload=delegation_result,
-                )
-            )
-            # Baseline comparison for savings pipeline (OMN-11301)
-            events.append(
-                ModelBaselineIntent(
-                    correlation_id=cid,
-                    task_type=workflow.request.task_type,
-                    baseline_cost_usd=estimated_claude_cost,
-                    candidate_cost_usd=0.0,
-                    prompt_tokens=workflow.inference_prompt_tokens,
-                    completion_tokens=workflow.inference_completion_tokens,
-                    total_tokens=workflow.inference_total_tokens,
-                )
-            )
-        else:
-            self._transition(workflow, EnumDelegationState.FAILED)
-            events.append(
-                ModelDelegationEvent(
-                    topic=TOPIC_DELEGATION_FAILED,
-                    payload=delegation_result,
-                )
-            )
-
-        # Always emit backward-compatible event for omnidash (Task 12)
-        events.append(compat_event)
-
-        return events
 
     def handle_agent_task_lifecycle(
         self,
