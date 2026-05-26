@@ -33,12 +33,6 @@ from omnimarket.nodes.node_ticketing_epic_org_orchestrator.models.model_ticketin
 
 _log = logging.getLogger(__name__)
 
-# Topics from contract.yaml — never inline elsewhere
-TOPIC_LINEAR_EPIC_CREATE = "onex.cmd.omnimarket.linear-epic-create.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_LINEAR_TICKET_REPARENT = "onex.cmd.omnimarket.linear-ticket-reparent.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_EPIC_ORG_COMPLETED = "onex.evt.omnimarket.ticketing-epic-org-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_EPIC_ORG_PROPOSAL_READY = "onex.evt.omnimarket.ticketing-epic-org-proposal-ready.v1"  # onex-topic-allow: pending contract auto-wiring
-
 
 class HandlerTicketingEpicOrg:
     """ORCHESTRATOR — groups orphaned Linear tickets into epics.

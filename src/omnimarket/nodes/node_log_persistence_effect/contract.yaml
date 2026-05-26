@@ -19,6 +19,7 @@ handler_routing:
     - handler:
         name: NodeLogPersistenceEffect
         module: omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect
+        handler_type: DATABASE
 
 event_bus:
   subscribe_topics:

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -26,9 +27,12 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
 
 @pytest.mark.unit
 class TestOrchestratorWiresLiveMergeAdapter:
-    def test_default_merge_handler_has_live_adapter_not_noop(self) -> None:
+    def test_default_merge_handler_has_live_adapter_not_noop(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         from unittest.mock import MagicMock
 
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / ".onex_state"))
         orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock())
         orch._ensure_sub_handlers()
 

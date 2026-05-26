@@ -65,6 +65,9 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.demo-fanout.v1
 
+externally_consumed_topics:
+  - onex.cmd.omnimarket.demo-inference-request.v1
+
 metadata:
   transport_type: kafka
   implementation_wave: 7
