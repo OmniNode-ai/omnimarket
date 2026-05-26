@@ -1,0 +1,63 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Pipeline Audit Orchestrator (OMN-12211)
+#
+# Multi-repo pipeline audit: parallel agent dispatch per repo, result
+# aggregation, finding classification, severity-ordered gap register.
+name: node_pipeline_audit_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Pipeline audit orchestrator. Consumes a ModelPipelineAuditRequest carrying
+  the repo list and audit type, dispatches parallel audit agents per repo
+  (Phases 1-4 of the pipeline_audit skill algorithm), aggregates per-repo
+  findings, classifies by severity (BREAKING/CRITICAL/HIGH/MEDIUM/LOW), and
+  emits a ModelPipelineAuditResult containing a severity-ordered gap register
+  ready for Phase 6 ticket creation. Six proof categories are applied across
+  all repos: runtime entrypoint, DSN, wire topics, schema handshake, wire
+  format compatibility, and correlation ID threading.
+  Handlers are deferred to the implementation wave (OMN-12211 stub).
+
+handler:
+  module: omnimarket.nodes.node_pipeline_audit_orchestrator.handlers.handler_pipeline_audit_orchestrator
+  class: HandlerPipelineAuditOrchestrator
+  input_model: omnimarket.nodes.node_pipeline_audit_orchestrator.models.model_pipeline_audit_request.ModelPipelineAuditRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerPipelineAuditOrchestrator
+        module: omnimarket.nodes.node_pipeline_audit_orchestrator.handlers.handler_pipeline_audit_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 3600000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.pipeline-audit-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.pipeline_audit_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.pipeline-audit-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.pipeline-audit-repo-inventoried.v1
+    - onex.evt.omnimarket.pipeline-audit-phase-completed.v1
+    - onex.evt.omnimarket.pipeline-audit-gap-found.v1
+    - onex.evt.omnimarket.pipeline-audit-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.pipeline-audit.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred: true
+  related_tickets: ["OMN-12211"]
