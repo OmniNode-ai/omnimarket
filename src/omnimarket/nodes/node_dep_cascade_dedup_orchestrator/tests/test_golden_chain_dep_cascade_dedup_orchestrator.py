@@ -14,6 +14,7 @@ Verifies:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -31,8 +32,11 @@ from omnimarket.nodes.node_dep_cascade_dedup_orchestrator.models.model_dep_casca
 _NODE_DIR = Path(__file__).resolve().parent.parent
 
 
-def _contract() -> dict:  # type: ignore[type-arg]
-    return yaml.safe_load((_NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+def _contract() -> dict[str, object]:
+    return cast(
+        dict[str, object],
+        yaml.safe_load((_NODE_DIR / "contract.yaml").read_text(encoding="utf-8")),
+    )
 
 
 def test_handler_dep_cascade_dedup_orchestrator_is_importable() -> None:
