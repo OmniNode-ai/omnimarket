@@ -317,6 +317,7 @@ node_swarm_registry_compute = "omnimarket.nodes.node_swarm_registry_compute"
 node_knowledge_query_federation_orchestrator = "omnimarket.nodes.node_knowledge_query_federation_orchestrator"
 node_antipattern_index_effect = "omnimarket.nodes.node_antipattern_index_effect"
 node_handler_correctness_gate = "omnimarket.nodes.node_handler_correctness_gate"
+node_adversarial_pipeline_orchestrator = "omnimarket.nodes.node_adversarial_pipeline_orchestrator"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
