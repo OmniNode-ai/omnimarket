@@ -1,0 +1,23 @@
+name: node_refill_sprint_orchestrator
+version: "1.0.0"
+description: "Refill sprint orchestrator — analyzes sprint capacity and files backlog tickets (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_refill_sprint_orchestrator: "omnimarket.nodes.node_refill_sprint_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrates
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "sprint", "backlog", "linear", "OMN-12203"]
+pack: "build"
+display_name: "Refill Sprint Orchestrator"
+node_role: "orchestrator"

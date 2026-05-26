@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_demo_fanout_orchestrator.models.model_fanout_request import (
+from omnimarket.events.demo import (
+    ModelDemoCostEntry,
+    ModelDemoCostResult,
     ModelDemoInferenceResult,
 )
 
@@ -31,19 +33,6 @@ class ModelDemoModelPricing(BaseModel):
     )
 
 
-class ModelDemoCostEntry(BaseModel):
-    """Computed cost breakdown for a single model inference result."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    model_id: str
-    prompt_cost_usd: float = Field(ge=0.0)
-    completion_cost_usd: float = Field(ge=0.0)
-    total_cost_usd: float = Field(ge=0.0)
-    prompt_tokens: int = Field(ge=0)
-    completion_tokens: int = Field(ge=0)
-
-
 class ModelDemoCostRequest(BaseModel):
     """Input to the demo cost compute node."""
 
@@ -55,13 +44,10 @@ class ModelDemoCostRequest(BaseModel):
     )
 
 
-class ModelDemoCostResult(BaseModel):
-    """Output: per-model cost entries and the cheapest model."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    costs: list[ModelDemoCostEntry]
-    cheapest_model_id: str | None = Field(
-        default=None,
-        description="model_id with the lowest total_cost_usd; null when costs list is empty",
-    )
+__all__ = [
+    "ModelDemoCostEntry",
+    "ModelDemoCostRequest",
+    "ModelDemoCostResult",
+    "ModelDemoInferenceResult",
+    "ModelDemoModelPricing",
+]

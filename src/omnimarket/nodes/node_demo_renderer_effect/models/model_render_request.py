@@ -11,9 +11,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_demo_cost_compute.models.model_cost_request import (
-    ModelDemoCostResult,
-)
+from omnimarket.events.demo import ModelDemoCostResult
 
 
 class ModelDemoRenderRequest(BaseModel):

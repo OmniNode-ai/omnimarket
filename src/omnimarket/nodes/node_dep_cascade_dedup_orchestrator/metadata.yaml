@@ -1,0 +1,23 @@
+name: node_dep_cascade_dedup_orchestrator
+version: "1.0.0"
+description: "Post-release dep-bump PR deduplication: discover, group, and close superseded automated PRs (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dep_cascade_dedup_orchestrator: "omnimarket.nodes.node_dep_cascade_dedup_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrates
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "dependencies", "dedup", "cleanup", "post-release", "OMN-12213"]
+pack: "build"
+display_name: "Dep Cascade Dedup Orchestrator"
+node_role: "orchestrator"

@@ -113,12 +113,10 @@ class TestModels:
             pricing.prompt_cost_per_1k = 99.0  # type: ignore[misc]
 
     def test_cost_request_model(self) -> None:
+        from omnimarket.events.demo import ModelDemoInferenceResult
         from omnimarket.nodes.node_demo_cost_compute.models.model_cost_request import (
             ModelDemoCostRequest,
             ModelDemoModelPricing,
-        )
-        from omnimarket.nodes.node_demo_fanout_orchestrator.models.model_fanout_request import (
-            ModelDemoInferenceResult,
         )
 
         req = ModelDemoCostRequest(
@@ -142,15 +140,13 @@ class TestModels:
 
 class TestHandlerIsStub:
     def test_handle_raises_not_implemented(self) -> None:
+        from omnimarket.events.demo import ModelDemoInferenceResult
         from omnimarket.nodes.node_demo_cost_compute.handlers.handler_cost_compute import (
             NodeDemoCostCompute,
         )
         from omnimarket.nodes.node_demo_cost_compute.models.model_cost_request import (
             ModelDemoCostRequest,
             ModelDemoModelPricing,
-        )
-        from omnimarket.nodes.node_demo_fanout_orchestrator.models.model_fanout_request import (
-            ModelDemoInferenceResult,
         )
 
         handler = NodeDemoCostCompute()
