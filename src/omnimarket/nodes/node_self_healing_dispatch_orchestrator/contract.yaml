@@ -1,0 +1,65 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Self-Healing Dispatch Orchestrator (OMN-12208)
+#
+# Accepts ticket list or epic ID, groups by repo, dispatches via TeamCreate,
+# monitors workers via agent_healthcheck, auto-recovers stalls (max 2 redispatches),
+# logs all events to structured NDJSON.
+name: node_self_healing_dispatch_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Self-healing dispatch orchestrator. Consumes a ticket list or Linear epic ID,
+  groups tickets by repo, dispatches per-repo workers via TeamCreate (enforced),
+  monitors workers for stalls using agent_healthcheck, and auto-recovers stalls
+  with bounded retry (max 2 redispatches per ticket). Tickets that exceed the
+  redispatch limit are escalated to Blocked. All events are appended to a
+  structured NDJSON dispatch log. Handles workloads of up to 10 tickets across
+  up to 4 repos without human intervention.
+  Handlers are deferred to the implementation wave (OMN-12208 stub).
+
+handler:
+  module: omnimarket.nodes.node_self_healing_dispatch_orchestrator.handlers.handler_self_healing_dispatch_orchestrator
+  class: HandlerSelfHealingDispatchOrchestrator
+  input_model: omnimarket.nodes.node_self_healing_dispatch_orchestrator.models.model_self_healing_dispatch_request.ModelSelfHealingDispatchRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerSelfHealingDispatchOrchestrator
+        module: omnimarket.nodes.node_self_healing_dispatch_orchestrator.handlers.handler_self_healing_dispatch_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 3600000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.self-healing-dispatch-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.self_healing_dispatch_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.self-healing-dispatch-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.self-healing-dispatch-planned.v1
+    - onex.evt.omnimarket.self-healing-dispatch-worker-dispatched.v1
+    - onex.evt.omnimarket.self-healing-dispatch-stall-detected.v1
+    - onex.evt.omnimarket.self-healing-dispatch-recovery-dispatched.v1
+    - onex.evt.omnimarket.self-healing-dispatch-escalated.v1
+    - onex.evt.omnimarket.self-healing-dispatch-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.self-healing-dispatch.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred: true
+  related_tickets: ["OMN-12208"]

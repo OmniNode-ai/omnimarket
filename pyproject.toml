@@ -272,6 +272,7 @@ node_evidence_publisher_effect = "omnimarket.nodes.node_evidence_publisher_effec
 node_deployment_evidence_reducer = "omnimarket.nodes.node_deployment_evidence_reducer"
 node_pr_watch_orchestrator = "omnimarket.nodes.node_pr_watch_orchestrator"
 node_epic_team_orchestrator = "omnimarket.nodes.node_epic_team_orchestrator"
+node_self_healing_dispatch_orchestrator = "omnimarket.nodes.node_self_healing_dispatch_orchestrator"
 node_wave_scheduler_orchestrator = "omnimarket.nodes.node_wave_scheduler_orchestrator"
 node_dep_cascade_dedup_orchestrator = "omnimarket.nodes.node_dep_cascade_dedup_orchestrator"
 node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
