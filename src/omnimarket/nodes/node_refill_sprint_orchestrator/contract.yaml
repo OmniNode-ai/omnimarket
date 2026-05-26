@@ -1,0 +1,67 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Refill Sprint Orchestrator (OMN-12203)
+#
+# Multi-phase orchestrator: reads backlog → scores priority → assigns to sprint.
+# Phases: capacity-check (compute) → candidate-selection (effect) →
+#         scope-verification (effect) → pull-and-label (effect) → notification (effect).
+name: node_refill_sprint_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Sprint refill orchestrator. When Active Sprint capacity falls below a configurable
+  threshold, pulls the highest-priority tech-debt tickets from the Future backlog,
+  verifies their scope is still applicable, moves them into Active Sprint, labels them
+  `auto-pulled`, and emits a summary event. Consolidates the multi-phase algorithm
+  embedded in the refill_sprint skill into a proper ORCHESTRATOR node with typed
+  I/O contracts and Kafka event wiring.
+
+  Phases (per SKILL.md algorithm):
+    1. Capacity check  — query Active Sprint, compute weighted capacity, early-exit if above threshold.
+    2. Candidate selection — query Future project by priority tiers + hard-gate exclusions.
+    3. Scope verification — verify referenced files/APIs exist; flag stale DoD checklists.
+    4. Pull and label — move tickets to Active Sprint, set priority, add `auto-pulled` label.
+    5. Notification — emit sprint.auto-pull.completed Kafka event; optional Discord notification.
+
+handler:
+  module: omnimarket.nodes.node_refill_sprint_orchestrator.handlers.handler_refill_sprint
+  class: HandlerRefillSprintOrchestrator
+  input_model: omnimarket.nodes.node_refill_sprint_orchestrator.handlers.handler_refill_sprint.ModelRefillSprintRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerRefillSprintOrchestrator
+        module: omnimarket.nodes.node_refill_sprint_orchestrator.handlers.handler_refill_sprint
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.sprint-auto-pull-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.refill_sprint_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.sprint-refill.v1
+  publish_topics:
+    - onex.evt.omnimarket.sprint-auto-pull-completed.v1
+    - onex.evt.omnimarket.tech-debt-queue-empty.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.sprint-refill.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 2
+  related_tickets: ["OMN-12203"]
+  skill_source: omniclaude/plugins/onex/skills/refill_sprint/
