@@ -1,0 +1,19 @@
+name: node_insights_to_plan_compute
+version: "1.0.0"
+description: "HTML parse, extract insights, and structure a plan (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_insights_to_plan_compute: "omnimarket.nodes.node_insights_to_plan_compute"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "insights", "plan", "html", "parse"]
+pack: "planning"
+display_name: "Insights to Plan Compute"
+node_role: "compute"
