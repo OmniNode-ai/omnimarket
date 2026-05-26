@@ -1,0 +1,54 @@
+---
+name: node_create_followup_tickets_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: true
+description: >
+  Contract-only Wave 1 effect node that creates Linear tickets in batch from
+  code review findings (DoD failures, review issues). Single-purpose side effect:
+  structured finding list → Linear tickets. Priority mapping, seam detection,
+  and ModelTicketContract injection are deferred to implementation wave.
+
+input_model:
+  name: ModelCreateFollowupTicketsCommand
+  module: omnimarket.nodes.node_create_followup_tickets_effect.models.model_create_followup_tickets_state
+  description: "Batch of review findings to convert into Linear tickets."
+
+output_model:
+  name: ModelCreateFollowupTicketsResult
+  module: omnimarket.nodes.node_create_followup_tickets_effect.models.model_create_followup_tickets_state
+  description: "IDs and URLs of created tickets, plus any creation failures."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: false
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.create-followup-tickets-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.create-followup-tickets-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.create-followup-tickets-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.create-followup-tickets-completed.v1
+
+side_effects:
+  reads:
+    - linear_api
+  writes:
+    - linear_issue
+  duplicate_key_fields:
+    - correlation_id
+    - source_review_id
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 2
+  handlers_deferred_until_wave: 2
+  related_tickets: ["OMN-12204"]

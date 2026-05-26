@@ -21,9 +21,10 @@ import click
 import httpx
 
 from omnimarket.cli.market import market
+from omnimarket.logging.topics import LOG_ENTRY_TOPIC
 
 _DEFAULT_BASE_URL = "http://localhost:3002"
-_LOG_ENTRIES_TOPIC = "onex.evt.platform.log-entry.v1"  # onex-topic-allow: CLI constant, not a handler literal
+_LOG_ENTRIES_TOPIC = LOG_ENTRY_TOPIC
 
 # ---------------------------------------------------------------------------
 # ANSI helpers
