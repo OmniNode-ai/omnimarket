@@ -100,9 +100,7 @@ class TestModels:
     def test_render_request_frozen(self) -> None:
         from pydantic import ValidationError
 
-        from omnimarket.nodes.node_demo_cost_compute.models.model_cost_request import (
-            ModelDemoCostResult,
-        )
+        from omnimarket.events.demo import ModelDemoCostResult
         from omnimarket.nodes.node_demo_renderer_effect.models.model_render_request import (
             ModelDemoRenderRequest,
         )
@@ -115,9 +113,7 @@ class TestModels:
             req.bar_width = 99  # type: ignore[misc]
 
     def test_render_request_defaults(self) -> None:
-        from omnimarket.nodes.node_demo_cost_compute.models.model_cost_request import (
-            ModelDemoCostResult,
-        )
+        from omnimarket.events.demo import ModelDemoCostResult
         from omnimarket.nodes.node_demo_renderer_effect.models.model_render_request import (
             ModelDemoRenderRequest,
         )
@@ -131,9 +127,7 @@ class TestModels:
 
 class TestHandlerIsStub:
     def test_handle_raises_not_implemented(self) -> None:
-        from omnimarket.nodes.node_demo_cost_compute.models.model_cost_request import (
-            ModelDemoCostResult,
-        )
+        from omnimarket.events.demo import ModelDemoCostResult
         from omnimarket.nodes.node_demo_renderer_effect.handlers.handler_renderer import (
             NodeDemoRendererEffect,
         )

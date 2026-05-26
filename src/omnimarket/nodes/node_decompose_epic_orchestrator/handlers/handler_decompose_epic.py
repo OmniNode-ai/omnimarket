@@ -33,9 +33,7 @@ class HandlerDecomposeEpicOrchestrator:
     Stub implementation. Full implementation tracked in OMN-12214.
     """
 
-    async def handle(
-        self, request: ModelDecomposeEpicRequest
-    ) -> ModelHandlerOutput:  # type: ignore[type-arg]
+    async def handle(self, request: ModelDecomposeEpicRequest) -> ModelHandlerOutput:  # type: ignore[type-arg]
         """Decompose a Linear epic into sub-tickets."""
         raise NotImplementedError(  # stub-ok
             "HandlerDecomposeEpicOrchestrator is not yet implemented (OMN-12214). "

@@ -26,6 +26,7 @@ handler:
 descriptor:
   node_archetype: effect
   purity: impure_when_recon
+  runtime_profiles: [effects]
   idempotent: true
   timeout_ms: 300000
 
