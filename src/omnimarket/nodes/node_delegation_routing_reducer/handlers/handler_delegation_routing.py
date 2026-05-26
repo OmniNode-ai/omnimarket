@@ -488,19 +488,52 @@ def _definition_of_done_checks(
     )
 
 
-def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
+def next_eligible_tier(
+    current_tier_name: str,
+    excluded_tiers: frozenset[str],
+) -> str | None:
+    """Return the next tier name after current_tier_name, skipping excluded_tiers.
+
+    Parses routing_tiers.yaml once (cached via _get_config). Returns None if
+    current tier is the last eligible tier or is unrecognized.
+
+    This is the single parsing path for tier escalation order. The orchestrator
+    imports and calls this directly -- no independent YAML parsing.
+    """
+    config = _get_config()
+    found_current = False
+    for tier in config.tiers:
+        if tier.name == current_tier_name:
+            found_current = True
+            continue
+        if found_current and tier.name not in excluded_tiers:
+            return tier.name
+    return None
+
+
+def delta(
+    request: ModelDelegationRequest,
+    *,
+    min_tier_name: str | None = None,
+) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
-    Iterates tiers in declaration order (local → cheap_cloud → claude), with
+    Iterates tiers in declaration order (local -> cheap_cloud -> claude), with
     optional reordering from task-class contract escalation_policy.tier_order.
     Returns the first tier that has a configured endpoint, handles the requested
     task type, and satisfies task-class contract constraints (cloud routing policy
     and pricing ceiling).
 
+    When ``min_tier_name`` is set (escalation path), tiers appearing before
+    ``min_tier_name`` in the tier list are skipped. This preserves the reducer
+    as a pure function -- it does not need to know about escalation state.
+
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
     Args:
         request: The delegation request to route.
+        min_tier_name: When set, skip all tiers before this tier name in the
+            iteration order. Used by the escalation path after quality gate failure.
 
     Returns:
         A routing decision with selected model, endpoint, and config.
@@ -521,7 +554,16 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
 
+    # Escalation support (OMN-12254): skip tiers before min_tier_name.
+    skip_until_found = min_tier_name is not None
+
     for tier in tiers:
+        if skip_until_found:
+            if tier.name == min_tier_name:
+                skip_until_found = False
+            else:
+                continue
+
         if not _tier_allowed_by_contract(tier, entry):
             continue
 
@@ -566,6 +608,8 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             rationale += (
                 f" Contract-driven: task_class='{task_type}' policy='{policy_str}'."
             )
+        if min_tier_name is not None:
+            rationale += f" Escalated: min_tier_name='{min_tier_name}'."
 
         cost_tier_map = {"local": "low", "cheap_cloud": "medium", "claude": "high"}
         cost_tier = cost_tier_map.get(tier.name, tier.name)
@@ -585,6 +629,7 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
             rationale=rationale,
             dod_deterministic=dod_deterministic,
             dod_heuristic=dod_heuristic,
+            tier_name=tier.name,
         )
 
     context = ModelInfraErrorContext.with_correlation(
@@ -600,4 +645,4 @@ def delta(request: ModelDelegationRequest) -> ModelRoutingDecision:
     raise ProtocolConfigurationError(msg, context=context)
 
 
-__all__: list[str] = ["_get_contract_model_ref", "delta"]
+__all__: list[str] = ["_get_contract_model_ref", "delta", "next_eligible_tier"]

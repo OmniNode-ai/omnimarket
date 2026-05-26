@@ -666,6 +666,7 @@ class TestEnumDelegationState:
             "EXECUTING",
             "INFERENCE_COMPLETED",
             "GATE_EVALUATED",
+            "ESCALATING",
             "COMPLETED",
             "FAILED",
         }
