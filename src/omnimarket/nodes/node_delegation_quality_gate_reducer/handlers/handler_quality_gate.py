@@ -123,6 +123,9 @@ def _strip_thinking_traces(content: str) -> str:
     return _THINKING_TRACE_RE.sub("", content)
 
 
+_MARKDOWN_FENCE_RE = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
+
+
 def _strip_markdown_code_fence(content: str) -> str:
     """Return fenced code body when content is a single markdown code block."""
     stripped = content.strip()
@@ -132,6 +135,11 @@ def _strip_markdown_code_fence(content: str) -> str:
     if len(lines) >= 2 and lines[-1].strip() == "```":
         return "\n".join(lines[1:-1])
     return content
+
+
+def _extract_fenced_code_blocks(content: str) -> list[str]:
+    """Return all fenced code block bodies from mixed content."""
+    return _MARKDOWN_FENCE_RE.findall(content)
 
 
 def _check_output_parses(content: str) -> str | None:
@@ -169,12 +177,19 @@ def _check_min_length(content: str, threshold: int) -> str | None:
 
 
 def _check_compiles_without_errors(content: str) -> str | None:
-    """Deterministic: Python-like delegated code must parse successfully."""
-    candidate = _strip_markdown_code_fence(content)
-    try:
-        ast.parse(candidate)
-    except SyntaxError as exc:
-        return f"MALFORMED: response does not compile as Python: {exc.msg}"
+    """Deterministic: Python-like delegated code must parse successfully.
+
+    Extracts fenced code blocks (```python ... ```) from mixed content before
+    parsing. If multiple blocks are present, all must compile. Falls back to
+    raw content when no fenced blocks are found.
+    """
+    blocks = _extract_fenced_code_blocks(content)
+    candidates = blocks if blocks else [_strip_markdown_code_fence(content)]
+    for candidate in candidates:
+        try:
+            ast.parse(candidate)
+        except SyntaxError as exc:
+            return f"MALFORMED: response does not compile as Python: {exc.msg}"
     return None
 
 

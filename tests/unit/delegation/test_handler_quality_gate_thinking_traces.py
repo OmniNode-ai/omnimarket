@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Tests for thinking trace stripping and passes_existing_tests support."""
+"""Tests for thinking trace stripping, markdown fence extraction, and passes_existing_tests support."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
+    _check_compiles_without_errors,
+    _extract_fenced_code_blocks,
     _strip_thinking_traces,
     delta,
 )
@@ -27,6 +29,13 @@ _THINKING_PREFIX = (
 
 _CLEAN_CODE = "def add(a: int, b: int) -> int:\n    return a + b\n"
 _RESPONSE_WITH_THINKING = _THINKING_PREFIX + _CLEAN_CODE
+
+_FENCED_CODE = "```python\n" + _CLEAN_CODE + "```"
+_MIXED_RESPONSE = (
+    _THINKING_PREFIX
+    + _FENCED_CODE
+    + "\nThis function adds two integers and returns the result.\n"
+)
 
 
 @pytest.mark.unit
@@ -60,11 +69,77 @@ def test_strip_thinking_traces_handles_multiple_blocks() -> None:
 
 
 @pytest.mark.unit
+def test_extract_fenced_code_blocks_single_fence() -> None:
+    content = "Some prose.\n```python\ndef foo(): pass\n```\nMore prose."
+    blocks = _extract_fenced_code_blocks(content)
+    assert len(blocks) == 1
+    assert "def foo(): pass" in blocks[0]
+
+
+@pytest.mark.unit
+def test_extract_fenced_code_blocks_no_fence_returns_empty() -> None:
+    blocks = _extract_fenced_code_blocks(_CLEAN_CODE)
+    assert blocks == []
+
+
+@pytest.mark.unit
+def test_extract_fenced_code_blocks_multiple_fences() -> None:
+    content = "```python\ndef foo(): pass\n```\ntext\n```python\ndef bar(): pass\n```"
+    blocks = _extract_fenced_code_blocks(content)
+    assert len(blocks) == 2
+    assert any("foo" in b for b in blocks)
+    assert any("bar" in b for b in blocks)
+
+
+@pytest.mark.unit
+def test_check_compiles_without_errors_fenced_valid_code() -> None:
+    result = _check_compiles_without_errors(_FENCED_CODE)
+    assert result is None
+
+
+@pytest.mark.unit
+def test_check_compiles_without_errors_fenced_invalid_code() -> None:
+    invalid_fenced = "```python\ndef foo(\n```"
+    result = _check_compiles_without_errors(invalid_fenced)
+    assert result is not None
+    assert "MALFORMED" in result
+
+
+@pytest.mark.unit
+def test_check_compiles_without_errors_plain_valid_code() -> None:
+    result = _check_compiles_without_errors(_CLEAN_CODE)
+    assert result is None
+
+
+@pytest.mark.unit
+def test_check_compiles_without_errors_mixed_thinking_and_fence() -> None:
+    # Thinking trace stripped before this function is called; but even with it
+    # present, the fence extractor finds the valid code block and succeeds.
+    result = _check_compiles_without_errors(_MIXED_RESPONSE)
+    assert result is None
+
+
+@pytest.mark.unit
 def test_quality_gate_strips_thinking_traces_before_compile_check() -> None:
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
         task_type="code_generation",
         llm_response_content=_RESPONSE_WITH_THINKING,
+        dod_deterministic=("compiles_without_errors",),
+        dod_heuristic=(),
+    )
+    result = delta(gate_input)
+    assert result.passed is True
+    assert not any("compile" in r for r in result.failure_reasons)
+
+
+@pytest.mark.unit
+def test_quality_gate_compile_check_with_thinking_and_fences() -> None:
+    """Full B9 failure case: <think>...</think>\n```python\n...\n```\nProse."""
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="code_generation",
+        llm_response_content=_MIXED_RESPONSE,
         dod_deterministic=("compiles_without_errors",),
         dod_heuristic=(),
     )
