@@ -1,4 +1,7 @@
-from pydantic import BaseModel, Field
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelCapabilityScoreRow(BaseModel, frozen=True):
@@ -20,4 +23,23 @@ class ModelScoreReducerState(BaseModel):
     scores: dict[str, ModelCapabilityScoreRow] = Field(
         default_factory=dict,
         description="Keyed by '{model_key}::{task_type}'",
+    )
+
+
+class ModelMaterializeResult(BaseModel):
+    """Typed output of HandlerCanaryScoreReducer.materialize().
+
+    capability_score_rows: upsert targets for the capability_scores table.
+    routing_outcome_rows: insert targets for routing_outcomes.quality_score.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    capability_score_rows: tuple[dict[str, object], ...] = Field(
+        default=(),
+        description="Rows matching the capability_scores table schema.",
+    )
+    routing_outcome_rows: tuple[dict[str, object], ...] = Field(
+        default=(),
+        description="Rows for routing_outcomes.quality_score population.",
     )
