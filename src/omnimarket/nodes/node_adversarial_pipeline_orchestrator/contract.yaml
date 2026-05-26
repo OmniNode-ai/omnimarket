@@ -1,0 +1,57 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Adversarial Pipeline Orchestrator (OMN-12215)
+#
+# Three-stage pipeline: design_to_plan → hostile_reviewer gate (≥min_findings_gate required)
+# → plan_to_tickets. Promoted from omniclaude adversarial_pipeline skill.
+name: node_adversarial_pipeline_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: true
+
+description: >
+  Adversarial pipeline orchestrator. Chains three background stages:
+  (1) design_to_plan — produces a plan from a topic;
+  (2) hostile_reviewer gate — reviews the plan, requires ≥ min_findings_gate issues before
+      proceeding (default 3); gate failure surfaces findings and halts the pipeline;
+  (3) plan_to_tickets — converts the gated plan into Linear tickets.
+  All stages dispatch background agents. No foreground implementation.
+  STUB — not yet implemented.
+  Returns SkillRoutingError with reason node_not_implemented.
+
+handler:
+  module: omnimarket.nodes.node_adversarial_pipeline_orchestrator.handlers.handler_adversarial_pipeline_orchestrator
+  class: HandlerAdversarialPipelineOrchestrator
+  input_model: omnimarket.nodes.node_adversarial_pipeline_orchestrator.models.model_adversarial_pipeline_request.ModelAdversarialPipelineRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerAdversarialPipelineOrchestrator
+        module: omnimarket.nodes.node_adversarial_pipeline_orchestrator.handlers.handler_adversarial_pipeline_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.adversarial-pipeline-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.adversarial_pipeline_orchestrator.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.adversarial-pipeline-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.adversarial-pipeline-completed.v1
+    - onex.evt.omnimarket.adversarial-pipeline-gate-failed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.adversarial-pipeline.v1
+
+metadata:
+  transport_type: kafka

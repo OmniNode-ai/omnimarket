@@ -14,10 +14,10 @@ import hashlib
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
 
-def compute_chunk_id(
+def compute_chunk_id(  # stub-ok: false-positive detector — full implementation below
     factor: EnumContextFactor, content: str
-) -> str:  # stub-ok: false-positive, full implementation follows
-    """Return a deterministic ctx_XXXXXXXX chunk identifier.
+) -> str:
+    """Return a deterministic ctx_<8hex> chunk identifier.
 
     Collision within a single pack must be detected by the builder and
     raises ARTIFACT_HASH_MISMATCH rather than silently emitting duplicates.
