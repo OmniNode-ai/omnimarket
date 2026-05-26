@@ -23,6 +23,7 @@ class ModelRegistryEndpoint(BaseModel):
     health_check_path: str = "/health"
     declared_by: str = ""
     declared_at: str = ""
+    endpoint_ref: str = ""
 
     @field_validator("capabilities", mode="before")
     @classmethod

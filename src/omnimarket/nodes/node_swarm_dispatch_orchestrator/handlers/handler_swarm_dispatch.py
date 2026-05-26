@@ -29,7 +29,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -123,12 +122,20 @@ class HandlerSwarmDispatchOrchestrator:
       - swarm-endpoints-selected        → transition_endpoints_selected
       - swarm-fanout-completed          → transition_dispatching → persist
       - swarm-aggregation-completed     → transition_aggregating → transition_completed
+
+    State is persisted in a class-level in-process dict (_in_process_state) keyed
+    by run_id. This allows FSM continuations across separate dispatcher invocations
+    within the same process when ProtocolStateStore is not available.
     """
+
+    # In-process FSM state store — shared across all instances in this process.
+    # Keyed by run_id. Used as fallback when _state_store is None.
+    _in_process_state: dict[str, ModelOrchestratorState] = {}
 
     def __init__(
         self,
         *,
-        event_bus: ProtocolEventBusPublisher,
+        event_bus: ProtocolEventBusPublisher | None = None,
         state_store: ProtocolStateStore | None = None,
         contract_path: Path | None = None,
     ) -> None:
@@ -166,6 +173,15 @@ class HandlerSwarmDispatchOrchestrator:
             elif "swarm-aggregation-completed" in topic:
                 self._topic_routing[topic] = "aggregating"
 
+        # Build event_type alias → routing key for envelope-based dispatch.
+        # Alias format: "{parts[2]}.{parts[3]}" from "onex.evt.{ns}.{name}.v1"
+        self._event_type_routing: dict[str, str] = {}
+        for full_topic, routing_key in self._topic_routing.items():
+            parts = full_topic.split(".")
+            if len(parts) >= 5 and parts[0] == "onex":
+                alias = f"{parts[2]}.{parts[3]}"
+                self._event_type_routing[alias] = routing_key
+
     @property
     def subscribed_event_topics(self) -> tuple[str, ...]:
         """Return the response event topics that this handler routes via route_event."""
@@ -175,8 +191,21 @@ class HandlerSwarmDispatchOrchestrator:
     # Sync entry point (no bus; used in tests and standalone mode)
     # ------------------------------------------------------------------
 
-    def handle(self, request: ModelSwarmDispatchRequest) -> ModelSwarmDispatchResult:
-        """Drive the full FSM without publishing (event_bus ignored)."""
+    def handle(
+        self, request: ModelSwarmDispatchRequest
+    ) -> ModelSwarmDispatchResult | None:
+        """Drive FSM; delegates to handle_async when event_bus is available (OMN-12151)."""
+        if self._event_bus is not None:
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Already inside an async context — schedule and return None to
+                # suppress the terminal event publish (result_applier skips on None).
+                _task = loop.create_task(self.handle_async(request))
+                _ = _task  # retain reference per RUF006
+                return None
+            return loop.run_until_complete(self.handle_async(request))
         logger.info(
             "[SWARM-DISPATCH] === ENTRY === run_id=%s correlation_id=%s task=%r",
             request.run_id,
@@ -188,6 +217,7 @@ class HandlerSwarmDispatchOrchestrator:
             run_id=request.run_id,
             correlation_id=request.correlation_id,
             original_task=request.task,
+            max_subtasks=request.max_subtasks,
         )
         try:
             state, _ = self.transition_received(state, request)
@@ -203,7 +233,67 @@ class HandlerSwarmDispatchOrchestrator:
     # Async entry point (uses real event bus)
     # ------------------------------------------------------------------
 
-    async def handle_async(self, request: ModelSwarmDispatchRequest) -> None:
+    async def handle_async(self, request: object) -> None:
+        """Unified async entry point: handles initial command or FSM response events.
+
+        When called with a ModelSwarmDispatchRequest (initial swarm-dispatch cmd),
+        creates FSM state and emits the health-check command.
+
+        When called with a ModelEventEnvelope (FSM response event — auto-wiring
+        dispatches envelopes when no event_model is declared in handler_routing),
+        routes to route_event_by_type using envelope.event_type.
+
+        Returns None in all cases (OMN-12151): the FSM terminal event is emitted
+        by route_event when aggregating → COMPLETED fires.
+        """
+        from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+        if isinstance(request, ModelSwarmDispatchRequest):
+            await self._handle_async_initial(request)
+            return
+
+        if isinstance(request, ModelEventEnvelope):
+            event_type = str(getattr(request, "event_type", "") or "")
+            payload = request.payload
+            payload_dict: dict[str, Any] = (
+                payload
+                if isinstance(payload, dict)
+                else (payload.model_dump() if hasattr(payload, "model_dump") else {})
+            )
+            await self.route_event_by_type(event_type, payload_dict)
+            return
+
+        # MDE materializes envelopes as dicts before dispatch (ModelMaterializedDispatch).
+        # When event_model is None in handler_routing, the callback receives this dict.
+        # Schema: {payload: dict, __bindings: dict, __debug_trace: {event_type, ...}}
+        if isinstance(request, dict):
+            debug_trace = request.get("__debug_trace") or {}
+            event_type_raw = (
+                debug_trace.get("event_type") if isinstance(debug_trace, dict) else None
+            )
+            event_type = str(event_type_raw or "")
+            payload_dict = request.get("payload") or {}
+            if not isinstance(payload_dict, dict):
+                payload_dict = {}
+            if event_type:
+                logger.debug(
+                    "[SWARM-DISPATCH] handle_async: materialized dict event_type=%s",
+                    event_type,
+                )
+                await self.route_event_by_type(event_type, payload_dict)
+                return
+            logger.warning(
+                "[SWARM-DISPATCH] handle_async: materialized dict missing event_type — ignoring payload keys=%s",
+                list(request.keys()),
+            )
+            return
+
+        logger.warning(
+            "[SWARM-DISPATCH] handle_async: unexpected request type=%s — ignoring",
+            type(request).__name__,
+        )
+
+    async def _handle_async_initial(self, request: ModelSwarmDispatchRequest) -> None:
         """Handle the initial swarm-dispatch command.
 
         Creates fresh FSM state for the run_id, emits the health-check command,
@@ -226,6 +316,7 @@ class HandlerSwarmDispatchOrchestrator:
             run_id=request.run_id,
             correlation_id=request.correlation_id,
             original_task=request.task,
+            max_subtasks=request.max_subtasks,
         )
         try:
             state, publishes = self.transition_received(state, request)
@@ -243,6 +334,34 @@ class HandlerSwarmDispatchOrchestrator:
             # Return None even on failure: transition_failed already published
             # the swarm-dispatch-failed terminal event via _flush above.
             return
+
+    async def route_event_by_type(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> ModelOrchestratorState | None:
+        """Route an FSM response event using event_type alias instead of full topic.
+
+        Called by handle_async when auto-wiring dispatches a ModelEventEnvelope
+        for FSM continuation events (no event_model in handler_routing entry).
+
+        Args:
+            event_type: envelope.event_type, e.g. "omnimarket.swarm-endpoint-health-completed"
+            payload:    decoded event payload dict (must contain run_id)
+        """
+        routing_key = self._event_type_routing.get(event_type, "")
+        if not routing_key:
+            logger.warning(
+                "[SWARM-DISPATCH] route_event_by_type: unmapped event_type=%s",
+                event_type,
+            )
+            return None
+
+        # Find the matching full topic from _topic_routing (reverse lookup for logging)
+        topic = next(
+            (t for t, k in self._topic_routing.items() if k == routing_key), event_type
+        )
+        return await self.route_event(topic, payload)
 
     # ------------------------------------------------------------------
     # Multi-topic event router (OMN-12003)
@@ -331,7 +450,6 @@ class HandlerSwarmDispatchOrchestrator:
     ) -> tuple[ModelOrchestratorState, list[_PendingPublish]]:
         """RECEIVED: build swarm-check-endpoint-health command payload."""
         self._assert_state(state, EnumSwarmOrchestratorState.RECEIVED)
-        state = state.with_max_subtasks(request.max_subtasks)
         cmd = ModelSwarmHealthCheckCommand(
             endpoint_ids=request.endpoint_ids,
             correlation_id=request.correlation_id,
@@ -356,10 +474,20 @@ class HandlerSwarmDispatchOrchestrator:
         state = state.with_health(endpoint_health)
 
         endpoint_ids = tuple(endpoint_health.keys())
-        planner_hash = _hash_text(planner_output) if planner_output else ""
+        # ModelSwarmDecomposeRequest requires min_length=1 on planner_output/hash.
+        # When no LLM planner ran (standard case), use the original task as the
+        # planner output — the decomposer handler falls through to passthrough mode
+        # when original_task is shorter than token_threshold (default 2000 chars).
+        effective_planner_output = (
+            planner_output or state.original_task or "passthrough"
+        )
+        effective_planner_model_id = (
+            planner_model_id if planner_model_id != "unknown" else "passthrough"
+        )
+        planner_hash = _hash_text(effective_planner_output)
         cmd = ModelSwarmDecomposeCommand(
-            planner_output=planner_output,
-            planner_model_id=planner_model_id,
+            planner_output=effective_planner_output,
+            planner_model_id=effective_planner_model_id,
             planner_output_hash=planner_hash,
             endpoint_ids=endpoint_ids,
             original_task=state.original_task,
@@ -437,7 +565,7 @@ class HandlerSwarmDispatchOrchestrator:
         """DISPATCHING: parse fanout event → build swarm-aggregate command."""
         self._assert_state(state, EnumSwarmOrchestratorState.ENDPOINTS_SELECTED)
         dispatches = self._parse_fanout_event(fanout_event)
-        wall_latency_ms: int = int(fanout_event.get("wall_latency_ms", 0))
+        wall_latency_ms = int(fanout_event.get("wall_latency_ms", 0))
         state = state.with_dispatches(
             dispatches, dispatch_wall_latency_ms=wall_latency_ms
         )
@@ -518,18 +646,22 @@ class HandlerSwarmDispatchOrchestrator:
     # ------------------------------------------------------------------
 
     async def _persist_state(self, state: ModelOrchestratorState) -> None:
-        """Serialize FSM state to ProtocolStateStore keyed by run_id."""
-        if self._state_store is None:
-            return
-        from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
+        """Persist FSM state — ProtocolStateStore if available, else in-process dict."""
+        HandlerSwarmDispatchOrchestrator._in_process_state[state.run_id] = state
+        if self._state_store is not None:
+            from datetime import UTC, datetime
 
-        envelope = ModelStateEnvelope(
-            node_id=_STATE_NODE_ID,
-            scope_id=state.run_id,
-            data=state.model_dump(mode="json"),
-            written_at=datetime.now(UTC),
-        )
-        await self._state_store.put(envelope)
+            from omnibase_core.models.state.model_state_envelope import (
+                ModelStateEnvelope,
+            )
+
+            envelope = ModelStateEnvelope(
+                node_id=_STATE_NODE_ID,
+                scope_id=state.run_id,
+                data=state.model_dump(mode="json"),
+                written_at=datetime.now(UTC),
+            )
+            await self._state_store.put(envelope)
         logger.debug(
             "[SWARM-DISPATCH] state persisted run_id=%s fsm_state=%s",
             state.run_id,
@@ -537,15 +669,19 @@ class HandlerSwarmDispatchOrchestrator:
         )
 
     async def _load_state(self, run_id: str) -> ModelOrchestratorState | None:
-        """Load persisted FSM state for a run_id from ProtocolStateStore."""
+        """Load FSM state — in-process dict first (fastest), then ProtocolStateStore."""
+        in_proc = HandlerSwarmDispatchOrchestrator._in_process_state.get(run_id)
+        if in_proc is not None:
+            return in_proc
         if self._state_store is None:
             return None
-        envelope: ModelStateEnvelope | None = await self._state_store.get(
+
+        raw_envelope: ModelStateEnvelope | None = await self._state_store.get(
             _STATE_NODE_ID, scope_id=run_id
         )
-        if envelope is None:
+        if raw_envelope is None:
             return None
-        return ModelOrchestratorState.model_validate(envelope.data)
+        return ModelOrchestratorState.model_validate(raw_envelope.data)
 
     # ------------------------------------------------------------------
     # Event parsing helpers
@@ -618,26 +754,18 @@ class HandlerSwarmDispatchOrchestrator:
         )
         run_status = self._determine_run_status(state.dispatches)
         models_used = sorted({d.model_id for d in state.dispatches if d.model_id})
-
-        # Cost accounting: local/free endpoints are $0.00 actual cost.
-        # Cloud-equivalent cost uses a fixed Opus-4-rate proxy: $0.015/1K output tokens.
-        # parallelism_speedup = sum(subtask_latency) / wall_latency (serial vs parallel).
+        wall_ms = state.dispatch_wall_latency_ms
+        sum_subtask_ms = sum(d.latency_ms for d in state.dispatches)
+        # Cloud T4 cost proxy: $0.376/hr → ~$1.044e-7/ms per subtask
+        _t4_cost_per_ms = 1.044e-7
+        cloud_equivalent_cost_usd = round(sum_subtask_ms * _t4_cost_per_ms, 6)
         total_cost_usd = 0.0
-        # Approximate output tokens from latency: 150 t/s average → tokens = latency_ms / 1000 * 150
-        approx_tokens = sum(
-            int(d.latency_ms / 1000 * 150) for d in state.dispatches if d.latency_ms > 0
+        savings_usd = round(cloud_equivalent_cost_usd - total_cost_usd, 6)
+        speedup = (
+            round(sum_subtask_ms / wall_ms, 4)
+            if wall_ms > 0 and sum_subtask_ms > wall_ms
+            else 1.0
         )
-        cloud_equivalent_cost_usd = round(approx_tokens / 1000 * 0.015, 4)
-        savings_usd = cloud_equivalent_cost_usd  # local cost = $0.00
-
-        sum_subtask_latency = sum(
-            d.latency_ms for d in state.dispatches if d.latency_ms > 0
-        )
-        wall_ms = state.dispatch_wall_latency_ms or state.total_latency_ms or 1
-        parallelism_speedup_ratio = (
-            round(sum_subtask_latency / wall_ms, 2) if wall_ms > 0 else 1.0
-        )
-
         return {
             "run_id": state.run_id,
             "correlation_id": state.correlation_id,
@@ -648,12 +776,12 @@ class HandlerSwarmDispatchOrchestrator:
             "failed_count": failed,
             "skipped_count": skipped,
             "total_latency_ms": state.total_latency_ms,
-            "dispatch_wall_latency_ms": state.dispatch_wall_latency_ms,
             "models_used": list(models_used),
+            "dispatch_wall_latency_ms": wall_ms,
             "total_cost_usd": total_cost_usd,
             "cloud_equivalent_cost_usd": cloud_equivalent_cost_usd,
             "savings_usd": savings_usd,
-            "parallelism_speedup_ratio": parallelism_speedup_ratio,
+            "parallelism_speedup_ratio": speedup,
         }
 
     # ------------------------------------------------------------------
@@ -671,13 +799,40 @@ class HandlerSwarmDispatchOrchestrator:
             )
 
     async def _flush(self, publishes: list[_PendingPublish]) -> None:
+        """Publish pending commands as ModelEventEnvelope-wrapped messages.
+
+        Wraps each payload in an envelope so consumers using _make_event_bus_callback
+        can deserialize via ModelEventEnvelope.model_validate without a fallback.
+        """
+        import uuid as _uuid
+        from datetime import UTC, datetime
+
         if self._event_bus is None:
             return
         for topic, payload in publishes:
             if not topic:
                 continue
-            value = json.dumps(payload).encode()
+            # Derive event_type alias from topic (e.g. "omnimarket.swarm-decompose")
+            parts = topic.split(".")
+            event_type = f"{parts[2]}.{parts[3]}" if len(parts) >= 5 else topic
+            # Correlation/run id from payload for tracing
+            corr_id = payload.get("correlation_id") or str(_uuid.uuid4())
+            envelope_dict = {
+                "payload": payload,
+                "correlation_id": corr_id,
+                "event_type": event_type,
+                "source_node": "node_swarm_dispatch_orchestrator",
+                "envelope_timestamp": datetime.now(UTC).isoformat(),
+                "schema_version": "1.0.0",
+            }
+            value = json.dumps(envelope_dict).encode()
+            logger.info(
+                "[SWARM-DISPATCH] _flush: publishing to topic=%s corr=%s",
+                topic,
+                corr_id,
+            )
             await self._event_bus.publish(topic=topic, key=None, value=value)
+            logger.info("[SWARM-DISPATCH] _flush: published ok topic=%s", topic)
 
     def _determine_run_status(
         self, dispatches: tuple[ModelSubtaskDispatch, ...]

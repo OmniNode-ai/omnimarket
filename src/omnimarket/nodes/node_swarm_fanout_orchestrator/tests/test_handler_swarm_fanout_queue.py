@@ -161,8 +161,10 @@ def test_requires_publisher_and_subscriber() -> None:
     s = ModelSubtask(subtask_id="s1", description="task")
     req = _make_request([s], {"s1": "ep1"}, [ep])
 
-    with pytest.raises(ValueError, match="queue_publisher"):
-        HandlerSwarmFanout().handle(req)
+    result = HandlerSwarmFanout().handle(req)
+
+    assert result.dispatches[0].execution_status == EnumExecutionStatus.TIMEOUT
+    assert "no_terminal_event" in result.dispatches[0].failure_reason
 
 
 @pytest.mark.unit
