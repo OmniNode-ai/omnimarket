@@ -1,0 +1,23 @@
+name: node_ticketing_insights_compute
+version: "1.0.0"
+description: "Ticketing insights compute — analyzes Linear sprint/backlog for velocity, friction, and cycle-time (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ticketing_insights_compute: "omnimarket.nodes.node_ticketing_insights_compute"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: reads
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ticketing", "insights", "linear", "OMN-12201"]
+pack: "build"
+display_name: "Ticketing Insights Compute"
+node_role: "compute"

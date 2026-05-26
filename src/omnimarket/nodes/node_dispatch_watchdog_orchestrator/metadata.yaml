@@ -1,0 +1,23 @@
+name: node_dispatch_watchdog_orchestrator
+version: "1.0.0"
+description: "Dispatch watchdog orchestrator — monitors epic wave Tasks for stalls and triggers recovery (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dispatch_watchdog_orchestrator: "omnimarket.nodes.node_dispatch_watchdog_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: orchestrates
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "watchdog", "dispatch", "stall-recovery", "OMN-12209"]
+pack: "build"
+display_name: "Dispatch Watchdog Orchestrator"
+node_role: "orchestrator"
