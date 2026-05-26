@@ -1,0 +1,19 @@
+name: node_recall_compute
+version: "1.0.0"
+description: "Unified knowledge query interface — federated recall across learnings, architecture, and antipattern backends"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_recall_compute: "omnimarket.nodes.node_recall_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "recall", "knowledge", "federation", "learnings"]
+pack: "intelligence"
+display_name: "Recall Compute"
+node_role: "compute"
