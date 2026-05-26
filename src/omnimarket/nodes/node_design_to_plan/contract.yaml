@@ -1,12 +1,13 @@
 ---
 name: node_design_to_plan
-contract_version: {major: 1, minor: 0, patch: 0}
-node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_type: ORCHESTRATOR_GENERIC
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   End-to-end design workflow — brainstorm ideas into structured implementation plans
   with optional launch. Phases: brainstorm (Phase 1), plan (Phase 2), launch (Phase 3).
+  Phase 3 (launch) is a stub — full wiring is follow-up work (OMN-12228).
 
 handler:
   module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan
@@ -19,10 +20,18 @@ handler_routing:
     - handler:
         name: HandlerDesignToPlan
         module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan
+    - handler:
+        name: HandlerDesignToPlanPhase3Launch
+        module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan_phase3_launch
+        operation: phase3_launch
+        description: >
+          Phase 3 launch handler stub — executes the plan by routing to
+          executing_plans or downstream orchestrators. Stub; raises
+          NotImplementedError until OMN-12228 follow-up wiring lands.
 
 descriptor:
-  node_archetype: compute
-  purity: impure
+  node_archetype: orchestrator
+  purity: effectful
   idempotent: false
   timeout_ms: 600000
 
@@ -73,3 +82,6 @@ env_dependencies:
 
 metadata:
   transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12228"]
+  phase3_handler_status: stub

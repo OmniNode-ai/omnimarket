@@ -49,7 +49,7 @@ class TestDesignToPlanGoldenChain:
     async def test_full_cycle_all_phases_succeed(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """All 4 phases succeed -> DONE."""
+        """All phases (including Phase 3 LAUNCH stub) succeed -> DONE."""
         handler = HandlerDesignToPlan()
         command = _make_command()
 
@@ -59,13 +59,16 @@ class TestDesignToPlanGoldenChain:
         assert state.consecutive_failures == 0
         assert state.error_message is None
         assert completed.final_phase == EnumDesignToPlanPhase.DONE
-        # 4 transitions: IDLE->BRAINSTORM, BRAINSTORM->STRUCTURE,
-        # STRUCTURE->REVIEW, REVIEW->FINALIZE, FINALIZE->DONE = 5
-        assert len(events) == 5
+        # 6 transitions: IDLE->BRAINSTORM, BRAINSTORM->STRUCTURE,
+        # STRUCTURE->REVIEW, REVIEW->FINALIZE, FINALIZE->LAUNCH, LAUNCH->DONE
+        # Phase 3 (LAUNCH) is a stub — FSM advances through it when phase_success=True
+        assert len(events) == 6
         assert all(e.success for e in events)
         assert events[0].from_phase == EnumDesignToPlanPhase.IDLE
         assert events[0].to_phase == EnumDesignToPlanPhase.BRAINSTORM
-        assert events[-1].from_phase == EnumDesignToPlanPhase.FINALIZE
+        assert events[-2].from_phase == EnumDesignToPlanPhase.FINALIZE
+        assert events[-2].to_phase == EnumDesignToPlanPhase.LAUNCH
+        assert events[-1].from_phase == EnumDesignToPlanPhase.LAUNCH
         assert events[-1].to_phase == EnumDesignToPlanPhase.DONE
 
     async def test_circuit_breaker_after_3_failures(
@@ -220,3 +223,49 @@ class TestDesignToPlanGoldenChain:
         state, _ = handler.advance(state, phase_success=True, review_rounds=1)
 
         assert state.review_rounds == 3
+
+    async def test_phase3_launch_is_in_sequence(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """LAUNCH phase sits between FINALIZE and DONE in the FSM sequence (OMN-12228)."""
+        from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
+            next_phase,
+        )
+
+        assert (
+            next_phase(EnumDesignToPlanPhase.FINALIZE) == EnumDesignToPlanPhase.LAUNCH
+        )
+        assert next_phase(EnumDesignToPlanPhase.LAUNCH) == EnumDesignToPlanPhase.DONE
+
+    async def test_phase3_stub_handler_raises_not_implemented(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """HandlerDesignToPlanPhase3Launch.handle raises NotImplementedError (stub-ok)."""
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        import pytest
+
+        from omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan_phase3_launch import (
+            HandlerDesignToPlanPhase3Launch,
+        )
+        from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command import (
+            ModelDesignToPlanCommand,
+        )
+        from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
+            ModelDesignToPlanState,
+        )
+
+        handler = HandlerDesignToPlanPhase3Launch()
+        command = ModelDesignToPlanCommand(
+            correlation_id=uuid4(),
+            topic="test",
+            requested_at=datetime.now(tz=UTC),
+        )
+        state = ModelDesignToPlanState(
+            correlation_id=command.correlation_id,
+            current_phase=EnumDesignToPlanPhase.LAUNCH,
+        )
+
+        with pytest.raises(NotImplementedError, match="OMN-12228"):
+            handler.handle(command, state)

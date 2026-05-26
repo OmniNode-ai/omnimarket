@@ -1,0 +1,22 @@
+name: node_generate_node_effect
+version: "0.1.0"
+description: "Contract-only Wave 6 effect node that scaffolds new ONEX nodes via template expansion and file writes."
+pack: codegen
+node_role: effect
+display_name: "Generate Node Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_generate_node_effect: "omnimarket.nodes.node_generate_node_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "codegen", "generate-node", "scaffold", "OMN-12230"]

@@ -9,13 +9,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnumDesignToPlanPhase(StrEnum):
-    """FSM phases for the design-to-plan workflow."""
+    """FSM phases for the design-to-plan workflow.
+
+    Phase 3 (LAUNCH) is a stub — full wiring is follow-up work (OMN-12228).
+    When no_launch=True the FSM terminates at DONE without entering LAUNCH.
+    """
 
     IDLE = "idle"
     BRAINSTORM = "brainstorm"
     STRUCTURE = "structure"
     REVIEW = "review"
     FINALIZE = "finalize"
+    LAUNCH = "launch"  # Phase 3 stub — see OMN-12228
     DONE = "done"
     FAILED = "failed"
 
@@ -25,6 +30,7 @@ _PHASE_SEQUENCE: tuple[EnumDesignToPlanPhase, ...] = (
     EnumDesignToPlanPhase.STRUCTURE,
     EnumDesignToPlanPhase.REVIEW,
     EnumDesignToPlanPhase.FINALIZE,
+    EnumDesignToPlanPhase.LAUNCH,
     EnumDesignToPlanPhase.DONE,
 )
 
