@@ -13,35 +13,26 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_demo_fanout_orchestrator.models.model_fanout_request import (
-    ModelDemoInferenceResult,
+from omnimarket.events.demo_pipeline import (
+    ModelDemoCostEntry as ModelDemoCostEntry,
+)
+from omnimarket.events.demo_pipeline import (
+    ModelDemoCostResult as ModelDemoCostResult,
+)
+from omnimarket.events.demo_pipeline import (
+    ModelDemoInferenceResult as ModelDemoInferenceResult,
+)
+from omnimarket.events.demo_pipeline import (
+    ModelDemoModelPricing as ModelDemoModelPricing,
 )
 
-
-class ModelDemoModelPricing(BaseModel):
-    """Per-model pricing config in USD per 1k tokens."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    prompt_cost_per_1k: float = Field(
-        ge=0.0, description="Cost per 1k prompt tokens in USD"
-    )
-    completion_cost_per_1k: float = Field(
-        ge=0.0, description="Cost per 1k completion tokens in USD"
-    )
-
-
-class ModelDemoCostEntry(BaseModel):
-    """Computed cost breakdown for a single model inference result."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    model_id: str
-    prompt_cost_usd: float = Field(ge=0.0)
-    completion_cost_usd: float = Field(ge=0.0)
-    total_cost_usd: float = Field(ge=0.0)
-    prompt_tokens: int = Field(ge=0)
-    completion_tokens: int = Field(ge=0)
+__all__ = [
+    "ModelDemoCostEntry",
+    "ModelDemoCostRequest",
+    "ModelDemoCostResult",
+    "ModelDemoInferenceResult",
+    "ModelDemoModelPricing",
+]
 
 
 class ModelDemoCostRequest(BaseModel):
@@ -52,16 +43,4 @@ class ModelDemoCostRequest(BaseModel):
     inference_results: list[ModelDemoInferenceResult] = Field(min_length=1)
     pricing_table: dict[str, ModelDemoModelPricing] = Field(
         description="Keyed by model_id; models missing from table are assigned zero cost"
-    )
-
-
-class ModelDemoCostResult(BaseModel):
-    """Output: per-model cost entries and the cheapest model."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    costs: list[ModelDemoCostEntry]
-    cheapest_model_id: str | None = Field(
-        default=None,
-        description="model_id with the lowest total_cost_usd; null when costs list is empty",
     )

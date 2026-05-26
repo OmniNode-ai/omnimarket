@@ -1,0 +1,24 @@
+name: node_ticketing_epic_org_orchestrator
+version: "1.0.0"
+description: "Ticketing epic organization orchestrator for grouping orphaned Linear tickets and preparing epic creation proposals"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ticketing_epic_org_orchestrator: "omnimarket.nodes.node_ticketing_epic_org_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: mutating
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "ticketing", "epic", "linear", "OMN-12202"]
+pack: "linear"
+display_name: "Ticketing Epic Org Orchestrator"
+node_role: "orchestrator"
+node_not_implemented: true

@@ -360,7 +360,7 @@ class TestHandleAsyncReturnsNone:
         mock_bus.publish = AsyncMock()
         handler = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
 
-        result = await handler.handle_async(request_fixture)
+        result = await handler.handle_async(request_fixture)  # type: ignore[func-returns-value]
 
         assert result is None, (
             "handle_async must return None for non-terminal RECEIVED state. "
@@ -416,7 +416,7 @@ class TestHandleAsyncReturnsNone:
             "transition_received",
             side_effect=RuntimeError("injected failure"),
         ):
-            result = await handler.handle_async(request_fixture)
+            result = await handler.handle_async(request_fixture)  # type: ignore[func-returns-value]
 
         assert result is None
 

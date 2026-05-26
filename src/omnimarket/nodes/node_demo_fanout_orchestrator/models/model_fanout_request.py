@@ -15,6 +15,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.demo_pipeline import ModelDemoInferenceResult
+
 
 class ModelDemoModelConfig(BaseModel):
     """Configuration for a single LLM model to include in the fan-out."""
@@ -27,23 +29,6 @@ class ModelDemoModelConfig(BaseModel):
     endpoint_url: str = Field(description="OpenAI-compatible endpoint base URL")
     max_tokens: int = Field(default=512, ge=1, description="Maximum tokens to generate")
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
-
-
-class ModelDemoInferenceResult(BaseModel):
-    """Per-model inference result from a fan-out run."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    model_id: str
-    prompt_tokens: int = Field(ge=0)
-    completion_tokens: int = Field(ge=0)
-    latency_ms: float = Field(ge=0.0, description="Wall-clock latency in milliseconds")
-    output_text: str = Field(
-        default="", description="Generated text (may be empty for stub)"
-    )
-    error: str | None = Field(
-        default=None, description="Error message if inference failed"
-    )
 
 
 class ModelDemoFanoutRequest(BaseModel):

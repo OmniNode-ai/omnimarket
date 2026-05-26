@@ -28,6 +28,8 @@ descriptor:
   purity: impure_when_recon
   idempotent: true
   timeout_ms: 300000
+  runtime_profiles:
+    - effects
 
 inputs:
   base_url:
