@@ -86,5 +86,34 @@ class ModelTaskDelegatedEvent(BaseModel):
         description="Version of the pricing manifest used to compute cost_savings_usd.",
     )
 
+    # --- Escalation fields (OMN-12254) ---
+    escalation_count: int = Field(
+        default=0,
+        description="Number of escalation attempts that occurred.",
+    )
+    escalation_history: tuple[dict[str, object], ...] = Field(
+        default=(),
+        description=(
+            "Serialized escalation attempt records. Each entry is a dict "
+            "representation of ModelDelegationEscalationAttempt."
+        ),
+    )
+    routing_tiers_hash: str | None = Field(
+        default=None,
+        description="SHA-256 of serialized routing_tiers.yaml at execution time.",
+    )
+    escalation_config_hash: str | None = Field(
+        default=None,
+        description="SHA-256 of the escalation section of contract.yaml at execution time.",
+    )
+    cumulative_attempt_cost: float = Field(
+        default=0.0,
+        description="Total cost across all escalation attempts.",
+    )
+    attempts_count: int = Field(
+        default=1,
+        description="Total attempts including the initial one.",
+    )
+
 
 __all__: list[str] = ["TASK_DELEGATED_TOPIC_V1", "ModelTaskDelegatedEvent"]

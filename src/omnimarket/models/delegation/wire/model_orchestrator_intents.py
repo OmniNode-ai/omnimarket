@@ -25,6 +25,15 @@ class ModelRoutingIntent(BaseModel):
 
     intent: str = Field(default="routing_reducer")
     payload: ModelDelegationRequest
+    min_tier_name: str | None = Field(
+        default=None,
+        description=(
+            "When set, the routing reducer skips tiers appearing before this "
+            "tier in routing_tiers.yaml. Used by the escalation path to force "
+            "routing to a higher-cost tier after quality gate failure. "
+            "None means normal tier selection from the lowest eligible tier."
+        ),
+    )
 
 
 class ModelInferenceIntent(BaseModel):

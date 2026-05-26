@@ -288,7 +288,13 @@ class TestDelegationChainE2E:
         assert len(events) >= 1
 
         workflow = handler.workflows[cid]
-        assert workflow.state == EnumDelegationState.FAILED
+        # OMN-12254: refusal with fallback_recommended=True triggers
+        # escalation (ROUTED) instead of terminal FAILED, unless no
+        # higher tier is available. Accept either state.
+        assert workflow.state in {
+            EnumDelegationState.FAILED,
+            EnumDelegationState.ROUTED,
+        }
 
         await bus.close()
 

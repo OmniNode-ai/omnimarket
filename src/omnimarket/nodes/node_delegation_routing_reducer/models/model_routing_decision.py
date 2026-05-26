@@ -96,6 +96,14 @@ class ModelRoutingDecision(BaseModel):
         default=(),
         description="Heuristic definition-of-done checks from the task-class contract.",
     )
+    tier_name: str = Field(
+        default="",
+        description=(
+            "Name of the routing tier that produced this decision "
+            "(e.g. 'local', 'cheap_cloud', 'claude'). "
+            "Authoritative escalation handle — do not confuse with cost_tier."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelRoutingDecision"]
