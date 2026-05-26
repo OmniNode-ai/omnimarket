@@ -555,16 +555,60 @@ class HandlerLinearTriage:
         )
 
         actions: list[ModelTriageAction] = []
-        marked_done = 0
-        marked_done_superseded = 0
-        epics_closed = 0
-        stale_flagged = 0
 
         # --- Phase 3: PR status check (active tickets only) ---
-        # Only check In Progress / In Review tickets against GitHub.
-        # Backlog tickets are not being worked — no PR to find.
-        pr_check_states = {"In Progress", "In Review"}
-        pr_candidates = [t for t in all_tickets if t.state in pr_check_states]
+        pr_actions, marked_done, marked_done_superseded = self._phase_pr_check(
+            all_tickets, gh, client, dry_run
+        )
+        actions.extend(pr_actions)
+
+        # --- Phase 4: Stale flagging ---
+        stale_actions, stale_flagged = self._phase_stale_flag(all_tickets)
+        actions.extend(stale_actions)
+
+        # --- Phase 5: Orphan detection ---
+        orphaned = sum(
+            1 for t in all_tickets if not t.parent_id and t.state not in _DONE_STATES
+        )
+
+        # --- Phase 5b: Epic completion detection ---
+        epic_actions, epics_closed = self._phase_epic_check(
+            all_tickets, client, dry_run
+        )
+        actions.extend(epic_actions)
+
+        return ModelLinearTriageResult(
+            status="completed",
+            dry_run=dry_run,
+            total_scanned=len(all_tickets),
+            recent_count=len(recent),
+            stale_count=len(stale),
+            marked_done=marked_done,
+            marked_done_superseded=marked_done_superseded,
+            epics_closed=epics_closed,
+            stale_flagged=stale_flagged,
+            orphaned=orphaned,
+            actions=actions,
+        )
+
+    def _phase_pr_check(
+        self,
+        all_tickets: list[ModelLinearTicket],
+        gh: GitHubClientProtocol,
+        client: LinearClientProtocol,
+        dry_run: bool,
+    ) -> tuple[list[ModelTriageAction], int, int]:
+        """Phase 3: check In Progress / In Review tickets against GitHub PR state.
+
+        Returns (actions, marked_done, marked_done_superseded).
+        """
+        actions: list[ModelTriageAction] = []
+        marked_done = 0
+        marked_done_superseded = 0
+
+        pr_candidates = [
+            t for t in all_tickets if t.state in {"In Progress", "In Review"}
+        ]
         _log.info(
             "PR check candidates: %d tickets in In Progress/In Review",
             len(pr_candidates),
@@ -582,101 +626,175 @@ class HandlerLinearTriage:
             )
 
             if merged_pr:
-                merged_at = merged_pr.get("mergedAt", "unknown date")
-                pr_url = merged_pr.get("url", "")
-                evidence = f"PR #{merged_pr.get('number')} merged {merged_at}\n{pr_url}"
-                action_name = (
-                    EnumTriageAction.WOULD_MARK_DONE
-                    if dry_run
-                    else EnumTriageAction.MARK_DONE
+                new_actions, delta = self._apply_merged_pr(
+                    ticket, merged_pr, client, dry_run
                 )
-
-                if not dry_run:
-                    try:
-                        client.save_issue(issue_id=ticket.id, state="Done")
-                        client.save_comment(
-                            issue_id=ticket.id,
-                            body=f"Auto-closed by linear-triage: PR #{merged_pr.get('number')} merged {merged_at}\n{pr_url}",
-                        )
-                        marked_done += 1
-                    except Exception as exc:
-                        actions.append(
-                            ModelTriageAction(
-                                ticket_id=ticket.identifier,
-                                ticket_title=ticket.title,
-                                action=EnumTriageAction.FLAG_STALE,
-                                evidence=f"Mutation failed: {exc}",
-                            )
-                        )
-                        continue
-
-                actions.append(
-                    ModelTriageAction(
-                        ticket_id=ticket.identifier,
-                        ticket_title=ticket.title,
-                        action=action_name,
-                        evidence=evidence,
-                    )
-                )
+                actions.extend(new_actions)
+                marked_done += delta
                 continue
 
-            # Check for closed (unmerged) PR -> sibling search
-            repo_slug = _extract_repo(ticket)
-            if repo_slug:
-                closed_prs = gh.search_prs_in_repo(
-                    repo=repo_slug,
-                    search_term=ticket.identifier,
-                    state="closed",
+            new_actions, delta = self._check_superseded_pr(ticket, gh, client, dry_run)
+            actions.extend(new_actions)
+            marked_done_superseded += delta
+
+        return actions, marked_done, marked_done_superseded
+
+    def _apply_merged_pr(
+        self,
+        ticket: ModelLinearTicket,
+        merged_pr: dict[str, str],
+        client: LinearClientProtocol,
+        dry_run: bool,
+    ) -> tuple[list[ModelTriageAction], int]:
+        """Mark a ticket Done given its directly merged PR. Returns (actions, count)."""
+        merged_at = merged_pr.get("mergedAt", "unknown date")
+        pr_url = merged_pr.get("url", "")
+        evidence = f"PR #{merged_pr.get('number')} merged {merged_at}\n{pr_url}"
+        action_name = (
+            EnumTriageAction.WOULD_MARK_DONE if dry_run else EnumTriageAction.MARK_DONE
+        )
+
+        if not dry_run:
+            try:
+                client.save_issue(issue_id=ticket.id, state="Done")
+                client.save_comment(
+                    issue_id=ticket.id,
+                    body=(
+                        f"Auto-closed by linear-triage: PR #{merged_pr.get('number')} "
+                        f"merged {merged_at}\n{pr_url}"
+                    ),
                 )
-                unmerged_closed = [p for p in closed_prs if not p.get("mergedAt")]
-                if unmerged_closed:
-                    sibling = _find_merged_pr(
-                        ticket.identifier,
-                        None,
-                        "",
-                        gh=gh,
-                    )
-                    if sibling:
-                        closed_pr_num = unmerged_closed[0].get("number", "?")
-                        evidence = (
-                            f"Sibling PR #{sibling.get('number')} in {sibling.get('repo')} "
-                            f"merged {sibling.get('mergedAt')}\n{sibling.get('url')}\n"
-                            f"(Original PR #{closed_pr_num} was closed as superseded)"
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=action_name,
+                            evidence=evidence,
                         )
-                        action_name = (
-                            EnumTriageAction.WOULD_MARK_DONE_SUPERSEDED
-                            if dry_run
-                            else EnumTriageAction.MARK_DONE_SUPERSEDED
+                    ],
+                    1,
+                )
+            except Exception as exc:
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=EnumTriageAction.FLAG_STALE,
+                            evidence=f"Mutation failed: {exc}",
                         )
-                        if not dry_run:
-                            try:
-                                client.save_issue(issue_id=ticket.id, state="Done")
-                                client.save_comment(
-                                    issue_id=ticket.id,
-                                    body=f"Auto-closed by linear-triage: work delivered via sibling PR #{sibling.get('number')} in {sibling.get('repo')} merged {sibling.get('mergedAt')}\n{sibling.get('url')}\n(Original PR #{closed_pr_num} was closed as superseded)",
-                                )
-                                marked_done_superseded += 1
-                            except Exception as exc:
-                                actions.append(
-                                    ModelTriageAction(
-                                        ticket_id=ticket.identifier,
-                                        ticket_title=ticket.title,
-                                        action=EnumTriageAction.FLAG_STALE,
-                                        evidence=f"Sibling mutation failed: {exc}",
-                                    )
-                                )
-                                continue
+                    ],
+                    0,
+                )
 
-                        actions.append(
-                            ModelTriageAction(
-                                ticket_id=ticket.identifier,
-                                ticket_title=ticket.title,
-                                action=action_name,
-                                evidence=evidence,
-                            )
-                        )
+        return (
+            [
+                ModelTriageAction(
+                    ticket_id=ticket.identifier,
+                    ticket_title=ticket.title,
+                    action=action_name,
+                    evidence=evidence,
+                )
+            ],
+            0,
+        )
 
-        # --- Phase 4: Stale flagging (In Progress / In Review only) ---
+    def _check_superseded_pr(
+        self,
+        ticket: ModelLinearTicket,
+        gh: GitHubClientProtocol,
+        client: LinearClientProtocol,
+        dry_run: bool,
+    ) -> tuple[list[ModelTriageAction], int]:
+        """Check for a closed-unmerged PR with a sibling merged elsewhere. Returns (actions, count)."""
+        repo_slug = _extract_repo(ticket)
+        if not repo_slug:
+            return [], 0
+
+        closed_prs = gh.search_prs_in_repo(
+            repo=repo_slug,
+            search_term=ticket.identifier,
+            state="closed",
+        )
+        unmerged_closed = [p for p in closed_prs if not p.get("mergedAt")]
+        if not unmerged_closed:
+            return [], 0
+
+        sibling = _find_merged_pr(ticket.identifier, None, "", gh=gh)
+        if not sibling:
+            return [], 0
+
+        closed_pr_num = unmerged_closed[0].get("number", "?")
+        evidence = (
+            f"Sibling PR #{sibling.get('number')} in {sibling.get('repo')} "
+            f"merged {sibling.get('mergedAt')}\n{sibling.get('url')}\n"
+            f"(Original PR #{closed_pr_num} was closed as superseded)"
+        )
+        action_name = (
+            EnumTriageAction.WOULD_MARK_DONE_SUPERSEDED
+            if dry_run
+            else EnumTriageAction.MARK_DONE_SUPERSEDED
+        )
+
+        if not dry_run:
+            try:
+                client.save_issue(issue_id=ticket.id, state="Done")
+                client.save_comment(
+                    issue_id=ticket.id,
+                    body=(
+                        f"Auto-closed by linear-triage: work delivered via sibling PR "
+                        f"#{sibling.get('number')} in {sibling.get('repo')} merged "
+                        f"{sibling.get('mergedAt')}\n{sibling.get('url')}\n"
+                        f"(Original PR #{closed_pr_num} was closed as superseded)"
+                    ),
+                )
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=action_name,
+                            evidence=evidence,
+                        )
+                    ],
+                    1,
+                )
+            except Exception as exc:
+                return (
+                    [
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=EnumTriageAction.FLAG_STALE,
+                            evidence=f"Sibling mutation failed: {exc}",
+                        )
+                    ],
+                    0,
+                )
+
+        return (
+            [
+                ModelTriageAction(
+                    ticket_id=ticket.identifier,
+                    ticket_title=ticket.title,
+                    action=action_name,
+                    evidence=evidence,
+                )
+            ],
+            0,
+        )
+
+    def _phase_stale_flag(
+        self,
+        all_tickets: list[ModelLinearTicket],
+    ) -> tuple[list[ModelTriageAction], int]:
+        """Phase 4: flag In Progress / In Review tickets that exceed the stale threshold.
+
+        Returns (actions, stale_flagged_count).
+        """
+        actions: list[ModelTriageAction] = []
+        count = 0
         for ticket in all_tickets:
             if ticket.state in _DONE_STATES:
                 continue
@@ -685,7 +803,7 @@ class HandlerLinearTriage:
             age = _age_days(ticket.updated_at)
             rec = _stale_recommendation(ticket, age)
             if rec == "review_and_close":
-                stale_flagged += 1
+                count += 1
                 actions.append(
                     ModelTriageAction(
                         ticket_id=ticket.identifier,
@@ -694,136 +812,136 @@ class HandlerLinearTriage:
                         stale_recommendation=rec,
                     )
                 )
+        return actions, count
 
-        # --- Phase 5: Orphan detection ---
-        orphaned = sum(
-            1 for t in all_tickets if not t.parent_id and t.state not in _DONE_STATES
-        )
+    def _phase_epic_check(
+        self,
+        all_tickets: list[ModelLinearTicket],
+        client: LinearClientProtocol,
+        dry_run: bool,
+    ) -> tuple[list[ModelTriageAction], int]:
+        """Phase 5b: auto-close epics whose children are all Done.
 
-        # --- Phase 5b: Epic completion detection ---
-        # Only check non-backlog tickets that have no parent (potential epics).
-        # Checking all 1600+ root tickets would burn Linear API quota for no gain.
+        Only checks non-backlog root tickets to avoid burning Linear API quota.
+        Returns (actions, epics_closed_count).
+        """
+        actions: list[ModelTriageAction] = []
+        epics_closed = 0
+
         candidate_epics = [
             t
             for t in all_tickets
             if not t.parent_id and t.state in ("In Progress", "In Review")
         ]
         _log.info("Epic completion candidates: %d", len(candidate_epics))
+
         for ticket in candidate_epics:
             if ticket.state in _DONE_STATES:
                 continue
-
-            # Paginate children to avoid truncated results
-            children: list[dict[str, Any]] = []
-            child_cursor: str | None = None
-            try:
-                while True:
-                    children_data = client.list_children(
-                        parent_id=ticket.id, limit=50, after=child_cursor
-                    )
-                    # Check for a non-epic error (Linear returns errors array for non-epics)
-                    errors = children_data.get("errors", [])
-                    if errors:
-                        error_msgs = [str(e) for e in errors]
-                        # Suppress only the known "non-epic" 400-equivalent error
-                        if any(
-                            "parent" in m.lower() or "not an epic" in m.lower()
-                            for m in error_msgs
-                        ):
-                            _log.debug(
-                                "Ticket %s is not an epic, skipping children check",
-                                ticket.identifier,
-                            )
-                            break
-                        # All other API errors are real failures — re-raise
-                        raise RuntimeError(
-                            f"list_children returned errors for {ticket.identifier}: {error_msgs}"
-                        )
-                    batch = (
-                        children_data.get("data", {}).get("issues", {}).get("nodes", [])
-                    )
-                    children.extend(batch)
-                    child_page = (
-                        children_data.get("data", {})
-                        .get("issues", {})
-                        .get("pageInfo", {})
-                    )
-                    if not child_page.get("hasNextPage"):
-                        break
-                    child_cursor = str(child_page["endCursor"])
-            except RuntimeError:
-                raise
-            except Exception as exc:
-                # Suppress only transport/parse errors that indicate "not an epic"
-                exc_str = str(exc).lower()
-                if "400" in exc_str or "parent" in exc_str or "not an epic" in exc_str:
-                    _log.debug(
-                        "Ticket %s is not an epic (suppressed): %s",
-                        ticket.identifier,
-                        exc,
-                    )
-                    continue
-                _log.error(
-                    "Unexpected error fetching children for %s: %s",
-                    ticket.identifier,
-                    exc,
-                )
-                raise
-            if not children:
+            children = self._fetch_children(ticket, client)
+            if children is None or not children:
                 continue
 
             all_children_done = all(
                 child.get("state", {}).get("name", "") in _DONE_STATES
                 for child in children
             )
-            if all_children_done:
-                child_ids = ", ".join(c["identifier"] for c in children)
-                action_name = (
-                    EnumTriageAction.WOULD_MARK_DONE_EPIC
-                    if dry_run
-                    else EnumTriageAction.MARK_DONE_EPIC
-                )
-                if not dry_run:
-                    try:
-                        client.save_issue(issue_id=ticket.id, state="Done")
-                        client.save_comment(
-                            issue_id=ticket.id,
-                            body=f"Auto-closed by linear-triage: all {len(children)} child tickets are Done.\nChildren: {child_ids}",
-                        )
-                        epics_closed += 1
-                    except Exception as exc:
-                        actions.append(
-                            ModelTriageAction(
-                                ticket_id=ticket.identifier,
-                                ticket_title=ticket.title,
-                                action=EnumTriageAction.FLAG_STALE,
-                                evidence=f"Epic mutation failed: {exc}",
-                            )
-                        )
-                        continue
+            if not all_children_done:
+                continue
 
-                actions.append(
-                    ModelTriageAction(
-                        ticket_id=ticket.identifier,
-                        ticket_title=ticket.title,
-                        action=action_name,
-                        evidence=f"All {len(children)} children done: {child_ids}",
+            child_ids = ", ".join(c["identifier"] for c in children)
+            action_name = (
+                EnumTriageAction.WOULD_MARK_DONE_EPIC
+                if dry_run
+                else EnumTriageAction.MARK_DONE_EPIC
+            )
+            if not dry_run:
+                try:
+                    client.save_issue(issue_id=ticket.id, state="Done")
+                    client.save_comment(
+                        issue_id=ticket.id,
+                        body=(
+                            f"Auto-closed by linear-triage: all {len(children)} child "
+                            f"tickets are Done.\nChildren: {child_ids}"
+                        ),
                     )
-                )
+                    epics_closed += 1
+                except Exception as exc:
+                    actions.append(
+                        ModelTriageAction(
+                            ticket_id=ticket.identifier,
+                            ticket_title=ticket.title,
+                            action=EnumTriageAction.FLAG_STALE,
+                            evidence=f"Epic mutation failed: {exc}",
+                        )
+                    )
+                    continue
 
-        return ModelLinearTriageResult(
-            status="completed",
-            dry_run=dry_run,
-            total_scanned=len(all_tickets),
-            recent_count=len(recent),
-            stale_count=len(stale),
-            marked_done=marked_done,
-            marked_done_superseded=marked_done_superseded,
-            epics_closed=epics_closed,
-            stale_flagged=stale_flagged,
-            orphaned=orphaned,
-            actions=actions,
-        )
+            actions.append(
+                ModelTriageAction(
+                    ticket_id=ticket.identifier,
+                    ticket_title=ticket.title,
+                    action=action_name,
+                    evidence=f"All {len(children)} children done: {child_ids}",
+                )
+            )
+
+        return actions, epics_closed
+
+    def _fetch_children(
+        self,
+        ticket: ModelLinearTicket,
+        client: LinearClientProtocol,
+    ) -> list[dict[str, Any]] | None:
+        """Paginate children for an epic ticket. Returns None to signal skip."""
+        children: list[dict[str, Any]] = []
+        child_cursor: str | None = None
+        try:
+            while True:
+                children_data = client.list_children(
+                    parent_id=ticket.id, limit=50, after=child_cursor
+                )
+                errors = children_data.get("errors", [])
+                if errors:
+                    error_msgs = [str(e) for e in errors]
+                    if any(
+                        "parent" in m.lower() or "not an epic" in m.lower()
+                        for m in error_msgs
+                    ):
+                        _log.debug(
+                            "Ticket %s is not an epic, skipping children check",
+                            ticket.identifier,
+                        )
+                        return None
+                    raise RuntimeError(
+                        f"list_children returned errors for {ticket.identifier}: {error_msgs}"
+                    )
+                batch = children_data.get("data", {}).get("issues", {}).get("nodes", [])
+                children.extend(batch)
+                child_page = (
+                    children_data.get("data", {}).get("issues", {}).get("pageInfo", {})
+                )
+                if not child_page.get("hasNextPage"):
+                    break
+                child_cursor = str(child_page["endCursor"])
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "400" in exc_str or "parent" in exc_str or "not an epic" in exc_str:
+                _log.debug(
+                    "Ticket %s is not an epic (suppressed): %s",
+                    ticket.identifier,
+                    exc,
+                )
+                return None
+            _log.error(
+                "Unexpected error fetching children for %s: %s",
+                ticket.identifier,
+                exc,
+            )
+            raise
+        return children
 
 
 __all__: list[str] = [
