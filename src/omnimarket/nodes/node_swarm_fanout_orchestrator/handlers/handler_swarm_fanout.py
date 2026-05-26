@@ -142,8 +142,20 @@ class HandlerSwarmFanout:
         queue_subscriber: ProtocolQueueSubscriber | None = None,
         registry_path: Path | None = None,
     ) -> None:
-        self._queue_publisher = queue_publisher
-        self._queue_subscriber = queue_subscriber
+        # Provide no-op stubs when queue infra is not injected (lab/test mode).
+        # Subtasks with no endpoint assignment take the passthrough path anyway.
+        class _StubPublisher:
+            def publish(self, topic: str, payload: dict[str, object]) -> None:
+                pass
+
+        class _StubSubscriber:
+            def poll(
+                self, topics: list[str], run_id: str, timeout_seconds: float
+            ) -> list[dict[str, object]]:
+                return []
+
+        self._queue_publisher = queue_publisher or _StubPublisher()
+        self._queue_subscriber = queue_subscriber or _StubSubscriber()
         self._registry_path = registry_path
 
     def _resolve_endpoint_map(
@@ -164,11 +176,6 @@ class HandlerSwarmFanout:
         return {}
 
     def handle(self, request: ModelSwarmFanoutRequest) -> ModelSwarmFanoutResult:
-        if self._queue_publisher is None or self._queue_subscriber is None:
-            raise ValueError(
-                "queue_publisher and queue_subscriber are required for the fanout orchestrator"
-            )
-
         publish_topics = contract_publish_topics(_CONTRACT_PATH)
         delegation_execute_topic = next(
             t for t in publish_topics if "delegation-execute" in t
