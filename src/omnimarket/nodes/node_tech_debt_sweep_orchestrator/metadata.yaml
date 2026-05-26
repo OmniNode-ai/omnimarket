@@ -1,0 +1,19 @@
+name: node_tech_debt_sweep_orchestrator
+version: "1.0.0"
+description: "Tech debt sweep orchestrator — scans repos, deduplicates, creates Linear epics + tickets (STUB)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_tech_debt_sweep_orchestrator: "omnimarket.nodes.node_tech_debt_sweep_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "tech-debt", "linear", "observability", "code-quality"]
+pack: "build"
+display_name: "Tech Debt Sweep Orchestrator"
+node_role: "orchestrator"
