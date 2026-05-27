@@ -27,6 +27,8 @@ handler_routing:
 descriptor:
   node_archetype: orchestrator
   purity: impure
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 120000
 
