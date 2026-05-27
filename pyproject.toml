@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.0"
+version = "0.4.1"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -347,9 +347,9 @@ market = "omnimarket.cli.market:market"
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-# Release v0.4.0: pin to release tags
+# Release v0.4.1: pin to release tags
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "v0.42.0" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", tag = "v0.5.0" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", tag = "v0.5.1" }
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "v0.37.0" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "v0.15.0" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }

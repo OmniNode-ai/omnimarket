@@ -4,7 +4,7 @@ requires-python = "==3.12.*"
 
 [manifest]
 overrides = [
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?tag=v0.5.0" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?tag=v0.5.1" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=v0.42.0" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=v0.37.0" },
     { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
@@ -1259,8 +1259,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-compat"
-version = "0.5.0"
-source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?tag=v0.5.0#748aedda8f8b7b808a27a81ee9cbe74d547d3dec" }
+version = "0.5.1"
+source = { git = "https://github.com/OmniNode-ai/omnibase_compat.git?tag=v0.5.1#4d887307aae34d9d40d389ba91070cb411ce3df5" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
@@ -1354,7 +1354,7 @@ wheels = [
 
 [[package]]
 name = "omnimarket"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
@@ -1409,7 +1409,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?tag=v0.5.0" },
+    { name = "omnibase-compat", git = "https://github.com/OmniNode-ai/omnibase_compat.git?tag=v0.5.1" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=v0.42.0" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=v0.37.0" },
     { name = "omnibase-spi", specifier = ">=0.22.0,<0.23.0" },
