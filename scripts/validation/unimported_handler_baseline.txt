@@ -13,3 +13,5 @@ src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_response_parser.py:H
 src/omnimarket/nodes/node_hostile_reviewer/handlers/handler_review_orchestrator.py:HandlerReviewOrchestrator # Hostile-reviewer orchestration helper pending explicit contract routing.
 src/omnimarket/nodes/node_pr_review_bot/handlers/handler_webhook_reconciler.py:HandlerWebhookReconciler # PR-review webhook helper pending explicit contract routing.
 src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/handlers/handler_knowledge_context_assembler_orchestrator.py:HandlerKnowledgeContextAssemblerOrchestrator # Knowledge context assembler orchestrator pending explicit contract routing wiring.
+src/omnimarket/nodes/node_generate_node_effect/handlers/handler_generate_node.py:HandlerGenerateNode # OMN-12230 contract-first codegen node; handler routing intentionally deferred.
+src/omnimarket/nodes/node_observability_sink_effect/handlers/handler_observability_sink_effect.py:HandlerObservabilitySinkEffect # OMN-12217 contract-first observability sink; handler routing intentionally deferred.

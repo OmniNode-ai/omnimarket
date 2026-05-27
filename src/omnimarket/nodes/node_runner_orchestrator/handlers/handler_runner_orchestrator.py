@@ -9,7 +9,7 @@ The handler class is importable and passes type checks; `handle()` raises
 NotImplementedError as declared by `node_not_implemented: true` in contract.yaml.
 
 Runner actions (per runner/SKILL.md):
-  deploy  — SSH to CI host (192.168.86.201), invoke deploy-runners.sh.  # onex-allow-internal-ip
+  deploy  — SSH to CI host (192.168.86.201), invoke deploy-runners.sh.  # onex-allow-internal-ip OMN-12218 reason="runner orchestrator contract docstring; implementation remains deferred"
              Prerequisites: gh token with org scope + SSH key loaded in agent.
   update  — Force Docker image rebuild then redeploy (--rebuild flag).
   status  — GitHub API runner list + SSH Docker-label inspect + host disk metrics.

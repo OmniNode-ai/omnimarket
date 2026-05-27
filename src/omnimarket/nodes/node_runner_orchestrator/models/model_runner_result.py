@@ -118,7 +118,7 @@ class ModelRunnerResult(BaseModel):
         default_factory=list,
         description=(
             "Human-readable log of actions taken (e.g. "
-            "'SSH to 192.168.86.201 — deploy-runners.sh exited 0')."  # onex-allow-internal-ip
+            "'SSH to 192.168.86.201 — deploy-runners.sh exited 0')."  # onex-allow-internal-ip OMN-12218 reason="runner action example text; endpoint is not a default connection target"
         ),
     )
     dry_run_summary: str | None = Field(

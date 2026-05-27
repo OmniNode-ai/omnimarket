@@ -1,6 +1,6 @@
 {
-  "captured_at": "2026-05-26T10:08:37Z",
-  "graphify_version": "0.8.2",
+  "captured_at": "2026-05-27T21:51:39Z",
+  "graphify_version": "ast-fallback",
   "rule_version": "v1",
   "findings": [
     {
@@ -170,6 +170,16 @@
       "file_path": "src/omnimarket/nodes/node_session_phase_reducer/handlers/handler_session_phase_reducer.py",
       "symbol": "handler_session_phase_reducer",
       "detail": "Contract-referenced handler 'handler_session_phase_reducer' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_runner_orchestrator/handlers/handler_runner_orchestrator.py",
+      "symbol": "handler_runner_orchestrator",
+      "detail": "Contract-referenced handler 'handler_runner_orchestrator' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -567,16 +577,6 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_dep_cascade_dedup_orchestrator/handlers/handler_dep_cascade_dedup_orchestrator.py",
-      "symbol": "handler_dep_cascade_dedup_orchestrator",
-      "detail": "Contract-referenced handler 'handler_dep_cascade_dedup_orchestrator' has no test file and no golden-chain fixture coverage.",
-      "rule_id": "UNTESTED_HANDLER",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "UNTESTED_HANDLER",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_overseer_verifier/handlers/handler_overseer_verifier.py",
       "symbol": "handler_overseer_verifier",
       "detail": "Contract-referenced handler 'handler_overseer_verifier' has no test file and no golden-chain fixture coverage.",
@@ -690,6 +690,16 @@
       "file_path": "src/omnimarket/nodes/node_two_strike_arbiter/handlers/handler_two_strike_arbiter.py",
       "symbol": "handler_two_strike_arbiter",
       "detail": "Contract-referenced handler 'handler_two_strike_arbiter' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pipeline_audit_orchestrator/handlers/handler_pipeline_audit_orchestrator.py",
+      "symbol": "handler_pipeline_audit_orchestrator",
+      "detail": "Contract-referenced handler 'handler_pipeline_audit_orchestrator' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -927,6 +937,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/handlers/handler_self_healing_dispatch_orchestrator.py",
+      "symbol": "handler_self_healing_dispatch_orchestrator",
+      "detail": "Contract-referenced handler 'handler_self_healing_dispatch_orchestrator' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_wave_scheduler_orchestrator/handlers/handler_wave_scheduler_orchestrator.py",
       "symbol": "handler_wave_scheduler_orchestrator",
       "detail": "Contract-referenced handler 'handler_wave_scheduler_orchestrator' has no test file and no golden-chain fixture coverage.",
@@ -1100,6 +1120,16 @@
       "file_path": "src/omnimarket/nodes/node_omnigate_receipt_verifier/handlers/handler_receipt_verifier.py",
       "symbol": "handler_receipt_verifier",
       "detail": "Contract-referenced handler 'handler_receipt_verifier' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_decision_store_orchestrator/handlers/handler_decision_store_orchestrator.py",
+      "symbol": "handler_decision_store_orchestrator",
+      "detail": "Contract-referenced handler 'handler_decision_store_orchestrator' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -2697,6 +2727,26 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_changelog_audit_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.changelog-audit-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.changelog-audit-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_checkpoint_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.checkpoint-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.checkpoint-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_ci_watch/contract.yaml",
       "symbol": "onex.evt.omnimarket.ci-watch-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.ci-watch-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -2867,6 +2917,26 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_contract_drift_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.contract-drift-compute-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.contract-drift-compute-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_contract_drift_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.contract-drift-finding.v1",
+      "detail": "Topic 'onex.evt.omnimarket.contract-drift-finding.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_contract_sweep/contract.yaml",
       "symbol": "onex.evt.omnimarket.contract-sweep-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.contract-sweep-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -3020,6 +3090,36 @@
       "file_path": "src/omnimarket/nodes/node_database_sweep/contract.yaml",
       "symbol": "onex.evt.omnimarket.database-sweep-table-checked.v1",
       "detail": "Topic 'onex.evt.omnimarket.database-sweep-table-checked.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_decision_store_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.decision-conflict-detected.v1",
+      "detail": "Topic 'onex.evt.omnimarket.decision-conflict-detected.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_decision_store_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.decision-query-result.v1",
+      "detail": "Topic 'onex.evt.omnimarket.decision-query-result.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_decision_store_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.decision-stored.v1",
+      "detail": "Topic 'onex.evt.omnimarket.decision-stored.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -3187,6 +3287,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_env_sync_alert_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.env-sync-alert-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.env-sync-alert-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_environment_health_scanner/contract.yaml",
       "symbol": "onex.evt.omnimarket.environment-health-scan-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.environment-health-scan-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -3267,9 +3377,29 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_feature_dashboard_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.feature-dashboard-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.feature-dashboard-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_fixer_dispatcher/contract.yaml",
       "symbol": "onex.evt.omnimarket.fixer-dispatch-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.fixer-dispatch-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_env_sync_alert_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.friction-emitted.v1",
+      "detail": "Topic 'onex.evt.omnimarket.friction-emitted.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -3290,6 +3420,16 @@
       "file_path": "src/omnimarket/nodes/node_gap_compute/contract.yaml",
       "symbol": "onex.evt.omnimarket.gap-compute-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.gap-compute-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_generate_node_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.generate-node-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.generate-node-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -3380,6 +3520,16 @@
       "file_path": "src/omnimarket/nodes/node_hostile_reviewer/contract.yaml",
       "symbol": "onex.evt.omnimarket.hostile-reviewer-response-parsed.v1",
       "detail": "Topic 'onex.evt.omnimarket.hostile-reviewer-response-parsed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_insights_to_plan_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.insights-to-plan-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.insights-to-plan-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -3767,9 +3917,59 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pipeline_audit_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pipeline-audit-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pipeline-audit-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pipeline_audit_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pipeline-audit-gap-found.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pipeline-audit-gap-found.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pipeline_audit_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pipeline-audit-phase-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pipeline-audit-phase-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pipeline_audit_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pipeline-audit-repo-inventoried.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pipeline-audit-repo-inventoried.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_pipeline_fill/contract.yaml",
       "symbol": "onex.evt.omnimarket.pipeline-fill-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.pipeline-fill-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_plan_audit_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.plan-audit-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.plan-audit-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4157,6 +4357,26 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_recall_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.recall-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.recall-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_recall_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.recall-result.v1",
+      "detail": "Topic 'onex.evt.omnimarket.recall-result.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_redeploy/contract.yaml",
       "symbol": "onex.evt.omnimarket.redeploy-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.redeploy-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -4180,6 +4400,16 @@
       "file_path": "src/omnimarket/nodes/node_release/contract.yaml",
       "symbol": "onex.evt.omnimarket.release-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.release-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_resume_session_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.resume-session-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.resume-session-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4247,6 +4477,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_rewind_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.rewind-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.rewind-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_delegation_routing_feedback_reducer/contract.yaml",
       "symbol": "onex.evt.omnimarket.routing-feedback-updated.v1",
       "detail": "Topic 'onex.evt.omnimarket.routing-feedback-updated.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -4260,6 +4500,26 @@
       "file_path": "src/omnimarket/nodes/node_routing_policy_engine/contract.yaml",
       "symbol": "onex.evt.omnimarket.routing-policy-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.routing-policy-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_rrh_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.rrh-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.rrh-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_runner_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.runner-action-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.runner-action-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4310,6 +4570,66 @@
       "file_path": "src/omnimarket/nodes/node_seam_parallel_executor/contract.yaml",
       "symbol": "onex.evt.omnimarket.seam-parallel-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.seam-parallel-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.self-healing-dispatch-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.self-healing-dispatch-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.self-healing-dispatch-escalated.v1",
+      "detail": "Topic 'onex.evt.omnimarket.self-healing-dispatch-escalated.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.self-healing-dispatch-planned.v1",
+      "detail": "Topic 'onex.evt.omnimarket.self-healing-dispatch-planned.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.self-healing-dispatch-recovery-dispatched.v1",
+      "detail": "Topic 'onex.evt.omnimarket.self-healing-dispatch-recovery-dispatched.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.self-healing-dispatch-stall-detected.v1",
+      "detail": "Topic 'onex.evt.omnimarket.self-healing-dispatch-stall-detected.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_self_healing_dispatch_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.self-healing-dispatch-worker-dispatched.v1",
+      "detail": "Topic 'onex.evt.omnimarket.self-healing-dispatch-worker-dispatched.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4400,6 +4720,16 @@
       "file_path": "src/omnimarket/nodes/node_session_post_mortem/contract.yaml",
       "symbol": "onex.evt.omnimarket.session-post-mortem.v1",
       "detail": "Topic 'onex.evt.omnimarket.session-post-mortem.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_skill_functional_audit_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.skill-functional-audit-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.skill-functional-audit-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4547,6 +4877,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_ticket_plan_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.ticket-plan-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.ticket-plan-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_ticket_research_enrichment_compute/contract.yaml",
       "symbol": "onex.evt.omnimarket.ticket-research-enrichment-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.ticket-research-enrichment-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -4620,6 +4960,26 @@
       "file_path": "src/omnimarket/nodes/node_verification_receipt_generator/contract.yaml",
       "symbol": "onex.evt.omnimarket.verification-receipt-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.verification-receipt-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_verification_sweep_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.verification-sweep-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.verification-sweep-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_verification_sweep_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.verification-sweep-finding.v1",
+      "detail": "Topic 'onex.evt.omnimarket.verification-sweep-finding.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
