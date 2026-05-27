@@ -18,7 +18,7 @@ contract_name: "node_delegation_orchestrator"
 node_name: "node_delegation_orchestrator"
 contract_version:
   major: 0
-  minor: 3
+  minor: 4
   patch: 0
 node_version:
   major: 0
@@ -90,6 +90,7 @@ fsm:
     - EXECUTING
     - INFERENCE_COMPLETED
     - GATE_EVALUATED
+    - ESCALATING
     - COMPLETED
     - FAILED
   initial_state: RECEIVED
@@ -119,15 +120,43 @@ fsm:
       to: GATE_EVALUATED
       trigger: "quality gate result received"
     - from: GATE_EVALUATED
+      to: ESCALATING
+      trigger: "quality gate failed with fallback recommended and escalation budget remaining"
+    - from: ESCALATING
+      to: ROUTED
+      trigger: "escalation tier selected, re-routing"
+    - from: GATE_EVALUATED
       to: COMPLETED
       trigger: "quality gate passed"
     - from: GATE_EVALUATED
       to: FAILED
       trigger: "quality gate failed"
-# handler_routing intentionally absent: PluginDelegation owns all wiring via
-# DispatcherDelegationRequest and custom dispatchers. Auto-wiring must not
-# register dispatchers for HandlerDelegationWorkflow or HandlerComplianceLoop
-# (neither has a .handle() method; both are wired via named methods). See OMN-12249.
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "delegation.orchestrate"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      description: "Coordinate delegation through routing, inference, and quality gate"
+      input_model:
+        name: "ModelDelegationRequest"
+        module: "omnimarket.nodes.node_delegation_orchestrator.models"
+        description: "Delegation request to orchestrate."
+    - operation: "delegation.evaluate_compliance"
+      handler:
+        name: "HandlerComplianceLoop"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop"
+      description: "Per-attempt schema-compliance evaluator (OMN-10792). Composes omnimarket schema-registry, schema-repair, and budget-policy nodes; returns compliant=True, repair_prompt+CONTINUE, or ABORT. Invoked in-process by HandlerDelegationWorkflow per inference attempt — not routed via the bus."
+      input_model:
+        name: "ModelComplianceLoopResult"
+        module: "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result"
+        description: "Per-attempt directive emitted by the compliance loop."
+# PluginDelegation registers DispatcherDelegationRequest and custom dispatchers that
+# handle all real delegation FSM events. The auto-wired dispatchers generated from
+# handler_routing above call .handle() on these handlers. Both handlers expose a
+# .handle() no-op that returns SUCCESS so the auto-wired dispatcher succeeds without
+# double-processing (PluginDelegation's custom dispatchers fire first). See OMN-12249.
 # Cross-repo topic ownership declarations.
 # Topics published by this node that are consumed by nodes in other repos.
 # The dependency-health sweep runs per-repo-root; these declarations suppress
@@ -137,6 +166,11 @@ externally_consumed_topics:
   # Owner: omnibase_infra/node_remote_agent_invoke_effect
   # Runtime profile: runtime (A2A delegation bridge effect node)
   # OMN-11058: verified subscriber exists; classified intentionally_external
+
+escalation:
+  max_attempts: 2
+  excluded_tiers:
+    - cli_agents
 
 error_handling:
   retry_policy:

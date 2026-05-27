@@ -119,7 +119,7 @@ class DelegationIntentBridge:
         then publishes the resulting ModelRoutingDecision to the routing-decision
         topic.
         """
-        decision = routing_delta(intent.payload)
+        decision = routing_delta(intent.payload, min_tier_name=intent.min_tier_name)
         logger.info(
             "Routing intent resolved: model=%s, endpoint=%s, correlation_id=%s",
             decision.selected_model,

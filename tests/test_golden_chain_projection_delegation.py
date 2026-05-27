@@ -166,10 +166,8 @@ class TestDelegationProjection:
         assert result["rows_upserted"] == 1
         row = db.query("delegation_events")[0]
         assert row["correlation_id"] == "4ae8556b-af7c-4e85-a7f5-9388d60cebb5"
-        assert row["quality_gates_checked"] == 1
-        assert row["quality_gates_failed"] == 0
-        assert row["quality_gates_checked_jsonb"] == ["delegate-skill-terminal"]
-        assert row["quality_gates_failed_jsonb"] == []
+        assert row["quality_gates_checked"] == '["delegate-skill-terminal"]'
+        assert row["quality_gates_failed"] == "[]"
         assert row["tokens_input"] == 144
         assert row["tokens_output"] == 593
         assert row["cost_savings_usd"] == Decimal("0.009327")

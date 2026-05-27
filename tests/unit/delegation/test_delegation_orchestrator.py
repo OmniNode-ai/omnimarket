@@ -17,6 +17,8 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -24,6 +26,9 @@ import pytest
 
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
+)
+from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop import (
+    HandlerComplianceLoop,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     DelegationWorkflowState,
@@ -138,6 +143,15 @@ def _make_gate_result(
 # ---------------------------------------------------------------------------
 # Tests: Happy Path
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_auto_wired_handle_methods_are_awaitable_noops() -> None:
+    assert inspect.iscoroutinefunction(HandlerDelegationWorkflow.handle)
+    assert inspect.iscoroutinefunction(HandlerComplianceLoop.handle)
+
+    assert asyncio.run(HandlerDelegationWorkflow().handle(object())) is None
+    assert asyncio.run(HandlerComplianceLoop().handle(object())) is None
 
 
 @pytest.mark.unit
@@ -652,6 +666,7 @@ class TestEnumDelegationState:
             "EXECUTING",
             "INFERENCE_COMPLETED",
             "GATE_EVALUATED",
+            "ESCALATING",
             "COMPLETED",
             "FAILED",
         }
