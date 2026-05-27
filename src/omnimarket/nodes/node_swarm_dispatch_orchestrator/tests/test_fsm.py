@@ -247,6 +247,7 @@ class TestFSMHappyPath:
         # Sync path: no event_bus injected → handle() returns ModelSwarmDispatchResult
         sync_handler = HandlerSwarmDispatchOrchestrator()
         result = sync_handler.handle(request_fixture)
+        assert result is not None
         assert result.run_id == "run-001"
         assert result.correlation_id == "corr-001"
 
