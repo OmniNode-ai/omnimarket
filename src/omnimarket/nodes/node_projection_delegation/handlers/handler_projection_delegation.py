@@ -27,7 +27,6 @@ Target table schema (from omnidash, OMN-2284):
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -165,10 +164,10 @@ class HandlerProjectionDelegation:
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
-            "quality_gates_checked": json.dumps(
-                list(event.quality_gates_checked or [])
-            ),
-            "quality_gates_failed": json.dumps(list(event.quality_gates_failed or [])),
+            "quality_gates_checked": _gate_count(event.quality_gates_checked),
+            "quality_gates_failed": _gate_count(event.quality_gates_failed),
+            "quality_gates_checked_jsonb": event.quality_gates_checked,
+            "quality_gates_failed_jsonb": event.quality_gates_failed,
             "cost_usd": event.cost_usd,
             "cost_savings_usd": event.cost_savings_usd,
             "delegation_latency_ms": event.delegation_latency_ms,
@@ -208,8 +207,10 @@ class HandlerProjectionDelegation:
             "model_name": row_model.model_name,
             "delegated_by": row_model.delegated_by,
             "quality_gate_passed": row_model.quality_gate_passed,
-            "quality_gates_checked": json.dumps(list(row_model.quality_gates_checked)),
-            "quality_gates_failed": json.dumps(list(row_model.quality_gates_failed)),
+            "quality_gates_checked": len(row_model.quality_gates_checked),
+            "quality_gates_failed": len(row_model.quality_gates_failed),
+            "quality_gates_checked_jsonb": list(row_model.quality_gates_checked),
+            "quality_gates_failed_jsonb": list(row_model.quality_gates_failed),
             "quality_gate_detail": row_model.quality_gate_detail,
             "cost_usd": row_model.cost_usd,
             "cost_savings_usd": row_model.cost_savings_usd,
