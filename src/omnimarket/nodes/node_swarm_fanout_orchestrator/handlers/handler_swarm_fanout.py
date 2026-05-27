@@ -146,7 +146,10 @@ class HandlerSwarmFanout:
         # Subtasks with no endpoint assignment take the passthrough path anyway.
         class _StubPublisher:
             def publish(self, topic: str, payload: dict[str, object]) -> None:
-                pass
+                logger.debug(
+                    "No queue publisher configured; dropping fanout command",
+                    extra={"topic": topic, "payload_keys": sorted(payload)},
+                )
 
         class _StubSubscriber:
             def poll(

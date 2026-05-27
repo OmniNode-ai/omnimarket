@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.3.1"
+version = "0.4.2"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "omnibase_core>=0.42.0,<0.43.0",
-    "omnibase-compat==0.4.1",
+    "omnibase-compat==0.5.1",
     "omnibase-spi>=0.20.6,<0.22.0",
     "omnibase-infra>=0.34.2,<0.37.0",
     "onex-change-control>=0.5.0",
@@ -108,6 +108,7 @@ node_dod_verify = "omnimarket.nodes.node_dod_verify"
 node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
 node_compliance_sweep = "omnimarket.nodes.node_compliance_sweep"
 node_contract_registry = "omnimarket.nodes.node_contract_registry"
+node_contract_drift_compute = "omnimarket.nodes.node_contract_drift_compute"
 node_contract_sweep = "omnimarket.nodes.node_contract_sweep"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep"
 node_data_flow_sweep = "omnimarket.nodes.node_data_flow_sweep"
@@ -119,6 +120,7 @@ node_log_projection = "omnimarket.nodes.node_log_projection"
 node_log_persistence_effect = "omnimarket.nodes.node_log_persistence_effect"
 node_data_verification = "omnimarket.nodes.node_data_verification"
 node_process_watchdog = "omnimarket.nodes.node_process_watchdog"
+node_generate_node_effect = "omnimarket.nodes.node_generate_node_effect"
 node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
 node_projection_swarm = "omnimarket.nodes.node_projection_swarm"
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
@@ -152,6 +154,7 @@ node_ticket_research_enrichment_compute = "omnimarket.nodes.node_ticket_research
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
 node_plan_to_tickets = "omnimarket.nodes.node_plan_to_tickets"
 node_release = "omnimarket.nodes.node_release"
+node_recall_compute = "omnimarket.nodes.node_recall_compute"
 node_redeploy = "omnimarket.nodes.node_redeploy"
 node_baseline_capture = "omnimarket.nodes.node_baseline_capture"
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare"
@@ -168,6 +171,7 @@ node_overnight = "omnimarket.nodes.node_overnight"
 node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer"
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator"
 node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effect"
+node_verification_sweep_orchestrator = "omnimarket.nodes.node_verification_sweep_orchestrator"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup"
 node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scanner"
 node_linear_triage = "omnimarket.nodes.node_linear_triage"
@@ -365,7 +369,7 @@ omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "e9d88717eb48c0296409f57d4e49261589aeb1cb" }
-omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "afc7925660d08a5e1741847008cc5ac46751dee9" }
+omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat.git", rev = "4d887307aae34d9d40d389ba91070cb411ce3df5" }
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7895d802b6cbd9fa16d97d0b5873560188d3ae44" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "4877d3c223517cb0c7e1eca462ba0f4d38916314" }
@@ -375,7 +379,7 @@ override-dependencies = [
     "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@e9d88717eb48c0296409f57d4e49261589aeb1cb",
     "omnibase-spi>=0.20.6,<0.22.0",
     "omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@7895d802b6cbd9fa16d97d0b5873560188d3ae44",
-    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@afc7925660d08a5e1741847008cc5ac46751dee9",
+    "omnibase-compat @ git+https://github.com/OmniNode-ai/omnibase_compat.git@4d887307aae34d9d40d389ba91070cb411ce3df5",
 ]
 
 [tool.hatch.build.targets.wheel]
