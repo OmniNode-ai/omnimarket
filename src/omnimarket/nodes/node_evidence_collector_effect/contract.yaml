@@ -3,11 +3,22 @@ name: node_evidence_collector_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Contract-only Wave 2 effect node that gathers raw evidence from GitHub, CI,
+  Native effect node that gathers raw evidence from GitHub, CI,
   filesystem, git, and projection surfaces. This is the evidence pipeline I/O
   boundary; downstream compute nodes must not touch external systems.
+
+handler:
+  module: omnimarket.nodes.node_evidence_collector_effect.handlers.handler_evidence_collector_effect
+  class: HandlerEvidenceCollectorEffect
+  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command.ModelEvidencePipelineCommand
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerEvidenceCollectorEffect
+        module: omnimarket.nodes.node_evidence_collector_effect.handlers.handler_evidence_collector_effect
 
 input_model:
   name: ModelEvidencePipelineCommand
@@ -45,6 +56,5 @@ side_effects:
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 3
-  related_tickets: ["OMN-11443"]
+  implementation_wave: 3
+  related_tickets: ["OMN-11443", "OMN-12395"]

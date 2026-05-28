@@ -1,6 +1,6 @@
 name: node_evidence_pipeline_orchestrator
 version: "0.1.0"
-description: "Contract-only package for the OMN-11443 evidence pipeline orchestrator."
+description: "Native package for the OMN-11443 evidence pipeline orchestrator."
 pack: evidence_pipeline
 node_role: orchestrator
 display_name: "Evidence Pipeline Orchestrator"

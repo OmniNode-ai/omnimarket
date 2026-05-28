@@ -3,11 +3,22 @@ name: node_linear_updater_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Contract-only Wave 2 effect node that writes advisory validation status back
+  Native effect node that writes advisory validation status back
   to Linear. Linear annotations are supporting evidence surfaces and are not
   authoritative completion proof.
+
+handler:
+  module: omnimarket.nodes.node_linear_updater_effect.handlers.handler_linear_updater_effect
+  class: HandlerLinearUpdaterEffect
+  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerLinearUpdaterEffect
+        module: omnimarket.nodes.node_linear_updater_effect.handlers.handler_linear_updater_effect
 
 input_model:
   name: ModelEvidenceValidationResult
@@ -48,6 +59,5 @@ side_effects:
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 3
-  related_tickets: ["OMN-11443"]
+  implementation_wave: 3
+  related_tickets: ["OMN-11443", "OMN-12395"]

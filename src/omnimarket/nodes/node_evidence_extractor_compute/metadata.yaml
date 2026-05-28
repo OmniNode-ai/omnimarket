@@ -1,6 +1,6 @@
 name: node_evidence_extractor_compute
 version: "0.1.0"
-description: "Contract-only package for deterministic evidence extraction."
+description: "Native package for deterministic evidence extraction."
 pack: evidence_pipeline
 node_role: compute
 display_name: "Evidence Extractor Compute"

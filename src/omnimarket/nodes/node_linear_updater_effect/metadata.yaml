@@ -1,6 +1,6 @@
 name: node_linear_updater_effect
 version: "0.1.0"
-description: "Contract-only package for advisory Linear evidence status updates."
+description: "Native package for advisory Linear evidence status updates."
 pack: evidence_pipeline
 node_role: effect
 display_name: "Linear Updater Effect"
