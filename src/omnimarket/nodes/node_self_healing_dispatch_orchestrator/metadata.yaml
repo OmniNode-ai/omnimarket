@@ -1,6 +1,6 @@
 name: node_self_healing_dispatch_orchestrator
 version: "1.0.0"
-description: "Self-healing dispatch orchestrator: tickets/epic → repo groups → TeamCreate dispatch → stall recovery → DoD gate (STUB)"
+description: "Self-healing dispatch orchestrator: tickets/epic → repo groups → TeamCreate dispatch → stall recovery → DoD gate"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

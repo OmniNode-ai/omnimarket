@@ -4,9 +4,8 @@
 
 ONEX node type: ORCHESTRATOR — impure, effectful, SSH-backed runner operations.
 
-Wave 4: contract + stub only.  Full implementation deferred (OMN-12218).
-The handler class is importable and passes type checks; `handle()` raises
-NotImplementedError as declared by `node_not_implemented: true` in contract.yaml.
+Bounded production slice: dry-run previews runner actions and all live runner
+operations require an injected adapter.
 
 Runner actions (per runner/SKILL.md):
   deploy  — SSH to CI host (192.168.86.201), invoke deploy-runners.sh.  # onex-allow-internal-ip OMN-12218 reason="runner orchestrator contract docstring; implementation remains deferred"
@@ -18,35 +17,76 @@ Runner actions (per runner/SKILL.md):
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from omnimarket.nodes.node_runner_orchestrator.models.model_runner_request import (
+    EnumRunnerAction,
     ModelRunnerRequest,
 )
 from omnimarket.nodes.node_runner_orchestrator.models.model_runner_result import (
+    EnumRunnerActionStatus,
     ModelRunnerResult,
 )
+
+
+class ProtocolRunnerAdapter(Protocol):
+    """Adapter boundary for live runner deploy/update/status operations."""
+
+    def deploy(
+        self, request: ModelRunnerRequest, *, rebuild: bool
+    ) -> ModelRunnerResult: ...
+
+    def status(self, request: ModelRunnerRequest) -> ModelRunnerResult: ...
 
 
 class HandlerRunnerOrchestrator:
     """ORCHESTRATOR — GitHub Actions self-hosted runner deploy/update/status.
 
-    Wave 4 contract-first node: importable and type-safe.  Full implementation
-    deferred (OMN-12218).
-
-    Per contract.yaml `node_not_implemented: true`, `handle()` raises
-    NotImplementedError.  Callers should check the contract flag before invoking.
+    Dry-run never opens SSH or calls the GitHub API. Live operations are delegated
+    to ``ProtocolRunnerAdapter``.
     """
+
+    def __init__(self, adapter: ProtocolRunnerAdapter | None = None) -> None:
+        self._adapter = adapter
 
     def handle(
         self,
         request: ModelRunnerRequest,
-    ) -> ModelRunnerResult:  # stub-ok
+    ) -> ModelRunnerResult:
         """Execute the requested runner action.
 
         Raises:
-            NotImplementedError: contract.yaml node_not_implemented=true, Wave 4 in OMN-12218.
+            RuntimeError: when a live runner operation is requested without an adapter.
         """
-        raise NotImplementedError(  # stub-ok
-            "node_runner_orchestrator is a Wave 4 contract-first node. "
-            "Full implementation is tracked in OMN-12218. "
-            "See contract.yaml `node_not_implemented: true`."
+        if request.dry_run:
+            return ModelRunnerResult(
+                action_status=EnumRunnerActionStatus.DRY_RUN,
+                runners=[],
+                host_metrics=None,
+                actions_taken=[],
+                dry_run_summary=_dry_run_summary(request),
+                error=None,
+                correlation_id=request.correlation_id,
+            )
+
+        if self._adapter is None:
+            raise RuntimeError("runner adapter required when dry_run is false")
+
+        if request.action is EnumRunnerAction.STATUS:
+            return self._adapter.status(request)
+        return self._adapter.deploy(
+            request,
+            rebuild=request.action is EnumRunnerAction.UPDATE,
         )
+
+
+def _dry_run_summary(request: ModelRunnerRequest) -> str:
+    target = request.runner_name or "all runners"
+    if request.action is EnumRunnerAction.UPDATE:
+        return f"would rebuild runner image and redeploy {target}"
+    if request.action is EnumRunnerAction.DEPLOY:
+        return f"would deploy cached runner image to {target}"
+    return f"would query GitHub runner status and host metrics for {target}"
+
+
+__all__ = ["HandlerRunnerOrchestrator", "ProtocolRunnerAdapter"]

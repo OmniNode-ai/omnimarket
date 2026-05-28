@@ -10,7 +10,7 @@ name: node_runner_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Runner management orchestrator. Wraps the GitHub Actions self-hosted runner
@@ -23,8 +23,8 @@ description: >
     status  — Query GitHub API + SSH-inspect CI host containers; emit per-runner
               health table and host-level disk/build-cache metrics.
 
-  Phase 1 (Wave 4): contract + typed I/O models + handler stub.
-  Full implementation deferred (OMN-12218).
+  Bounded handler slice supports dry-run previews and adapter-gated live
+  deploy, update, and status operations.
 
 handler:
   module: omnimarket.nodes.node_runner_orchestrator.handlers.handler_runner_orchestrator
