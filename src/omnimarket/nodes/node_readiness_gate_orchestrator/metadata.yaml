@@ -1,6 +1,6 @@
 name: node_readiness_gate_orchestrator
 version: "0.1.0"
-description: "Contract-only package for the OMN-11443 deployment readiness gate."
+description: "Native package for the OMN-11443 deployment readiness gate."
 pack: evidence_pipeline
 node_role: orchestrator
 display_name: "Readiness Gate Orchestrator"

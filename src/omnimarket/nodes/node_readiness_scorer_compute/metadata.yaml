@@ -1,6 +1,6 @@
 name: node_readiness_scorer_compute
 version: "0.1.0"
-description: "Contract-only package for deterministic deployment readiness scoring."
+description: "Native package for deterministic deployment readiness scoring."
 pack: evidence_pipeline
 node_role: compute
 display_name: "Readiness Scorer Compute"

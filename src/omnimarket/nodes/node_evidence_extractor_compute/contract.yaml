@@ -3,11 +3,22 @@ name: node_evidence_extractor_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: COMPUTE_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Contract-only Wave 2 pure compute node that normalizes raw evidence into a
+  Native pure compute node that normalizes raw evidence into a
   structured evidence bundle. The handler must perform no I/O and must declare
   validator_version for deterministic replay.
+
+handler:
+  module: omnimarket.nodes.node_evidence_extractor_compute.handlers.handler_evidence_extractor_compute
+  class: HandlerEvidenceExtractorCompute
+  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_raw_evidence_payload.ModelRawEvidencePayload
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerEvidenceExtractorCompute
+        module: omnimarket.nodes.node_evidence_extractor_compute.handlers.handler_evidence_extractor_compute
 
 input_model:
   name: ModelRawEvidencePayload
@@ -40,6 +51,5 @@ replay:
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 3
-  related_tickets: ["OMN-11443"]
+  implementation_wave: 3
+  related_tickets: ["OMN-11443", "OMN-12395"]

@@ -3,12 +3,23 @@ name: node_evidence_pipeline_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: ORCHESTRATOR_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Contract-only Wave 2 node for the per-PR evidence pipeline FSM. The
+  Native node for the per-PR evidence pipeline FSM. The
   orchestrator coordinates collection, extraction, deterministic contract
   matching, provisional OCC PR creation, advisory Linear annotation, and final
-  completion event emission. Handlers are added in Wave 3.
+  completion event emission through typed node ports.
+
+handler:
+  module: omnimarket.nodes.node_evidence_pipeline_orchestrator.handlers.handler_evidence_pipeline_orchestrator
+  class: HandlerEvidencePipelineOrchestrator
+  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command.ModelEvidencePipelineCommand
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerEvidencePipelineOrchestrator
+        module: omnimarket.nodes.node_evidence_pipeline_orchestrator.handlers.handler_evidence_pipeline_orchestrator
 
 input_model:
   name: ModelEvidencePipelineCommand
@@ -65,6 +76,5 @@ dependencies:
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 3
-  related_tickets: ["OMN-11443"]
+  implementation_wave: 3
+  related_tickets: ["OMN-11443", "OMN-12395"]

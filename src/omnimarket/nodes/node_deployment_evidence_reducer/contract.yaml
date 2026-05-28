@@ -3,11 +3,22 @@ name: node_deployment_evidence_reducer
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: REDUCER_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Contract-only Wave 2 reducer that aggregates append-only evidence validation
+  Native reducer that aggregates append-only evidence validation
   events into deployment evidence and readiness projection surfaces. Corrections
   and supersessions are new events; prior evidence truth is not mutated.
+
+handler:
+  module: omnimarket.nodes.node_deployment_evidence_reducer.handlers.handler_deployment_evidence_reducer
+  class: HandlerDeploymentEvidenceReducer
+  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerDeploymentEvidenceReducer
+        module: omnimarket.nodes.node_deployment_evidence_reducer.handlers.handler_deployment_evidence_reducer
 
 input_model:
   name: ModelEvidenceValidationResult
@@ -68,6 +79,5 @@ projection_api:
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 3
-  related_tickets: ["OMN-11443"]
+  implementation_wave: 3
+  related_tickets: ["OMN-11443", "OMN-12395"]

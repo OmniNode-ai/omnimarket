@@ -1,6 +1,6 @@
 name: node_contract_matcher_compute
 version: "0.1.0"
-description: "Contract-only package for deterministic evidence-to-contract matching."
+description: "Native package for deterministic evidence-to-contract matching."
 pack: evidence_pipeline
 node_role: compute
 display_name: "Contract Matcher Compute"

@@ -1,6 +1,6 @@
 name: node_gap_analyzer_compute
 version: "0.1.0"
-description: "Contract-only package for deployment evidence gap analysis."
+description: "Native package for deployment evidence gap analysis."
 pack: evidence_pipeline
 node_role: compute
 display_name: "Gap Analyzer Compute"
