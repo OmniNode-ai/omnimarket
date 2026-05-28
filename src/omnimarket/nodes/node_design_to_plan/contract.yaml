@@ -7,12 +7,12 @@ node_version: {major: 1, minor: 1, patch: 0}
 description: >
   End-to-end design workflow — brainstorm ideas into structured implementation plans
   with optional launch. Phases: brainstorm (Phase 1), plan (Phase 2), launch (Phase 3).
-  Phase 3 (launch) is a stub — full wiring is follow-up work (OMN-12228).
+  Phase 3 (launch) builds typed Onex-native dispatch commands for downstream nodes.
 
 handler:
   module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan
   class: HandlerDesignToPlan
-  input_model: omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state.ModelDesignToPlanStartCommand
+  input_model: omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command.ModelDesignToPlanCommand
 
 handler_routing:
   routing_strategy: operation_match
@@ -25,9 +25,8 @@ handler_routing:
         module: omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan_phase3_launch
         operation: phase3_launch
         description: >
-          Phase 3 launch handler stub — executes the plan by routing to
-          executing_plans or downstream orchestrators. Stub; raises
-          NotImplementedError until OMN-12228 follow-up wiring lands.
+          Phase 3 launch handler. Builds a typed ModelPlanToTicketsStartCommand
+          route to node_plan_to_tickets using contract-declared topic/model truth.
 
 descriptor:
   node_archetype: orchestrator
@@ -56,6 +55,16 @@ inputs:
     description: "Stop after plan save — do not prompt for launch"
     required: false
     default: false
+  dry_run:
+    type: bool
+    description: "Build non-mutating downstream commands for validation only"
+    required: false
+    default: false
+  plan_only:
+    type: bool
+    description: "Build the native Phase 3 dispatch plan without publishing it"
+    required: false
+    default: false
 
 outputs:
   plan_path:
@@ -72,6 +81,7 @@ event_bus:
     - onex.cmd.omnimarket.design-to-plan-start.v1
   publish_topics:
     - onex.evt.omnimarket.design-to-plan-completed.v1
+    - onex.cmd.omnimarket.plan-to-tickets-start.v1
 
 env_dependencies:
   KAFKA_BOOTSTRAP_SERVERS:
@@ -85,5 +95,12 @@ env_dependencies:
 metadata:
   transport_type: kafka
   implementation_wave: 6
-  related_tickets: ["OMN-12228"]
-  phase3_handler_status: stub
+  related_tickets: ["OMN-12228", "OMN-12359"]
+  phase3_handler_status: implemented
+  phase3_launch:
+    mode: contract_declared_native_dispatch
+    routes:
+      - route_id: plan_to_tickets
+        target_node: node_plan_to_tickets
+        command_topic: onex.cmd.omnimarket.plan-to-tickets-start.v1
+        command_model: omnimarket.events.design_to_plan.ModelPlanToTicketsStartCommand

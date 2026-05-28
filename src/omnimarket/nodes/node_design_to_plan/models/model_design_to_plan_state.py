@@ -11,8 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class EnumDesignToPlanPhase(StrEnum):
     """FSM phases for the design-to-plan workflow.
 
-    Phase 3 (LAUNCH) is a stub — full wiring is follow-up work (OMN-12228).
-    When no_launch=True the FSM terminates at DONE without entering LAUNCH.
+    Phase 3 (LAUNCH) builds native downstream dispatch commands.
+    When no_launch=True callers should skip launch routing.
     """
 
     IDLE = "idle"
@@ -20,7 +20,7 @@ class EnumDesignToPlanPhase(StrEnum):
     STRUCTURE = "structure"
     REVIEW = "review"
     FINALIZE = "finalize"
-    LAUNCH = "launch"  # Phase 3 stub — see OMN-12228
+    LAUNCH = "launch"
     DONE = "done"
     FAILED = "failed"
 
@@ -61,6 +61,7 @@ class ModelDesignToPlanState(BaseModel):
     plan_path: str | None = Field(default=None)
     dry_run: bool = Field(default=False)
     no_launch: bool = Field(default=False)
+    plan_only: bool = Field(default=False)
     consecutive_failures: int = Field(default=0, ge=0)
     max_consecutive_failures: int = Field(default=3, ge=1)
     error_message: str | None = Field(default=None)

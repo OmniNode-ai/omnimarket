@@ -34,6 +34,7 @@ class HandlerDesignToPlan:
             plan_path=str(command.plan_path) if command.plan_path else None,
             dry_run=command.dry_run,
             no_launch=command.no_launch,
+            plan_only=command.plan_only,
         )
 
     def advance(
