@@ -4,7 +4,7 @@
 
 Verifies:
 - Models instantiate correctly with frozen config
-- Handler stub raises NotImplementedError
+- Handler dry-run behavior
 - ModelDecomposeEpicResult.count property works
 - Contract YAML is loadable and contains required fields
 """
@@ -137,19 +137,50 @@ def test_model_decompose_epic_result_count() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub
+# Handler behavior
 # ---------------------------------------------------------------------------
+
+
+class _Planner:
+    def plan_subtickets(self, epic_id: str, max_tickets: int) -> list[dict[str, str]]:
+        assert epic_id == "OMN-2000"
+        assert max_tickets == 2
+        return [
+            {"title": "Implement X", "repo_hint": "omnimarket"},
+            {"title": "Add tests", "repo_hint": "omnimarket"},
+        ]
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_handler_raises_not_implemented() -> None:
-    handler = HandlerDecomposeEpicOrchestrator()
+async def test_handler_dry_run_returns_planned_tickets() -> None:
+    handler = HandlerDecomposeEpicOrchestrator(planner=_Planner())
     req = ModelDecomposeEpicRequest(
         epic_id="OMN-2000",
+        max_tickets=2,
+        dry_run=True,
         correlation_id=_CORR_ID,
     )
-    with pytest.raises(NotImplementedError, match="stub"):
+
+    result = await handler.handle(req)
+
+    assert result.status == "dry_run"
+    assert result.count == 2
+    assert result.created_tickets[0].ticket_id == "DRY-RUN-1"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handler_live_mode_requires_ticket_creator() -> None:
+    handler = HandlerDecomposeEpicOrchestrator(planner=_Planner())
+    req = ModelDecomposeEpicRequest(
+        epic_id="OMN-2000",
+        max_tickets=2,
+        dry_run=False,
+        correlation_id=_CORR_ID,
+    )
+
+    with pytest.raises(RuntimeError, match="ticket_creator adapter required"):
         await handler.handle(req)
 
 
@@ -172,7 +203,7 @@ def test_contract_yaml_loads_and_has_required_fields() -> None:
 
     assert data["name"] == "node_decompose_epic_orchestrator"
     assert data["node_type"] == "orchestrator"
-    assert data["node_not_implemented"] is True
+    assert data["node_not_implemented"] is False
     assert "event_bus" in data
     assert (
         "onex.cmd.omnimarket.decompose-epic.v1" in data["event_bus"]["subscribe_topics"]

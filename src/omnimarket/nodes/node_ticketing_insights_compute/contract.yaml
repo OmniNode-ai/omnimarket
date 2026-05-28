@@ -3,7 +3,7 @@ name: node_ticketing_insights_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Pure compute node that transforms Linear ticket data, GitHub PR metrics, and git
@@ -139,7 +139,6 @@ replay:
 metadata:
   transport_type: kafka
   implementation_wave: 2
-  handlers_deferred_until_wave: 2
   related_tickets: ["OMN-12201"]
   skill_source: omniclaude/plugins/onex/skills/ticketing_insights/
   modes:

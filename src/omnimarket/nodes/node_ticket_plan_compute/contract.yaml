@@ -3,12 +3,11 @@ name: node_ticket_plan_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
   Pure transform that parses a plan markdown document and produces a structured
-  list of Linear ticket definitions. No Linear API calls — caller supplies raw
-  plan text and receives ticket specs. STUB — not yet implemented. Returns
-  SkillRoutingError with reason node_not_implemented.
+  list of Linear ticket definitions. No Linear API calls; caller supplies raw
+  plan text and receives ticket specs.
 
 handler:
   module: omnimarket.nodes.node_ticket_plan_compute.handlers.handler_ticket_plan_compute

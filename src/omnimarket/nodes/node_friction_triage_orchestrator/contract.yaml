@@ -9,14 +9,14 @@ name: node_friction_triage_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Friction triage orchestrator. Reads the friction registry (NDJSON), aggregates
   events by skill:surface over a rolling window, deduplicates against open Linear
   tickets via stable surface-key markers, and creates new tickets for surfaces where
-  count >= 3 OR severity_score >= 9. STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  count >= 3 OR severity_score >= 9. Live ticket creation requires an injected
+  adapter; dry-run mode is deterministic.
 
 handler:
   module: omnimarket.nodes.node_friction_triage_orchestrator.handlers.handler_friction_triage_orchestrator
