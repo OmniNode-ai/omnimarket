@@ -1,6 +1,6 @@
 name: node_decision_store_orchestrator
 version: "1.0.0"
-description: "Decision store orchestrator — conflict check, LLM review, persist, notify (STUB)"
+description: "Decision store orchestrator — conflict check, LLM review, persist, notify"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

@@ -8,17 +8,16 @@ name: node_decision_store_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Decision store orchestrator. Routes record/query/check-conflicts sub-operations
   for architectural and design decisions. Pipeline: structural conflict check
   (compute) → semantic LLM review (effect, only if structural_confidence >= 0.6) →
   persist decision entry (effect) → notify on HIGH-severity conflicts (effect).
-  HIGH-severity conflicts trigger a Slack conflict resolution gate that blocks
-  the pipeline until an operator resolves each conflict.
-  STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  HIGH-severity conflicts trigger a notification gate. The handler owns
+  sequencing; conflict checks, semantic review, durable persistence, and
+  notification are injected through typed native adapters.
 
 handler:
   module: omnimarket.nodes.node_decision_store_orchestrator.handlers.handler_decision_store_orchestrator
@@ -53,3 +52,5 @@ event_bus:
 
 metadata:
   transport_type: kafka
+  implementation_wave: 4
+  related_tickets: ["OMN-12219", "OMN-12344"]
