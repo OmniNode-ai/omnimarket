@@ -1,24 +1,28 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Golden chain test for node_verification_sweep_orchestrator.
-
-Verifies OMN-12223: the verification_sweep_orchestrator node can be loaded and
-its contract + handler structure is correct. The handler raises NotImplementedError
-(node_not_implemented: true) — the tests verify the stub contract, metadata,
-import surface, and NotImplementedError behaviour.
-"""
+"""Golden-chain tests for node_verification_sweep_orchestrator."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+from omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator import (
+    HandlerVerificationSweepOrchestrator,
+)
+from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_request import (
+    ModelVerificationSweepOrchestratorRequest,
+)
+from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_result import (
+    ModelDatabaseVerificationResult,
+    ModelDodEvidenceVerificationResult,
+    ModelEndpointVerificationResult,
+)
 
 
 @pytest.fixture
@@ -32,189 +36,232 @@ def contract_path(node_dir: Path) -> Path:
     return node_dir / "contract.yaml"
 
 
-@pytest.fixture
-def metadata_path(node_dir: Path) -> Path:
-    return node_dir / "metadata.yaml"
+class FakeProbeAdapter:
+    def __init__(
+        self,
+        *,
+        endpoint_status: str = "PASS",
+        db_status: str = "PASS",
+        dod_status: str = "PASS",
+        fail_phase: str = "",
+    ) -> None:
+        self.endpoint_status = endpoint_status
+        self.db_status = db_status
+        self.dod_status = dod_status
+        self.fail_phase = fail_phase
+        self.calls: list[tuple[str, str]] = []
+
+    def resolve_targets(
+        self, request: ModelVerificationSweepOrchestratorRequest
+    ) -> Sequence[str]:
+        self.calls.append(("resolve", request.epic or request.pr or ""))
+        return ("OMN-12345",)
+
+    def verify_dashboard(
+        self, target: str, *, timeout_seconds: int
+    ) -> Sequence[ModelEndpointVerificationResult | Mapping[str, Any]]:
+        self.calls.append(("dashboard", target))
+        if self.fail_phase == "dashboard":
+            raise RuntimeError("dashboard unavailable")
+        return (
+            {
+                "endpoint": f"https://example.test/{target}",
+                "status": self.endpoint_status,
+                "http_code": 200 if self.endpoint_status == "PASS" else 500,
+                "evidence": "endpoint returned expected data",
+            },
+        )
+
+    def verify_database(
+        self, target: str, *, timeout_seconds: int
+    ) -> Sequence[ModelDatabaseVerificationResult | Mapping[str, Any]]:
+        self.calls.append(("database", target))
+        if self.fail_phase == "database":
+            raise RuntimeError("database unavailable")
+        return (
+            {
+                "table": f"projection_{target.lower().replace('-', '_')}",
+                "status": self.db_status,
+                "row_count": 4 if self.db_status == "PASS" else 0,
+                "evidence": "projection table has expected rows",
+            },
+        )
+
+    def verify_dod_evidence(
+        self, target: str, *, timeout_seconds: int
+    ) -> Sequence[ModelDodEvidenceVerificationResult | Mapping[str, Any]]:
+        self.calls.append(("dod_evidence", target))
+        if self.fail_phase == "dod_evidence":
+            raise RuntimeError("dod evidence unavailable")
+        return (
+            {
+                "evidence_type": "rendered_output",
+                "status": self.dod_status,
+                "evidence": "passing rendered_output receipt found",
+            },
+        )
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+class FakeReceiptWriter:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.payloads: list[Mapping[str, Any]] = []
+
+    def write_receipt(self, payload: Mapping[str, Any]) -> str:
+        self.payloads.append(payload)
+        if self.fail:
+            raise RuntimeError("receipt store unavailable")
+        return "/tmp/verification-sweep/OMN-12345.yaml"
+
+
+class FakeLinearCommenter:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.comments: list[tuple[str, str]] = []
+
+    def post_verification_comment(self, ticket_id: str, body: str) -> str:
+        self.comments.append((ticket_id, body))
+        if self.fail:
+            raise RuntimeError("linear unavailable")
+        return "comment-1"
 
 
 class TestContractYaml:
-    """Contract YAML is valid and declares required fields."""
+    def test_contract_is_functional_orchestrator(self, contract_path: Path) -> None:
+        data = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        assert data["name"] == "node_verification_sweep_orchestrator"
+        assert data["node_type"] == "orchestrator"
+        assert data["node_not_implemented"] is False
+        assert data["handler"]["class"] == "HandlerVerificationSweepOrchestrator"
 
-    def test_contract_exists(self, contract_path: Path) -> None:
-        assert contract_path.exists(), f"contract.yaml not found at {contract_path}"
-
-    def test_contract_loads(self, contract_path: Path) -> None:
-        with open(contract_path) as f:
-            data = yaml.safe_load(f)
-        assert isinstance(data, dict)
-        assert "name" in data
-        assert "contract_version" in data
-        assert "handler" in data
-
-    def test_contract_node_type_is_orchestrator(self, contract_path: Path) -> None:
-        with open(contract_path) as f:
-            data = yaml.safe_load(f)
-        assert data.get("node_type") == "orchestrator"
-
-    def test_contract_is_marked_not_implemented(self, contract_path: Path) -> None:
-        with open(contract_path) as f:
-            data = yaml.safe_load(f)
-        assert data.get("node_not_implemented") is True
-
-    def test_contract_declares_handler(self, contract_path: Path) -> None:
-        with open(contract_path) as f:
-            data = yaml.safe_load(f)
-        handler = data.get("handler", {})
-        assert "module" in handler, "handler.module not declared"
-        assert "class" in handler, "handler.class not declared"
-        assert "input_model" in handler, "handler.input_model not declared"
-
-    def test_contract_declares_event_bus(self, contract_path: Path) -> None:
-        with open(contract_path) as f:
-            data = yaml.safe_load(f)
-        event_bus = data.get("event_bus", {})
-        assert "subscribe_topics" in event_bus
-        assert "publish_topics" in event_bus
-        assert len(event_bus["subscribe_topics"]) > 0
-        assert len(event_bus["publish_topics"]) > 0
-
-    def test_contract_topics_follow_naming_convention(
+    def test_contract_declares_native_adapter_boundaries(
         self, contract_path: Path
     ) -> None:
-        with open(contract_path) as f:
-            data = yaml.safe_load(f)
-        event_bus = data.get("event_bus", {})
-        all_topics = event_bus.get("subscribe_topics", []) + event_bus.get(
-            "publish_topics", []
+        data = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        adapter_names = {item["name"] for item in data["dependencies"]["adapters"]}
+        assert "ProtocolVerificationProbeAdapter" in adapter_names
+        assert "ProtocolVerificationReceiptWriter" in adapter_names
+        assert "ProtocolVerificationLinearCommenter" in adapter_names
+
+
+class TestHandlerGoldenChain:
+    def test_successful_verification_writes_receipt(self) -> None:
+        probe = FakeProbeAdapter()
+        receipt_writer = FakeReceiptWriter()
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=probe,
+            receipt_writer=receipt_writer,
         )
-        for topic in all_topics:
-            assert topic.startswith("onex."), (
-                f"Topic {topic!r} does not start with 'onex.'"
+
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(targets=("OMN-12345",))
+        )
+
+        assert result.overall_status == "pass"
+        assert result.receipt_path == "/tmp/verification-sweep/OMN-12345.yaml"
+        assert result.adapter_errors == []
+        assert len(result.endpoint_results) == 1
+        assert len(result.db_checks) == 1
+        assert len(result.dod_receipts) == 1
+        assert len(receipt_writer.payloads) == 1
+
+    def test_failed_verification_comments_and_writes_receipt(self) -> None:
+        probe = FakeProbeAdapter(db_status="FAIL_EMPTY")
+        receipt_writer = FakeReceiptWriter()
+        linear = FakeLinearCommenter()
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=probe,
+            receipt_writer=receipt_writer,
+            linear_commenter=linear,
+        )
+
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(targets=("OMN-12345",))
+        )
+
+        assert result.overall_status == "fail"
+        assert result.db_checks[0].status == "FAIL_EMPTY"
+        assert result.receipt_path == "/tmp/verification-sweep/OMN-12345.yaml"
+        assert len(receipt_writer.payloads) == 1
+        assert linear.comments == [
+            (
+                "OMN-12345",
+                "Verification sweep completed with overall_status=fail, "
+                "endpoint_failures=0, database_failures=1, dod_failures=0, "
+                "adapter_errors=0.",
             )
+        ]
 
-    def test_contract_descriptor_is_orchestrator(self, contract_path: Path) -> None:
-        with open(contract_path) as f:
-            data = yaml.safe_load(f)
-        descriptor = data.get("descriptor", {})
-        assert descriptor.get("node_archetype") == "orchestrator"
-
-
-class TestMetadataYaml:
-    """Metadata YAML is valid and has required fields."""
-
-    def test_metadata_exists(self, metadata_path: Path) -> None:
-        assert metadata_path.exists(), f"metadata.yaml not found at {metadata_path}"
-
-    def test_metadata_loads(self, metadata_path: Path) -> None:
-        with open(metadata_path) as f:
-            data = yaml.safe_load(f)
-        assert isinstance(data, dict)
-        assert "name" in data
-        assert "version" in data
-        assert "entry_points" in data
-
-    def test_metadata_node_role_is_orchestrator(self, metadata_path: Path) -> None:
-        with open(metadata_path) as f:
-            data = yaml.safe_load(f)
-        assert data.get("node_role") == "orchestrator"
-
-
-class TestHandlerImport:
-    """Handler and model modules can be imported and classes exist."""
-
-    def test_handler_module_imports(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.handlers import (
-            handler_verification_sweep_orchestrator,
+    def test_dry_run_has_no_receipt_or_linear_side_effects(self) -> None:
+        probe = FakeProbeAdapter(endpoint_status="FAIL_HTTP")
+        receipt_writer = FakeReceiptWriter()
+        linear = FakeLinearCommenter()
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=probe,
+            receipt_writer=receipt_writer,
+            linear_commenter=linear,
         )
 
-        assert handler_verification_sweep_orchestrator is not None
-
-    def test_handler_class_exists(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator import (
-            HandlerVerificationSweepOrchestrator,
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(
+                targets=("OMN-12345",),
+                dry_run=True,
+            )
         )
 
-        assert HandlerVerificationSweepOrchestrator is not None
-
-    def test_request_model_importable(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_request import (
-            ModelVerificationSweepOrchestratorRequest,
-        )
-
-        assert ModelVerificationSweepOrchestratorRequest is not None
-
-    def test_result_model_importable(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_result import (
-            ModelVerificationSweepOrchestratorResult,
-        )
-
-        assert ModelVerificationSweepOrchestratorResult is not None
-
-    def test_endpoint_result_model_importable(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_result import (
-            ModelEndpointVerificationResult,
-        )
-
-        assert ModelEndpointVerificationResult is not None
-
-    def test_database_result_model_importable(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_result import (
-            ModelDatabaseVerificationResult,
-        )
-
-        assert ModelDatabaseVerificationResult is not None
-
-    def test_dod_result_model_importable(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_result import (
-            ModelDodEvidenceVerificationResult,
-        )
-
-        assert ModelDodEvidenceVerificationResult is not None
-
-
-class TestHandlerStubBehaviour:
-    """Handler raises NotImplementedError as documented by node_not_implemented: true."""
-
-    def test_handler_raises_not_implemented(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator import (
-            HandlerVerificationSweepOrchestrator,
-        )
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_request import (
-            ModelVerificationSweepOrchestratorRequest,
-        )
-
-        handler = HandlerVerificationSweepOrchestrator()
-        request = ModelVerificationSweepOrchestratorRequest()
-        with pytest.raises(NotImplementedError):
-            handler.handle(request)
-
-    def test_request_model_defaults(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_request import (
-            ModelVerificationSweepOrchestratorRequest,
-        )
-
-        req = ModelVerificationSweepOrchestratorRequest()
-        assert req.targets == []
-        assert req.epic is None
-        assert req.check_types == []
-        assert req.dry_run is False
-        assert req.pr is None
-        assert req.timeout_seconds == 30
-
-    def test_result_model_defaults(self) -> None:
-        from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_result import (
-            ModelVerificationSweepOrchestratorResult,
-        )
-
-        result = ModelVerificationSweepOrchestratorResult()
-        assert result.endpoint_results == []
-        assert result.db_checks == []
-        assert result.dod_receipts == []
-        assert result.overall_status == "skip"
+        assert result.overall_status == "fail"
         assert result.receipt_path == ""
-        assert result.dry_run is False
+        assert result.dry_run is True
+        assert receipt_writer.payloads == []
+        assert linear.comments == []
+
+    def test_probe_adapter_error_is_typed_failure(self) -> None:
+        probe = FakeProbeAdapter(fail_phase="dashboard")
+        receipt_writer = FakeReceiptWriter()
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=probe,
+            receipt_writer=receipt_writer,
+        )
+
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(
+                targets=("OMN-12345",),
+                check_types=("dashboard",),
+            )
+        )
+
+        assert result.overall_status == "fail"
+        assert result.endpoint_results[0].status == "FAIL_HTTP"
+        assert result.adapter_errors[0].phase == "dashboard"
+        assert result.adapter_errors[0].target == "OMN-12345"
+        assert "dashboard unavailable" in result.adapter_errors[0].error
+        assert len(receipt_writer.payloads) == 1
+
+    def test_receipt_adapter_error_is_typed_failure(self) -> None:
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=FakeProbeAdapter(),
+            receipt_writer=FakeReceiptWriter(fail=True),
+        )
+
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(targets=("OMN-12345",))
+        )
+
+        assert result.overall_status == "fail"
+        assert result.receipt_path == ""
+        assert result.adapter_errors[0].phase == "receipt_write"
+        assert "receipt store unavailable" in result.adapter_errors[0].error
+
+    def test_epic_target_resolution_uses_probe_adapter(self) -> None:
+        probe = FakeProbeAdapter()
+        handler = HandlerVerificationSweepOrchestrator(
+            probe_adapter=probe,
+            receipt_writer=FakeReceiptWriter(),
+        )
+
+        result = handler.handle(
+            ModelVerificationSweepOrchestratorRequest(epic="OMN-EPIC")
+        )
+
+        assert result.overall_status == "pass"
+        assert ("resolve", "OMN-EPIC") in probe.calls

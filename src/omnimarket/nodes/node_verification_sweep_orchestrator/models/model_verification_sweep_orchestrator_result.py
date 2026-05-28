@@ -9,6 +9,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 VerificationStatus = Literal["pass", "fail", "partial", "skip"]
+AdapterErrorPhase = Literal[
+    "target_resolution",
+    "dashboard",
+    "database",
+    "dod_evidence",
+    "receipt_write",
+    "linear_comment",
+]
 EndpointStatus = Literal["PASS", "FAIL_HTTP", "FAIL_EMPTY", "FAIL_DEFAULT", "SKIP"]
 DatabaseStatus = Literal["PASS", "FAIL_MISSING", "FAIL_EMPTY", "FAIL_SCHEMA", "SKIP"]
 DodEvidenceStatus = Literal[
@@ -48,6 +56,17 @@ class ModelDodEvidenceVerificationResult(BaseModel):
     evidence: str = ""
 
 
+class ModelVerificationAdapterError(BaseModel):
+    """Structured adapter failure captured without hiding the sweep result."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    phase: AdapterErrorPhase
+    target: str = ""
+    adapter: str = ""
+    error: str
+
+
 class ModelVerificationSweepOrchestratorResult(BaseModel):
     """Output of the verification sweep orchestrator handler."""
 
@@ -64,3 +83,4 @@ class ModelVerificationSweepOrchestratorResult(BaseModel):
         description="Absolute path to the written verification receipt YAML.",
     )
     dry_run: bool = False
+    adapter_errors: list[ModelVerificationAdapterError] = Field(default_factory=list)

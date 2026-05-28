@@ -4,22 +4,26 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+VerificationCheckType = Literal["dashboard", "database", "dod_evidence"]
 
 
 class ModelVerificationSweepOrchestratorRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    targets: list[str] = Field(
-        default_factory=list,
+    targets: tuple[str, ...] = Field(
+        default=(),
         description="Ticket IDs to verify (e.g. ['OMN-5400', 'OMN-5401']).",
     )
     epic: str | None = Field(
         default=None,
         description="Epic ID — discover and verify all child tickets.",
     )
-    check_types: list[str] = Field(
-        default_factory=list,
+    check_types: tuple[VerificationCheckType, ...] = Field(
+        default=(),
         description=(
             "Verification phases to run: dashboard | database | dod_evidence. "
             "Empty = all phases."

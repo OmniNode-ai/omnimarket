@@ -3,13 +3,16 @@ name: node_verification_sweep_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Post-orchestration verification sweep orchestrator. Probes dashboard endpoints
   for HTTP 200 with real data, checks database tables for expected rows, and
   validates dod_evidence rendered_output items have passing receipts.
   Non-blocking — flags only, does not halt orchestration.
+  Authoritative surface probes, receipt writes, and optional Linear comments are
+  owned by injected protocol adapters; the handler does not shell out or call
+  other handlers directly.
 
 handler:
   module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
@@ -31,6 +34,18 @@ descriptor:
     - effects
   idempotent: true
   timeout_ms: 120000
+
+dependencies:
+  adapters:
+    - name: ProtocolVerificationProbeAdapter
+      module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+      description: "Resolves targets and probes dashboard, database, and dod_evidence surfaces."
+    - name: ProtocolVerificationReceiptWriter
+      module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+      description: "Writes durable OCC verification sweep receipts when dry_run is false."
+    - name: ProtocolVerificationLinearCommenter
+      module: omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator
+      description: "Optionally annotates Linear tickets after failed or partial live sweeps."
 
 inputs:
   targets:
@@ -80,6 +95,9 @@ outputs:
   receipt_path:
     type: str
     description: "Absolute path to the written verification receipt YAML (empty if dry_run)"
+  adapter_errors:
+    type: list[ModelVerificationAdapterError]
+    description: "Structured adapter failures captured during verification or side effects"
 
 terminal_event: onex.evt.omnimarket.verification-sweep-completed.v1
 
