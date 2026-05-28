@@ -11,7 +11,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_plan_to_tickets.handlers.handler_plan_to_tickets
   class: HandlerPlanToTickets
-  input_model: omnimarket.nodes.node_plan_to_tickets.models.model_plan_to_tickets_state.ModelPlanToTicketsStartCommand
+  input_model: omnimarket.events.design_to_plan.ModelPlanToTicketsStartCommand
 
 handler_routing:
   routing_strategy: operation_match

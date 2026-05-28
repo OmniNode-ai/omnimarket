@@ -8,19 +8,29 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.events.design_to_plan import ModelPlanToTicketsStartCommand
 from omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan import (
     HandlerDesignToPlan,
+)
+from omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan_phase3_launch import (
+    HandlerDesignToPlanPhase3Launch,
 )
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command import (
     ModelDesignToPlanCommand,
 )
+from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_phase3_launch import (
+    ModelDesignToPlanPhase3LaunchResult,
+)
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
     EnumDesignToPlanPhase,
+    ModelDesignToPlanState,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.design-to-plan-start.v1"
@@ -32,12 +42,14 @@ def _make_command(
     topic: str = "Build a new dashboard",
     dry_run: bool = False,
     no_launch: bool = False,
+    plan_only: bool = False,
 ) -> ModelDesignToPlanCommand:
     return ModelDesignToPlanCommand(
         correlation_id=uuid4(),
         topic=topic,
         no_launch=no_launch,
         dry_run=dry_run,
+        plan_only=plan_only,
         requested_at=datetime.now(tz=UTC),
     )
 
@@ -237,35 +249,159 @@ class TestDesignToPlanGoldenChain:
         )
         assert next_phase(EnumDesignToPlanPhase.LAUNCH) == EnumDesignToPlanPhase.DONE
 
-    async def test_phase3_stub_handler_raises_not_implemented(
+    async def test_phase3_launch_builds_plan_to_tickets_native_dispatch(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """HandlerDesignToPlanPhase3Launch.handle raises NotImplementedError (stub-ok)."""
-        from datetime import UTC, datetime
-        from uuid import uuid4
-
-        import pytest
-
-        from omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan_phase3_launch import (
-            HandlerDesignToPlanPhase3Launch,
-        )
-        from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command import (
-            ModelDesignToPlanCommand,
-        )
-        from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
-            ModelDesignToPlanState,
-        )
-
+        """Phase 3 builds a typed Onex-native plan_to_tickets command."""
         handler = HandlerDesignToPlanPhase3Launch()
         command = ModelDesignToPlanCommand(
             correlation_id=uuid4(),
-            topic="test",
+            topic="Build deterministic Phase 3 routing",
+            plan_only=True,
             requested_at=datetime.now(tz=UTC),
         )
         state = ModelDesignToPlanState(
             correlation_id=command.correlation_id,
             current_phase=EnumDesignToPlanPhase.LAUNCH,
+            plan_path="docs/plans/omn-12359.md",
         )
 
-        with pytest.raises(NotImplementedError, match="OMN-12228"):
-            handler.handle(command, state)
+        result = handler.handle(command, state)
+
+        assert isinstance(result, ModelDesignToPlanPhase3LaunchResult)
+        assert result.status == "planned"
+        assert result.plan_only is True
+        assert len(result.dispatches) == 1
+
+        dispatch = result.dispatches[0]
+        assert dispatch.route_id == "plan_to_tickets"
+        assert dispatch.target_node == "node_plan_to_tickets"
+        assert dispatch.command_topic == "onex.cmd.omnimarket.plan-to-tickets-start.v1"
+        assert (
+            dispatch.command_model
+            == "omnimarket.events.design_to_plan.ModelPlanToTicketsStartCommand"
+        )
+        assert isinstance(dispatch.command, ModelPlanToTicketsStartCommand)
+        assert dispatch.command.correlation_id == str(command.correlation_id)
+        assert dispatch.command.plan_path == "docs/plans/omn-12359.md"
+        assert dispatch.command.epic_title == "Build deterministic Phase 3 routing"
+        assert dispatch.command.dry_run is True
+        assert dispatch.command.repo == "omnimarket"
+
+    async def test_phase3_launch_dry_run_marks_downstream_command_dry_run(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """dry_run is contract-declared and preserves a non-mutating native command."""
+        command = _make_command(dry_run=True)
+        state = ModelDesignToPlanState(
+            correlation_id=command.correlation_id,
+            current_phase=EnumDesignToPlanPhase.LAUNCH,
+            plan_path="/tmp/omn-12359-plan.md",
+        )
+
+        result = HandlerDesignToPlanPhase3Launch().handle(command, state)
+
+        assert result.status == "planned"
+        assert result.dry_run is True
+        assert result.dispatches[0].command.dry_run is True
+
+    async def test_phase3_launch_requires_finalized_plan_path(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Phase 3 cannot report success without a finalized plan path."""
+        command = _make_command()
+        state = ModelDesignToPlanState(
+            correlation_id=command.correlation_id,
+            current_phase=EnumDesignToPlanPhase.LAUNCH,
+        )
+
+        with pytest.raises(ValueError, match="plan_path"):
+            HandlerDesignToPlanPhase3Launch().handle(command, state)
+
+    async def test_phase3_launch_no_launch_skips_without_plan_path(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """no_launch never builds a downstream dispatch, even without plan_path."""
+        command = _make_command(no_launch=True)
+        state = ModelDesignToPlanState(
+            correlation_id=command.correlation_id,
+            current_phase=EnumDesignToPlanPhase.LAUNCH,
+            no_launch=True,
+        )
+
+        result = HandlerDesignToPlanPhase3Launch().handle(command, state)
+
+        assert result.status == "skipped"
+        assert result.plan_path is None
+        assert result.dispatches == ()
+
+    async def test_phase3_launch_requires_launch_phase(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Phase 3 routing only runs from the LAUNCH FSM phase."""
+        command = _make_command()
+        state = ModelDesignToPlanState(
+            correlation_id=command.correlation_id,
+            current_phase=EnumDesignToPlanPhase.FINALIZE,
+            plan_path="/tmp/omn-12359-plan.md",
+        )
+
+        with pytest.raises(ValueError, match="current_phase='launch'"):
+            HandlerDesignToPlanPhase3Launch().handle(command, state)
+
+    async def test_phase3_launch_publish_payload_matches_downstream_model(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Returned dispatches are directly publishable to the native command topic."""
+        command = _make_command(plan_only=True)
+        state = ModelDesignToPlanState(
+            correlation_id=command.correlation_id,
+            current_phase=EnumDesignToPlanPhase.LAUNCH,
+            plan_path="/tmp/omn-12359-plan.md",
+        )
+        result = HandlerDesignToPlanPhase3Launch().handle(command, state)
+        dispatch = result.dispatches[0]
+
+        await event_bus.start()
+        await event_bus.publish(
+            dispatch.command_topic,
+            key=None,
+            value=dispatch.command.model_dump_json().encode(),
+        )
+
+        history = await event_bus.get_event_history(topic=dispatch.command_topic)
+        assert len(history) == 1
+        payload = json.loads(history[0].value)
+        parsed = ModelPlanToTicketsStartCommand(**payload)
+        assert parsed.plan_path == "/tmp/omn-12359-plan.md"
+        assert parsed.dry_run is True
+
+        await event_bus.close()
+
+    async def test_phase3_contract_declares_implemented_native_route(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Contract route must match the downstream node command model/topic."""
+        root = Path(__file__).resolve().parents[1]
+        design_contract = yaml.safe_load(
+            (root / "src/omnimarket/nodes/node_design_to_plan/contract.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        downstream_contract = yaml.safe_load(
+            (
+                root / "src/omnimarket/nodes/node_plan_to_tickets/contract.yaml"
+            ).read_text(encoding="utf-8")
+        )
+
+        route = design_contract["metadata"]["phase3_launch"]["routes"][0]
+        assert design_contract["metadata"]["phase3_handler_status"] == "implemented"
+        assert "dry_run" in design_contract["inputs"]
+        assert "plan_only" in design_contract["inputs"]
+        assert route["target_node"] == "node_plan_to_tickets"
+        assert (
+            route["command_topic"]
+            in downstream_contract["event_bus"]["subscribe_topics"]
+        )
+        assert route["command_topic"] in design_contract["event_bus"]["publish_topics"]
+        assert route["command_model"] == downstream_contract["handler"]["input_model"]
