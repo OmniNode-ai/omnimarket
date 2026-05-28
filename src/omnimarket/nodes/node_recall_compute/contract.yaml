@@ -3,13 +3,14 @@ name: node_recall_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Unified knowledge query interface. Federates queries across agent learnings,
   architecture (Repowise + Memgraph), and antipattern (Qdrant) backends.
-  Replaces the recall skill's direct HTTP calls to localhost:8085 — all retrieval
-  now routes through the event bus as a proper COMPUTE node.
+  Replaces the recall skill's direct HTTP calls to localhost:8085. The handler
+  owns backend selection, ranking, deduplication, and response shaping; retrieval
+  is supplied by injected Onex-native backend adapters.
 
 handler_routing:
   routing_strategy: operation_match
@@ -76,3 +77,5 @@ event_bus:
 
 metadata:
   transport_type: kafka
+  implementation_wave: 4
+  related_tickets: ["OMN-12216", "OMN-12333"]
