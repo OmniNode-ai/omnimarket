@@ -32,7 +32,7 @@ chains:
       - correlation_id
 
   - name: evaluation
-    head_topic: onex.evt.omniintelligence.run-evaluated.v1
+    head_topic: onex.evt.omniclaude.session-outcome.v1
     tail_table: session_outcomes
     expected_fields:
-      - correlation_id
+      - session_id

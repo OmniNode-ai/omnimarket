@@ -128,6 +128,8 @@ class TestPatternLearningChainValidation:
         # delegation chain expects compliance counters (OMN-10793)
         projected_rows["delegation"]["tokens_to_compliance"] = 0
         projected_rows["delegation"]["compliance_attempts"] = 1
+        # evaluation chain expects session_id (not correlation_id) per contract.yaml
+        projected_rows["evaluation"]["session_id"] = "test-evaluation"
 
         request = GoldenChainSweepRequest(
             chains=chains,
