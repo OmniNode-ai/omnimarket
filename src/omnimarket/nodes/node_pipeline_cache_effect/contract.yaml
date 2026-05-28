@@ -1,0 +1,86 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pipeline_cache_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Effect node that wires the ticket-contract → test-generator → golden-chain-generator
+  pipeline with a filesystem cache. On cache hit the prior results are returned
+  without re-running the compute nodes. On cache miss both compute nodes run and
+  the results are written to the layered cache directory.
+
+  Cache key: sha256(contract) / sha256(generator_version) / sha256(generation_profile_hash)
+  Cache location: .onex_state/pipeline_cache/{contract_hash}/{generator_hash}/{profile_hash}/
+
+  The cache_hit field in the result is advisory metadata only — a hit and a miss
+  for identical inputs produce byte-identical compute output.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerPipelineCache
+        module: omnimarket.nodes.node_pipeline_cache_effect.handlers.handler_pipeline_cache
+      event_model:
+        name: ModelPipelineCacheRequest
+        module: omnimarket.nodes.node_pipeline_cache_effect.models.model_pipeline_cache_request
+
+handler:
+  module: omnimarket.nodes.node_pipeline_cache_effect.handlers.handler_pipeline_cache
+  class: HandlerPipelineCache
+  input_model: omnimarket.nodes.node_pipeline_cache_effect.models.model_pipeline_cache_request.ModelPipelineCacheRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+inputs:
+  contract:
+    type: object
+    required: true
+    schema_ref: omnibase_core.models.ticket.model_ticket_contract.ModelTicketContract
+  generator_version:
+    type: str
+    required: false
+    default: "1.0.0"
+  generation_profile_hash:
+    type: str
+    required: false
+    default: "profile_default"
+  cache_root:
+    type: str
+    required: false
+    nullable: true
+    description: "Override for .onex_state/pipeline_cache root; used in tests."
+
+outputs:
+  cache_hit:
+    type: bool
+    description: "Advisory: true when results were served from cache"
+  cache_key:
+    type: str
+    description: "Opaque layered cache key used for this request"
+  test_generation_result:
+    type: object
+    schema_ref: omnimarket.nodes.node_test_generator_compute.models.model_test_generation_result.ModelTestGenerationResult
+  chain_generation_result:
+    type: object
+    schema_ref: omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_result.ModelGoldenChainGenerationResult
+
+terminal_event: onex.evt.omnimarket.pipeline-cache-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pipeline-cache-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pipeline-cache-completed.v1
+
+metadata:
+  transport_type: kafka
