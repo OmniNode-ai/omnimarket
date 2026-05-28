@@ -33,6 +33,9 @@ handler_routing:
     - handler:
         name: HandlerTaskShapeExtractor
         module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_task_shape_extractor
+    - handler:
+        name: build_available_models_from_scores
+        module: omnimarket.nodes.node_routing_policy_engine.handlers.handler_score_lookup
 
 descriptor:
   node_archetype: compute

@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -22,7 +24,7 @@ from omnimarket.nodes.node_resume_session_compute.models.model_resume_session_co
 
 
 @pytest.mark.unit
-def test_handler_loads_matching_checkpoint(tmp_path) -> None:
+def test_handler_loads_matching_checkpoint(tmp_path: Path) -> None:
     """Handler returns the latest matching checkpoint projection."""
     checkpoint = HandlerCheckpointCompute(state_dir=tmp_path)
     checkpoint.handle(
@@ -49,7 +51,7 @@ def test_handler_loads_matching_checkpoint(tmp_path) -> None:
 
 
 @pytest.mark.unit
-def test_handler_returns_not_found(tmp_path) -> None:
+def test_handler_returns_not_found(tmp_path: Path) -> None:
     """Handler returns not_found when no projection matches."""
     handler = HandlerResumeSessionCompute(state_dir=tmp_path)
     request = ModelResumeSessionComputeRequest(task_id="task-001", agent_id="agent-001")

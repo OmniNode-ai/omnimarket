@@ -29,17 +29,7 @@ class StubNodeCase:
     result_class: str
 
 
-STUB_NODE_CASES: tuple[StubNodeCase, ...] = (
-    StubNodeCase(
-        node_name="node_env_parity_compute",
-        handler_module="omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute",
-        handler_class="HandlerEnvParityCompute",
-        request_module="omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_request",
-        request_class="ModelEnvParityComputeRequest",
-        result_module="omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_result",
-        result_class="ModelEnvParityComputeResult",
-    ),
-)
+STUB_NODE_CASES: tuple[StubNodeCase, ...] = ()
 
 
 def _repo_root() -> Path:

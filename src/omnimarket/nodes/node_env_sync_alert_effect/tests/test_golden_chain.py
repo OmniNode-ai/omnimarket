@@ -131,9 +131,9 @@ class TestHandler:
 
         class Adapter:
             def __init__(self) -> None:
-                self.payloads: list[dict] = []
+                self.payloads: list[dict[str, object]] = []
 
-            def create_ticket(self, payload: dict) -> str:
+            def create_ticket(self, payload: dict[str, object]) -> str:
                 self.payloads.append(payload)
                 return "OMN-1"
 

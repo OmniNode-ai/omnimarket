@@ -25,11 +25,6 @@ from omnimarket.nodes.node_observability_sink_effect.models.model_observability_
     ModelObservabilitySinkOutput,
 )
 
-COMMAND_TOPIC = (
-    "onex.cmd.omnimarket.observability-sink.v1"  # onex-topic-allow: contract-declared
-)
-TERMINAL_TOPIC = "onex.evt.omnimarket.observability-persisted.v1"  # onex-topic-allow: contract-declared
-
 
 class ProtocolObservabilityKafkaSink(Protocol):
     """Typed boundary for Kafka persistence owned by runtime wiring."""

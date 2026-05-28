@@ -417,10 +417,11 @@ class _TopicLiteralVisitor(ast.NodeVisitor):
             self.topics.update(_TOPIC_RE.findall(node.value))
 
     def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
-        if not all(isinstance(value, ast.Constant) for value in node.values):
+        constants = [value for value in node.values if isinstance(value, ast.Constant)]
+        if len(constants) != len(node.values):
             return
         text = "".join(
-            value.value for value in node.values if isinstance(value.value, str)
+            value.value for value in constants if isinstance(value.value, str)
         )
         self.topics.update(_TOPIC_RE.findall(text))
 

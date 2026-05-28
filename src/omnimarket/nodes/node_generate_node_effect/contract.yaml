@@ -20,6 +20,13 @@ output_model:
   module: omnimarket.nodes.node_generate_node_effect.models.model_generate_node_result
   description: "Result listing created files and their paths."
 
+handler_routing:
+  routing_strategy: direct
+  handlers:
+    - handler:
+        name: HandlerGenerateNode
+        module: omnimarket.nodes.node_generate_node_effect.handlers.handler_generate_node
+
 descriptor:
   node_archetype: effect
   purity: effectful

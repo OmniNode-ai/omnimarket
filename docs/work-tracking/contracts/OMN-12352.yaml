@@ -1,0 +1,40 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12352"
+title: "Implement env parity compute runtime handler"
+summary: >
+  Replaces the node_env_parity_compute runtime stub with a native omnimarket
+  compute handler. The node validates lane environment snapshots against typed
+  contract-owned env parity rules and Settings validation, dispatches through the
+  Codex runtime adapter, and declares command plus terminal event-bus topics in
+  contract.yaml.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-focused-tests"
+    description: "Focused golden-chain tests pass for native env parity runtime dispatch and stub removal."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_env_parity_compute.py tests/test_golden_chain_new_stub_nodes.py -q"
+  - id: "dod-runtime-adapter-proof"
+    description: "Codex runtime adapter dispatches env_parity_compute locally through the contract-owned command and terminal topics."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/run_codex_runtime_request.py --command-name env_parity_compute --runtime-selection local --payload '{\"scope\":\"omnimarket-runtime\",\"variable_names\":[\"ENABLE_KAFKA\"],\"env_by_lane\":{\"dev\":{\"ENABLE_KAFKA\":\"true\"},\"staging\":{\"ENABLE_KAFKA\":\"true\"},\"prod\":{\"ENABLE_KAFKA\":\"true\"}}}' --timeout-ms 30000"
+  - id: "dod-deploy-assessment"
+    description: >
+      Native compute handler and contract registration change only. No live
+      deploy, runtime restart, Kafka mutation, or .201 mutation was performed
+      pre-merge. Post-merge validation should dispatch env_parity_compute
+      through the deployed runtime after normal omnimarket rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: no live deploy/restart performed pre-merge; post-merge smoke dispatches env_parity_compute through deployed runtime'"
