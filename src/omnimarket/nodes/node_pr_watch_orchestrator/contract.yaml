@@ -3,10 +3,12 @@ name: node_pr_watch_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Orchestrates PR watch with polling, event emission, stateful tracking. STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  Native Onex PR watch orchestrator. Consumes a typed PR watch command with
+  repo and PR number, polls GitHub CI status through the typed gh effect
+  boundary, and emits the contract-declared completed or failed terminal event
+  when checks reach a green, red, or timeout terminal state.
 
 handler:
   module: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator
@@ -24,9 +26,38 @@ descriptor:
   node_archetype: orchestrator
   purity: impure
   idempotent: true
-  timeout_ms: 30000
+  timeout_ms: 1800000
   runtime_profiles:
     - effects
+
+terminal_event: onex.evt.omnimarket.pr-watch-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pr-watch-start.v1
+  terminal_events:
+    success: onex.evt.omnimarket.pr-watch-completed.v1
+    failure: onex.evt.omnimarket.pr-watch-failed.v1
+  default_timeout_ms: 1800000
+  max_timeout_ms: 86400000
+
+pr_watch:
+  effect_boundary:
+    protocol: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator.ProtocolPrChecksClient
+    default_client: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator.GitHubCliPrChecksClient
+  gh_command:
+    argv:
+      - gh
+      - pr
+      - checks
+      - "{pr_number}"
+      - --repo
+      - "{repo}"
+      - --json
+      - name,state,bucket,workflow,link,startedAt,completedAt
+  terminal_buckets:
+    green: [pass, skipping]
+    red: [fail, cancel]
+    pending: [pending, unknown]
 
 event_bus:
   consumer_group: omnimarket.pr_watch_orchestrator.consume.v1
@@ -34,8 +65,10 @@ event_bus:
     - onex.cmd.omnimarket.pr-watch-start.v1
   publish_topics:
     - onex.evt.omnimarket.pr-watch-completed.v1
+    - onex.evt.omnimarket.pr-watch-failed.v1
   dlq_topics:
     - onex.dlq.omnimarket.pr-watch.v1
 
 metadata:
   transport_type: kafka
+  implementation_ticket: OMN-12349
