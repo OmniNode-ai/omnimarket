@@ -1,19 +1,22 @@
 name: node_pr_watch_orchestrator
-version: "1.0.0"
-description: "Orchestrates PR watch with polling, event emission, stateful tracking (STUB)"
+version: "1.0.1"
+description: "Native PR watch orchestrator with typed gh checks effect boundary."
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_pr_watch_orchestrator: "omnimarket.nodes.node_pr_watch_orchestrator"
 capabilities:
-  standalone: false
-  full_runtime: false
-  requires_network: false
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.40.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["orchestrator", "pr", "watch", "polling"]
+tags: ["orchestrator", "pr", "watch", "polling", "OMN-12349"]
 pack: "build"
 display_name: "PR Watch Orchestrator"
 node_role: "orchestrator"

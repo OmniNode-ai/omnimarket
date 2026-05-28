@@ -39,15 +39,6 @@ STUB_NODE_CASES: tuple[StubNodeCase, ...] = (
         result_module="omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_result",
         result_class="ModelEnvParityComputeResult",
     ),
-    StubNodeCase(
-        node_name="node_pr_watch_orchestrator",
-        handler_module="omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator",
-        handler_class="HandlerPrWatchOrchestrator",
-        request_module="omnimarket.nodes.node_pr_watch_orchestrator.models.model_pr_watch_orchestrator_request",
-        request_class="ModelPrWatchOrchestratorRequest",
-        result_module="omnimarket.nodes.node_pr_watch_orchestrator.models.model_pr_watch_orchestrator_result",
-        result_class="ModelPrWatchOrchestratorResult",
-    ),
 )
 
 
@@ -73,38 +64,6 @@ def test_stub_node_contract_is_explicit(case: StubNodeCase) -> None:
     assert (
         raw["handler"]["input_model"] == f"{case.request_module}.{case.request_class}"
     )
-
-
-@pytest.mark.unit
-def test_pr_watch_stub_declares_runtime_routing_surface() -> None:
-    contract_path = (
-        _repo_root()
-        / "src"
-        / "omnimarket"
-        / "nodes"
-        / "node_pr_watch_orchestrator"
-        / "contract.yaml"
-    )
-    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
-
-    assert raw["handler_routing"]["routing_strategy"] == "operation_match"
-    assert raw["handler_routing"]["handlers"] == [
-        {
-            "handler": {
-                "name": "HandlerPrWatchOrchestrator",
-                "module": (
-                    "omnimarket.nodes.node_pr_watch_orchestrator.handlers."
-                    "handler_pr_watch_orchestrator"
-                ),
-            }
-        }
-    ]
-    assert raw["event_bus"] == {
-        "consumer_group": "omnimarket.pr_watch_orchestrator.consume.v1",
-        "subscribe_topics": ["onex.cmd.omnimarket.pr-watch-start.v1"],
-        "publish_topics": ["onex.evt.omnimarket.pr-watch-completed.v1"],
-        "dlq_topics": ["onex.dlq.omnimarket.pr-watch.v1"],
-    }
 
 
 @pytest.mark.unit
