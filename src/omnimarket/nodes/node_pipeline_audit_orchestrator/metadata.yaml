@@ -1,6 +1,6 @@
 name: node_pipeline_audit_orchestrator
 version: "1.0.0"
-description: "Multi-repo pipeline audit orchestrator with parallel dispatch and gap register"
+description: "Multi-repo pipeline audit orchestrator with native inventory and gap register"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
