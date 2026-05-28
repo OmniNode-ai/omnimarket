@@ -1,19 +1,12 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden-chain guardrails for node_pipeline_audit_orchestrator [OMN-12211].
-
-Honest routing behaviour for an explicit stub node:
-- contract marks node_not_implemented: true
-- entry point loads
-- typed models are strict (frozen, extra="forbid")
-- handler fails loudly with NotImplementedError containing "node_not_implemented"
-- contract declares the expected runtime routing surface
-"""
+"""Golden-chain guardrails for node_pipeline_audit_orchestrator [OMN-12211]."""
 
 from __future__ import annotations
 
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -44,6 +37,15 @@ _REQUEST_MODULE = "omnimarket.nodes.node_pipeline_audit_orchestrator.models.mode
 _REQUEST_CLASS = "ModelPipelineAuditRequest"
 
 
+class FakeTicketAdapter:
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def create_ticket(self, payload: dict[str, Any]) -> str:
+        self.payloads.append(payload)
+        return f"OMN-PIPE-{len(self.payloads)}"
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -59,10 +61,10 @@ def _contract() -> dict:  # type: ignore[type-arg]
 
 
 @pytest.mark.unit
-def test_pipeline_audit_orchestrator_contract_is_explicit_stub() -> None:
+def test_pipeline_audit_orchestrator_contract_is_implemented() -> None:
     raw = _contract()
 
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
     assert raw["node_type"] == "orchestrator"
     assert raw["handler"]["module"] == _HANDLER_MODULE
     assert raw["handler"]["class"] == _HANDLER_CLASS
@@ -348,14 +350,185 @@ def test_enum_finding_status_values() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub (fails loudly)
+# Handler behavior
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_pipeline_audit_orchestrator_handler_fails_loudly() -> None:
-    handler = HandlerPipelineAuditOrchestrator()
-    request = ModelPipelineAuditRequest(repos=("omniclaude", "omnibase_core"))
+def test_pipeline_audit_orchestrator_dry_run_inventories_repos(
+    tmp_path: Path,
+) -> None:
+    _write_repo(
+        tmp_path,
+        "producer",
+        contract_yaml="""
+name: node_producer
+event_bus:
+  publish_topics:
+    - onex.evt.sample.created.v1
+  subscribe_topics: []
+""",
+        source="correlation_id = 'abc'\n",
+        dockerfile="CMD python -m producer\n",
+    )
 
-    with pytest.raises(NotImplementedError, match="node_not_implemented"):
-        handler.handle(request)
+    result = HandlerPipelineAuditOrchestrator().handle(
+        ModelPipelineAuditRequest(
+            repos=("producer",),
+            audit_type=EnumAuditType.TOPICS,
+            dry_run=True,
+            omni_home_path=str(tmp_path),
+        )
+    )
+
+    assert result.run_status == EnumPipelineAuditStatus.DRY_RUN
+    assert result.repos_audited == ("producer",)
+    assert result.repo_inventories[0].kafka_produce_topics == (
+        "onex.evt.sample.created.v1",
+    )
+    assert result.high_count == 1
+    assert result.gap_register[0].proof_category == EnumProofCategory.WIRE_TOPICS
+    assert result.tickets_created == ()
+
+
+@pytest.mark.unit
+def test_pipeline_audit_orchestrator_detects_missing_producer_and_fail_fast(
+    tmp_path: Path,
+) -> None:
+    _write_repo(
+        tmp_path,
+        "consumer",
+        contract_yaml="""
+name: node_consumer
+event_bus:
+  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.sample.create.v1
+""",
+        source="def handle(event):\n    return event.correlation_id\n",
+    )
+
+    result = HandlerPipelineAuditOrchestrator().handle(
+        ModelPipelineAuditRequest(
+            repos=("consumer",),
+            audit_type=EnumAuditType.TOPICS,
+            dry_run=True,
+            fail_fast=True,
+            omni_home_path=str(tmp_path),
+        )
+    )
+
+    assert result.run_status == EnumPipelineAuditStatus.ABORTED
+    assert result.breaking_count == 1
+    assert result.gap_register[0].status == EnumFindingStatus.BREAKING
+
+
+@pytest.mark.unit
+def test_pipeline_audit_orchestrator_creates_tickets_through_adapter(
+    tmp_path: Path,
+) -> None:
+    _write_repo(
+        tmp_path,
+        "producer",
+        contract_yaml="""
+name: node_producer
+event_bus:
+  publish_topics:
+    - onex.evt.sample.created.v1
+  subscribe_topics: []
+""",
+        source="correlation_id = 'abc'\n",
+    )
+    adapter = FakeTicketAdapter()
+
+    result = HandlerPipelineAuditOrchestrator(ticket_adapter=adapter).handle(
+        ModelPipelineAuditRequest(
+            repos=("producer",),
+            audit_type=EnumAuditType.TOPICS,
+            skip_ticket_creation=False,
+            omni_home_path=str(tmp_path),
+        )
+    )
+
+    assert result.run_status == EnumPipelineAuditStatus.COMPLETED
+    assert result.tickets_created == ("OMN-PIPE-1",)
+    assert adapter.payloads[0]["labels"] == [
+        "pipeline-audit",
+        "high",
+        "wire_topics",
+    ]
+
+
+@pytest.mark.unit
+def test_pipeline_audit_orchestrator_requires_ticket_adapter_for_live_findings(
+    tmp_path: Path,
+) -> None:
+    _write_repo(
+        tmp_path,
+        "producer",
+        contract_yaml="""
+name: node_producer
+event_bus:
+  publish_topics:
+    - onex.evt.sample.created.v1
+  subscribe_topics: []
+""",
+    )
+
+    with pytest.raises(RuntimeError, match="ticket adapter required"):
+        HandlerPipelineAuditOrchestrator().handle(
+            ModelPipelineAuditRequest(
+                repos=("producer",),
+                audit_type=EnumAuditType.TOPICS,
+                omni_home_path=str(tmp_path),
+            )
+        )
+
+
+@pytest.mark.unit
+def test_pipeline_audit_orchestrator_skip_ticket_creation_is_read_only(
+    tmp_path: Path,
+) -> None:
+    _write_repo(
+        tmp_path,
+        "producer",
+        contract_yaml="""
+name: node_producer
+event_bus:
+  publish_topics:
+    - onex.evt.sample.created.v1
+  subscribe_topics: []
+""",
+    )
+
+    result = HandlerPipelineAuditOrchestrator().handle(
+        ModelPipelineAuditRequest(
+            repos=("producer",),
+            audit_type=EnumAuditType.TOPICS,
+            skip_ticket_creation=True,
+            omni_home_path=str(tmp_path),
+        )
+    )
+
+    assert result.run_status == EnumPipelineAuditStatus.COMPLETED
+    assert result.high_count == 1
+    assert result.tickets_created == ()
+
+
+def _write_repo(
+    root: Path,
+    name: str,
+    *,
+    contract_yaml: str,
+    source: str = "",
+    dockerfile: str = "",
+) -> Path:
+    repo = root / name
+    node_dir = repo / "src" / name / "nodes" / "node_sample"
+    node_dir.mkdir(parents=True)
+    (repo / "pyproject.toml").write_text("[project]\nname='sample'\n")
+    (node_dir / "contract.yaml").write_text(contract_yaml, encoding="utf-8")
+    (node_dir / "handler.py").write_text(source, encoding="utf-8")
+    if dockerfile:
+        (repo / "Dockerfile").write_text(dockerfile, encoding="utf-8")
+    return repo

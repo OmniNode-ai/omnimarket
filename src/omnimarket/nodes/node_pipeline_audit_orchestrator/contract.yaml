@@ -9,18 +9,15 @@ name: node_pipeline_audit_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Pipeline audit orchestrator. Consumes a ModelPipelineAuditRequest carrying
-  the repo list and audit type, dispatches parallel audit agents per repo
-  (Phases 1-4 of the pipeline_audit skill algorithm), aggregates per-repo
-  findings, classifies by severity (BREAKING/CRITICAL/HIGH/MEDIUM/LOW), and
-  emits a ModelPipelineAuditResult containing a severity-ordered gap register
-  ready for Phase 6 ticket creation. Six proof categories are applied across
-  all repos: runtime entrypoint, DSN, wire topics, schema handshake, wire
-  format compatibility, and correlation ID threading.
-  Handlers are deferred to the implementation wave (OMN-12211 stub).
+  the repo list and audit type, inventories each repo from native contracts and
+  local proof files, classifies deterministic findings by severity
+  (BREAKING/CRITICAL/HIGH/MEDIUM/LOW), and emits a ModelPipelineAuditResult
+  containing a severity-ordered gap register. Optional ticket creation is owned
+  by an injected native adapter; dry-run mode performs no external writes.
 
 handler:
   module: omnimarket.nodes.node_pipeline_audit_orchestrator.handlers.handler_pipeline_audit_orchestrator
@@ -59,5 +56,4 @@ event_bus:
 metadata:
   transport_type: kafka
   implementation_wave: 2
-  handlers_deferred: true
-  related_tickets: ["OMN-12211"]
+  related_tickets: ["OMN-12211", "OMN-12362"]
