@@ -91,17 +91,22 @@ event_bus:
 
   subscribe_topics:
     - "onex.cmd.omnimarket.delegation-execute.v1"
+    - "onex.cmd.omnibase-infra.delegation-inference-request.v1"
 
   publish_topics:
     - "onex.evt.omnimarket.delegation-call-completed.v1"
     - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
     - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
     - "onex.evt.omnimarket.delegation-model-degraded.v1"
+    - "onex.evt.omnibase-infra.inference-response.v1"
 
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.delegation-execute.v1":
       schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request.ModelLlmDelegationCallRequest"
       description: "Command to execute a single LLM delegation call for the given model/endpoint."
+    "onex.cmd.omnibase-infra.delegation-inference-request.v1":
+      schema_ref: "omnibase_compat.contracts.delegation.wire.ModelInferenceIntent"
+      description: "Inference intent from the delegation orchestrator. Handler resolves base_url directly."
 
   publish_topic_metadata:
     "onex.evt.omnimarket.delegation-call-completed.v1":
@@ -116,6 +121,9 @@ event_bus:
     "onex.evt.omnimarket.delegation-model-degraded.v1":
       schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event.ModelLlmDelegationModelDegradedEvent"
       description: "Emitted when a model exceeds the escalation rate threshold for a task type."
+    "onex.evt.omnibase-infra.inference-response.v1":
+      schema_ref: "omnibase_compat.contracts.delegation.wire.ModelInferenceResponseData"
+      description: "Inference response published to the orchestrator's subscribe topic after handling ModelInferenceIntent."
 
 externally_consumed_topics:
   - "onex.evt.omnimarket.delegation-call-completed.v1"
@@ -131,6 +139,15 @@ handler_routing:
       handler:
         name: "HandlerLlmDelegationCall"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call"
+    - operation: "execute_inference_intent"
+      handler:
+        name: "HandlerInferenceIntent"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
+      description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294)."
+      input_model:
+        name: "ModelInferenceIntent"
+        module: "omnibase_compat.contracts.delegation.wire"
+        description: "Inference intent from the orchestrator (base_url already resolved by routing reducer)."
   default_handler: "HandlerLlmDelegationCall"
 
 # === DEPENDENCIES ===
