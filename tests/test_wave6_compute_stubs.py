@@ -75,6 +75,7 @@ _WAVE6_IMPLEMENTED_NODES = [
     "node_resume_session_compute",
     "node_rewind_compute",
     "node_rrh_compute",
+    "node_skill_functional_audit_compute",
 ]
 
 _WAVE6_STUB_NODES = [
@@ -288,11 +289,17 @@ def test_rrh_request_frozen() -> None:
 
 
 @pytest.mark.unit
-def test_skill_functional_audit_handler_stub() -> None:
-    """HandlerSkillFunctionalAuditCompute raises NotImplementedError."""
+def test_skill_functional_audit_handler_returns_empty_ok(tmp_path: Path) -> None:
+    """HandlerSkillFunctionalAuditCompute audits an empty skills root."""
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
     handler = HandlerSkillFunctionalAuditCompute()
-    with pytest.raises(NotImplementedError):
-        handler.handle(ModelSkillFunctionalAuditComputeRequest())
+    result = handler.handle(
+        ModelSkillFunctionalAuditComputeRequest(skills_roots=[str(skills_root)])
+    )
+
+    assert result.status == "ok"
+    assert result.total_audited == 0
 
 
 @pytest.mark.unit
