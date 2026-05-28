@@ -11,7 +11,8 @@ class ModelSkillVerdict(BaseModel):
     name: str = Field(description="Skill name")
     status: str = Field(description="Verdict: ok | stub | gap | error")
     stubs_found: list[str] = Field(
-        default_factory=list, description="Handler paths that raise NotImplementedError"
+        default_factory=list,
+        description="Handler or contract paths that still contain stub markers",
     )
     gaps: list[str] = Field(
         default_factory=list,
@@ -28,7 +29,7 @@ class ModelSkillFunctionalAuditComputeResult(BaseModel):
     )
     stubs_found: list[str] = Field(
         default_factory=list,
-        description="Skill names whose handlers raise NotImplementedError",
+        description="Skill names with handler or contract stub markers",
     )
     gaps: list[str] = Field(
         default_factory=list,
