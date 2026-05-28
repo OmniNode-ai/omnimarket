@@ -1,0 +1,25 @@
+name: node_model_comparison_runner
+version: "1.0.0"
+description: "EFFECT node — runs side-by-side model comparison via injected LLM handler"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_model_comparison_runner: "omnimarket.nodes.node_model_comparison_runner"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-infra>=0.1.0"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "model-comparison", "llm", "cost", "evaluation"]
+pack: "ab_compare"
+display_name: "Model Comparison Runner"
+node_role: "effect"
