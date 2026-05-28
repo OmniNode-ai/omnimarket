@@ -1,6 +1,6 @@
 name: node_insights_to_plan_compute
 version: "1.0.0"
-description: "HTML parse, extract insights, and structure a plan (STUB)"
+description: "HTML parse, extract insights, and structure a plan"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
