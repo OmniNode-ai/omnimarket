@@ -3,11 +3,11 @@ name: node_checkpoint_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Pure state serialization/deserialization for session checkpoints. Supports
-  save, load, and list operations over checkpoint data. STUB — not yet
-  implemented. Returns SkillRoutingError with reason node_not_implemented.
+  Deterministic checkpoint projection access for session checkpoints. Supports
+  save, load, and list operations over checkpoint data stored under the Onex
+  state directory. No LLM calls.
 
 handler:
   module: omnimarket.nodes.node_checkpoint_compute.handlers.handler_checkpoint_compute
@@ -22,9 +22,11 @@ handler_routing:
 
 descriptor:
   node_archetype: compute
-  purity: pure
+  purity: impure
   idempotent: true
   timeout_ms: 30000
+  runtime_profiles:
+    - effects
 
 inputs:
   checkpoint_id:
@@ -66,4 +68,4 @@ event_bus:
 metadata:
   transport_type: kafka
   implementation_wave: 6
-  related_tickets: ["OMN-12226"]
+  related_tickets: ["OMN-12226", "OMN-12340"]

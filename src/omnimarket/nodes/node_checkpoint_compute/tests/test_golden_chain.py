@@ -1,10 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden chain test for node_checkpoint_compute — zero infra.
-
-Verifies OMN-12226: contract YAML is valid, handler is importable,
-and the stub raises NotImplementedError as declared.
-"""
+"""Golden chain test for node_checkpoint_compute — zero infra."""
 
 from __future__ import annotations
 
@@ -89,8 +85,8 @@ class TestHandlerImport:
         assert ModelCheckpointResult is not None
 
 
-class TestHandlerStub:
-    def test_handler_raises_not_implemented(self) -> None:
+class TestHandler:
+    def test_handler_save_load_and_list(self, tmp_path: Path) -> None:
         from omnimarket.nodes.node_checkpoint_compute.handlers.handler_checkpoint_compute import (
             HandlerCheckpointCompute,
         )
@@ -98,7 +94,27 @@ class TestHandlerStub:
             ModelCheckpointRequest,
         )
 
-        handler = HandlerCheckpointCompute()
-        request = ModelCheckpointRequest(checkpoint_id="test-001", action="load")
-        with pytest.raises(NotImplementedError):
-            handler.handle(request)
+        handler = HandlerCheckpointCompute(state_dir=tmp_path)
+        payload = {
+            "task_id": "OMN-12340",
+            "agent_id": "agent-001",
+            "phase": "executing",
+            "progress_pct": 0.5,
+        }
+        save_result = handler.handle(
+            ModelCheckpointRequest(
+                checkpoint_id="OMN-12340-agent-001",
+                action="save",
+                payload=payload,
+            )
+        )
+        load_result = handler.handle(
+            ModelCheckpointRequest(checkpoint_id="OMN-12340-agent-001", action="load")
+        )
+        list_result = handler.handle(
+            ModelCheckpointRequest(checkpoint_id="ignored", action="list")
+        )
+
+        assert save_result.data is None
+        assert load_result.data == payload
+        assert list_result.checkpoint_list == ["OMN-12340-agent-001"]
