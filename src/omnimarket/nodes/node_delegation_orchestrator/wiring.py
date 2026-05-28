@@ -5,13 +5,14 @@
 Registers delegation handlers in the DI container and wires dispatchers
 into the MessageDispatchEngine for event-driven routing.
 
-Also starts the DelegationIntentBridge, which subscribes to the three
-intermediate intent topics (routing-request, inference-request,
-quality-gate-request) and executes them inline, publishing results
-back to the topics the orchestrator consumes next.
+The intermediate intent topics (routing-request, inference-request,
+quality-gate-request) are consumed natively by their owning worker nodes
+(routing reducer, LLM call effect, quality gate reducer) as bus consumers;
+there is no in-process bridge.
 
 Related:
     - OMN-7040: Node-based delegation pipeline
+    - OMN-12294: Pure Kafka delegation chain (in-process intent bridge removed)
 """
 
 from __future__ import annotations
@@ -25,9 +26,6 @@ from omnibase_core.enums import EnumInjectionScope, EnumMessageCategory
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
-    from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
-        ProtocolEventBusSubscriber,
-    )
     from omnibase_infra.runtime import MessageDispatchEngine
 
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
@@ -100,160 +98,6 @@ async def wire_delegation_handlers(
     logger.debug("Registered HandlerDelegationWorkflow in container")
 
     return WiringResult(services=services_registered, status="success")
-
-
-async def wire_delegation_bridge(
-    event_bus: ProtocolEventBusSubscriber,
-    llm_caller: object | None = None,
-) -> dict[str, object]:
-    """Subscribe DelegationIntentBridge to the three intermediate intent topics.
-
-    The orchestrator emits ModelRoutingIntent, ModelInferenceIntent, and
-    ModelQualityGateIntent as output_events. These are published to their
-    respective Kafka topics (declared in published_events in contract.yaml).
-    The bridge subscribes to those topics, executes each intent inline
-    (calling the routing reducer, LLM inference effect, or quality gate
-    reducer), and publishes results back to the topics the orchestrator
-    subscribes to next.
-
-    Args:
-        event_bus: The Kafka/inmemory event bus to subscribe on.
-        llm_caller: Optional LLM caller implementing ProtocolLlmCaller.
-            If None, inference intents will raise RuntimeError.
-
-    Returns:
-        Summary dict with subscribed topics and status.
-    """
-    import json
-
-    from omnibase_infra.event_bus.topic_constants import (
-        TOPIC_DELEGATION_INFERENCE_REQUEST,
-        TOPIC_DELEGATION_QUALITY_GATE_REQUEST,
-        TOPIC_DELEGATION_ROUTING_REQUEST,
-    )
-    from omnibase_infra.models import ModelNodeIdentity
-    from pydantic import BaseModel
-
-    from omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge import (
-        DelegationIntentBridge,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
-        ModelInferenceIntent,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_intent import (
-        ModelQualityGateIntent,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
-        ModelRoutingIntent,
-    )
-
-    bridge = DelegationIntentBridge(event_bus=event_bus, llm_caller=llm_caller)  # type: ignore[arg-type]
-    subscribed_topics: list[str] = []
-
-    def _parse_envelope_payload(
-        message: object, model_class: type[BaseModel]
-    ) -> BaseModel | None:
-        """Extract and validate payload from a raw Kafka message."""
-        try:
-            if hasattr(message, "value") and message.value:
-                raw = json.loads(message.value)
-            elif isinstance(message, dict):
-                raw = message
-            else:
-                return None
-            # Unwrap envelope if present
-            payload = raw.get("payload", raw)
-            return model_class.model_validate(payload)
-        except Exception:
-            return None
-
-    async def _on_routing_intent(message: object) -> None:
-        intent = _parse_envelope_payload(message, ModelRoutingIntent)
-        if intent is None:
-            logger.warning("DelegationIntentBridge: failed to parse ModelRoutingIntent")
-            return
-        try:
-            await bridge.handle_routing_intent(intent)  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.exception(
-                "DelegationIntentBridge: routing intent failed: %s",
-                exc,
-            )
-
-    async def _on_inference_intent(message: object) -> None:
-        intent = _parse_envelope_payload(message, ModelInferenceIntent)
-        if intent is None:
-            logger.warning(
-                "DelegationIntentBridge: failed to parse ModelInferenceIntent"
-            )
-            return
-        try:
-            await bridge.handle_inference_intent(intent)  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.exception(
-                "DelegationIntentBridge: inference intent failed: %s",
-                exc,
-            )
-
-    async def _on_quality_gate_intent(message: object) -> None:
-        intent = _parse_envelope_payload(message, ModelQualityGateIntent)
-        if intent is None:
-            logger.warning(
-                "DelegationIntentBridge: failed to parse ModelQualityGateIntent"
-            )
-            return
-        try:
-            await bridge.handle_quality_gate_intent(intent)  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.exception(
-                "DelegationIntentBridge: quality gate intent failed: %s",
-                exc,
-            )
-
-    if hasattr(event_bus, "subscribe"):
-        _bridge_identity = ModelNodeIdentity(
-            env="onex",
-            service="omnibase-infra",
-            node_name="delegation-intent-bridge",
-            version="v1",
-        )
-
-        await event_bus.subscribe(
-            topic=TOPIC_DELEGATION_ROUTING_REQUEST,
-            node_identity=_bridge_identity,
-            on_message=_on_routing_intent,
-        )
-        subscribed_topics.append(TOPIC_DELEGATION_ROUTING_REQUEST)
-
-        await event_bus.subscribe(
-            topic=TOPIC_DELEGATION_INFERENCE_REQUEST,
-            node_identity=_bridge_identity,
-            on_message=_on_inference_intent,
-        )
-        subscribed_topics.append(TOPIC_DELEGATION_INFERENCE_REQUEST)
-
-        await event_bus.subscribe(
-            topic=TOPIC_DELEGATION_QUALITY_GATE_REQUEST,
-            node_identity=_bridge_identity,
-            on_message=_on_quality_gate_intent,
-        )
-        subscribed_topics.append(TOPIC_DELEGATION_QUALITY_GATE_REQUEST)
-
-        logger.info(
-            "DelegationIntentBridge subscribed to %d intent topics: %s",
-            len(subscribed_topics),
-            subscribed_topics,
-        )
-    else:
-        logger.warning(
-            "DelegationIntentBridge: event_bus has no subscribe() — bridge not wired"
-        )
-
-    return {
-        "bridge_topics": subscribed_topics,
-        "status": "success" if subscribed_topics else "skipped",
-        "bridge": bridge,
-    }
 
 
 async def wire_delegation_dispatchers(
@@ -368,7 +212,7 @@ async def wire_delegation_dispatchers(
     engine.register_route(route_routing_decision)
     routes_registered.append(route_routing_decision.route_id)
 
-    # 4. DispatcherInferenceResponse — handles LLM responses from the bridge
+    # 4. DispatcherInferenceResponse — handles inference responses from the LLM call effect
     dispatcher_inference = DispatcherInferenceResponse(handler, event_bus=event_bus)
     engine.register_dispatcher(
         dispatcher_id=dispatcher_inference.dispatcher_id,

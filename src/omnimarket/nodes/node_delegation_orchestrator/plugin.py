@@ -359,92 +359,10 @@ class PluginDelegation:
                 node_name="delegation-orchestrator",
             )
 
-            from omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge import (
-                DelegationIntentBridge,
-            )
-            from omnimarket.nodes.node_delegation_orchestrator.wiring import (
-                wire_delegation_bridge,
-            )
-
-            # Resolve the bridge registered by PluginLlm (has real LlmCallerDelegation).
-            # Fall back to None so routing/quality-gate intents still work without LLM.
-            llm_caller = None
-            if config.container.service_registry is not None:
-                try:
-                    existing_bridge = (
-                        await config.container.service_registry.resolve_service(
-                            DelegationIntentBridge
-                        )
-                    )
-                    llm_caller = existing_bridge.llm_caller
-                    logger.info(
-                        "PluginDelegation: resolved LlmCallerDelegation from container "
-                        "(correlation_id=%s)",
-                        correlation_id,
-                    )
-                except Exception:
-                    logger.debug(
-                        "PluginDelegation: DelegationIntentBridge not in container — "
-                        "inference intents will be disabled (correlation_id=%s)",
-                        correlation_id,
-                    )
-
-            bridge_result = await wire_delegation_bridge(
-                event_bus=config.event_bus,
-                llm_caller=llm_caller,
-            )
-            logger.info(
-                "DelegationIntentBridge wired llm_caller=%s (correlation_id=%s): %s",
-                type(llm_caller).__name__ if llm_caller else "None",
-                correlation_id,
-                {k: v for k, v in bridge_result.items() if k != "bridge"},
-            )
-
-            # Register DirectBridgeDelegationDispatchPort in the container so that
-            # ContainerBackedDelegationDispatchPort (injected into HandlerDelegateSkill
-            # at auto-wiring time) can lazy-resolve it at first dispatch() call.
-            # This drives the delegation chain in-process without Kafka round-trips.
-            wired_bridge = bridge_result.get("bridge")
-            if (
-                wired_bridge is not None
-                and config.container.service_registry is not None
-            ):
-                try:
-                    from omnibase_core.enums import EnumInjectionScope
-
-                    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_direct_bridge_dispatch import (
-                        DirectBridgeDelegationDispatchPort,
-                    )
-                    from omnimarket.nodes.node_delegation_orchestrator.wiring import (
-                        get_shared_delegation_workflow_handler,
-                    )
-
-                    workflow_handler = get_shared_delegation_workflow_handler()
-                    direct_port = DirectBridgeDelegationDispatchPort(
-                        workflow=workflow_handler,
-                        bridge=wired_bridge,  # type: ignore[arg-type]
-                    )
-                    await config.container.service_registry.register_instance(
-                        interface="DirectBridgeDelegationDispatchPort",
-                        instance=direct_port,
-                        scope=EnumInjectionScope.GLOBAL,
-                        metadata={
-                            "description": "In-process delegation dispatch port (bridge-backed)",
-                        },
-                    )
-                    logger.info(
-                        "DirectBridgeDelegationDispatchPort registered in container "
-                        "(correlation_id=%s)",
-                        correlation_id,
-                    )
-                except Exception as _exc:
-                    logger.warning(
-                        "Failed to register DirectBridgeDelegationDispatchPort: %s "
-                        "(correlation_id=%s)",
-                        _exc,
-                        correlation_id,
-                    )
-
+            # The three intermediate intent topics are consumed natively by the
+            # routing reducer, LLM call effect, and quality gate reducer as their
+            # own bus consumers (OMN-12294). The orchestrator only publishes
+            # intents and consumes result events; no in-process bridge.
             self._wiring = wiring
 
             logger.info(

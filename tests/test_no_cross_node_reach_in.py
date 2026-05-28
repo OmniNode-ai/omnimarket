@@ -95,8 +95,6 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         # OMN-10865: delegation pipeline migrated from omnibase_infra; the orchestrator
         # coordinates routing and quality-gate reducers by design. Shared models should
         # move to omnimarket.events.delegation.* in a follow-up ticket.
-        "omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge:omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result:ModelQualityGateResult",
-        "omnimarket.nodes.node_delegation_orchestrator.delegation_intent_bridge:omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision:ModelRoutingDecision",
         "omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_quality_gate_result:omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result:ModelQualityGateResult",
         "omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_routing_decision:omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision:ModelRoutingDecision",
         "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_compliance_loop:omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits:ModelBudgetLimits",
