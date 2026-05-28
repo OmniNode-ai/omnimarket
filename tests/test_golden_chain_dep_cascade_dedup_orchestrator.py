@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Golden-chain guardrails for node_dep_cascade_dedup_orchestrator [OMN-12213].
 
-Honest routing behaviour for an explicit stub node:
-- contract marks node_not_implemented: true
+Honest routing behaviour for a native orchestrator:
+- contract marks node_not_implemented: false
 - entry point loads
 - typed models are strict (frozen, extra="forbid")
-- handler fails loudly with NotImplementedError containing "node_not_implemented"
+- handler deduplicates through an injected GitHub adapter
 - contract declares the expected runtime routing surface
 """
 
@@ -54,10 +54,10 @@ def _contract() -> dict:  # type: ignore[type-arg]
 
 
 @pytest.mark.unit
-def test_dep_cascade_dedup_orchestrator_contract_is_explicit_stub() -> None:
+def test_dep_cascade_dedup_orchestrator_contract_is_implemented() -> None:
     raw = _contract()
 
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
     assert raw["node_type"] == "orchestrator"
     assert raw["handler"]["module"] == _HANDLER_MODULE
     assert raw["handler"]["class"] == _HANDLER_CLASS
@@ -259,14 +259,49 @@ def test_enum_pr_action_values() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub (fails loudly)
+# Handler
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_dep_cascade_dedup_orchestrator_handler_fails_loudly() -> None:
-    handler = HandlerDepCascadeDedupOrchestrator()
-    request = ModelDepCascadeDedupRequest(dry_run=True)
+def test_dep_cascade_dedup_orchestrator_handler_dedups_and_closes() -> None:
+    adapter = _Adapter(
+        {
+            "OmniNode-ai/omnibase_core": [
+                {"number": 42, "title": "Bump pydantic from 2.9.0 to 2.9.1"},
+                {"number": 45, "title": "Bump pydantic from 2.9.0 to 2.9.3"},
+            ]
+        }
+    )
+    handler = HandlerDepCascadeDedupOrchestrator(adapter=adapter)
+    request = ModelDepCascadeDedupRequest(
+        repos=("OmniNode-ai/omnibase_core",),
+        dry_run=False,
+    )
 
-    with pytest.raises(NotImplementedError, match="node_not_implemented"):
-        handler.handle(request)
+    result = handler.handle(request)
+
+    assert result.groups_found == 1
+    assert result.prs_closed == 1
+    assert result.prs_kept == 1
+    assert adapter.closed[0][1] == 42
+    assert "Superseded by #45" in adapter.closed[0][2]
+
+
+class _Adapter:
+    def __init__(self, prs_by_repo: dict[str, list[dict[str, object]]]) -> None:
+        self._prs_by_repo = prs_by_repo
+        self.closed: list[tuple[str, int, str]] = []
+
+    def list_repos(self) -> tuple[str, ...]:
+        return tuple(sorted(self._prs_by_repo))
+
+    def list_dependency_prs(
+        self, repo: str, *, label: str, dependency_type: str
+    ) -> list[dict[str, object]]:
+        assert label == "dependencies"
+        assert dependency_type == ""
+        return list(self._prs_by_repo.get(repo, []))
+
+    def close_pr(self, repo: str, pr_number: int, comment: str) -> None:
+        self.closed.append((repo, pr_number, comment))

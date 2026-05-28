@@ -10,15 +10,14 @@ name: node_dep_cascade_dedup_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Dep cascade dedup orchestrator. Discovers open automated dependency-bump PRs
   (Dependabot / Renovate) across a set of repos, groups them by (repo, package),
   identifies superseded PRs (all but the highest-target-version keeper, or all if
   the package is already on main), and closes superseded PRs with a comment.
-  Designed to run as a post-release hook or on-demand cleanup. Handlers are
-  deferred to the implementation wave (OMN-12213 stub).
+  Designed to run as a post-release hook or on-demand cleanup.
 
 handler:
   module: omnimarket.nodes.node_dep_cascade_dedup_orchestrator.handlers.handler_dep_cascade_dedup_orchestrator
@@ -55,5 +54,4 @@ event_bus:
 metadata:
   transport_type: kafka
   implementation_wave: 2
-  handlers_deferred: true
-  related_tickets: ["OMN-12213"]
+  related_tickets: ["OMN-12213", "OMN-12343"]
