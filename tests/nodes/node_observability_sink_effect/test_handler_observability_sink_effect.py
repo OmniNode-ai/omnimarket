@@ -3,9 +3,10 @@
 
 """Tests for HandlerObservabilitySinkEffect.
 
-Wave 4 contract-only stub — handler raises NotImplementedError.
 Tests cover:
-  - Stub raises NotImplementedError on handle()
+  - Side-effect-free runtime smoke with both sinks disabled
+  - Explicit failure when a requested sink adapter is not injected
+  - Typed adapter persistence
   - Input model construction and validation
   - Output model construction
   - Contract YAML is loadable and has expected fields
@@ -81,30 +82,105 @@ def _make_input(
 
 
 # ---------------------------------------------------------------------------
-# Stub raises NotImplementedError
+# Handler behavior
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_handler_raises_not_implemented() -> None:
-    """Wave 4 stub must raise NotImplementedError — implementation deferred to Wave 5."""
-    handler = HandlerObservabilitySinkEffect()
-    request = _make_input()
+async def test_handler_no_sink_runtime_smoke_has_no_side_effects() -> None:
+    """Both sink flags false is the deterministic runtime dispatch smoke path."""
+    handler = HandlerObservabilitySinkEffect(clock=lambda: _NOW)
+    request = _make_input().model_copy(
+        update={"sink_kafka": False, "sink_postgres": False}
+    )
 
-    with pytest.raises(NotImplementedError, match="Wave 4"):
+    result = await handler.handle(request)
+
+    assert result.correlation_id == request.correlation_id
+    assert result.session_id == request.session_id
+    assert result.persisted_event_count == 0
+    assert result.kafka_trace_ids == ()
+    assert result.postgres_row_ids == ()
+    assert result.persisted_at == _NOW
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_handler_refuses_kafka_without_injected_adapter() -> None:
+    handler = HandlerObservabilitySinkEffect()
+    request = _make_input().model_copy(update={"sink_postgres": False})
+
+    with pytest.raises(RuntimeError, match="Kafka persistence"):
         await handler.handle(request)
 
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_handler_raises_not_implemented_empty_events() -> None:
-    """Stub raises NotImplementedError even when the event batch is empty."""
+async def test_handler_refuses_postgres_without_injected_adapter() -> None:
     handler = HandlerObservabilitySinkEffect()
-    request = _make_input(events=())
+    request = _make_input().model_copy(update={"sink_kafka": False})
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(RuntimeError, match="PostgreSQL persistence"):
         await handler.handle(request)
+
+
+class _KafkaSink:
+    def __init__(self) -> None:
+        self.events: list[ModelActionEvent] = []
+
+    async def publish_action_event(
+        self,
+        *,
+        correlation_id: UUID,
+        session_id: UUID,
+        event: ModelActionEvent,
+    ) -> str:
+        assert correlation_id == _CORR_ID
+        assert session_id == _SESSION_ID
+        self.events.append(event)
+        return f"kafka:{event.event_id}"
+
+
+class _PostgresSink:
+    def __init__(self, row_id: UUID) -> None:
+        self.row_id = row_id
+        self.events: list[ModelActionEvent] = []
+
+    def insert_action_event(
+        self,
+        *,
+        correlation_id: UUID,
+        session_id: UUID,
+        event: ModelActionEvent,
+    ) -> UUID:
+        assert correlation_id == _CORR_ID
+        assert session_id == _SESSION_ID
+        self.events.append(event)
+        return self.row_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_handler_uses_typed_injected_sink_adapters() -> None:
+    row_id = uuid4()
+    kafka = _KafkaSink()
+    postgres = _PostgresSink(row_id=row_id)
+    handler = HandlerObservabilitySinkEffect(
+        kafka_sink=kafka,
+        postgres_sink=postgres,
+        clock=lambda: _NOW,
+    )
+    event = _make_action_event(event_id=_EVENT_ID)
+    request = _make_input(events=(event,))
+
+    result = await handler.handle(request)
+
+    assert kafka.events == [event]
+    assert postgres.events == [event]
+    assert result.persisted_event_count == 1
+    assert result.kafka_trace_ids == (f"kafka:{_EVENT_ID}",)
+    assert result.postgres_row_ids == (row_id,)
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +322,9 @@ def test_contract_yaml_loadable() -> None:
 
     assert contract["name"] == "node_observability_sink_effect"
     assert contract["node_type"] == "EFFECT_GENERIC"
-    assert contract["node_not_implemented"] is True
+    assert contract["node_not_implemented"] is False
+    assert contract["handler"]["class"] == "HandlerObservabilitySinkEffect"
+    assert contract["handler_routing"]["routing_strategy"] == "operation_match"
 
 
 @pytest.mark.unit

@@ -1199,6 +1199,62 @@ def test_aislop_sweep_explicit_local_runtime_preserves_node_contract_topics(
     assert result.output_payloads[0]["status"] == "findings"
 
 
+def test_observability_sink_local_runtime_smoke_uses_contract_topics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    correlation_id = uuid4()
+    session_id = uuid4()
+    event_id = uuid4()
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+
+    client = CodexRuntimeRequestAdapter(requester="codex-test")
+    result = client.dispatch_sync(
+        command_name="observability_sink_effect",
+        payload={
+            "correlation_id": str(correlation_id),
+            "session_id": str(session_id),
+            "events": [
+                {
+                    "event_id": str(event_id),
+                    "agent_name": "codex-test",
+                    "action_type": "runtime_smoke",
+                    "action_name": "observability_sink",
+                    "action_details": {"ticket": "OMN-12325"},
+                    "duration_ms": 0,
+                    "emitted_at": datetime.now(UTC).isoformat(),
+                }
+            ],
+            "sink_kafka": False,
+            "sink_postgres": False,
+            "submitted_at": datetime.now(UTC).isoformat(),
+        },
+        timeout_ms=5000,
+        runtime_selection="local",
+    )
+
+    assert result.ok is True
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.node_contract is not None
+    assert result.runtime_evidence.node_contract.endswith(
+        "node_observability_sink_effect/contract.yaml"
+    )
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.observability-sink.v1"
+    )
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.observability-persisted.v1"
+    )
+    assert result.output_payloads is not None
+    payload = result.output_payloads[0]
+    assert payload["correlation_id"] == str(result.correlation_id)
+    assert payload["correlation_id"] != str(correlation_id)
+    assert payload["session_id"] == str(session_id)
+    assert payload["persisted_event_count"] == 0
+    assert payload["kafka_trace_ids"] == []
+    assert payload["postgres_row_ids"] == []
+
+
 @pytest.mark.asyncio
 async def test_dispatch_async_uses_env_target_runtime_address(
     monkeypatch: pytest.MonkeyPatch,
@@ -1852,6 +1908,10 @@ async def test_session_orchestrator_pattern_b_runs_node_end_to_end(
         "pr_lifecycle_orchestrator",
         "session_bootstrap",
         "session_orchestrator",
+        "recall_compute",
+        "observability_sink_effect",
+        "dep_cascade_dedup_orchestrator",
+        "adversarial_pipeline_orchestrator",
     ],
 )
 @pytest.mark.asyncio
@@ -1908,6 +1968,10 @@ async def test_market_plugin_commands_can_target_addressed_runtime(
         "pr_lifecycle_orchestrator",
         "session_bootstrap",
         "session_orchestrator",
+        "recall_compute",
+        "observability_sink_effect",
+        "dep_cascade_dedup_orchestrator",
+        "adversarial_pipeline_orchestrator",
     ],
 )
 def test_market_plugin_commands_compile_without_event_bus(
