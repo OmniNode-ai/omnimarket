@@ -1,10 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden chain test for node_ticket_plan_compute — zero infra.
-
-Verifies OMN-12233: contract YAML is valid, handler is importable,
-and the stub raises NotImplementedError as declared.
-"""
+"""Golden chain test for node_ticket_plan_compute — zero infra."""
 
 from __future__ import annotations
 
@@ -89,8 +85,8 @@ class TestHandlerImport:
         assert ModelTicketPlanResult is not None
 
 
-class TestHandlerStub:
-    def test_handler_raises_not_implemented(self) -> None:
+class TestHandlerBehavior:
+    def test_handler_parses_markdown_bullets(self) -> None:
         from omnimarket.nodes.node_ticket_plan_compute.handlers.handler_ticket_plan_compute import (
             HandlerTicketPlanCompute,
         )
@@ -99,6 +95,18 @@ class TestHandlerStub:
         )
 
         handler = HandlerTicketPlanCompute()
-        request = ModelTicketPlanRequest(plan_text="## Phase 1\n- Ticket A")
-        with pytest.raises(NotImplementedError):
-            handler.handle(request)
+        request = ModelTicketPlanRequest(
+            plan_text=(
+                "## Phase 1\n"
+                "- [ ] Ticket A: Do alpha work; labels: backend, linear\n"
+                "- Ticket B — Do beta work; depends on Ticket A\n"
+            )
+        )
+
+        result = handler.handle(request)
+
+        assert [ticket.title for ticket in result.tickets] == ["Ticket A", "Ticket B"]
+        assert result.tickets[0].phase == "Phase 1"
+        assert result.tickets[0].labels == ["backend", "linear"]
+        assert result.tickets[1].depends_on == ["Ticket A"]
+        assert result.parse_warnings == []

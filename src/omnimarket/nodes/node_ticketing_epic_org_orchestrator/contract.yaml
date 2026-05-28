@@ -10,7 +10,7 @@ name: node_ticketing_epic_org_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Ticketing epic organization orchestrator. Consumes a list of orphaned Linear
@@ -19,8 +19,7 @@ description: >
   structural_violation), and fans out epic-creation commands for auto-eligible groups.
   Implements the multi-phase algorithm from the ticketing_epic_org skill:
   Phase 1 load → Phase 2 group → Phase 3 classify → Phase 4 present proposal →
-  Phase 5 create epics → Phase 6 report. Wave 1 stub — full implementation in
-  Wave 2 (OMN-12202).
+  Phase 5 create epics → Phase 6 report. Live creation requires an injected adapter.
 
 handler:
   module: omnimarket.nodes.node_ticketing_epic_org_orchestrator.handlers.handler_ticketing_epic_org
@@ -59,6 +58,5 @@ event_bus:
 metadata:
   transport_type: kafka
   implementation_wave: 2
-  handlers_deferred_until_wave: 2
   related_tickets: ["OMN-12202"]
   skill_source: omniclaude/plugins/onex/skills/ticketing_epic_org/
