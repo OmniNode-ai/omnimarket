@@ -13,8 +13,9 @@ Verifies:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -95,7 +96,7 @@ def test_result_model_is_strict() -> None:
 
 
 class _Adapter:
-    def __init__(self, prs_by_repo: dict[str, list[dict[str, object]]]) -> None:
+    def __init__(self, prs_by_repo: dict[str, list[Mapping[str, Any]]]) -> None:
         self._prs_by_repo = prs_by_repo
         self.closed: list[tuple[str, int, str]] = []
 
@@ -104,7 +105,7 @@ class _Adapter:
 
     def list_dependency_prs(
         self, repo: str, *, label: str, dependency_type: str
-    ) -> list[dict[str, object]]:
+    ) -> list[Mapping[str, Any]]:
         assert label == "dependencies"
         assert dependency_type == ""
         return list(self._prs_by_repo.get(repo, []))

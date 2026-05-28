@@ -226,8 +226,9 @@ def _extract_openai_text(raw: dict[str, Any]) -> str:
     if not isinstance(first, dict):
         return ""
     message = first.get("message")
-    if isinstance(message, dict) and isinstance(message.get("content"), str):
-        return message["content"]
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return content
     text = first.get("text")
     return text if isinstance(text, str) else ""
 

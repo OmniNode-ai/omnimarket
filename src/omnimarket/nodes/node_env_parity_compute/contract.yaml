@@ -3,10 +3,10 @@ name: node_env_parity_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
 description: >
-  Computes environment parity between local and deployed runtime. STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  Computes contract-driven environment parity across runtime lanes from typed
+  env snapshots. The node checks required variables and configured consistency
+  rules without reading process environment as an implicit fallback.
 
 handler:
   module: omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute
@@ -24,3 +24,116 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 30000
+
+inputs:
+  scope:
+    type: str
+    description: "Human-readable parity scope"
+    required: false
+    default: omnimarket
+  lanes:
+    type: list[str]
+    description: "Subset of contract lanes to check; empty means all lanes"
+    required: false
+    default: []
+  variable_names:
+    type: list[str]
+    description: "Subset of contract variables to check; empty means all variables"
+    required: false
+    default: []
+  env_by_lane:
+    type: dict[str, dict[str, str | null]]
+    description: "Observed env snapshot keyed by lane and env var name"
+    required: true
+
+outputs:
+  status:
+    type: str
+    description: "passed | gaps_detected | error"
+  parity_ok:
+    type: bool
+    description: "True when no required env or consistency gaps are detected"
+  gaps:
+    type: list[ModelEnvParityGap]
+    description: "Detected required-env, settings-validation, and consistency gaps"
+
+terminal_event: onex.evt.omnimarket.env-parity-compute-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.env-parity-compute-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.env-parity-compute-completed.v1
+
+env_parity:
+  lanes:
+    - dev
+    - staging
+    - prod
+  variables:
+    - name: ENABLE_KAFKA
+      category: service_flag
+      consistency: fingerprint
+    - name: KAFKA_BOOTSTRAP_SERVERS
+      category: kafka
+      consistency: presence
+      required_when: ENABLE_KAFKA
+    - name: KAFKA_CONSUMER_GROUP
+      category: kafka
+      consistency: presence
+      required_when: ENABLE_KAFKA
+    - name: ENABLE_POSTGRES
+      category: service_flag
+      consistency: fingerprint
+    - name: POSTGRES_HOST
+      category: postgres
+      consistency: presence
+      required_when: ENABLE_POSTGRES
+    - name: POSTGRES_PORT
+      category: postgres
+      consistency: presence
+      required_when: ENABLE_POSTGRES
+    - name: POSTGRES_DATABASE
+      category: postgres
+      consistency: presence
+      required_when: ENABLE_POSTGRES
+    - name: POSTGRES_USER
+      category: postgres
+      consistency: presence
+      required_when: ENABLE_POSTGRES
+    - name: POSTGRES_PASSWORD
+      category: postgres
+      consistency: presence
+      required_when: ENABLE_POSTGRES
+    - name: ENABLE_QDRANT
+      category: service_flag
+      consistency: fingerprint
+    - name: QDRANT_HOST
+      category: qdrant
+      consistency: presence
+      required_when: ENABLE_QDRANT
+    - name: QDRANT_PORT
+      category: qdrant
+      consistency: presence
+      required_when: ENABLE_QDRANT
+    - name: ENABLE_VALKEY
+      category: service_flag
+      consistency: fingerprint
+    - name: VALKEY_HOST
+      category: valkey
+      consistency: presence
+      required_when: ENABLE_VALKEY
+    - name: VALKEY_PORT
+      category: valkey
+      consistency: presence
+      required_when: ENABLE_VALKEY
+    - name: ENABLE_MEMORY_SERVICE
+      category: service_flag
+      consistency: fingerprint
+    - name: EMBEDDING_MODEL_URL
+      category: memory
+      consistency: presence
+      required_when: ENABLE_MEMORY_SERVICE
+    - name: ONEX_TARGET_RUNTIME_ADDRESS
+      category: runtime
+      consistency: presence
