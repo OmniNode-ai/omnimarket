@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Wave 6 COMPUTE stub nodes — contract + handler tests covering all 6 nodes.
+"""Wave 6 COMPUTE nodes — contract + handler tests covering all 6 nodes.
 
 OMN-12231: node_insights_to_plan_compute, node_plan_audit_compute,
 node_resume_session_compute, node_rewind_compute, node_rrh_compute,
 node_skill_functional_audit_compute.
 
-All nodes are COMPUTE, pure, idempotent, node_not_implemented: true.
-Each handler raises NotImplementedError (stub-ok).
+All nodes are COMPUTE, pure, and idempotent. The remaining stubs declare
+node_not_implemented: true and raise NotImplementedError.
 """
 
 from __future__ import annotations
@@ -69,6 +69,10 @@ _WAVE6_NODES = [
     "node_skill_functional_audit_compute",
 ]
 
+_WAVE6_STUB_NODES = [
+    node_name for node_name in _WAVE6_NODES if node_name != "node_plan_audit_compute"
+]
+
 
 def _load_contract(node_name: str) -> dict:  # type: ignore[type-arg]
     path = _NODES_ROOT / node_name / "contract.yaml"
@@ -90,13 +94,20 @@ def test_contract_is_compute(node_name: str) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("node_name", _WAVE6_NODES)
+@pytest.mark.parametrize("node_name", _WAVE6_STUB_NODES)
 def test_contract_is_not_implemented(node_name: str) -> None:
-    """Every Wave 6 node declares node_not_implemented: true."""
+    """Remaining Wave 6 stubs declare node_not_implemented: true."""
     contract = _load_contract(node_name)
     assert contract.get("node_not_implemented") is True, (
         f"{node_name}: node_not_implemented must be true"
     )
+
+
+@pytest.mark.unit
+def test_plan_audit_contract_is_implemented() -> None:
+    """node_plan_audit_compute has proven behavior and is no longer a stub."""
+    contract = _load_contract("node_plan_audit_compute")
+    assert contract.get("node_not_implemented") is False
 
 
 @pytest.mark.unit
@@ -153,11 +164,28 @@ def test_insights_to_plan_request_frozen() -> None:
 
 
 @pytest.mark.unit
-def test_plan_audit_handler_stub() -> None:
-    """HandlerPlanAuditCompute raises NotImplementedError."""
+def test_plan_audit_handler_audits_valid_plan(tmp_path: Path) -> None:
+    """HandlerPlanAuditCompute validates a minimal plan YAML."""
+    plan_path = tmp_path / "plan.yaml"
+    plan_path.write_text(
+        """
+title: Wave 6 compute slice
+tasks:
+  - id: task-a
+    title: Implement handler
+  - id: task-b
+    title: Add tests
+    depends_on:
+      - task-a
+""".strip(),
+        encoding="utf-8",
+    )
     handler = HandlerPlanAuditCompute()
-    with pytest.raises(NotImplementedError):
-        handler.handle(ModelPlanAuditComputeRequest(plan_path="/tmp/plan.yaml"))
+    result = handler.handle(ModelPlanAuditComputeRequest(plan_path=str(plan_path)))
+
+    assert result.status == "ok"
+    assert result.passed is True
+    assert result.violations == []
 
 
 @pytest.mark.unit

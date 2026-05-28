@@ -1,6 +1,6 @@
 name: node_plan_audit_compute
 version: "1.0.0"
-description: "YAML validation, field checks, and cycle detection for plan files (STUB)"
+description: "YAML validation, field checks, and cycle detection for plan files"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

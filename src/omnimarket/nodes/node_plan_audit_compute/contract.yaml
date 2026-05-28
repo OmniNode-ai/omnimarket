@@ -3,12 +3,15 @@ name: node_plan_audit_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
   Validate a plan YAML file: field presence checks, schema validation, and
   dependency cycle detection. Produces a per-check pass/fail report with
   violation details. Pure deterministic transform — no LLM calls.
-  STUB — not yet implemented.
+  The supported deterministic schema requires a top-level mapping with a
+  non-empty title and a non-empty tasks list. Each task requires non-empty id
+  and title fields, and may declare dependencies or depends_on as a list of
+  task id strings.
 
 handler:
   module: omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute
