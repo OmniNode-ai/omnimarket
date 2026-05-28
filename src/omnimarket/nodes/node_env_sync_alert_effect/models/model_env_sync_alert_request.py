@@ -19,3 +19,11 @@ class ModelEnvSyncAlertRequest(BaseModel):
         default=1,
         description="Minimum number of drift occurrences before raising an alert",
     )
+    friction_dir: str | None = Field(
+        default=None,
+        description="Optional directory for emitted friction YAML events; defaults to ONEX state friction dir",
+    )
+    create_linear_tickets: bool = Field(
+        default=False,
+        description="When true, create Linear tickets through the injected adapter",
+    )
