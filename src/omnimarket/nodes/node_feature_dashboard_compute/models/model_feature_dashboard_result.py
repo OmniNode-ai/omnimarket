@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -20,3 +22,12 @@ class ModelFeatureDashboardResult(BaseModel):
         default_factory=list,
         description="Skills missing wiring in one or more layers",
     )
+    status: Literal["complete", "partial", "empty"] = Field(
+        default="empty",
+        description="Overall audit status.",
+    )
+    skills_audited: int = Field(default=0, ge=0)
+    checks_run: list[str] = Field(default_factory=list)
+
+
+__all__ = ["ModelFeatureDashboardResult"]

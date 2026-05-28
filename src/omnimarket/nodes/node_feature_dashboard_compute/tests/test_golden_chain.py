@@ -1,10 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden chain test for node_feature_dashboard_compute — zero infra.
-
-Verifies OMN-12229: contract YAML is valid, handler is importable,
-and the stub raises NotImplementedError as declared.
-"""
+"""Golden chain test for node_feature_dashboard_compute — zero infra."""
 
 from __future__ import annotations
 
@@ -12,6 +8,14 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from omnimarket.nodes.node_feature_dashboard_compute.handlers.handler_feature_dashboard_compute import (
+    HandlerFeatureDashboardCompute,
+)
+from omnimarket.nodes.node_feature_dashboard_compute.models.model_feature_dashboard_request import (
+    DEFAULT_CHECK_TYPES,
+    ModelFeatureDashboardRequest,
+)
 
 
 @pytest.fixture
@@ -44,6 +48,7 @@ class TestContractYaml:
         with open(contract_path) as f:
             data = yaml.safe_load(f)
         handler = data.get("handler", {})
+        assert data["node_not_implemented"] is False
         assert "module" in handler
         assert "class" in handler
 
@@ -89,16 +94,47 @@ class TestHandlerImport:
         assert ModelFeatureDashboardResult is not None
 
 
-class TestHandlerStub:
-    def test_handler_raises_not_implemented(self) -> None:
-        from omnimarket.nodes.node_feature_dashboard_compute.handlers.handler_feature_dashboard_compute import (
-            HandlerFeatureDashboardCompute,
-        )
-        from omnimarket.nodes.node_feature_dashboard_compute.models.model_feature_dashboard_request import (
-            ModelFeatureDashboardRequest,
+class TestHandlerCompute:
+    def test_handler_audits_feature_dashboard_skill(self) -> None:
+        handler = HandlerFeatureDashboardCompute()
+        request = ModelFeatureDashboardRequest(skills=["feature-dashboard"])
+
+        result = handler.handle(request)
+
+        assert result.status in {"complete", "partial"}
+        assert result.skills_audited == 1
+        assert result.checks_run == list(DEFAULT_CHECK_TYPES)
+        assert "feature-dashboard" in result.coverage_report
+        coverage = result.coverage_report["feature-dashboard"]
+        assert isinstance(coverage, dict)
+        assert coverage["checks"]["skill_doc"] is False
+        assert coverage["checks"]["backing_node"] is True
+        assert coverage["checks"]["contract"] is True
+
+    def test_handler_respects_check_filter(self) -> None:
+        result = HandlerFeatureDashboardCompute().handle(
+            ModelFeatureDashboardRequest(
+                skills=["feature-dashboard"],
+                check_types=["skill_doc", "contract"],
+            )
         )
 
-        handler = HandlerFeatureDashboardCompute()
-        request = ModelFeatureDashboardRequest()
-        with pytest.raises(NotImplementedError):
-            handler.handle(request)
+        coverage = result.coverage_report["feature-dashboard"]
+        assert isinstance(coverage, dict)
+        assert set(coverage["checks"]) == {"skill_doc", "contract"}
+        assert result.checks_run == ["skill_doc", "contract"]
+
+    def test_handler_reports_empty_for_missing_skill_filter(self) -> None:
+        result = HandlerFeatureDashboardCompute().handle(
+            ModelFeatureDashboardRequest(skills=["does-not-exist"])
+        )
+
+        assert result.status == "partial"
+        assert result.skills_audited == 1
+        assert (
+            result.coverage_report["does-not-exist"]["checks"]["backing_node"] is False
+        )
+
+    def test_request_rejects_unknown_check_type(self) -> None:
+        with pytest.raises(ValueError, match="unknown check_types"):
+            ModelFeatureDashboardRequest(check_types=["nope"])
