@@ -34,6 +34,7 @@ _ALLOWED_TASK_TYPES = (
     "document",
     "research",
     "code_generation",
+    "code_review",
     "refactor",
     "reasoning",
     "complex_reasoning",

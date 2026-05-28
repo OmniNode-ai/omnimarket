@@ -62,6 +62,7 @@ def test_contract_declares_allowed_task_types() -> None:
         "document",
         "research",
         "code_generation",
+        "code_review",
         "refactor",
         "reasoning",
         "complex_reasoning",
