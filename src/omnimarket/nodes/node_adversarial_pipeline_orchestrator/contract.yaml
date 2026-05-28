@@ -9,17 +9,16 @@ name: node_adversarial_pipeline_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
-  Adversarial pipeline orchestrator. Chains three background stages:
+  Adversarial pipeline orchestrator. Chains three native adapter-backed stages:
   (1) design_to_plan — produces a plan from a topic;
   (2) hostile_reviewer gate — reviews the plan, requires ≥ min_findings_gate issues before
       proceeding (default 3); gate failure surfaces findings and halts the pipeline;
   (3) plan_to_tickets — converts the gated plan into Linear tickets.
-  All stages dispatch background agents. No foreground implementation.
-  STUB — not yet implemented.
-  Returns SkillRoutingError with reason node_not_implemented.
+  The handler owns ordering and gate semantics; concrete design, review, and
+  ticket effects are injected by the Onex runtime through typed adapters.
 
 handler:
   module: omnimarket.nodes.node_adversarial_pipeline_orchestrator.handlers.handler_adversarial_pipeline_orchestrator
@@ -55,3 +54,5 @@ event_bus:
 
 metadata:
   transport_type: kafka
+  implementation_wave: 3
+  related_tickets: ["OMN-12215", "OMN-12347"]

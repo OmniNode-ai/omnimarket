@@ -1,6 +1,6 @@
 name: node_adversarial_pipeline_orchestrator
 version: "1.0.0"
-description: "Adversarial pipeline orchestrator — design_to_plan + hostile_reviewer gate + plan_to_tickets (STUB)"
+description: "Adversarial pipeline orchestrator — design_to_plan + hostile_reviewer gate + plan_to_tickets"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
