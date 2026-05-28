@@ -1,14 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden-chain guardrails for node_epic_team_orchestrator [OMN-12206].
-
-Honest routing behaviour for an explicit stub node:
-- contract marks node_not_implemented: true
-- entry point loads
-- typed models are strict (frozen, extra="forbid")
-- handler fails loudly with NotImplementedError containing "node_not_implemented"
-- contract declares the expected runtime routing surface
-"""
+"""Golden-chain guardrails for node_epic_team_orchestrator [OMN-12206]."""
 
 from __future__ import annotations
 
@@ -51,7 +43,9 @@ def _repo_root() -> Path:
 
 def _contract() -> dict:  # type: ignore[type-arg]
     path = _repo_root() / "src" / "omnimarket" / "nodes" / _NODE_NAME / "contract.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -60,10 +54,10 @@ def _contract() -> dict:  # type: ignore[type-arg]
 
 
 @pytest.mark.unit
-def test_epic_team_orchestrator_contract_is_explicit_stub() -> None:
+def test_epic_team_orchestrator_contract_is_implemented() -> None:
     raw = _contract()
 
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
     assert raw["node_type"] == "orchestrator"
     assert raw["handler"]["module"] == _HANDLER_MODULE
     assert raw["handler"]["class"] == _HANDLER_CLASS
@@ -252,39 +246,51 @@ def test_model_stall_event_fields() -> None:
 
 @pytest.mark.unit
 def test_enum_ticket_disposition_values() -> None:
-    assert EnumTicketDisposition.MERGED == "merged"
-    assert EnumTicketDisposition.FAILED == "failed"
-    assert EnumTicketDisposition.BLOCKED == "blocked"
-    assert EnumTicketDisposition.STALLED == "stalled"
-    assert EnumTicketDisposition.SKIPPED == "skipped"
-    assert EnumTicketDisposition.TIMEOUT == "timeout"
+    assert EnumTicketDisposition.MERGED.value == "merged"
+    assert EnumTicketDisposition.FAILED.value == "failed"
+    assert EnumTicketDisposition.BLOCKED.value == "blocked"
+    assert EnumTicketDisposition.STALLED.value == "stalled"
+    assert EnumTicketDisposition.SKIPPED.value == "skipped"
+    assert EnumTicketDisposition.TIMEOUT.value == "timeout"
 
 
 @pytest.mark.unit
 def test_enum_epic_team_run_status_values() -> None:
-    assert EnumEpicTeamRunStatus.COMPLETED == "completed"
-    assert EnumEpicTeamRunStatus.PARTIAL == "partial"
-    assert EnumEpicTeamRunStatus.FAILED == "failed"
-    assert EnumEpicTeamRunStatus.DRY_RUN == "dry_run"
+    assert EnumEpicTeamRunStatus.COMPLETED.value == "completed"
+    assert EnumEpicTeamRunStatus.PARTIAL.value == "partial"
+    assert EnumEpicTeamRunStatus.FAILED.value == "failed"
+    assert EnumEpicTeamRunStatus.DRY_RUN.value == "dry_run"
 
 
 @pytest.mark.unit
 def test_enum_dod_gate_status_values() -> None:
-    assert EnumDodGateStatus.PASS == "pass"
-    assert EnumDodGateStatus.FAIL == "fail"
-    assert EnumDodGateStatus.UNKNOWN == "unknown"
-    assert EnumDodGateStatus.SKIPPED == "skipped"
+    assert EnumDodGateStatus.PASS.value == "pass"
+    assert EnumDodGateStatus.FAIL.value == "fail"
+    assert EnumDodGateStatus.UNKNOWN.value == "unknown"
+    assert EnumDodGateStatus.SKIPPED.value == "skipped"
 
 
 # ---------------------------------------------------------------------------
-# Handler stub (fails loudly)
+# Handler
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_epic_team_orchestrator_handler_fails_loudly() -> None:
+def test_epic_team_orchestrator_dry_run_returns_empty_plan() -> None:
+    handler = HandlerEpicTeamOrchestrator()
+    request = ModelEpicTeamRequest(epic_id="OMN-9999", dry_run=True)
+
+    result = handler.handle(request)
+
+    assert result.run_status is EnumEpicTeamRunStatus.DRY_RUN
+    assert result.epic_id == "OMN-9999"
+    assert result.total_tickets == 0
+
+
+@pytest.mark.unit
+def test_epic_team_orchestrator_live_requires_executor() -> None:
     handler = HandlerEpicTeamOrchestrator()
     request = ModelEpicTeamRequest(epic_id="OMN-9999")
 
-    with pytest.raises(NotImplementedError, match="node_not_implemented"):
+    with pytest.raises(RuntimeError, match="executor adapter required"):
         handler.handle(request)

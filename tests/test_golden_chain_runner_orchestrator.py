@@ -1,13 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden-chain guardrails for node_runner_orchestrator [OMN-12218].
-
-Honest routing behavior for a Wave 4 contract-first stub node:
-- contract.yaml declares node_not_implemented: true
-- typed I/O models are strict (extra="forbid", frozen)
-- handler is importable and fails loudly on handle()
-- entry point is registered in pyproject.toml
-"""
+"""Golden-chain guardrails for node_runner_orchestrator [OMN-12218]."""
 
 from __future__ import annotations
 
@@ -41,7 +34,9 @@ _RESULT_CLASS = "ModelRunnerResult"
 
 
 def _load_contract() -> dict:  # type: ignore[type-arg]
-    return yaml.safe_load((_NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    raw = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
 
 
 def _load_attr(module_name: str, attr_name: str) -> Any:
@@ -54,9 +49,9 @@ def _load_attr(module_name: str, attr_name: str) -> Any:
 
 
 @pytest.mark.unit
-def test_contract_node_not_implemented_is_true() -> None:
+def test_contract_node_not_implemented_is_false() -> None:
     raw = _load_contract()
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
 
 
 @pytest.mark.unit
@@ -153,23 +148,25 @@ def test_result_model_minimal_valid() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub
+# Handler
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_handler_raises_not_implemented() -> None:
+def test_handler_dry_run_returns_preview() -> None:
     handler_type = _load_attr(_HANDLER_MODULE, _HANDLER_CLASS)
     request_model = _load_attr(_REQUEST_MODULE, _REQUEST_CLASS)
 
-    with pytest.raises(NotImplementedError, match="node_not_implemented"):
-        handler_type().handle(request_model(action="status"))
+    result = handler_type().handle(request_model(action="status", dry_run=True))
+
+    assert result.action_status == "dry_run"
+    assert "would query GitHub runner status" in result.dry_run_summary
 
 
 @pytest.mark.unit
-def test_handler_error_message_cites_ticket() -> None:
+def test_handler_live_requires_adapter() -> None:
     handler_type = _load_attr(_HANDLER_MODULE, _HANDLER_CLASS)
     request_model = _load_attr(_REQUEST_MODULE, _REQUEST_CLASS)
 
-    with pytest.raises(NotImplementedError, match="OMN-12218"):
+    with pytest.raises(RuntimeError, match="runner adapter required"):
         handler_type().handle(request_model(action="deploy"))

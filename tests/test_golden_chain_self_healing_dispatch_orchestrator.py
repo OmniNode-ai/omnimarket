@@ -1,14 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden-chain guardrails for node_self_healing_dispatch_orchestrator [OMN-12208].
-
-Honest routing behaviour for an explicit stub node:
-- contract marks node_not_implemented: true
-- entry point loads
-- typed models are strict (frozen, extra="forbid")
-- handler fails loudly with NotImplementedError containing "node_not_implemented"
-- contract declares the expected runtime routing surface
-"""
+"""Golden-chain guardrails for node_self_healing_dispatch_orchestrator [OMN-12208]."""
 
 from __future__ import annotations
 
@@ -54,7 +46,9 @@ def _repo_root() -> Path:
 
 def _contract() -> dict:  # type: ignore[type-arg]
     path = _repo_root() / "src" / "omnimarket" / "nodes" / _NODE_NAME / "contract.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -63,10 +57,10 @@ def _contract() -> dict:  # type: ignore[type-arg]
 
 
 @pytest.mark.unit
-def test_self_healing_dispatch_orchestrator_contract_is_explicit_stub() -> None:
+def test_self_healing_dispatch_orchestrator_contract_is_implemented() -> None:
     raw = _contract()
 
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
     assert raw["node_type"] == "orchestrator"
     assert raw["handler"]["module"] == _HANDLER_MODULE
     assert raw["handler"]["class"] == _HANDLER_CLASS
@@ -301,29 +295,48 @@ def test_model_escalation_record_fields() -> None:
 
 @pytest.mark.unit
 def test_enum_dispatch_run_status_values() -> None:
-    assert EnumDispatchRunStatus.COMPLETED == "completed"
-    assert EnumDispatchRunStatus.PARTIAL == "partial"
-    assert EnumDispatchRunStatus.FAILED == "failed"
-    assert EnumDispatchRunStatus.DRY_RUN == "dry_run"
+    assert EnumDispatchRunStatus.COMPLETED.value == "completed"
+    assert EnumDispatchRunStatus.PARTIAL.value == "partial"
+    assert EnumDispatchRunStatus.FAILED.value == "failed"
+    assert EnumDispatchRunStatus.DRY_RUN.value == "dry_run"
 
 
 @pytest.mark.unit
 def test_enum_worker_status_values() -> None:
-    assert EnumWorkerStatus.COMPLETED == "completed"
-    assert EnumWorkerStatus.STALLED == "stalled"
-    assert EnumWorkerStatus.ESCALATED == "escalated"
-    assert EnumWorkerStatus.FAILED == "failed"
+    assert EnumWorkerStatus.COMPLETED.value == "completed"
+    assert EnumWorkerStatus.STALLED.value == "stalled"
+    assert EnumWorkerStatus.ESCALATED.value == "escalated"
+    assert EnumWorkerStatus.FAILED.value == "failed"
 
 
 # ---------------------------------------------------------------------------
-# Handler stub (fails loudly)
+# Handler
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_self_healing_dispatch_orchestrator_handler_fails_loudly() -> None:
+def test_self_healing_dispatch_orchestrator_dry_run_groups_by_repo() -> None:
+    handler = HandlerSelfHealingDispatchOrchestrator()
+    request = ModelSelfHealingDispatchRequest(
+        ticket_ids=("OMN-1234", "OMN-5678"),
+        repo_hints={"OMN-1234": "omnimarket", "OMN-5678": "omnibase_core"},
+        dry_run=True,
+    )
+
+    result = handler.handle(request)
+
+    assert result.run_status is EnumDispatchRunStatus.DRY_RUN
+    assert result.total_tickets == 2
+    assert [group.repo for group in result.dispatch_groups] == [
+        "omnibase_core",
+        "omnimarket",
+    ]
+
+
+@pytest.mark.unit
+def test_self_healing_dispatch_orchestrator_live_requires_dispatcher() -> None:
     handler = HandlerSelfHealingDispatchOrchestrator()
     request = ModelSelfHealingDispatchRequest(ticket_ids=("OMN-1234",))
 
-    with pytest.raises(NotImplementedError, match="node_not_implemented"):
+    with pytest.raises(RuntimeError, match="dispatcher adapter required"):
         handler.handle(request)

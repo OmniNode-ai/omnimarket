@@ -4,9 +4,8 @@
 
 ONEX node type: ORCHESTRATOR — impure, effectful, multi-phase.
 
-Wave 1: contract + stub only.  Full implementation deferred to Wave 2 (OMN-12203).
-The handler class is importable and passes type checks; `handle()` raises
-NotImplementedError as declared by `node_not_implemented: true` in contract.yaml.
+Bounded production slice: scores injected backlog candidates deterministically.
+Live Linear mutation requires an injected adapter.
 
 Algorithm phases (per refill_sprint SKILL.md):
   1. Capacity check   — sum weighted estimates for Active Sprint tickets in Backlog/Todo.
@@ -19,12 +18,16 @@ Algorithm phases (per refill_sprint SKILL.md):
 
 from __future__ import annotations
 
+from typing import Any, Protocol
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_refill_sprint_orchestrator.models.model_refill_sprint import (
     ModelBacklogFilter,
     ModelPriorityWeights,
+    ModelPulledTicket,
     ModelRefillSprintResult,
+    ModelSkippedTicket,
     ModelSprintCapacityConfig,
 )
 
@@ -52,31 +55,170 @@ class ModelRefillSprintRequest(BaseModel):
     )
 
 
-# ---------------------------------------------------------------------------
-# Handler stub
-# ---------------------------------------------------------------------------
+class ProtocolSprintBacklogAdapter(Protocol):
+    """Adapter boundary for sprint capacity, candidates, and live ticket moves."""
+
+    def current_capacity(self) -> float: ...
+
+    def candidate_tickets(
+        self, backlog_filter: ModelBacklogFilter
+    ) -> list[dict[str, Any]]: ...
+
+    def pull_ticket(self, ticket_id: str) -> None: ...
 
 
 class HandlerRefillSprintOrchestrator:
     """ORCHESTRATOR — multi-phase sprint refill pipeline.
 
-    Wave 1 contract-first node: importable and type-safe.  Full implementation
-    in Wave 2 (OMN-12203).
-
-    Per contract.yaml `node_not_implemented: true`, `handle()` raises
-    NotImplementedError.  Callers should check the contract flag before invoking.
+    Dry-run returns the pull plan. Live ticket movement only occurs through an
+    injected ``ProtocolSprintBacklogAdapter``.
     """
 
-    def handle(
-        self, request: ModelRefillSprintRequest
-    ) -> ModelRefillSprintResult:  # stub-ok
+    def __init__(self, adapter: ProtocolSprintBacklogAdapter | None = None) -> None:
+        self._adapter = adapter
+
+    def handle(self, request: ModelRefillSprintRequest) -> ModelRefillSprintResult:
         """Execute the sprint refill pipeline.
 
         Raises:
-            NotImplementedError: contract.yaml node_not_implemented=true, Wave 2 in OMN-12203.
+            RuntimeError: when capacity/candidate data or live mutation needs an adapter.
         """
-        raise NotImplementedError(  # stub-ok
-            "node_refill_sprint_orchestrator is a Wave 1 contract-first node. "
-            "Full implementation is tracked in OMN-12203 Wave 2. "
-            "See contract.yaml `node_not_implemented: true`."
+        if self._adapter is None:
+            if request.capacity_config.dry_run:
+                return ModelRefillSprintResult(
+                    pulled=[],
+                    skipped=[],
+                    pulled_count=0,
+                    skipped_count=0,
+                    exhausted=True,
+                    capacity_before=0.0,
+                    capacity_after=0.0,
+                    dry_run=True,
+                )
+            raise RuntimeError("backlog adapter required when dry_run is false")
+
+        capacity_before = self._adapter.current_capacity()
+        if capacity_before >= request.capacity_config.threshold:
+            return ModelRefillSprintResult(
+                pulled=[],
+                skipped=[],
+                pulled_count=0,
+                skipped_count=0,
+                exhausted=False,
+                capacity_before=capacity_before,
+                capacity_after=capacity_before,
+                dry_run=request.capacity_config.dry_run,
+            )
+
+        candidates = self._adapter.candidate_tickets(request.backlog_filter)
+        pulled, skipped = _select_candidates(
+            candidates,
+            request.priority_weights,
+            batch_size=request.capacity_config.batch_size,
+            skip_scope_check=request.capacity_config.skip_scope_check,
         )
+
+        if not request.capacity_config.dry_run:
+            for ticket in pulled:
+                self._adapter.pull_ticket(ticket.ticket_id)
+
+        capacity_after = capacity_before + float(len(pulled))
+        return ModelRefillSprintResult(
+            pulled=pulled,
+            skipped=skipped,
+            pulled_count=len(pulled),
+            skipped_count=len(skipped),
+            exhausted=not pulled,
+            capacity_before=capacity_before,
+            capacity_after=capacity_after,
+            dry_run=request.capacity_config.dry_run,
+        )
+
+
+def _select_candidates(
+    candidates: list[dict[str, Any]],
+    weights: ModelPriorityWeights,
+    *,
+    batch_size: int,
+    skip_scope_check: bool,
+) -> tuple[list[ModelPulledTicket], list[ModelSkippedTicket]]:
+    ranked: list[tuple[float, str, dict[str, Any]]] = []
+    skipped: list[ModelSkippedTicket] = []
+    for candidate in candidates:
+        ticket_id = str(candidate["ticket_id"])
+        title = str(candidate.get("title", ""))
+        skip_reason = _skip_reason(candidate, skip_scope_check)
+        if skip_reason:
+            skipped.append(
+                ModelSkippedTicket(
+                    ticket_id=ticket_id,
+                    title=title,
+                    reason=skip_reason,
+                )
+            )
+            continue
+        tier = int(candidate.get("tier", 3))
+        score = _score(tier, float(candidate.get("age_weeks", 0.0)), weights)
+        ranked.append((score, ticket_id, candidate))
+
+    pulled: list[ModelPulledTicket] = []
+    for score, _ticket_id, candidate in sorted(
+        ranked, key=lambda item: (-item[0], item[1])
+    ):
+        if len(pulled) >= batch_size:
+            skipped.append(
+                ModelSkippedTicket(
+                    ticket_id=str(candidate["ticket_id"]),
+                    title=str(candidate.get("title", "")),
+                    reason="batch_limit_reached",
+                )
+            )
+            continue
+        pulled.append(
+            ModelPulledTicket(
+                ticket_id=str(candidate["ticket_id"]),
+                title=str(candidate.get("title", "")),
+                tier=int(candidate.get("tier", 3)),
+                priority_score=score,
+                estimate_label=(
+                    str(candidate["estimate_label"])
+                    if candidate.get("estimate_label") is not None
+                    else None
+                ),
+                scope_verified=skip_scope_check
+                or bool(candidate.get("scope_verified", True)),
+            )
+        )
+    return pulled, skipped
+
+
+def _skip_reason(candidate: dict[str, Any], skip_scope_check: bool) -> str | None:
+    if candidate.get("estimate_too_large"):
+        return "estimate_too_large"
+    if candidate.get("urgent"):
+        return "urgent_priority"
+    if candidate.get("cross_repo_dependency"):
+        return "cross_repo_dependency"
+    if candidate.get("failed_attempts", 0) >= 2:
+        return "too_many_failed_attempts"
+    if candidate.get("returned_today"):
+        return "returned_today"
+    if not skip_scope_check and candidate.get("scope_verified") is False:
+        return "stale_scope"
+    return None
+
+
+def _score(tier: int, age_weeks: float, weights: ModelPriorityWeights) -> float:
+    tier_weight = {
+        1: weights.tier_1,
+        2: weights.tier_2,
+        3: weights.tier_3,
+    }.get(tier, weights.tier_3)
+    return tier_weight + (age_weeks * weights.recency_boost)
+
+
+__all__ = [
+    "HandlerRefillSprintOrchestrator",
+    "ModelRefillSprintRequest",
+    "ProtocolSprintBacklogAdapter",
+]

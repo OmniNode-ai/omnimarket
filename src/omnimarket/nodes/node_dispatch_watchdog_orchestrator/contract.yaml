@@ -10,7 +10,7 @@ name: node_dispatch_watchdog_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Dispatch watchdog orchestrator. Epic-level sidecar that monitors ALL Task()
@@ -33,6 +33,8 @@ description: >
   Escalation: when a task exceeds max_redispatches, move ticket to Blocked in
   Linear, write a friction event to .onex_state/friction/, and log escalation
   to .onex_state/dispatch-log/{date}.ndjson.
+  Bounded handler slice computes one watchdog pass from injected task state;
+  cancel, redispatch, and escalation side effects require injected adapters.
 
 handler:
   module: omnimarket.nodes.node_dispatch_watchdog_orchestrator.handlers.handler_watchdog

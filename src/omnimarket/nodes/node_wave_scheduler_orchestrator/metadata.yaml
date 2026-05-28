@@ -1,6 +1,6 @@
 name: node_wave_scheduler_orchestrator
 version: "1.0.0"
-description: "Dependency-aware wave scheduler: plan → DAG → wave dispatch → stall recovery (STUB)"
+description: "Dependency-aware wave scheduler: plan → DAG → wave dispatch → stall recovery"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

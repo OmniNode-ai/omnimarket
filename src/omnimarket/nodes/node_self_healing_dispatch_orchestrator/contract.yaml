@@ -10,7 +10,7 @@ name: node_self_healing_dispatch_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Self-healing dispatch orchestrator. Consumes a ticket list or Linear epic ID,
@@ -20,7 +20,8 @@ description: >
   redispatch limit are escalated to Blocked. All events are appended to a
   structured NDJSON dispatch log. Handles workloads of up to 10 tickets across
   up to 4 repos without human intervention.
-  Handlers are deferred to the implementation wave (OMN-12208 stub).
+  Bounded handler slice validates request shape, groups tickets by repo, and
+  requires injected adapters for live worker dispatch or epic child resolution.
 
 handler:
   module: omnimarket.nodes.node_self_healing_dispatch_orchestrator.handlers.handler_self_healing_dispatch_orchestrator

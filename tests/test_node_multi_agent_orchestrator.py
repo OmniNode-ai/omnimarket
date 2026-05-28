@@ -1,11 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for node_multi_agent_orchestrator [OMN-12207].
-
-Wave 2 contract-first stub: verifies importability, model validation,
-and that the handler correctly raises NotImplementedError per
-contract.yaml `node_not_implemented: true`.
-"""
+"""Unit tests for node_multi_agent_orchestrator [OMN-12207]."""
 
 from __future__ import annotations
 
@@ -53,9 +48,9 @@ class TestPublicSurface:
 class TestEnumWorkflowType:
     @pytest.mark.unit
     def test_all_values_present(self) -> None:
-        assert EnumWorkflowType.PARALLEL_DEBUG == "parallel_debug"
-        assert EnumWorkflowType.PARALLEL_BUILD == "parallel_build"
-        assert EnumWorkflowType.SEQUENTIAL_REVIEW == "sequential_review"
+        assert EnumWorkflowType.PARALLEL_DEBUG.value == "parallel_debug"
+        assert EnumWorkflowType.PARALLEL_BUILD.value == "parallel_build"
+        assert EnumWorkflowType.SEQUENTIAL_REVIEW.value == "sequential_review"
 
 
 # ---------------------------------------------------------------------------
@@ -365,24 +360,25 @@ class TestModelMultiAgentResult:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub — must raise NotImplementedError
+# Handler
 # ---------------------------------------------------------------------------
 
 
-class TestHandlerMultiAgentOrchestratorStub:
+class TestHandlerMultiAgentOrchestrator:
     @pytest.mark.unit
-    def test_handle_raises_not_implemented(self) -> None:
+    def test_dry_run_returns_deterministic_skipped_plan(self) -> None:
         handler = HandlerMultiAgentOrchestrator()
         req = ModelMultiAgentRequest(
             workflow_type=EnumWorkflowType.PARALLEL_DEBUG,
             tasks=[ModelAgentTask(task_id="t1", description="Fix failing tests")],
+            dry_run=True,
         )
-        with pytest.raises(NotImplementedError) as exc_info:
-            handler.handle(req)
-        assert (
-            "node_not_implemented" in str(exc_info.value).lower()
-            or "wave" in str(exc_info.value).lower()
-        )
+        result = handler.handle(req)
+
+        assert result.skipped_count == 1
+        assert result.failed_count == 0
+        assert result.agent_results[0].status == EnumAgentResultStatus.SKIPPED
+        assert result.approval_required is False
 
     @pytest.mark.unit
     def test_handler_instantiates_without_args(self) -> None:
@@ -390,10 +386,29 @@ class TestHandlerMultiAgentOrchestratorStub:
         assert handler is not None
 
     @pytest.mark.unit
-    def test_stub_raises_for_all_workflow_types(self) -> None:
+    def test_live_without_dispatcher_requires_adapter(self) -> None:
         handler = HandlerMultiAgentOrchestrator()
         task = ModelAgentTask(task_id="t1", description="Task")
-        for wf_type in EnumWorkflowType:
-            req = ModelMultiAgentRequest(workflow_type=wf_type, tasks=[task])
-            with pytest.raises(NotImplementedError):
-                handler.handle(req)
+        req = ModelMultiAgentRequest(
+            workflow_type=EnumWorkflowType.PARALLEL_BUILD,
+            tasks=[task],
+        )
+
+        with pytest.raises(RuntimeError, match="dispatcher adapter required"):
+            handler.handle(req)
+
+    @pytest.mark.unit
+    def test_dependency_order_is_respected_in_dry_run(self) -> None:
+        handler = HandlerMultiAgentOrchestrator()
+        req = ModelMultiAgentRequest(
+            workflow_type=EnumWorkflowType.SEQUENTIAL_REVIEW,
+            tasks=[
+                ModelAgentTask(task_id="t2", description="Second", depends_on=["t1"]),
+                ModelAgentTask(task_id="t1", description="First"),
+            ],
+            dry_run=True,
+        )
+
+        result = handler.handle(req)
+
+        assert [item.task_id for item in result.agent_results] == ["t1", "t2"]

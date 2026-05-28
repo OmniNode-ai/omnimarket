@@ -1,6 +1,6 @@
 name: node_refill_sprint_orchestrator
 version: "1.0.0"
-description: "Refill sprint orchestrator — analyzes sprint capacity and files backlog tickets (STUB)"
+description: "Refill sprint orchestrator — analyzes sprint capacity and files backlog tickets"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

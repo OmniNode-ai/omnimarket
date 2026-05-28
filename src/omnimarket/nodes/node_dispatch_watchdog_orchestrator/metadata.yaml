@@ -1,6 +1,6 @@
 name: node_dispatch_watchdog_orchestrator
 version: "1.0.0"
-description: "Dispatch watchdog orchestrator — monitors epic wave Tasks for stalls and triggers recovery (STUB)"
+description: "Dispatch watchdog orchestrator — monitors epic wave Tasks for stalls and triggers recovery"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
