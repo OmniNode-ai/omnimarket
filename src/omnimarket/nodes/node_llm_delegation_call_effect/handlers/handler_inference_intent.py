@@ -8,8 +8,8 @@ executes the LLM HTTP call, and publishes ModelInferenceResponseData to
 onex.evt.omnibase-infra.inference-response.v1 so the orchestrator's
 DispatcherInferenceResponse can consume it.
 
-This handler is the Kafka-native replacement for the in-process
-DelegationIntentBridge.handle_inference_intent() path (OMN-12294).
+This handler is the Kafka-native inference-intent consumer for the delegation
+chain — the orchestrator publishes the intent, this node consumes it (OMN-12294).
 """
 
 from __future__ import annotations

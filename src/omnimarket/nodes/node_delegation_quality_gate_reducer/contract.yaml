@@ -57,6 +57,15 @@ handler_routing:
         name: "ModelQualityGateInput"
         module: "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
         description: "Quality gate evaluation input."
+    - operation: "delegation.quality_gate_intent"
+      handler:
+        name: "HandlerQualityGateIntent"
+        module: "omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent"
+      description: "Unwrap ModelQualityGateIntent from the orchestrator and publish ModelQualityGateResult to quality-gate-result.v1 (OMN-12294 — Kafka-native quality-gate-intent consumer for the pure-bus delegation chain)."
+      input_model:
+        name: "ModelQualityGateIntent"
+        module: "omnibase_compat.contracts.delegation.wire"
+        description: "Quality gate intent from the orchestrator (wraps ModelQualityGateInput)."
 error_handling:
   retry_policy:
     max_retries: 0
