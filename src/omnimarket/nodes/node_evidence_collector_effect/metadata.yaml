@@ -16,7 +16,8 @@ capabilities:
   requires_secrets: true
   requires_docker: false
   side_effect_class: read_only
-dependencies: []
+dependencies:
+  - "omnibase-compat>=0.3.1"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "evidence-pipeline", "github", "ci-artifacts", "OMN-11443"]

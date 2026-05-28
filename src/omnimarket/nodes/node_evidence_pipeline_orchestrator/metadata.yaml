@@ -16,7 +16,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: orchestrates
-dependencies: []
+dependencies:
+  - "omnibase-compat>=0.3.1"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "evidence-pipeline", "OMN-11443"]
