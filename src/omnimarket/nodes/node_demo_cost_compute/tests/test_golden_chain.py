@@ -3,7 +3,7 @@
 """Golden chain test for node_demo_cost_compute [OMN-12235].
 
 Verifies contract YAML is valid, handler imports cleanly, models are
-well-formed. Handler execution raises NotImplementedError (stub-ok).
+well-formed, and cost aggregation is deterministic.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ class TestContractYaml:
         assert isinstance(data, dict)
         assert data["name"] == "node_demo_cost_compute"
         assert data["node_type"] == "compute"
-        assert data.get("node_not_implemented") is True
+        assert data.get("node_not_implemented") is False
 
     def test_contract_declares_handler(self, contract_path: Path) -> None:
         import yaml
@@ -138,8 +138,8 @@ class TestModels:
         assert "m1" in req.pricing_table
 
 
-class TestHandlerIsStub:
-    def test_handle_raises_not_implemented(self) -> None:
+class TestHandlerBehavior:
+    def test_handle_computes_aggregated_costs(self) -> None:
         from omnimarket.events.demo import ModelDemoInferenceResult
         from omnimarket.nodes.node_demo_cost_compute.handlers.handler_cost_compute import (
             NodeDemoCostCompute,
@@ -158,6 +158,7 @@ class TestHandlerIsStub:
                     completion_tokens=5,
                     latency_ms=10.0,
                 )
+                for _ in range(2)
             ],
             pricing_table={
                 "m1": ModelDemoModelPricing(
@@ -165,5 +166,10 @@ class TestHandlerIsStub:
                 )
             },
         )
-        with pytest.raises(NotImplementedError):
-            handler.handle(req)
+        result = handler.handle(req)
+
+        assert result.cheapest_model_id == "m1"
+        assert len(result.costs) == 1
+        assert result.costs[0].prompt_tokens == 20
+        assert result.costs[0].completion_tokens == 10
+        assert result.costs[0].total_cost_usd == 0.00004
