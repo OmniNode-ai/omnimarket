@@ -1,4 +1,4 @@
-"""Tests for NodeRecallCompute — stub contract verification."""
+"""Tests for NodeRecallCompute native backend federation."""
 
 from __future__ import annotations
 
@@ -17,6 +17,30 @@ from omnimarket.nodes.node_recall_compute.models.model_recall_result import (
     ModelKnowledgeResult,
     ModelRecallResult,
 )
+
+
+class FakeBackend:
+    def __init__(
+        self,
+        results: list[dict[str, object] | ModelKnowledgeResult] | None = None,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self.results = results or []
+        self.error = error
+        self.calls: list[tuple[str, ModelRecallFilters | None, int]] = []
+
+    def query(
+        self,
+        query: str,
+        *,
+        filters: ModelRecallFilters | None,
+        max_results: int,
+    ) -> list[dict[str, object] | ModelKnowledgeResult]:
+        self.calls.append((query, filters, max_results))
+        if self.error is not None:
+            raise self.error
+        return self.results
 
 
 @pytest.mark.unit
@@ -54,6 +78,10 @@ class TestModelRecallRequest:
         with pytest.raises(ValidationError):
             req.query = "mutated"  # type: ignore[misc]
 
+    def test_request_rejects_unknown_scope(self) -> None:
+        with pytest.raises(ValidationError):
+            ModelRecallRequest(query="test", scope="unknown")
+
 
 @pytest.mark.unit
 class TestModelRecallResult:
@@ -90,32 +118,88 @@ class TestModelRecallResult:
 
 
 @pytest.mark.unit
-class TestNodeRecallComputeStub:
-    def test_handle_raises_not_implemented(self) -> None:
-        handler = NodeRecallCompute()
-        req = ModelRecallRequest(query="import error in omnibase_infra")
-        with pytest.raises(NotImplementedError):
-            handler.handle(req)
+class TestNodeRecallCompute:
+    def test_handler_federates_all_backends_and_ranks_results(self) -> None:
+        learnings = FakeBackend(
+            [{"content": "fixed kafka import", "similarity": 0.72, "rank": 2}]
+        )
+        architecture = FakeBackend(
+            [{"content": "use event bus", "similarity": 0.91, "rank": 4}]
+        )
+        antipatterns = FakeBackend(
+            [{"content": "avoid localhost bypass", "similarity": 0.83, "rank": 1}]
+        )
 
-    def test_not_implemented_message_cites_ticket(self) -> None:
-        handler = NodeRecallCompute()
-        req = ModelRecallRequest(query="test")
-        with pytest.raises(NotImplementedError, match="OMN-12216"):
-            handler.handle(req)
+        result = NodeRecallCompute(
+            {
+                "learnings": learnings,
+                "architecture": architecture,
+                "antipatterns": antipatterns,
+            }
+        ).handle(ModelRecallRequest(query="event bus recall", max_results=2))
 
-    def test_not_implemented_message_mentions_event_bus(self) -> None:
-        handler = NodeRecallCompute()
-        req = ModelRecallRequest(query="test")
-        with pytest.raises(NotImplementedError, match="event bus"):
-            handler.handle(req)
+        assert [item.content for item in result.results] == [
+            "use event bus",
+            "avoid localhost bypass",
+        ]
+        assert [item.rank for item in result.results] == [0, 1]
+        assert result.sources == ("antipatterns", "architecture")
+        assert result.confidence == EnumRecallConfidence.HIGH
+        assert result.partial is False
+        assert result.error is None
 
-    def test_handler_instantiates(self) -> None:
-        handler = NodeRecallCompute()
-        assert handler is not None
+    def test_handler_applies_scope_and_filters(self) -> None:
+        learnings = FakeBackend([{"content": "repo memory", "similarity": 0.6}])
+        filters = ModelRecallFilters(repo="omnimarket")
 
-    def test_stub_raises_for_all_scopes(self) -> None:
-        handler = NodeRecallCompute()
-        for scope in ("learnings", "architecture", "antipatterns", "all"):
-            req = ModelRecallRequest(query="test", scope=scope)
-            with pytest.raises(NotImplementedError):
-                handler.handle(req)
+        result = NodeRecallCompute({"learnings": learnings}).handle(
+            ModelRecallRequest(
+                query="memory",
+                scope="learnings",
+                filters=filters,
+                max_results=3,
+            )
+        )
+
+        assert result.sources == ("learnings",)
+        assert result.confidence == EnumRecallConfidence.MEDIUM
+        assert learnings.calls == [("memory", filters, 3)]
+
+    def test_handler_deduplicates_per_source_and_content(self) -> None:
+        backend = FakeBackend(
+            [
+                {"content": "same content", "similarity": 0.2},
+                {"content": "same   content", "similarity": 0.9},
+            ]
+        )
+
+        result = NodeRecallCompute({"architecture": backend}).handle(
+            ModelRecallRequest(query="same", scope="architecture")
+        )
+
+        assert len(result.results) == 1
+        assert result.results[0].similarity == pytest.approx(0.9)
+
+    def test_handler_reports_missing_backend_as_partial(self) -> None:
+        result = NodeRecallCompute({"learnings": FakeBackend([])}).handle(
+            ModelRecallRequest(query="test", scope="all")
+        )
+
+        assert result.partial is True
+        assert result.error == "missing backends: architecture, antipatterns"
+
+    def test_handler_reports_backend_failure_as_partial(self) -> None:
+        result = NodeRecallCompute(
+            {"architecture": FakeBackend(error=RuntimeError("backend down"))}
+        ).handle(ModelRecallRequest(query="test", scope="architecture"))
+
+        assert result.partial is True
+        assert result.error == "failed backends: architecture: backend down"
+        assert result.confidence == EnumRecallConfidence.NONE
+
+    def test_handler_without_backends_returns_controlled_partial_result(self) -> None:
+        result = NodeRecallCompute().handle(ModelRecallRequest(query="test"))
+
+        assert result.results == ()
+        assert result.partial is True
+        assert result.error == "no recall backends configured"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnumRecallConfidence(StrEnum):
@@ -21,7 +21,7 @@ class ModelKnowledgeResult(BaseModel):
     content: str
     rank: int = 0
     similarity: float | None = None
-    metadata: dict[str, str] = {}
+    metadata: dict[str, str] = Field(default_factory=dict)
 
 
 class ModelRecallResult(BaseModel):
