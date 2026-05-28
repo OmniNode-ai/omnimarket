@@ -29,7 +29,6 @@ from uuid import uuid4
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.topic_constants import (
-    TOPIC_DELEGATION_FAILED,
     TOPIC_DELEGATION_INFERENCE_RESPONSE,
     TOPIC_DELEGATION_QUALITY_GATE_RESULT,
     TOPIC_DELEGATION_ROUTING_DECISION,
@@ -419,12 +418,12 @@ class TestDelegationChainE2E:
         await bus.close()
 
     @pytest.mark.asyncio
-    async def test_inference_error_reduces_to_failed_terminal_event(
+    async def test_inference_error_escalates_to_next_tier(
         self,
         handler: HandlerDelegationWorkflow,
         delegation_request: ModelDelegationRequest,
     ) -> None:
-        """Inference errors reduce into delegate-skill failure terminals."""
+        """Inference errors on a non-terminal tier trigger escalation, not terminal FAILED."""
         bus = EventBusInmemory(environment="test", group="delegation-test")
         await bus.start()
         bridge = DelegationIntentBridge(event_bus=bus, llm_caller=FailingLlmCaller())
@@ -436,10 +435,17 @@ class TestDelegationChainE2E:
 
         events = handler.handle_inference_response(response)
 
-        assert len(events) == 2
-        assert events[0].topic == TOPIC_DELEGATION_FAILED
+        # The local tier failed with an infra error → escalation routing intent emitted.
+        assert len(events) == 1
+        from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+            ModelRoutingIntent,
+        )
+
+        assert isinstance(events[0], ModelRoutingIntent)
+        assert events[0].min_tier_name is not None
         workflow = handler.workflows[delegation_request.correlation_id]
-        assert workflow.state == EnumDelegationState.FAILED
+        assert workflow.state == EnumDelegationState.ROUTED
+        assert workflow.escalation_count == 1
 
         await bus.close()
 

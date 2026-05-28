@@ -94,6 +94,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 )
 from omnimarket.pricing import estimate_baseline_cost_usd, get_manifest_version_int
 
+# Max tier escalation attempts for infra errors (auth, timeout, connection refused).
+# Kept separate from handle_gate_result's max_escalation_attempts so callers can
+# tune them independently.
+_MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
+_INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset({"cli_agents"})
+
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
     "test": 0.3,
@@ -136,6 +142,7 @@ _VALID_TRANSITIONS: dict[EnumDelegationState, frozenset[EnumDelegationState]] = 
             EnumDelegationState.ROUTED,  # OMN-10794 — schema-repair re-prompt
             EnumDelegationState.EXECUTING,
             EnumDelegationState.INFERENCE_COMPLETED,
+            EnumDelegationState.ESCALATING,  # infra error on current tier → try next
             EnumDelegationState.COMPLETED,
             EnumDelegationState.FAILED,
         }
@@ -464,14 +471,72 @@ class HandlerDelegationWorkflow:
         assert workflow.routing_decision is not None
 
         if response.error_message:
-            self._transition(workflow, EnumDelegationState.FAILED)
-            _record_inference_response(workflow, response)
             elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+            model_used = response.model_used or workflow.routing_decision.selected_model
+
+            # Record this tier's failed attempt in escalation history before
+            # deciding whether to escalate or terminate.
+            workflow.escalation_history.append(
+                ModelDelegationEscalationAttempt(
+                    tier_name=workflow.current_tier_name or "unknown",
+                    model_used=model_used,
+                    quality_score=0.0,
+                    failure_reasons=(response.error_message,),
+                    latency_ms=elapsed_ms,
+                    fallback_recommended=True,
+                    attempted_at=datetime.now(UTC),
+                    routing_decision_id=workflow.routing_decision.selected_backend_id,
+                )
+            )
+
+            # Infra errors (auth failure, connection refused, timeout) are
+            # retryable at the next tier — attempt escalation before terminal FAILED.
+            terminal_failure_reason: str | None = None
+            next_tier: str | None = None
+
+            if workflow.escalation_count >= _MAX_INFERENCE_ESCALATION_ATTEMPTS:
+                terminal_failure_reason = "max_escalation_attempts_reached"
+            elif workflow.current_tier_name is None:
+                terminal_failure_reason = "current_tier_unknown"
+            else:
+                next_tier = next_eligible_tier(
+                    workflow.current_tier_name,
+                    _INFERENCE_ERROR_EXCLUDED_TIERS,
+                )
+                if next_tier is None:
+                    terminal_failure_reason = "no_higher_tier_available"
+
+            can_escalate = terminal_failure_reason is None and next_tier is not None
+
+            if can_escalate:
+                assert next_tier is not None
+                self._transition(workflow, EnumDelegationState.ESCALATING)
+                workflow.escalation_count += 1
+
+                workflow.inference_content = None
+                workflow.inference_model_used = None
+                workflow.inference_intent_in_flight = False
+                workflow.routing_decision = None
+
+                self._transition(workflow, EnumDelegationState.ROUTED)
+                assert workflow.request is not None
+                return [
+                    ModelRoutingIntent(
+                        payload=workflow.request,
+                        min_tier_name=next_tier,
+                    ),
+                ]
+
+            # No escalation possible: terminal FAILED.
+            _record_inference_response(workflow, response)
+            escalation_metadata = self._escalation_metadata(
+                workflow,
+                terminal_failure_reason=terminal_failure_reason,
+            )
             delegation_result = ModelDelegationResult(
                 correlation_id=response.correlation_id,
                 task_type=workflow.request.task_type,
-                model_used=response.model_used
-                or workflow.routing_decision.selected_model,
+                model_used=model_used,
                 endpoint_url=workflow.routing_decision.endpoint_url,
                 content=response.content,
                 quality_passed=False,
@@ -484,6 +549,7 @@ class HandlerDelegationWorkflow:
                 failure_reason=response.error_message,
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
+                **escalation_metadata,
             )
             compat_event = ModelTaskDelegatedEvent(
                 topic=TOPIC_DELEGATION_TASK_DELEGATED,
@@ -491,8 +557,7 @@ class HandlerDelegationWorkflow:
                 correlation_id=response.correlation_id,
                 session_id=None,
                 task_type=workflow.request.task_type,
-                delegated_to=response.model_used
-                or workflow.routing_decision.selected_model,
+                delegated_to=model_used,
                 model_name=workflow.routing_decision.selected_model,
                 quality_gate_passed=False,
                 quality_gates_failed=[response.error_message],
@@ -503,7 +568,15 @@ class HandlerDelegationWorkflow:
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
                 pricing_manifest_version=get_manifest_version_int(),
+                escalation_count=workflow.escalation_count,
+                escalation_history=tuple(
+                    attempt.model_dump(mode="json")
+                    for attempt in workflow.escalation_history
+                ),
+                routing_tiers_hash=self._routing_tiers_hash(),
+                attempts_count=workflow.escalation_count + 1,
             )
+            self._transition(workflow, EnumDelegationState.FAILED)
             return [
                 ModelDelegationEvent(
                     topic=TOPIC_DELEGATION_FAILED,
