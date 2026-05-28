@@ -3,12 +3,12 @@ name: node_env_sync_alert_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
   Scans runtime logs for environment sync drift, emits friction YAML events,
-  and creates Linear tickets for unresolved alerts. Side-effecting — writes to
-  Linear and emits friction events. STUB — not yet implemented. Returns
-  SkillRoutingError with reason node_not_implemented.
+  and creates Linear tickets for unresolved alerts when a Linear adapter is
+  injected and requested. Side-effecting — emits friction events and may write
+  to Linear.
 
 handler:
   module: omnimarket.nodes.node_env_sync_alert_effect.handlers.handler_env_sync_alert_effect
@@ -38,6 +38,16 @@ inputs:
     description: "Minimum number of drift occurrences before raising an alert"
     required: false
     default: 1
+  friction_dir:
+    type: str | null
+    description: "Optional directory for emitted friction YAML events"
+    required: false
+    default: null
+  create_linear_tickets:
+    type: bool
+    description: "When true, create Linear tickets through the injected adapter"
+    required: false
+    default: false
 
 outputs:
   alerts_created:
@@ -69,4 +79,4 @@ side_effects:
 metadata:
   transport_type: kafka
   implementation_wave: 6
-  related_tickets: ["OMN-12227"]
+  related_tickets: ["OMN-12227", "OMN-12351"]

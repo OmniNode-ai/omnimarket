@@ -1,13 +1,13 @@
 name: node_env_sync_alert_effect
 version: "1.0.0"
-description: "Scan logs for env sync drift, emit friction YAML, create Linear tickets (STUB)"
+description: "Scan logs for env sync drift and emit friction/Linear alerts"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_env_sync_alert_effect: "omnimarket.nodes.node_env_sync_alert_effect"
 capabilities:
   standalone: false
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_secrets: true
 dependencies:

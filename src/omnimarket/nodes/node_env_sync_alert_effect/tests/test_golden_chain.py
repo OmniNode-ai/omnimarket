@@ -1,10 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden chain test for node_env_sync_alert_effect — zero infra.
-
-Verifies OMN-12227: contract YAML is valid, handler is importable,
-and the stub raises NotImplementedError as declared.
-"""
+"""Golden chain test for node_env_sync_alert_effect — zero infra."""
 
 from __future__ import annotations
 
@@ -89,8 +85,8 @@ class TestHandlerImport:
         assert ModelEnvSyncAlertResult is not None
 
 
-class TestHandlerStub:
-    def test_handler_raises_not_implemented(self) -> None:
+class TestHandler:
+    def test_handler_emits_friction_event(self, tmp_path: Path) -> None:
         from omnimarket.nodes.node_env_sync_alert_effect.handlers.handler_env_sync_alert_effect import (
             HandlerEnvSyncAlertEffect,
         )
@@ -98,7 +94,59 @@ class TestHandlerStub:
             ModelEnvSyncAlertRequest,
         )
 
+        log_path = tmp_path / "runtime.log"
+        log_path.write_text(
+            "\n".join(
+                [
+                    "ok startup",
+                    "ENV_SYNC_DRIFT missing DATABASE_URL on stability runtime",
+                    "environment sync drift: DATABASE_URL differs from contract",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        friction_dir = tmp_path / "friction"
         handler = HandlerEnvSyncAlertEffect()
-        request = ModelEnvSyncAlertRequest(log_paths=["/var/log/onex.log"])
-        with pytest.raises(NotImplementedError):
-            handler.handle(request)
+        request = ModelEnvSyncAlertRequest(
+            log_paths=[str(log_path)],
+            alert_threshold=1,
+            friction_dir=str(friction_dir),
+        )
+        result = handler.handle(request)
+
+        assert result.alerts_created == 0
+        assert len(result.friction_events) == 1
+        assert result.friction_events[0]["env_keys"] == ["DATABASE_URL"]
+        assert Path(result.friction_events[0]["friction_path"]).is_file()
+
+    def test_handler_creates_linear_tickets_through_adapter(
+        self, tmp_path: Path
+    ) -> None:
+        from omnimarket.nodes.node_env_sync_alert_effect.handlers.handler_env_sync_alert_effect import (
+            HandlerEnvSyncAlertEffect,
+        )
+        from omnimarket.nodes.node_env_sync_alert_effect.models.model_env_sync_alert_request import (
+            ModelEnvSyncAlertRequest,
+        )
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.payloads: list[dict] = []
+
+            def create_ticket(self, payload: dict) -> str:
+                self.payloads.append(payload)
+                return "OMN-1"
+
+        log_path = tmp_path / "runtime.log"
+        log_path.write_text("env sync drift: REDPANDA_URL missing\n", encoding="utf-8")
+        adapter = Adapter()
+        result = HandlerEnvSyncAlertEffect(linear_adapter=adapter).handle(
+            ModelEnvSyncAlertRequest(
+                log_paths=[str(log_path)],
+                friction_dir=str(tmp_path / "friction"),
+                create_linear_tickets=True,
+            )
+        )
+
+        assert result.alerts_created == 1
+        assert adapter.payloads[0]["drift_signature"]
