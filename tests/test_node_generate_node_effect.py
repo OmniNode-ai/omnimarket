@@ -1,8 +1,4 @@
-"""Tests for node_generate_node_effect (OMN-12230).
-
-Verifies contract shape, model validation, stub handler behaviour,
-and that node_not_implemented is set (no live file I/O until wiring lands).
-"""
+"""Tests for node_generate_node_effect (OMN-12230)."""
 
 from __future__ import annotations
 
@@ -45,9 +41,9 @@ def test_contract_node_type_is_effect_generic() -> None:
 
 
 @pytest.mark.unit
-def test_contract_node_not_implemented_is_set() -> None:
+def test_contract_node_is_implemented() -> None:
     data = yaml.safe_load(CONTRACT_PATH.read_text())
-    assert data.get("node_not_implemented") is True
+    assert data.get("node_not_implemented") is False
 
 
 @pytest.mark.unit
@@ -124,18 +120,39 @@ def test_result_model_roundtrip() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stub handler
+# Handler
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_handler_raises_not_implemented() -> None:
+def test_handler_dry_run_returns_manifest(tmp_path: Path) -> None:
     handler = HandlerGenerateNode()
     cmd = ModelGenerateNodeCommand(
         correlation_id=uuid4(),
-        node_name="node_stub_test_effect",
+        node_name="node_manifest_test_effect",
         node_type=EnumNodeType.EFFECT,
-        output_dir="/tmp/generated",
+        output_dir=str(tmp_path / "node_manifest_test_effect"),
+        dry_run=True,
     )
-    with pytest.raises(NotImplementedError, match="OMN-12230"):
-        handler.handle(cmd)
+    result = handler.handle(cmd)
+
+    assert result.dry_run is True
+    assert "contract.yaml" in result.created_files
+    assert not Path(result.output_dir).exists()
+
+
+@pytest.mark.unit
+def test_handler_writes_generated_files(tmp_path: Path) -> None:
+    output_dir = tmp_path / "node_generated_test_compute"
+    cmd = ModelGenerateNodeCommand(
+        correlation_id=uuid4(),
+        node_name="node_generated_test_compute",
+        node_type=EnumNodeType.COMPUTE,
+        output_dir=str(output_dir),
+    )
+    result = HandlerGenerateNode().handle(cmd)
+
+    assert result.dry_run is False
+    assert (output_dir / "contract.yaml").is_file()
+    assert (output_dir / "handlers" / "handler_generated_test_compute.py").is_file()
+    assert (output_dir / "models" / "model_generated_test_compute_request.py").is_file()

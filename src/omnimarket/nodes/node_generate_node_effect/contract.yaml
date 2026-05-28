@@ -3,12 +3,12 @@ name: node_generate_node_effect
 contract_version: {major: 0, minor: 1, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Effect node that performs template expansion and file writes to scaffold a new
   ONEX node from a specification. Encapsulates the generate_node skill algorithm
-  as a contract-driven side-effecting node. Full wiring is follow-up work (OMN-12230).
+  as a contract-driven side-effecting node.
 
 input_model:
   name: ModelGenerateNodeCommand
@@ -47,5 +47,4 @@ side_effects:
 metadata:
   transport_type: kafka
   implementation_wave: 6
-  handlers_deferred_until_wave: 7
-  related_tickets: ["OMN-12230"]
+  related_tickets: ["OMN-12230", "OMN-12363"]
