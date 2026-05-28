@@ -8,7 +8,7 @@ ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 import yaml
 
@@ -167,10 +167,11 @@ class HandlerPlanAuditCompute:
                 f"{task_label} missing required field: {field}" for field in missing
             )
 
-            task_id = raw_task.get("id")
-            if not _is_non_empty_str(task_id):
+            task_id_value = raw_task.get("id")
+            if not _is_non_empty_str(task_id_value):
                 details.append(f"{task_label}.id must be a non-empty string")
                 continue
+            task_id = task_id_value
 
             if task_id in seen_ids:
                 details.append(f"duplicate task id: {task_id}")
@@ -267,5 +268,5 @@ def _find_cycle(task_graph: dict[str, list[str]]) -> list[str] | None:
     return None
 
 
-def _is_non_empty_str(value: object) -> bool:
+def _is_non_empty_str(value: object) -> TypeGuard[str]:
     return isinstance(value, str) and bool(value.strip())
