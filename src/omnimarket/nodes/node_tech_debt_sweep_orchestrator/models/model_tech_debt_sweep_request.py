@@ -10,7 +10,7 @@ Contains:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ALL_CATEGORIES = (
     "type-ignore",
@@ -50,6 +50,13 @@ class ModelTechDebtSweepRequest(BaseModel):
         default=False,
         description="When true, report findings without creating Linear tickets or epics.",
     )
+    omni_home: str = Field(
+        default="",
+        description=(
+            "Absolute OmniNode workspace root. Empty string means resolve from "
+            "OMNI_HOME; handler raises if neither is available."
+        ),
+    )
     linear_team: str = Field(
         default="Omninode",
         description="Linear team name to create tickets in.",
@@ -58,6 +65,19 @@ class ModelTechDebtSweepRequest(BaseModel):
         default="Active Sprint",
         description="Linear project name to assign new tickets to.",
     )
+
+    @field_validator("categories")
+    @classmethod
+    def validate_categories(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        unknown = tuple(
+            category for category in value if category not in ALL_CATEGORIES
+        )
+        if unknown:
+            known = ", ".join(ALL_CATEGORIES)
+            raise ValueError(
+                f"unknown tech debt categories {unknown}; expected one of {known}"
+            )
+        return value
 
 
 class ModelCategoryResult(BaseModel):
