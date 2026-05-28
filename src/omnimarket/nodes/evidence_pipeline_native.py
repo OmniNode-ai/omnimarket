@@ -525,12 +525,14 @@ def write_occ_pr(
     if isinstance(written, ModelOccPrReference):
         return written
     payload = dict(written)
+    pr_number_value = payload.get("pr_number")
+    pr_number = pr_number_value if isinstance(pr_number_value, int) else 1
     return ModelOccPrReference(
         correlation_id=validation.correlation_id,
         validation_run_id=validation.validation_run_id,
         ticket_id=validation.ticket_id,
         occ_repository=str(payload.get("occ_repository") or DEFAULT_OCC_REPOSITORY),
-        pr_number=int(payload.get("pr_number") or 1),
+        pr_number=pr_number,
         pr_url=str(payload.get("pr_url") or ""),
         branch=str(payload.get("branch") or f"occ/{validation.validation_run_id}"),
         created_at=str(payload.get("created_at") or validation.validated_at),
