@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_ab_runner
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  A/B harness for delegation comparison. Runs the same task payload twice:
+  once through a frontier model (baseline, no delegation) and once through
+  delegated routing (cheaper/local model with quality gate + escalation).
+  Emits a ModelABComparisonResult capturing tokens, cost, latency, retry
+  count, and quality gate outcome for each path. Supports the Phase 4
+  comparison table in the Deterministic Agent Output Proof Plan.
+
+handler:
+  module: omnimarket.nodes.node_delegation_ab_runner.handlers.handler_delegation_ab_runner
+  class: HandlerDelegationAbRunner
+  input_model: omnimarket.nodes.node_delegation_ab_runner.models.model_delegation_ab_request.ModelDelegationAbRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+    - local_macos_claude_hooks
+
+env_dependencies:
+  LLM_CODER_URL:
+    required: false
+    description: "Local vLLM endpoint — used as delegated path when available"
+  LLM_GLM_URL:
+    required: false
+    description: "GLM cloud API — alternate delegated path"
+  ONEX_TRACK_A_API_KEY:
+    required: false
+    description: "API key for frontier model baseline path (Gemini/cloud)"
+  GOOGLE_API_KEY:
+    required: false
+    description: "Fallback API key for frontier model baseline path"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-ab-run-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-ab-run-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Delegation A/B runner — baseline vs delegated path comparison"
+  author: "OmniNode Platform Team"
+  tags:
+    - "effect"
+    - "ab-compare"
+    - "delegation"
+    - "cost"
+    - "deterministic-proof"
