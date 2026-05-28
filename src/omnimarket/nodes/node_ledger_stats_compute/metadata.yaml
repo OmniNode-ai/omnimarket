@@ -1,0 +1,24 @@
+name: node_ledger_stats_compute
+version: "1.0.0"
+description: "Pure deterministic ledger statistics aggregator — no I/O, no side effects"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ledger_stats_compute: "omnimarket.nodes.node_ledger_stats_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ledger", "stats", "deterministic", "aggregate"]
+pack: "core"
+display_name: "Ledger Stats"
+node_role: "compute"
