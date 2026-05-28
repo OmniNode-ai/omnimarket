@@ -1,6 +1,6 @@
 name: node_rrh_compute
 version: "1.0.0"
-description: "Release Readiness Handshake validation (STUB)"
+description: "Release Readiness Handshake validation"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

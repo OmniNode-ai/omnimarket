@@ -3,12 +3,13 @@ name: node_insights_to_plan_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
   Parse an HTML insights document, extract structured insights, and produce a
   prioritised implementation plan with action items. Pure deterministic transform
   — no LLM calls, same input always yields identical output.
-  STUB — not yet implemented.
+  The supported deterministic extraction reads title, h1-h3 headings,
+  paragraphs, and list items that look like action items.
 
 handler:
   module: omnimarket.nodes.node_insights_to_plan_compute.handlers.handler_insights_to_plan_compute

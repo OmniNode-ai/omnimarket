@@ -6,8 +6,9 @@ OMN-12231: node_insights_to_plan_compute, node_plan_audit_compute,
 node_resume_session_compute, node_rewind_compute, node_rrh_compute,
 node_skill_functional_audit_compute.
 
-All nodes are COMPUTE, pure, and idempotent. The remaining stubs declare
-node_not_implemented: true and raise NotImplementedError.
+All nodes are COMPUTE, pure, and idempotent. Implemented nodes declare
+node_not_implemented: false; remaining stubs declare node_not_implemented:
+true and raise NotImplementedError.
 """
 
 from __future__ import annotations
@@ -69,8 +70,14 @@ _WAVE6_NODES = [
     "node_skill_functional_audit_compute",
 ]
 
+_WAVE6_IMPLEMENTED_NODES = [
+    "node_insights_to_plan_compute",
+    "node_plan_audit_compute",
+    "node_rrh_compute",
+]
+
 _WAVE6_STUB_NODES = [
-    node_name for node_name in _WAVE6_NODES if node_name != "node_plan_audit_compute"
+    node_name for node_name in _WAVE6_NODES if node_name not in _WAVE6_IMPLEMENTED_NODES
 ]
 
 
@@ -94,6 +101,16 @@ def test_contract_is_compute(node_name: str) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("node_name", _WAVE6_IMPLEMENTED_NODES)
+def test_contract_is_implemented(node_name: str) -> None:
+    """Implemented Wave 6 nodes declare node_not_implemented: false."""
+    contract = _load_contract(node_name)
+    assert contract.get("node_not_implemented") is False, (
+        f"{node_name}: node_not_implemented must be false"
+    )
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("node_name", _WAVE6_STUB_NODES)
 def test_contract_is_not_implemented(node_name: str) -> None:
     """Remaining Wave 6 stubs declare node_not_implemented: true."""
@@ -101,13 +118,6 @@ def test_contract_is_not_implemented(node_name: str) -> None:
     assert contract.get("node_not_implemented") is True, (
         f"{node_name}: node_not_implemented must be true"
     )
-
-
-@pytest.mark.unit
-def test_plan_audit_contract_is_implemented() -> None:
-    """node_plan_audit_compute has proven behavior and is no longer a stub."""
-    contract = _load_contract("node_plan_audit_compute")
-    assert contract.get("node_not_implemented") is False
 
 
 @pytest.mark.unit
@@ -146,13 +156,32 @@ def test_contract_topics_follow_naming_convention(node_name: str) -> None:
 
 
 @pytest.mark.unit
-def test_insights_to_plan_handler_stub() -> None:
-    """HandlerInsightsToPlanCompute raises NotImplementedError."""
+def test_insights_to_plan_handler_extracts_actions(tmp_path: Path) -> None:
+    """HandlerInsightsToPlanCompute parses deterministic HTML inputs."""
+    html_path = tmp_path / "insights.html"
+    html_path.write_text(
+        """
+<html>
+  <head><title>Feature Insights</title></head>
+  <body>
+    <h1>Evidence</h1>
+    <p>Receipt gate is passing for the selected slice.</p>
+    <ul>
+      <li>Action: Owner: platform fix high priority receipt drift</li>
+    </ul>
+  </body>
+</html>
+""".strip(),
+        encoding="utf-8",
+    )
     handler = HandlerInsightsToPlanCompute()
-    with pytest.raises(NotImplementedError):
-        handler.handle(
-            ModelInsightsToPlanComputeRequest(html_path="/tmp/insights.html")
-        )
+    result = handler.handle(ModelInsightsToPlanComputeRequest(html_path=str(html_path)))
+
+    assert result.status == "ok"
+    assert result.plan["title"] == "Feature Insights"
+    assert result.plan["action_count"] == 1
+    assert result.action_items[0].priority == "high"
+    assert result.action_items[0].owner == "platform"
 
 
 @pytest.mark.unit
@@ -237,11 +266,14 @@ def test_rewind_request_frozen() -> None:
 
 
 @pytest.mark.unit
-def test_rrh_handler_stub() -> None:
-    """HandlerRrhCompute raises NotImplementedError."""
+def test_rrh_handler_validates_release_id() -> None:
+    """HandlerRrhCompute validates registered deterministic checks."""
     handler = HandlerRrhCompute()
-    with pytest.raises(NotImplementedError):
-        handler.handle(ModelRrhComputeRequest(release_id="v1.2.3"))
+    result = handler.handle(ModelRrhComputeRequest(release_id="v1.2.3"))
+
+    assert result.status == "ok"
+    assert result.ready is True
+    assert result.blocking_checks == []
 
 
 @pytest.mark.unit
