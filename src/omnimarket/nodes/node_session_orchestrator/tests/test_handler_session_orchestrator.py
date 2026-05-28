@@ -373,6 +373,8 @@ class TestPhase2RSD:
         monkeypatch.setenv(
             "ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE", str(fixture_path)
         )
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
+        monkeypatch.setenv("OMNI_WORKTREES", str(tmp_path / "omni_worktrees"))
 
         handler = HandlerSessionOrchestrator(probes=[])
         result = handler.handle(
@@ -436,9 +438,13 @@ class TestPhase3Dispatch:
         parsed = json.loads(receipts[0])
         assert parsed["correlation_chain"].startswith("sess-test.disp-001.OMN-42")
 
-    def test_phase3_writes_inflight_yaml(self, tmp_path: pathlib.Path) -> None:
+    def test_phase3_writes_inflight_yaml(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import yaml as _yaml
 
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
+        monkeypatch.setenv("OMNI_WORKTREES", str(tmp_path / "omni_worktrees"))
         handler = HandlerSessionOrchestrator(probes=[])
         state_dir = str(tmp_path / "session")
         with patch(
