@@ -1,0 +1,66 @@
+---
+name: node_shim_scanner
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  AST-based scanner that walks Python source files for @shim decorator
+  annotations and reports expired or expiring shims. Pure COMPUTE —
+  receives file paths, returns findings. No filesystem side effects beyond
+  reading the files provided.
+
+handler:
+  module: omnimarket.nodes.node_shim_scanner.handlers.handler_shim_scanner
+  class: HandlerShimScanner
+  input_model: omnimarket.nodes.node_shim_scanner.models.model_shim_scan_request.ModelShimScanRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerShimScanner
+        module: omnimarket.nodes.node_shim_scanner.handlers.handler_shim_scanner
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+
+inputs:
+  paths:
+    type: list[str]
+    description: "Python file or directory paths to scan"
+    required: true
+  reference_date:
+    type: str
+    description: "ISO-8601 date string (YYYY-MM-DD); defaults to today if omitted"
+    required: false
+    default: null
+  warn_days_before_expiry:
+    type: int
+    description: "Number of days before expiry to emit a WARN finding (default 30)"
+    required: false
+    default: 30
+
+outputs:
+  findings:
+    type: list[ModelShimFinding]
+    description: "One entry per @shim annotation found"
+  expired_count:
+    type: int
+    description: "Number of shims past their expires_on date"
+  expiring_count:
+    type: int
+    description: "Number of shims expiring within warn_days_before_expiry"
+  total_count:
+    type: int
+    description: "Total @shim annotations scanned"
+
+terminal_event: onex.evt.omnimarket.shim-scan-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.shim-scan-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.shim-scan-completed.v1
