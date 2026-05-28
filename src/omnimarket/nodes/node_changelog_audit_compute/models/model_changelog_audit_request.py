@@ -20,3 +20,7 @@ class ModelChangelogAuditRequest(BaseModel):
         default=None,
         description="Optional dependency filter — only include entries that affect these packages",
     )
+    changelog_contents: dict[str, str] = Field(
+        default_factory=dict,
+        description="Raw changelog markdown keyed by repository name or path",
+    )
