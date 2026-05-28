@@ -1,13 +1,13 @@
 name: node_rewind_compute
 version: "1.0.0"
-description: "Query event stream by agent identity and timestamp window (STUB)"
+description: "Query event stream by agent identity and timestamp window"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_rewind_compute: "omnimarket.nodes.node_rewind_compute"
 capabilities:
   standalone: false
-  full_runtime: false
+  full_runtime: true
   requires_network: false
 dependencies:
   - "omnibase_core>=0.40.0"

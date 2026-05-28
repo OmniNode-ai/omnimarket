@@ -7,8 +7,7 @@ node_resume_session_compute, node_rewind_compute, node_rrh_compute,
 node_skill_functional_audit_compute.
 
 All nodes are COMPUTE, pure, and idempotent. Implemented nodes declare
-node_not_implemented: false; remaining stubs declare node_not_implemented:
-true and raise NotImplementedError.
+node_not_implemented: false; remaining stubs declare node_not_implemented: true.
 """
 
 from __future__ import annotations
@@ -73,6 +72,8 @@ _WAVE6_NODES = [
 _WAVE6_IMPLEMENTED_NODES = [
     "node_insights_to_plan_compute",
     "node_plan_audit_compute",
+    "node_resume_session_compute",
+    "node_rewind_compute",
     "node_rrh_compute",
 ]
 
@@ -226,13 +227,15 @@ def test_plan_audit_request_frozen() -> None:
 
 
 @pytest.mark.unit
-def test_resume_session_handler_stub() -> None:
-    """HandlerResumeSessionCompute raises NotImplementedError."""
-    handler = HandlerResumeSessionCompute()
-    with pytest.raises(NotImplementedError):
-        handler.handle(
-            ModelResumeSessionComputeRequest(task_id="task-001", agent_id="agent-001")
-        )
+def test_resume_session_handler_returns_not_found(tmp_path: Path) -> None:
+    """HandlerResumeSessionCompute reports missing projections deterministically."""
+    handler = HandlerResumeSessionCompute(state_dir=tmp_path)
+    result = handler.handle(
+        ModelResumeSessionComputeRequest(task_id="task-001", agent_id="agent-001")
+    )
+
+    assert result.status == "not_found"
+    assert result.session_state == {}
 
 
 @pytest.mark.unit
@@ -244,15 +247,15 @@ def test_resume_session_request_frozen() -> None:
 
 
 @pytest.mark.unit
-def test_rewind_handler_stub() -> None:
-    """HandlerRewindCompute raises NotImplementedError."""
-    handler = HandlerRewindCompute()
-    with pytest.raises(NotImplementedError):
-        handler.handle(
-            ModelRewindComputeRequest(
-                agent_name="agent", timestamp="2026-05-25T00:00:00Z"
-            )
-        )
+def test_rewind_handler_returns_not_found(tmp_path: Path) -> None:
+    """HandlerRewindCompute reports no events deterministically."""
+    handler = HandlerRewindCompute(state_dir=tmp_path)
+    result = handler.handle(
+        ModelRewindComputeRequest(agent_name="agent", timestamp="2026-05-25T00:00:00Z")
+    )
+
+    assert result.status == "not_found"
+    assert result.event_count == 0
 
 
 @pytest.mark.unit
