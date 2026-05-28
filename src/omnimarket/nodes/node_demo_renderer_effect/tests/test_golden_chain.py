@@ -3,7 +3,7 @@
 """Golden chain test for node_demo_renderer_effect [OMN-12235].
 
 Verifies contract YAML is valid, handler imports cleanly, models are
-well-formed. Handler execution raises NotImplementedError (stub-ok).
+well-formed, and chart rendering is deterministic.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ class TestContractYaml:
         assert isinstance(data, dict)
         assert data["name"] == "node_demo_renderer_effect"
         assert data["node_type"] == "EFFECT_GENERIC"
-        assert data.get("node_not_implemented") is True
+        assert data.get("node_not_implemented") is False
 
     def test_contract_declares_handler(self, contract_path: Path) -> None:
         import yaml
@@ -125,9 +125,11 @@ class TestModels:
         assert req.title == "Model Cost Comparison"
 
 
-class TestHandlerIsStub:
-    def test_handle_raises_not_implemented(self) -> None:
-        from omnimarket.events.demo import ModelDemoCostResult
+class TestHandlerBehavior:
+    def test_handle_renders_ascii_chart(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from omnimarket.events.demo import ModelDemoCostEntry, ModelDemoCostResult
         from omnimarket.nodes.node_demo_renderer_effect.handlers.handler_renderer import (
             NodeDemoRendererEffect,
         )
@@ -137,7 +139,25 @@ class TestHandlerIsStub:
 
         handler = NodeDemoRendererEffect()
         req = ModelDemoRenderRequest(
-            cost_result=ModelDemoCostResult(costs=[], cheapest_model_id=None),
+            cost_result=ModelDemoCostResult(
+                costs=[
+                    ModelDemoCostEntry(
+                        model_id="m1",
+                        prompt_cost_usd=0.001,
+                        completion_cost_usd=0.002,
+                        total_cost_usd=0.003,
+                        prompt_tokens=100,
+                        completion_tokens=50,
+                    )
+                ],
+                cheapest_model_id="m1",
+            ),
+            bar_width=10,
         )
-        with pytest.raises(NotImplementedError):
-            handler.handle(req)
+        result = handler.handle(req)
+
+        captured = capsys.readouterr()
+        assert "Model Cost Comparison" in captured.out
+        assert "m1" in result.chart_lines[2]
+        assert "|##########|" in result.chart_lines[2]
+        assert result.chart_lines[-1] == "Cheapest: m1"

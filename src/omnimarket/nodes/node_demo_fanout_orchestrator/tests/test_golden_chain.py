@@ -3,7 +3,7 @@
 """Golden chain test for node_demo_fanout_orchestrator [OMN-12235].
 
 Verifies contract YAML is valid, handler imports cleanly, and models are
-well-formed. Handler execution raises NotImplementedError (stub-ok).
+well-formed. Dry-run execution uses deterministic provider fixtures.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class TestContractYaml:
         assert isinstance(data, dict)
         assert data["name"] == "node_demo_fanout_orchestrator"
         assert data["node_type"] == "orchestrator"
-        assert data.get("node_not_implemented") is True
+        assert data.get("node_not_implemented") is False
 
     def test_contract_declares_handler(self, contract_path: Path) -> None:
         import yaml
@@ -133,9 +133,46 @@ class TestModels:
         assert len(req.model_configs) == 1
 
 
-class TestHandlerIsStub:
+class TestHandlerBehavior:
     @pytest.mark.asyncio
-    async def test_handle_raises_not_implemented(self) -> None:
+    async def test_handle_runs_dry_run_provider_fixtures(self) -> None:
+        from omnimarket.nodes.node_demo_fanout_orchestrator.handlers.handler_fanout import (
+            HandlerDemoFanoutOrchestrator,
+        )
+        from omnimarket.nodes.node_demo_fanout_orchestrator.models.model_fanout_request import (
+            ModelDemoFanoutRequest,
+            ModelDemoModelConfig,
+            ModelDemoProviderFixture,
+        )
+
+        handler = HandlerDemoFanoutOrchestrator()
+        req = ModelDemoFanoutRequest(
+            run_id=uuid4(),
+            correlation_id=uuid4(),
+            tasks=["ping"],
+            model_configs=[
+                ModelDemoModelConfig(
+                    model_id="m1",
+                    endpoint_url="fixture://m1",
+                    provider="deterministic_fixture",
+                )
+            ],
+            dry_run=True,
+            provider_fixtures={
+                "m1": ModelDemoProviderFixture(
+                    outputs=["pong"], prompt_tokens=7, completion_tokens=3
+                )
+            },
+        )
+        result = await handler.handle(req)
+
+        assert len(result.results) == 1
+        assert result.results[0].output_text == "pong"
+        assert result.results[0].prompt_tokens == 7
+        assert result.results[0].completion_tokens == 3
+
+    @pytest.mark.asyncio
+    async def test_live_provider_missing_credentials_preflights(self) -> None:
         from omnimarket.nodes.node_demo_fanout_orchestrator.handlers.handler_fanout import (
             HandlerDemoFanoutOrchestrator,
         )
@@ -151,9 +188,13 @@ class TestHandlerIsStub:
             tasks=["ping"],
             model_configs=[
                 ModelDemoModelConfig(
-                    model_id="m1", endpoint_url="http://localhost:8000"
+                    model_id="gemini/gemini-2.0-flash",
+                    endpoint_url="https://generativelanguage.googleapis.com/v1beta/openai",
+                    provider="openai_compatible",
+                    api_key_env_var="ONEX_DEMO_TEST_MISSING_KEY",
                 )
             ],
         )
-        with pytest.raises(NotImplementedError):
+
+        with pytest.raises(RuntimeError, match="ONEX_DEMO_TEST_MISSING_KEY"):
             await handler.handle(req)

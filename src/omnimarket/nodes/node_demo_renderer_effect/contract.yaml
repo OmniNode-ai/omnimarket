@@ -8,7 +8,7 @@ name: node_demo_renderer_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Demo renderer effect node. Accepts per-model cost data and renders it as
@@ -66,4 +66,4 @@ side_effects:
 metadata:
   transport_type: kafka
   implementation_wave: 7
-  related_tickets: ["OMN-12235"]
+  related_tickets: ["OMN-9359", "OMN-12235"]

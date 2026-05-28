@@ -11,6 +11,7 @@ Contains:
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,8 +28,35 @@ class ModelDemoModelConfig(BaseModel):
         description="Logical model identifier (e.g. 'qwen3-coder-30b')"
     )
     endpoint_url: str = Field(description="OpenAI-compatible endpoint base URL")
+    provider: Literal[
+        "openai_compatible",
+        "claude_cli",
+        "deterministic_fixture",
+    ] = Field(
+        default="openai_compatible",
+        description="Provider adapter selected by the fan-out runtime.",
+    )
+    api_key_env_var: str | None = Field(
+        default=None,
+        description="Required environment variable for live OpenAI-compatible calls.",
+    )
     max_tokens: int = Field(default=512, ge=1, description="Maximum tokens to generate")
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    timeout_seconds: float = Field(default=30.0, gt=0.0, le=300.0)
+
+
+class ModelDemoProviderFixture(BaseModel):
+    """Deterministic provider fixture used by dry-run fan-out execution."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    outputs: list[str] = Field(
+        default_factory=list,
+        description="Per-task deterministic outputs. Reused cyclically when shorter than tasks.",
+    )
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    latency_ms: float = Field(default=0.0, ge=0.0)
 
 
 class ModelDemoFanoutRequest(BaseModel):
@@ -44,6 +72,14 @@ class ModelDemoFanoutRequest(BaseModel):
     model_configs: list[ModelDemoModelConfig] = Field(
         min_length=1, description="Models to fan out across"
     )
+    dry_run: bool = Field(
+        default=False,
+        description="Use deterministic provider fixtures and skip live providers.",
+    )
+    provider_fixtures: dict[str, ModelDemoProviderFixture] = Field(
+        default_factory=dict,
+        description="Dry-run fixtures keyed by model_id.",
+    )
 
 
 class ModelDemoFanoutResult(BaseModel):
@@ -54,3 +90,12 @@ class ModelDemoFanoutResult(BaseModel):
     run_id: UUID
     correlation_id: UUID
     results: list[ModelDemoInferenceResult]
+
+
+__all__ = [
+    "ModelDemoFanoutRequest",
+    "ModelDemoFanoutResult",
+    "ModelDemoInferenceResult",
+    "ModelDemoModelConfig",
+    "ModelDemoProviderFixture",
+]
