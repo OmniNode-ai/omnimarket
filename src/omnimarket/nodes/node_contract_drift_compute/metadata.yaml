@@ -1,6 +1,6 @@
 name: node_contract_drift_compute
 version: "1.0.0"
-description: "Compute cross-repo contract drift against pinned baselines with field-level classification"
+description: "Compute cross-repo contract-vs-handler topic drift with field-level classification"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

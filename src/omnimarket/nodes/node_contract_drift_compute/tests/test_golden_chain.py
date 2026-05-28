@@ -3,15 +3,15 @@
 
 """Golden chain test for node_contract_drift_compute.
 
-Verifies OMN-12222: the contract_drift_compute node can be loaded and its
-contract + handler structure is correct. The handler raises NotImplementedError
-(node_not_implemented: true) — the tests verify the stub contract, metadata,
-import surface, and NotImplementedError behaviour.
+Verifies OMN-12346: the contract_drift_compute node is implemented as a native
+deterministic compute handler. The contract is the source of truth for runtime
+event-bus topics, and handler-only topic literals are reported as drift.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 import yaml
@@ -35,6 +35,43 @@ def contract_path(node_dir: Path) -> Path:
 @pytest.fixture
 def metadata_path(node_dir: Path) -> Path:
     return node_dir / "metadata.yaml"
+
+
+def _write_native_node(
+    omni_home: Path,
+    *,
+    node_name: str = "node_native_sample",
+    handler_body: str,
+    publish_topics: list[str] | None = None,
+) -> Path:
+    repo = omni_home / "omnimarket"
+    node_dir = repo / "src" / "omnimarket" / "nodes" / node_name
+    handlers_dir = node_dir / "handlers"
+    handlers_dir.mkdir(parents=True)
+    (repo / "src").mkdir(parents=True, exist_ok=True)
+    (handlers_dir / "__init__.py").write_text("")
+    (handlers_dir / "handler_native_sample.py").write_text(dedent(handler_body))
+    contract = {
+        "name": node_name,
+        "node_type": "compute",
+        "node_version": {"major": 1, "minor": 0, "patch": 0},
+        "contract_version": {"major": 1, "minor": 0, "patch": 0},
+        "description": "Native sample node",
+        "handler": {
+            "module": "omnimarket.nodes.node_native_sample.handlers.handler_native_sample",
+            "class": "NodeNativeSample",
+            "input_model": "omnimarket.nodes.node_native_sample.models.ModelRequest",
+        },
+        "terminal_event": "onex.evt.omnimarket.native-sample-completed.v1",
+        "event_bus": {
+            "subscribe_topics": ["onex.cmd.omnimarket.native-sample-start.v1"],
+            "publish_topics": publish_topics
+            if publish_topics is not None
+            else ["onex.evt.omnimarket.native-sample-completed.v1"],
+        },
+    }
+    (node_dir / "contract.yaml").write_text(yaml.safe_dump(contract, sort_keys=False))
+    return node_dir
 
 
 # ---------------------------------------------------------------------------
@@ -61,10 +98,10 @@ class TestContractYaml:
             data = yaml.safe_load(f)
         assert data.get("node_type") == "compute"
 
-    def test_contract_is_marked_not_implemented(self, contract_path: Path) -> None:
+    def test_contract_is_marked_implemented(self, contract_path: Path) -> None:
         with open(contract_path) as f:
             data = yaml.safe_load(f)
-        assert data.get("node_not_implemented") is True
+        assert data.get("node_not_implemented") is False
 
     def test_contract_purity_is_pure(self, contract_path: Path) -> None:
         with open(contract_path) as f:
@@ -176,19 +213,117 @@ class TestHandlerImport:
         assert ModelBoundaryFinding is not None
 
 
-class TestHandlerStubBehaviour:
-    """Handler raises NotImplementedError as documented by node_not_implemented: true."""
+class TestHandlerBehaviour:
+    """Handler performs deterministic contract-vs-handler topic drift detection."""
 
-    def test_handler_raises_not_implemented(self) -> None:
+    def test_handler_returns_clean_result_for_contract_declared_topics(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute import (
             ModelContractDriftComputeRequest,
             NodeContractDriftCompute,
         )
 
+        _write_native_node(
+            tmp_path,
+            handler_body="""
+            TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"
+            TOPIC_DONE = "onex.evt.omnimarket.native-sample-completed.v1"
+            """,
+        )
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
         handler = NodeContractDriftCompute()
-        request = ModelContractDriftComputeRequest()
-        with pytest.raises(NotImplementedError):
-            handler.handle(request)
+        request = ModelContractDriftComputeRequest(
+            repos=["omnimarket"], check_boundaries=False
+        )
+        result = handler.handle(request)
+
+        assert result.overall_status == "clean"
+        assert result.repos_scanned == 1
+        assert result.total_contracts_checked == 1
+        assert result.drifted_contracts == []
+        assert result.violations == []
+        assert result.staleness_scores == {"omnimarket": 0.0}
+
+    def test_handler_reports_handler_only_topic_as_breaking_drift(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute import (
+            ModelContractDriftComputeRequest,
+            NodeContractDriftCompute,
+        )
+
+        _write_native_node(
+            tmp_path,
+            handler_body="""
+            TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"
+            TOPIC_DONE = "onex.evt.omnimarket.native-sample-completed.v1"
+            TOPIC_DRIFT = "onex.evt.omnimarket.undeclared-drift.v1"
+            """,
+        )
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        result = NodeContractDriftCompute().handle(
+            ModelContractDriftComputeRequest(
+                repos=["omnimarket"], check_boundaries=False
+            )
+        )
+
+        assert result.overall_status == "breaking"
+        assert result.repos_scanned == 1
+        assert result.total_contracts_checked == 1
+        assert result.staleness_scores == {"omnimarket": 1.0}
+        assert len(result.drifted_contracts) == 1
+        finding = result.drifted_contracts[0]
+        assert finding.repo == "omnimarket"
+        assert finding.path.endswith("/contract.yaml")
+        assert finding.severity == "BREAKING"
+        assert "handler topic literal" in finding.summary
+        assert any(
+            change.path
+            == "handlers.topic_literals.onex.evt.omnimarket.undeclared-drift.v1"
+            and change.is_breaking
+            and change.severity == "BREAKING"
+            for change in finding.field_changes
+        )
+        assert result.violations == [
+            f"omnimarket:{finding.path}: BREAKING {finding.summary}"
+        ]
+
+    def test_strict_mode_reports_contract_topic_not_present_as_handler_literal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute import (
+            ModelContractDriftComputeRequest,
+            NodeContractDriftCompute,
+        )
+
+        _write_native_node(
+            tmp_path,
+            handler_body='TOPIC_START = "onex.cmd.omnimarket.native-sample-start.v1"\n',
+        )
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+
+        result = NodeContractDriftCompute().handle(
+            ModelContractDriftComputeRequest(
+                repos=["omnimarket"],
+                check_boundaries=False,
+                sensitivity="STRICT",
+                severity_threshold="NON_BREAKING",
+            )
+        )
+
+        assert result.overall_status == "drifted"
+        assert len(result.drifted_contracts) == 1
+        finding = result.drifted_contracts[0]
+        assert finding.severity == "NON_BREAKING"
+        assert any(
+            change.path
+            == "event_bus.declared_topics.onex.evt.omnimarket.native-sample-completed.v1"
+            and not change.is_breaking
+            for change in finding.field_changes
+        )
 
     def test_request_model_defaults(self) -> None:
         from omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute import (

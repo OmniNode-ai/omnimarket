@@ -3,13 +3,14 @@ name: node_contract_drift_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
-  Compute cross-repo contract drift by hashing all contracts against pinned baselines
-  and classifying field-level changes as BREAKING, ADDITIVE, or NON_BREAKING. Also
-  validates Kafka boundary parity from kafka_boundaries.yaml. Pure compute node —
-  no external I/O, no LLM calls.
+  Compute cross-repo contract drift by comparing contract-declared event-bus topics
+  and terminal events against hardcoded topic literals in native node handler source.
+  The contract remains the typed source of truth; handler-only topic literals are
+  classified as BREAKING drift. Pure compute node — no external network I/O, no LLM
+  calls.
 
 handler:
   module: omnimarket.nodes.node_contract_drift_compute.handlers.handler_contract_drift_compute
@@ -38,7 +39,7 @@ inputs:
     default: []
   baseline_path:
     type: str
-    description: "Path to the snapshot directory containing pinned contract hashes"
+    description: "Reserved for future pinned snapshots; empty uses contract-vs-handler topic mode"
     required: false
     default: ""
   dry_run:
