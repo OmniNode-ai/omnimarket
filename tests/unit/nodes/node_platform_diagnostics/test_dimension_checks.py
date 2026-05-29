@@ -270,8 +270,8 @@ class TestCheckHookHealthDryRun:
         logs_dir = tmp_path / ".onex_state" / "hooks" / "logs"
         logs_dir.mkdir(parents=True)
         (logs_dir / "violations.log").write_text(
-            "violation: hardcoded path /Users/foo\n"
-            "violation: hardcoded ip 192.168.0.1\n"
+            "violation: hardcoded path /Users/foo\n"  # test-literal-ok: hook log fixture exercises violation counting
+            "violation: hardcoded ip 192.168.0.1\n"  # test-literal-ok: hook log fixture exercises violation counting
         )
         ctx = _ctx(tmp_path, dry_run=True)
         result = await check_hook_health(ctx)
