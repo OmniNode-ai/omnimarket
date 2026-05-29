@@ -91,13 +91,24 @@ class HandlerModelRouter:
 
     The registry is typically loaded from model_registry.yaml at construction time.
     No model IDs, base URLs, or timeout literals appear in this source.
+
+    Dependency injection (OMN-12429): ``policy`` and ``registry`` are the
+    contract-declared *config* dependencies and are always supplied by the
+    in-process caller (the node contract marks this node
+    ``runtime_dispatch.invocation_mode: in_process`` and declares an empty
+    ``subscribe_topics`` — it is never dispatched a message by the runtime).
+    They default to ``None`` so the runtime auto-wiring resolver can construct
+    the handler at boot by injecting only the DI-resolvable ``event_bus`` (it
+    has no usable config to inject and never delivers a message to this
+    instance). Any routing method called on an unconfigured instance fails
+    loudly via ``_require_configured`` — there is no silent default routing.
     """
 
     def __init__(
         self,
-        policy: ModelRoutingPolicy,
-        registry: Registry,
-        event_bus: Any,
+        policy: ModelRoutingPolicy | None = None,
+        registry: Registry | None = None,
+        event_bus: Any = None,
         escalation_log_dir: str | None = None,
     ) -> None:
         self._policy = policy
@@ -110,7 +121,45 @@ class HandlerModelRouter:
         self._degraded: set[str] = set()
         self._escalation_event_seq: int = 0
 
-        self._validate_registry()
+        # Only validate when fully configured. An auto-wired (boot-time)
+        # instance has no policy/registry and is never routed to; validation
+        # of an unconfigured instance is deferred to first use, where
+        # _require_configured raises loudly.
+        if self._policy is not None and self._registry is not None:
+            self._validate_registry()
+
+    # ------------------------------------------------------------------ #
+    # Configuration guard                                                  #
+    # ------------------------------------------------------------------ #
+
+    def _require_configured(self) -> tuple[ModelRoutingPolicy, Registry]:
+        """Return (policy, registry), raising loudly if either is absent.
+
+        The runtime auto-wires this handler at boot with only ``event_bus``
+        injected (policy/registry are caller-supplied config, not runtime
+        services). That boot-time instance is never routed to. If any routing
+        method is nonetheless invoked without configuration, fail fast rather
+        than silently routing to a default endpoint.
+        """
+        if self._policy is None or self._registry is None:
+            msg = (
+                "HandlerModelRouter was constructed without policy/registry "
+                "(runtime auto-wiring boot instance) and cannot route. "
+                "Construct it with an explicit ModelRoutingPolicy and registry "
+                "from the calling node before invoking routing."
+            )
+            raise RuntimeError(msg)
+        return self._policy, self._registry
+
+    @property
+    def _cfg_policy(self) -> ModelRoutingPolicy:
+        """Configured policy; raises loudly on an unconfigured boot instance."""
+        return self._require_configured()[0]
+
+    @property
+    def _cfg_registry(self) -> Registry:
+        """Configured registry; raises loudly on an unconfigured boot instance."""
+        return self._require_configured()[1]
 
     # ------------------------------------------------------------------ #
     # Validation                                                           #
@@ -118,18 +167,18 @@ class HandlerModelRouter:
 
     def _validate_registry(self) -> None:
         missing = []
-        if self._policy.primary not in self._registry:
-            missing.append(self._policy.primary)
+        if self._cfg_policy.primary not in self._cfg_registry:
+            missing.append(self._cfg_policy.primary)
         if (
-            self._policy.ci_override is not None
-            and self._policy.ci_override.primary not in self._registry
+            self._cfg_policy.ci_override is not None
+            and self._cfg_policy.ci_override.primary not in self._cfg_registry
         ):
-            missing.append(self._policy.ci_override.primary)
+            missing.append(self._cfg_policy.ci_override.primary)
         if (
-            self._policy.fallback is not None
-            and self._policy.fallback not in self._registry
+            self._cfg_policy.fallback is not None
+            and self._cfg_policy.fallback not in self._cfg_registry
         ):
-            missing.append(self._policy.fallback)
+            missing.append(self._cfg_policy.fallback)
         if missing:
             msg = f"Registry missing required model keys: {missing}"
             raise ValueError(msg)
@@ -141,7 +190,7 @@ class HandlerModelRouter:
     async def route_async(self, request: ModelRoutingRequest) -> ModelRoutingResult:
         """Route request to the best available model endpoint."""
         primary_key = self._resolve_primary_key()
-        fallback_key = self._policy.fallback
+        fallback_key = self._cfg_policy.fallback
 
         use_fallback = primary_key in self._degraded or not await self._check_health(
             primary_key
@@ -153,7 +202,7 @@ class HandlerModelRouter:
                 assert fallback_key is not None
                 result = ModelRoutingResult(
                     model_key=fallback_key,
-                    endpoint_url=self._registry[fallback_key]["base_url"],
+                    endpoint_url=self._cfg_registry[fallback_key]["base_url"],
                     used_fallback=True,
                     correlation_id=request.correlation_id,
                 )
@@ -161,7 +210,7 @@ class HandlerModelRouter:
                 return result
             msg = (
                 f"Primary {primary_key!r} degraded and role {request.role!r} "
-                f"is not in fallback_allowed_roles {self._policy.fallback_allowed_roles}"
+                f"is not in fallback_allowed_roles {self._cfg_policy.fallback_allowed_roles}"
             )
             await self._emit_route_rejected_event(
                 request=request,
@@ -174,7 +223,7 @@ class HandlerModelRouter:
         self._record_success(primary_key)
         result = ModelRoutingResult(
             model_key=primary_key,
-            endpoint_url=self._registry[primary_key]["base_url"],
+            endpoint_url=self._cfg_registry[primary_key]["base_url"],
             used_fallback=False,
             correlation_id=request.correlation_id,
         )
@@ -192,8 +241,8 @@ class HandlerModelRouter:
         tiers are exhausted.
         """
         chain = ModelEscalationChain.from_registry(
-            self._registry,
-            max_attempts_per_tier=self._policy.max_retries,
+            self._cfg_registry,
+            max_attempts_per_tier=self._cfg_policy.max_retries,
         )
         eligible_tiers = chain.auto_escalation_tiers()
 
@@ -239,7 +288,7 @@ class HandlerModelRouter:
                     "Skipping model %r (tier=%s): required env key %r absent",
                     model_key,
                     tier.name,
-                    self._registry[model_key].get("env_key", ""),
+                    self._cfg_registry[model_key].get("env_key", ""),
                 )
                 continue
 
@@ -264,7 +313,7 @@ class HandlerModelRouter:
                 self._record_success(model_key)
                 result = ModelRoutingResult(
                     model_key=model_key,
-                    endpoint_url=self._registry[model_key]["base_url"],
+                    endpoint_url=self._cfg_registry[model_key]["base_url"],
                     used_fallback=tier != EscalationTier.local,
                     correlation_id=request.correlation_id,
                     escalation_tier=tier,
@@ -300,25 +349,25 @@ class HandlerModelRouter:
 
     def _resolve_primary_key(self) -> str:
         if (
-            self._policy.ci_override is not None
+            self._cfg_policy.ci_override is not None
             and os.environ.get(  # contract-config-ok: declared in contract.yaml config section
                 "ONEX_CI_MODE", ""
             ).lower()
             in ("1", "true")
         ):
-            return self._policy.ci_override.primary
-        return self._policy.primary
+            return self._cfg_policy.ci_override.primary
+        return self._cfg_policy.primary
 
     def _should_fallback(self, model_key: str, role: str) -> bool:
-        if self._policy.fallback is None:
+        if self._cfg_policy.fallback is None:
             return False
-        if not self._policy.fallback_allowed_roles:
+        if not self._cfg_policy.fallback_allowed_roles:
             return False
-        return role in self._policy.fallback_allowed_roles
+        return role in self._cfg_policy.fallback_allowed_roles
 
     def _model_env_key_present(self, model_key: str) -> bool:
         """Return True if the model required env key is set (or no key required)."""
-        entry = self._registry.get(model_key, {})
+        entry = self._cfg_registry.get(model_key, {})
         env_key = entry.get("env_key", "")
         if not env_key:
             return True
@@ -369,7 +418,7 @@ class HandlerModelRouter:
         """Emit canonical route-resolution event when an event bus is configured."""
         if self._event_bus is None:
             return
-        entry = self._registry.get(result.model_key, {})
+        entry = self._cfg_registry.get(result.model_key, {})
         policy_hash = self._routing_policy_hash()
         event = ModelLlmRouteResolvedEvent(
             routing_decision_id=self._routing_decision_id(
@@ -385,7 +434,7 @@ class HandlerModelRouter:
             policy_hash=policy_hash,
             pricing_manifest_hash=self._pricing_manifest_hash(entry),
             fallback_reason=(
-                self._policy.reason_for_fallback if result.used_fallback else ""
+                self._cfg_policy.reason_for_fallback if result.used_fallback else ""
             ),
             used_fallback=result.used_fallback,
             created_at=datetime.now(UTC),
@@ -406,7 +455,7 @@ class HandlerModelRouter:
         """Emit canonical route-rejection event when an event bus is configured."""
         if self._event_bus is None:
             return
-        entry = self._registry.get(model_key, {})
+        entry = self._cfg_registry.get(model_key, {})
         policy_hash = self._routing_policy_hash()
         event = ModelLlmRouteRejectedEvent(
             routing_decision_id=self._routing_decision_id(
@@ -421,7 +470,7 @@ class HandlerModelRouter:
             routing_policy_hash=policy_hash,
             policy_hash=policy_hash,
             pricing_manifest_hash=self._pricing_manifest_hash(entry),
-            fallback_reason=self._policy.reason_for_fallback,
+            fallback_reason=self._cfg_policy.reason_for_fallback,
             failure_class=failure_class,
             failure_reason=failure_reason,
             created_at=datetime.now(UTC),
@@ -457,12 +506,14 @@ class HandlerModelRouter:
         return f"sha256:{digest}"
 
     def _routing_policy_hash(self) -> str:
-        data = self._policy.model_dump(mode="json")
+        data = self._cfg_policy.model_dump(mode="json")
         canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
     def _registry_hash(self) -> str:
-        canonical = json.dumps(self._registry, sort_keys=True, separators=(",", ":"))
+        canonical = json.dumps(
+            self._cfg_registry, sort_keys=True, separators=(",", ":")
+        )
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
     def _served_model_id(self, model_key: str, entry: RegistryEntry) -> str:
@@ -488,7 +539,7 @@ class HandlerModelRouter:
         if pricing_manifest_hash:
             return pricing_manifest_hash
         policy_pricing_manifest_hash = getattr(
-            self._policy, "pricing_manifest_hash", ""
+            self._cfg_policy, "pricing_manifest_hash", ""
         )
         if isinstance(policy_pricing_manifest_hash, str):
             return policy_pricing_manifest_hash
@@ -522,7 +573,7 @@ class HandlerModelRouter:
     # ------------------------------------------------------------------ #
 
     async def _check_health(self, model_key: str) -> bool:
-        entry = self._registry.get(model_key)
+        entry = self._cfg_registry.get(model_key)
         if entry is None:
             return False
         health_path = entry.get("health_path", "")
@@ -561,7 +612,7 @@ class HandlerModelRouter:
         min(1 * 2^attempt, 30s) +/- 20% jitter.
         """
         last_exc: Exception | None = None
-        for attempt in range(self._policy.max_retries):
+        for attempt in range(self._cfg_policy.max_retries):
             if attempt > 0:
                 base = min(_BACKOFF_BASE_S * (2 ** (attempt - 1)), _BACKOFF_MAX_S)
                 jitter = base * _BACKOFF_JITTER * (2 * random.random() - 1)
@@ -571,7 +622,7 @@ class HandlerModelRouter:
             except Exception as exc:
                 last_exc = exc
         raise RuntimeError(
-            f"All {self._policy.max_retries} retries exhausted"
+            f"All {self._cfg_policy.max_retries} retries exhausted"
         ) from last_exc
 
 

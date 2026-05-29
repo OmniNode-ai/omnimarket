@@ -51,13 +51,34 @@ def test_handler_local_supervisor_requires_event_bus() -> None:
         HandlerLocalSupervisor()  # type: ignore[call-arg]
 
 
-def test_handler_model_router_requires_event_bus() -> None:
+def test_handler_model_router_boot_constructible_then_fails_loudly() -> None:
+    """OMN-12429: node_model_router is in_process / subscribe_topics: [] — the
+    runtime auto-wires it at boot by injecting only event_bus (policy/registry
+    are caller-supplied config). So unlike the dispatched handlers above, this
+    handler MUST be constructible without policy/registry, but MUST fail loudly
+    (not silently route to a default) if anyone routes through that boot
+    instance. This is the inverse guard: constructible, never silently usable.
+    """
+    import asyncio
+
     from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
         HandlerModelRouter,
     )
+    from omnimarket.nodes.node_model_router.models.model_routing_request import (
+        ModelRoutingRequest,
+    )
 
-    with pytest.raises(TypeError):
-        HandlerModelRouter(policy=MagicMock(), registry=MagicMock())  # type: ignore[call-arg]
+    # Boot-time construction with only event_bus must succeed (no TypeError):
+    # this is exactly the runtime auto-wiring resolver's known-param path.
+    router = HandlerModelRouter(event_bus=MagicMock())
+
+    # Routing through an unconfigured instance must fail loudly, not silently.
+    with pytest.raises(RuntimeError, match="without policy/registry"):
+        asyncio.run(
+            router.route_async(
+                ModelRoutingRequest(prompt="x", role="r", correlation_id="c")
+            )
+        )
 
 
 def test_handler_overnight_requires_event_bus() -> None:
