@@ -47,15 +47,12 @@ event_bus:
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
-    - operation: "delegation.route"
-      handler:
-        name: "HandlerDelegationRouting"
-        module: "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing"
-      description: "Map task type and prompt length to routing decision"
-      input_model:
-        name: "ModelDelegationRequest"
-        module: "omnimarket.nodes.node_delegation_orchestrator.models"
-        description: "Delegation request to route."
+    # The reducer's pure routing logic (handler_delegation_routing.delta) is
+    # invoked by HandlerRoutingIntent below. The bridge-era "delegation.route"
+    # entry was removed in OMN-12294: it named a HandlerDelegationRouting class
+    # that never existed (the module exposes only delta()), and only ever ran
+    # via the in-process bridge calling delta() directly. With the bridge gone
+    # the orchestrator publishes ModelRoutingIntent and this node consumes it.
     - operation: "delegation.route_intent"
       handler:
         name: "HandlerRoutingIntent"

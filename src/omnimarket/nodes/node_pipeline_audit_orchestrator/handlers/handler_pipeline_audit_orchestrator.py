@@ -190,7 +190,7 @@ def _inventory_repo(repo_name: str, repo_path: Path) -> ModelRepoInventory:
 
 
 def _contract_topics(repo_path: Path) -> dict[str, list[str]]:
-    topics = {"publish": [], "subscribe": []}
+    topics: dict[str, list[str]] = {"publish": [], "subscribe": []}
     for contract_path in repo_path.glob("src/**/contract.yaml"):
         try:
             raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}

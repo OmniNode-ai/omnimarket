@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -105,7 +106,7 @@ class TestHandlerCompute:
         assert result.skills_audited == 1
         assert result.checks_run == list(DEFAULT_CHECK_TYPES)
         assert "feature-dashboard" in result.coverage_report
-        coverage = result.coverage_report["feature-dashboard"]
+        coverage = cast(dict[str, Any], result.coverage_report["feature-dashboard"])
         assert isinstance(coverage, dict)
         assert coverage["checks"]["skill_doc"] is False
         assert coverage["checks"]["backing_node"] is True
@@ -131,9 +132,9 @@ class TestHandlerCompute:
 
         assert result.status == "partial"
         assert result.skills_audited == 1
-        assert (
-            result.coverage_report["does-not-exist"]["checks"]["backing_node"] is False
-        )
+        coverage = cast(dict[str, Any], result.coverage_report["does-not-exist"])
+        checks = cast(dict[str, bool], coverage["checks"])
+        assert checks["backing_node"] is False
 
     def test_request_rejects_unknown_check_type(self) -> None:
         with pytest.raises(ValueError, match="unknown check_types"):

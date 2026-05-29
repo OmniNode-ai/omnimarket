@@ -1,6 +1,6 @@
 {
-  "captured_at": "2026-05-27T21:51:39Z",
-  "graphify_version": "ast-fallback",
+  "captured_at": "2026-05-29T00:34:15Z",
+  "graphify_version": "0.8.2",
   "rule_version": "v1",
   "findings": [
     {
@@ -10,6 +10,16 @@
       "file_path": "src/omnimarket/nodes/node_ticket_pipeline/handlers/handler_ticket_pipeline.py",
       "symbol": "handler_ticket_pipeline",
       "detail": "Contract-referenced handler 'handler_ticket_pipeline' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_ledger_stats_compute/handlers/handler_ledger_stats.py",
+      "symbol": "handler_ledger_stats",
+      "detail": "Contract-referenced handler 'handler_ledger_stats' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -50,6 +60,16 @@
       "file_path": "src/omnimarket/nodes/node_verify_effect/handlers/handler_verify.py",
       "symbol": "handler_verify",
       "detail": "Contract-referenced handler 'handler_verify' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_shim_scanner/handlers/handler_shim_scanner.py",
+      "symbol": "handler_shim_scanner",
+      "detail": "Contract-referenced handler 'handler_shim_scanner' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -130,6 +150,16 @@
       "file_path": "src/omnimarket/nodes/node_runtime_sweep/handlers/handler_runtime_sweep.py",
       "symbol": "handler_runtime_sweep",
       "detail": "Contract-referenced handler 'handler_runtime_sweep' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_evidence_publisher_effect/handlers/handler_evidence_publisher_effect.py",
+      "symbol": "handler_evidence_publisher_effect",
+      "detail": "Contract-referenced handler 'handler_evidence_publisher_effect' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -230,6 +260,16 @@
       "file_path": "src/omnimarket/nodes/node_integration_test_runner/handlers/handler_integration_test_runner.py",
       "symbol": "handler_integration_test_runner",
       "detail": "Contract-referenced handler 'handler_integration_test_runner' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pipeline_cache_effect/handlers/handler_pipeline_cache.py",
+      "symbol": "handler_pipeline_cache",
+      "detail": "Contract-referenced handler 'handler_pipeline_cache' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -377,6 +417,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_gap_analyzer_compute/handlers/handler_gap_analyzer_compute.py",
+      "symbol": "handler_gap_analyzer_compute",
+      "detail": "Contract-referenced handler 'handler_gap_analyzer_compute' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_dispatch_request_handler/handlers/handler_dispatch_request.py",
       "symbol": "handler_dispatch_request",
       "detail": "Contract-referenced handler 'handler_dispatch_request' has no test file and no golden-chain fixture coverage.",
@@ -410,6 +460,16 @@
       "file_path": "src/omnimarket/nodes/node_model_router/handlers/handler_model_router.py",
       "symbol": "handler_model_router",
       "detail": "Contract-referenced handler 'handler_model_router' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_deployment_evidence_reducer/handlers/handler_deployment_evidence_reducer.py",
+      "symbol": "handler_deployment_evidence_reducer",
+      "detail": "Contract-referenced handler 'handler_deployment_evidence_reducer' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -470,6 +530,26 @@
       "file_path": "src/omnimarket/nodes/node_platform_diagnostics/handlers/handler_platform_diagnostics.py",
       "symbol": "handler_platform_diagnostics",
       "detail": "Contract-referenced handler 'handler_platform_diagnostics' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_evidence_collector_effect/handlers/handler_evidence_collector_effect.py",
+      "symbol": "handler_evidence_collector_effect",
+      "detail": "Contract-referenced handler 'handler_evidence_collector_effect' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_readiness_gate_orchestrator/handlers/handler_readiness_gate_orchestrator.py",
+      "symbol": "handler_readiness_gate_orchestrator",
+      "detail": "Contract-referenced handler 'handler_readiness_gate_orchestrator' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -637,6 +717,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_dirty_canonical_sweep/handlers/handler_dirty_canonical_sweep.py",
+      "symbol": "handler_dirty_canonical_sweep",
+      "detail": "Contract-referenced handler 'handler_dirty_canonical_sweep' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_pr_polish/handlers/handler_pr_polish.py",
       "symbol": "handler_pr_polish",
       "detail": "Contract-referenced handler 'handler_pr_polish' has no test file and no golden-chain fixture coverage.",
@@ -660,6 +750,16 @@
       "file_path": "src/omnimarket/nodes/node_database_sweep/handlers/handler_database_sweep.py",
       "symbol": "handler_database_sweep",
       "detail": "Contract-referenced handler 'handler_database_sweep' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_linear_updater_effect/handlers/handler_linear_updater_effect.py",
+      "symbol": "handler_linear_updater_effect",
+      "detail": "Contract-referenced handler 'handler_linear_updater_effect' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -757,6 +857,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_evidence_pipeline_orchestrator/handlers/handler_evidence_pipeline_orchestrator.py",
+      "symbol": "handler_evidence_pipeline_orchestrator",
+      "detail": "Contract-referenced handler 'handler_evidence_pipeline_orchestrator' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_compliance_sweep/handlers/handler_compliance_sweep.py",
       "symbol": "handler_compliance_sweep",
       "detail": "Contract-referenced handler 'handler_compliance_sweep' has no test file and no golden-chain fixture coverage.",
@@ -780,6 +890,16 @@
       "file_path": "src/omnimarket/nodes/node_worker_stall_recovery/handlers/handler_stall_recovery.py",
       "symbol": "handler_stall_recovery",
       "detail": "Contract-referenced handler 'handler_stall_recovery' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_model_comparison_runner/handlers/handler_model_comparison.py",
+      "symbol": "handler_model_comparison",
+      "detail": "Contract-referenced handler 'handler_model_comparison' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -850,6 +970,16 @@
       "file_path": "src/omnimarket/nodes/node_projection_swarm/handlers/handler_projection_swarm.py",
       "symbol": "handler_projection_swarm",
       "detail": "Contract-referenced handler 'handler_projection_swarm' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_evidence_extractor_compute/handlers/handler_evidence_extractor_compute.py",
+      "symbol": "handler_evidence_extractor_compute",
+      "detail": "Contract-referenced handler 'handler_evidence_extractor_compute' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -1007,6 +1137,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_contract_matcher_compute/handlers/handler_contract_matcher_compute.py",
+      "symbol": "handler_contract_matcher_compute",
+      "detail": "Contract-referenced handler 'handler_contract_matcher_compute' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_contract_registry/handlers/handler_contract_registry.py",
       "symbol": "handler_contract_registry",
       "detail": "Contract-referenced handler 'handler_contract_registry' has no test file and no golden-chain fixture coverage.",
@@ -1087,9 +1227,29 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_readiness_scorer_compute/handlers/handler_readiness_scorer_compute.py",
+      "symbol": "handler_readiness_scorer_compute",
+      "detail": "Contract-referenced handler 'handler_readiness_scorer_compute' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_session_phase_evaluator/handlers/handler_session_phase_evaluator.py",
       "symbol": "handler_session_phase_evaluator",
       "detail": "Contract-referenced handler 'handler_session_phase_evaluator' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_observability_sink_effect/handlers/handler_observability_sink_effect.py",
+      "symbol": "handler_observability_sink_effect",
+      "detail": "Contract-referenced handler 'handler_observability_sink_effect' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -1427,6 +1587,16 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_delegation_ab_runner/handlers/handler_delegation_ab_runner.py",
+      "symbol": "handler_delegation_ab_runner",
+      "detail": "Contract-referenced handler 'handler_delegation_ab_runner' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_refill_sprint_orchestrator/handlers/handler_refill_sprint.py",
       "symbol": "handler_refill_sprint",
       "detail": "Contract-referenced handler 'handler_refill_sprint' has no test file and no golden-chain fixture coverage.",
@@ -1450,6 +1620,16 @@
       "file_path": "src/omnimarket/nodes/node_data_flow_sweep/handlers/handler_data_flow_sweep.py",
       "symbol": "handler_data_flow_sweep",
       "detail": "Contract-referenced handler 'handler_data_flow_sweep' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_occ_pr_writer_effect/handlers/handler_occ_pr_writer_effect.py",
+      "symbol": "handler_occ_pr_writer_effect",
+      "detail": "Contract-referenced handler 'handler_occ_pr_writer_effect' has no test file and no golden-chain fixture coverage.",
       "rule_id": "UNTESTED_HANDLER",
       "rule_version": "v1"
     },
@@ -3127,6 +3307,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_delegation_ab_runner/contract.yaml",
+      "symbol": "onex.evt.omnimarket.delegation-ab-run-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.delegation-ab-run-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_build_loop_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.delegation-attempt.v1",
       "detail": "Topic 'onex.evt.omnimarket.delegation-attempt.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -3280,6 +3470,16 @@
       "file_path": "src/omnimarket/nodes/node_duplication_sweep/contract.yaml",
       "symbol": "onex.evt.omnimarket.duplication-sweep-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.duplication-sweep-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_env_parity_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.env-parity-compute-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.env-parity-compute-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -3617,6 +3817,16 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_ledger_stats_compute/contract.yaml",
+      "symbol": "onex.evt.omnimarket.ledger-stats-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.ledger-stats-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_linear_triage/contract.yaml",
       "symbol": "onex.evt.omnimarket.linear-triage-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.linear-triage-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
@@ -3730,6 +3940,16 @@
       "file_path": "src/omnimarket/nodes/node_merge_sweep_state_reducer/contract.yaml",
       "symbol": "onex.evt.omnimarket.merge-sweep-state-reduced.v1",
       "detail": "Topic 'onex.evt.omnimarket.merge-sweep-state-reduced.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_model_comparison_runner/contract.yaml",
+      "symbol": "onex.evt.omnimarket.model-comparison-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.model-comparison-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -3950,6 +4170,16 @@
       "file_path": "src/omnimarket/nodes/node_pipeline_audit_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.pipeline-audit-repo-inventoried.v1",
       "detail": "Topic 'onex.evt.omnimarket.pipeline-audit-repo-inventoried.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pipeline_cache_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pipeline-cache-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pipeline-cache-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4240,6 +4470,16 @@
       "file_path": "src/omnimarket/nodes/node_pr_watch_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.pr-watch-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.pr-watch-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pr_watch_orchestrator/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pr-watch-failed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pr-watch-failed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
@@ -4720,6 +4960,16 @@
       "file_path": "src/omnimarket/nodes/node_session_post_mortem/contract.yaml",
       "symbol": "onex.evt.omnimarket.session-post-mortem.v1",
       "detail": "Topic 'onex.evt.omnimarket.session-post-mortem.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_shim_scanner/contract.yaml",
+      "symbol": "onex.evt.omnimarket.shim-scan-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.shim-scan-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },

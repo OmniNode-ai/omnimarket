@@ -106,8 +106,10 @@ class TestHandlerRoutingIntent:
         handler = HandlerRoutingIntent()
         intent = self._intent()
 
-        decision = handler(intent)
+        decision_dict = handler.handle(intent.model_dump(mode="json"))
 
+        assert isinstance(decision_dict, dict)
+        decision = ModelRoutingDecision.model_validate(decision_dict)
         assert isinstance(decision, ModelRoutingDecision)
         assert decision.correlation_id == intent.payload.correlation_id
         assert decision.task_type == "research"
@@ -116,26 +118,15 @@ class TestHandlerRoutingIntent:
             "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",
         }
 
-    def test_publishes_to_routing_decision_topic(self) -> None:
+    def test_returns_decision_for_runtime_autopublish(self) -> None:
+        # The runtime dispatch-result applier publishes the returned JSON dict to
+        # the contract's publish_topics; dispatchers validate it back into the model.
         handler = HandlerRoutingIntent()
-        intent = self._intent()
-        published: list[tuple[str, object]] = []
-
-        class _Publisher:
-            def publish(self, topic: str, payload: object) -> None:
-                published.append((topic, payload))
-
-        handler(intent, event_publisher=_Publisher())
-
-        assert len(published) == 1
-        topic, payload = published[0]
-        assert topic == TOPIC_ROUTING_DECISION
-        assert isinstance(payload, ModelRoutingDecision)
-
-    def test_no_publisher_does_not_raise(self) -> None:
-        handler = HandlerRoutingIntent()
-        decision = handler(self._intent(), event_publisher=None)
+        decision = ModelRoutingDecision.model_validate(
+            handler.handle(self._intent().model_dump(mode="json"))
+        )
         assert isinstance(decision, ModelRoutingDecision)
+        assert TOPIC_ROUTING_DECISION.endswith("routing-decision.v1")
 
     def test_min_tier_name_threaded_into_delta(self) -> None:
         handler = HandlerRoutingIntent()
@@ -145,7 +136,7 @@ class TestHandlerRoutingIntent:
         from omnibase_infra.errors import ProtocolConfigurationError
 
         with pytest.raises(ProtocolConfigurationError):
-            handler(self._intent(min_tier_name="claude"))
+            handler.handle(self._intent(min_tier_name="claude").model_dump(mode="json"))
 
     def test_contract_declares_routing_decision_publish_topic(self) -> None:
         from omnimarket.nodes.contract_topics import contract_publish_topics

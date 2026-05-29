@@ -24,9 +24,6 @@ from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
-    ModelQualityGateResult,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -59,22 +56,20 @@ TOPIC_QUALITY_GATE_RESULT: str = _get_quality_gate_result_topic()
 
 
 class HandlerQualityGateIntent:
-    """Execute ModelQualityGateIntent and publish ModelQualityGateResult.
+    """Execute ModelQualityGateIntent and return ModelQualityGateResult.
 
-    Unwraps the orchestrator's quality-gate intent, runs the pure quality gate
-    reducer delta() over the gate input, then publishes the result to the
-    orchestrator's quality-gate-result subscribe topic.
+    Unwraps the orchestrator's quality-gate intent and runs the pure quality gate
+    reducer delta() over the gate input. The returned ModelQualityGateResult is
+    published to TOPIC_QUALITY_GATE_RESULT by the runtime dispatch-result applier
+    (the contract's publish_topics drives the auto-publish) — the handler does
+    not publish directly.
 
-    event_publisher is injected by the runtime dispatch machinery; when absent
-    (unit tests) the result is returned but not published.
+    ``handle`` is the runtime dispatch entrypoint (handler_wiring resolves
+    handle/handle_async, never __call__).
     """
 
-    def __call__(
-        self,
-        intent: ModelQualityGateIntent,
-        *,
-        event_publisher: Any = None,
-    ) -> ModelQualityGateResult:
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        intent = ModelQualityGateIntent(**input_data)
         result = quality_gate_delta(intent.payload)
         logger.info(
             "HandlerQualityGateIntent resolved: passed=%s score=%.3f correlation_id=%s",
@@ -82,17 +77,7 @@ class HandlerQualityGateIntent:
             result.quality_score,
             result.correlation_id,
         )
-        self._publish(result, event_publisher)
-        return result
-
-    def _publish(
-        self,
-        result: ModelQualityGateResult,
-        event_publisher: Any,
-    ) -> None:
-        if event_publisher is None:
-            return
-        event_publisher.publish(TOPIC_QUALITY_GATE_RESULT, result)
+        return result.model_dump(mode="json")
 
 
 __all__ = ["HandlerQualityGateIntent"]

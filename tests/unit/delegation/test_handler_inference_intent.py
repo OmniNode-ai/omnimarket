@@ -62,8 +62,10 @@ class TestHandlerInferenceIntent:
             mock_client.post.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            result = handler(intent)
+            result_dict = handler.handle(intent.model_dump(mode="json"))
 
+        assert isinstance(result_dict, dict)
+        result = ModelInferenceResponseData.model_validate(result_dict)
         assert isinstance(result, ModelInferenceResponseData)
         assert result.correlation_id == intent.correlation_id
         assert result.content == "def test_foo(): pass"
@@ -84,42 +86,17 @@ class TestHandlerInferenceIntent:
             mock_client.post.side_effect = ConnectionRefusedError("refused")
             mock_client_cls.return_value = mock_client
 
-            result = handler(intent)
+            result_dict = handler.handle(intent.model_dump(mode="json"))
 
+        result = ModelInferenceResponseData.model_validate(result_dict)
         assert result.correlation_id == intent.correlation_id
         assert result.content == ""
         assert result.error_message != ""
         assert result.model_used == "test-model"
 
-    def test_publishes_to_inference_response_topic(self) -> None:
-        handler = HandlerInferenceIntent()
-        intent = _make_intent()
-
-        published: list[tuple[str, object]] = []
-
-        class _Publisher:
-            def publish(self, topic: str, payload: object) -> None:
-                published.append((topic, payload))
-
-        mock_response = MagicMock()
-        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
-        mock_response.raise_for_status.return_value = None
-
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = mock_response
-            mock_client_cls.return_value = mock_client
-
-            handler(intent, event_publisher=_Publisher())
-
-        assert len(published) == 1
-        topic, payload = published[0]
-        assert topic == TOPIC_INFERENCE_RESPONSE
-        assert isinstance(payload, ModelInferenceResponseData)
-
-    def test_no_publisher_does_not_raise(self) -> None:
+    def test_returns_response_for_runtime_autopublish(self) -> None:
+        # The runtime dispatch-result applier publishes the returned JSON dict to
+        # the contract's publish_topics; dispatchers validate it back into the model.
         handler = HandlerInferenceIntent()
         intent = _make_intent()
 
@@ -134,9 +111,11 @@ class TestHandlerInferenceIntent:
             mock_client.post.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            result = handler(intent, event_publisher=None)
+            result_dict = handler.handle(intent.model_dump(mode="json"))
 
+        result = ModelInferenceResponseData.model_validate(result_dict)
         assert isinstance(result, ModelInferenceResponseData)
+        assert TOPIC_INFERENCE_RESPONSE.endswith("inference-response.v1")
 
     def test_system_prompt_included_in_messages(self) -> None:
         handler = HandlerInferenceIntent()
@@ -160,7 +139,7 @@ class TestHandlerInferenceIntent:
             mock_client.post.side_effect = _capture_post
             mock_client_cls.return_value = mock_client
 
-            handler(intent)
+            handler.handle(intent.model_dump(mode="json"))
 
         assert len(captured_payload) == 1
         messages = captured_payload[0].get("messages", [])
@@ -190,7 +169,7 @@ class TestHandlerInferenceIntent:
             mock_client.post.side_effect = _capture_post
             mock_client_cls.return_value = mock_client
 
-            handler(intent)
+            handler.handle(intent.model_dump(mode="json"))
 
         assert len(captured_headers) == 1
         assert captured_headers[0].get("Authorization") == "Bearer sk-test-key"

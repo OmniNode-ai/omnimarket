@@ -49,39 +49,31 @@ class TestHandlerQualityGateIntent:
         handler = HandlerQualityGateIntent()
         intent = self._intent(_GOOD_RESEARCH)
 
-        result = handler(intent)
+        result_dict = handler.handle(intent.model_dump(mode="json"))
 
+        assert isinstance(result_dict, dict)
+        result = ModelQualityGateResult.model_validate(result_dict)
         assert isinstance(result, ModelQualityGateResult)
         assert result.correlation_id == intent.payload.correlation_id
         assert result.passed is True
 
     def test_refusal_content_fails_gate(self) -> None:
         handler = HandlerQualityGateIntent()
-        result = handler(self._intent(_REFUSAL))
+        result_dict = handler.handle(self._intent(_REFUSAL).model_dump(mode="json"))
+        result = ModelQualityGateResult.model_validate(result_dict)
 
         assert result.passed is False
         assert any("REFUSAL" in r for r in result.failure_reasons)
 
-    def test_publishes_to_quality_gate_result_topic(self) -> None:
+    def test_returns_result_for_runtime_autopublish(self) -> None:
+        # The runtime dispatch-result applier publishes the returned JSON dict to
+        # the contract's publish_topics; dispatchers validate it back into the model.
         handler = HandlerQualityGateIntent()
-        intent = self._intent(_GOOD_RESEARCH)
-        published: list[tuple[str, object]] = []
-
-        class _Publisher:
-            def publish(self, topic: str, payload: object) -> None:
-                published.append((topic, payload))
-
-        handler(intent, event_publisher=_Publisher())
-
-        assert len(published) == 1
-        topic, payload = published[0]
-        assert topic == TOPIC_QUALITY_GATE_RESULT
-        assert isinstance(payload, ModelQualityGateResult)
-
-    def test_no_publisher_does_not_raise(self) -> None:
-        handler = HandlerQualityGateIntent()
-        result = handler(self._intent(_GOOD_RESEARCH), event_publisher=None)
+        result = ModelQualityGateResult.model_validate(
+            handler.handle(self._intent(_GOOD_RESEARCH).model_dump(mode="json"))
+        )
         assert isinstance(result, ModelQualityGateResult)
+        assert TOPIC_QUALITY_GATE_RESULT.endswith("quality-gate-result.v1")
 
     def test_contract_declares_quality_gate_result_publish_topic(self) -> None:
         from omnimarket.nodes.contract_topics import contract_publish_topics
