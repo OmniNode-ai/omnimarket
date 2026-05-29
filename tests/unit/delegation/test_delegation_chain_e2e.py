@@ -38,7 +38,6 @@ from uuid import uuid4
 import pytest
 from omnibase_compat.contracts.delegation.wire import (
     ModelInferenceIntent,
-    ModelInferenceResponseData,
     ModelQualityGateIntent,
     ModelRoutingIntent,
 )
@@ -54,15 +53,9 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
     TOPIC_QUALITY_GATE_RESULT,
     HandlerQualityGateIntent,
 )
-from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
-    ModelQualityGateResult,
-)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     TOPIC_ROUTING_DECISION,
     HandlerRoutingIntent,
-)
-from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
-    ModelRoutingDecision,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     TOPIC_INFERENCE_RESPONSE,
@@ -210,45 +203,38 @@ class TestDelegationChainE2E:
         assert len(routing_intents) == 1
         assert isinstance(routing_intents[0], ModelRoutingIntent)
 
-        # Hop 2: routing reducer consumes the intent dict, returns the decision
-        # dict; runtime auto-publishes it to routing-decision.v1. The orchestrator
-        # dispatcher validates the dict back into ModelRoutingDecision (mirrored
-        # here).
-        decision_dict = routing_handler.handle(
-            routing_intents[0].model_dump(mode="json")
-        )
-        publisher.publish(TOPIC_ROUTING_DECISION, decision_dict)
-        decision = ModelRoutingDecision.model_validate(decision_dict)
+        # Hop 2: routing reducer consumes the typed intent (runtime validates via
+        # event_model), returns ModelRoutingDecision; runtime auto-publishes it to
+        # routing-decision.v1 (contract published_events).
+        decision = routing_handler.handle(routing_intents[0])
+        publisher.publish(TOPIC_ROUTING_DECISION, decision)
 
         # Hop 3: orchestrator consumes the decision, emits inference intent.
         inference_intents = workflow.handle_routing_decision(decision)
         assert len(inference_intents) == 1
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        # Hop 4: LLM call effect consumes the intent dict, returns the response
-        # dict; runtime auto-publishes it to inference-response.v1.
+        # Hop 4: LLM call effect consumes the typed intent, returns
+        # ModelInferenceResponseData; runtime auto-publishes it to inference-response.v1.
         with patch("httpx.Client") as mock_client_cls:
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
             mock_client.post.return_value = _httpx_response(llm_content)
             mock_client_cls.return_value = mock_client
-            response_dict = inference_handler.handle(
-                inference_intents[0].model_dump(mode="json")
-            )
-        publisher.publish(TOPIC_INFERENCE_RESPONSE, response_dict)
-        response = ModelInferenceResponseData.model_validate(response_dict)
+            response = inference_handler.handle(inference_intents[0])
+        publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
 
         # Hop 5: orchestrator consumes the response, emits quality gate intent.
         gate_intents = workflow.handle_inference_response(response)
         assert len(gate_intents) == 1
         assert isinstance(gate_intents[0], ModelQualityGateIntent)
 
-        # Hop 6: quality gate reducer consumes the intent dict, returns the result
-        # dict; runtime auto-publishes it to quality-gate-result.v1.
-        gate_result_dict = gate_handler.handle(gate_intents[0].model_dump(mode="json"))
-        publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result_dict)
-        return ModelQualityGateResult.model_validate(gate_result_dict)
+        # Hop 6: quality gate reducer consumes the typed intent, returns
+        # ModelQualityGateResult; runtime auto-publishes it to quality-gate-result.v1.
+        gate_result = gate_handler.handle(gate_intents[0])
+        publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result)
+        return gate_result
 
     def test_full_chain_completes_with_passing_gate(
         self,
@@ -314,10 +300,7 @@ class TestDelegationChainE2E:
         inference_handler = HandlerInferenceIntent()
 
         routing_intents = workflow.handle_delegation_request(request_model)
-        decision_dict = routing_handler.handle(
-            routing_intents[0].model_dump(mode="json")
-        )
-        decision = ModelRoutingDecision.model_validate(decision_dict)
+        decision = routing_handler.handle(routing_intents[0])
         inference_intents = workflow.handle_routing_decision(decision)
 
         with patch("httpx.Client") as mock_client_cls:
@@ -326,10 +309,7 @@ class TestDelegationChainE2E:
             mock_client.__exit__ = MagicMock(return_value=False)
             mock_client.post.side_effect = ConnectionRefusedError("refused")
             mock_client_cls.return_value = mock_client
-            response_dict = inference_handler.handle(
-                inference_intents[0].model_dump(mode="json")
-            )
-        response = ModelInferenceResponseData.model_validate(response_dict)
+            response = inference_handler.handle(inference_intents[0])
 
         assert response.error_message != ""
         assert response.content == ""
