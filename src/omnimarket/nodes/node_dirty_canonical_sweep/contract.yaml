@@ -26,6 +26,21 @@ models:
     module: omnimarket.nodes.node_dirty_canonical_sweep.models.model_dirty_canonical_sweep_result
     class: ModelDirtyCanonicalSweepResult
 
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dirty-canonical-sweep.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+    failure: onex.evt.omnimarket.dirty-canonical-sweep-failed.v1
+  default_timeout_ms: 900000
+  max_timeout_ms: 3600000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dirty-canonical-sweep.v1
+  publish_topics:
+    - onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+    - onex.evt.omnimarket.dirty-canonical-sweep-failed.v1
+
 capabilities:
   - detect_dirty_canonical_repos
   - auto_ship_to_worktree_and_pr

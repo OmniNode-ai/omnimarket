@@ -15,12 +15,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert summary["entry_points"] == 290
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 235
-    assert summary["failed"] <= 55
+    assert summary["routable"] >= 243
+    assert summary["skipped"] == 16
+    assert summary["failed"] <= 31
     assert summary["failure_buckets"] == {
         "missing_handler_route": 3,
         "missing_input_model": 28,
-        "non_command_or_missing_command_topic": 24,
     }
 
 
@@ -39,4 +39,16 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     assert (
         routable["node_adr_canary_orchestrator"]["input_model"]
         == "omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request.ModelCanaryCommandPayload"
+    )
+    assert (
+        routable["node_session_compose"]["command_topic"]
+        == "onex.cmd.omnimarket.session-compose.v1"
+    )
+    assert (
+        routable["node_ticket_query"]["terminal_topic"]
+        == "onex.evt.omnimarket.ticket-query-completed.v1"
+    )
+    assert (
+        routable["node_dirty_canonical_sweep"]["command_topic"]
+        == "onex.cmd.omnimarket.dirty-canonical-sweep.v1"
     )

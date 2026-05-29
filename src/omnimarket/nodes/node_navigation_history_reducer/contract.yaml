@@ -32,6 +32,11 @@ handler_routing:
         name: ModelNavigationHistoryRequest
         module: omnimarket.nodes.node_navigation_history_reducer.models.model_navigation_history_request
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: in_process
+  reason: "Reducer is invoked by navigation workflows and does not own an external command topic."
+
 env_dependencies:
   LLM_EMBEDDING_URL:
     required: false

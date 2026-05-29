@@ -67,6 +67,13 @@ def _failure_bucket(message: str, contract: dict[str, Any]) -> str:
     return "route_error"
 
 
+def _runtime_addressable(contract: dict[str, Any]) -> bool:
+    runtime_dispatch = contract.get("runtime_dispatch")
+    if not isinstance(runtime_dispatch, dict):
+        return True
+    return runtime_dispatch.get("addressable") is not False
+
+
 def build_report() -> dict[str, Any]:
     nodes = _node_dirs()
     entries = _load_entry_points()
@@ -74,6 +81,7 @@ def build_report() -> dict[str, Any]:
     node_set = set(nodes)
 
     routable: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
     failures: list[dict[str, str]] = []
     buckets: Counter[str] = Counter()
 
@@ -84,6 +92,20 @@ def build_report() -> dict[str, Any]:
             else f"node_{command_name.replace('-', '_')}"
         )
         contract = _contract_for(node_name) if node_name in node_set else {}
+        if contract and not _runtime_addressable(contract):
+            runtime_dispatch = contract.get("runtime_dispatch") or {}
+            reason = ""
+            if isinstance(runtime_dispatch, dict):
+                reason = str(runtime_dispatch.get("reason") or "")
+            skipped.append(
+                {
+                    "command_name": command_name,
+                    "node_name": node_name,
+                    "bucket": "non_addressable",
+                    "reason": reason,
+                }
+            )
+            continue
         try:
             route = _resolve_node_route(command_name)
         except Exception as exc:
@@ -116,10 +138,12 @@ def build_report() -> dict[str, Any]:
             "missing_entry_points": sorted(node_set - entry_set),
             "dangling_entry_points": sorted(entry_set - node_set),
             "routable": len(routable),
+            "skipped": len(skipped),
             "failed": len(failures),
             "failure_buckets": dict(sorted(buckets.items())),
         },
         "routable": routable,
+        "skipped": skipped,
         "failures": failures,
     }
 
@@ -143,6 +167,8 @@ def main() -> int:
             "market-node-runtime-dogfood: "
             f"{summary['routable']} routable / {summary['entry_points']} entry points"
         )
+        if summary["skipped"]:
+            print(f"  skipped_non_addressable: {summary['skipped']}")
         for bucket, count in summary["failure_buckets"].items():
             print(f"  {bucket}: {count}")
 

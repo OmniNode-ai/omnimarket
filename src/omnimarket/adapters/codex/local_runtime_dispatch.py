@@ -412,13 +412,23 @@ def _resolve_node_route(command_name: str) -> _NodeRoute:
 
     command_topic = str(
         runtime_dispatch.get("command_topic")
-        or _first_string(event_bus.get("subscribe_topics"))
+        or _first_topic(
+            event_bus.get("subscribe_topics"),
+            event_bus.get("subscribe"),
+            contract.get("subscribe_topics"),
+            contract.get("subscribe_topic"),
+        )
         or ""
     )
     terminal_topic = str(
         contract.get("terminal_event")
         or terminals.get("success")
-        or _completed_topic(event_bus.get("publish_topics"))
+        or _completed_topic(
+            event_bus.get("publish_topics"),
+            event_bus.get("publish"),
+            contract.get("publish_topics"),
+            contract.get("publish_topic"),
+        )
         or ""
     )
     if not command_topic or not terminal_topic:
@@ -574,24 +584,60 @@ def _model_ref_from_local_name(
     return None
 
 
+def _topic_from_value(value: object, *, prefer_completed: bool = False) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    if isinstance(value, dict):
+        keys = (
+            ("success_topic", "completed_topic", "topic")
+            if prefer_completed
+            else ("topic", "command_topic", "success_topic")
+        )
+        for key in keys:
+            raw = value.get(key)
+            if isinstance(raw, str) and raw:
+                return raw
+    return None
+
+
 def _first_string(value: object) -> str | None:
+    direct = _topic_from_value(value)
+    if direct is not None:
+        return direct
     if isinstance(value, list):
         return next(
-            (str(item) for item in value if isinstance(item, str) and item), None
+            (topic for item in value if (topic := _topic_from_value(item)) is not None),
+            None,
         )
     return None
 
 
-def _completed_topic(value: object) -> str | None:
-    if isinstance(value, list):
-        return next(
-            (
-                str(item)
-                for item in value
-                if isinstance(item, str) and "completed" in item
-            ),
-            _first_string(value),
-        )
+def _first_topic(*values: object) -> str | None:
+    for value in values:
+        topic = _first_string(value)
+        if topic is not None:
+            return topic
+    return None
+
+
+def _completed_topic(*values: object) -> str | None:
+    for value in values:
+        topic = _topic_from_value(value, prefer_completed=True)
+        if topic is not None and ("completed" in topic or not isinstance(value, list)):
+            return topic
+    for value in values:
+        if isinstance(value, list):
+            for item in value:
+                topic = _topic_from_value(item, prefer_completed=True)
+                if topic is not None and "completed" in topic:
+                    return topic
+            topic = _first_string(value)
+            if topic is not None:
+                return topic
+    for value in values:
+        topic = _first_string(value)
+        if topic is not None:
+            return topic
     return None
 
 

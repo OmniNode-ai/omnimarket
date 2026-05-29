@@ -54,5 +54,10 @@ outputs:
     type: bool
     description: "True when next_step is 'done' or has no outgoing transition"
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: in_process
+  reason: "Pure reducer invoked by orchestrators; it does not own an external command topic."
+
 metadata:
   transport_type: direct

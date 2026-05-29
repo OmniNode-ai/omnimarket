@@ -35,6 +35,21 @@ descriptor:
   timeout_ms: 30000
 terminal_event: onex.evt.omnimarket.integration-sweep-completed.v1
 
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.integration-sweep.v1
+  terminal_events:
+    success: onex.evt.omnimarket.integration-sweep-completed.v1
+    failure: onex.evt.omnimarket.integration-sweep-failed.v1
+  default_timeout_ms: 30000
+  max_timeout_ms: 300000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.integration-sweep.v1
+  publish_topics:
+    - onex.evt.omnimarket.integration-sweep-completed.v1
+    - onex.evt.omnimarket.integration-sweep-failed.v1
+
 config:
   ONEX_CC_REPO_PATH:
     description: "Path to the omniclaude repository for Claude Code plugin operations."
