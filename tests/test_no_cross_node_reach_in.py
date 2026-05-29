@@ -76,8 +76,6 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_build_loop_orchestrator.__main__:omnimarket.nodes.node_build_loop.models.model_loop_start_command:ModelLoopStartCommand",
         "omnimarket.nodes.node_build_loop_orchestrator.assemble_live:omnimarket.nodes.node_build_loop.models.model_loop_start_command:ModelLoopStartCommand",
         "omnimarket.nodes.node_build_loop_orchestrator.handlers.assemble_live:omnimarket.nodes.node_build_loop.models.model_loop_start_command:ModelLoopStartCommand",
-        "omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_orchestrator:omnimarket.nodes.node_build_loop.models.model_loop_state:EnumBuildLoopPhase",
-        "omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_orchestrator:omnimarket.nodes.node_build_loop.models.model_phase_transition_event:ModelPhaseTransitionEvent",
         "omnimarket.nodes.node_build_loop_orchestrator.models.model_loop_cycle_summary:omnimarket.nodes.node_build_loop.models.model_loop_state:EnumBuildLoopPhase",
         "omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_state:omnimarket.nodes.node_build_loop.models.model_loop_state:EnumBuildLoopPhase",
         "omnimarket.nodes.node_build_loop_orchestrator.models.model_phase_command_intent:omnimarket.nodes.node_build_loop.models.model_loop_state:EnumBuildLoopPhase",
