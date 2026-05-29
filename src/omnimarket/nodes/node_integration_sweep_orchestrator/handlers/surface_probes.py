@@ -14,6 +14,7 @@ status="error" with details["error"] set to the exception message.
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 from typing import Any
 
@@ -72,14 +73,12 @@ def probe_container_health(runtime_host: str) -> dict[str, Any]:
     """
     surface = "CONTAINER_HEALTH"
     try:
+        remote_command = "docker ps --format " + shlex.quote("{{.Names}}\t{{.Status}}")
         result = subprocess.run(
             [
                 "ssh",
                 f"jonah@{runtime_host}",
-                "docker",
-                "ps",
-                "--format",
-                "{{.Names}}\t{{.Status}}",
+                remote_command,
             ],
             capture_output=True,
             text=True,
