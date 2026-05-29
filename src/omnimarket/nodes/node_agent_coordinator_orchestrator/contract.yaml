@@ -115,7 +115,7 @@ handler_routing:
       handler_class: "HandlerSubscription"
       handler_key: "HandlerSubscription.notify"
       priority: 0
-      output_events: ["omnimemory.memory.notification.v1"]
+      output_events: ["onex.evt.omnimemory.memory-notification.v1"]
   default_handler: null
 
 event_bus:
@@ -124,13 +124,17 @@ event_bus:
     minor: 0
     patch: 0
   subscribe_topics:
-    - "omnimemory.coordination.cmd.subscribe.v1"
-    - "omnimemory.coordination.cmd.unsubscribe.v1"
-    - "omnimemory.coordination.cmd.list-subscriptions.v1"
-    - "omnimemory.coordination.cmd.notify.v1"
+    - "onex.cmd.omnimemory.coordination-subscribe.v1"
+    - "onex.cmd.omnimemory.coordination-unsubscribe.v1"
+    - "onex.cmd.omnimemory.coordination-list-subscriptions.v1"
+    - "onex.cmd.omnimemory.coordination-notify.v1"
   publish_topics:
     - "onex.evt.omnimemory.coordination-completed.v1"
-    - "omnimemory.memory.notification.v1"
+    - "onex.evt.omnimemory.memory-notification.v1"
+
+externally_consumed_topics:
+  - "onex.evt.omnimemory.coordination-completed.v1"
+  - "onex.evt.omnimemory.memory-notification.v1"
 
 # =============================================================================
 # CONSUMED EVENTS - Event Subscriptions
@@ -139,21 +143,21 @@ event_bus:
 # Uses action field to route to appropriate handler method.
 # =============================================================================
 consumed_events:
-  - event_pattern: "omnimemory.coordination.cmd.subscribe.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-subscribe.v1"
     handler_function: "handle_subscribe"
 
-  - event_pattern: "omnimemory.coordination.cmd.unsubscribe.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-unsubscribe.v1"
     handler_function: "handle_unsubscribe"
 
-  - event_pattern: "omnimemory.coordination.cmd.list-subscriptions.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-list-subscriptions.v1"
     handler_function: "handle_list_subscriptions"
 
-  - event_pattern: "omnimemory.coordination.cmd.notify.v1"
+  - event_pattern: "onex.cmd.omnimemory.coordination-notify.v1"
     handler_function: "handle_notify"
 
 # Published events - notification events go to Kafka
 published_events:
-  - event_pattern: "omnimemory.memory.notification.v1"
+  - event_pattern: "onex.evt.omnimemory.memory-notification.v1"
     description: "Memory change notification published for subscriber consumption"
 
 # Orchestration configuration

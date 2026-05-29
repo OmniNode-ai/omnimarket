@@ -41,6 +41,10 @@ event_bus:
     - onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
     - onex.evt.omnimarket.dirty-canonical-sweep-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+  - onex.evt.omnimarket.dirty-canonical-sweep-failed.v1
+
 capabilities:
   - detect_dirty_canonical_repos
   - auto_ship_to_worktree_and_pr

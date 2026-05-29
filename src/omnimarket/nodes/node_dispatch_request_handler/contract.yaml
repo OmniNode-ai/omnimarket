@@ -37,6 +37,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.dispatch-request-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.dispatch-request-completed.v1
+
 metadata:
   transport_type: kafka
   description: "Routes dashboard dispatch requests to target nodes"

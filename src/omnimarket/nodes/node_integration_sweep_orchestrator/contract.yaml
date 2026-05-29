@@ -50,6 +50,10 @@ event_bus:
     - onex.evt.omnimarket.integration-sweep-completed.v1
     - onex.evt.omnimarket.integration-sweep-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.integration-sweep-completed.v1
+  - onex.evt.omnimarket.integration-sweep-failed.v1
+
 config:
   ONEX_CC_REPO_PATH:
     description: "Path to the omniclaude repository for Claude Code plugin operations."

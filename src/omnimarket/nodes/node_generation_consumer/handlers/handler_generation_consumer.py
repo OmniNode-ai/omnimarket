@@ -10,7 +10,7 @@ Flow per invocation:
   5. Retry on failure (up to max_attempts)
   6. Emit completed/failed benchmark event
   7. On success:
-     a. Emit deploy event (onex.cmd.runtime.node-deploy.v1) with contract + handler source
+     a. Emit deploy event (onex.cmd.omnimarket.node-deploy.v1) with contract + handler source
         → HandlerGeneratedExecutor receives this, writes to sandbox, registers for execution
      b. Emit registration event so ServiceMCPToolSync picks up the new MCP tool
 

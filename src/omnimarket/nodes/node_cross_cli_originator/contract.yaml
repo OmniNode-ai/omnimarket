@@ -51,6 +51,9 @@ event_bus:
     - onex.cmd.omnimarket.cross-cli-delegation-requested.v1
     - onex.evt.omnimarket.cross-cli-delegation-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.cross-cli-delegation-completed.v1
+
 env_dependencies:
   KAFKA_BOOTSTRAP_SERVERS:
     required: false
