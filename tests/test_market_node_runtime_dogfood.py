@@ -15,11 +15,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert summary["entry_points"] == 290
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 243
+    assert summary["routable"] >= 246
     assert summary["skipped"] == 16
-    assert summary["failed"] <= 31
+    assert summary["failed"] <= 28
     assert summary["failure_buckets"] == {
-        "missing_handler_route": 3,
         "missing_input_model": 28,
     }
 
@@ -51,4 +50,22 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     assert (
         routable["node_dirty_canonical_sweep"]["command_topic"]
         == "onex.cmd.omnimarket.dirty-canonical-sweep.v1"
+    )
+
+
+def test_market_node_runtime_dogfood_proves_handler_key_repairs() -> None:
+    report = build_report()
+    routable = {item["node_name"]: item for item in report["routable"]}
+
+    assert (
+        routable["node_agent_coordinator_orchestrator"]["handler"]
+        == "omnimemory.handlers.handler_subscription.HandlerSubscription"
+    )
+    assert (
+        routable["node_memory_lifecycle_orchestrator"]["handler"]
+        == "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_tick.HandlerMemoryTick"
+    )
+    assert (
+        routable["node_persona_lifecycle_orchestrator"]["handler"]
+        == "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild.HandlerPersonaRebuild"
     )
