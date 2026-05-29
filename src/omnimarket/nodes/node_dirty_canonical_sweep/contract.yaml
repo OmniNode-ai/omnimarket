@@ -34,6 +34,8 @@ models:
     module: omnimarket.nodes.node_dirty_canonical_sweep.models.model_dirty_canonical_sweep_result
     class: ModelDirtyCanonicalSweepResult
 
+terminal_event: onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.dirty-canonical-sweep.v1
   terminal_events:
