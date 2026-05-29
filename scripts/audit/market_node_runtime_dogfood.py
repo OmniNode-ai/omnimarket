@@ -16,8 +16,9 @@ import yaml
 
 from omnimarket.adapters.codex.local_runtime_dispatch import _resolve_node_route
 
-_NODES_DIR = Path("src/omnimarket/nodes")
-_PYPROJECT = Path("pyproject.toml")
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_NODES_DIR = _REPO_ROOT / "src/omnimarket/nodes"
+_PYPROJECT = _REPO_ROOT / "pyproject.toml"
 
 
 def _load_entry_points() -> list[str]:
