@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from omnibase_compat.contracts.delegation.wire import ModelRoutingIntent
 
@@ -60,23 +59,19 @@ TOPIC_ROUTING_DECISION: str = _get_routing_decision_topic()
 
 
 class HandlerRoutingIntent:
-    """Execute ModelRoutingIntent and publish ModelRoutingDecision.
+    """Execute ModelRoutingIntent and return ModelRoutingDecision.
 
-    Unwraps the orchestrator's routing intent, runs the pure routing reducer
-    delta() with the delegation request and optional escalation tier floor,
-    then publishes the decision to the orchestrator's routing-decision
-    subscribe topic.
+    Unwraps the orchestrator's routing intent and runs the pure routing reducer
+    delta() with the delegation request and optional escalation tier floor. The
+    returned ModelRoutingDecision is published to TOPIC_ROUTING_DECISION by the
+    runtime dispatch-result applier (the contract's publish_topics drives the
+    auto-publish) — the handler does not publish directly.
 
-    event_publisher is injected by the runtime dispatch machinery; when absent
-    (unit tests) the decision is returned but not published.
+    ``handle`` is the runtime dispatch entrypoint (handler_wiring resolves
+    handle/handle_async, never __call__).
     """
 
-    def __call__(
-        self,
-        intent: ModelRoutingIntent,
-        *,
-        event_publisher: Any = None,
-    ) -> ModelRoutingDecision:
+    def handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision:
         decision = routing_delta(intent.payload, min_tier_name=intent.min_tier_name)
         logger.info(
             "HandlerRoutingIntent resolved: model=%s endpoint=%s tier=%s correlation_id=%s",
@@ -85,17 +80,7 @@ class HandlerRoutingIntent:
             decision.tier_name,
             decision.correlation_id,
         )
-        self._publish(decision, event_publisher)
         return decision
-
-    def _publish(
-        self,
-        decision: ModelRoutingDecision,
-        event_publisher: Any,
-    ) -> None:
-        if event_publisher is None:
-            return
-        event_publisher.publish(TOPIC_ROUTING_DECISION, decision)
 
 
 __all__ = ["HandlerRoutingIntent"]

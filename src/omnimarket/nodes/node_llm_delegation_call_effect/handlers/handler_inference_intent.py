@@ -70,27 +70,28 @@ def _build_messages(intent: ModelInferenceIntent) -> list[dict[str, str]]:
 
 
 class HandlerInferenceIntent:
-    """Execute ModelInferenceIntent and publish ModelInferenceResponseData.
+    """Execute ModelInferenceIntent and return ModelInferenceResponseData.
 
     Receives the intent whose base_url was already resolved by the routing
-    reducer. Makes one HTTP call against that URL and publishes the response
-    to the orchestrator's inference-response subscribe topic.
+    reducer. Makes one HTTP call against that URL and returns the response;
+    the runtime dispatch-result applier publishes the returned model to
+    TOPIC_INFERENCE_RESPONSE (the contract's publish_topics drives the
+    auto-publish) — the handler does not publish directly.
 
-    event_publisher is injected by the runtime dispatch machinery; when absent
-    (unit tests) results are returned but not published.
+    An LLM/transport failure is returned as a ModelInferenceResponseData with
+    error_message set, so the failure is published and remains observable to the
+    orchestrator (which escalates to the next tier).
+
+    ``handle`` is the runtime dispatch entrypoint (handler_wiring resolves
+    handle/handle_async, never __call__).
     """
 
-    def __call__(
-        self,
-        intent: ModelInferenceIntent,
-        *,
-        event_publisher: Any = None,
-    ) -> ModelInferenceResponseData:
+    def handle(self, intent: ModelInferenceIntent) -> ModelInferenceResponseData:
         started = time.monotonic()
         call_id = str(uuid4())
 
         try:
-            response_data = self._call_llm(intent, call_id)
+            return self._call_llm(intent, call_id)
         except Exception as exc:
             latency_ms = int((time.monotonic() - started) * 1000)
             error_msg = str(exc)
@@ -100,7 +101,7 @@ class HandlerInferenceIntent:
                 intent.correlation_id,
                 error_msg,
             )
-            response_data = ModelInferenceResponseData(
+            return ModelInferenceResponseData(
                 correlation_id=intent.correlation_id,
                 content="",
                 model_used=intent.model,
@@ -108,9 +109,6 @@ class HandlerInferenceIntent:
                 latency_ms=latency_ms,
                 error_message=error_msg,
             )
-
-        self._publish(response_data, event_publisher)
-        return response_data
 
     def _call_llm(
         self,
@@ -177,20 +175,6 @@ class HandlerInferenceIntent:
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
         )
-
-    def _publish(
-        self,
-        response: ModelInferenceResponseData,
-        event_publisher: Any,
-    ) -> None:
-        if event_publisher is None:
-            return
-        try:
-            event_publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
-        except Exception as exc:
-            logger.warning(
-                "HandlerInferenceIntent: failed to publish response: %s", exc
-            )
 
 
 __all__ = ["HandlerInferenceIntent"]
