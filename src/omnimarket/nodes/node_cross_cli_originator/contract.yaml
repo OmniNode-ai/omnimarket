@@ -40,6 +40,11 @@ descriptor:
 
 terminal_event: onex.evt.omnimarket.cross-cli-delegation-completed.v1
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: cli_originator
+  reason: "CLI originator publishes delegation commands; it is not subscribed as a runtime command handler."
+
 event_bus:
   subscribe_topics: []
   publish_topics:

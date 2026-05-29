@@ -16,6 +16,11 @@ handler:
   class: NodePersonaRetrievalEffect
   input_model: omnimarket.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_request.ModelPersonaRetrievalRequest
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: in_process
+  reason: "Read-only persona retrieval is called by persona workflows and has no event-bus command topic."
+
 io_operations:
   - operation_type: "database_read"
     atomic: false
