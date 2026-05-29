@@ -136,9 +136,13 @@ handler_routing:
   routing_strategy: "operation_match"
   handlers:
     - operation: "execute_delegation_call"
+      event_model:
+        name: "ModelLlmDelegationCallRequest"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request"
       handler:
         name: "HandlerLlmDelegationCall"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call"
+      description: "Execute one LLM delegation call (swarm/A2A path); handle() returns the terminal event (call-completed or all-tiers-failed), runtime auto-publishes via published_events (OMN-12409/F-a)."
     - operation: "execute_inference_intent"
       event_model:
         name: "ModelInferenceIntent"
@@ -157,6 +161,12 @@ published_events:
   - event_type: "InferenceResponseData"
     topic: "onex.evt.omnibase-infra.inference-response.v1"
     description: "Inference response emitted by HandlerInferenceIntent for the delegation orchestrator."
+  - event_type: "LlmDelegationCompletedEvent"
+    topic: "onex.evt.omnimarket.delegation-call-completed.v1"
+    description: "Terminal call-completed event returned by HandlerLlmDelegationCall.handle() on success."
+  - event_type: "LlmDelegationAllTiersFailedEvent"
+    topic: "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
+    description: "Terminal all-tiers-failed event returned by HandlerLlmDelegationCall.handle() on unhealthy endpoint."
 
 # === DEPENDENCIES ===
 dependencies:
