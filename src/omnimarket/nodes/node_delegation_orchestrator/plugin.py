@@ -73,6 +73,11 @@ class PluginDelegation:
     Wires the three delegation nodes (orchestrator, routing reducer,
     quality gate reducer) into the runtime kernel. Stateless — no
     external resources beyond the event bus.
+
+    NOTE: consumed cross-repo by omnibase_infra/runtime/service_kernel.py
+    (plugin_registry.register(PluginDelegation())). Static analysis tools
+    that scan only omnimarket will show zero importers — this is a false
+    positive. Do not delete without first removing the service_kernel wiring.
     """
 
     def __init__(self) -> None:
