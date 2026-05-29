@@ -30,6 +30,11 @@ descriptor:
   idempotent: true
   timeout_ms: 5000
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: stub_interface
+  reason: "Phase-0 overseer observer declares extension Protocols only; active runtime bus wiring is deferred to Wave 3+."
+
 # Phase-0 stubs — no active bus subscription yet (Wave 3+). Declared here for
 # contract completeness so the compliance scanner can verify module paths (OMN-11907).
 handler_routing:

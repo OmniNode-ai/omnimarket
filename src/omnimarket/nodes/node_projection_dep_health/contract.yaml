@@ -23,6 +23,11 @@ handler_routing:
         name: HandlerProjectionDepHealth
         module: omnimarket.nodes.node_projection_dep_health.handlers.handler_projection_dep_health
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: projection_reducer
+  reason: "Dep-health projection is an event-sourced reducer invoked by the projection host with a database adapter, not a request/response command node."
+
 db_io:
   db_tables:
     - name: dep_health_findings
