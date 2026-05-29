@@ -16,15 +16,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from omnibase_compat.contracts.delegation.wire import ModelQualityGateIntent
 
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
-)
-from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
-    ModelQualityGateResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +68,8 @@ class HandlerQualityGateIntent:
     handle/handle_async, never __call__).
     """
 
-    def handle(self, intent: ModelQualityGateIntent) -> ModelQualityGateResult:
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        intent = ModelQualityGateIntent(**input_data)
         result = quality_gate_delta(intent.payload)
         logger.info(
             "HandlerQualityGateIntent resolved: passed=%s score=%.3f correlation_id=%s",
@@ -78,7 +77,7 @@ class HandlerQualityGateIntent:
             result.quality_score,
             result.correlation_id,
         )
-        return result
+        return result.model_dump(mode="json")
 
 
 __all__ = ["HandlerQualityGateIntent"]
