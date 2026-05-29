@@ -19,6 +19,11 @@ handler:
 input_model: "ModelIntentStorageRequest"
 output_model: "ModelIntentStorageResponse"
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+
 # === IO OPERATIONS (Required for EFFECT nodes) ===
 io_operations:
   - operation_type: "database_write"
@@ -118,9 +123,10 @@ event_type:
   invocation_mode: "orchestrator"
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: in_process
-  reason: "Intent storage is orchestrator-invoked and publishes projection events without a command subscription."
+  command_topic: onex.cmd.omnimemory.intent-storage.v1
+  terminal_events:
+    success: onex.evt.omnimemory.intent-storage-completed.v1
+    failure: onex.evt.omnimemory.intent-storage-failed.v1
 
 # === VALIDATION RULES ===
 validation_rules:
@@ -193,13 +199,15 @@ event_bus:
     minor: 0
     patch: 0
 
-  # This node does not subscribe to topics (orchestrator-invoked)
-  subscribe_topics: []
+  subscribe_topics:
+    - "onex.cmd.omnimemory.intent-storage.v1"
 
   # Topics this node publishes to (sends events to)
   publish_topics:
     - "onex.evt.omnimemory.intent-stored.v1"
     - "onex.evt.omnimemory.intent-store-failed.v1"
+    - "onex.evt.omnimemory.intent-storage-completed.v1"
+    - "onex.evt.omnimemory.intent-storage-failed.v1"
 
   # Metadata for published topics
   publish_topic_metadata:
@@ -211,6 +219,12 @@ event_bus:
       schema_ref: "omnimarket.nodes.node_intent_storage_effect.models.model_intent_storage_response.ModelIntentStorageResponse"
       description: "Intent storage failure event. Emitted when an intent storage operation fails with
         error details."
+
+externally_consumed_topics:
+  - "onex.evt.omnimemory.intent-stored.v1"
+  - "onex.evt.omnimemory.intent-store-failed.v1"
+  - "onex.evt.omnimemory.intent-storage-completed.v1"
+  - "onex.evt.omnimemory.intent-storage-failed.v1"
 
 # === TAGS ===
 tags:

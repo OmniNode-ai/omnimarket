@@ -34,8 +34,19 @@ handler_routing:
 
 runtime_dispatch:
   addressable: false
-  invocation_mode: in_process
-  reason: "Reducer is invoked by navigation workflows and does not own an external command topic."
+  invocation_mode: projection_reducer
+  reason: "Reducer consumes navigation-session-completed events and materializes navigation history."
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimemory.navigation-session-completed.v1
+  publish_topics:
+    - onex.evt.omnimemory.navigation-history-reduced.v1
+    - onex.evt.omnimemory.navigation-history-reduce-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimemory.navigation-history-reduced.v1
+  - onex.evt.omnimemory.navigation-history-reduce-failed.v1
 
 env_dependencies:
   LLM_EMBEDDING_URL:

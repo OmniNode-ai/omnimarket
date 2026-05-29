@@ -1,5 +1,5 @@
 ---
-name: model_router
+name: node_model_router
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
@@ -34,9 +34,10 @@ descriptor:
   timeout_ms: 120000
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: in_process
-  reason: "Model routing is an internal helper and publishes route outcomes without subscribing to a command topic."
+  command_topic: onex.cmd.omnimarket.model-router.v1
+  terminal_events:
+    success: onex.evt.omnimarket.model-router-completed.v1
+    failure: onex.evt.omnimarket.model-router-failed.v1
 
 dependencies:
   - name: "ModelRoutingPolicy"
@@ -108,11 +109,21 @@ outputs:
     description: "Canonical event emitted when routing fails closed without a served endpoint"
 
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.model-router.v1
   publish_topics:
     - onex.evt.omnimarket.model-routing-degraded.v1
     - onex.evt.omnimarket.model-llm-route-resolved.v1
     - onex.evt.omnimarket.model-llm-route-rejected.v1
+    - onex.evt.omnimarket.model-router-completed.v1
+    - onex.evt.omnimarket.model-router-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.model-routing-degraded.v1
+  - onex.evt.omnimarket.model-llm-route-resolved.v1
+  - onex.evt.omnimarket.model-llm-route-rejected.v1
+  - onex.evt.omnimarket.model-router-completed.v1
+  - onex.evt.omnimarket.model-router-failed.v1
 
 metadata:
   transport_type: kafka

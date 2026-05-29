@@ -1,5 +1,5 @@
 ---
-name: cross_cli_originator
+name: node_cross_cli_originator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
@@ -35,23 +35,30 @@ output_model:
 descriptor:
   node_archetype: effect
   purity: impure
+  runtime_profiles: [effects]
   idempotent: false
   timeout_ms: 10000
 
-terminal_event: onex.evt.omnimarket.cross-cli-delegation-completed.v1
+terminal_event: onex.evt.omnimarket.cross-cli-originator-completed.v1
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: cli_originator
-  reason: "CLI originator publishes delegation commands; it is not subscribed as a runtime command handler."
+  command_topic: onex.cmd.omnimarket.cross-cli-originator.v1
+  terminal_events:
+    success: onex.evt.omnimarket.cross-cli-originator-completed.v1
+    failure: onex.evt.omnimarket.cross-cli-originator-failed.v1
 
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.cross-cli-originator.v1
   publish_topics:
     - onex.cmd.omnimarket.cross-cli-delegation-requested.v1
     - onex.evt.omnimarket.cross-cli-delegation-completed.v1
+    - onex.evt.omnimarket.cross-cli-originator-completed.v1
+    - onex.evt.omnimarket.cross-cli-originator-failed.v1
 
 externally_consumed_topics:
+  - onex.evt.omnimarket.cross-cli-originator-completed.v1
+  - onex.evt.omnimarket.cross-cli-originator-failed.v1
   - onex.evt.omnimarket.cross-cli-delegation-completed.v1
 
 env_dependencies:

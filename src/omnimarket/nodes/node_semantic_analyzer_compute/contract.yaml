@@ -30,9 +30,21 @@ output_model:
   description: "Embedding, entities, topics, scores, and metadata."
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: in_process
-  reason: "Semantic analyzer compute is invoked through memory workflows and does not own a command topic."
+  command_topic: onex.cmd.omnimemory.semantic-analyzer.v1
+  terminal_events:
+    success: onex.evt.omnimemory.semantic-analyzer-completed.v1
+    failure: onex.evt.omnimemory.semantic-analyzer-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimemory.semantic-analyzer.v1
+  publish_topics:
+    - onex.evt.omnimemory.semantic-analyzer-completed.v1
+    - onex.evt.omnimemory.semantic-analyzer-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimemory.semantic-analyzer-completed.v1
+  - onex.evt.omnimemory.semantic-analyzer-failed.v1
 
 handler_routing:
   routing_strategy: "operation_match"

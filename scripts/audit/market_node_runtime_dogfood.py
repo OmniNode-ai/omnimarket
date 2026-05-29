@@ -72,6 +72,52 @@ def _runtime_addressable(contract: dict[str, Any]) -> bool:
     return runtime_dispatch.get("addressable") is not False
 
 
+def _topic_values(raw_topics: object) -> list[str]:
+    if isinstance(raw_topics, list):
+        values: list[str] = []
+        for item in raw_topics:
+            if isinstance(item, str):
+                values.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("name"), str):
+                values.append(item["name"])
+        return values
+    return []
+
+
+def _native_non_addressable_check(contract: dict[str, Any]) -> tuple[bool, str]:
+    node_type = str(contract.get("node_type") or "").lower()
+    runtime_dispatch = contract.get("runtime_dispatch") or {}
+    invocation_mode = ""
+    if isinstance(runtime_dispatch, dict):
+        invocation_mode = str(runtime_dispatch.get("invocation_mode") or "")
+    event_bus = contract.get("event_bus") or {}
+    topics = contract.get("topics") or {}
+    subscribe_topics: list[str] = []
+    publish_topics: list[str] = []
+    if isinstance(event_bus, dict):
+        subscribe_topics.extend(_topic_values(event_bus.get("subscribe_topics")))
+        publish_topics.extend(_topic_values(event_bus.get("publish_topics")))
+    if isinstance(topics, dict):
+        subscribe_topics.extend(_topic_values(topics.get("subscribes")))
+        publish_topics.extend(_topic_values(topics.get("publishes")))
+
+    if node_type == "reducer":
+        if invocation_mode not in {"event_consumer", "projection_reducer"}:
+            return False, "reducer lacks event/projection invocation mode"
+        if not subscribe_topics:
+            return False, "reducer lacks subscribed event topics"
+        return True, "native reducer event subscription"
+
+    if node_type == "orchestrator":
+        if invocation_mode != "event_consumer":
+            return False, "orchestrator lacks event_consumer invocation mode"
+        if not subscribe_topics or not publish_topics:
+            return False, "orchestrator lacks subscribed/published event topics"
+        return True, "native orchestrator event bridge"
+
+    return False, f"{node_type or 'unknown'} nodes must be command-addressable"
+
+
 def build_report() -> dict[str, Any]:
     nodes = _node_dirs()
     entries = _load_entry_points()
@@ -95,39 +141,48 @@ def build_report() -> dict[str, Any]:
             reason = ""
             if isinstance(runtime_dispatch, dict):
                 reason = str(runtime_dispatch.get("reason") or "")
-            skipped.append(
-                {
+            valid, native_mode = _native_non_addressable_check(contract)
+            if not valid:
+                buckets["invalid_non_addressable"] += 1
+                failure = {
                     "command_name": command_name,
                     "node_name": node_name,
-                    "bucket": "non_addressable",
-                    "reason": reason,
+                    "bucket": "invalid_non_addressable",
+                    "error": native_mode,
                 }
-            )
+                failures.append(failure)
+                continue
+            skipped_item = {
+                "command_name": command_name,
+                "node_name": node_name,
+                "bucket": "non_addressable",
+                "reason": reason,
+                "native_mode": native_mode,
+            }
+            skipped.append(skipped_item)
             continue
         try:
             route = _resolve_node_route(command_name)
         except Exception as exc:
             bucket = _failure_bucket(str(exc), contract)
             buckets[bucket] += 1
-            failures.append(
-                {
-                    "command_name": command_name,
-                    "node_name": node_name,
-                    "bucket": bucket,
-                    "error": str(exc),
-                }
-            )
-            continue
-        routable.append(
-            {
+            failure = {
                 "command_name": command_name,
-                "node_name": route.node_name,
-                "command_topic": route.command_topic,
-                "terminal_topic": route.terminal_topic,
-                "input_model": route.payload_model_ref,
-                "handler": route.handler_ref,
+                "node_name": node_name,
+                "bucket": bucket,
+                "error": str(exc),
             }
-        )
+            failures.append(failure)
+            continue
+        route_item = {
+            "command_name": command_name,
+            "node_name": route.node_name,
+            "command_topic": route.command_topic,
+            "terminal_topic": route.terminal_topic,
+            "input_model": route.payload_model_ref,
+            "handler": route.handler_ref,
+        }
+        routable.append(route_item)
 
     return {
         "summary": {
