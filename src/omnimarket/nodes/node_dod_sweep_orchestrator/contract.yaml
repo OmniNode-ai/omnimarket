@@ -27,6 +27,8 @@ env_dependencies:
 descriptor:
   node_archetype: orchestrator
   purity: impure
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 30000
 terminal_event: onex.evt.omnimarket.dod-sweep-completed.v1

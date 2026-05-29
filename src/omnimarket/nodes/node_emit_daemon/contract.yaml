@@ -36,6 +36,8 @@ runtime_dispatch:
 descriptor:
   node_archetype: service
   purity: effectful
+  runtime_profiles:
+    - effects
   idempotent: false
   timeout_ms: 0  # long-running daemon, no timeout
 

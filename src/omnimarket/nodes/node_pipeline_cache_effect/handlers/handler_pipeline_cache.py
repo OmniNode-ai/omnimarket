@@ -19,14 +19,14 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from omnimarket.events.generation import (
+    ModelGoldenChainGenerationRequest,
+    ModelGoldenChainGenerationResult,
+    ModelTestGenerationRequest,
+    ModelTestGenerationResult,
+)
 from omnimarket.nodes.node_golden_chain_generator_compute.handlers.handler_golden_chain_generator import (
     HandlerGoldenChainGenerator,
-)
-from omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_request import (
-    ModelGoldenChainGenerationRequest,
-)
-from omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_result import (
-    ModelGoldenChainGenerationResult,
 )
 from omnimarket.nodes.node_pipeline_cache_effect.models.model_pipeline_cache_request import (
     ModelPipelineCacheRequest,
@@ -36,12 +36,6 @@ from omnimarket.nodes.node_pipeline_cache_effect.models.model_pipeline_cache_res
 )
 from omnimarket.nodes.node_test_generator_compute.handlers.handler_test_generator import (
     HandlerTestGenerator,
-)
-from omnimarket.nodes.node_test_generator_compute.models.model_test_generation_request import (
-    ModelTestGenerationRequest,
-)
-from omnimarket.nodes.node_test_generator_compute.models.model_test_generation_result import (
-    ModelTestGenerationResult,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,22 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Input model for node_checkpoint_compute."""
+"""Compatibility export for node_checkpoint_compute input commands."""
 
-from __future__ import annotations
+from omnimarket.events.checkpoint import ModelCheckpointRequest
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class ModelCheckpointRequest(BaseModel):
-    """Request to save, load, or list checkpoints."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    checkpoint_id: str = Field(description="Unique identifier for the checkpoint")
-    action: str = Field(description="Operation to perform: save | load | list")
-    payload: dict[str, Any] | None = Field(
-        default=None,
-        description="Checkpoint payload for save operations; null for load/list",
-    )
+__all__ = ["ModelCheckpointRequest"]

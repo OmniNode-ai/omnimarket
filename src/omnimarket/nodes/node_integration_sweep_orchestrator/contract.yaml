@@ -31,6 +31,8 @@ env_dependencies:
 descriptor:
   node_archetype: orchestrator
   purity: impure
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 30000
 terminal_event: onex.evt.omnimarket.integration-sweep-completed.v1

@@ -7,6 +7,14 @@ description: >
   restored to a clean state after the worktree is created. Designed to run as
   a 15-minute build-loop cron (OMN-7466).
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: false
+  timeout_ms: 900000
+
 handler:
   module: omnimarket.nodes.node_dirty_canonical_sweep.handlers.handler_dirty_canonical_sweep
   class: HandlerDirtyCanonicalSweep

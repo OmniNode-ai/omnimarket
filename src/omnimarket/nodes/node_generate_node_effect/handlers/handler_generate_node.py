@@ -164,8 +164,8 @@ def _handler_py(
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_{stem}.models.model_{stem}_request import {request_model}
-from omnimarket.nodes.node_{stem}.models.model_{stem}_result import {result_model}
+from ..models.model_{stem}_request import {request_model}
+from ..models.model_{stem}_result import {result_model}
 
 
 class {handler_class}:
