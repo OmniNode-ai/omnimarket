@@ -112,6 +112,9 @@ event_bus:
       schema_ref: "omnimemory.models.crawl.model_document_parse_failed_event.ModelDocumentParseFailedEvent"
       description: "Document parse failed event."
 
+externally_consumed_topics:
+  - "onex.evt.omnimemory.document-parse-failed.v1"
+
 # === HANDLER ROUTING ===
 handler_routing:
   handlers:

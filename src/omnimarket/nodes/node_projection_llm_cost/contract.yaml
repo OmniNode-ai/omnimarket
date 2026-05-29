@@ -59,6 +59,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-llm-cost-applied.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-llm-cost-applied.v1
+
 config:
   OMNI_PRICING_MANIFEST_PATH:
     description: "Path to the LLM pricing manifest JSON file."

@@ -37,6 +37,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-query-completed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-query-completed.v1
+
 golden_path:
   - shape: staleness
     description: >

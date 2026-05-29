@@ -146,6 +146,9 @@ event_bus:
       description: "Dead letter queue for intent-classified events that failed processing after max retries.
         Contains the original event plus error metadata."
 
+externally_consumed_topics:
+  - "onex.evt.omnimemory.intent-stored.v1"
+
 # === HANDLER CONFIGURATION ===
 handler_config:
   handler_class: "HandlerIntentEventConsumer"

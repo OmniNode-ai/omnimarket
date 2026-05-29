@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 """Dogfood market node runtime route coverage without using gap compute."""
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
+import tomllib
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -22,20 +22,17 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 
 
 def _load_entry_points() -> list[str]:
-    content = _PYPROJECT.read_text(encoding="utf-8")
-    match = re.search(
-        r'\[project\.entry-points\."onex\.nodes"\](.*?)(?=\n\[|\Z)',
-        content,
-        re.DOTALL,
-    )
-    if not match:
+    data = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
+    project = data.get("project", {})
+    if not isinstance(project, dict):
         return []
-    entries: list[str] = []
-    for raw_line in match.group(1).splitlines():
-        line = raw_line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            entries.append(line.split("=", 1)[0].strip())
-    return sorted(entries)
+    entry_points = project.get("entry-points", {})
+    if not isinstance(entry_points, dict):
+        return []
+    nodes = entry_points.get("onex.nodes", {})
+    if not isinstance(nodes, dict):
+        return []
+    return sorted(str(name) for name in nodes)
 
 
 def _node_dirs() -> list[str]:

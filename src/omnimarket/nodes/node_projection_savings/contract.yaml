@@ -46,6 +46,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-savings-applied.v1
+
 metadata:
   transport_type: kafka
   delegate_skill_baseline_model_source: pricing_manifest

@@ -17,6 +17,7 @@ import importlib
 import inspect
 import json
 import os
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -562,7 +563,7 @@ def _model_ref_from_local_name(
     node_dir = _NODE_ROOT / node_name / "models"
     if not node_dir.is_dir():
         return None
-    class_pattern = f"class {model_name}"
+    class_pattern = re.compile(rf"\bclass\s+{re.escape(model_name)}\b")
     for model_file in sorted(node_dir.glob("*.py")):
         if model_file.name == "__init__.py":
             continue
@@ -570,7 +571,7 @@ def _model_ref_from_local_name(
             source = model_file.read_text(encoding="utf-8")
         except OSError:
             continue
-        if class_pattern in source:
+        if class_pattern.search(source):
             module = f"omnimarket.nodes.{node_name}.models.{model_file.stem}"
             return module, model_name
 

@@ -58,5 +58,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-baselines-applied.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-baselines-applied.v1
+
 metadata:
   transport_type: kafka
