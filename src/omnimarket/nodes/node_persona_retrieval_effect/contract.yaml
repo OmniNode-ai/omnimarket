@@ -16,6 +16,11 @@ handler:
   class: NodePersonaRetrievalEffect
   input_model: omnimarket.nodes.node_persona_retrieval_effect.models.model_persona_retrieval_request.ModelPersonaRetrievalRequest
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+
 runtime_dispatch:
   command_topic: onex.cmd.omnimemory.persona-retrieval.v1
   terminal_events:

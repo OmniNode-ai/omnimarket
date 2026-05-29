@@ -19,6 +19,11 @@ handler:
 input_model: "ModelIntentStorageRequest"
 output_model: "ModelIntentStorageResponse"
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+
 # === IO OPERATIONS (Required for EFFECT nodes) ===
 io_operations:
   - operation_type: "database_write"

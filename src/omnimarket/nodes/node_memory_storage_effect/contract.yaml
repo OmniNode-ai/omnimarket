@@ -19,6 +19,11 @@ handler:
   class: HandlerFileSystemAdapter
   input_model: omnimemory.nodes.node_memory_storage_effect.models.model_memory_storage_request.ModelMemoryStorageRequest
 
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+
 # === IO OPERATIONS (Required for EFFECT nodes) ===
 io_operations:
   - operation_type: "database_write"

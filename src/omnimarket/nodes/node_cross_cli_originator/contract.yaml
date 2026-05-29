@@ -35,6 +35,7 @@ output_model:
 descriptor:
   node_archetype: effect
   purity: impure
+  runtime_profiles: [effects]
   idempotent: false
   timeout_ms: 10000
 
