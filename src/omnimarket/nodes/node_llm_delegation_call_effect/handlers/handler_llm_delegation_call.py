@@ -216,6 +216,47 @@ class HandlerLlmDelegationCall:
     HTTP call and emits exactly one terminal event.
     """
 
+    def handle(
+        self,
+        request: ModelLlmDelegationCallRequest,
+    ) -> (
+        ModelLlmDelegationCompletedEvent
+        | ModelLlmDelegationAllTiersFailedEvent
+        | ModelLlmDelegationCallResult
+    ):
+        """Runtime dispatch entrypoint (handler_wiring resolves handle, not __call__).
+
+        Executes the delegation call and RETURNS the terminal event/result; the
+        runtime dispatch-result applier publishes the returned model to the
+        contract's published_events topic. The handler does not publish directly.
+
+        The dispatch path emits exactly one terminal event:
+        - success → ModelLlmDelegationCompletedEvent (→ delegation-call-completed.v1)
+        - endpoint unhealthy → ModelLlmDelegationAllTiersFailedEvent (→ all-tiers-failed.v1)
+        - other failure (timeout, http error, invalid json) → ModelLlmDelegationCallResult
+          (no event publish; the failure is the returned result for the caller)
+
+        emit_escalation / emit_model_degraded remain separate methods invoked by
+        the swarm orchestrator outside this dispatch path.
+        """
+        try:
+            base_url = _resolve_endpoint(request.endpoint_ref)
+        except KeyError as exc:
+            logger.error("endpoint resolution failed: %s", exc)
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                str(exc),
+                endpoint_healthy=False,
+            )
+
+        with httpx.Client(timeout=120.0) as client:
+            healthy = _is_endpoint_healthy(base_url, client)
+            if not healthy:
+                logger.warning("health probe failed for %s — skipping call", base_url)
+                return self._build_all_tiers_failed(request)
+            return self._execute_call_for_handle(request, client, base_url)
+
     def __call__(
         self,
         request: ModelLlmDelegationCallRequest,
@@ -253,6 +294,24 @@ class HandlerLlmDelegationCall:
                 return result
 
             return self._execute_call(request, client, base_url, event_publisher)
+
+    def _execute_call_for_handle(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        client: httpx.Client,
+        base_url: str,
+    ) -> ModelLlmDelegationCompletedEvent | ModelLlmDelegationCallResult:
+        """Execute the call and RETURN the terminal event/result (no publish).
+
+        Used by handle(): the runtime publishes the returned model via the
+        contract's published_events. Returns the completed event on success, or
+        a failure result on timeout/http/invalid-json (no event published for
+        those — the failure is the returned result).
+        """
+        result = self._execute_call(request, client, base_url, event_publisher=None)
+        if not result.success:
+            return result
+        return self._build_completed_event(request, result)
 
     def _execute_call(
         self,
@@ -309,47 +368,7 @@ class HandlerLlmDelegationCall:
             request.model_id, tokens_in, tokens_out, model_tier=request.model_tier
         )
 
-        completed_event = ModelLlmDelegationCompletedEvent(
-            correlation_id=request.correlation_id,
-            causation_id=request.causation_id,
-            request_id=request.request_id,
-            task_type=request.task_type,
-            task_id=request.task_id,
-            selected_model=request.model_id,
-            model_id=request.model_id,
-            model_tier=request.model_tier,
-            provider=request.provider,
-            endpoint_ref=request.endpoint_ref,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            latency_ms=latency_ms,
-            actual_cost_usd=actual_cost,
-            opus_equivalent_cost_usd=opus_cost,
-            savings_usd=savings,
-            usage_source=EnumUsageSource.MEASURED,
-            cost_basis=cost_basis,
-            pricing_manifest_version=request.pricing_manifest_version,
-            pricing_manifest_hash=request.pricing_manifest_hash,
-            output_hash=output_hash,
-            prompt_hash=request.prompt_hash,
-            routing_policy_hash=request.routing_policy_hash,
-            policy_hash=request.routing_policy_hash,
-            registry_hash=request.registry_hash,
-            success=True,
-            quality_score=None,
-            escalated_to=None,
-            escalation_reason=None,
-            redacted_summary=None,
-            created_at=datetime.now(UTC),
-        )
-
-        self._publish(
-            TOPIC_DELEGATION_CALL_COMPLETED,
-            completed_event,
-            event_publisher,
-        )
-
-        return ModelLlmDelegationCallResult(
+        result = ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=True,
             content=content,
@@ -364,6 +383,70 @@ class HandlerLlmDelegationCall:
             cost_basis=cost_basis,
             quality_gate_passed=True,
             endpoint_healthy=True,
+        )
+
+        self._publish(
+            TOPIC_DELEGATION_CALL_COMPLETED,
+            self._build_completed_event(request, result),
+            event_publisher,
+        )
+
+        return result
+
+    def _build_completed_event(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        result: ModelLlmDelegationCallResult,
+    ) -> ModelLlmDelegationCompletedEvent:
+        """Build the call-completed event from the request + successful result."""
+        return ModelLlmDelegationCompletedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            selected_model=request.model_id,
+            model_id=request.model_id,
+            model_tier=request.model_tier,
+            provider=request.provider,
+            endpoint_ref=request.endpoint_ref,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            latency_ms=result.latency_ms,
+            actual_cost_usd=result.actual_cost_usd,
+            opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
+            savings_usd=result.savings_usd,
+            usage_source=EnumUsageSource.MEASURED,
+            cost_basis=result.cost_basis,
+            pricing_manifest_version=request.pricing_manifest_version,
+            pricing_manifest_hash=request.pricing_manifest_hash,
+            output_hash=result.output_hash,
+            prompt_hash=request.prompt_hash,
+            routing_policy_hash=request.routing_policy_hash,
+            policy_hash=request.routing_policy_hash,
+            registry_hash=request.registry_hash,
+            success=True,
+            quality_score=None,
+            escalated_to=None,
+            escalation_reason=None,
+            redacted_summary=None,
+            created_at=datetime.now(UTC),
+        )
+
+    def _build_all_tiers_failed(
+        self,
+        request: ModelLlmDelegationCallRequest,
+    ) -> ModelLlmDelegationAllTiersFailedEvent:
+        """Build the all-tiers-failed event (returned by handle on unhealthy endpoint)."""
+        return ModelLlmDelegationAllTiersFailedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            attempted_models=(request.model_id,),
+            failure_classes=(EnumDelegationFailureClass.MODEL_UNAVAILABLE,),
+            created_at=datetime.now(UTC),
         )
 
     def emit_escalation(
