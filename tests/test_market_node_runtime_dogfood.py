@@ -15,11 +15,21 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert summary["entry_points"] == 290
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 246
+    assert summary["routable"] >= 270
     assert summary["skipped"] == 16
-    assert summary["failed"] <= 28
+    assert summary["failed"] <= 4
     assert summary["failure_buckets"] == {
-        "missing_input_model": 28,
+        "missing_input_model": 4,
+    }
+    assert {
+        item["node_name"]
+        for item in report["failures"]
+        if item["bucket"] == "missing_input_model"
+    } == {
+        "node_e2e_orchestrator",
+        "node_emit_daemon",
+        "node_overseer_observer",
+        "node_projection_dep_health",
     }
 
 
@@ -50,6 +60,14 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
     assert (
         routable["node_dirty_canonical_sweep"]["command_topic"]
         == "onex.cmd.omnimarket.dirty-canonical-sweep.v1"
+    )
+    assert (
+        routable["node_code_embedding_effect"]["input_model"]
+        == "omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_request.ModelCodeEmbeddingRequest"
+    )
+    assert (
+        routable["node_projection_query"]["input_model"]
+        == "omnimarket.nodes.node_projection_query.models.model_projection_query_request.ModelProjectionQueryRequest"
     )
 
 

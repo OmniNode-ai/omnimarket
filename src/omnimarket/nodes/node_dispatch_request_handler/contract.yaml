@@ -3,6 +3,7 @@ name: dispatch_request_handler
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelDispatchRequest
 
 description: >
   Routes dispatch requests from the dashboard UI to target nodes.
@@ -11,6 +12,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_dispatch_request_handler.handlers.handler_dispatch_request
   class: NodeDispatchRequestHandler
+  input_model: ModelDispatchRequest
 
 handler_routing:
   routing_strategy: operation_match

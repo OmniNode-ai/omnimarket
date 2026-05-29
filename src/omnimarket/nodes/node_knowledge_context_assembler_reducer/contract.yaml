@@ -5,6 +5,7 @@ name: node_knowledge_context_assembler_reducer
 contract_version: {major: 0, minor: 1, patch: 0}
 node_type: reducer
 node_version: {major: 0, minor: 1, patch: 0}
+input_model: omnimarket.events.knowledge_context.ModelKnowledgeContextFragment
 
 description: >
   Pure reducer that collects backend response fragments for a correlation_id
@@ -22,6 +23,7 @@ handler_routing:
     - handler:
         name: HandlerKnowledgeContextAssemblerReducer
         module: omnimarket.nodes.node_knowledge_context_assembler_reducer.handlers.handler_knowledge_context_assembler_reducer
+      event_model: omnimarket.events.knowledge_context.ModelKnowledgeContextFragment
 
 descriptor:
   node_archetype: reducer

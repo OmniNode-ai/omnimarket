@@ -3,6 +3,7 @@ name: node_omnigate_projection
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelOmniGateProjectionInput
 description: >
   Owns OmniGate activity and metrics projection snapshots for dashboard consumers.
 
@@ -14,6 +15,7 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: reduce_omnigate_projection
+      input_model: ModelOmniGateProjectionInput
       handler:
         name: HandlerOmniGateProjection
         module: omnimarket.nodes.node_omnigate_projection.handlers.handler_omnigate_projection

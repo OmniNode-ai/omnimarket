@@ -3,6 +3,7 @@ name: projection_overnight
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight.ModelOvernightSessionStartEvent
 description: >
   Projects overnight session events into the overnight_sessions and
   overnight_session_phases tables. UPSERT by session_id.
@@ -19,14 +20,17 @@ handler_routing:
         name: HandlerProjectionOvernightSessionStart
         module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
       handler_module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+      event_model: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight.ModelOvernightSessionStartEvent
     - handler:
         name: HandlerProjectionOvernightPhaseEnd
         module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
       handler_module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+      event_model: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight.ModelOvernightPhaseEndEvent
     - handler:
         name: HandlerProjectionOvernightSessionComplete
         module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
       handler_module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
+      event_model: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight.ModelOvernightSessionCompleteEvent
 
 terminal_event: onex.evt.omnimarket.projection-overnight-applied.v1
 

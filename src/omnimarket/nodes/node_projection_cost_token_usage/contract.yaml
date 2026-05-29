@@ -3,6 +3,7 @@ name: node_projection_cost_token_usage
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: REDUCER_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelCostTokenUsageProjectionEvent
 description: >
   Emits repeatable token usage snapshots for downstream dashboard consumers.
 
@@ -19,6 +20,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionCostTokenUsage
         module: omnimarket.nodes.node_projection_cost_token_usage.handlers.handler_projection_cost_token_usage
+      event_model: ModelCostTokenUsageProjectionEvent
 
 idempotency:
   enabled: true

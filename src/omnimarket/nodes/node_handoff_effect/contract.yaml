@@ -3,6 +3,7 @@ name: handoff_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelHandoffRequest
 
 description: >
   Handoff effect node. Captures current session state (branch, dirty files,
@@ -11,6 +12,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect
   class: HandlerHandoffEffect
+  input_model: ModelHandoffRequest
 
 env_dependencies:
   ONEX_INFRA_SSH_TARGET:
