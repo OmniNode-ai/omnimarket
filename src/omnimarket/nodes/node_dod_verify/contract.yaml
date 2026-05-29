@@ -14,17 +14,24 @@ handler:
   class: HandlerDodVerify
   input_model: omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command.ModelDodVerifyStartCommand
 
+# OMN-12420: single-handler operation_match with an inline event_model so the
+# runtime unwraps envelope.payload and validates it against the typed command
+# before dispatch. Without event_model the runtime handed the raw envelope dict
+# straight to the handler, producing a 6-error ValidationError and zero output.
+# Mirrors node_closeout_verifier_compute / node_ledger_stats_compute /
+# node_handler_correctness_gate. The former runtime_sha_verify operation was
+# removed: HandlerRuntimeShaVerify is only ever invoked in-process by
+# node_integration_sweep_orchestrator, never dispatched over this command topic,
+# and its presence caused it to fire (and fail) on every dod-verify-start message.
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: verify
-      handler:
+    - handler:
         name: HandlerDodVerify
         module: omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify
-    - operation: runtime_sha_verify
-      handler:
-        name: HandlerRuntimeShaVerify
-        module: omnimarket.nodes.node_dod_verify.handlers.handler_runtime_sha_verify
+      event_model:
+        name: ModelDodVerifyStartCommand
+        module: omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command
 
 descriptor:
   node_archetype: compute
