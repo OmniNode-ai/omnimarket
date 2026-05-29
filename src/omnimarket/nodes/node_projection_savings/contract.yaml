@@ -3,6 +3,7 @@ name: projection_savings
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings.ModelSavingsEstimatedEvent
 description: >
   Projects savings-estimated events into the savings_estimates table.
   Source topics include omnibase-infra savings estimates and omnimarket
@@ -20,6 +21,7 @@ handler_routing:
         name: HandlerProjectionSavings
         module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
       handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
+      event_model: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings.ModelSavingsEstimatedEvent
     - handler:
         name: SavingsProjectionRunner
         module: omnimarket.nodes.node_projection_savings.handlers.handler_savings

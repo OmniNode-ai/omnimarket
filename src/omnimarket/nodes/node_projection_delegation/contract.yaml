@@ -3,6 +3,7 @@ name: projection_delegation
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
 description: >
   Projects delegation terminal events into the delegation_events table.
   Dedup by correlation_id. Sources include legacy task-delegated events,
@@ -24,6 +25,7 @@ handler_routing:
         name: HandlerProjectionDelegation
         module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
       handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
+      event_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 

@@ -3,6 +3,7 @@ name: projection_registration
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration.ModelNodeIntrospectionEvent
 description: >
   Projects node introspection and heartbeat events into
   the node_service_registry table. Source topics:
@@ -22,6 +23,7 @@ handler_routing:
         name: HandlerProjectionRegistration
         module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
       handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
+      event_model: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration.ModelNodeIntrospectionEvent
     - handler:
         name: RegistrationProjectionRunner
         module: omnimarket.nodes.node_projection_registration.handlers.handler_registration
