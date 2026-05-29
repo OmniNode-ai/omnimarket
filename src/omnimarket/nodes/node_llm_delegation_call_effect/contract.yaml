@@ -140,15 +140,23 @@ handler_routing:
         name: "HandlerLlmDelegationCall"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call"
     - operation: "execute_inference_intent"
+      event_model:
+        name: "ModelInferenceIntent"
+        module: "omnibase_compat.contracts.delegation.wire"
       handler:
         name: "HandlerInferenceIntent"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
-      description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294)."
-      input_model:
-        name: "ModelInferenceIntent"
-        module: "omnibase_compat.contracts.delegation.wire"
-        description: "Inference intent from the orchestrator (base_url already resolved by routing reducer)."
+      description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294). event_model type-scopes the dispatcher + validates the payload before handle()."
   default_handler: "HandlerLlmDelegationCall"
+
+# Maps HandlerInferenceIntent's returned model to its publish topic so the
+# runtime dispatch-result applier routes ModelInferenceResponseData to
+# inference-response.v1. event_type is the Model-prefix-stripped short class
+# name the applier looks up (OMN-12294).
+published_events:
+  - event_type: "InferenceResponseData"
+    topic: "onex.evt.omnibase-infra.inference-response.v1"
+    description: "Inference response emitted by HandlerInferenceIntent for the delegation orchestrator."
 
 # === DEPENDENCIES ===
 dependencies:

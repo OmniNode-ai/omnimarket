@@ -17,13 +17,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from omnibase_compat.contracts.delegation.wire import ModelRoutingIntent
 
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     delta as routing_delta,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
+    ModelRoutingDecision,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,8 +71,7 @@ class HandlerRoutingIntent:
     handle/handle_async, never __call__).
     """
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        intent = ModelRoutingIntent(**input_data)
+    def handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision:
         decision = routing_delta(intent.payload, min_tier_name=intent.min_tier_name)
         logger.info(
             "HandlerRoutingIntent resolved: model=%s endpoint=%s tier=%s correlation_id=%s",
@@ -79,7 +80,7 @@ class HandlerRoutingIntent:
             decision.tier_name,
             decision.correlation_id,
         )
-        return decision.model_dump(mode="json")
+        return decision
 
 
 __all__ = ["HandlerRoutingIntent"]

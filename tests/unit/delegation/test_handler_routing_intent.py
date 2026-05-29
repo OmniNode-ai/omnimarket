@@ -93,6 +93,8 @@ class TestHandlerRoutingIntent:
         _h._load_bifrost_endpoints.cache_clear()
 
     def _intent(self, **kwargs: object) -> ModelRoutingIntent:
+        # The contract declares event_model=ModelRoutingIntent, so the runtime
+        # validates the payload and hands handle() the typed intent.
         request = ModelDelegationRequest(
             prompt="Explain the runtime ingress boundary.",
             task_type="research",
@@ -106,10 +108,8 @@ class TestHandlerRoutingIntent:
         handler = HandlerRoutingIntent()
         intent = self._intent()
 
-        decision_dict = handler.handle(intent.model_dump(mode="json"))
+        decision = handler.handle(intent)
 
-        assert isinstance(decision_dict, dict)
-        decision = ModelRoutingDecision.model_validate(decision_dict)
         assert isinstance(decision, ModelRoutingDecision)
         assert decision.correlation_id == intent.payload.correlation_id
         assert decision.task_type == "research"
@@ -119,12 +119,10 @@ class TestHandlerRoutingIntent:
         }
 
     def test_returns_decision_for_runtime_autopublish(self) -> None:
-        # The runtime dispatch-result applier publishes the returned JSON dict to
-        # the contract's publish_topics; dispatchers validate it back into the model.
+        # The runtime dispatch-result applier publishes the RETURNED model to the
+        # contract's published_events topic (routing-decision.v1).
         handler = HandlerRoutingIntent()
-        decision = ModelRoutingDecision.model_validate(
-            handler.handle(self._intent().model_dump(mode="json"))
-        )
+        decision = handler.handle(self._intent())
         assert isinstance(decision, ModelRoutingDecision)
         assert TOPIC_ROUTING_DECISION.endswith("routing-decision.v1")
 
@@ -136,7 +134,7 @@ class TestHandlerRoutingIntent:
         from omnibase_infra.errors import ProtocolConfigurationError
 
         with pytest.raises(ProtocolConfigurationError):
-            handler.handle(self._intent(min_tier_name="claude").model_dump(mode="json"))
+            handler.handle(self._intent(min_tier_name="claude"))
 
     def test_contract_declares_routing_decision_publish_topic(self) -> None:
         from omnimarket.nodes.contract_topics import contract_publish_topics

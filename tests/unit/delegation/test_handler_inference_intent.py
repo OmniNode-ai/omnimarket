@@ -62,10 +62,8 @@ class TestHandlerInferenceIntent:
             mock_client.post.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            result_dict = handler.handle(intent.model_dump(mode="json"))
+            result = handler.handle(intent)
 
-        assert isinstance(result_dict, dict)
-        result = ModelInferenceResponseData.model_validate(result_dict)
         assert isinstance(result, ModelInferenceResponseData)
         assert result.correlation_id == intent.correlation_id
         assert result.content == "def test_foo(): pass"
@@ -86,17 +84,16 @@ class TestHandlerInferenceIntent:
             mock_client.post.side_effect = ConnectionRefusedError("refused")
             mock_client_cls.return_value = mock_client
 
-            result_dict = handler.handle(intent.model_dump(mode="json"))
+            result = handler.handle(intent)
 
-        result = ModelInferenceResponseData.model_validate(result_dict)
         assert result.correlation_id == intent.correlation_id
         assert result.content == ""
         assert result.error_message != ""
         assert result.model_used == "test-model"
 
     def test_returns_response_for_runtime_autopublish(self) -> None:
-        # The runtime dispatch-result applier publishes the returned JSON dict to
-        # the contract's publish_topics; dispatchers validate it back into the model.
+        # The runtime dispatch-result applier publishes the RETURNED model to the
+        # contract's publish_topics; handle() must return ModelInferenceResponseData.
         handler = HandlerInferenceIntent()
         intent = _make_intent()
 
@@ -111,9 +108,8 @@ class TestHandlerInferenceIntent:
             mock_client.post.return_value = mock_response
             mock_client_cls.return_value = mock_client
 
-            result_dict = handler.handle(intent.model_dump(mode="json"))
+            result = handler.handle(intent)
 
-        result = ModelInferenceResponseData.model_validate(result_dict)
         assert isinstance(result, ModelInferenceResponseData)
         assert TOPIC_INFERENCE_RESPONSE.endswith("inference-response.v1")
 
@@ -139,7 +135,7 @@ class TestHandlerInferenceIntent:
             mock_client.post.side_effect = _capture_post
             mock_client_cls.return_value = mock_client
 
-            handler.handle(intent.model_dump(mode="json"))
+            handler.handle(intent)
 
         assert len(captured_payload) == 1
         messages = captured_payload[0].get("messages", [])
@@ -169,7 +165,7 @@ class TestHandlerInferenceIntent:
             mock_client.post.side_effect = _capture_post
             mock_client_cls.return_value = mock_client
 
-            handler.handle(intent.model_dump(mode="json"))
+            handler.handle(intent)
 
         assert len(captured_headers) == 1
         assert captured_headers[0].get("Authorization") == "Bearer sk-test-key"

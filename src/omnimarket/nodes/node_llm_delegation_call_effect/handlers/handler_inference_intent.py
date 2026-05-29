@@ -86,13 +86,12 @@ class HandlerInferenceIntent:
     handle/handle_async, never __call__).
     """
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        intent = ModelInferenceIntent(**input_data)
+    def handle(self, intent: ModelInferenceIntent) -> ModelInferenceResponseData:
         started = time.monotonic()
         call_id = str(uuid4())
 
         try:
-            return self._call_llm(intent, call_id).model_dump(mode="json")
+            return self._call_llm(intent, call_id)
         except Exception as exc:
             latency_ms = int((time.monotonic() - started) * 1000)
             error_msg = str(exc)
@@ -109,7 +108,7 @@ class HandlerInferenceIntent:
                 llm_call_id=call_id,
                 latency_ms=latency_ms,
                 error_message=error_msg,
-            ).model_dump(mode="json")
+            )
 
     def _call_llm(
         self,
