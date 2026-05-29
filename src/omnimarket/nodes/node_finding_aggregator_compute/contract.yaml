@@ -38,6 +38,10 @@ event_bus:
     - onex.evt.omnimarket.finding-aggregator-completed.v1
     - onex.evt.omnimarket.finding-aggregator-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.finding-aggregator-completed.v1
+  - onex.evt.omnimarket.finding-aggregator-failed.v1
+
 handler:
   module: "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator"
   class: "HandlerFindingAggregator"

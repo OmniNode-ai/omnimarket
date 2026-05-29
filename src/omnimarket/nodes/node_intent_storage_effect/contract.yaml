@@ -215,6 +215,12 @@ event_bus:
       description: "Intent storage failure event. Emitted when an intent storage operation fails with
         error details."
 
+externally_consumed_topics:
+  - "onex.evt.omnimemory.intent-stored.v1"
+  - "onex.evt.omnimemory.intent-store-failed.v1"
+  - "onex.evt.omnimemory.intent-storage-completed.v1"
+  - "onex.evt.omnimemory.intent-storage-failed.v1"
+
 # === TAGS ===
 tags:
   - intent

@@ -29,6 +29,10 @@ event_bus:
     - onex.evt.omnimemory.persona-retrieval-completed.v1
     - onex.evt.omnimemory.persona-retrieval-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimemory.persona-retrieval-completed.v1
+  - onex.evt.omnimemory.persona-retrieval-failed.v1
+
 io_operations:
   - operation_type: "database_read"
     atomic: false

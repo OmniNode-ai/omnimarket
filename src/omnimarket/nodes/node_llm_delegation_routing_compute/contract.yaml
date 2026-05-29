@@ -39,6 +39,10 @@ event_bus:
     - onex.evt.omnimarket.llm-delegation-routing-completed.v1
     - onex.evt.omnimarket.llm-delegation-routing-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.llm-delegation-routing-completed.v1
+  - onex.evt.omnimarket.llm-delegation-routing-failed.v1
+
 handler:
   module: omnimarket.nodes.node_llm_delegation_routing_compute.handlers.handler_delegation_routing
   class: HandlerDelegationRouting

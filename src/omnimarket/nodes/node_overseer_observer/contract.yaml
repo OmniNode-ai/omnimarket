@@ -53,6 +53,10 @@ event_bus:
     - onex.evt.omnimarket.overseer-observer-completed.v1
     - onex.evt.omnimarket.overseer-observer-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.overseer-observer-completed.v1
+  - onex.evt.omnimarket.overseer-observer-failed.v1
+
 # Phase-0 stubs — no active bus subscription yet (Wave 3+). Declared here for
 # contract completeness so the compliance scanner can verify module paths (OMN-11907).
 handler_routing:

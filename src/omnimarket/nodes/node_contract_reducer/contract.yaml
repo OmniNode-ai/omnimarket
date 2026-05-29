@@ -67,5 +67,9 @@ event_bus:
     - onex.evt.omnimarket.contract-reducer-completed.v1
     - onex.evt.omnimarket.contract-reducer-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-reducer-completed.v1
+  - onex.evt.omnimarket.contract-reducer-failed.v1
+
 metadata:
   transport_type: kafka

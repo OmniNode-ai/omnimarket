@@ -57,6 +57,7 @@ event_bus:
 
 externally_consumed_topics:
   - onex.evt.omnimarket.cross-cli-originator-completed.v1
+  - onex.evt.omnimarket.cross-cli-originator-failed.v1
   - onex.evt.omnimarket.cross-cli-delegation-completed.v1
 
 env_dependencies:

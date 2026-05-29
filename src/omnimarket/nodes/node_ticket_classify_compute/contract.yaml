@@ -39,6 +39,10 @@ event_bus:
     - onex.evt.omnimarket.ticket-classify-completed.v1
     - onex.evt.omnimarket.ticket-classify-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.ticket-classify-completed.v1
+  - onex.evt.omnimarket.ticket-classify-failed.v1
+
 handler:
   module: "omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify"
   class: "HandlerTicketClassify"

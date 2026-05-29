@@ -241,6 +241,14 @@ event_bus:
       description: "Memory deletion confirmation event. Emitted when a memory snapshot is successfully
         soft-deleted from the storage backend."
 
+externally_consumed_topics:
+  - "onex.evt.omnimemory.memory-stored.v1"
+  - "onex.evt.omnimemory.memory-retrieved.v1"
+  - "onex.evt.omnimemory.memory-updated.v1"
+  - "onex.evt.omnimemory.memory-deleted.v1"
+  - "onex.evt.omnimemory.memory-storage-completed.v1"
+  - "onex.evt.omnimemory.memory-storage-failed.v1"
+
 # === TAGS ===
 tags:
   - memory

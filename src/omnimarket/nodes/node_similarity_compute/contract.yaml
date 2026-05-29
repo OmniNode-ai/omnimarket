@@ -38,6 +38,10 @@ event_bus:
     - onex.evt.omnimemory.similarity-compute-completed.v1
     - onex.evt.omnimemory.similarity-compute-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimemory.similarity-compute-completed.v1
+  - onex.evt.omnimemory.similarity-compute-failed.v1
+
 handler:
   module: "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute"
   class: "HandlerSimilarityCompute"

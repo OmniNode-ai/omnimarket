@@ -118,6 +118,13 @@ event_bus:
     - onex.evt.omnimarket.model-router-completed.v1
     - onex.evt.omnimarket.model-router-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.model-routing-degraded.v1
+  - onex.evt.omnimarket.model-llm-route-resolved.v1
+  - onex.evt.omnimarket.model-llm-route-rejected.v1
+  - onex.evt.omnimarket.model-router-completed.v1
+  - onex.evt.omnimarket.model-router-failed.v1
+
 metadata:
   transport_type: kafka
   description: "Contract-driven LLM routing substrate"

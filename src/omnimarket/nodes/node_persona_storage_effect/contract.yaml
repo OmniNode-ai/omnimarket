@@ -37,6 +37,11 @@ event_bus:
     - "onex.evt.omnimemory.persona-storage-completed.v1"
     - "onex.evt.omnimemory.persona-storage-failed.v1"
 
+externally_consumed_topics:
+  - "onex.evt.omnimemory.persona-snapshot-created.v1"
+  - "onex.evt.omnimemory.persona-storage-completed.v1"
+  - "onex.evt.omnimemory.persona-storage-failed.v1"
+
 tags:
   - persona
   - effect

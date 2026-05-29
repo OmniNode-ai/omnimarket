@@ -38,6 +38,10 @@ event_bus:
     - onex.evt.omnimarket.rsd-fill-completed.v1
     - onex.evt.omnimarket.rsd-fill-failed.v1
 
+externally_consumed_topics:
+  - onex.evt.omnimarket.rsd-fill-completed.v1
+  - onex.evt.omnimarket.rsd-fill-failed.v1
+
 handler:
   module: "omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill"
   class: "HandlerRsdFill"
