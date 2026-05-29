@@ -9,7 +9,7 @@
 #   - OMN-7795: Finding Aggregator COMPUTE node
 #   - OMN-7781: Unified LLM Workflow Migration epic
 name: "node_finding_aggregator_compute"
-node_type: "COMPUTE_GENERIC"
+node_type: compute
 contract_version:
   major: 1
   minor: 0
@@ -26,9 +26,22 @@ output_model:
   description: "Merged findings with weighted scores and verdict."
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: in_process
-  reason: "Pure compute helper invoked by workflow nodes; it does not own an external command topic."
+  command_topic: onex.cmd.omnimarket.finding-aggregator.v1
+  terminal_events:
+    success: onex.evt.omnimarket.finding-aggregator-completed.v1
+    failure: onex.evt.omnimarket.finding-aggregator-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.finding-aggregator.v1
+  publish_topics:
+    - onex.evt.omnimarket.finding-aggregator-completed.v1
+    - onex.evt.omnimarket.finding-aggregator-failed.v1
+
+handler:
+  module: "omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator"
+  class: "HandlerFindingAggregator"
+  input_model: "omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input.ModelFindingAggregatorInput"
 
 handler_routing:
   routing_strategy: "operation_match"

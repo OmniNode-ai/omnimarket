@@ -1,14 +1,14 @@
 ---
 name: node_contract_reducer
 contract_version: {major: 1, minor: 0, patch: 0}
-node_type: compute
+node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Generic contract-driven state machine reducer. Accepts accumulated state,
   a user response, and a transition table declared in the calling contract.
   Evaluates the transition, merges any state updates, advances current_step,
-  and reports whether the flow is terminal. Pure compute — no I/O.
+  and reports whether the flow is terminal. Pure reducer — no I/O.
 
 handler:
   module: omnimarket.nodes.node_contract_reducer.handlers.handler_contract_reducer
@@ -24,7 +24,7 @@ handler_routing:
         module: omnimarket.nodes.node_contract_reducer.handlers.handler_contract_reducer
 
 descriptor:
-  node_archetype: compute
+  node_archetype: reducer
   purity: pure
   idempotent: true
   timeout_ms: 5000
@@ -55,9 +55,17 @@ outputs:
     description: "True when next_step is 'done' or has no outgoing transition"
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: in_process
-  reason: "Pure reducer invoked by orchestrators; it does not own an external command topic."
+  command_topic: onex.cmd.omnimarket.contract-reducer.v1
+  terminal_events:
+    success: onex.evt.omnimarket.contract-reducer-completed.v1
+    failure: onex.evt.omnimarket.contract-reducer-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-reducer.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-reducer-completed.v1
+    - onex.evt.omnimarket.contract-reducer-failed.v1
 
 metadata:
-  transport_type: direct
+  transport_type: kafka

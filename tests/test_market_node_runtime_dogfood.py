@@ -6,6 +6,34 @@ from __future__ import annotations
 
 from scripts.audit.market_node_runtime_dogfood import build_report
 
+FOCUS_NODES = {
+    "node_contract_reducer",
+    "node_cross_cli_originator",
+    "node_e2e_orchestrator",
+    "node_finding_aggregator_compute",
+    "node_intent_storage_effect",
+    "node_llm_delegation_routing_compute",
+    "node_memory_storage_effect",
+    "node_model_router",
+    "node_navigation_history_reducer",
+    "node_overseer_observer",
+    "node_persona_builder_compute",
+    "node_persona_retrieval_effect",
+    "node_persona_storage_effect",
+    "node_polish_task_classifier",
+    "node_projection_dep_health",
+    "node_rsd_fill_compute",
+    "node_semantic_analyzer_compute",
+    "node_similarity_compute",
+    "node_ticket_classify_compute",
+}
+
+NATIVE_NON_ADDRESSABLE_NODES = {
+    "node_e2e_orchestrator",
+    "node_navigation_history_reducer",
+    "node_projection_dep_health",
+}
+
 
 def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> None:
     report = build_report()
@@ -15,18 +43,23 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert summary["entry_points"] == 290
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 271
-    assert summary["skipped"] == 19
+    assert summary["routable"] >= 287
+    assert summary["skipped"] == 3
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
         item["node_name"]
         for item in report["skipped"]
         if item["bucket"] == "non_addressable"
-    } >= {
+    } == {
         "node_e2e_orchestrator",
-        "node_overseer_observer",
+        "node_navigation_history_reducer",
         "node_projection_dep_health",
+    }
+    assert not {
+        item["node_name"]
+        for item in report["skipped"]
+        if item["node_name"].endswith("_compute")
     }
 
 
@@ -74,6 +107,18 @@ def test_market_node_runtime_dogfood_proves_nested_contract_shapes() -> None:
         routable["node_emit_daemon"]["command_topic"]
         == "onex.cmd.omnimarket.emit-daemon-lifecycle.v1"
     )
+    assert (
+        routable["node_similarity_compute"]["command_topic"]
+        == "onex.cmd.omnimemory.similarity-compute.v1"
+    )
+    assert (
+        routable["node_memory_storage_effect"]["command_topic"]
+        == "onex.cmd.omnimemory.memory-storage.v1"
+    )
+    assert (
+        routable["node_overseer_observer"]["input_model"]
+        == "omnimarket.nodes.node_overseer_observer.models.model_overseer_observation_request.ModelOverseerObservationRequest"
+    )
 
 
 def test_market_node_runtime_dogfood_proves_handler_key_repairs() -> None:
@@ -91,4 +136,22 @@ def test_market_node_runtime_dogfood_proves_handler_key_repairs() -> None:
     assert (
         routable["node_persona_lifecycle_orchestrator"]["handler"]
         == "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild.HandlerPersonaRebuild"
+    )
+
+
+def test_market_node_runtime_dogfood_audits_former_non_addressable_nodes() -> None:
+    report = build_report()
+    routable = {item["node_name"]: item for item in report["routable"]}
+    skipped = {item["node_name"]: item for item in report["skipped"]}
+    failures = {item["node_name"]: item for item in report["failures"]}
+
+    assert failures.keys().isdisjoint(FOCUS_NODES)
+    assert (set(routable) | set(skipped)) & FOCUS_NODES == FOCUS_NODES
+    assert set(skipped) & FOCUS_NODES == NATIVE_NON_ADDRESSABLE_NODES
+
+    command_addressable_nodes = FOCUS_NODES - NATIVE_NON_ADDRESSABLE_NODES
+    assert command_addressable_nodes <= set(routable)
+    assert all(
+        routable[node_name]["command_topic"].startswith("onex.cmd.")
+        for node_name in command_addressable_nodes
     )

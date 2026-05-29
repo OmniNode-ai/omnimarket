@@ -25,9 +25,17 @@ output_model:
   description: "Updated persona snapshot with processing metadata."
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: in_process
-  reason: "Persona builder is a pure compute helper invoked by persona workflows."
+  command_topic: onex.cmd.omnimemory.persona-builder.v1
+  terminal_events:
+    success: onex.evt.omnimemory.persona-builder-completed.v1
+    failure: onex.evt.omnimemory.persona-builder-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimemory.persona-builder.v1
+  publish_topics:
+    - onex.evt.omnimemory.persona-builder-completed.v1
+    - onex.evt.omnimemory.persona-builder-failed.v1
 
 handler:
   module: omnimarket.nodes.node_persona_builder_compute.handlers.handler_persona_classify

@@ -9,7 +9,7 @@
 #   - OMN-8506: stub side-effect observer + evidence evaluator interfaces
 #   - OMN-8025: Overseer seam integration epic
 ---
-name: overseer_observer
+name: node_overseer_observer
 contract_version: {major: 0, minor: 1, patch: 0}
 node_type: compute
 node_version: {major: 0, minor: 1, patch: 0}
@@ -23,6 +23,16 @@ description: >
 handler:
   module: omnimarket.nodes.node_overseer_observer.handlers.handler_evidence_evaluator
   class: NullEvidenceEvaluator
+  input_model: omnimarket.nodes.node_overseer_observer.models.model_overseer_observation_request.ModelOverseerObservationRequest
+
+input_model:
+  name: ModelOverseerObservationRequest
+  module: omnimarket.nodes.node_overseer_observer.models.model_overseer_observation_request
+  description: "Observed side effects and required DOD evidence to evaluate."
+output_model:
+  name: ModelOverseerObservationResult
+  module: omnimarket.nodes.node_overseer_observer.models.model_overseer_observation_result
+  description: "Evidence evaluation result and observed/evidence counts."
 
 descriptor:
   node_archetype: compute
@@ -31,9 +41,17 @@ descriptor:
   timeout_ms: 5000
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: stub_interface
-  reason: "Phase-0 overseer observer declares extension Protocols only; active runtime bus wiring is deferred to Wave 3+."
+  command_topic: onex.cmd.omnimarket.overseer-observer.v1
+  terminal_events:
+    success: onex.evt.omnimarket.overseer-observer-completed.v1
+    failure: onex.evt.omnimarket.overseer-observer-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.overseer-observer.v1
+  publish_topics:
+    - onex.evt.omnimarket.overseer-observer-completed.v1
+    - onex.evt.omnimarket.overseer-observer-failed.v1
 
 # Phase-0 stubs — no active bus subscription yet (Wave 3+). Declared here for
 # contract completeness so the compliance scanner can verify module paths (OMN-11907).

@@ -118,9 +118,10 @@ event_type:
   invocation_mode: "orchestrator"
 
 runtime_dispatch:
-  addressable: false
-  invocation_mode: in_process
-  reason: "Intent storage is orchestrator-invoked and publishes projection events without a command subscription."
+  command_topic: onex.cmd.omnimemory.intent-storage.v1
+  terminal_events:
+    success: onex.evt.omnimemory.intent-storage-completed.v1
+    failure: onex.evt.omnimemory.intent-storage-failed.v1
 
 # === VALIDATION RULES ===
 validation_rules:
@@ -193,13 +194,15 @@ event_bus:
     minor: 0
     patch: 0
 
-  # This node does not subscribe to topics (orchestrator-invoked)
-  subscribe_topics: []
+  subscribe_topics:
+    - "onex.cmd.omnimemory.intent-storage.v1"
 
   # Topics this node publishes to (sends events to)
   publish_topics:
     - "onex.evt.omnimemory.intent-stored.v1"
     - "onex.evt.omnimemory.intent-store-failed.v1"
+    - "onex.evt.omnimemory.intent-storage-completed.v1"
+    - "onex.evt.omnimemory.intent-storage-failed.v1"
 
   # Metadata for published topics
   publish_topic_metadata:
