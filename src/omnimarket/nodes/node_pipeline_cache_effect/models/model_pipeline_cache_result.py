@@ -6,10 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_golden_chain_generator_compute.models.model_golden_chain_generation_result import (
+from omnimarket.events.generation import (
     ModelGoldenChainGenerationResult,
-)
-from omnimarket.nodes.node_test_generator_compute.models.model_test_generation_result import (
     ModelTestGenerationResult,
 )
 

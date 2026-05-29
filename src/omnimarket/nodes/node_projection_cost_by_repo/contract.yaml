@@ -3,6 +3,7 @@ name: node_projection_cost_by_repo
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: REDUCER_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelCostByRepoProjectionEvent
 description: >
   Emits repeatable cost-by-repository snapshots for downstream dashboard consumers.
 
@@ -19,6 +20,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionCostByRepo
         module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_projection_cost_by_repo
+      event_model: ModelCostByRepoProjectionEvent
 
 idempotency:
   enabled: true

@@ -155,6 +155,11 @@ event_type:
   event_routing: "memory"
   invocation_mode: "orchestrator"
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: in_process
+  reason: "Memory storage is orchestrator-invoked and publishes projection events without a command subscription."
+
 # === INFRASTRUCTURE ===
 infrastructure:
   storage_backends:

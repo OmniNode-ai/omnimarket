@@ -9,11 +9,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.events.checkpoint import ModelCheckpointRequest
 from omnimarket.nodes.node_checkpoint_compute.handlers.handler_checkpoint_compute import (
     HandlerCheckpointCompute,
-)
-from omnimarket.nodes.node_checkpoint_compute.models.model_checkpoint_request import (
-    ModelCheckpointRequest,
 )
 from omnimarket.nodes.node_resume_session_compute.handlers.handler_resume_session_compute import (
     HandlerResumeSessionCompute,

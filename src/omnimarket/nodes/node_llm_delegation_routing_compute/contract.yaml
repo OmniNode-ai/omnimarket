@@ -25,6 +25,12 @@ output_model:
   name: "ModelDelegationRoutingOutput"
   module: "omnimarket.nodes.node_llm_delegation_routing_compute.models.model_delegation_routing_output"
   description: "Selected model with selection reason and audit trail of skipped alternatives."
+
+runtime_dispatch:
+  addressable: false
+  invocation_mode: in_process
+  reason: "Delegation routing is a deterministic compute step called by the delegation orchestrator."
+
 handler:
   module: omnimarket.nodes.node_llm_delegation_routing_compute.handlers.handler_delegation_routing
   class: HandlerDelegationRouting

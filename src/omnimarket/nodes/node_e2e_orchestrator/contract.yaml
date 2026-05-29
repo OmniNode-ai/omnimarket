@@ -25,3 +25,8 @@ descriptor:
   runtime_profiles:
     - full_runtime
     - standalone
+
+runtime_dispatch:
+  addressable: false
+  invocation_mode: event_consumer
+  reason: "E2E orchestrator is a long-running Kafka consumer bridge triggered by build-loop and PR-lifecycle events; it does not own a request/response command route."

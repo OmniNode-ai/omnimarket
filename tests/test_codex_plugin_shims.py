@@ -10,13 +10,17 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "onex"
 EXPECTED_CODEX_SKILLS = {
+    "adversarial-pipeline",
     "aislop-sweep",
     "bus-audit",
     "coderabbit-triage",
+    "dep-cascade-dedup",
     "gap",
     "local-review",
     "merge-sweep",
+    "observability-sink",
     "pr-polish",
+    "recall",
     "session-bootstrap",
     "session-orchestrator",
     "ticket-pipeline",
@@ -131,6 +135,26 @@ def test_codex_shims_remain_dispatch_only() -> None:
             assert "--timeout-ms 600000" in text
             assert "skip_test_iterate" in text
             assert "not_implemented" in text
+        elif path.parent.name == "adversarial-pipeline":
+            assert '--command-name "adversarial_pipeline_orchestrator"' in text
+            assert "--timeout-ms 300000" in text
+            assert "stage_reached" in text
+            assert "gate_passed" in text
+        elif path.parent.name == "dep-cascade-dedup":
+            assert '--command-name "dep_cascade_dedup_orchestrator"' in text
+            assert "--timeout-ms 600000" in text
+            assert "repos" in text
+            assert "dependency_type" in text
+        elif path.parent.name == "observability-sink":
+            assert '--command-name "observability_sink_effect"' in text
+            assert "--timeout-ms 30000" in text
+            assert "correlation_id" in text
+            assert "persisted_event_count" in text
+        elif path.parent.name == "recall":
+            assert '--command-name "recall_compute"' in text
+            assert "--timeout-ms 15000" in text
+            assert "query" in text
+            assert "max_results" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text
@@ -203,6 +227,22 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             assert "--timeout-ms 600000" in text
             assert "skip_test_iterate" in text
             assert "not_implemented" in text
+        elif path.parent.name == "adversarial-pipeline":
+            assert '--command-name "adversarial_pipeline_orchestrator"' in text
+            assert "--timeout-ms 300000" in text
+        elif path.parent.name == "dep-cascade-dedup":
+            assert '--command-name "dep_cascade_dedup_orchestrator"' in text
+            assert "--timeout-ms 600000" in text
+            assert "repos" in text
+        elif path.parent.name == "observability-sink":
+            assert '--command-name "observability_sink_effect"' in text
+            assert "--timeout-ms 30000" in text
+            assert "correlation_id" in text
+        elif path.parent.name == "recall":
+            assert '--command-name "recall_compute"' in text
+            assert "--timeout-ms 15000" in text
+            assert "query" in text
+            assert "max_results" in text
         else:
             raise AssertionError(f"unexpected skill path: {path}")
         assert ".venv/bin/python -m omnimarket.nodes." not in text

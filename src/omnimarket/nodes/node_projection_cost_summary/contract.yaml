@@ -3,6 +3,7 @@ name: node_projection_cost_summary
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: REDUCER_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelCostSummaryProjectionEvent
 description: >
   Emits repeatable cost summary snapshots for downstream dashboard consumers.
 
@@ -21,6 +22,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionCostSummary
         module: omnimarket.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
+      event_model: ModelCostSummaryProjectionEvent
 
 idempotency:
   enabled: true

@@ -33,6 +33,11 @@ descriptor:
   idempotent: false
   timeout_ms: 120000
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: in_process
+  reason: "Model routing is an internal helper and publishes route outcomes without subscribing to a command topic."
+
 dependencies:
   - name: "ModelRoutingPolicy"
     type: "config"

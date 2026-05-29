@@ -13,6 +13,23 @@
 #
 # Review this list quarterly. Remove entries when the subscriber is wired.
 allowlist:
+  # --- pattern-b-dispatch (.201 runtime bridge) ---
+  # Published/consumed across the .201 stability runtime via omnibase_infra.
+  # omnimarket keeps these literals in the Codex runtime adapter because the
+  # active .201 consumers are on the omnibase-infra namespace.
+  # Expires: 2026-08-29 — replace with central cross-repo topic registry
+  # ownership once the runtime bridge contracts are unified.
+  - topic: "onex.cmd.omnibase-infra.pattern-b-dispatch.v1"
+    reason: "Codex runtime adapter targets the active .201 omnibase_infra Pattern B command topic."
+    owner_repo: omnibase_infra
+    planned_subscriber: node_pattern_b_runtime_bridge
+    expires_at: "2026-08-29"
+  - topic: "onex.evt.omnibase-infra.pattern-b-dispatch-completed.v1"
+    reason: "Codex runtime adapter waits for the active .201 omnibase_infra Pattern B completion topic."
+    owner_repo: omnibase_infra
+    planned_subscriber: node_pattern_b_runtime_bridge
+    expires_at: "2026-08-29"
+
   # --- delegation-inference-request ---
   # Published by: node_delegation_orchestrator (omnimarket)
   # Intended consumer: omnibase_infra LLM inference effect layer (delegation-specific path)

@@ -1255,6 +1255,36 @@ def test_observability_sink_local_runtime_smoke_uses_contract_topics(
     assert payload["postgres_row_ids"] == []
 
 
+def test_emit_daemon_local_runtime_lifecycle_uses_typed_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+
+    client = CodexRuntimeRequestAdapter(requester="codex-test")
+    result = client.dispatch_sync(
+        command_name="node_emit_daemon",
+        payload={"action": "health"},
+        timeout_ms=5000,
+        runtime_selection="local",
+    )
+
+    assert result.ok is True
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.node_contract is not None
+    assert result.runtime_evidence.node_contract.endswith(
+        "node_emit_daemon/contract.yaml"
+    )
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.emit-daemon-lifecycle.v1"
+    )
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.emit-daemon-lifecycle-completed.v1"
+    )
+    assert result.output_payloads is not None
+    assert result.output_payloads[0]["phase"] == "idle"
+
+
 @pytest.mark.asyncio
 async def test_dispatch_async_uses_env_target_runtime_address(
     monkeypatch: pytest.MonkeyPatch,
