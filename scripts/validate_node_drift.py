@@ -251,9 +251,15 @@ def validate_node(
             f"contract.yaml missing required fields: {sorted(missing_always)}",
         )
 
-    # handler is required only for classic node types (compute/effect/reducer)
+    # handler is required only for classic node types (compute/effect/reducer).
+    # A contract-driven handler_routing block is equivalent to a top-level
+    # handler when it names at least one concrete handler route.
     node_type = str(contract.get("node_type", "")).lower()
-    if node_type in NODE_TYPES_REQUIRING_HANDLER and "handler" not in contract:
+    if (
+        node_type in NODE_TYPES_REQUIRING_HANDLER
+        and "handler" not in contract
+        and not _has_handler_routing(contract)
+    ):
         add(
             "contract_fields",
             f"contract.yaml missing 'handler' block (required for node_type={node_type!r})",
@@ -282,6 +288,30 @@ def validate_node(
                 )
 
     return result
+
+
+def _has_handler_routing(contract: dict[str, Any]) -> bool:
+    routing = contract.get("handler_routing") or {}
+    if not isinstance(routing, dict):
+        return False
+    handlers = routing.get("handlers")
+    if not isinstance(handlers, list):
+        return False
+    for raw_handler in handlers:
+        if not isinstance(raw_handler, dict):
+            continue
+        if raw_handler.get("handler_module") and raw_handler.get("handler_class"):
+            return True
+        nested = raw_handler.get("handler")
+        if (
+            isinstance(nested, dict)
+            and nested.get("module")
+            and (
+                nested.get("class") or nested.get("name") or nested.get("handler_class")
+            )
+        ):
+            return True
+    return False
 
 
 def collect_nodes(*, changed_ref: str | None) -> tuple[list[Path], set[str] | None]:

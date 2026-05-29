@@ -401,8 +401,13 @@ def _resolve_node_route(command_name: str) -> _NodeRoute:
 
     event_bus = cast(dict[str, Any], contract.get("event_bus") or {})
     runtime_dispatch = cast(dict[str, Any], contract.get("runtime_dispatch") or {})
-    terminals = cast(dict[str, Any], runtime_dispatch.get("terminal_events") or {})
-    input_model = _input_model_spec(contract)
+    terminals = cast(
+        dict[str, Any],
+        runtime_dispatch.get("terminal_events")
+        or contract.get("terminal_events")
+        or {},
+    )
+    input_model = _input_model_spec(contract, node_name=node_name)
     handler = _handler_spec(contract)
 
     command_topic = str(
@@ -441,17 +446,30 @@ def _node_name_for_command(command_name: str) -> str:
     return f"node_{candidate}"
 
 
-def _input_model_spec(contract: dict[str, Any]) -> tuple[str, str]:
+def _input_model_spec(contract: dict[str, Any], *, node_name: str) -> tuple[str, str]:
     handler = cast(dict[str, Any], contract.get("handler") or {})
     raw = handler.get("input_model") or contract.get("input_model") or {}
     if isinstance(raw, str) and "." in raw:
         module, name = raw.rsplit(".", 1)
         return module, name
+    if isinstance(raw, str):
+        resolved = _model_ref_from_local_name(node_name, raw)
+        if resolved is not None:
+            return resolved
     if isinstance(raw, dict):
-        module = str(raw.get("module") or "")
-        name = str(raw.get("class") or raw.get("name") or "")
-        if module and name:
-            return module, name
+        resolved = _model_ref_from_mapping(raw, node_name=node_name)
+        if resolved is not None:
+            return resolved
+    models = contract.get("models")
+    if isinstance(models, dict):
+        model_input = models.get("input")
+        if isinstance(model_input, dict):
+            resolved = _model_ref_from_mapping(model_input, node_name=node_name)
+            if resolved is not None:
+                return resolved
+    route_model = _first_handler_model_spec(contract, node_name=node_name)
+    if route_model is not None:
+        return route_model
     raise ValueError("Contract lacks an input_model module/name")
 
 
@@ -469,7 +487,91 @@ def _handler_spec(contract: dict[str, Any]) -> tuple[str, str]:
         name = str(first.get("handler_class") or "")
         if module and name:
             return module, name
+        nested_handler = first.get("handler")
+        if isinstance(nested_handler, dict):
+            module = str(nested_handler.get("module") or "")
+            name = str(
+                nested_handler.get("class")
+                or nested_handler.get("name")
+                or nested_handler.get("handler_class")
+                or ""
+            )
+            if module and name:
+                return module, name
     raise ValueError("Contract lacks a handler module/class")
+
+
+def _first_handler_model_spec(
+    contract: dict[str, Any], *, node_name: str
+) -> tuple[str, str] | None:
+    routing = cast(dict[str, Any], contract.get("handler_routing") or {})
+    handlers = routing.get("handlers")
+    if not isinstance(handlers, list):
+        return None
+    for raw_handler in handlers:
+        if not isinstance(raw_handler, dict):
+            continue
+        for key in ("input_model", "event_model"):
+            raw_model = raw_handler.get(key)
+            if isinstance(raw_model, str) and "." in raw_model:
+                module, name = raw_model.rsplit(".", 1)
+                return module, name
+            if isinstance(raw_model, str):
+                resolved = _model_ref_from_local_name(node_name, raw_model)
+                if resolved is not None:
+                    return resolved
+            if isinstance(raw_model, dict):
+                resolved = _model_ref_from_mapping(raw_model, node_name=node_name)
+                if resolved is not None:
+                    return resolved
+    return None
+
+
+def _model_ref_from_mapping(
+    raw: dict[str, Any], *, node_name: str
+) -> tuple[str, str] | None:
+    module = str(raw.get("module") or "")
+    name = str(raw.get("class") or raw.get("name") or "")
+    if not module or not name:
+        return None
+    if module.endswith(f".{name}"):
+        module, name = module.rsplit(".", 1)
+    elif "." not in module:
+        resolved = _model_ref_from_local_name(node_name, name)
+        if resolved is not None:
+            return resolved
+    return module, name
+
+
+def _model_ref_from_local_name(
+    node_name: str, model_name: str
+) -> tuple[str, str] | None:
+    if "." in model_name:
+        module, name = model_name.rsplit(".", 1)
+        return module, name
+    node_dir = _NODE_ROOT / node_name / "models"
+    if not node_dir.is_dir():
+        return None
+    class_pattern = f"class {model_name}"
+    for model_file in sorted(node_dir.glob("*.py")):
+        if model_file.name == "__init__.py":
+            continue
+        try:
+            source = model_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if class_pattern in source:
+            module = f"omnimarket.nodes.{node_name}.models.{model_file.stem}"
+            return module, model_name
+
+    init_file = node_dir / "__init__.py"
+    try:
+        init_source = init_file.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if model_name in init_source:
+        return f"omnimarket.nodes.{node_name}.models", model_name
+    return None
 
 
 def _first_string(value: object) -> str | None:
