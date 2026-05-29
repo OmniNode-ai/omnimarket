@@ -134,23 +134,25 @@ def _coverage_for_skill(
         bool(handler_module) and _module_to_path(repo_root, handler_module).is_file(),
         handler_module or "missing handler module",
     )
+    models_path = node_path / "models" if node_path else None
+    tests_path = node_path / "tests" if node_path else None
     set_check(
         "models",
-        bool(node_path)
-        and (node_path / "models").is_dir()
-        and any((node_path / "models").glob("*.py")),
-        str(node_path / "models") if node_path else "missing backing node",
+        models_path is not None
+        and models_path.is_dir()
+        and any(models_path.glob("*.py")),
+        str(models_path) if models_path else "missing backing node",
     )
     set_check(
         "tests",
-        bool(node_path)
+        tests_path is not None
         and (
-            (node_path / "tests").is_dir()
+            tests_path.is_dir()
             or (
                 repo_root / "tests" / f"test_golden_chain_{_node_slug(node_path)}.py"
             ).is_file()
         ),
-        str(node_path / "tests") if node_path else "missing backing node",
+        str(tests_path) if tests_path else "missing backing node",
     )
     set_check(
         "entry_point",

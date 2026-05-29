@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -22,7 +25,7 @@ from omnimarket.nodes.node_recall_compute.models.model_recall_result import (
 class FakeBackend:
     def __init__(
         self,
-        results: list[dict[str, object] | ModelKnowledgeResult] | None = None,
+        results: list[Mapping[str, Any] | ModelKnowledgeResult] | None = None,
         *,
         error: Exception | None = None,
     ) -> None:
@@ -36,7 +39,7 @@ class FakeBackend:
         *,
         filters: ModelRecallFilters | None,
         max_results: int,
-    ) -> list[dict[str, object] | ModelKnowledgeResult]:
+    ) -> list[Mapping[str, Any] | ModelKnowledgeResult]:
         self.calls.append((query, filters, max_results))
         if self.error is not None:
             raise self.error

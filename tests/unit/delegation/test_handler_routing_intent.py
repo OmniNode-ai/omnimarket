@@ -106,8 +106,10 @@ class TestHandlerRoutingIntent:
         handler = HandlerRoutingIntent()
         intent = self._intent()
 
-        decision = handler.handle(intent)
+        decision_dict = handler.handle(intent.model_dump(mode="json"))
 
+        assert isinstance(decision_dict, dict)
+        decision = ModelRoutingDecision.model_validate(decision_dict)
         assert isinstance(decision, ModelRoutingDecision)
         assert decision.correlation_id == intent.payload.correlation_id
         assert decision.task_type == "research"
@@ -117,10 +119,12 @@ class TestHandlerRoutingIntent:
         }
 
     def test_returns_decision_for_runtime_autopublish(self) -> None:
-        # The runtime dispatch-result applier publishes the RETURNED model to the
-        # contract's publish_topics; the handler must return a ModelRoutingDecision.
+        # The runtime dispatch-result applier publishes the returned JSON dict to
+        # the contract's publish_topics; dispatchers validate it back into the model.
         handler = HandlerRoutingIntent()
-        decision = handler.handle(self._intent())
+        decision = ModelRoutingDecision.model_validate(
+            handler.handle(self._intent().model_dump(mode="json"))
+        )
         assert isinstance(decision, ModelRoutingDecision)
         assert TOPIC_ROUTING_DECISION.endswith("routing-decision.v1")
 
@@ -132,7 +136,7 @@ class TestHandlerRoutingIntent:
         from omnibase_infra.errors import ProtocolConfigurationError
 
         with pytest.raises(ProtocolConfigurationError):
-            handler.handle(self._intent(min_tier_name="claude"))
+            handler.handle(self._intent(min_tier_name="claude").model_dump(mode="json"))
 
     def test_contract_declares_routing_decision_publish_topic(self) -> None:
         from omnimarket.nodes.contract_topics import contract_publish_topics

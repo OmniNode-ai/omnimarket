@@ -49,24 +49,29 @@ class TestHandlerQualityGateIntent:
         handler = HandlerQualityGateIntent()
         intent = self._intent(_GOOD_RESEARCH)
 
-        result = handler.handle(intent)
+        result_dict = handler.handle(intent.model_dump(mode="json"))
 
+        assert isinstance(result_dict, dict)
+        result = ModelQualityGateResult.model_validate(result_dict)
         assert isinstance(result, ModelQualityGateResult)
         assert result.correlation_id == intent.payload.correlation_id
         assert result.passed is True
 
     def test_refusal_content_fails_gate(self) -> None:
         handler = HandlerQualityGateIntent()
-        result = handler.handle(self._intent(_REFUSAL))
+        result_dict = handler.handle(self._intent(_REFUSAL).model_dump(mode="json"))
+        result = ModelQualityGateResult.model_validate(result_dict)
 
         assert result.passed is False
         assert any("REFUSAL" in r for r in result.failure_reasons)
 
     def test_returns_result_for_runtime_autopublish(self) -> None:
-        # The runtime dispatch-result applier publishes the RETURNED model to the
-        # contract's publish_topics; the handler must return a ModelQualityGateResult.
+        # The runtime dispatch-result applier publishes the returned JSON dict to
+        # the contract's publish_topics; dispatchers validate it back into the model.
         handler = HandlerQualityGateIntent()
-        result = handler.handle(self._intent(_GOOD_RESEARCH))
+        result = ModelQualityGateResult.model_validate(
+            handler.handle(self._intent(_GOOD_RESEARCH).model_dump(mode="json"))
+        )
         assert isinstance(result, ModelQualityGateResult)
         assert TOPIC_QUALITY_GATE_RESULT.endswith("quality-gate-result.v1")
 
