@@ -20,7 +20,7 @@ from omnibase_core.models.contracts.model_handler_contract import (
 )
 from omnibase_infra.runtime.kafka_contract_source import ContractYamlParser
 
-from omnimarket.nodes.node_contract_registry.handlers.market_contract_adapter import (
+from omnimarket.nodes.node_contract_registry.market_contract_adapter import (
     MarketContractAdapterError,
     to_handler_contract_payload,
 )

@@ -12,7 +12,7 @@ from uuid import uuid4
 import yaml
 
 from omnimarket.nodes.contract_topics import contract_publish_topics
-from omnimarket.nodes.node_contract_registry.handlers.market_contract_adapter import (
+from omnimarket.nodes.node_contract_registry.market_contract_adapter import (
     MarketContractAdapterError,
     to_handler_contract_payload,
 )
