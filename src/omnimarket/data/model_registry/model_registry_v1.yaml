@@ -82,7 +82,7 @@ models:
       DeepSeek V4 Flash (284B MoE) served by antirez/ds4 on .200:8101 (Mac Studio).
       Live-probed 2026-05-30 as the active .200:8101 endpoint.
       Zero marginal API cost. context_window_budgeted=65536 (conservative).
-      LLM_DS_V4_FLASH_URL env var — overlay sets http://192.168.86.200:8101.
+      LLM_DS_V4_FLASH_URL env var — actual URL lives in bifrost_overrides.yaml overlay (local file, not committed).
 
   qwen3.6-35b:
     model_id: "qwen3.6-35b"
