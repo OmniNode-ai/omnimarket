@@ -91,13 +91,30 @@ backends:
       - research
   - backend_id: cloud-gemini-flash
     endpoint_url: ""
-    model_name: gemini-flash
+    # endpoint_url empty in repo default; overlay sets https://generativelanguage.googleapis.com/v1beta/openai/
+    model_name: "gemini-2.0-flash"
+    api_key_env: GEMINI_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
     capabilities:
       - summarization
       - simple_tasks
       - document
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX"
+  # Local DS-V4-Flash backend — DeepSeek V4 Flash (284B MoE) on .200:8101 (OMN-12492)
+  - backend_id: local-ds-v4-flash
+    endpoint_url: null
+    # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
+    model_name: null
+    tier: local
+    timeout_ms: 60000
+    capabilities:
+      - deep_reasoning
+      - reasoning
+      - research
+      - code_generation
   # OpenRouter backends (OMN-7980) — uses OPENROUTER_API_KEY from env at dispatch time.
   # api_key_env declared so the bifrost adapter picks up the secret without hardcoding it.
   - backend_id: openrouter-glm-flash
@@ -113,6 +130,22 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Build Loop"
+  # OpenRouter cheap-frontier-direct — Qwen3 Coder 480B (free tier, OMN-12492)
+  - backend_id: openrouter-qwen3-coder-480b
+    endpoint_url: ""
+    # endpoint_url empty; OPENROUTER_URL env var or overlay fills actual endpoint
+    model_name: "qwen/qwen3-coder:free"
+    api_key_env: OPENROUTER_API_KEY
+    tier: cheap_frontier
+    timeout_ms: 120000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
   # CLI agent backends — dispatched via subprocess, not HTTP.
   - backend_id: cli-claude
     endpoint_url: ""

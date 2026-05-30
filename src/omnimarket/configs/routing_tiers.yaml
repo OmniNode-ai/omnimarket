@@ -55,6 +55,15 @@ tiers:
           - review
           - document
         fast_path_threshold_tokens: 8192
+      - id: ds-v4-flash
+        backend_id: local-ds-v4-flash
+        max_context_tokens: 65536
+        use_for:
+          - research
+          - reasoning
+          - complex_reasoning
+          - code_generation
+        fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 2
@@ -87,6 +96,27 @@ tiers:
           - summarization
           - simple_tasks
           - document
+    eval_before_accept: true
+    eval_model: qwen3.6-35b
+    max_retries: 1
+  # cheap_frontier tier — high-capability free-tier cloud models for the June 5
+  # model-experimentation campaign (OMN-12492). Requires OPENROUTER_API_KEY.
+  # Sits between cheap_cloud and claude to offer frontier-quality output at zero
+  # marginal API cost when the key is available.
+  - name: cheap_frontier
+    cost_per_1k_tokens: 0.0
+    models:
+      # Qwen3 Coder 480B via OpenRouter free tier — cheap frontier direct (OMN-12492)
+      - id: openrouter-qwen3-coder-480b
+        backend_id: openrouter-qwen3-coder-480b
+        max_context_tokens: 262144
+        use_for:
+          - code_generation
+          - reasoning
+          - research
+          - refactor
+          - test
+        fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 1
