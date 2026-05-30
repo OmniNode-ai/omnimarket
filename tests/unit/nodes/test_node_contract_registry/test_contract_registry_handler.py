@@ -10,6 +10,10 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
+from omnibase_core.models.contracts.model_handler_contract import (
+    ModelHandlerContract,
+)
 
 from omnimarket.nodes.node_contract_registry.handlers.handler_contract_registry import (
     ContractRegistryHandler,
@@ -33,6 +37,14 @@ contract_version:
   patch: 0
 runtime_profiles:
   - stability
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+handler:
+  module: omnimarket.nodes.node_example.handlers.handler_example
+  class: ExampleHandler
+  input_model: omnimarket.nodes.node_example.models.model_example.ModelExampleRequest
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -84,7 +96,15 @@ def test_valid_contract_materialized() -> None:
     assert topic == "onex.evt.platform.node-registration.v1"
     assert payload["node_name"] == "node_example"
     assert payload["event_type"] == "registered"
-    assert payload["contract_yaml"] == _VALID_CONTRACT_YAML
+    # OMN-12463: the published contract_yaml is the ModelHandlerContract-shaped
+    # payload (adapted producer-side), not the raw market contract.
+    published_contract = yaml.safe_load(payload["contract_yaml"])
+    assert published_contract["handler_id"] == "node.node_example"
+    assert (
+        published_contract["metadata"]["handler_class"]
+        == "omnimarket.nodes.node_example.handlers.handler_example.ExampleHandler"
+    )
+    ModelHandlerContract.model_validate(published_contract)
     assert payload["contract_hash"] == _sha256(_VALID_CONTRACT_YAML)
     assert payload["correlation_id"] == str(request.correlation_id)
     assert payload["node_version"] == {"major": 0, "minor": 1, "patch": 0}
@@ -222,6 +242,42 @@ def test_same_name_same_hash_idempotent() -> None:
     assert result_first.status == EnumMaterializationStatus.MATERIALIZED
     assert result_second.status == EnumMaterializationStatus.ALREADY_MATERIALIZED
     assert result_second.stored is True
+
+
+@pytest.mark.unit
+def test_unadaptable_contract_rejected() -> None:
+    # Passes allowlist + profile checks but declares no derivable input model,
+    # so the producer-side adapter (OMN-12463) fails fast and the registration
+    # is rejected rather than published with a malformed payload.
+    no_input_yaml = """\
+name: node_no_input
+node_type: EFFECT_GENERIC
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+runtime_profiles:
+  - stability
+descriptor:
+  node_archetype: effect
+handler:
+  module: omnimarket.nodes.node_no_input.handlers.handler_no_input
+  class: HandlerNoInput
+"""
+    publisher = MagicMock()
+    handler = _make_handler(publisher=publisher)
+    request = _make_request(
+        node_name="node_no_input",
+        contract_yaml=no_input_yaml,
+        contract_hash=_sha256(no_input_yaml),
+    )
+
+    result = handler.handle(request)
+
+    assert result.status == EnumMaterializationStatus.REJECTED
+    assert result.reason == EnumMaterializationRejection.ADAPTER_FAILURE
+    topic, _ = publisher.publish.call_args[0]
+    assert topic == "onex.evt.platform.node-registration-rejected.v1"
 
 
 @pytest.mark.unit

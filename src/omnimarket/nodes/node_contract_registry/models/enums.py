@@ -25,6 +25,7 @@ class EnumMaterializationRejection(StrEnum):
     HANDLER_ALLOWLIST = "handler_allowlist"
     PROFILE_MISMATCH = "profile_mismatch"
     VERSION_CONFLICT = "version_conflict"
+    ADAPTER_FAILURE = "adapter_failure"
 
 
 __all__ = ["EnumMaterializationRejection", "EnumMaterializationStatus"]

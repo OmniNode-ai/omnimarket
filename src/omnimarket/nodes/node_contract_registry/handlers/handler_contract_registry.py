@@ -12,6 +12,10 @@ from uuid import uuid4
 import yaml
 
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_contract_registry.handlers.market_contract_adapter import (
+    MarketContractAdapterError,
+    to_handler_contract_payload,
+)
 from omnimarket.nodes.node_contract_registry.models.enums import (
     EnumMaterializationRejection,
     EnumMaterializationStatus,
@@ -127,10 +131,26 @@ class ContractRegistryHandler:
                 mcp_tags=(),
             )
 
-        # Step 6: store
+        # Step 6: adapt market contract to ModelHandlerContract shape (OMN-12463)
+        # The runtime descriptor parser validates the published contract_yaml
+        # against omnibase_core's ModelHandlerContract, which market contracts do
+        # not satisfy at top level. Transform here (producer side) so the runtime
+        # can hot-load market nodes without infra-side market knowledge. Fail-fast:
+        # a contract we cannot map is rejected rather than published malformed.
+        try:
+            handler_contract_payload = to_handler_contract_payload(
+                parsed, request.node_name
+            )
+        except MarketContractAdapterError:
+            return self._reject(request, EnumMaterializationRejection.ADAPTER_FAILURE)
+        registration_contract_yaml = yaml.safe_dump(
+            handler_contract_payload, sort_keys=False
+        )
+
+        # Step 7: store
         self._registry[request.node_name] = request.contract_hash
 
-        # Step 7 & 8: build MCP tags and publish
+        # Step 8 & 9: build MCP tags and publish
         mcp_meta = parsed.get("metadata", {}) or {}
         mcp_eligible = bool(mcp_meta.get("mcp_enabled", False))
         node_type = parsed.get("node_type", "unknown")
@@ -163,7 +183,7 @@ class ContractRegistryHandler:
                     **result.model_dump(mode="json"),
                     "event_type": "registered",
                     "registration_request_id": _registration_request_id(request),
-                    "contract_yaml": request.contract_yaml,
+                    "contract_yaml": registration_contract_yaml,
                     "runtime_profile": request.target_profile,
                     "materialization_result": result.status.value,
                 },
