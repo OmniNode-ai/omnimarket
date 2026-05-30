@@ -10,6 +10,8 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
@@ -27,6 +29,7 @@ def test_valid_request_minimal() -> None:
     assert req.prompt == "Write tests for the payment webhook retry path"
     assert req.task_type == "test"
     assert req.source == "claude-code"
+    assert req.max_tokens == DELEGATION_DEFAULT_MAX_TOKENS
     assert isinstance(req.correlation_id, UUID)
 
 
@@ -112,6 +115,28 @@ def test_unsupported_acceptance_criterion_rejected() -> None:
             task_type="test",
             source="claude-code",
             acceptance_criteria=("semantic_magic",),
+        )
+
+
+def test_explicit_max_tokens_hard_limit_accepted() -> None:
+    req = ModelDelegateSkillRequest(
+        prompt="Use the full local response budget",
+        task_type="reasoning",
+        source="codex",
+        max_tokens=DELEGATION_MAX_TOKENS_HARD_LIMIT,
+    )
+
+    assert req.max_tokens == 8192
+
+
+@pytest.mark.parametrize("max_tokens", [8193, 16384])
+def test_max_tokens_above_hard_limit_rejected(max_tokens: int) -> None:
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillRequest(
+            prompt="Too much response budget",
+            task_type="reasoning",
+            source="codex",
+            max_tokens=max_tokens,
         )
 
 

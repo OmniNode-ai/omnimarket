@@ -69,8 +69,14 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegationEventProjectionRow,
     ModelProjectionEnvelopeMetadata,
 )
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+)
 
 __all__: list[str] = [
+    "DELEGATION_DEFAULT_MAX_TOKENS",
+    "DELEGATION_MAX_TOKENS_HARD_LIMIT",
     "MAX_WORDS_PER_SENTENCE_RE",
     "SUPPORTED_ACCEPTANCE_CRITERIA",
     "TASK_DELEGATED_TOPIC_V1",
