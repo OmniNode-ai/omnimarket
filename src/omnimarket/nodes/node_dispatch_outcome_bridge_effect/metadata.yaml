@@ -1,0 +1,18 @@
+---
+name: node_dispatch_outcome_bridge_effect
+display_name: "Dispatch Outcome Bridge Effect"
+description: >
+  Bridges omniclaude dispatch-worker-completed events into the intelligence
+  evaluation chain. Calls omniintelligence eval logic as a library dependency,
+  writes to dispatch_eval_results, and publishes dispatch-outcome-evaluated.v1.
+package_group: intelligence
+node_type: effect
+capabilities:
+  - kafka_consumer
+  - postgres_write
+  - intelligence_eval
+dependencies:
+  - omninode-intelligence
+entry_flags:
+  kafka_consumer: true
+  effects_profile: true

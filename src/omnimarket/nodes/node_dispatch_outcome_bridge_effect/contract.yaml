@@ -1,0 +1,76 @@
+---
+name: dispatch_outcome_bridge_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Bridges omniclaude dispatch-worker-completed events into the intelligence
+  evaluation chain. Subscribes to dispatch_worker-completed.v1, delegates
+  evaluation logic to omniintelligence node_dispatch_outcome_eval_effect as a
+  library call, writes the normalized result to dispatch_eval_results, and
+  publishes the outcome to dispatch-outcome-evaluated.v1.
+
+handler:
+  module: omnimarket.nodes.node_dispatch_outcome_bridge_effect.handlers.handler_bridge
+  class: HandlerDispatchOutcomeBridge
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDispatchOutcomeBridge
+        module: omnimarket.nodes.node_dispatch_outcome_bridge_effect.handlers.handler_bridge
+      handler_module: omnimarket.nodes.node_dispatch_outcome_bridge_effect.handlers.handler_bridge
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omniintelligence.dispatch-outcome-evaluated.v1
+
+# Golden path: dispatch-worker-completed -> dispatch_eval_results -> dispatch-outcome-evaluated.v1
+golden_path:
+  - "Consume dispatch_worker-completed event from onex.evt.omniclaude.dispatch_worker-completed.v1"
+  - "Delegate to omniintelligence handle_dispatch_outcome() to produce ModelOutput"
+  - "UPSERT result row into dispatch_eval_results (ON CONFLICT task_id, dispatch_id DO UPDATE)"
+  - "Publish normalized outcome to onex.evt.omniintelligence.dispatch-outcome-evaluated.v1"
+  - "Golden chain test: omnimarket/tests/test_golden_chain_dispatch_outcome_bridge_effect.py"
+
+db_io:
+  db_tables:
+    - name: dispatch_eval_results
+      migration: "omniintelligence/deployment/database/migrations/023_create_debug_intelligence_tables.sql"
+      access: write
+      database: omniintelligence
+      role: eval_results
+
+env_dependencies:
+  OMNIINTELLIGENCE_DB_URL:
+    required: true
+    description: "asyncpg DSN for the omniintelligence database (dispatch_eval_results table)."
+  POSTGRES_PASSWORD:
+    required: false
+    description: "Fallback for constructing OMNIINTELLIGENCE_DB_URL manually."
+
+event_bus:
+  consumer_group: local.omnimarket.node_dispatch_outcome_bridge_effect.consume.v1
+  subscribe_topics:
+    - onex.evt.omniclaude.dispatch_worker-completed.v1
+  publish_topics:
+    - onex.evt.omniintelligence.dispatch-outcome-evaluated.v1
+
+dod_evidence:
+  PYTEST:
+    description: "dispatch-outcome bridge effect golden-chain tests"
+    command: "uv run pytest tests/test_golden_chain_dispatch_outcome_bridge_effect.py -q"
+    pass_criteria: "handler calls intelligence eval, DB row inserted, published event verified"
+  ARCHITECTURE:
+    description: "handler delegates to omniintelligence library, no inline eval logic"
+    pass_criteria: "handle_dispatch_outcome imported from omniintelligence; no duplicated scoring logic in omnimarket"
+
+metadata:
+  transport_type: kafka
