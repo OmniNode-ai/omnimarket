@@ -805,6 +805,35 @@ def test_default_response_topic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_parse_terminal_result_accepts_deployed_dict_payload() -> None:
+    correlation_id = uuid4()
+    terminal_payload = {
+        "correlation_id": str(correlation_id),
+        "status": "completed",
+        "payload": {"status": "halted", "dispatch_queue": []},
+        "error_message": None,
+        "completed_at": datetime.now(UTC).isoformat(),
+    }
+    envelope = ModelEventEnvelope[object](
+        payload=terminal_payload,
+        correlation_id=correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="onex.evt.omnimarket.pattern-b-dispatch-completed.v1",
+        source_tool="pattern-b-broker",
+        target_tool="pattern-b-client",
+        payload_type="ModelDispatchBusTerminalResult",
+    )
+
+    result = runtime_client._parse_terminal_result(
+        envelope.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "completed"
+    assert result.payload == {"status": "halted", "dispatch_queue": []}
+
+
 def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONEX_PATTERN_B_REQUESTER", "codex-test")
     assert default_requester() == "codex-test"

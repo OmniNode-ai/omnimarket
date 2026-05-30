@@ -13,7 +13,7 @@ import sys
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -485,7 +485,32 @@ def _parse_terminal_result(value: bytes) -> ModelDispatchBusTerminalResult | Non
         ].model_validate_json(value)
         return envelope.payload
     except Exception:
+        pass
+
+    try:
+        raw = json.loads(value.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return None
+    if not isinstance(raw, dict):
+        return None
+    raw_payload = raw.get("payload")
+    if not isinstance(raw_payload, dict):
+        return None
+    try:
+        return ModelDispatchBusTerminalResult.model_validate(
+            _coerce_terminal_result_payload(raw_payload)
+        )
+    except ValidationError:
+        return None
+
+
+def _coerce_terminal_result_payload(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    result = dict(payload)
+    if isinstance(result.get("completed_at"), str):
+        result.pop("completed_at", None)
+    return result
 
 
 def _build_dispatch_command(
