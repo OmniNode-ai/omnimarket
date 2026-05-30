@@ -752,34 +752,34 @@ async def _install_session_bootstrap_adapter_worker(
     )
 
 
-def test_default_command_topic_is_omnibase_infra_namespace(
+def test_default_command_topic_is_omnimarket_namespace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OMN-11065: default command topic must target the runtime-consumed omnibase-infra topic.
+    """OMN-12443: default command topic must target the runtime-consumed omnimarket topic.
 
-    The .201 runtime consumers are active on onex.cmd.omnibase-infra.pattern-b-dispatch.v1.
-    Publishing to the omnimarket-namespaced topic sends messages to an unconsumed topic.
+    The stability runtime broker is active on onex.cmd.omnimarket.pattern-b-dispatch.v1.
+    Publishing to the stale omnibase-infra topic sends messages to an unconsumed topic.
     """
     monkeypatch.delenv("ONEX_PATTERN_B_COMMAND_TOPIC", raising=False)
     topic = default_command_topic()
-    assert topic == "onex.cmd.omnibase-infra.pattern-b-dispatch.v1", (
-        f"default_command_topic() returned {topic!r} — must be the omnibase-infra "
-        "namespace consumed by the .201 runtime (OMN-11065)"
+    assert topic == "onex.cmd.omnimarket.pattern-b-dispatch.v1", (
+        f"default_command_topic() returned {topic!r} — must be the omnimarket "
+        "namespace consumed by the stability runtime (OMN-12443)"
     )
 
 
-def test_default_response_topic_is_omnibase_infra_namespace(
+def test_default_response_topic_is_omnimarket_namespace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OMN-11065: default response topic must target the runtime-consumed omnibase-infra topic.
+    """OMN-12443: default response topic must target the runtime-consumed omnimarket topic.
 
     The terminal completion topic must match the namespace the runtime emits on.
     """
     monkeypatch.delenv("ONEX_PATTERN_B_RESPONSE_TOPIC", raising=False)
     topic = default_response_topic()
-    assert topic == "onex.evt.omnibase-infra.pattern-b-dispatch-completed.v1", (
-        f"default_response_topic() returned {topic!r} — must be the omnibase-infra "
-        "namespace consumed by the .201 runtime (OMN-11065)"
+    assert topic == "onex.evt.omnimarket.pattern-b-dispatch-completed.v1", (
+        f"default_response_topic() returned {topic!r} — must be the omnimarket "
+        "namespace consumed by the stability runtime (OMN-12443)"
     )
 
 
