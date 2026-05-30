@@ -141,17 +141,18 @@ class ContractRegistryHandler:
             handler_contract_payload = to_handler_contract_payload(
                 parsed, request.node_name
             )
-        except MarketContractAdapterError:
+            registration_contract_yaml = yaml.safe_dump(
+                handler_contract_payload, sort_keys=False
+            )
+        except (MarketContractAdapterError, yaml.YAMLError):
             return self._reject(request, EnumMaterializationRejection.ADAPTER_FAILURE)
-        registration_contract_yaml = yaml.safe_dump(
-            handler_contract_payload, sort_keys=False
-        )
 
         # Step 7: store
         self._registry[request.node_name] = request.contract_hash
 
         # Step 8 & 9: build MCP tags and publish
-        mcp_meta = parsed.get("metadata", {}) or {}
+        raw_meta = parsed.get("metadata")
+        mcp_meta = raw_meta if isinstance(raw_meta, dict) else {}
         mcp_eligible = bool(mcp_meta.get("mcp_enabled", False))
         node_type = parsed.get("node_type", "unknown")
         mcp_tags: tuple[str, ...] = (
