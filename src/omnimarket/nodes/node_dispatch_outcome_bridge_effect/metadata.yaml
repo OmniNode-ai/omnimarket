@@ -1,0 +1,29 @@
+---
+name: node_dispatch_outcome_bridge_effect
+version: "0.1.0"
+display_name: "Dispatch Outcome Bridge Effect"
+description: >
+  Bridges omniclaude dispatch-worker-completed events into the intelligence
+  evaluation chain. Calls omniintelligence eval logic as a library dependency,
+  writes to dispatch_eval_results, and publishes dispatch-outcome-evaluated.v1.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dispatch_outcome_bridge_effect: "omnimarket.nodes.node_dispatch_outcome_bridge_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "aiokafka"
+  - "omnibase_core>=0.39.0"
+  - "omniintelligence"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["dispatch", "bridge", "effect", "intelligence", "kafka"]
+pack: "intelligence"
+node_role: "effect"
