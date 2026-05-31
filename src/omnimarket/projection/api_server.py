@@ -21,6 +21,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 from fastapi import Depends, FastAPI, Query
@@ -72,6 +73,8 @@ def compute_freshness(latest_ts: str | None) -> str:
 def _json_value(value: Any, *, decode_json: bool = False) -> Any:
     if hasattr(value, "isoformat"):
         return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
     if isinstance(value, Decimal):
         return str(value)
     if decode_json and isinstance(value, str):
