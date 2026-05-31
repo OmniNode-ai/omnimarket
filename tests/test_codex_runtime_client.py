@@ -290,6 +290,28 @@ class _ReadinessDelayedTerminalTransport:
         return _unsubscribe
 
 
+class _NeverReadyTerminalTransport(_ReadinessDelayedTerminalTransport):
+    async def get_readiness_status(self) -> ModelEventBusReadiness:
+        self.readiness_checks += 1
+        return ModelEventBusReadiness(
+            is_ready=False,
+            consumers_started=self.started,
+            assignments={},
+            consume_tasks_alive={},
+            required_topics=("terminal",),
+            required_topics_ready=False,
+        )
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        raise AssertionError("command must not publish before terminal readiness")
+
+
 class _ContractTerminalTopicTransport:
     def __init__(self) -> None:
         self.callbacks: dict[str, object] = {}
@@ -1019,6 +1041,38 @@ def test_parse_terminal_result_accepts_raw_pattern_b_broker_terminal_event() -> 
     assert result.payload == {"summary": "broker-complete"}
 
 
+def test_parse_terminal_result_accepts_node_terminal_complete_event() -> None:
+    correlation_id = uuid4()
+    envelope = ModelEventEnvelope[object](
+        payload={
+            "session_id": "sess-test",
+            "correlation_id": str(correlation_id),
+            "status": "complete",
+            "dispatch_queue": [],
+            "dispatch_receipts": [],
+            "dry_run": True,
+        },
+        correlation_id=correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="onex.evt.omnimarket.session-orchestrator-completed.v1",
+    )
+
+    result = runtime_client._parse_terminal_result(
+        envelope.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "complete"
+    assert result.payload == {
+        "session_id": "sess-test",
+        "status": "complete",
+        "dispatch_queue": [],
+        "dispatch_receipts": [],
+        "dry_run": True,
+    }
+
+
 def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONEX_PATTERN_B_REQUESTER", "codex-test")
     assert default_requester() == "codex-test"
@@ -1102,6 +1156,37 @@ async def test_dispatch_async_waits_for_terminal_subscription_readiness() -> Non
     ]
     assert transport.publish_readiness_checks >= 2
     assert len(transport.published) == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_times_out_before_publish_when_terminal_never_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        runtime_client,
+        "_TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS",
+        0.01,
+    )
+    transport = _NeverReadyTerminalTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True},
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.session-orchestrator-completed.v1",
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "runtime_timeout"
+    assert not transport.published
 
 
 @pytest.mark.asyncio

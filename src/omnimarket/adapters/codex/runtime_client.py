@@ -51,7 +51,7 @@ _DELEGATE_SKILL_COMMAND_NAMES = frozenset(
 _DELEGATE_SKILL_COMPLETED_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_COMPLETED
 _DELEGATE_SKILL_FAILED_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_FAILED
 _RUNTIME_SELECTION_VALUES = frozenset({"deployed", "local", "deployed_or_local"})
-_TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 15.0
+_TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 60.0
 _TERMINAL_SUBSCRIPTION_READY_POLL_SECONDS = 0.05
 _NODE_ROOT = Path(__file__).resolve().parents[2] / "nodes"
 
@@ -172,6 +172,19 @@ class _CodexDispatchBusAdapter:
         Callable[[], Awaitable[None]], asyncio.Queue[ModelDispatchBusTerminalResult]
     ]:
         q: asyncio.Queue[ModelDispatchBusTerminalResult] = asyncio.Queue()
+        topics: list[str] = [route.terminal_topic]
+        for extra in additional_terminal_topics:
+            if extra and extra not in topics:
+                topics.append(extra)
+
+        direct_listener = await self._try_direct_kafka_terminal_listener(
+            topics=tuple(topics),
+            correlation_id=correlation_id,
+            queue=q,
+            timeout_seconds=readiness_timeout_seconds,
+        )
+        if direct_listener is not None:
+            return direct_listener
 
         async def on_message(msg: object) -> None:
             value = getattr(msg, "value", None)
@@ -185,11 +198,6 @@ class _CodexDispatchBusAdapter:
             if str(result.correlation_id) == correlation_id:
                 await q.put(result)
 
-        topics: list[str] = [route.terminal_topic]
-        for extra in additional_terminal_topics:
-            if extra and extra not in topics:
-                topics.append(extra)
-
         unsubs: list[object] = []
         for topic in topics:
             unsubs.append(
@@ -202,11 +210,6 @@ class _CodexDispatchBusAdapter:
                 )
             )
 
-        await _await_terminal_subscriptions_ready(
-            self._transport,
-            timeout_seconds=readiness_timeout_seconds,
-        )
-
         async def _unsubscribe() -> None:
             for unsub in unsubs:
                 if callable(unsub):
@@ -217,7 +220,93 @@ class _CodexDispatchBusAdapter:
                     except Exception:
                         pass
 
+        try:
+            await _await_terminal_subscriptions_ready(
+                self._transport,
+                timeout_seconds=readiness_timeout_seconds,
+            )
+        except TimeoutError:
+            await _unsubscribe()
+            raise
+
         return _unsubscribe, q
+
+    async def _try_direct_kafka_terminal_listener(
+        self,
+        *,
+        topics: tuple[str, ...],
+        correlation_id: str,
+        queue: asyncio.Queue[ModelDispatchBusTerminalResult],
+        timeout_seconds: float,
+    ) -> (
+        tuple[
+            Callable[[], Awaitable[None]],
+            asyncio.Queue[ModelDispatchBusTerminalResult],
+        ]
+        | None
+    ):
+        bootstrap_servers = getattr(self._transport, "_bootstrap_servers", None)
+        if not isinstance(bootstrap_servers, str) or not bootstrap_servers.strip():
+            return None
+
+        try:
+            from aiokafka import AIOKafkaConsumer
+        except Exception:
+            return None
+
+        consumer = AIOKafkaConsumer(
+            *topics,
+            bootstrap_servers=bootstrap_servers,
+            group_id=None,
+            enable_auto_commit=False,
+            auto_offset_reset="latest",
+        )
+        try:
+            await asyncio.wait_for(consumer.start(), timeout=timeout_seconds)
+            deadline = asyncio.get_running_loop().time() + timeout_seconds
+            assignment = consumer.assignment()
+            while not assignment and asyncio.get_running_loop().time() < deadline:
+                await asyncio.sleep(_TERMINAL_SUBSCRIPTION_READY_POLL_SECONDS)
+                assignment = consumer.assignment()
+            if not assignment:
+                raise TimeoutError("Timed out waiting for direct terminal assignment.")
+            await consumer.seek_to_end(*assignment)
+        except Exception:
+            await consumer.stop()
+            raise
+
+        stopped = asyncio.Event()
+
+        async def _consume() -> None:
+            while not stopped.is_set():
+                batches = await consumer.getmany(timeout_ms=500, max_records=100)
+                for records in batches.values():
+                    for msg in records:
+                        value = msg.value
+                        if isinstance(value, bytearray):
+                            value = bytes(value)
+                        if not isinstance(value, bytes):
+                            continue
+                        result = _parse_terminal_result(value)
+                        if result is None:
+                            continue
+                        if str(result.correlation_id) == correlation_id:
+                            await queue.put(result)
+                            return
+
+        task = asyncio.create_task(_consume())
+
+        async def _unsubscribe() -> None:
+            stopped.set()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                await consumer.stop()
+
+        return _unsubscribe, queue
 
     async def publish_command(
         self,
@@ -419,6 +508,10 @@ def _output_payloads(payload: object) -> list[dict[str, object]] | None:
     return None
 
 
+def _is_success_status(status: str) -> bool:
+    return status in {"complete", "completed"}
+
+
 def _dispatch_result(
     result: ModelDispatchBusTerminalResult,
 ) -> dict[str, object]:
@@ -530,7 +623,10 @@ def _parse_terminal_result(value: bytes) -> ModelDispatchBusTerminalResult | Non
         envelope = ModelEventEnvelope[
             ModelDispatchBusTerminalResult
         ].model_validate_json(value)
-        return envelope.payload
+        if envelope.payload.payload is not None or not _is_success_status(
+            envelope.payload.status
+        ):
+            return envelope.payload
     except Exception:
         pass
 
@@ -572,6 +668,12 @@ def _coerce_terminal_result_payload(
         return None
     if not isinstance(result.get("status"), str):
         return None
+    if "payload" not in result:
+        result["payload"] = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"correlation_id", "error_message"}
+        }
     return result
 
 
@@ -591,7 +693,7 @@ async def _await_terminal_subscriptions_ready(
         if bool(getattr(status, "is_ready", False)):
             return
         if loop.time() >= deadline:
-            return
+            raise TimeoutError("Timed out waiting for terminal subscription readiness.")
         await asyncio.sleep(_TERMINAL_SUBSCRIPTION_READY_POLL_SECONDS)
 
 
@@ -755,25 +857,26 @@ class CodexRuntimeRequestAdapter:
                 command_topic=self._command_topic,
                 terminal_topic=terminal_topic,
             )
-            unsubscribe, result_queue = await dispatch_adapter.wait_for_result(
-                route,
-                correlation_id=str(command.correlation_id),
-                additional_terminal_topics=extra_topics,
-                readiness_timeout_seconds=min(
-                    _TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS,
-                    command.timeout_seconds,
-                ),
-            )
             try:
-                await dispatch_adapter.publish_command(route, command)
-                terminal_result = await asyncio.wait_for(
-                    result_queue.get(),
-                    timeout=command.timeout_seconds,
+                unsubscribe, result_queue = await dispatch_adapter.wait_for_result(
+                    route,
+                    correlation_id=str(command.correlation_id),
+                    additional_terminal_topics=extra_topics,
+                    readiness_timeout_seconds=min(
+                        _TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS,
+                        command.timeout_seconds,
+                    ),
                 )
             except TimeoutError:
                 timeout_error = handle_timeout(
-                    operation="Codex runtime adapter terminal result",
-                    timeout_ms=request.timeout_ms,
+                    operation="Codex runtime adapter terminal subscription readiness",
+                    timeout_ms=int(
+                        min(
+                            _TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS,
+                            command.timeout_seconds,
+                        )
+                        * 1000
+                    ),
                     correlation_id=command.correlation_id,
                 )
                 terminal_result = ModelDispatchBusTerminalResult(
@@ -781,8 +884,26 @@ class CodexRuntimeRequestAdapter:
                     status="timeout",
                     error_message=timeout_error.message,
                 )
-            finally:
-                await unsubscribe()
+            else:
+                try:
+                    await dispatch_adapter.publish_command(route, command)
+                    terminal_result = await asyncio.wait_for(
+                        result_queue.get(),
+                        timeout=command.timeout_seconds,
+                    )
+                except TimeoutError:
+                    timeout_error = handle_timeout(
+                        operation="Codex runtime adapter terminal result",
+                        timeout_ms=request.timeout_ms,
+                        correlation_id=command.correlation_id,
+                    )
+                    terminal_result = ModelDispatchBusTerminalResult(
+                        correlation_id=command.correlation_id,
+                        status="timeout",
+                        error_message=timeout_error.message,
+                    )
+                finally:
+                    await unsubscribe()
         finally:
             await transport.close()
 
@@ -791,7 +912,7 @@ class CodexRuntimeRequestAdapter:
             terminal_topic=terminal_topic,
             runtime_selection=request.runtime_selection,
         )
-        ok = terminal_result.status == "completed"
+        ok = _is_success_status(terminal_result.status)
         if ok:
             return ModelCodexRuntimeRequestAdapterResponse(
                 ok=True,
@@ -839,7 +960,7 @@ class CodexRuntimeRequestAdapter:
             fallback_reason=fallback_reason,
         ).dispatch(command)
         evidence = _local_runtime_evidence(evidence_raw)
-        ok = terminal_result.status == "completed"
+        ok = _is_success_status(terminal_result.status)
         if ok:
             return ModelCodexRuntimeRequestAdapterResponse(
                 ok=True,
