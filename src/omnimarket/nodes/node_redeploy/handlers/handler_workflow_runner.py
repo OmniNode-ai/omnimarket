@@ -19,7 +19,7 @@ import asyncio
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy import HandlerRedeploy
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
@@ -176,12 +176,53 @@ class HandlerRedeployWorkflowRunner:
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.
 
-        Parses input_data into ModelRedeployWorkflowInput and runs the workflow.
-        Requires an event_bus unless dry_run=True.
+        Validates ``input_data`` into ``ModelRedeployWorkflowInput`` at the
+        handler boundary and runs the workflow. Requires an event_bus unless
+        dry_run=True.
+
+        The dispatched envelope arrives here as a raw dict. ``ModelRedeployWorkflowInput``
+        is ``frozen=True, extra="forbid"``, so an unexpected key or a wrong-typed
+        field raises ``ValidationError``. Before OMN-12478 that exception escaped
+        ``handle`` with no terminal output, so the CLI hung for the full 660s
+        ``timeout_ms`` waiting for a terminal event that never arrived. Now a
+        validation failure is converted into a terminal ``ModelRedeployWorkflowResult``
+        (``final_phase=FAILED``, ``success=False``) — the contracted output the
+        runtime publishes as ``onex.evt.omnimarket.redeploy-completed.v1`` — so
+        callers fail fast instead of hanging.
         """
-        parsed = ModelRedeployWorkflowInput(**input_data)
+        try:
+            parsed = ModelRedeployWorkflowInput.model_validate(input_data)
+        except ValidationError as exc:
+            return self._validation_failure_result(input_data, exc).model_dump(
+                mode="json"
+            )
         result = asyncio.run(run_redeploy_workflow(parsed, event_bus=self._event_bus))
         return result.model_dump(mode="json")
+
+    @staticmethod
+    def _validation_failure_result(
+        input_data: dict[str, object], exc: ValidationError
+    ) -> ModelRedeployWorkflowResult:
+        """Build the terminal failure result for a malformed dispatched envelope.
+
+        The correlation_id is only used to label the terminal result so a caller
+        can correlate the failure; the run itself is rejected. A missing or
+        non-UUID value falls back to a freshly generated id rather than masking
+        the validation failure.
+        """
+        raw_corr = input_data.get("correlation_id")
+        try:
+            correlation_id = UUID(str(raw_corr)) if raw_corr is not None else uuid4()
+        except (ValueError, AttributeError):
+            correlation_id = uuid4()
+        return ModelRedeployWorkflowResult(
+            correlation_id=correlation_id,
+            final_phase=EnumRedeployPhase.FAILED,
+            phases_completed=0,
+            success=False,
+            rebuild_result=None,
+            error_message=f"input validation failed: {exc.error_count()} errors",
+        )
 
 
 __all__: list[str] = [
