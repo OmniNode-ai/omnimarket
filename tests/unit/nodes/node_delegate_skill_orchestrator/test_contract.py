@@ -11,6 +11,10 @@ import pytest
 import yaml
 
 from omnimarket.adapters.claude_code.delegate import _ALLOWED_TASK_TYPES
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -82,6 +86,14 @@ def test_contract_model_and_adapter_task_types_match() -> None:
     )
     assert set(contract["allowed_task_types"]) == model_task_types
     assert set(_ALLOWED_TASK_TYPES) == model_task_types
+
+
+@pytest.mark.unit
+def test_contract_declares_max_tokens_boundary() -> None:
+    max_tokens = _load_contract()["inputs"]["max_tokens"]
+
+    assert max_tokens["default"] == DELEGATION_DEFAULT_MAX_TOKENS
+    assert max_tokens["maximum"] == DELEGATION_MAX_TOKENS_HARD_LIMIT
 
 
 @pytest.mark.unit

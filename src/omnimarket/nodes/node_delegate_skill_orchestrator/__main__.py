@@ -22,6 +22,9 @@ from omnimarket.cli.reporting import (
     load_contract_metadata,
 )
 from omnimarket.models.cli_report import ModelMarketCliStep
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -60,7 +63,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Request-level quality criterion. May be repeated.",
     )
-    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--max-tokens", type=int, default=DELEGATION_DEFAULT_MAX_TOKENS)
     parser.add_argument("--correlation-id", default=None)
     parser.add_argument(
         "--dispatch",

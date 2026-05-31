@@ -122,7 +122,9 @@ inputs:
   max_tokens:
     type: int
     required: false
-    default: 2048
+    default: 8192
+    minimum: 1
+    maximum: 8192
     description: Maximum tokens for the delegated response.
   metadata:
     type: object

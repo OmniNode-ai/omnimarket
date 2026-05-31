@@ -40,6 +40,7 @@ from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage 
     ModelCoderabbitTriageCommand,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
@@ -1106,6 +1107,7 @@ async def test_delegate_skill_direct_dispatch_publishes_contract_payload() -> No
     assert raw["payload"]["task_type"] == "test"
     assert raw["payload"]["source"] == "codex"
     assert raw["payload"]["correlation_id"] == str(cid)
+    assert raw["payload"]["max_tokens"] == DELEGATION_DEFAULT_MAX_TOKENS
     assert "command_name" not in raw["payload"]
     assert "response_topic" not in raw["payload"]
     assert (
