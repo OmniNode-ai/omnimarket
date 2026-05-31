@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -386,6 +387,57 @@ class TestProjectionRoutes:
         assert row["correlation_id"] == "corr-pricing-proof"
         assert row["cost_savings_usd"] == "0.00525"
         assert row["pricing_manifest_version"] == 1
+
+    def test_raw_delegation_topic_serialises_uuid_columns(self) -> None:
+        """A raw projection row exposing a UUID column must serialise to its
+        string form without raising (regression: OMN-12558).
+
+        ``public.delegation_events`` has UUID column(s); a populated row crashed
+        ``json.dumps`` with ``TypeError: Object of type UUID is not JSON
+        serializable`` because ``_json_value`` had no UUID branch. datetime and
+        Decimal are exercised alongside it to assert full typed serialisation.
+        """
+        topic = "delegation"
+        cfg = ProjectionTableConfig(
+            topic=topic,
+            table="delegation_events",
+            schema_name="public",
+            columns=(
+                "id",
+                "correlation_id",
+                "cost_savings_usd",
+                "created_at",
+            ),
+            order_by="created_at DESC",
+            freshness_column="created_at",
+            limit=100,
+            source_contract="projection_delegation",
+        )
+        event_id = UUID("12345678-1234-5678-1234-567812345678")
+        corr_id = UUID("87654321-4321-8765-4321-876543218765")
+        created = datetime.now(UTC) - timedelta(minutes=1)
+        rows = [
+            {
+                "id": event_id,
+                "correlation_id": corr_id,
+                "cost_savings_usd": Decimal("0.00525"),
+                "created_at": created,
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=created.isoformat())
+
+        with _with_pool(pool, topic_map={topic: cfg}) as client:
+            resp = client.get(f"/projection/{topic}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        _assert_envelope(body, topic)
+        assert body["row_count"] == 1
+        row = body["rows"][0]
+        assert row["id"] == str(event_id)
+        assert row["correlation_id"] == str(corr_id)
+        assert row["cost_savings_usd"] == "0.00525"
+        assert row["created_at"] == created.isoformat()
 
     def test_registration_envelope_shape(self) -> None:
         rows = [

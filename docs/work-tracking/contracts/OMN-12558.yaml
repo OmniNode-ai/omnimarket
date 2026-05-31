@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-12558
+title: "fix(OMN-12558): serialize UUID in projection API _json_value"
+summary: >
+  GET /projection/delegation on the projection API (port 13002) returned HTTP 500
+  'TypeError: Object of type UUID is not JSON serializable' at
+  src/omnimarket/projection/api_server.py:358 (JSONResponse -> json.dumps). The
+  _json_value helper serialized datetime via .isoformat() and Decimal via str(),
+  but had no branch for uuid.UUID. The raw 'delegation' topic reads
+  public.delegation_events, which exposes UUID column(s), so any populated row
+  crashed serialization. Aggregate snapshot views passed only because they do not
+  expose raw UUIDs. Fix adds a UUID -> str(value) branch in _json_value before the
+  generic passthrough, plus a TDD regression that exercises a UUID + datetime +
+  Decimal row through the topic endpoint and asserts typed JSON with no exception.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "manual"
+    description: "Projection API serializes UUID columns to their string form without raising."
+    command: "uv run pytest tests/test_projection_api_server.py -k test_raw_delegation_topic_serialises_uuid_columns -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-regression-fails-pre-fix"
+    description: >
+      New regression test reproduces the live failure pre-fix: a 'delegation' topic
+      row containing UUID id + UUID correlation_id + Decimal + datetime raised
+      'TypeError: Object of type UUID is not JSON serializable' through json.dumps.
+    source: "local"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_projection_api_server.py -k test_raw_delegation_topic_serialises_uuid_columns -q -- 1 failed pre-fix"
+  - id: "dod-regression-passes-post-fix"
+    description: >
+      With the UUID branch added to _json_value, the regression passes: id and
+      correlation_id render as their str(UUID) form, Decimal as str, datetime as
+      isoformat, HTTP 200 with no exception.
+    source: "local"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_projection_api_server.py -k test_raw_delegation_topic_serialises_uuid_columns -q -- 1 passed post-fix"
+  - id: "dod-projection-suite-green"
+    description: "All projection-related tests pass (no -k narrowing beyond projection)."
+    source: "local"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ -k 'projection and not kafka' -q -- 379 passed, 1 skipped"
+  - id: "dod-quality-clean"
+    description: "ruff format, ruff check, mypy --strict, and pre-commit all pass on the changed files."
+    source: "local"
+    checks:
+      - check_type: "command"
+        check_value: "uv run mypy src/omnimarket/projection/api_server.py --strict -- Success: no issues found"
