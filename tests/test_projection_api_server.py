@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionTableConfig
 from scripts.projection_api_server import (
+    _cors_origins_from_env,
     _dsn,
     app,
     compute_freshness,
@@ -179,6 +180,30 @@ class TestPostgresDsn:
         monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", expected)
 
         assert _dsn() == expected
+
+
+class TestCorsConfiguration:
+    def test_projection_api_cors_origins_use_projection_specific_env(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setenv(
+            "PROJECTION_API_CORS_ORIGINS",
+            "http://localhost:5173, https://dash.example.com ",
+        )
+        monkeypatch.setenv("CORS_ORIGINS", "https://registry.example.com")
+
+        assert _cors_origins_from_env() == [
+            "http://localhost:5173",
+            "https://dash.example.com",
+        ]
+
+    def test_projection_api_cors_origins_fall_back_to_shared_env(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.delenv("PROJECTION_API_CORS_ORIGINS", raising=False)
+        monkeypatch.setenv("CORS_ORIGINS", "https://dash.example.com")
+
+        assert _cors_origins_from_env() == ["https://dash.example.com"]
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +405,45 @@ class TestProjectionRoutes:
         assert resp.status_code == 200
         _assert_envelope(resp.json(), "onex.snapshot.projection.registration.v1")
         assert resp.json()["row_count"] == 1
+
+    def test_json_columns_are_decoded_for_dashboard_projection_rows(self) -> None:
+        topic = "onex.snapshot.projection.delegation.model-routing.v1"
+        cfg = ProjectionTableConfig(
+            topic=topic,
+            table="projection_delegation_model_routing",
+            schema_name="public",
+            columns=(
+                "total_delegations",
+                "rows",
+                "by_model",
+                "decision_traces",
+                "latest_projection_updated_at",
+            ),
+            json_columns=("rows", "by_model", "decision_traces"),
+            freshness_column="latest_projection_updated_at",
+            limit=1,
+            source_contract="projection_delegation",
+        )
+        rows = [
+            {
+                "total_delegations": 1,
+                "rows": '[{"model_name":"qwen","task_type":"test","count":1}]',
+                "by_model": '[{"model_name":"qwen","total_count":1}]',
+                "decision_traces": '[{"correlation_id":"corr-json"}]',
+                "latest_projection_updated_at": _ts(timedelta(minutes=1)),
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
+
+        with _with_pool(pool, topic_map={topic: cfg}) as client:
+            resp = client.get(f"/projection/{topic}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        _assert_envelope(body, topic)
+        assert body["rows"][0]["rows"][0]["model_name"] == "qwen"
+        assert body["rows"][0]["by_model"][0]["total_count"] == 1
+        assert body["rows"][0]["decision_traces"][0]["correlation_id"] == "corr-json"
 
     def test_freshness_fresh(self) -> None:
         pool = _make_pool([], latest_ts=_ts(timedelta(minutes=1)))

@@ -61,6 +61,7 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     quality_gate_passed: bool = Field(default=False)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
+    quality_gate_detail: str | None = Field(default=None)
     cost_usd: float = Field(default=0.0)
     cost_savings_usd: float = Field(default=0.0)
     delegation_latency_ms: int | None = Field(default=None, ge=0)
@@ -71,6 +72,8 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
         description="Upstream LLM call ID for JOIN with llm_cost_aggregates.",
     )
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
+    tokens_input: int = Field(default=0, ge=0)
+    tokens_output: int = Field(default=0, ge=0)
     tokens_to_compliance: int = Field(
         default=0,
         ge=0,
@@ -143,6 +146,8 @@ class HandlerProjectionDelegation:
             terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
             result = self.project_delegate_skill_terminal(terminal, db_raw)
             return result.model_dump(mode="json")
+        if "delegation-completed" in event_type or "delegation-failed" in event_type:
+            payload = _canonical_result_to_task_delegated_payload(payload)
 
         event = ModelTaskDelegatedEvent(**payload)
         result = self.project(event, db_raw)
@@ -168,12 +173,15 @@ class HandlerProjectionDelegation:
             "quality_gates_failed": _gate_count(event.quality_gates_failed),
             "quality_gates_checked_jsonb": event.quality_gates_checked,
             "quality_gates_failed_jsonb": event.quality_gates_failed,
+            "quality_gate_detail": event.quality_gate_detail,
             "cost_usd": event.cost_usd,
             "cost_savings_usd": event.cost_savings_usd,
             "delegation_latency_ms": event.delegation_latency_ms,
             "repo": event.repo,
             "is_shadow": event.is_shadow,
             "llm_call_id": event.llm_call_id or None,
+            "tokens_input": event.tokens_input,
+            "tokens_output": event.tokens_output,
             "tokens_to_compliance": event.tokens_to_compliance,
             "compliance_attempts": event.compliance_attempts,
             "prompt_text": event.prompt_text,
@@ -256,6 +264,31 @@ def _is_delegate_skill_terminal_payload(payload: dict[str, object]) -> bool:
         and payload.get("status") is not None
         and isinstance(payload.get("metrics"), dict)
     )
+
+
+def _canonical_result_to_task_delegated_payload(
+    payload: dict[str, object],
+) -> dict[str, object]:
+    quality_passed = bool(payload.get("quality_passed"))
+    failure_reason = str(payload.get("failure_reason") or "")
+    return {
+        "correlation_id": payload.get("correlation_id"),
+        "task_type": payload.get("task_type") or "unknown",
+        "delegated_to": payload.get("model_used") or "unknown",
+        "model_name": payload.get("model_used") or "",
+        "quality_gate_passed": quality_passed,
+        "quality_gates_failed": [failure_reason]
+        if failure_reason and not quality_passed
+        else [],
+        "quality_gate_detail": failure_reason or None,
+        "delegation_latency_ms": payload.get("latency_ms"),
+        "prompt_text": payload.get("prompt_text"),
+        "response_text": payload.get("content"),
+        "tokens_input": payload.get("prompt_tokens") or 0,
+        "tokens_output": payload.get("completion_tokens") or 0,
+        "tokens_to_compliance": payload.get("tokens_to_compliance") or 0,
+        "compliance_attempts": payload.get("compliance_attempts") or 1,
+    }
 
 
 def _gate_count(value: list[str] | None) -> int:
