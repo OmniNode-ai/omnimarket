@@ -170,14 +170,27 @@ def _with_pool(
 
 
 class TestPostgresDsn:
-    def test_dsn_requires_contract_db_url(self, monkeypatch) -> None:
+    def test_dsn_requires_projection_or_contract_db_url(self, monkeypatch) -> None:
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
         monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
 
-        with pytest.raises(RuntimeError, match="OMNIBASE_INFRA_DB_URL is required"):
+        with pytest.raises(
+            RuntimeError,
+            match="OMNIDASH_ANALYTICS_DB_URL or OMNIBASE_INFRA_DB_URL is required",
+        ):
             _dsn()
 
-    def test_dsn_uses_contract_db_url(self, monkeypatch) -> None:
+    def test_dsn_prefers_analytics_db_url(self, monkeypatch) -> None:
+        expected = "postgresql://projection:pw@db.internal:15436/omnidash_analytics"
+        fallback = "postgresql://projection:pw@db.internal:15436/omnibase_infra"
+        monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", expected)
+        monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", fallback)
+
+        assert _dsn() == expected
+
+    def test_dsn_falls_back_to_contract_db_url(self, monkeypatch) -> None:
         expected = "postgresql://projection:pw@db.internal:15436/omnibase_infra"
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
         monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", expected)
 
         assert _dsn() == expected

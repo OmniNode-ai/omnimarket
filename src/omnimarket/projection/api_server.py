@@ -91,9 +91,13 @@ def _json_value(value: Any, *, decode_json: bool = False) -> Any:
 
 
 def _dsn() -> str:
-    dsn = os.environ.get("OMNIBASE_INFRA_DB_URL")
+    dsn = os.environ.get("OMNIDASH_ANALYTICS_DB_URL") or os.environ.get(
+        "OMNIBASE_INFRA_DB_URL"
+    )
     if not dsn:
-        raise RuntimeError("OMNIBASE_INFRA_DB_URL is required for projection API")
+        raise RuntimeError(
+            "OMNIDASH_ANALYTICS_DB_URL or OMNIBASE_INFRA_DB_URL is required for projection API"
+        )
     return dsn
 
 
