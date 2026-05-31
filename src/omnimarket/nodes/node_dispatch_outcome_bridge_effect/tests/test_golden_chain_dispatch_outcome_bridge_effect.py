@@ -5,14 +5,120 @@
 
 from __future__ import annotations
 
+import enum
 import json
+import sys
+import types
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from omnimarket.nodes.node_dispatch_outcome_bridge_effect.handlers.handler_bridge import (
+
+class _FakeEnumUsageSource(enum.StrEnum):
+    MEASURED = "measured"
+    ESTIMATED = "estimated"
+    UNKNOWN = "unknown"
+
+
+class _FakeModelCostProvenance:
+    def __init__(self, usage_source: Any = None, **kwargs: Any) -> None:
+        self.usage_source = usage_source or _FakeEnumUsageSource.UNKNOWN
+        self.estimation_method = kwargs.get("estimation_method")
+        self.source_payload_hash = kwargs.get("source_payload_hash")
+
+
+class _FakeModelCallRecord:
+    def __init__(self, **kwargs: Any) -> None:
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+class _FakeModelInput:
+    def __init__(self, **kwargs: Any) -> None:
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+class _FakeModelOutput:
+    def __init__(
+        self,
+        verdict: str = "PASS",
+        quality_score: float | None = None,
+        token_cost: int = 0,
+        dollars_cost: float = 0.0,
+        usage_source: str | None = None,
+        estimation_method: str | None = None,
+        source_payload_hash: str | None = None,
+        evaluated_at: datetime | None = None,
+        eval_latency_ms: int = 0,
+        **_: Any,
+    ) -> None:
+        self.verdict = verdict
+        self.quality_score = quality_score
+        self.token_cost = token_cost
+        self.dollars_cost = dollars_cost
+        self.usage_source = usage_source
+        self.estimation_method = estimation_method
+        self.source_payload_hash = source_payload_hash
+        self.evaluated_at = evaluated_at or datetime.now(UTC)
+        self.eval_latency_ms = eval_latency_ms
+
+
+async def _fake_handle_dispatch_outcome(model_input: Any) -> _FakeModelOutput:
+    verdict_by_status = {
+        "completed": "PASS",
+        "failed": "FAIL",
+        "error": "ERROR",
+    }
+    return _FakeModelOutput(
+        verdict=verdict_by_status.get(str(model_input.status).lower(), "ERROR"),
+        token_cost=model_input.token_cost,
+        dollars_cost=model_input.dollars_cost,
+    )
+
+
+def _install_omniintelligence_stubs() -> None:
+    handler_mod = types.ModuleType(
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.handlers.handler_dispatch_outcome"
+    )
+    model_input_mod = types.ModuleType(
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_input"
+    )
+    model_output_mod = types.ModuleType(
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_output"
+    )
+
+    handler_mod.handle_dispatch_outcome = _fake_handle_dispatch_outcome  # type: ignore[attr-defined]
+    model_input_mod.EnumUsageSource = _FakeEnumUsageSource  # type: ignore[attr-defined]
+    model_input_mod.ModelCallRecord = _FakeModelCallRecord  # type: ignore[attr-defined]
+    model_input_mod.ModelCostProvenance = _FakeModelCostProvenance  # type: ignore[attr-defined]
+    model_input_mod.ModelInput = _FakeModelInput  # type: ignore[attr-defined]
+    model_output_mod.ModelOutput = _FakeModelOutput  # type: ignore[attr-defined]
+
+    for module_name in (
+        "omniintelligence",
+        "omniintelligence.nodes",
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect",
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.handlers",
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.models",
+    ):
+        sys.modules.setdefault(module_name, types.ModuleType(module_name))
+    sys.modules[
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.handlers.handler_dispatch_outcome"
+    ] = handler_mod
+    sys.modules[
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_input"
+    ] = model_input_mod
+    sys.modules[
+        "omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_output"
+    ] = model_output_mod
+
+
+_install_omniintelligence_stubs()
+
+from omnimarket.nodes.node_dispatch_outcome_bridge_effect.handlers.handler_bridge import (  # noqa: E402
     SQL_UPSERT_DISPATCH_EVAL_RESULT,
     process_event,
 )

@@ -77,7 +77,7 @@ _USAGE_SOURCE_MAP: dict[str, EnumUsageSource] = {
 
 def _build_model_input(data: dict[str, Any]) -> Any:
     """Build omniintelligence ModelInput from Kafka event payload (lazy import)."""
-    from omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_input import (
+    from omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_input import (  # type: ignore[import-not-found]
         EnumUsageSource as IntelEnumUsageSource,
     )
     from omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_input import (
@@ -190,6 +190,15 @@ def _to_core_provenance(
     return ModelCostProvenance(usage_source=EnumUsageSource.UNKNOWN)
 
 
+async def handle_dispatch_outcome(model_input: Any) -> Any:
+    """Delegate dispatch-outcome evaluation to the runtime peer package."""
+    from omniintelligence.nodes.node_dispatch_outcome_eval_effect.handlers.handler_dispatch_outcome import (  # type: ignore[import-not-found]
+        handle_dispatch_outcome as _handle_dispatch_outcome,
+    )
+
+    return await _handle_dispatch_outcome(model_input)
+
+
 async def process_event(data: dict[str, Any], db: Any, producer: Any | None) -> bool:
     """Evaluate one dispatch-worker-completed event and persist the result."""
     try:
@@ -203,10 +212,6 @@ async def process_event(data: dict[str, Any], db: Any, producer: Any | None) -> 
         return False
 
     try:
-        from omniintelligence.nodes.node_dispatch_outcome_eval_effect.handlers.handler_dispatch_outcome import (
-            handle_dispatch_outcome,
-        )
-
         model_output = await handle_dispatch_outcome(model_input)
     except Exception as exc:
         _log.error(
