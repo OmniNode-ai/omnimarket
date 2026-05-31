@@ -52,6 +52,12 @@ from omnimarket.nodes.node_local_review.handlers.handler_local_review import (
 from omnimarket.nodes.node_local_review.models.model_local_review_start_command import (
     ModelLocalReviewStartCommand,
 )
+from omnimarket.nodes.node_pattern_b_broker.models import (
+    EnumPatternBBrokerEventType,
+    EnumPatternBBrokerState,
+    EnumPatternBBrokerTerminalStatus,
+    ModelPatternBBrokerTerminalEvent,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleStartCommand,
@@ -277,6 +283,75 @@ class _ReadinessDelayedTerminalTransport:
     ) -> object:
         self.callbacks[topic] = on_message
         self.subscribe_kwargs.append(dict(kwargs))
+
+        async def _unsubscribe() -> None:
+            return None
+
+        return _unsubscribe
+
+
+class _ContractTerminalTopicTransport:
+    def __init__(self) -> None:
+        self.callbacks: dict[str, object] = {}
+        self.subscribe_topics: list[str] = []
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+        self.started = False
+        self.closed = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        assert headers is None
+        self.published.append((topic, key, value))
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            value
+        )
+        terminal_topic = "onex.evt.omnimarket.session-orchestrator-completed.v1"
+        assert terminal_topic in self.callbacks
+        response = ModelEventEnvelope[object](
+            payload={
+                "correlation_id": str(envelope.payload.correlation_id),
+                "status": "completed",
+                "payload": {"status": "contract-terminal"},
+            },
+            correlation_id=envelope.payload.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=terminal_topic,
+            source_tool="session-orchestrator-test",
+        )
+        message = ModelEventMessage(
+            topic=terminal_topic,
+            key=None,
+            value=response.model_dump_json().encode("utf-8"),
+            headers=ModelEventHeaders(
+                timestamp=datetime.now(UTC),
+                source="session-orchestrator-test",
+                event_type=terminal_topic,
+                correlation_id=envelope.payload.correlation_id,
+            ),
+        )
+        callback = self.callbacks[terminal_topic]
+        await callback(message)  # type: ignore[misc]
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        self.subscribe_topics.append(topic)
+        self.callbacks[topic] = on_message
 
         async def _unsubscribe() -> None:
             return None
@@ -923,6 +998,27 @@ def test_parse_terminal_result_accepts_deployed_dict_payload() -> None:
     assert result.payload == {"status": "halted", "dispatch_queue": []}
 
 
+def test_parse_terminal_result_accepts_raw_pattern_b_broker_terminal_event() -> None:
+    correlation_id = uuid4()
+    terminal = ModelPatternBBrokerTerminalEvent(
+        request_id=uuid4(),
+        correlation_id=correlation_id,
+        event_type=EnumPatternBBrokerEventType.terminal_completed,
+        state=EnumPatternBBrokerState.completed,
+        status=EnumPatternBBrokerTerminalStatus.completed,
+        result={"summary": "broker-complete"},
+    )
+
+    result = runtime_client._parse_terminal_result(
+        terminal.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "completed"
+    assert result.payload == {"summary": "broker-complete"}
+
+
 def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONEX_PATTERN_B_REQUESTER", "codex-test")
     assert default_requester() == "codex-test"
@@ -1006,6 +1102,36 @@ async def test_dispatch_async_waits_for_terminal_subscription_readiness() -> Non
     ]
     assert transport.publish_readiness_checks >= 2
     assert len(transport.published) == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_uses_contract_terminal_topic_for_default_response_topic() -> (
+    None
+):
+    transport = _ContractTerminalTopicTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True, "skip_health": True},
+        timeout_ms=2000,
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is True
+    assert result.output_payloads == [{"status": "contract-terminal"}]
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.session-orchestrator-completed.v1"
+    )
+    assert transport.subscribe_topics == [
+        "onex.evt.omnimarket.session-orchestrator-completed.v1",
+    ]
 
 
 @pytest.mark.asyncio
