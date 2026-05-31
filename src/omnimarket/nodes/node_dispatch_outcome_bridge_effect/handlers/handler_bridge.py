@@ -314,8 +314,13 @@ async def process_event(data: dict[str, Any], db: Any, producer: Any | None) -> 
 class HandlerDispatchOutcomeBridge:
     """RuntimeLocal handler protocol shim."""
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        ok = asyncio.run(process_event(input_data, _NullDb(), None))
+    def handle(self, input_data: Any) -> dict[str, Any]:
+        payload = (
+            input_data.model_dump()
+            if hasattr(input_data, "model_dump")
+            else dict(input_data)
+        )
+        ok = asyncio.run(process_event(payload, _NullDb(), None))
         return {"evaluated": ok}
 
 

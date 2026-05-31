@@ -242,7 +242,7 @@ async def test_process_event_handle_dispatch_outcome_called_once() -> None:
     with patch(
         "omnimarket.nodes.node_dispatch_outcome_bridge_effect.handlers.handler_bridge.handle_dispatch_outcome"
     ) as mock_eval:
-        from omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_output import (
+        from omniintelligence.nodes.node_dispatch_outcome_eval_effect.models.model_output import (  # type: ignore[import-not-found]
             ModelOutput,
         )
 
