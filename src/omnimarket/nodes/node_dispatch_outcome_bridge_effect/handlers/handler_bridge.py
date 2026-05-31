@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import signal
+from pathlib import Path
 from typing import Any
 
 from omnibase_core.enums.cost import EnumUsageSource
@@ -23,12 +24,17 @@ from omnibase_core.enums.enum_dispatch_verdict import EnumDispatchVerdict
 from omnibase_core.models.cost import ModelCostProvenance
 from omnibase_core.models.dispatch import ModelDispatchEvalResult
 
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.projection.envelope import unwrap_envelope
 
 _log = logging.getLogger(__name__)
 
-SUBSCRIBE_TOPIC = "onex.evt.omniclaude.dispatch_worker-completed.v1"
-PUBLISH_TOPIC = "onex.evt.omniintelligence.dispatch-outcome-evaluated.v1"
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+SUBSCRIBE_TOPIC = contract_subscribe_topics(_CONTRACT_PATH)[0]
+PUBLISH_TOPIC = contract_publish_topics(_CONTRACT_PATH)[0]
 CONSUMER_GROUP = "local.omnimarket.node_dispatch_outcome_bridge_effect.consume.v1"
 
 SQL_UPSERT_DISPATCH_EVAL_RESULT = """
