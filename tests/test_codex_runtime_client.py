@@ -8,6 +8,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
@@ -310,6 +311,39 @@ class _NeverReadyTerminalTransport(_ReadinessDelayedTerminalTransport):
         headers: object = None,
     ) -> None:
         raise AssertionError("command must not publish before terminal readiness")
+
+
+class _FakeDirectKafkaConsumer:
+    created_kwargs: list[dict[str, object]] = []
+    fail_start = False
+
+    def __init__(self, *topics: str, **kwargs: object) -> None:
+        self.topics = topics
+        self.stopped = False
+        self.created_kwargs.append(dict(kwargs))
+
+    async def start(self) -> None:
+        if self.fail_start:
+            raise RuntimeError("direct listener failed")
+
+    def assignment(self) -> set[object]:
+        return {object()}
+
+    async def seek_to_end(self, *assignment: object) -> None:
+        assert assignment
+
+    async def getmany(
+        self,
+        *,
+        timeout_ms: int,
+        max_records: int,
+    ) -> dict[object, list[object]]:
+        await asyncio.sleep(timeout_ms / 1000)
+        assert max_records > 0
+        return {}
+
+    async def stop(self) -> None:
+        self.stopped = True
 
 
 class _ContractTerminalTopicTransport:
@@ -1156,6 +1190,72 @@ async def test_dispatch_async_waits_for_terminal_subscription_readiness() -> Non
     ]
     assert transport.publish_readiness_checks >= 2
     assert len(transport.published) == 1
+
+
+@pytest.mark.asyncio
+async def test_direct_terminal_listener_uses_transport_api_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _FakeDirectKafkaConsumer.created_kwargs = []
+    _FakeDirectKafkaConsumer.fail_start = False
+    monkeypatch.setitem(
+        sys.modules,
+        "aiokafka",
+        SimpleNamespace(AIOKafkaConsumer=_FakeDirectKafkaConsumer),
+    )
+    transport = _ReadinessDelayedTerminalTransport()
+    transport._bootstrap_servers = "broker:9092"  # type: ignore[attr-defined]
+    transport._config = SimpleNamespace(api_version="2.8.0")  # type: ignore[attr-defined]
+    adapter = runtime_client._CodexDispatchBusAdapter(transport, source="codex-test")
+
+    unsubscribe, _ = await adapter._try_direct_kafka_terminal_listener(
+        topics=("onex.evt.omnimarket.session-orchestrator-completed.v1",),
+        correlation_id=str(uuid4()),
+        queue=asyncio.Queue(),
+        timeout_seconds=1.0,
+    )
+
+    assert _FakeDirectKafkaConsumer.created_kwargs == [
+        {
+            "bootstrap_servers": "broker:9092",
+            "group_id": None,
+            "enable_auto_commit": False,
+            "auto_offset_reset": "latest",
+            "api_version": "2.8.0",
+        }
+    ]
+    await unsubscribe()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_falls_back_when_direct_terminal_listener_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _FakeDirectKafkaConsumer.created_kwargs = []
+    _FakeDirectKafkaConsumer.fail_start = True
+    monkeypatch.setitem(
+        sys.modules,
+        "aiokafka",
+        SimpleNamespace(AIOKafkaConsumer=_FakeDirectKafkaConsumer),
+    )
+    transport = _ReadinessDelayedTerminalTransport()
+    transport._bootstrap_servers = "broker:9092"  # type: ignore[attr-defined]
+    transport._config = SimpleNamespace(api_version="2.8.0")  # type: ignore[attr-defined]
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True},
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.session-orchestrator-completed.v1",
+    )
+
+    assert result.ok is True
+    assert len(transport.published) == 1
+    assert _FakeDirectKafkaConsumer.created_kwargs[0]["api_version"] == "2.8.0"
 
 
 @pytest.mark.asyncio

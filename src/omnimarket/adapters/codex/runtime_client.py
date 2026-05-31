@@ -152,6 +152,21 @@ class _ProtocolLifecycleTransport(Protocol):
     ) -> object: ...
 
 
+def _direct_kafka_client_version_kwargs(
+    transport: _ProtocolLifecycleTransport,
+) -> dict[str, object]:
+    config = getattr(transport, "_config", None)
+    api_version = getattr(config, "api_version", None)
+    if isinstance(api_version, str) and api_version.strip():
+        return {"api_version": api_version.strip()}
+
+    env_value = os.environ.get("KAFKA_API_VERSION")
+    if env_value is not None and env_value.strip():
+        return {"api_version": env_value.strip()}
+
+    return {}
+
+
 class _CodexDispatchBusAdapter:
     """Minimal Codex runtime request adapter over an event bus transport."""
 
@@ -177,12 +192,15 @@ class _CodexDispatchBusAdapter:
             if extra and extra not in topics:
                 topics.append(extra)
 
-        direct_listener = await self._try_direct_kafka_terminal_listener(
-            topics=tuple(topics),
-            correlation_id=correlation_id,
-            queue=q,
-            timeout_seconds=readiness_timeout_seconds,
-        )
+        try:
+            direct_listener = await self._try_direct_kafka_terminal_listener(
+                topics=tuple(topics),
+                correlation_id=correlation_id,
+                queue=q,
+                timeout_seconds=readiness_timeout_seconds,
+            )
+        except Exception:
+            direct_listener = None
         if direct_listener is not None:
             return direct_listener
 
@@ -260,6 +278,7 @@ class _CodexDispatchBusAdapter:
             group_id=None,
             enable_auto_commit=False,
             auto_offset_reset="latest",
+            **_direct_kafka_client_version_kwargs(self._transport),
         )
         try:
             await asyncio.wait_for(consumer.start(), timeout=timeout_seconds)
