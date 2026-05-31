@@ -122,6 +122,8 @@ class TestDelegationProjection:
         assert "onex.evt.omnimarket.node-generation-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-completed.v1" in topics
         assert "onex.evt.omnimarket.delegate-skill-failed.v1" in topics
+        assert "onex.evt.omnibase-infra.delegation-completed.v1" in topics
+        assert "onex.evt.omnibase-infra.delegation-failed.v1" in topics
 
     def test_delegate_skill_metrics_migration_declares_dashboard_columns(self) -> None:
         migration = Path(
@@ -174,6 +176,70 @@ class TestDelegationProjection:
         assert row["tokens_output"] == 593
         assert row["cost_savings_usd"] == Decimal("0.009327")
         assert row["pricing_manifest_version"] == 1
+
+    def test_sync_handler_projects_canonical_delegation_terminal_event(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
+            "correlation_id": "corr-canonical-terminal",
+            "task_type": "test",
+            "model_used": "Qwen3-Coder-30B-A3B",
+            "content": "projection proof",
+            "quality_passed": True,
+            "quality_score": 0.98,
+            "latency_ms": 1200,
+            "prompt_tokens": 144,
+            "completion_tokens": 593,
+            "total_tokens": 737,
+            "fallback_to_claude": False,
+            "tokens_to_compliance": 737,
+            "compliance_attempts": 1,
+        }
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        row = db.query("delegation_events")[0]
+        assert row["correlation_id"] == "corr-canonical-terminal"
+        assert row["delegated_to"] == "Qwen3-Coder-30B-A3B"
+        assert row["model_name"] == "Qwen3-Coder-30B-A3B"
+        assert row["quality_gate_passed"] is True
+        assert row["tokens_input"] == 144
+        assert row["tokens_output"] == 593
+        assert row["tokens_to_compliance"] == 737
+        assert row["response_text"] == "projection proof"
+
+    def test_dashboard_projection_views_are_declared_by_migrations(self) -> None:
+        delegation_view_migration = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations/"
+            "0010_create_delegation_dashboard_projection_views.sql"
+        ).read_text()
+        savings_view_migration = Path(
+            "src/omnimarket/nodes/node_projection_savings/migrations/"
+            "076_create_delegation_savings_projection_view.sql"
+        ).read_text()
+
+        assert (
+            "CREATE OR REPLACE VIEW projection_delegation_summary"
+            in delegation_view_migration
+        )
+        assert (
+            "CREATE OR REPLACE VIEW projection_delegation_model_routing"
+            in delegation_view_migration
+        )
+        assert (
+            "CREATE OR REPLACE VIEW projection_delegation_quality_gate"
+            in delegation_view_migration
+        )
+        assert (
+            "CREATE OR REPLACE VIEW projection_delegation_token_usage"
+            in delegation_view_migration
+        )
+        assert (
+            "CREATE OR REPLACE VIEW projection_delegation_savings"
+            in savings_view_migration
+        )
 
 
 class TestPromptResponseText:

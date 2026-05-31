@@ -115,6 +115,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._topic_delegate_skill_failed: str = next(
             (t for t in _topics if "delegate-skill-failed" in t), ""
         )
+        self._topic_delegation_completed: str = next(
+            (t for t in _topics if "delegation-completed" in t), ""
+        )
+        self._topic_delegation_failed: str = next(
+            (t for t in _topics if "delegation-failed" in t), ""
+        )
         self._terminal_topic: str | None = self._contract.get("terminal_event")
         # Inject for testing; real producer is built lazily on first emit.
         self._publish_fn: PublishFn | None = publish_fn
@@ -241,6 +247,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             self._topic_delegate_skill_failed,
         }:
             ok = await self._project_delegate_skill_terminal(data, meta)
+        elif topic in {
+            self._topic_delegation_completed,
+            self._topic_delegation_failed,
+        }:
+            ok = await self._project_delegation_terminal_result(data, meta)
         else:
             return False
 
@@ -255,6 +266,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
 
         return ok
+
+    async def _project_delegation_terminal_result(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        normalized = _canonical_result_to_task_delegated_payload(data)
+        return await self._project_task_delegated(normalized, meta)
 
     async def _project_task_delegated(
         self, data: dict[str, Any], meta: MessageMeta
@@ -302,6 +319,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         qgf_labels = _coerce_gate_labels(quality_gates_failed)
         qgc_json = json.dumps(qgc_labels) if qgc_labels else None
         qgf_json = json.dumps(qgf_labels) if qgf_labels else None
+        quality_gate_detail = (
+            data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
+        )
 
         cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
         cost_savings_usd = _safe_numeric_str(
@@ -337,6 +357,36 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         response_text = data.get("response_text")
         if response_text is None:
             response_text = data.get("responseText")
+        tokens_input = (
+            _safe_int_or_none(
+                data.get("tokens_input")
+                or data.get("tokensInput")
+                or data.get("prompt_tokens")
+                or data.get("promptTokens")
+            )
+            or 0
+        )
+        tokens_output = (
+            _safe_int_or_none(
+                data.get("tokens_output")
+                or data.get("tokensOutput")
+                or data.get("completion_tokens")
+                or data.get("completionTokens")
+            )
+            or 0
+        )
+        tokens_to_compliance = (
+            _safe_int_or_none(
+                data.get("tokens_to_compliance") or data.get("tokensToCompliance")
+            )
+            or 0
+        )
+        compliance_attempts = (
+            _safe_int_or_none(
+                data.get("compliance_attempts") or data.get("complianceAttempts")
+            )
+            or 1
+        )
 
         await self.db.execute(
             f"""
@@ -345,17 +395,21 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               delegated_to, delegated_by, quality_gate_passed,
               quality_gates_checked, quality_gates_failed,
               quality_gates_checked_jsonb, quality_gates_failed_jsonb,
+              quality_gate_detail,
               cost_usd, cost_savings_usd, delegation_latency_ms,
               repo, is_shadow, prompt_text, response_text,
-              pricing_manifest_version
+              tokens_input, tokens_output, tokens_to_compliance,
+              compliance_attempts, pricing_manifest_version
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9,
               $10::jsonb, $11::jsonb,
-              $12, $13, $14,
-              $15, $16, $17, $18,
-              $19
+              $12,
+              $13, $14, $15,
+              $16, $17, $18, $19,
+              $20, $21, $22,
+              $23, $24
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -370,6 +424,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             len(qgf_labels),
             qgc_json,
             qgf_json,
+            str(quality_gate_detail) if quality_gate_detail else None,
             cost_usd,
             cost_savings_usd,
             delegation_latency_ms,
@@ -377,6 +432,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             is_shadow,
             str(prompt_text) if prompt_text is not None else None,
             str(response_text) if response_text is not None else None,
+            tokens_input,
+            tokens_output,
+            tokens_to_compliance,
+            compliance_attempts,
             pricing_manifest_version,
         )
         return True
@@ -662,6 +721,49 @@ def _coerce_gate_labels(value: Any) -> list[str]:
     if isinstance(value, list | tuple | set):
         return [str(item) for item in value if str(item)]
     return [str(value)]
+
+
+def _canonical_result_to_task_delegated_payload(
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize canonical delegation terminal results to the projection row shape."""
+    quality_passed = bool(data.get("quality_passed", data.get("qualityGatePassed")))
+    failure_reason = data.get("failure_reason") or data.get("failureReason") or ""
+    quality_failures = (
+        [str(failure_reason)] if failure_reason and not quality_passed else []
+    )
+    return {
+        "correlation_id": data.get("correlation_id") or data.get("correlationId"),
+        "task_type": data.get("task_type") or data.get("taskType") or "unknown",
+        "delegated_to": (
+            data.get("model_used")
+            or data.get("modelUsed")
+            or data.get("delegated_to")
+            or data.get("delegatedTo")
+            or "unknown"
+        ),
+        "model_name": data.get("model_used") or data.get("modelUsed") or "",
+        "quality_gate_passed": quality_passed,
+        "quality_gates_failed": quality_failures,
+        "quality_gate_detail": str(failure_reason) if failure_reason else None,
+        "delegation_latency_ms": data.get("latency_ms") or data.get("latencyMs"),
+        "latency_ms": data.get("latency_ms") or data.get("latencyMs"),
+        "prompt_text": data.get("prompt_text") or data.get("promptText"),
+        "response_text": data.get("content") or data.get("response_text"),
+        "tokens_input": data.get("prompt_tokens") or data.get("promptTokens") or 0,
+        "tokens_output": (
+            data.get("completion_tokens") or data.get("completionTokens") or 0
+        ),
+        "tokens_to_compliance": (
+            data.get("tokens_to_compliance") or data.get("tokensToCompliance") or 0
+        ),
+        "compliance_attempts": (
+            data.get("compliance_attempts") or data.get("complianceAttempts") or 1
+        ),
+        "cost_usd": data.get("final_attempt_cost") or 0,
+        "cost_savings_usd": 0,
+        "pricing_manifest_version": data.get("pricing_manifest_version") or 0,
+    }
 
 
 if __name__ == "__main__":
