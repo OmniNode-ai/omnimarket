@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
 
+import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -52,6 +53,7 @@ _DELEGATE_SKILL_FAILED_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_FAILED
 _RUNTIME_SELECTION_VALUES = frozenset({"deployed", "local", "deployed_or_local"})
 _TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 15.0
 _TERMINAL_SUBSCRIPTION_READY_POLL_SECONDS = 0.05
+_NODE_ROOT = Path(__file__).resolve().parents[2] / "nodes"
 
 
 class ModelDispatchBusRoute(BaseModel):
@@ -426,7 +428,7 @@ def _dispatch_result(
 def _deployed_runtime_evidence(
     *,
     command_topic: str,
-    response_topic: str,
+    terminal_topic: str,
     runtime_selection: str,
 ) -> ModelRuntimeEvidence:
     return ModelRuntimeEvidence(
@@ -434,7 +436,7 @@ def _deployed_runtime_evidence(
         event_bus_backend="kafka",
         state_store_backend="deployed_runtime",
         command_topic=command_topic,
-        terminal_topic=response_topic,
+        terminal_topic=terminal_topic,
         details={"runtime_selection": runtime_selection},
     )
 
@@ -464,6 +466,40 @@ def _uses_direct_delegate_skill_contract(
         route.command_topic == _DELEGATE_SKILL_COMMAND_TOPIC
         and command.command_name in _DELEGATE_SKILL_COMMAND_NAMES
     )
+
+
+def _node_name_for_command(command_name: str) -> str:
+    if command_name in {"delegate_skill", "delegate_skill.orchestrate"}:
+        return "node_delegate_skill_orchestrator"
+    candidate = command_name.split(".", 1)[0].replace("-", "_")
+    if candidate.startswith("node_"):
+        return candidate
+    return f"node_{candidate}"
+
+
+def _contract_terminal_topics(command_name: str) -> tuple[str, tuple[str, ...]] | None:
+    contract_path = _NODE_ROOT / _node_name_for_command(command_name) / "contract.yaml"
+    if not contract_path.exists():
+        return None
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        return None
+
+    runtime_dispatch = cast(dict[str, Any], raw.get("runtime_dispatch") or {})
+    terminals = cast(
+        dict[str, Any],
+        runtime_dispatch.get("terminal_events") or raw.get("terminal_events") or {},
+    )
+    terminal_topic = raw.get("terminal_event") or terminals.get("success")
+    if not isinstance(terminal_topic, str) or not terminal_topic.strip():
+        return None
+
+    additional_topics: list[str] = []
+    failure_topic = terminals.get("failure")
+    if isinstance(failure_topic, str) and failure_topic.strip():
+        additional_topics.append(failure_topic.strip())
+
+    return terminal_topic.strip(), tuple(additional_topics)
 
 
 def _parse_terminal_result(value: bytes) -> ModelDispatchBusTerminalResult | None:
@@ -504,23 +540,38 @@ def _parse_terminal_result(value: bytes) -> ModelDispatchBusTerminalResult | Non
         return None
     if not isinstance(raw, dict):
         return None
+    coerced = _coerce_terminal_result_payload(raw)
+    if coerced is not None:
+        try:
+            return ModelDispatchBusTerminalResult.model_validate(coerced)
+        except ValidationError:
+            pass
     raw_payload = raw.get("payload")
     if not isinstance(raw_payload, dict):
         return None
+    coerced = _coerce_terminal_result_payload(raw_payload)
+    if coerced is None:
+        return None
     try:
-        return ModelDispatchBusTerminalResult.model_validate(
-            _coerce_terminal_result_payload(raw_payload)
-        )
+        return ModelDispatchBusTerminalResult.model_validate(coerced)
     except ValidationError:
         return None
 
 
 def _coerce_terminal_result_payload(
     payload: dict[str, Any],
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     result = dict(payload)
     if isinstance(result.get("completed_at"), str):
         result.pop("completed_at", None)
+    if "result" in result and "payload" not in result:
+        result["payload"] = result.pop("result")
+    if result.get("status") == "timed_out":
+        result["status"] = "timeout"
+    if not isinstance(result.get("correlation_id"), str):
+        return None
+    if not isinstance(result.get("status"), str):
+        return None
     return result
 
 
@@ -688,8 +739,17 @@ class CodexRuntimeRequestAdapter:
                     *additional_response_topics,
                 )
             else:
-                terminal_topic = request.response_topic
-                extra_topics = additional_response_topics
+                contract_topics = (
+                    _contract_terminal_topics(request.command_name)
+                    if request.response_topic == default_response_topic()
+                    else None
+                )
+                if contract_topics is None:
+                    terminal_topic = request.response_topic
+                    extra_topics = additional_response_topics
+                else:
+                    terminal_topic, contract_extra_topics = contract_topics
+                    extra_topics = (*contract_extra_topics, *additional_response_topics)
             route = ModelDispatchBusRoute(
                 contract_path=Path("codex-runtime-request-adapter"),
                 command_topic=self._command_topic,
@@ -728,7 +788,7 @@ class CodexRuntimeRequestAdapter:
 
         evidence = _deployed_runtime_evidence(
             command_topic=self._command_topic,
-            response_topic=request.response_topic,
+            terminal_topic=terminal_topic,
             runtime_selection=request.runtime_selection,
         )
         ok = terminal_result.status == "completed"
