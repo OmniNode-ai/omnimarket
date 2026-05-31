@@ -14,8 +14,11 @@ from uuid import uuid4
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_infra.event_bus.models.model_event_headers import ModelEventHeaders
-from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+from omnibase_infra.event_bus.models import (
+    ModelEventBusReadiness,
+    ModelEventHeaders,
+    ModelEventMessage,
+)
 
 from omnimarket.adapters.codex import runtime_client
 from omnimarket.adapters.codex.runtime_client import (
@@ -188,6 +191,91 @@ class _DirectDelegateSkillTransport:
     ) -> object:
         self.subscribe_topics.append(topic)
         self.callbacks[topic] = on_message
+
+        async def _unsubscribe() -> None:
+            return None
+
+        return _unsubscribe
+
+
+class _ReadinessDelayedTerminalTransport:
+    def __init__(self) -> None:
+        self.callbacks: dict[str, object] = {}
+        self.subscribe_kwargs: list[dict[str, object]] = []
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+        self.readiness_checks = 0
+        self.publish_readiness_checks = 0
+        self.started = False
+        self.closed = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def get_readiness_status(self) -> ModelEventBusReadiness:
+        self.readiness_checks += 1
+        ready = self.readiness_checks >= 2
+        return ModelEventBusReadiness(
+            is_ready=ready,
+            consumers_started=self.started,
+            assignments={"terminal": [0]} if ready else {},
+            consume_tasks_alive={"terminal": ready},
+            required_topics=("terminal",),
+            required_topics_ready=ready,
+        )
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        self.publish_readiness_checks = self.readiness_checks
+        assert self.publish_readiness_checks >= 2
+        assert headers is None
+        self.published.append((topic, key, value))
+
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            value
+        )
+        terminal = ModelDispatchBusTerminalResult(
+            correlation_id=envelope.payload.correlation_id,
+            status="completed",
+            payload={"status": "ready-before-publish"},
+        )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="readiness-delayed-test",
+        )
+        message = ModelEventMessage(
+            topic=envelope.payload.response_topic,
+            key=None,
+            value=response.model_dump_json().encode("utf-8"),
+            headers=ModelEventHeaders(
+                timestamp=datetime.now(UTC),
+                source="readiness-delayed-test",
+                event_type=envelope.payload.response_topic,
+                correlation_id=terminal.correlation_id,
+            ),
+        )
+        callback = self.callbacks[envelope.payload.response_topic]
+        await callback(message)  # type: ignore[misc]
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        self.callbacks[topic] = on_message
+        self.subscribe_kwargs.append(dict(kwargs))
 
         async def _unsubscribe() -> None:
             return None
@@ -887,6 +975,36 @@ async def test_dispatch_async_round_trip() -> None:
         received_commands[0].target_runtime_address
         == "runtime://omninode-pc/stability-test/main"
     )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_waits_for_terminal_subscription_readiness() -> None:
+    transport = _ReadinessDelayedTerminalTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True},
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.session-orchestrator-completed.v1",
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is True
+    assert result.output_payloads == [{"status": "ready-before-publish"}]
+    assert transport.subscribe_kwargs == [
+        {
+            "group_id": f"codex-adapter-{result.correlation_id}",
+            "required_for_readiness": True,
+        }
+    ]
+    assert transport.publish_readiness_checks >= 2
+    assert len(transport.published) == 1
 
 
 @pytest.mark.asyncio

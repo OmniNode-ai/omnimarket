@@ -50,6 +50,8 @@ _DELEGATE_SKILL_COMMAND_NAMES = frozenset(
 _DELEGATE_SKILL_COMPLETED_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_COMPLETED
 _DELEGATE_SKILL_FAILED_TOPIC = TOPIC_CODEX_DELEGATE_SKILL_FAILED
 _RUNTIME_SELECTION_VALUES = frozenset({"deployed", "local", "deployed_or_local"})
+_TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS = 15.0
+_TERMINAL_SUBSCRIPTION_READY_POLL_SECONDS = 0.05
 
 
 class ModelDispatchBusRoute(BaseModel):
@@ -161,6 +163,9 @@ class _CodexDispatchBusAdapter:
         *,
         correlation_id: str,
         additional_terminal_topics: tuple[str, ...] = (),
+        readiness_timeout_seconds: float = (
+            _TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS
+        ),
     ) -> tuple[
         Callable[[], Awaitable[None]], asyncio.Queue[ModelDispatchBusTerminalResult]
     ]:
@@ -191,8 +196,14 @@ class _CodexDispatchBusAdapter:
                     None,
                     on_message,
                     group_id=f"codex-adapter-{correlation_id}",
+                    required_for_readiness=True,
                 )
             )
+
+        await _await_terminal_subscriptions_ready(
+            self._transport,
+            timeout_seconds=readiness_timeout_seconds,
+        )
 
         async def _unsubscribe() -> None:
             for unsub in unsubs:
@@ -513,6 +524,26 @@ def _coerce_terminal_result_payload(
     return result
 
 
+async def _await_terminal_subscriptions_ready(
+    transport: _ProtocolLifecycleTransport,
+    *,
+    timeout_seconds: float,
+) -> None:
+    readiness = getattr(transport, "get_readiness_status", None)
+    if not callable(readiness):
+        return
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + max(0.0, timeout_seconds)
+    while True:
+        status = await readiness()
+        if bool(getattr(status, "is_ready", False)):
+            return
+        if loop.time() >= deadline:
+            return
+        await asyncio.sleep(_TERMINAL_SUBSCRIPTION_READY_POLL_SECONDS)
+
+
 def _build_dispatch_command(
     request: ModelCodexRuntimeRequestAdapterRequest,
     *,
@@ -668,6 +699,10 @@ class CodexRuntimeRequestAdapter:
                 route,
                 correlation_id=str(command.correlation_id),
                 additional_terminal_topics=extra_topics,
+                readiness_timeout_seconds=min(
+                    _TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS,
+                    command.timeout_seconds,
+                ),
             )
             try:
                 await dispatch_adapter.publish_command(route, command)
