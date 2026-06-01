@@ -40,6 +40,10 @@ class PrRecord(BaseModel):
     repo: str = Field(..., description="Repo slug, e.g. 'OmniNode-ai/omnimarket'.")
     title: str = Field(default="")
     branch: str = Field(default="")
+    head_sha: str | None = Field(
+        default=None,
+        description="Branch (head) commit SHA at inventory time, for ledger provenance.",
+    )
     ticket_ids: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Canonical OMN ticket identifiers bound to this PR.",

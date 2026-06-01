@@ -1290,3 +1290,155 @@ class TestOrchestratorForwardsAdminMergeFallbackFlag:
         )
         assert cmd.enable_admin_merge_fallback is False
         assert cmd.admin_fallback_threshold_minutes == 15
+
+
+@pytest.mark.unit
+class TestPrLifecycleOrchestratorLedger:
+    """OMN-12569: a sweep owns a durable, reconstructable PR-ledger projection."""
+
+    async def test_sweep_populates_ledger_with_provenance(self) -> None:
+        """A merge+fix sweep materializes ledger entries with provenance.
+
+        Proves the orchestrator records source events as the lifecycle runs and
+        the durable projection captures run id, branch SHA, merge-group SHA, and
+        the terminal conclusion per PR.
+        """
+        green = PrRecord(
+            pr_number=101,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="deadbeef01",
+            checks_status="success",
+            review_status="approved",
+        )
+        red = PrRecord(
+            pr_number=102,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="deadbeef02",
+            checks_status="failure",
+            review_status="pending",
+        )
+        orch = await _make_orchestrator(
+            inventory=MockInventory(prs=(green, red)),
+            triage=MockTriage(classified=(_TRIAGE_GREEN, _TRIAGE_RED)),
+            reducer=MockReducer(intents=(_INTENT_MERGE, _INTENT_FIX)),
+            merge=MockMerge(prs_merged=1),
+            fix=MockFix(prs_dispatched=1),
+        )
+        command = _make_command(run_id="20260601-000000-ledger1")
+        result = await orch.handle(command)
+        assert result.final_state == "COMPLETE"
+
+        ledger = orch.ledger("20260601-000000-ledger1")
+        assert ledger.provenance_kind == "derived_projection"
+        assert ledger.freshness_sla_seconds == 900
+        by_pr = {(e.repo, e.pr_number): e for e in ledger.entries}
+        assert set(by_pr) == {
+            ("OmniNode-ai/omnimarket", 101),
+            ("OmniNode-ai/omnimarket", 102),
+        }
+
+        merged = by_pr[("OmniNode-ai/omnimarket", 101)]
+        assert merged.head_sha == "deadbeef01"
+        assert merged.conclusion.value == "merged"
+        assert len(merged.merge_group_shas) == 1
+        # Provenance trail: inventory + merge conclusion, each timestamped.
+        actions = [p.orchestrator_action.value for p in merged.provenance]
+        assert actions == ["inventory", "merge"]
+        assert all(p.observed_at for p in merged.provenance)
+
+        fixed = by_pr[("OmniNode-ai/omnimarket", 102)]
+        assert fixed.conclusion.value == "failed"
+        assert fixed.head_sha == "deadbeef02"
+
+    async def test_injected_durable_store_receives_entries(self) -> None:
+        """A ProjectionDatabasePrLedgerStore wired in captures the same state.
+
+        Proves the ledger persists to the control-plane durable surface (the
+        projection database boundary), not a repo artifact, and reconstructs to
+        the same projection.
+        """
+        from omnimarket.nodes.pr_ledger_native import (
+            ProjectionDatabasePrLedgerStore,
+            reconstruct_pr_ledger,
+        )
+        from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+        db = InmemoryDatabaseAdapter()
+        store = ProjectionDatabasePrLedgerStore(db, table="pr_lifecycle_ledger")
+        green = PrRecord(
+            pr_number=201,
+            repo="OmniNode-ai/omnimarket",
+            head_sha="cafe01",
+            checks_status="success",
+            review_status="approved",
+        )
+        orch = await _make_orchestrator(
+            inventory=MockInventory(prs=(green,)),
+            triage=MockTriage(
+                classified=(
+                    TriageRecord(
+                        pr_number=201,
+                        repo="OmniNode-ai/omnimarket",
+                        category=EnumPrCategory.GREEN,
+                    ),
+                )
+            ),
+            reducer=MockReducer(
+                intents=(
+                    ReducerIntent(
+                        pr_number=201,
+                        repo="OmniNode-ai/omnimarket",
+                        intent=EnumReducerIntent.MERGE,
+                    ),
+                )
+            ),
+            merge=MockMerge(prs_merged=1),
+            fix=MockFix(),
+        )
+        orch._ledger_store = store  # inject the durable surface
+        await orch.handle(_make_command(run_id="20260601-000000-ledger2"))
+
+        rows = db.query("pr_lifecycle_ledger")
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "20260601-000000-ledger2"
+
+        # Reconstruct from the rows' recorded provenance and confirm the
+        # projection matches the live durable view.
+        reloaded = store.load("20260601-000000-ledger2")
+        entry = reloaded.entries[0]
+        source_events = []
+        from omnimarket.nodes.pr_ledger_native import (
+            EnumOrchestratorAction,
+            EnumPrLedgerConclusion,
+            EnumPrLedgerEventKind,
+            ModelPrLedgerSourceEvent,
+        )
+
+        kind_for_action = {
+            "inventory": EnumPrLedgerEventKind.PR_INVENTORIED,
+            "merge": EnumPrLedgerEventKind.FINAL_CONCLUSION,
+        }
+        for prov in entry.provenance:
+            source_events.append(
+                ModelPrLedgerSourceEvent(
+                    kind=kind_for_action[prov.orchestrator_action.value],
+                    run_id=entry.run_id,
+                    correlation_id=entry.correlation_id,
+                    repo=entry.repo,
+                    pr_number=entry.pr_number,
+                    head_sha=prov.branch_sha,
+                    merge_group_sha=prov.merge_group_sha,
+                    conclusion=(
+                        EnumPrLedgerConclusion.MERGED
+                        if prov.orchestrator_action.value == "merge"
+                        else None
+                    ),
+                    orchestrator_action=EnumOrchestratorAction(
+                        prov.orchestrator_action.value
+                    ),
+                    observed_at=prov.observed_at,
+                )
+            )
+        rebuilt = reconstruct_pr_ledger(tuple(source_events))
+        assert rebuilt.entries[0].conclusion.value == "merged"
+        assert rebuilt.entries[0].head_sha == "cafe01"
