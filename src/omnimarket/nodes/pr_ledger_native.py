@@ -89,6 +89,80 @@ class EnumPrLedgerConclusion(StrEnum):
     SKIPPED = "skipped"
 
 
+class EnumPrLifecyclePhase(StrEnum):
+    """Distinct CI-verification phases in the orchestrator state machine.
+
+    OMN-12570: branch checks, merge-group checks, and post-merge CI tails are
+    *separate* phases — not one undifferentiated "checks" bucket. Every source
+    event and every ledger entry is attributed to the phase it was produced in,
+    so a ``FAILED`` conclusion in ``POST_MERGE_TAIL`` is distinguishable from a
+    ``FAILED`` conclusion in ``BRANCH_CHECKS``.
+
+    The three CI phases the ticket calls out are ``BRANCH_CHECKS``,
+    ``MERGE_GROUP``, and ``POST_MERGE_TAIL``. ``INVENTORY``/``TRIAGE`` cover the
+    pre-CI orchestrator phases and ``TERMINAL`` covers the COMPLETE/FAILED
+    sink, so the phase a ledger entry carries is always meaningful — never an
+    implicit ``None`` inferred later from logs.
+    """
+
+    INVENTORY = "inventory"
+    TRIAGE = "triage"
+    BRANCH_CHECKS = "branch_checks"
+    MERGE_GROUP = "merge_group"
+    POST_MERGE_TAIL = "post_merge_tail"
+    TERMINAL = "terminal"
+
+
+# Allowed phase transitions in the orchestrator state machine (OMN-12570).
+# A transition is *recorded* only if it is declared here; an undeclared
+# transition is a state-machine bug, not a silently-tolerated log artifact.
+#
+# Topology mirrors HandlerPrLifecycleOrchestrator._run_sweep:
+#   * a green PR enqueues straight from triage into the merge queue
+#     (TRIAGE -> MERGE_GROUP);
+#   * a non-green PR (verify/fix) routes through branch checks
+#     (TRIAGE -> BRANCH_CHECKS);
+#   * a merged PR's tail runs on the target branch
+#     (MERGE_GROUP -> POST_MERGE_TAIL);
+#   * a run that both merges and fixes does the merge first, then the fix
+#     (POST_MERGE_TAIL -> BRANCH_CHECKS);
+#   * every phase can reach the terminal sink (COMPLETE/FAILED).
+_ALLOWED_PHASE_TRANSITIONS: frozenset[
+    tuple[EnumPrLifecyclePhase, EnumPrLifecyclePhase]
+] = frozenset(
+    {
+        (EnumPrLifecyclePhase.INVENTORY, EnumPrLifecyclePhase.TRIAGE),
+        (EnumPrLifecyclePhase.INVENTORY, EnumPrLifecyclePhase.TERMINAL),
+        (EnumPrLifecyclePhase.TRIAGE, EnumPrLifecyclePhase.BRANCH_CHECKS),
+        (EnumPrLifecyclePhase.TRIAGE, EnumPrLifecyclePhase.MERGE_GROUP),
+        (EnumPrLifecyclePhase.TRIAGE, EnumPrLifecyclePhase.TERMINAL),
+        (EnumPrLifecyclePhase.BRANCH_CHECKS, EnumPrLifecyclePhase.MERGE_GROUP),
+        (EnumPrLifecyclePhase.BRANCH_CHECKS, EnumPrLifecyclePhase.TERMINAL),
+        (EnumPrLifecyclePhase.MERGE_GROUP, EnumPrLifecyclePhase.POST_MERGE_TAIL),
+        (EnumPrLifecyclePhase.MERGE_GROUP, EnumPrLifecyclePhase.TERMINAL),
+        (EnumPrLifecyclePhase.POST_MERGE_TAIL, EnumPrLifecyclePhase.BRANCH_CHECKS),
+        (EnumPrLifecyclePhase.POST_MERGE_TAIL, EnumPrLifecyclePhase.TERMINAL),
+    }
+)
+
+
+def is_allowed_phase_transition(
+    from_phase: EnumPrLifecyclePhase,
+    to_phase: EnumPrLifecyclePhase,
+) -> bool:
+    """Return True iff (from_phase -> to_phase) is a declared FSM transition.
+
+    Self-transitions (re-entering the same phase, e.g. a merge-group rerun) are
+    always allowed. Any other transition must appear in
+    ``_ALLOWED_PHASE_TRANSITIONS``; the orchestrator rejects undeclared
+    transitions so the recorded transition log can never describe an impossible
+    state-machine path.
+    """
+    if from_phase is to_phase:
+        return True
+    return (from_phase, to_phase) in _ALLOWED_PHASE_TRANSITIONS
+
+
 # ---------------------------------------------------------------------------
 # Source event — the replayable unit of truth derivation.
 # ---------------------------------------------------------------------------
@@ -128,6 +202,15 @@ class ModelPrLedgerSourceEvent(BaseModel):
     orchestrator_action: EnumOrchestratorAction = Field(
         ..., description="Orchestrator action that produced this event."
     )
+    phase: EnumPrLifecyclePhase = Field(
+        default=EnumPrLifecyclePhase.INVENTORY,
+        description=(
+            "FSM phase the orchestrator was in when this event was recorded "
+            "(OMN-12570). Stamped at record time from the active phase — not "
+            "inferred later from the orchestrator_action. Distinguishes a "
+            "branch-check failure from a post-merge-tail failure."
+        ),
+    )
     observed_at: str = Field(
         ...,
         min_length=1,
@@ -154,6 +237,10 @@ class ModelPrLedgerProvenance(BaseModel):
     merge_group_sha: str | None = Field(default=None)
     branch_sha: str | None = Field(default=None)
     orchestrator_action: EnumOrchestratorAction = Field(...)
+    phase: EnumPrLifecyclePhase = Field(
+        default=EnumPrLifecyclePhase.INVENTORY,
+        description="FSM phase this source event was recorded in (OMN-12570).",
+    )
     observed_at: str = Field(...)
 
 
@@ -177,9 +264,53 @@ class ModelPrLedgerEntry(BaseModel):
     rerun_attempts: int = Field(default=0, ge=0)
     conclusion: EnumPrLedgerConclusion = Field(default=EnumPrLedgerConclusion.PENDING)
     last_action: EnumOrchestratorAction | None = Field(default=None)
+    last_phase: EnumPrLifecyclePhase = Field(
+        default=EnumPrLifecyclePhase.INVENTORY,
+        description=(
+            "Phase of the most recently folded source event (OMN-12570). For a "
+            "terminal entry this is the phase the conclusion was reached in, so "
+            "the failure surface (branch-check vs post-merge-tail) is queryable "
+            "directly off the materialized entry."
+        ),
+    )
     first_observed_at: str | None = Field(default=None)
     last_observed_at: str | None = Field(default=None)
     provenance: tuple[ModelPrLedgerProvenance, ...] = Field(default_factory=tuple)
+
+    def failed_in_phase(self) -> EnumPrLifecyclePhase | None:
+        """Return the phase a FAILED conclusion was reached in, else None.
+
+        OMN-12570 acceptance: a post-merge tail failure must be distinguishable
+        from a branch-check failure. A non-failed entry returns ``None``; a
+        failed entry returns the recorded phase of its terminal event.
+        """
+        if self.conclusion is not EnumPrLedgerConclusion.FAILED:
+            return None
+        for record in reversed(self.provenance):
+            if record.event_kind is EnumPrLedgerEventKind.FINAL_CONCLUSION:
+                return record.phase
+        return self.last_phase
+
+
+class ModelPrLifecyclePhaseTransition(BaseModel):
+    """An explicit, recorded orchestrator phase transition (OMN-12570).
+
+    Transitions are recorded *at transition time* by the state machine, not
+    inferred after the fact from logs. Each record pins the from/to phase, the
+    sweep run + correlation id, and the wall-clock time the orchestrator made
+    the move. The recorded transition log is what lets the ledger attribute
+    every entry to the correct phase deterministically.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    run_id: str = Field(..., min_length=1)
+    correlation_id: UUID = Field(...)
+    from_phase: EnumPrLifecyclePhase = Field(...)
+    to_phase: EnumPrLifecyclePhase = Field(...)
+    recorded_at: str = Field(
+        ..., min_length=1, description="ISO-8601 transition timestamp."
+    )
 
 
 class ModelPrLedger(BaseModel):
@@ -192,6 +323,15 @@ class ModelPrLedger(BaseModel):
     freshness_sla_seconds: int = Field(default=PR_LEDGER_FRESHNESS_SLA_SECONDS, ge=0)
     last_event_at: str | None = Field(default=None)
     entries: tuple[ModelPrLedgerEntry, ...] = Field(default_factory=tuple)
+    phase_transitions: tuple[ModelPrLifecyclePhaseTransition, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Explicit recorded FSM phase transitions for this sweep run "
+            "(OMN-12570), in transition order. Distinguishes a branch-check "
+            "phase from a merge-group or post-merge-tail phase without "
+            "re-parsing logs."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +346,7 @@ def _provenance_of(event: ModelPrLedgerSourceEvent) -> ModelPrLedgerProvenance:
         merge_group_sha=event.merge_group_sha,
         branch_sha=event.head_sha,
         orchestrator_action=event.orchestrator_action,
+        phase=event.phase,
         observed_at=event.observed_at,
     )
 
@@ -267,6 +408,7 @@ def fold_event(
             "rerun_attempts": rerun_attempts,
             "conclusion": conclusion,
             "last_action": event.orchestrator_action,
+            "last_phase": event.phase,
             "first_observed_at": first_observed_at,
             "last_observed_at": event.observed_at,
             "provenance": (*base.provenance, _provenance_of(event)),
@@ -291,6 +433,15 @@ class ProtocolPrLedgerStore(Protocol):
         """Fold one source event and persist the updated entry."""
         ...
 
+    def record_transition(self, transition: ModelPrLifecyclePhaseTransition) -> None:
+        """Durably record an explicit FSM phase transition (OMN-12570).
+
+        Called by the orchestrator *at transition time*. Rejects undeclared
+        transitions so the recorded log can only ever describe legal
+        state-machine paths.
+        """
+        ...
+
 
 class InMemoryPrLedgerStore:
     """Deterministic in-memory ledger store for local runs and tests."""
@@ -299,6 +450,8 @@ class InMemoryPrLedgerStore:
         # run_id -> (repo, pr_number) -> entry
         self._runs: dict[str, dict[tuple[str, int], ModelPrLedgerEntry]] = {}
         self._last_event_at: dict[str, str] = {}
+        # run_id -> ordered recorded phase transitions (OMN-12570).
+        self._transitions: dict[str, list[ModelPrLifecyclePhaseTransition]] = {}
 
     def load(self, run_id: str) -> ModelPrLedger:
         entries = self._runs.get(run_id, {})
@@ -306,6 +459,7 @@ class InMemoryPrLedgerStore:
             run_id=run_id,
             entries=entries.values(),
             last_event_at=self._last_event_at.get(run_id),
+            phase_transitions=tuple(self._transitions.get(run_id, ())),
         )
 
     def apply(self, event: ModelPrLedgerSourceEvent) -> ModelPrLedgerEntry:
@@ -317,6 +471,10 @@ class InMemoryPrLedgerStore:
         if prev is None or event.observed_at > prev:
             self._last_event_at[event.run_id] = event.observed_at
         return entry
+
+    def record_transition(self, transition: ModelPrLifecyclePhaseTransition) -> None:
+        _validate_transition(transition)
+        self._transitions.setdefault(transition.run_id, []).append(transition)
 
 
 class ProjectionDatabasePrLedgerStore:
@@ -335,6 +493,9 @@ class ProjectionDatabasePrLedgerStore:
     ) -> None:
         self._db = database
         self._table = table
+        # Phase transitions land in a sibling table so the recorded transition
+        # log is queryable independently of the per-PR entries (OMN-12570).
+        self._transition_table = f"{table}_transitions"
 
     def load(self, run_id: str) -> ModelPrLedger:
         rows = self._db.query(self._table, {"run_id": run_id})
@@ -343,8 +504,16 @@ class ProjectionDatabasePrLedgerStore:
             (e.last_observed_at for e in entries if e.last_observed_at is not None),
             default=None,
         )
+        transition_rows = self._db.query(self._transition_table, {"run_id": run_id})
+        transitions = tuple(
+            ModelPrLifecyclePhaseTransition.model_validate(row)
+            for row in transition_rows
+        )
         return _build_ledger(
-            run_id=run_id, entries=entries, last_event_at=last_event_at
+            run_id=run_id,
+            entries=entries,
+            last_event_at=last_event_at,
+            phase_transitions=transitions,
         )
 
     def apply(self, event: ModelPrLedgerSourceEvent) -> ModelPrLedgerEntry:
@@ -356,6 +525,14 @@ class ProjectionDatabasePrLedgerStore:
             _row_from_entry(entry),
         )
         return entry
+
+    def record_transition(self, transition: ModelPrLifecyclePhaseTransition) -> None:
+        _validate_transition(transition)
+        self._db.upsert(
+            self._transition_table,
+            "run_id,from_phase,to_phase,recorded_at",
+            transition.model_dump(mode="json"),
+        )
 
     def _load_entry(
         self, run_id: str, repo: str, pr_number: int
@@ -383,8 +560,23 @@ def apply_pr_ledger_event(
     return store.apply(event)
 
 
+def record_phase_transition(
+    transition: ModelPrLifecyclePhaseTransition,
+    *,
+    store: ProtocolPrLedgerStore,
+) -> None:
+    """Durably record an explicit FSM phase transition (OMN-12570).
+
+    The orchestrator calls this *at transition time* so the recorded log is the
+    source of phase attribution — the ledger never has to infer phase from logs.
+    """
+    store.record_transition(transition)
+
+
 def reconstruct_pr_ledger(
     events: tuple[ModelPrLedgerSourceEvent, ...],
+    *,
+    phase_transitions: tuple[ModelPrLifecyclePhaseTransition, ...] = (),
 ) -> ModelPrLedger:
     """Rebuild the ledger from an arbitrary source-event log.
 
@@ -395,6 +587,11 @@ def reconstruct_pr_ledger(
 
     Events for distinct PRs fold independently; per-PR events are ordered by
     ``observed_at`` so a shuffled durable log still rebuilds identical state.
+
+    OMN-12570: the recorded phase-transition log is replayed alongside the
+    source events. Because both events and transitions carry an explicit phase,
+    reconstruction reproduces the exact phase attribution of the live path —
+    nothing is inferred. Transitions are ordered by ``recorded_at``.
     """
     if not events:
         raise ValueError("reconstruct_pr_ledger requires at least one source event")
@@ -405,6 +602,16 @@ def reconstruct_pr_ledger(
             f"reconstruct_pr_ledger expects a single run_id, got {sorted(run_ids)}"
         )
     run_id = next(iter(run_ids))
+
+    transition_run_ids = {t.run_id for t in phase_transitions}
+    if transition_run_ids and transition_run_ids != run_ids:
+        raise ValueError(
+            "reconstruct_pr_ledger transitions must share the events' run_id; "
+            f"got events run_id {sorted(run_ids)}, transitions "
+            f"{sorted(transition_run_ids)}"
+        )
+    for transition in phase_transitions:
+        _validate_transition(transition)
 
     ordered = sorted(
         events, key=lambda e: (e.repo, e.pr_number, e.observed_at, e.kind.value)
@@ -417,8 +624,15 @@ def reconstruct_pr_ledger(
         if last_event_at is None or event.observed_at > last_event_at:
             last_event_at = event.observed_at
 
+    ordered_transitions = tuple(
+        sorted(phase_transitions, key=lambda t: (t.recorded_at, t.from_phase.value))
+    )
+
     return _build_ledger(
-        run_id=run_id, entries=entries.values(), last_event_at=last_event_at
+        run_id=run_id,
+        entries=entries.values(),
+        last_event_at=last_event_at,
+        phase_transitions=ordered_transitions,
     )
 
 
@@ -427,17 +641,34 @@ def reconstruct_pr_ledger(
 # ---------------------------------------------------------------------------
 
 
+def _validate_transition(transition: ModelPrLifecyclePhaseTransition) -> None:
+    """Reject an undeclared FSM phase transition (OMN-12570).
+
+    The recorded transition log must only ever describe legal state-machine
+    paths; recording an impossible move would let the ledger attribute entries
+    to a phase the orchestrator could never have been in.
+    """
+    if not is_allowed_phase_transition(transition.from_phase, transition.to_phase):
+        raise ValueError(
+            f"illegal phase transition "
+            f"{transition.from_phase.value} -> {transition.to_phase.value}; "
+            "not a declared orchestrator state-machine transition"
+        )
+
+
 def _build_ledger(
     *,
     run_id: str,
     entries: Iterable[ModelPrLedgerEntry],
     last_event_at: str | None,
+    phase_transitions: tuple[ModelPrLifecyclePhaseTransition, ...] = (),
 ) -> ModelPrLedger:
     sorted_entries = tuple(sorted(entries, key=lambda e: (e.repo, e.pr_number)))
     return ModelPrLedger(
         run_id=run_id,
         last_event_at=last_event_at,
         entries=sorted_entries,
+        phase_transitions=tuple(phase_transitions),
     )
 
 
@@ -455,14 +686,18 @@ __all__: list[str] = [
     "EnumOrchestratorAction",
     "EnumPrLedgerConclusion",
     "EnumPrLedgerEventKind",
+    "EnumPrLifecyclePhase",
     "InMemoryPrLedgerStore",
     "ModelPrLedger",
     "ModelPrLedgerEntry",
     "ModelPrLedgerProvenance",
     "ModelPrLedgerSourceEvent",
+    "ModelPrLifecyclePhaseTransition",
     "ProjectionDatabasePrLedgerStore",
     "ProtocolPrLedgerStore",
     "apply_pr_ledger_event",
     "fold_event",
+    "is_allowed_phase_transition",
     "reconstruct_pr_ledger",
+    "record_phase_transition",
 ]
