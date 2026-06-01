@@ -42,7 +42,7 @@ event_sessions AS (
         COALESCE(tokens_input, 0)::int AS prompt_tokens,
         COALESCE(tokens_output, 0)::int AS completion_tokens,
         NULLIF(tokens_to_compliance, 0)::int AS tokens_to_compliance,
-        COALESCE(delegation_latency_ms, latency_ms)::int AS latency_ms,
+        COALESCE(latency_ms, delegation_latency_ms)::int AS latency_ms,
         COALESCE(created_at, timestamp) AS created_at,
         prompt_text,
         response_text
