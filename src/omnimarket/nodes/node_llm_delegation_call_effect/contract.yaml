@@ -94,11 +94,11 @@ event_bus:
     - "onex.cmd.omnibase-infra.delegation-inference-request.v1"
 
   publish_topics:
+    - "onex.evt.omnibase-infra.inference-response.v1"
     - "onex.evt.omnimarket.delegation-call-completed.v1"
     - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
     - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
     - "onex.evt.omnimarket.delegation-model-degraded.v1"
-    - "onex.evt.omnibase-infra.inference-response.v1"
 
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.delegation-execute.v1":
@@ -133,7 +133,7 @@ externally_consumed_topics:
 
 # === HANDLER ROUTING ===
 handler_routing:
-  routing_strategy: "operation_match"
+  routing_strategy: "payload_type_match"
   handlers:
     - operation: "execute_delegation_call"
       event_model:

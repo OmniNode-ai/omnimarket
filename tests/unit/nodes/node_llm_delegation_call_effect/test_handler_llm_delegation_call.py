@@ -21,6 +21,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_deleg
     TOPIC_DELEGATION_ALL_TIERS_FAILED,
     TOPIC_DELEGATION_CALL_COMPLETED,
     TOPIC_DELEGATION_ESCALATION_TRIGGERED,
+    TOPIC_DELEGATION_MODEL_DEGRADED,
     HandlerLlmDelegationCall,
     _health_cache,
     _is_endpoint_healthy,
@@ -108,6 +109,22 @@ class TestHealthProbeCache:
 class TestHandlerLlmDelegationCall:
     def setup_method(self) -> None:
         _health_cache.clear()
+
+    @pytest.mark.unit
+    def test_delegation_publish_topics_are_resolved_by_suffix(self) -> None:
+        contract_path = (
+            Path(__file__).resolve().parents[4]
+            / "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml"
+        )
+        with contract_path.open(encoding="utf-8") as fh:
+            contract = yaml.safe_load(fh)
+
+        publish_topics = contract["event_bus"]["publish_topics"]
+        assert publish_topics[0].endswith("inference-response.v1")
+        assert TOPIC_DELEGATION_CALL_COMPLETED in publish_topics
+        assert TOPIC_DELEGATION_ESCALATION_TRIGGERED in publish_topics
+        assert TOPIC_DELEGATION_ALL_TIERS_FAILED in publish_topics
+        assert TOPIC_DELEGATION_MODEL_DEGRADED in publish_topics
 
     @pytest.mark.unit
     def test_missing_endpoint_env_var_returns_failure(

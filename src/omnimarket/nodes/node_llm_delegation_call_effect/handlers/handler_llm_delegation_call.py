@@ -59,11 +59,44 @@ _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
 _subscribe = contract_subscribe_topics(_CONTRACT)
 _publish = contract_publish_topics(_CONTRACT)
 
-TOPIC_DELEGATION_EXECUTE = _subscribe[0]
-TOPIC_DELEGATION_CALL_COMPLETED = _publish[0]
-TOPIC_DELEGATION_ESCALATION_TRIGGERED = _publish[1]
-TOPIC_DELEGATION_ALL_TIERS_FAILED = _publish[2]
-TOPIC_DELEGATION_MODEL_DEGRADED = _publish[3]
+_DELEGATION_EXECUTE_SUFFIX = (
+    "delegation-execute.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+_DELEGATION_CALL_COMPLETED_SUFFIX = (
+    "delegation-call-completed.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+_DELEGATION_ESCALATION_TRIGGERED_SUFFIX = "delegation-escalation-triggered.v1"  # onex-topic-allow: suffix used for contract lookup
+_DELEGATION_ALL_TIERS_FAILED_SUFFIX = "delegation-all-tiers-failed.v1"  # onex-topic-allow: suffix used for contract lookup
+_DELEGATION_MODEL_DEGRADED_SUFFIX = (
+    "delegation-model-degraded.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+
+
+def _single_contract_topic(topics: tuple[str, ...], suffix: str, section: str) -> str:
+    matches = tuple(topic for topic in topics if topic.endswith(suffix))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Contract {_CONTRACT} must declare exactly one event_bus.{section} "
+            f"topic ending with {suffix!r}; found {matches!r}."
+        )
+    return matches[0]
+
+
+TOPIC_DELEGATION_EXECUTE = _single_contract_topic(
+    _subscribe, _DELEGATION_EXECUTE_SUFFIX, "subscribe_topics"
+)
+TOPIC_DELEGATION_CALL_COMPLETED = _single_contract_topic(
+    _publish, _DELEGATION_CALL_COMPLETED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_ESCALATION_TRIGGERED = _single_contract_topic(
+    _publish, _DELEGATION_ESCALATION_TRIGGERED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_ALL_TIERS_FAILED = _single_contract_topic(
+    _publish, _DELEGATION_ALL_TIERS_FAILED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_MODEL_DEGRADED = _single_contract_topic(
+    _publish, _DELEGATION_MODEL_DEGRADED_SUFFIX, "publish_topics"
+)
 
 __all__ = ["HandlerLlmDelegationCall"]
 
