@@ -1,0 +1,67 @@
+---
+name: node_occ_evidence_draft_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Orchestrator that drafts OCC evidence via local-model delegation (OMN-12580,
+  Phase 5). Consumes onex.cmd.omnimarket.occ-evidence-draft-start.v1, delegates
+  artifact generation over the live delegation surface
+  (onex.cmd.omnibase-infra.delegation-request.v1) — it never calls a model
+  directly — and reacts to inference-response/routing-decision/quality-gate-result
+  to materialize a PROVISIONAL ModelOccEvidenceDraft, publishing
+  occ-evidence-draft-created.v1 or occ-evidence-draft-failed.v1. The draft is
+  always PROVISIONAL; acceptance is decided by node_occ_evidence_validator_compute.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerOccEvidenceDraftOrchestrator
+        module: omnimarket.nodes.node_occ_evidence_draft_orchestrator.handlers.handler_occ_evidence_draft_orchestrator
+
+handler:
+  module: omnimarket.nodes.node_occ_evidence_draft_orchestrator.handlers.handler_occ_evidence_draft_orchestrator
+  class: HandlerOccEvidenceDraftOrchestrator
+  input_model: omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft.ModelOccEvidenceDraftRequest
+
+input_model:
+  name: ModelOccEvidenceDraftRequest
+  module: omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft
+  description: "OCC draft request carrying ticket, lane, proof, and required receipts."
+output_model:
+  name: ModelOccEvidenceDraft
+  module: omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft
+  description: "Provisional OCC evidence draft (always PROVISIONAL)."
+
+descriptor:
+  node_archetype: orchestrator
+  purity: orchestration
+  idempotent: true
+  timeout_ms: 120000
+
+terminal_event: onex.evt.omnimarket.occ-evidence-draft-created.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.occ-evidence-draft-start.v1
+    - onex.evt.omnibase-infra.inference-response.v1
+    - onex.evt.omnibase-infra.routing-decision.v1
+    - onex.evt.omnibase-infra.quality-gate-result.v1
+  publish_topics:
+    - onex.cmd.omnibase-infra.delegation-request.v1
+    - onex.evt.omnimarket.occ-evidence-draft-created.v1
+    - onex.evt.omnimarket.occ-evidence-draft-failed.v1
+
+side_effects:
+  reads: []
+  writes:
+    - event_bus
+  duplicate_key_fields:
+    - correlation_id
+    - deployment_id
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 5
+  related_tickets: ["OMN-12580", "OMN-12574"]
