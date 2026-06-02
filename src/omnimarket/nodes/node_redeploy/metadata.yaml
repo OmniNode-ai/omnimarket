@@ -29,6 +29,7 @@ workflow:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase-infra>=0.32.0"
+  - "omnibase-compat>=0.3.1"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["release", "deploy", "docker", "runtime", "workflow", "fsm", "kafka"]

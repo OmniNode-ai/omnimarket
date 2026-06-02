@@ -35,8 +35,14 @@ from omnimarket.nodes.node_redeploy.models.model_deployment_adapter import (
     ProtocolDeploymentAdapter,
 )
 from omnimarket.nodes.node_redeploy.models.model_lane_policy import (
-    ModelStabilityReadiness,
     evaluate_prod_digest_gate,
+)
+from omnimarket.nodes.node_redeploy.models.model_prod_promotion_gate import (
+    EnumOccGateState,
+    ModelProdPromotionGateDecision,
+    ModelProdPromotionInputs,
+    ModelReadinessProjectionFact,
+    evaluate_prod_promotion_gate,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
     EnumRuntimeLane,
@@ -83,6 +89,28 @@ class ModelRedeployWorkflowInput(BaseModel):
             "Run a post-deploy smoke probe. When the deploy reports success but "
             "no live runtime proof is available, the smoke probe fails closed and "
             "triggers rollback (OMN-9579)."
+        ),
+    )
+    # OMN-12581 Phase 6 — production promotion gate inputs. These are the
+    # deterministic facts the prod gate consults before any deploy-agent
+    # invocation: the reducer-owned readiness projection, the OCC evidence
+    # state, and the known rollback target.
+    readiness_projection: ModelReadinessProjectionFact | None = Field(
+        default=None,
+        description=(
+            "Reducer-owned stability readiness projection for a prod promotion. "
+            "Absent (None) fails the prod gate closed."
+        ),
+    )
+    occ_gate_state: EnumOccGateState = Field(
+        default=EnumOccGateState.PENDING,
+        description="Whether OCC evidence is merged / Receipt-Gate-PASS for prod.",
+    )
+    rollback_target: str | None = Field(
+        default=None,
+        description=(
+            "Known previous-good digest for the prod rollback path. Required for "
+            "prod promotion; when set it overrides previous_image on the deploy."
         ),
     )
 
@@ -160,27 +188,26 @@ async def run_redeploy_workflow(
     Returns:
         ModelRedeployWorkflowResult with final phase and rebuild outcome.
     """
-    # Lane gate: production may not enter REBUILD/deploy unless a stability-test
-    # readiness event exists for the SAME digest. The gate runs BEFORE any deploy
-    # effect so a bad prod request is rejected before the agent is invoked.
+    # Lane gate: production may not enter REBUILD/deploy unless the full set of
+    # promotion facts is satisfied. The gate runs BEFORE any deploy effect so a
+    # bad prod request is rejected before the agent is invoked — the first-class
+    # regression guard for the live prod-vs-stability digest drift.
+    rollback_target: str = input_data.previous_image
     if input_data.runtime_lane is EnumRuntimeLane.PROD:
-        # No stability readiness is threaded through this entry point yet, so the
-        # gate fails closed: a prod deploy here is blocked until the readiness
-        # handoff (publish/consume readiness-gate events) supplies a matching
-        # READY digest. This is the regression guard for prod-vs-stability drift.
-        gate = evaluate_prod_digest_gate(
-            requested_digest=input_data.image_digest,
-            stability_readiness=_stability_readiness_for(input_data),
-        )
-        if not gate.allowed:
+        promotion_gate = _evaluate_prod_gate(input_data)
+        if not promotion_gate.allowed:
             return ModelRedeployWorkflowResult(
                 correlation_id=input_data.correlation_id,
                 final_phase=EnumRedeployPhase.BLOCKED,
                 phases_completed=0,
                 success=False,
                 rebuild_result=None,
-                error_message=gate.reason,
+                error_message=promotion_gate.reason,
             )
+        # The gate proved a known rollback target; thread it into the deploy so
+        # the rollback path restores the proven previous-good artifact.
+        if promotion_gate.rollback_target:
+            rollback_target = promotion_gate.rollback_target
 
     fsm = HandlerRedeploy()
     command = ModelRedeployCommand(
@@ -264,7 +291,7 @@ async def run_redeploy_workflow(
             await adapter.rollback(
                 correlation_id=input_data.correlation_id,
                 runtime_lane=input_data.runtime_lane,
-                restored_image=input_data.previous_image,
+                restored_image=rollback_target,
                 failure_reason=reason,
                 failed_phase=EnumRedeployPhase.VERIFY_HEALTH,
             )
@@ -288,18 +315,42 @@ async def run_redeploy_workflow(
     )
 
 
-def _stability_readiness_for(
+def _evaluate_prod_gate(
     input_data: ModelRedeployWorkflowInput,
-) -> ModelStabilityReadiness | None:
-    """Resolve the stability readiness fact for a prod deploy.
+) -> ModelProdPromotionGateDecision:
+    """Decide whether a prod redeploy may proceed, before any deploy effect.
 
-    The readiness handoff (publish ``readiness-gate-start``, consume
-    ``readiness-gate-{completed,blocked}``) is the source of this fact in the
-    wired runtime. This entry point does not yet receive it, so it returns
-    ``None`` and the prod gate fails closed — exactly the prod-vs-stability drift
-    regression guard the design requires.
+    Phase 6 (OMN-12581): when the prod request carries a reducer-owned readiness
+    projection, the full promotion gate is consulted — readiness projection
+    READY for the matching digest + promotion batch, OCC evidence merged or
+    Receipt-Gate-PASS, and a known rollback target.
+
+    When no readiness projection is threaded through (legacy / un-gated prod
+    request), the gate still fails closed via the OMN-12577 same-digest gate with
+    no stability readiness — so Phase 6 never opens a hole for an un-gated prod
+    deploy. The decision is returned (never raised) so the FSM routes to BLOCKED.
     """
-    return None
+    if input_data.readiness_projection is None:
+        digest_gate = evaluate_prod_digest_gate(
+            requested_digest=input_data.image_digest,
+            stability_readiness=None,
+        )
+        return ModelProdPromotionGateDecision(
+            allowed=digest_gate.allowed,
+            image_digest=digest_gate.image_digest,
+            rollback_target=input_data.rollback_target,
+            reason=digest_gate.reason,
+        )
+
+    return evaluate_prod_promotion_gate(
+        ModelProdPromotionInputs(
+            requested_image_digest=input_data.image_digest,
+            promotion_batch_id=input_data.promotion_batch_id,
+            readiness_projection=input_data.readiness_projection,
+            occ_gate_state=input_data.occ_gate_state,
+            rollback_target=input_data.rollback_target,
+        )
+    )
 
 
 class HandlerRedeployWorkflowRunner:
