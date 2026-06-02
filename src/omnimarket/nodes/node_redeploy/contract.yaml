@@ -17,11 +17,17 @@ node_type: workflow
 node_version: {major: 2, minor: 0, patch: 0}
 
 description: >
-  Full post-release runtime redeploy WorkflowPackage. FSM-driven pipeline:
-  IDLE -> SYNC_CLONES -> UPDATE_PINS -> REBUILD -> SEED_INFISICAL ->
-  VERIFY_HEALTH -> DONE. The REBUILD phase publishes to the deploy agent via
-  Kafka and polls for the completion event. Circuit breaker trips after 3
-  consecutive failures.
+  Full post-release runtime redeploy WorkflowPackage. FSM-driven pipeline.
+  Base deploy segment (unchanged): IDLE -> SYNC_CLONES -> UPDATE_PINS ->
+  REBUILD -> SEED_INFISICAL -> VERIFY_HEALTH -> DONE. The REBUILD phase
+  publishes to the deploy agent via Kafka and polls for the completion event;
+  circuit breaker trips after 3 consecutive failures. OMN-12577 adds lane policy
+  (dev / stability-test / prod), digest pinning with a prod same-digest gate
+  (prod reuses the stability-test READY digest and never rebuilds), a
+  post-deploy verification segment (VERIFY_HEALTH -> PROBING -> SWEEPING ->
+  EVIDENCE_REDUCING -> OCC_DRAFTING -> OCC_VALIDATING -> READINESS_SCORING ->
+  READY | BLOCKED), and a rollback segment (ROLLING_BACK -> ROLLED_BACK) that
+  restores the previous image on failed post-deploy health.
 
 handler_routing:
   routing_strategy: "phase_dispatch"
@@ -126,11 +132,23 @@ event_bus:
     - onex.cmd.omnimarket.redeploy-start.v1
     # Cross-service subscribe: deploy agent completion event
     - onex.evt.deploy.rebuild-completed.v1
+    # OMN-12577 readiness handoff: consume the readiness gate outcome.
+    - onex.evt.omnimarket.readiness-gate-completed.v1
+    - onex.evt.omnimarket.readiness-gate-blocked.v1
+    # OMN-12577 PROBING consumes the LIVE runtime attestation rather than
+    # re-collecting source/manifest proof (cross-service omnibase-infra).
+    - onex.evt.omnibase-infra.runtime-booted.v1
+    - onex.evt.omnibase-infra.runtime-manifest-published.v1
   publish_topics:
     - onex.evt.omnimarket.redeploy-phase-transition.v1
     - onex.evt.omnimarket.redeploy-completed.v1
     # Cross-service publish: deploy agent rebuild command
     - onex.cmd.deploy.rebuild-requested.v1
+    # OMN-12577 readiness handoff: start the readiness gate scoring.
+    - onex.cmd.omnimarket.readiness-gate-start.v1
+    # OMN-12577 rollback (OMN-9579): failed post-deploy health restores the
+    # previous image and announces the rollback.
+    - onex.evt.omnimarket.redeploy-rolled-back.v1
 
 dependencies:
   packages:

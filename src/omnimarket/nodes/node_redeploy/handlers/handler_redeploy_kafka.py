@@ -256,6 +256,7 @@ class HandlerRedeployKafka:
             phase_results=phase_results,
             errors=completed_event.errors,
             timed_out=False,
+            health_checks=list(completed_event.health_checks),
         )
 
     def handle(self, command: Any) -> dict[str, Any]:
