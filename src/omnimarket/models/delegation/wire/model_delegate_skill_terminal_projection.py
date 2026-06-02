@@ -24,6 +24,15 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
 
+# Materializer provenance versions (OMN-12606 / OMN-12488 acceptance-extension).
+# PROJECTION_VERSION identifies the projection/schema contract of the
+# delegation_events row; REDUCER_VERSION identifies the reducer logic that
+# materialized it. Both are stamped on every reducer-materialized row so the
+# proof packet can attribute a fresh terminal delegation event to a known
+# materializer without an operator backfill.
+PROJECTION_VERSION = "1.0.0"
+REDUCER_VERSION = "1.0.0"
+
 
 class ModelProjectionEnvelopeMetadata(BaseModel):
     """Subset of ONEX envelope metadata used by projection materializers."""
@@ -118,6 +127,8 @@ class ModelDelegationEventProjectionRow(BaseModel):
     tokens_to_compliance: int
     compliance_attempts: int
     pricing_manifest_version: int = 0
+    projection_version: str = PROJECTION_VERSION
+    reducer_version: str = REDUCER_VERSION
 
     @classmethod
     def from_terminal_event(
@@ -151,6 +162,8 @@ class ModelDelegationEventProjectionRow(BaseModel):
             tokens_to_compliance=tokens_to_compliance,
             compliance_attempts=metrics.compliance_attempts,
             pricing_manifest_version=event.pricing_manifest_version,
+            projection_version=PROJECTION_VERSION,
+            reducer_version=REDUCER_VERSION,
         )
 
 
@@ -222,6 +235,8 @@ def _has_timestamp(payload: Mapping[str, object]) -> bool:
 
 
 __all__ = [
+    "PROJECTION_VERSION",
+    "REDUCER_VERSION",
     "ModelDelegateSkillSavingsProjection",
     "ModelDelegateSkillTerminalProjection",
     "ModelDelegationEventProjectionRow",

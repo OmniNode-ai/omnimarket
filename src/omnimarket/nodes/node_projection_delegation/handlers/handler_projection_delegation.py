@@ -233,6 +233,8 @@ class HandlerProjectionDelegation:
             "tokens_to_compliance": row_model.tokens_to_compliance,
             "compliance_attempts": row_model.compliance_attempts,
             "pricing_manifest_version": row_model.pricing_manifest_version,
+            "projection_version": row_model.projection_version,
+            "reducer_version": row_model.reducer_version,
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)

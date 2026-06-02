@@ -659,3 +659,126 @@ class TestZeroTokenGuard:
         result = HANDLER.handle(payload)
         assert result["rows_upserted"] == 1
         assert len(db.query("delegation_events")) == 1
+
+
+class TestNoBackfillMaterialization:
+    """OMN-12606 — a fresh terminal delegation event must materialize into
+    delegation_events via the reducer/orchestrator completion path with NO
+    manual operator backfill (May 31 finding), and the materialized row must
+    carry projection_version and reducer_version (OMN-12488 acceptance-extension).
+    """
+
+    _CORR = "9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f"
+    _SESSION = "1a2b3c4d-5e6f-4708-9a0b-1c2d3e4f5061"
+
+    def _fresh_terminal_payload(self) -> dict[str, object]:
+        """A fresh, never-before-seen terminal delegation event."""
+        return {
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": self._CORR,
+            "session_id": self._SESSION,
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "response": "fresh materialization proof",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 144,
+                "output_tokens": 593,
+                "total_tokens": 737,
+                "tokens_to_compliance": 737,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.009327,
+                "latency_ms": 1250,
+            },
+            "pricing_manifest_version": 1,
+        }
+
+    def test_fresh_terminal_event_materializes_row_without_backfill(self) -> None:
+        """The reducer materializes the row directly from the terminal event.
+
+        No operator UPDATE/INSERT touches the table other than the reducer's
+        own upsert — the only write recorded on the in-memory DB is the
+        single reducer upsert for the fresh correlation_id.
+        """
+        db = InmemoryDatabaseAdapter()
+        payload = self._fresh_terminal_payload()
+        payload["_db"] = db
+
+        result = HANDLER.handle(payload)
+
+        assert result["rows_upserted"] == 1
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        # Exactly one write hit the table: the reducer's own upsert. A second
+        # write would indicate an operator backfill path is still required.
+        assert db.upsert_count == 1
+        assert rows[0]["correlation_id"] == self._CORR
+
+    def test_materialized_row_carries_version_fields(self) -> None:
+        """OMN-12488 acceptance-extension: projection_version + reducer_version."""
+        from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+            PROJECTION_VERSION,
+            REDUCER_VERSION,
+        )
+
+        db = InmemoryDatabaseAdapter()
+        payload = self._fresh_terminal_payload()
+        payload["_db"] = db
+
+        HANDLER.handle(payload)
+
+        row = db.query("delegation_events")[0]
+        assert row["projection_version"] == PROJECTION_VERSION
+        assert row["reducer_version"] == REDUCER_VERSION
+
+    def test_async_runner_materializes_row_with_version_fields(self) -> None:
+        """The async DelegationProjectionRunner path also emits version fields."""
+        import asyncio
+
+        from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+            PROJECTION_VERSION,
+            REDUCER_VERSION,
+        )
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+        from omnimarket.projection.runner import MessageMeta
+
+        captured: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        class _RecordingDB:
+            async def execute(self, *args: object, **kwargs: object) -> None:
+                captured.append((args, kwargs))
+
+        runner = DelegationProjectionRunner()
+        runner._db = _RecordingDB()  # type: ignore[assignment]
+
+        topic = runner._topic_delegate_skill_completed
+        assert topic, "contract must declare a delegate-skill-completed topic"
+        data = self._fresh_terminal_payload()
+        data.pop("_event_type")
+        meta = MessageMeta(partition=0, offset=0, fallback_id=self._CORR)
+
+        ok = asyncio.run(runner.project_event(topic, data, meta))
+
+        assert ok is True
+        # Exactly one DB write: the reducer's own upsert, no backfill.
+        assert len(captured) == 1
+        sql = str(captured[0][0][0])
+        params = captured[0][0][1:]
+        assert "projection_version" in sql
+        assert "reducer_version" in sql
+        assert PROJECTION_VERSION in params
+        assert REDUCER_VERSION in params
+
+    def test_migration_declares_version_columns(self) -> None:
+        migration = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations/"
+            "0011_delegation_event_projection_versions.sql"
+        ).read_text()
+        assert "projection_version" in migration
+        assert "reducer_version" in migration

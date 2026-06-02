@@ -41,7 +41,7 @@ golden_path:
 db_io:
   db_tables:
     - name: delegation_events
-      migration: "0009_delegate_skill_projection_metrics.sql"
+      migration: "0011_delegation_event_projection_versions.sql"
       access: write
       database: omnidash_analytics
       role: events

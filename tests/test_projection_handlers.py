@@ -387,7 +387,14 @@ class TestDelegationHandler:
         assert 144 in args
         assert 593 in args
         assert 737 in args
-        assert args[-1] == 1
+        # OMN-12606: pricing_manifest_version is followed by the materializer
+        # provenance columns (projection_version, reducer_version), which are
+        # now the final two bound parameters.
+        assert "projection_version" in args[0]
+        assert "reducer_version" in args[0]
+        assert args[-3] == 1  # pricing_manifest_version
+        assert args[-2] == "1.0.0"  # projection_version
+        assert args[-1] == "1.0.0"  # reducer_version
 
 
 class TestRegistrationHandler:
