@@ -21,11 +21,6 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from omnimarket.nodes.node_redeploy.handlers.deployment_adapter import (
-    DEFAULT_PREVIOUS_IMAGE,
-    DeploymentAdapterKafka,
-    ProtocolDeploymentAdapter,
-)
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy import HandlerRedeploy
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
     HandlerRedeployKafka,
@@ -33,6 +28,11 @@ from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
     EnumRedeployStatus,
     ModelRedeployResult,
+)
+from omnimarket.nodes.node_redeploy.models.model_deployment_adapter import (
+    DEFAULT_PREVIOUS_IMAGE,
+    DeploymentAdapterKafka,
+    ProtocolDeploymentAdapter,
 )
 from omnimarket.nodes.node_redeploy.models.model_lane_policy import (
     ModelStabilityReadiness,

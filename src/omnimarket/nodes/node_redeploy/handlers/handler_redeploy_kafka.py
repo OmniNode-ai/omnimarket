@@ -43,10 +43,6 @@ TOPIC_DEPLOY_REBUILD_COMPLETED = (
 TOPIC_DEPLOY_REBUILD_REQUESTED = (
     "onex.cmd.deploy.rebuild-requested.v1"  # onex-topic-allow: contract-declared
 )
-# OMN-12577 rollback (OMN-9579): published by the deployment adapter.
-TOPIC_REDEPLOY_ROLLED_BACK = (
-    "onex.evt.omnimarket.redeploy-rolled-back.v1"  # onex-topic-allow: contract-declared
-)
 
 logger = logging.getLogger(__name__)
 

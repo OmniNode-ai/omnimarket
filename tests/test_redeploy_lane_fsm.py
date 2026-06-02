@@ -24,13 +24,13 @@ from pathlib import Path
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
-from omnimarket.nodes.node_redeploy.handlers.deployment_adapter import (
-    DEFAULT_PREVIOUS_IMAGE,
-    TOPIC_REDEPLOY_ROLLED_BACK,
-)
 from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
     ModelRedeployWorkflowInput,
     run_redeploy_workflow,
+)
+from omnimarket.nodes.node_redeploy.models.model_deployment_adapter import (
+    DEFAULT_PREVIOUS_IMAGE,
+    TOPIC_REDEPLOY_ROLLED_BACK,
 )
 from omnimarket.nodes.node_redeploy.models.model_lane_policy import (
     ModelStabilityReadiness,
@@ -48,14 +48,15 @@ from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
     next_verification_phase,
 )
 
-_HANDLERS_DIR = (
+_NODE_DIR = (
     Path(__file__).resolve().parents[1]
     / "src"
     / "omnimarket"
     / "nodes"
     / "node_redeploy"
-    / "handlers"
 )
+_HANDLERS_DIR = _NODE_DIR / "handlers"
+_MODELS_DIR = _NODE_DIR / "models"
 _DIGEST_STABILITY = "sha256:aaaa1111"
 _DIGEST_PROD_DRIFT = "sha256:bbbb2222"
 
@@ -303,14 +304,14 @@ class TestEffectBoundary:
     # handler_redeploy_kafka is the only deploy actuator and is allowed to import
     # the event bus; the FSM / runner / adapter logic must not shell out.
     _GUARDED_FILES = (
-        "handler_redeploy.py",
-        "handler_workflow_runner.py",
-        "deployment_adapter.py",
+        _HANDLERS_DIR / "handler_redeploy.py",
+        _HANDLERS_DIR / "handler_workflow_runner.py",
+        _MODELS_DIR / "model_deployment_adapter.py",
     )
 
     def test_guarded_handlers_have_no_subprocess_or_docker(self) -> None:
-        for name in self._GUARDED_FILES:
-            source = (_HANDLERS_DIR / name).read_text(encoding="utf-8")
+        for path in self._GUARDED_FILES:
+            source = path.read_text(encoding="utf-8")
             tree = ast.parse(source)
             imported: set[str] = set()
             for node in ast.walk(tree):
@@ -319,7 +320,7 @@ class TestEffectBoundary:
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     imported.add(node.module.split(".")[0])
             leaked = imported & self._FORBIDDEN_MODULES
-            assert not leaked, f"{name} must not import {leaked}"
+            assert not leaked, f"{path.name} must not import {leaked}"
 
     def test_only_kafka_handler_owns_deploy_topics(self) -> None:
         # The deploy-agent rebuild topics live only in handler_redeploy_kafka;

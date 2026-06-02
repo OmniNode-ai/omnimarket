@@ -5,7 +5,7 @@ triggers rollback: restores the previous image, restarts services, and
 emits a rolled_back event with the failure reason.
 
 OMN-12577 implements the rollback infrastructure these tests asserted:
-  1. ``ProtocolDeploymentAdapter`` with ``rollback()`` (handlers/deployment_adapter.py).
+  1. ``ProtocolDeploymentAdapter`` with ``rollback()`` (models/model_deployment_adapter.py).
   2. ``previous_image`` tracking on ``ModelRedeployState`` and the workflow input.
   3. Post-deploy rollback in ``run_redeploy_workflow`` — a deploy that succeeds
      then fails post-deploy verification (smoke / health / timeout) restores the

@@ -19,15 +19,17 @@ import json
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
-from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
-    TOPIC_REDEPLOY_ROLLED_BACK,
-)
 from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
     EnumRuntimeLane,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
     EnumRedeployPhase,
     ModelRedeployRolledBackEvent,
+)
+
+# Contract-declared in node_redeploy/contract.yaml publish_topics.
+TOPIC_REDEPLOY_ROLLED_BACK = (
+    "onex.evt.omnimarket.redeploy-rolled-back.v1"  # onex-topic-allow: contract-declared
 )
 
 # Previous known-good runtime image restored on rollback when the deployment did
