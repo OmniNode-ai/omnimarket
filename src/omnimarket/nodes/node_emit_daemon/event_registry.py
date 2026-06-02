@@ -111,7 +111,7 @@ class FanOutRule:
     """A single fan-out rule specifying a target topic, tier, and transform.
 
     Attributes:
-        topic: The wire topic name (e.g., "onex.evt.omniclaude.session-started.v1").  # onex-topic-doc-example
+        topic: The wire topic name, shaped onex.{cmd|evt}.{service}.{event}.vN.
         tier: Per-topic durability tier driving queue routing. Required: the
             registry fails fast on any fan-out rule with no declared tier.
         transform: Function to transform the payload before publishing.
