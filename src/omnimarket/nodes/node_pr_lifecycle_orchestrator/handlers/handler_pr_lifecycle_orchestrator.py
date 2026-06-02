@@ -28,6 +28,7 @@ Related:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
@@ -59,6 +60,16 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     PrTriageResult,
     ReducerResult,
     TriageRecord,
+)
+from omnimarket.nodes.pr_ledger_native import (
+    EnumOrchestratorAction,
+    EnumPrLedgerConclusion,
+    EnumPrLedgerEventKind,
+    InMemoryPrLedgerStore,
+    ModelPrLedger,
+    ModelPrLedgerSourceEvent,
+    ProtocolPrLedgerStore,
+    apply_pr_ledger_event,
 )
 
 if TYPE_CHECKING:
@@ -318,6 +329,26 @@ def _map_review_status(pr_state: Any) -> str:
     return _REVIEW_STATUS_MAP.get(decision.upper(), "unknown")
 
 
+def _synthetic_merge_group_sha(
+    run_id: str,
+    repo: str,
+    pr_number: int,
+    *,
+    attempt: int = 1,
+) -> str:
+    """Derive a deterministic synthetic merge-group SHA for a PR/attempt.
+
+    GitHub mints the real merge-group commit SHA at enqueue time; the
+    orchestrator does not always observe it synchronously. This deterministic
+    surrogate keys the ledger entry's merge-group provenance so reruns
+    (attempt>1) are distinguishable, and so the same (run_id, repo, pr_number,
+    attempt) always derives the same value — preserving reconstructability.
+    """
+    seed = f"{run_id}:{repo}:{pr_number}:{attempt}"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
+    return f"mg-{digest}-{attempt}"
+
+
 def _orch_checks_to_ci_status(checks_status: str) -> str:
     """Convert orchestrator checks_status to triage node's ci_status vocabulary."""
     return _CI_STATUS_MAP.get(checks_status.lower(), "unknown")
@@ -383,6 +414,7 @@ class HandlerPrLifecycleOrchestrator:
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
+        ledger_store: ProtocolPrLedgerStore | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -394,6 +426,68 @@ class HandlerPrLifecycleOrchestrator:
         self._merge = merge
         self._fix = fix
         self._event_bus = event_bus
+        # Durable, reconstructable PR-ledger projection (OMN-12569). Defaults to
+        # the in-memory store for local/test runs; the runtime injects a
+        # ProjectionDatabasePrLedgerStore so the ledger lands in the
+        # control-plane durable surface. The ledger is a DERIVED projection —
+        # source events are recorded as they happen and folded into the store.
+        self._ledger_store: ProtocolPrLedgerStore = (
+            ledger_store if ledger_store is not None else InMemoryPrLedgerStore()
+        )
+
+    def _record_ledger_event(
+        self,
+        *,
+        kind: EnumPrLedgerEventKind,
+        run_id: str,
+        correlation_id: UUID,
+        repo: str,
+        pr_number: int,
+        orchestrator_action: EnumOrchestratorAction,
+        head_sha: str | None = None,
+        workflow_run_id: int | None = None,
+        merge_group_sha: str | None = None,
+        conclusion: EnumPrLedgerConclusion | None = None,
+    ) -> None:
+        """Fold one source event into the durable PR-ledger projection.
+
+        The ledger is a derived projection — never authoritative truth on its
+        own — so recording is best-effort and must never abort a sweep. Each
+        event carries full provenance (workflow run, merge-group SHA, branch
+        SHA, orchestrator action, timestamp).
+        """
+        try:
+            event = ModelPrLedgerSourceEvent(
+                kind=kind,
+                run_id=run_id,
+                correlation_id=correlation_id,
+                repo=repo,
+                pr_number=pr_number,
+                head_sha=head_sha,
+                workflow_run_id=workflow_run_id,
+                merge_group_sha=merge_group_sha,
+                conclusion=conclusion,
+                orchestrator_action=orchestrator_action,
+                observed_at=datetime.now(UTC).isoformat(),
+            )
+            apply_pr_ledger_event(event, store=self._ledger_store)
+        except Exception as exc:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] failed to record ledger event kind=%s "
+                "repo=%s pr=%s: %s",
+                kind,
+                repo,
+                pr_number,
+                exc,
+            )
+
+    def ledger(self, run_id: str) -> ModelPrLedger:
+        """Return the durable PR-ledger projection for a sweep run.
+
+        The projection is reconstructable from its source events; this accessor
+        returns the materialized view from the durable store.
+        """
+        return self._ledger_store.load(run_id)
 
     @staticmethod
     def _check_protocol_conformance(
@@ -682,6 +776,19 @@ class HandlerPrLifecycleOrchestrator:
                 "[PR-LIFECYCLE-ORCH] inventory completed: %d PRs",
                 inv_result.total_collected,
             )
+            # Ledger (OMN-12569): record one PR_INVENTORIED source event per
+            # collected PR so the projection captures run id + branch SHA from
+            # the start of the lifecycle.
+            for pr in inv_result.prs:
+                self._record_ledger_event(
+                    kind=EnumPrLedgerEventKind.PR_INVENTORIED,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                    repo=pr.repo,
+                    pr_number=pr.pr_number,
+                    head_sha=pr.head_sha,
+                    orchestrator_action=EnumOrchestratorAction.INVENTORY,
+                )
             await self._remediate_stalled_queue_prs(command, inv_result)
 
             if command.inventory_only:
@@ -766,6 +873,18 @@ class HandlerPrLifecycleOrchestrator:
                 if intent.intent == EnumReducerIntent.SKIP
             )
             state.prs_skipped = len(skip_prs)
+            # Ledger (OMN-12569): record a terminal SKIPPED conclusion for each
+            # PR the reducer chose not to act on.
+            for intent in skip_prs:
+                self._record_ledger_event(
+                    kind=EnumPrLedgerEventKind.FINAL_CONCLUSION,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                    repo=intent.repo,
+                    pr_number=intent.pr_number,
+                    conclusion=EnumPrLedgerConclusion.SKIPPED,
+                    orchestrator_action=EnumOrchestratorAction.SKIP,
+                )
 
             # Phase: MERGING (skip if fix_only)
             if merge_prs and not command.fix_only:
@@ -798,6 +917,22 @@ class HandlerPrLifecycleOrchestrator:
                     merge_result.prs_merged,
                     merge_result.prs_failed,
                 )
+                # Ledger (OMN-12569): record a terminal MERGED conclusion for
+                # each PR routed through MERGING. The synthetic merge-group SHA
+                # is derived per-PR so the projection captures it as provenance.
+                for tr in merge_prs:
+                    self._record_ledger_event(
+                        kind=EnumPrLedgerEventKind.FINAL_CONCLUSION,
+                        run_id=command.run_id,
+                        correlation_id=command.correlation_id,
+                        repo=tr.repo,
+                        pr_number=tr.pr_number,
+                        merge_group_sha=_synthetic_merge_group_sha(
+                            command.run_id, tr.repo, tr.pr_number
+                        ),
+                        conclusion=EnumPrLedgerConclusion.MERGED,
+                        orchestrator_action=EnumOrchestratorAction.MERGE,
+                    )
 
                 if command.merge_only:
                     state.fsm = EnumOrchestratorState.COMPLETE
@@ -836,6 +971,19 @@ class HandlerPrLifecycleOrchestrator:
                     state.prs_fixed,
                     sum(r.prs_skipped for r in fix_results),
                 )
+                # Ledger (OMN-12569): record a terminal FAILED conclusion (a
+                # non-green PR routed to remediation) with FIX action provenance.
+                for tr in fix_prs:
+                    self._record_ledger_event(
+                        kind=EnumPrLedgerEventKind.FINAL_CONCLUSION,
+                        run_id=command.run_id,
+                        correlation_id=command.correlation_id,
+                        repo=tr.repo,
+                        pr_number=tr.pr_number,
+                        head_sha=None,
+                        conclusion=EnumPrLedgerConclusion.FAILED,
+                        orchestrator_action=EnumOrchestratorAction.FIX,
+                    )
                 next_from = "FIXING"
 
             state.fsm = EnumOrchestratorState.COMPLETE
@@ -1016,6 +1164,7 @@ class HandlerPrLifecycleOrchestrator:
                         repo=pr_state.repo,
                         title=title,
                         branch=branch,
+                        head_sha=getattr(pr_state, "head_sha", None),
                         ticket_ids=_extract_ticket_ids(title, branch),
                         checks_status=_map_ci_status(pr_state),
                         review_status=_map_review_status(pr_state),
@@ -1070,6 +1219,21 @@ class HandlerPrLifecycleOrchestrator:
                 logger.warning(
                     "[PR-LIFECYCLE-ORCH] merge queue stall remediation: %s",
                     action,
+                )
+                # Ledger (OMN-12569): a dequeue+re-enqueue mints a fresh
+                # merge-group SHA and counts as a rerun attempt. Record it with
+                # the head SHA observed at stall detection for provenance.
+                self._record_ledger_event(
+                    kind=EnumPrLedgerEventKind.RERUN_ATTEMPTED,
+                    run_id=command.run_id,
+                    correlation_id=command.correlation_id,
+                    repo=repo,
+                    pr_number=pr_number,
+                    head_sha=getattr(entry, "head_sha", None),
+                    merge_group_sha=_synthetic_merge_group_sha(
+                        command.run_id, repo, pr_number, attempt=2
+                    ),
+                    orchestrator_action=EnumOrchestratorAction.REQUEUE,
                 )
             except Exception as exc:
                 logger.warning(

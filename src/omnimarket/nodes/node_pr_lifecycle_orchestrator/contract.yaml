@@ -172,7 +172,35 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-merge-executed.v1
     - onex.evt.omnimarket.pr-lifecycle-verification-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-fix-dispatched.v1
+    - onex.evt.omnimarket.pr-lifecycle-ledger-entry-projected.v1
     - onex.cmd.omnimarket.fixer-dispatch-start.v1
+
+# OMN-12569: durable, reconstructable PR-ledger projection.
+# The ledger is a DERIVED projection (not authoritative truth) materialized
+# from source events (inventory, workflow-run observations, merge-group SHAs,
+# rerun attempts, final conclusions). Authoritative truth = GitHub state +
+# durable orchestrator receipts. The projection lands in a control-plane
+# durable store (the projection database), not a repo artifact, and is
+# reconstructable from its recorded source events.
+projection:
+  name: pr_lifecycle_ledger
+  provenance_kind: derived_projection           # DT-005 provenance declaration
+  freshness_sla_seconds: 900                     # DT-003 freshness SLA
+  durable_store: projection_database
+  conflict_key: run_id,repo,pr_number
+  source_events:
+    - pr_inventoried
+    - workflow_run_observed
+    - merge_group_sha_minted
+    - rerun_attempted
+    - final_conclusion
+  entry_fields:
+    - run_id
+    - head_sha
+    - merge_group_shas
+    - rerun_attempts
+    - conclusion
+    - provenance                                 # workflow run, merge-group SHA, branch SHA, action, timestamp
 
 fsm:
   states:
@@ -267,6 +295,7 @@ metadata:
     - "OMN-8085"
     - "OMN-8086"
     - "OMN-8070"
+    - "OMN-12569"
 
 config:
   ONEX_OCC_MERGE_SHA:
