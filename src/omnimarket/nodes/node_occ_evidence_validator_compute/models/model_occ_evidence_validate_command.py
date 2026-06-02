@@ -27,13 +27,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft import (
-    ModelOccEvidenceDraft,
-)
-from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
+from omnimarket.events.occ_evidence import (
     EnumRuntimeLane,
-)
-from omnimarket.nodes.node_redeploy.models.model_runtime_deployment import (
+    ModelOccEvidenceDraft,
     ModelRuntimeDeploymentProof,
 )
 

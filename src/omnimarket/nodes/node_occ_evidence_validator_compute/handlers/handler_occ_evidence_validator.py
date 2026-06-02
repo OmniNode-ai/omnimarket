@@ -25,16 +25,16 @@ from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_
     ModelEvidenceValidationResult,
 )
 
-from omnimarket.nodes.node_occ_evidence_validator_compute.models.model_occ_evidence_validate_command import (
-    ModelOccEvidenceValidateCommand,
-)
-from omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft import (
+from omnimarket.events.occ_evidence import (
     DraftValidationState,
     EnumEvidenceLifecycleState,
     FreshnessStatus,
     ModelOccEvidenceDraft,
     ModelOccEvidenceDraftValidationResult,
     ValidationCheckStatus,
+)
+from omnimarket.nodes.node_occ_evidence_validator_compute.models.model_occ_evidence_validate_command import (
+    ModelOccEvidenceValidateCommand,
 )
 
 VALIDATOR_VERSION = "occ-evidence-validator-compute-v1"

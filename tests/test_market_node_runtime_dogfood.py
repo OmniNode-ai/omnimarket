@@ -39,11 +39,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     report = build_report()
     summary = report["summary"]
 
-    assert summary["node_dirs"] == 291
-    assert summary["entry_points"] == 291
+    assert summary["node_dirs"] == 293
+    assert summary["entry_points"] == 293
     assert summary["missing_entry_points"] == []
     assert summary["dangling_entry_points"] == []
-    assert summary["routable"] >= 288
+    assert summary["routable"] >= 290
     assert summary["skipped"] == 3
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}

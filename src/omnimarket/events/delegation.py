@@ -8,6 +8,7 @@ from omnibase_compat.contracts.delegation.wire import (
     EnumQualityContractMode,
     ModelDelegationRequest,
     ModelDelegationResult,
+    ModelInferenceResponseData,
     validate_acceptance_criteria,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "EnumQualityContractMode",
     "ModelDelegationRequest",
     "ModelDelegationResult",
+    "ModelInferenceResponseData",
     "validate_acceptance_criteria",
 ]
