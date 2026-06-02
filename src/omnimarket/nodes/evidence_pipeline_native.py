@@ -33,15 +33,25 @@ from omnibase_compat.contracts.evidence_pipeline.wire.types import (
     EvidenceLifecycleState,
     GapClassification,
     ReadinessState,
+    TriggerSurface,
     ValidationState,
 )
 from pydantic import BaseModel
 
+from omnimarket.nodes.node_redeploy.models.model_runtime_deployment import (
+    ModelRuntimeDeploymentProof,
+)
+
 VALIDATOR_VERSION = "evidence-readiness-native-v1"
 COLLECTOR_IDENTITY = "omnimarket.node_evidence_collector_effect"
+DEPLOYMENT_PROOF_COLLECTOR_IDENTITY = (
+    "omnimarket.node_evidence_collector_effect.deployment_proof"
+)
 VERIFIER_IDENTITY = "omnimarket.node_contract_matcher_compute"
 WRITER_IDENTITY = "omnimarket.node_occ_pr_writer_effect"
 DEFAULT_OCC_REPOSITORY = "OmniNode-ai/onex_change_control"
+DEFAULT_DEPLOYMENT_PROOF_REPOSITORY = "omnimarket"
+DEPLOY_TRIGGER_SURFACE: TriggerSurface = "deploy"
 
 type TypedEvidenceEvent = (
     ModelEvidenceValidationResult | ModelDeploymentReadinessResult | ModelOccPrReference
@@ -162,6 +172,105 @@ class DeterministicEvidenceCollectorAdapter:
             "ci_artifact_refs": _split_csv(metadata.get("ci_artifact_refs")),
             "test_output_refs": _split_csv(metadata.get("test_output_refs")),
             "raw_payload_refs": raw_refs,
+            "provenance": metadata,
+        }
+
+
+def _deployment_proof_metadata(
+    proof: ModelRuntimeDeploymentProof,
+) -> dict[str, str]:
+    """Flatten deployment-proof facts into deterministic string metadata.
+
+    These keys are consumed by ``DeterministicEvidenceCollectorAdapter`` and
+    threaded through ``extract_evidence`` so the downstream validator (Phase 5)
+    sees the digest/lane/promotion facts that the deployment actually proved.
+    """
+    metadata: dict[str, str] = {
+        "deployment_id": str(proof.deployment_id),
+        "image_digest": proof.image_digest,
+        "runtime_lane": proof.runtime_lane.value,
+        "compose_project": proof.compose_project,
+        "health_status": proof.health_status,
+        "ready_status": proof.ready_status,
+        "deployment_status": proof.status,
+        "collected_at": proof.probed_at.isoformat(),
+        "collector_identity": DEPLOYMENT_PROOF_COLLECTOR_IDENTITY,
+        "source_surfaces": "deploy,runtime,projection",
+        "raw_payload_refs": f"deployment:{proof.deployment_id}",
+    }
+    if proof.promotion_batch_id is not None:
+        metadata["promotion_batch_id"] = proof.promotion_batch_id
+    if proof.topology_manifest_sha256 is not None:
+        metadata["topology_manifest_sha256"] = proof.topology_manifest_sha256
+    if proof.runtime_source_hash is not None:
+        metadata["runtime_source_hash"] = proof.runtime_source_hash
+    if proof.runtime_sweep_input_ref is not None:
+        metadata["runtime_sweep_input_ref"] = proof.runtime_sweep_input_ref
+    if proof.runtime_addresses:
+        metadata["runtime_addresses"] = ",".join(proof.runtime_addresses)
+    if proof.consumer_groups:
+        metadata["consumer_groups"] = ",".join(proof.consumer_groups)
+    for package, version in sorted(proof.package_versions.items()):
+        metadata[f"package_version:{package}"] = version
+    return metadata
+
+
+def evidence_command_from_deployment_proof(
+    proof: ModelRuntimeDeploymentProof,
+    *,
+    ticket_id: str,
+    repository: str = DEFAULT_DEPLOYMENT_PROOF_REPOSITORY,
+    validation_run_id: str | None = None,
+) -> ModelEvidencePipelineCommand:
+    """Build an evidence pipeline command from a runtime deployment proof.
+
+    This is the Phase 4 bridge that drives ``evidence-collected ->
+    evidence-extracted`` collection *from deployment proof*: deployment facts
+    become the trigger for the evidence pipeline rather than an ad-hoc PR event.
+    The command is deterministic for a given proof so the collected/extracted
+    bundle hashes are stable.
+    """
+    metadata = _deployment_proof_metadata(proof)
+    return ModelEvidencePipelineCommand(
+        correlation_id=str(proof.correlation_id),
+        validation_run_id=validation_run_id or f"deploy:{proof.deployment_id}",
+        ticket_id=ticket_id,
+        repository=repository,
+        source_commit_sha=proof.source_sha,
+        requested_at=proof.probed_at.isoformat(),
+        trigger_surface=DEPLOY_TRIGGER_SURFACE,
+        deployment_id=str(proof.deployment_id),
+        topology_affecting=proof.topology_manifest_sha256 is not None,
+        metadata=metadata,
+    )
+
+
+class DeploymentProofEvidenceCollectorAdapter:
+    """Collector adapter that derives raw evidence from a deployment proof.
+
+    The deployment proof is the authoritative evidence surface for a
+    deploy-triggered pipeline run, so this adapter materializes the raw
+    evidence payload directly from the proof instead of re-reading GitHub/CI.
+    """
+
+    def __init__(self, proof: ModelRuntimeDeploymentProof) -> None:
+        self._proof = proof
+
+    def collect(self, command: ModelEvidencePipelineCommand) -> Mapping[str, object]:
+        metadata = {**_deployment_proof_metadata(self._proof), **dict(command.metadata)}
+        return {
+            "collected_at": metadata.get("collected_at", command.requested_at),
+            "collector_identity": DEPLOYMENT_PROOF_COLLECTOR_IDENTITY,
+            "source_surfaces": _split_csv(
+                metadata.get("source_surfaces"),
+                default=("deploy", "runtime", "projection"),
+            ),
+            "source_ci_run": metadata.get("runtime_sweep_input_ref"),
+            "changed_files": _split_csv(metadata.get("changed_files")),
+            "diff_refs": _split_csv(metadata.get("diff_refs")),
+            "ci_artifact_refs": _split_csv(metadata.get("ci_artifact_refs")),
+            "test_output_refs": _split_csv(metadata.get("test_output_refs")),
+            "raw_payload_refs": (f"deployment:{self._proof.deployment_id}",),
             "provenance": metadata,
         }
 
