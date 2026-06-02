@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from typing import Protocol, cast
 
 from omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result import (
@@ -120,23 +119,6 @@ class ReadinessGatePorts(Protocol):
         self, readiness: ModelDeploymentReadinessResult
     ) -> ModelDeploymentReadinessResult:
         """Publish the authoritative gate decision."""
-
-
-class DeploymentEvidenceProjectionStore(Protocol):
-    """Reducer-owned materialized projection boundary."""
-
-    def upsert(self, deployment_id: str, row: Mapping[str, object]) -> None:
-        """Persist the current projection row for a deployment."""
-
-
-@dataclass
-class InMemoryDeploymentEvidenceProjectionStore:
-    """Deterministic projection store for local runs and tests."""
-
-    rows: dict[str, dict[str, object]] = field(default_factory=dict)
-
-    def upsert(self, deployment_id: str, row: Mapping[str, object]) -> None:
-        self.rows[deployment_id] = dict(row)
 
 
 class DeterministicEvidenceCollectorAdapter:
@@ -575,28 +557,18 @@ def publish_evidence(
 
 def reduce_deployment_evidence(
     event: TypedEvidenceEvent,
-    *,
-    store: DeploymentEvidenceProjectionStore | None = None,
 ) -> ModelDeploymentReadinessResult:
+    """Derive deployment readiness from one append-only evidence event.
+
+    Persistence into reducer-owned projection tables is owned by
+    ``node_deployment_evidence_reducer``'s handler via the canonical projection
+    database adapter; this helper only derives the readiness decision.
+    """
     if isinstance(event, ModelDeploymentReadinessResult):
-        readiness = event
-    elif isinstance(event, ModelEvidenceValidationResult):
-        readiness = _readiness_from_validation(event)
-    else:
-        readiness = _readiness_from_occ_pr(event)
-    if store is not None:
-        store.upsert(
-            readiness.deployment_id,
-            {
-                "deployment_id": readiness.deployment_id,
-                "correlation_id": readiness.correlation_id,
-                "validation_run_id": readiness.validation_run_id,
-                "readiness_state": readiness.readiness_state,
-                "blocking_reason_codes": list(readiness.blocking_reason_codes),
-                "updated_at": readiness.scored_at,
-            },
-        )
-    return readiness
+        return event
+    if isinstance(event, ModelEvidenceValidationResult):
+        return _readiness_from_validation(event)
+    return _readiness_from_occ_pr(event)
 
 
 def _readiness_from_validation(

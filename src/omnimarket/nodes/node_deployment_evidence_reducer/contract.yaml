@@ -63,21 +63,44 @@ reducer_contract:
 
 projection_api:
   expose: true
-  topic: "onex.snapshot.projection.deployment-evidence.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
-  table: "deployment_evidence_projection"
-  schema: "public"
-  columns:
-    - "deployment_id"
-    - "ticket_id"
-    - "validation_run_id"
-    - "evidence_lifecycle_state"
-    - "readiness_state"
-    - "updated_at"
-  order_by: "updated_at DESC"
-  freshness_column: "updated_at"
-  limit: 500
+  exposures:
+    - topic: "onex.snapshot.projection.deployment-evidence.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: "deployment_evidence_projection"
+      schema: "public"
+      columns:
+        - "deployment_id"
+        - "correlation_id"
+        - "ticket_id"
+        - "validation_run_id"
+        - "repository"
+        - "evidence_lifecycle_state"
+        - "validation_state"
+        - "readiness_state"
+        - "topology_affecting"
+        - "blocking_reason_codes"
+        - "contract_hash"
+        - "evidence_bundle_hash"
+        - "updated_at"
+      order_by: "updated_at DESC"
+      freshness_column: "updated_at"
+      limit: 500
+    - topic: "onex.snapshot.projection.deployment-readiness.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: "deployment_readiness_projection"
+      schema: "public"
+      columns:
+        - "deployment_id"
+        - "correlation_id"
+        - "validation_run_id"
+        - "readiness_state"
+        - "blocking_reason_codes"
+        - "gap_report_hash"
+        - "validator_version"
+        - "updated_at"
+      order_by: "updated_at DESC"
+      freshness_column: "updated_at"
+      limit: 500
 
 metadata:
   transport_type: kafka
   implementation_wave: 3
-  related_tickets: ["OMN-11443", "OMN-12395"]
+  related_tickets: ["OMN-11443", "OMN-12395", "OMN-12578"]
