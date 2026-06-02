@@ -38,7 +38,7 @@ from omnibase_compat.contracts.evidence_pipeline.wire.types import (
 )
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_redeploy.models.model_runtime_deployment import (
+from omnimarket.events.runtime_deployment import (
     ModelRuntimeDeploymentProof,
 )
 

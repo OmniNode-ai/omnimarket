@@ -27,6 +27,10 @@ from omnimarket.events.knowledge_context import (
     ModelKnowledgeContextState,
 )
 from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
+from omnimarket.events.runtime_deployment import (
+    ModelRuntimeDeploymentProof,
+    RuntimeLaneLike,
+)
 from omnimarket.intelligence.events import (
     ModelIntentClassifiedEnvelope,
     ModelIntentDriftDetectedEnvelope,
@@ -57,6 +61,8 @@ __all__ = [
     "ModelLedgerHashComputed",
     "ModelPlanToTicketsCompletedEvent",
     "ModelPlanToTicketsStartCommand",
+    "ModelRuntimeDeploymentProof",
     "ModelTestGenerationRequest",
     "ModelTestGenerationResult",
+    "RuntimeLaneLike",
 ]
