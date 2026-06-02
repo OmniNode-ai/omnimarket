@@ -147,6 +147,14 @@ def _resolve_spool_dir(cli_arg: str | None) -> str:
     return "/tmp/onex-event-spool"
 
 
+def _resolve_outbox_dir(spool_dir: str) -> str:
+    """Resolve durable-outbox directory: env override or co-located with spool."""
+    env_path = os.environ.get("ONEX_EMIT_OUTBOX_DIR")
+    if env_path:
+        return env_path
+    return str(Path(spool_dir).parent / "event-outbox")
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="ONEX Emit Daemon - Portable Event Publisher",
@@ -229,6 +237,7 @@ def _do_start(args: argparse.Namespace) -> int:
     socket_path = _resolve_socket_path(args.socket_path)
     pid_path = Path(_resolve_pid_path(args.pid_path))
     spool_dir = Path(_resolve_spool_dir(args.spool_dir))
+    outbox_dir = Path(_resolve_outbox_dir(str(spool_dir)))
 
     # Check for existing daemon
     if pid_path.exists():
@@ -259,7 +268,7 @@ def _do_start(args: argparse.Namespace) -> int:
 
     # Create components
     handler = HandlerEmitDaemon()
-    queue = BoundedEventQueue(spool_dir=spool_dir)
+    queue = BoundedEventQueue(spool_dir=spool_dir, outbox_dir=outbox_dir)
 
     # Create publisher loop with optional Kafka
     async def _noop_publish(
@@ -296,6 +305,9 @@ def _do_start(args: argparse.Namespace) -> int:
 
         try:
             await queue.load_spool()
+            # Restore pending duty-critical events from the durable outbox so
+            # replay resumes after a crash or restart (truncate-on-ack).
+            await queue.load_outbox()
             await server.start()
             await publisher.start()
             handler.transition_to_listening()

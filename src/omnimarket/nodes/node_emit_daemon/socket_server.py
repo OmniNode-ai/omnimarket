@@ -31,6 +31,9 @@ from omnimarket.nodes.node_emit_daemon.event_queue import (
     ModelQueuedEvent,
 )
 from omnimarket.nodes.node_emit_daemon.event_registry import EventRegistry
+from omnimarket.nodes.node_emit_daemon.models.model_durability import (
+    DurableOutboxFullError,
+)
 from omnimarket.nodes.node_emit_daemon.models.model_emit_daemon_config import (
     EnumCircuitBreakerState,
 )
@@ -374,9 +377,27 @@ class EmitSocketServer:
                 payload=cast("JsonType", transformed),
                 partition_key=partition_key,
                 queued_at=datetime.now(UTC),
+                tier=rule.tier,
             )
 
-            success = await self._queue.enqueue(queued_event)
+            try:
+                success = await self._queue.enqueue(queued_event)
+            except DurableOutboxFullError as exc:
+                # Duty-critical event could not be persisted and must never be
+                # dropped. Surface explicit backpressure / degraded mode to the
+                # caller instead of silently losing the command.
+                logger.error(
+                    "Durable outbox full for duty-critical %s -> %s: %s",
+                    event_type,
+                    topic,
+                    exc,
+                )
+                return ModelDaemonErrorResponse(
+                    reason=(
+                        f"degraded: durable outbox full, cannot accept "
+                        f"duty-critical event {event_type} -> {topic}: {exc}"
+                    )
+                ).model_dump_json()
             if success:
                 logger.debug(
                     f"Event queued: {event_id}",

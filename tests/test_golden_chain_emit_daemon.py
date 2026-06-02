@@ -38,6 +38,9 @@ from omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon import (
 from omnimarket.nodes.node_emit_daemon.models.model_daemon_state import (
     EnumEmitDaemonPhase,
 )
+from omnimarket.nodes.node_emit_daemon.models.model_durability import (
+    EnumDurabilityTier,
+)
 from omnimarket.nodes.node_emit_daemon.models.model_protocol import (
     ModelDaemonEmitRequest,
     ModelDaemonErrorResponse,
@@ -252,7 +255,9 @@ class TestEventRegistry:
     def test_from_dict(self) -> None:
         reg = EventRegistration(
             event_type="test.event",
-            fan_out=[FanOutRule(topic="onex.evt.test.v1")],
+            fan_out=[
+                FanOutRule(topic="onex.evt.test.v1", tier=EnumDurabilityTier.TELEMETRY)
+            ],
             required_fields=["session_id"],
         )
         registry = EventRegistry.from_dict({"test.event": reg})
@@ -594,7 +599,10 @@ class TestSocketServerIntegration:
                     "test.event": EventRegistration(
                         event_type="test.event",
                         fan_out=[
-                            FanOutRule(topic="onex.evt.test.v1"),
+                            FanOutRule(
+                                topic="onex.evt.test.v1",
+                                tier=EnumDurabilityTier.TELEMETRY,
+                            ),
                         ],
                         partition_key_field="session_id",
                         required_fields=["session_id"],
@@ -715,7 +723,10 @@ class TestProofOfLife:
                     "session.started": EventRegistration(
                         event_type="session.started",
                         fan_out=[
-                            FanOutRule(topic="onex.evt.omniclaude.session-started.v1"),
+                            FanOutRule(
+                                topic="onex.evt.omniclaude.session-started.v1",
+                                tier=EnumDurabilityTier.TELEMETRY,
+                            ),
                         ],
                         partition_key_field="session_id",
                         required_fields=["session_id"],
@@ -1099,7 +1110,12 @@ class TestGoldenChainSelfHealing:
                 {
                     "test.event": EventRegistration(
                         event_type="test.event",
-                        fan_out=[FanOutRule(topic="onex.evt.test.v1")],
+                        fan_out=[
+                            FanOutRule(
+                                topic="onex.evt.test.v1",
+                                tier=EnumDurabilityTier.TELEMETRY,
+                            )
+                        ],
                         partition_key_field="session_id",
                         required_fields=["session_id"],
                     ),
