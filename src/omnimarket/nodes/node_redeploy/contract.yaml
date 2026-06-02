@@ -27,7 +27,14 @@ description: >
   post-deploy verification segment (VERIFY_HEALTH -> PROBING -> SWEEPING ->
   EVIDENCE_REDUCING -> OCC_DRAFTING -> OCC_VALIDATING -> READINESS_SCORING ->
   READY | BLOCKED), and a rollback segment (ROLLING_BACK -> ROLLED_BACK) that
-  restores the previous image on failed post-deploy health.
+  restores the previous image on failed post-deploy health. OMN-12581 (Phase 6)
+  makes a prod redeploy request depend on the full promotion gate, evaluated
+  BEFORE any deploy-agent invocation: the reducer-owned readiness projection must
+  show stability-test READY for the matching promotion batch and image digest,
+  the prod digest must equal that stability READY digest (no rebuild), OCC
+  evidence must be merged or Receipt-Gate-PASS, and a known rollback target must
+  exist (threaded into the rollback path). A prod request that fails any
+  condition routes to BLOCKED with no deploy effect.
 
 handler_routing:
   routing_strategy: "phase_dispatch"
