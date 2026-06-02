@@ -7,8 +7,15 @@ node_version: {major: 1, minor: 1, patch: 0}
 description: >
   Self-healing portable event publishing daemon. Accepts events via Unix
   domain socket, validates against a pluggable per-platform event registry,
-  queues with disk spool durability, and publishes to Kafka with circuit
-  breaker protection. Health endpoint responds within 100ms and never hangs.
+  and publishes to Kafka with circuit breaker protection. Durability is split
+  by declared per-topic tier: duty-critical / command / evidence topics use an
+  append-only durable outbox (acked replay outbox -> Kafka, truncate-on-ack,
+  never drop; outbox-full surfaces explicit backpressure to the caller), while
+  telemetry topics use a bounded in-memory queue + disk spool with drop-oldest
+  on overflow (bounded loss correct by design). Tier is a required per-topic
+  property in registries/topics.yaml; the registry fails fast on any fan-out
+  rule with no declared tier. Health endpoint responds within 100ms and never
+  hangs.
 
 handler_routing:
   handlers:

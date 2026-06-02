@@ -28,6 +28,9 @@ from omnimarket.nodes.node_emit_daemon.event_queue import (
     BoundedEventQueue,
     ModelQueuedEvent,
 )
+from omnimarket.nodes.node_emit_daemon.models.model_durability import (
+    EnumDurabilityTier,
+)
 from omnimarket.nodes.node_emit_daemon.models.model_emit_daemon_config import (
     EnumCircuitBreakerState,
 )
@@ -281,7 +284,41 @@ class KafkaPublisherLoop:
                 if success:
                     self._record_success()
                     self._retry_counts.pop(event.event_id, None)
+                    # Truncate-on-ack: for duty-critical events this removes the
+                    # durable outbox record only after a confirmed publish.
+                    await self._queue.ack(event)
                     self.events_published += 1
+                elif event.tier is EnumDurabilityTier.DUTY_CRITICAL:
+                    # Duty-critical events are NEVER dropped. The event remains
+                    # in the durable outbox (it was peeked, not removed) and is
+                    # re-served on the next dequeue once Kafka recovers. Apply
+                    # backoff between attempts to avoid a hot retry loop.
+                    self._record_failure()
+                    retries = self._retry_counts.get(event.event_id, 0) + 1
+                    self._retry_counts[event.event_id] = retries
+                    self.events_buffered += 1
+                    if self._circuit_state != EnumCircuitBreakerState.OPEN:
+                        uncapped_backoff = self._backoff_base_seconds * (
+                            2 ** (retries - 1)
+                        )
+                        backoff = min(uncapped_backoff, self._max_backoff_seconds)
+                        logger.warning(
+                            "Publish failed for duty-critical %s; retained in "
+                            "durable outbox, retry in %ss",
+                            event.event_id,
+                            backoff,
+                            extra={
+                                "event_type": event.event_type,
+                                "topic": event.topic,
+                            },
+                        )
+                        try:
+                            await asyncio.wait_for(
+                                self._shutdown_event.wait(), timeout=backoff
+                            )
+                            break  # Shutdown during backoff -- event stays durable
+                        except TimeoutError:
+                            pass
                 else:
                     self._record_failure()
                     retries = self._retry_counts.get(event.event_id, 0) + 1

@@ -1,18 +1,29 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Bounded Event Queue with Disk Spool for the emit daemon.
+"""Tiered Event Queue for the emit daemon (durability split by topic tier).
 
-Queue Behavior:
+Each event carries a declared per-topic durability tier and is routed by it:
+
+    DUTY_CRITICAL -> append-only durable outbox. Acked replay outbox -> Kafka,
+        truncate-on-ack, NEVER drop. On outbox-storage-full the enqueue raises
+        ``DurableOutboxFullError`` (explicit backpressure, no silent drop).
+    TELEMETRY -> bounded in-memory queue + disk spool with drop-oldest on
+        overflow (loss correct by design for high-volume metrics).
+
+Telemetry queue behavior:
     1. Events are first added to the in-memory queue
     2. When memory queue is full, events overflow to disk spool
     3. When disk spool is full (by message count or bytes), oldest events are dropped
-    4. Dequeue prioritizes memory queue, then disk spool (FIFO ordering)
+    4. Dequeue prioritizes the durable outbox, then memory queue, then disk spool
 
-Disk Spool Format:
-    - Directory: configurable via spool_dir parameter
+Disk Spool / Outbox Format:
     - Files: {timestamp}_{event_id}.json (one event per file)
     - Sorted by filename for FIFO ordering
+
+Acknowledgement: callers MUST call ``ack(event)`` after a confirmed Kafka
+publish. For duty-critical events ``ack`` truncates the outbox record; for
+telemetry events it is a no-op (the spool/memory entry is removed on dequeue).
 
 Concurrency: coroutine-safe using asyncio.Lock (not thread-safe).
 """
@@ -28,6 +39,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.nodes.node_emit_daemon.models.model_durability import (
+    EnumDurabilityTier,
+)
 from omnimarket.nodes.node_emit_daemon.models.model_protocol import JsonType
 
 logger = logging.getLogger(__name__)
@@ -49,6 +63,14 @@ class ModelQueuedEvent(BaseModel):
     payload: JsonType = Field(...)
     partition_key: str | None = Field(default=None)
     queued_at: datetime = Field(...)
+    tier: EnumDurabilityTier = Field(
+        default=EnumDurabilityTier.TELEMETRY,
+        description=(
+            "Per-topic durability tier driving routing: DUTY_CRITICAL -> "
+            "durable outbox (never drop); TELEMETRY -> bounded spool (drop "
+            "oldest on overflow)."
+        ),
+    )
 
     @field_validator("queued_at", mode="before")
     @classmethod
@@ -74,8 +96,24 @@ def _default_spool_dir() -> Path:
     return Path("/tmp") / "onex-event-spool"
 
 
+def _default_outbox_dir() -> Path:
+    """Default durable-outbox directory using XDG_RUNTIME_DIR or /tmp fallback."""
+    import os
+
+    xdg = os.environ.get("XDG_RUNTIME_DIR")
+    if xdg:
+        return Path(xdg) / "onex" / "event-outbox"
+    return Path("/tmp") / "onex-event-outbox"
+
+
 class BoundedEventQueue:
-    """Bounded in-memory queue with disk spool overflow."""
+    """Tiered queue: durable outbox for duty-critical, bounded spool for telemetry.
+
+    Telemetry events use the bounded in-memory queue + disk spool with
+    drop-oldest overflow. Duty-critical events are routed to an append-only
+    durable outbox that never drops; when the outbox is full, ``enqueue``
+    raises ``DurableOutboxFullError`` so the caller can surface backpressure.
+    """
 
     def __init__(
         self,
@@ -83,6 +121,9 @@ class BoundedEventQueue:
         max_spool_messages: int = 1000,
         max_spool_bytes: int = 10_485_760,  # 10 MB
         spool_dir: Path | None = None,
+        outbox_dir: Path | None = None,
+        max_outbox_messages: int = 100_000,
+        max_outbox_bytes: int = 268_435_456,  # 256 MB
     ) -> None:
         self._max_memory_queue = max_memory_queue
         self._max_spool_messages = max_spool_messages
@@ -96,6 +137,21 @@ class BoundedEventQueue:
 
         self._ensure_spool_dir()
 
+        # Durable outbox for duty-critical events. Imported lazily to avoid a
+        # module import cycle (durable_outbox imports ModelQueuedEvent here).
+        from omnimarket.nodes.node_emit_daemon.durable_outbox import DurableOutbox
+
+        resolved_outbox = (
+            outbox_dir if outbox_dir is not None else _default_outbox_dir()
+        )
+        self._outbox = DurableOutbox(
+            outbox_dir=resolved_outbox,
+            max_messages=max_outbox_messages,
+            max_bytes=max_outbox_bytes,
+        )
+        # Maps acked telemetry/duty event_ids to their outbox record for ack().
+        self._in_flight_outbox: dict[str, object] = {}
+
     def _ensure_spool_dir(self) -> None:
         try:
             self._spool_dir.mkdir(parents=True, exist_ok=True)
@@ -106,6 +162,16 @@ class BoundedEventQueue:
             )
 
     async def enqueue(self, event: ModelQueuedEvent) -> bool:
+        """Route an event by its durability tier.
+
+        Duty-critical events go to the append-only durable outbox (never drop;
+        raises ``DurableOutboxFullError`` on overflow). Telemetry events use
+        the bounded memory/spool path with drop-oldest overflow.
+        """
+        if event.tier is EnumDurabilityTier.DUTY_CRITICAL:
+            await self._outbox.append(event)
+            return True
+
         async with self._lock:
             if len(self._memory_queue) < self._max_memory_queue:
                 self._memory_queue.append(event)
@@ -190,6 +256,23 @@ class BoundedEventQueue:
             logger.exception("Failed to delete oldest spool file %s", oldest)
 
     async def dequeue(self) -> ModelQueuedEvent | None:
+        """Return the next event to publish, preferring the durable outbox.
+
+        Duty-critical outbox events are returned via peek (not removed) and
+        tracked as in-flight; the caller MUST call ``ack(event)`` after a
+        confirmed publish to truncate the outbox record. If publish fails, the
+        event stays durable and is re-served on the next dequeue.
+        """
+        record = await self._outbox.peek()
+        if record is not None:
+            self._in_flight_outbox[record.event.event_id] = record
+            logger.debug(
+                "Dequeued duty-critical event %s from outbox (pending: %d)",
+                record.event.event_id,
+                self._outbox.pending_count(),
+            )
+            return record.event
+
         async with self._lock:
             if self._memory_queue:
                 event = self._memory_queue.popleft()
@@ -203,6 +286,20 @@ class BoundedEventQueue:
                 return await self._dequeue_from_spool()
 
             return None
+
+    async def ack(self, event: ModelQueuedEvent) -> None:
+        """Acknowledge a published event.
+
+        For duty-critical events this truncates the outbox record (truncate-on-
+        ack). For telemetry events it is a no-op -- those entries are removed
+        from memory/spool at dequeue time.
+        """
+        record = self._in_flight_outbox.pop(event.event_id, None)
+        if record is not None:
+            from omnimarket.nodes.node_emit_daemon.durable_outbox import OutboxRecord
+
+            assert isinstance(record, OutboxRecord)
+            await self._outbox.ack(record)
 
     async def _dequeue_from_spool(self) -> ModelQueuedEvent | None:
         """Dequeue next event from disk spool. Caller must hold self._lock."""
@@ -255,7 +352,19 @@ class BoundedEventQueue:
         return len(self._spool_files)
 
     def total_size(self) -> int:
+        """Bounded (telemetry) backlog size: memory + spool. Excludes outbox."""
         return self.memory_size() + self.spool_size()
+
+    def outbox_pending(self) -> int:
+        """Count of pending duty-critical events in the durable outbox."""
+        return self._outbox.pending_count()
+
+    def outbox_pending_bytes(self) -> int:
+        return self._outbox.pending_bytes()
+
+    async def load_outbox(self) -> int:
+        """Restore pending duty-critical events from the durable outbox on startup."""
+        return await self._outbox.load_pending()
 
     async def drain_to_spool(self) -> int:
         async with self._lock:
