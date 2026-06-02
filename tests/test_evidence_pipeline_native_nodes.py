@@ -10,12 +10,12 @@ from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_
     ModelEvidenceValidationResult,
 )
 
-from omnimarket.nodes.evidence_pipeline_native import (
-    InMemoryDeploymentEvidenceProjectionStore,
-)
 from omnimarket.nodes.node_contract_matcher_compute import HandlerContractMatcherCompute
 from omnimarket.nodes.node_deployment_evidence_reducer import (
     HandlerDeploymentEvidenceReducer,
+)
+from omnimarket.nodes.node_deployment_evidence_reducer.handlers.handler_deployment_evidence_reducer import (
+    DEPLOYMENT_READINESS_TABLE,
 )
 from omnimarket.nodes.node_evidence_collector_effect import (
     HandlerEvidenceCollectorEffect,
@@ -38,6 +38,7 @@ from omnimarket.nodes.node_readiness_gate_orchestrator import (
 from omnimarket.nodes.node_readiness_scorer_compute import (
     HandlerReadinessScorerCompute,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 SCOPED_NODES = (
     "node_deployment_evidence_reducer",
@@ -105,8 +106,8 @@ def test_native_evidence_readiness_chain_is_deterministic() -> None:
     readiness = HandlerReadinessScorerCompute().handle(gap_report)
     gated = HandlerReadinessGateOrchestrator().handle(gap_report)
 
-    store = InMemoryDeploymentEvidenceProjectionStore()
-    reduced = HandlerDeploymentEvidenceReducer(store=store).handle(gated)
+    db = InmemoryDatabaseAdapter()
+    reduced = HandlerDeploymentEvidenceReducer().project(gated, db)
 
     assert raw.source_surfaces == ("git", "ci", "projection")
     assert bundle.evidence_bundle_hash.startswith("sha256:")
@@ -119,7 +120,10 @@ def test_native_evidence_readiness_chain_is_deterministic() -> None:
     assert readiness.readiness_state == "READY"
     assert gated.readiness_state == "READY"
     assert reduced.readiness_state == "READY"
-    assert store.rows["deploy-omn-12395"]["readiness_state"] == "READY"
+    readiness_rows = db.query(
+        DEPLOYMENT_READINESS_TABLE, {"deployment_id": "deploy-omn-12395"}
+    )
+    assert readiness_rows[0]["readiness_state"] == "READY"
 
 
 def test_gap_and_gate_block_missing_evidence() -> None:
