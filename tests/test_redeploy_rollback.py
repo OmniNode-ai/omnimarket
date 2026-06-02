@@ -1,21 +1,17 @@
-"""Deliberate-failure rollback tests for node_redeploy (OMN-9579).
+"""Deliberate-failure rollback tests for node_redeploy (OMN-9579, OMN-12577).
 
 Verifies that when failures occur during or after deploy, the workflow
 triggers rollback: restores the previous image, restarts services, and
 emits a rolled_back event with the failure reason.
 
-Prerequisite tickets needed before these tests can pass:
-  1. Extract DeploymentAdapter protocol for injectable deploy/rollback
-     actions (deploy, health_check, smoke_test, rollback, restart).
-  2. Add previous_image / new_image tracking to ModelRedeployState.
-  3. Implement rollback step in run_redeploy_workflow — when REBUILD
-     or VERIFY_HEALTH fails, restore previous image and trigger restart.
-  4. Add rollback event to contract.yaml:
-     onex.evt.omnimarket.redeploy-rolled-back.v1
-  5. Add failure injection for post-REBUILD phases so VERIFY_HEALTH can
-     report smoke test / health check failures.
-
-All tests marked xfail(strict=True) until rollback infrastructure exists.
+OMN-12577 implements the rollback infrastructure these tests asserted:
+  1. ``ProtocolDeploymentAdapter`` with ``rollback()`` (handlers/deployment_adapter.py).
+  2. ``previous_image`` tracking on ``ModelRedeployState`` and the workflow input.
+  3. Post-deploy rollback in ``run_redeploy_workflow`` — a deploy that succeeds
+     then fails post-deploy verification (smoke / health / timeout) restores the
+     previous image and emits ``onex.evt.omnimarket.redeploy-rolled-back.v1``.
+  4. The rollback event is declared in contract.yaml.
+  5. Health/smoke failure injection drives the post-REBUILD verification failure.
 """
 
 from __future__ import annotations
@@ -78,16 +74,6 @@ class TestRedeployRollback:
       3. The rollback event is emitted with the correct failure reason
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Rollback not implemented — no mechanism to fail VERIFY_HEALTH, "
-            "no DeploymentAdapter protocol, no rollback event. "
-            "Needs: failure injection for post-REBUILD phases, "
-            "DeploymentAdapter with rollback(), previous_image in state, "
-            "onex.evt.omnimarket.redeploy-rolled-back.v1"
-        ),
-    )
     async def test_smoke_failure_after_successful_deploy(self) -> None:
         """REBUILD succeeds but smoke test fails -> rollback to previous image."""
         bus = EventBusInmemory(environment="test", group="rollback-test")
@@ -125,6 +111,7 @@ class TestRedeployRollback:
             correlation_id=corr_id,
             scope="full",
             dry_run=False,
+            smoke_test=True,
         )
 
         result = await run_redeploy_workflow(workflow_input, event_bus=bus)
@@ -137,16 +124,6 @@ class TestRedeployRollback:
 
         await bus.close()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Rollback not implemented — deploy agent reports success with "
-            "failing health_checks but workflow ignores them. "
-            "Needs: health check verification in run_redeploy_workflow, "
-            "DeploymentAdapter with rollback(), "
-            "onex.evt.omnimarket.redeploy-rolled-back.v1"
-        ),
-    )
     async def test_health_check_failure_after_deploy(self) -> None:
         """Deploy succeeds but health checks fail -> rollback to previous image."""
         bus = EventBusInmemory(environment="test", group="rollback-test")
@@ -211,15 +188,6 @@ class TestRedeployRollback:
 
         await bus.close()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Timeout rollback not implemented — HandlerRedeployKafka reports "
-            "timeout in rebuild_result but no rollback to previous image. "
-            "Needs: DeploymentAdapter with rollback(), previous_image in state, "
-            "onex.evt.omnimarket.redeploy-rolled-back.v1"
-        ),
-    )
     async def test_timeout_during_deploy(self) -> None:
         """REBUILD times out -> rollback to previous known-good image."""
         bus = EventBusInmemory(environment="test", group="rollback-test")

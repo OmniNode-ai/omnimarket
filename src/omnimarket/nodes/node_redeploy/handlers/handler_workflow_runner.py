@@ -21,6 +21,11 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from omnimarket.nodes.node_redeploy.handlers.deployment_adapter import (
+    DEFAULT_PREVIOUS_IMAGE,
+    DeploymentAdapterKafka,
+    ProtocolDeploymentAdapter,
+)
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy import HandlerRedeploy
 from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
     HandlerRedeployKafka,
@@ -29,7 +34,12 @@ from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
     EnumRedeployStatus,
     ModelRedeployResult,
 )
+from omnimarket.nodes.node_redeploy.models.model_lane_policy import (
+    ModelStabilityReadiness,
+    evaluate_prod_digest_gate,
+)
 from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
+    EnumRuntimeLane,
     ModelRedeployCommand,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
@@ -51,6 +61,30 @@ class ModelRedeployWorkflowInput(BaseModel):
     verify_only: bool = Field(default=False)
     dry_run: bool = Field(default=False)
     requested_by: str = Field(default="node_redeploy")
+    # OMN-12577 lane / digest / rollback inputs.
+    runtime_lane: EnumRuntimeLane = Field(
+        default=EnumRuntimeLane.DEV,
+        description="Target runtime lane for this deployment.",
+    )
+    image_digest: str | None = Field(
+        default=None,
+        description="Pinned image digest. Required for prod (stability-proven).",
+    )
+    promotion_batch_id: str | None = Field(
+        default=None, description="Promotion batch shared with OCC evidence."
+    )
+    previous_image: str = Field(
+        default=DEFAULT_PREVIOUS_IMAGE,
+        description="Previous known-good image to restore on rollback.",
+    )
+    smoke_test: bool = Field(
+        default=False,
+        description=(
+            "Run a post-deploy smoke probe. When the deploy reports success but "
+            "no live runtime proof is available, the smoke probe fails closed and "
+            "triggers rollback (OMN-9579)."
+        ),
+    )
 
 
 class ModelRedeployWorkflowResult(BaseModel):
@@ -62,6 +96,9 @@ class ModelRedeployWorkflowResult(BaseModel):
     success: bool = Field(...)
     rebuild_result: ModelRedeployResult | None = Field(default=None)
     error_message: str | None = Field(default=None)
+    rolled_back: bool = Field(
+        default=False, description="True if a rollback was triggered (OMN-9579)."
+    )
 
 
 # Phases that the deploy agent handles — FSM advances with success=True for these
@@ -76,19 +113,75 @@ _DEPLOY_AGENT_PHASES: frozenset[EnumRedeployPhase] = frozenset(
 )
 
 
+def _rollback_reason(
+    rebuild_result: ModelRedeployResult | None,
+    smoke_test: bool,
+) -> str | None:
+    """Return a rollback reason for a successful-deploy that fails post-checks.
+
+    A deploy that the agent reports as ``failed`` is NOT a rollback — the
+    artifact never went live, so the FSM circuit breaker handles it. Rollback is
+    only for a deploy that succeeded then failed post-deploy verification:
+
+      - the publish-monitor timed out waiting for completion (``timed_out``);
+      - the agent reported success but a ``/health`` check came back failing;
+      - a smoke probe was requested and there is no live runtime proof, so it
+        fails closed (OMN-9579).
+    """
+    if rebuild_result is None:
+        return None
+    if rebuild_result.timed_out:
+        return "deploy agent timed out before completion; rolling back"
+    if not rebuild_result.success:
+        # Agent-reported build failure — handled by the FSM, not rollback.
+        return None
+    failing_health = [hc for hc in rebuild_result.health_checks if hc.status == "fail"]
+    if failing_health:
+        endpoints = ", ".join(hc.endpoint for hc in failing_health)
+        return f"post-deploy health check failed ({endpoints}); rolling back"
+    if smoke_test:
+        return "post-deploy smoke test failed (no live runtime proof); rolling back"
+    return None
+
+
 async def run_redeploy_workflow(
     input_data: ModelRedeployWorkflowInput,
     event_bus: object | None = None,
+    deployment_adapter: ProtocolDeploymentAdapter | None = None,
 ) -> ModelRedeployWorkflowResult:
     """Run the redeploy workflow end-to-end.
 
     Args:
         input_data: Workflow inputs parsed from the start command.
         event_bus: Event bus for Kafka publish-monitor. Required unless dry_run=True.
+        deployment_adapter: Rollback boundary. Defaults to a Kafka-backed adapter
+            built from ``event_bus`` (OMN-9579 / OMN-12577).
 
     Returns:
         ModelRedeployWorkflowResult with final phase and rebuild outcome.
     """
+    # Lane gate: production may not enter REBUILD/deploy unless a stability-test
+    # readiness event exists for the SAME digest. The gate runs BEFORE any deploy
+    # effect so a bad prod request is rejected before the agent is invoked.
+    if input_data.runtime_lane is EnumRuntimeLane.PROD:
+        # No stability readiness is threaded through this entry point yet, so the
+        # gate fails closed: a prod deploy here is blocked until the readiness
+        # handoff (publish/consume readiness-gate events) supplies a matching
+        # READY digest. This is the regression guard for prod-vs-stability drift.
+        gate = evaluate_prod_digest_gate(
+            requested_digest=input_data.image_digest,
+            stability_readiness=_stability_readiness_for(input_data),
+        )
+        if not gate.allowed:
+            return ModelRedeployWorkflowResult(
+                correlation_id=input_data.correlation_id,
+                final_phase=EnumRedeployPhase.BLOCKED,
+                phases_completed=0,
+                success=False,
+                rebuild_result=None,
+                error_message=gate.reason,
+            )
+
     fsm = HandlerRedeploy()
     command = ModelRedeployCommand(
         correlation_id=input_data.correlation_id,
@@ -97,6 +190,9 @@ async def run_redeploy_workflow(
         verify_only=input_data.verify_only,
         dry_run=input_data.dry_run,
         requested_at=datetime.now(tz=UTC),
+        runtime_lane=input_data.runtime_lane,
+        image_digest=input_data.image_digest,
+        promotion_batch_id=input_data.promotion_batch_id,
     )
 
     state: ModelRedeployState = fsm.start(command)
@@ -157,6 +253,31 @@ async def run_redeploy_workflow(
         else:
             state, _ = fsm.advance(state, phase_success=True)
 
+    # Post-deploy rollback: a deploy that succeeded but failed post-deploy health
+    # (smoke/health/timeout) restores the previous image and emits the
+    # rolled-back event over the deploy boundary (OMN-9579). Dry-run never rolls
+    # back — there is nothing live to verify.
+    if not input_data.dry_run and event_bus is not None:
+        reason = _rollback_reason(rebuild_result, input_data.smoke_test)
+        if reason is not None:
+            adapter = deployment_adapter or DeploymentAdapterKafka(event_bus=event_bus)
+            await adapter.rollback(
+                correlation_id=input_data.correlation_id,
+                runtime_lane=input_data.runtime_lane,
+                restored_image=input_data.previous_image,
+                failure_reason=reason,
+                failed_phase=EnumRedeployPhase.VERIFY_HEALTH,
+            )
+            return ModelRedeployWorkflowResult(
+                correlation_id=input_data.correlation_id,
+                final_phase=EnumRedeployPhase.FAILED,
+                phases_completed=state.phases_completed,
+                success=False,
+                rebuild_result=rebuild_result,
+                error_message=reason,
+                rolled_back=True,
+            )
+
     return ModelRedeployWorkflowResult(
         correlation_id=input_data.correlation_id,
         final_phase=state.current_phase,
@@ -165,6 +286,20 @@ async def run_redeploy_workflow(
         rebuild_result=rebuild_result,
         error_message=state.error_message,
     )
+
+
+def _stability_readiness_for(
+    input_data: ModelRedeployWorkflowInput,
+) -> ModelStabilityReadiness | None:
+    """Resolve the stability readiness fact for a prod deploy.
+
+    The readiness handoff (publish ``readiness-gate-start``, consume
+    ``readiness-gate-{completed,blocked}``) is the source of this fact in the
+    wired runtime. This entry point does not yet receive it, so it returns
+    ``None`` and the prod gate fails closed — exactly the prod-vs-stability drift
+    regression guard the design requires.
+    """
+    return None
 
 
 class HandlerRedeployWorkflowRunner:

@@ -158,6 +158,10 @@ class ModelRedeployResult(BaseModel):
         default=False,
         description="True if polling timed out before completion event arrived.",
     )
+    health_checks: list[ModelHealthCheck] = Field(
+        default_factory=list,
+        description="Service health check results carried through from the agent.",
+    )
 
 
 __all__: list[str] = [
