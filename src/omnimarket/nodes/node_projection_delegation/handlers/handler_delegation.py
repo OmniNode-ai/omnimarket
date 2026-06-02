@@ -476,7 +476,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               cost_usd, cost_savings_usd, delegation_latency_ms,
               latency_ms, repo, is_shadow, prompt_text, response_text,
               tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version
+              compliance_attempts, pricing_manifest_version,
+              projection_version, reducer_version
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7, $8,
@@ -486,7 +487,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $14, $15, $16,
               $17, $18, $19, $20, $21,
               $22, $23, $24,
-              $25, $26
+              $25, $26,
+              $27, $28
             )
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
@@ -513,7 +515,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               tokens_output = EXCLUDED.tokens_output,
               tokens_to_compliance = EXCLUDED.tokens_to_compliance,
               compliance_attempts = EXCLUDED.compliance_attempts,
-              pricing_manifest_version = EXCLUDED.pricing_manifest_version
+              pricing_manifest_version = EXCLUDED.pricing_manifest_version,
+              projection_version = EXCLUDED.projection_version,
+              reducer_version = EXCLUDED.reducer_version
             """,
             str(row.correlation_id),
             session_id,
@@ -541,6 +545,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row.tokens_to_compliance,
             row.compliance_attempts,
             row.pricing_manifest_version,
+            row.projection_version,
+            row.reducer_version,
         )
 
     async def _project_shadow_comparison(
