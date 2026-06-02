@@ -7,24 +7,43 @@ The OMN-9855 incident (2026-04-30) closed a Linear ticket as Done after:
 
 1. Probing that the implementation was already on ``omnibase_core/main``
    (PR #949 merged 2026-04-27).
-2. Generating a DoD receipt at ``onex_change_control/evidence/OMN-9855/dod_report.json``
-   LOCALLY, never committing it.
+2. Generating a DoD receipt LOCALLY, never committing it.
 3. Updating the Linear ``dod_evidence`` description text to point at PR #949.
 
-Result: Linear was green but ``onex_change_control/main`` still had the OLD
-contract pointing at the superseded PR #926. The durable evidence trail was
-broken — Linear-Done state was performative and unverifiable from origin alone.
+Result: Linear was green but the OCC governance ref still had the OLD contract
+pointing at the superseded PR #926. The durable evidence trail was broken —
+Linear-Done state was performative and unverifiable from origin alone.
+
+Platform layout (OMN-12593, config-drift fix)
+---------------------------------------------
+The gate's default invocation must resolve against the *real* control-plane
+layout, not a speculative one:
+
+* The receipt is NOT a single ``evidence/<TICKET>/dod_report.json`` file. The
+  platform (``node_pr_lifecycle_fix_effect`` / ``OccContractAdapter``) writes
+  one receipt per evidence item at
+  ``drift/dod_receipts/<TICKET>/<EVIDENCE_ITEM>/command.yaml``.
+* OCC governance is dev-targeted: contracts and receipts land on the OCC ``dev``
+  branch first and are batched to ``main`` later. The gate's default governance
+  ref is therefore ``origin/dev`` — checking ``main`` falsely FAILs tickets
+  whose evidence is genuinely durable on ``dev``.
+
+Use :func:`default_receipt_dir` and :func:`default_contract_path` (and the
+:data:`DEFAULT_OCC_GOVERNANCE_REF` constant) to obtain the canonical defaults,
+or call :meth:`DurableEvidenceGate.evaluate_default` /
+:meth:`DurableEvidenceGate.enforce_default` to run the gate against them
+without restating the layout at each call site.
 
 This service refuses the Linear Done transition when any of the following holds:
 
-1. The receipt at ``evidence/<TICKET>/dod_report.json`` is not tracked on
-   ``onex_change_control/main`` (untracked or local-only commit).
+1. No receipt is tracked under ``drift/dod_receipts/<TICKET>/`` on the OCC
+   governance ref (untracked or local-only commit).
 2. The contract's ``dod_evidence`` cites a ``pr_url`` whose state is not
    ``MERGED`` or whose ``mergeCommit.oid`` does not match the cited SHA.
-3. The contract version on ``onex_change_control/main`` does not yet contain
-   the real merge commit citation (i.e. main still has the stale contract).
+3. The contract version on the OCC governance ref does not yet contain the
+   real merge commit citation (i.e. the ref still has the stale contract).
 
-The gate is pure logic plus three pluggable Protocol probes (git ls-tree,
+The gate is pure logic plus pluggable Protocol probes (git receipt-tracked,
 gh pr view, contract loader). Tests inject deterministic probe stubs;
 production wiring uses subprocess implementations.
 """
@@ -49,6 +68,41 @@ _PR_URL_RE = re.compile(
 # Git short SHA is 7 hex chars; full is 40. Anything outside [7,40] hex chars
 # is treated as a malformed citation and skipped (see CR thread on PR #467).
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
+# Canonical OCC governance ref. OCC governance is dev-targeted: contracts and
+# receipts land on the OCC ``dev`` branch first and are batched to ``main``
+# later (OMN-12593). Defaulting to ``main`` falsely FAILs tickets whose evidence
+# is genuinely durable on ``dev``. ``origin/dev`` is the remote-tracking form so
+# the probe verifies the pushed state, not a possibly-stale local ``dev``.
+DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
+
+# Canonical receipt directory prefix relative to the OCC repo root. The platform
+# writes one receipt per evidence item at
+# ``drift/dod_receipts/<TICKET>/<EVIDENCE_ITEM>/command.yaml`` — NOT a single
+# ``evidence/<TICKET>/dod_report.json`` file (OMN-12593 config-drift fix).
+_RECEIPT_DIR_PREFIX = "drift/dod_receipts"
+
+# Canonical contract path prefix relative to the OCC repo root.
+_CONTRACT_DIR_PREFIX = "contracts"
+
+
+def default_receipt_dir(ticket_id: str) -> str:
+    """Return the canonical OCC receipt directory for ``ticket_id``.
+
+    The platform writes one receipt per evidence item under this directory at
+    ``<dir>/<EVIDENCE_ITEM>/command.yaml``. The gate's receipt-tracked check
+    asks whether *any* receipt is tracked under this directory on the OCC
+    governance ref. Pure function — no I/O.
+    """
+    return f"{_RECEIPT_DIR_PREFIX}/{ticket_id}"
+
+
+def default_contract_path(ticket_id: str) -> str:
+    """Return the canonical OCC contract path for ``ticket_id``.
+
+    Pure function — no I/O.
+    """
+    return f"{_CONTRACT_DIR_PREFIX}/{ticket_id}.yaml"
 
 
 class DurableEvidenceGateError(Exception):
@@ -75,10 +129,18 @@ class DurableEvidenceGateError(Exception):
             )
 
 
-class GitTrackedProbe(Protocol):
-    """Probe that returns whether ``rel_path`` is tracked on a given git ref."""
+class GitReceiptTrackedProbe(Protocol):
+    """Probe: is any receipt tracked under ``receipt_dir`` on ``ref``?
 
-    def __call__(self, repo_path: str, ref: str, rel_path: str) -> bool: ...
+    The platform writes one receipt per evidence item at
+    ``<receipt_dir>/<EVIDENCE_ITEM>/command.yaml`` — there is no single fixed
+    receipt filename. The probe answers whether the OCC governance ref tracks
+    *at least one* receipt under the ticket's receipt directory. Production
+    wiring runs ``git ls-tree -r --name-only <ref> -- <receipt_dir>`` and
+    returns ``True`` when the listing is non-empty.
+    """
+
+    def __call__(self, repo_path: str, ref: str, receipt_dir: str) -> bool: ...
 
 
 class GhPrViewProbe(Protocol):
@@ -183,32 +245,67 @@ class DurableEvidenceGate:
 
     Construction takes three Protocol-typed probes so unit tests can inject
     deterministic stubs. Production wiring uses subprocess-backed
-    implementations under ``services/durable_evidence_gate_probes.py``
-    (out of scope for the first slice — this module ships the gate logic and
-    error type only).
+    implementations.
+
+    The OCC governance ref defaults to :data:`DEFAULT_OCC_GOVERNANCE_REF`
+    (``origin/dev``) because OCC governance is dev-targeted — contracts and
+    receipts land on ``dev`` first and are batched to ``main`` later. Probing
+    ``main`` falsely FAILs tickets whose evidence is genuinely durable on
+    ``dev`` (OMN-12593).
     """
 
     def __init__(
         self,
         *,
-        is_tracked: GitTrackedProbe,
+        is_receipt_tracked: GitReceiptTrackedProbe,
         gh_pr_view: GhPrViewProbe,
         load_contract_on_ref: ContractOnRefLoader,
         occ_repo_path: str,
-        occ_main_ref: str = "main",
+        occ_governance_ref: str = DEFAULT_OCC_GOVERNANCE_REF,
     ) -> None:
-        self._is_tracked = is_tracked
+        self._is_receipt_tracked = is_receipt_tracked
         self._gh_pr_view = gh_pr_view
         self._load_contract_on_ref = load_contract_on_ref
         self._occ_repo_path = occ_repo_path
-        self._occ_main_ref = occ_main_ref
+        self._occ_governance_ref = occ_governance_ref
+
+    def evaluate_default(
+        self,
+        *,
+        ticket_id: str,
+        contract: dict[str, object],
+    ) -> ModelDurableEvidenceGateResult:
+        """Run the gate against the canonical platform layout for ``ticket_id``.
+
+        This is the DEFAULT invocation. It resolves the receipt directory and
+        contract path from the canonical platform layout
+        (:func:`default_receipt_dir` / :func:`default_contract_path`) so callers
+        cannot accidentally pass a drifted ``evidence/<TICKET>/dod_report.json``
+        path or check the wrong governance ref. Equivalent to::
+
+            gate.evaluate(
+                ticket_id=ticket_id,
+                contract=contract,
+                receipt_dir=default_receipt_dir(ticket_id),
+                contract_rel_path=default_contract_path(ticket_id),
+            )
+
+        Pure result — does not raise. Callers that want hard-fail semantics
+        invoke :meth:`enforce_default` instead.
+        """
+        return self.evaluate(
+            ticket_id=ticket_id,
+            contract=contract,
+            receipt_dir=default_receipt_dir(ticket_id),
+            contract_rel_path=default_contract_path(ticket_id),
+        )
 
     def evaluate(
         self,
         *,
         ticket_id: str,
         contract: dict[str, object],
-        receipt_rel_path: str,
+        receipt_dir: str,
         contract_rel_path: str,
     ) -> ModelDurableEvidenceGateResult:
         """Run the three durable-evidence checks and return an aggregate result.
@@ -217,19 +314,23 @@ class DurableEvidenceGate:
             ticket_id: The Linear ticket ID (e.g. ``OMN-9855``).
             contract: The parsed local contract dict — already validated by the
                 EvidenceCollector load path.
-            receipt_rel_path: Path to the DoD receipt relative to the OCC repo
-                root, e.g. ``evidence/OMN-9855/dod_report.json``.
+            receipt_dir: The OCC-root-relative receipt directory for the ticket,
+                e.g. ``drift/dod_receipts/OMN-12574``. The check passes when at
+                least one receipt is tracked under this directory on the OCC
+                governance ref. Use :func:`default_receipt_dir` to build it.
             contract_rel_path: Path to the contract YAML relative to the OCC
-                repo root, e.g. ``contracts/OMN-9855.yaml``.
+                repo root, e.g. ``contracts/OMN-9855.yaml``. Use
+                :func:`default_contract_path` to build it.
 
         Pure result — does not raise. Callers that want hard-fail semantics
         invoke :meth:`enforce` instead.
         """
         checks: list[ModelDurableEvidenceCheckResult] = []
 
-        # Check 1: receipt is tracked on OCC main
-        receipt_tracked = self._is_tracked(
-            self._occ_repo_path, self._occ_main_ref, receipt_rel_path
+        # Check 1: at least one receipt is tracked under the ticket's receipt
+        # directory on the OCC governance ref.
+        receipt_tracked = self._is_receipt_tracked(
+            self._occ_repo_path, self._occ_governance_ref, receipt_dir
         )
         if receipt_tracked:
             checks.append(
@@ -237,8 +338,8 @@ class DurableEvidenceGate:
                     check=EnumDurableEvidenceCheck.RECEIPT_TRACKED,
                     passed=True,
                     message=(
-                        f"Receipt {receipt_rel_path} is tracked on "
-                        f"{self._occ_main_ref}."
+                        f"Receipt(s) under {receipt_dir}/ are tracked on "
+                        f"{self._occ_governance_ref}."
                     ),
                 )
             )
@@ -248,9 +349,10 @@ class DurableEvidenceGate:
                     check=EnumDurableEvidenceCheck.RECEIPT_TRACKED,
                     passed=False,
                     message=(
-                        f"Receipt {receipt_rel_path} is NOT tracked on "
-                        f"{self._occ_main_ref}. Commit and push the receipt to "
-                        f"onex_change_control before re-running the gate."
+                        f"No receipt is tracked under {receipt_dir}/ on "
+                        f"{self._occ_governance_ref}. Commit and push the "
+                        f"command.yaml receipt to onex_change_control before "
+                        f"re-running the gate."
                     ),
                 )
             )
@@ -303,11 +405,12 @@ class DurableEvidenceGate:
                 )
             )
 
-        # Check 3: OCC main contains a contract version with the cited merge commits
-        # This catches the OMN-9855 case where main still has the stale contract
-        # (citing #926) while the local contract has been updated to cite #949.
+        # Check 3: the OCC governance ref contains a contract version with the
+        # cited merge commits. This catches the OMN-9855 case where the ref
+        # still has the stale contract (citing #926) while the local contract
+        # has been updated to cite #949.
         main_contract = self._load_contract_on_ref(
-            self._occ_repo_path, self._occ_main_ref, contract_rel_path
+            self._occ_repo_path, self._occ_governance_ref, contract_rel_path
         )
         if main_contract is None:
             checks.append(
@@ -316,8 +419,9 @@ class DurableEvidenceGate:
                     passed=False,
                     message=(
                         f"Contract {contract_rel_path} is not present on "
-                        f"{self._occ_main_ref}. Open an OCC PR with the contract "
-                        "and merge it before transitioning Linear to Done."
+                        f"{self._occ_governance_ref}. Open an OCC PR with the "
+                        "contract and merge it before transitioning Linear to "
+                        "Done."
                     ),
                 )
             )
@@ -325,7 +429,7 @@ class DurableEvidenceGate:
             main_citations = extract_cited_merge_commits(main_contract)
             # Compare on normalized identity (repo, pr_number, sha) — NOT raw
             # pr_url — so different URL spellings for the same PR do not
-            # produce a false stale-main hard fail.
+            # produce a false stale-ref hard fail.
             local_keys = {(c.repo, c.pr_number, c.cited_sha) for c in citations}
             main_keys = {(c.repo, c.pr_number, c.cited_sha) for c in main_citations}
             if citations and not local_keys.issubset(main_keys):
@@ -335,7 +439,7 @@ class DurableEvidenceGate:
                         check=EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
                         passed=False,
                         message=(
-                            f"Contract on {self._occ_main_ref} is stale — "
+                            f"Contract on {self._occ_governance_ref} is stale — "
                             f"missing citation(s) {sorted(missing)}. Open an OCC "
                             "PR to update the contract and merge it before "
                             "transitioning Linear to Done."
@@ -348,8 +452,8 @@ class DurableEvidenceGate:
                         check=EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
                         passed=True,
                         message=(
-                            f"Contract on {self._occ_main_ref} contains the "
-                            "expected merge-commit citations."
+                            f"Contract on {self._occ_governance_ref} contains "
+                            "the expected merge-commit citations."
                         ),
                     )
                 )
@@ -370,7 +474,7 @@ class DurableEvidenceGate:
         *,
         ticket_id: str,
         contract: dict[str, object],
-        receipt_rel_path: str,
+        receipt_dir: str,
         contract_rel_path: str,
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate` and raise on failure.
@@ -381,20 +485,41 @@ class DurableEvidenceGate:
         result = self.evaluate(
             ticket_id=ticket_id,
             contract=contract,
-            receipt_rel_path=receipt_rel_path,
+            receipt_dir=receipt_dir,
             contract_rel_path=contract_rel_path,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
         return result
 
+    def enforce_default(
+        self,
+        *,
+        ticket_id: str,
+        contract: dict[str, object],
+    ) -> ModelDurableEvidenceGateResult:
+        """Run :meth:`evaluate_default` and raise on failure.
+
+        This is the DEFAULT hard-fail invocation: it resolves the canonical
+        platform paths internally. On failure raises
+        :class:`DurableEvidenceGateError` carrying the structured result. On
+        success returns the result.
+        """
+        result = self.evaluate_default(ticket_id=ticket_id, contract=contract)
+        if result.status != EnumDurableEvidenceStatus.PASS:
+            raise DurableEvidenceGateError(result)
+        return result
+
 
 __all__: list[str] = [
+    "DEFAULT_OCC_GOVERNANCE_REF",
     "ContractOnRefLoader",
     "DurableEvidenceGate",
     "DurableEvidenceGateError",
     "GhPrViewProbe",
-    "GitTrackedProbe",
+    "GitReceiptTrackedProbe",
+    "default_contract_path",
+    "default_receipt_dir",
     "extract_cited_merge_commits",
     "parse_pr_url",
 ]
