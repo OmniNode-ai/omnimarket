@@ -26,6 +26,7 @@ from omnimarket.nodes.node_redeploy.handlers.handler_redeploy_kafka import (
     HandlerRedeployKafka,
 )
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
     EnumRedeployStatus,
     ModelRedeployResult,
 )
@@ -71,6 +72,14 @@ class ModelRedeployWorkflowInput(BaseModel):
     runtime_lane: EnumRuntimeLane = Field(
         default=EnumRuntimeLane.DEV,
         description="Target runtime lane for this deployment.",
+    )
+    build_source: EnumBuildSource = Field(
+        default=EnumBuildSource.RELEASE,
+        description="Artifact source passed to the deploy agent.",
+    )
+    image_ref: str | None = Field(
+        default=None,
+        description="Mutable image reference. The digest is the authority when present.",
     )
     image_digest: str | None = Field(
         default=None,
@@ -218,6 +227,7 @@ async def run_redeploy_workflow(
         dry_run=input_data.dry_run,
         requested_at=datetime.now(tz=UTC),
         runtime_lane=input_data.runtime_lane,
+        image_ref=input_data.image_ref,
         image_digest=input_data.image_digest,
         promotion_batch_id=input_data.promotion_batch_id,
     )
@@ -255,7 +265,11 @@ async def run_redeploy_workflow(
                     rebuild_result = await kafka_handler.execute(
                         scope=input_data.scope,
                         git_ref=input_data.git_ref,
+                        runtime_lane=input_data.runtime_lane,
+                        build_source=input_data.build_source,
                         services=input_data.services or None,
+                        image_ref=input_data.image_ref,
+                        image_digest=input_data.image_digest,
                         requested_by=input_data.requested_by,
                         correlation_id=str(input_data.correlation_id),
                     )

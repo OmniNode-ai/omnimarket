@@ -24,11 +24,13 @@ from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
     run_redeploy_workflow,
 )
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
     EnumRedeployStatus,
     ModelDeployPhaseResults,
     ModelDeployRebuildCompleted,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
+    EnumRuntimeLane,
     ModelRedeployCommand,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
@@ -438,7 +440,11 @@ class TestRedeployKafkaGoldenChain:
         await handler.execute(
             scope="runtime",
             git_ref="origin/develop",
+            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
+            build_source=EnumBuildSource.WORKSPACE,
             services=["omninode-runtime"],
+            image_ref="ghcr.io/omninode/omninode-runtime:dev",
+            image_digest="sha256:" + "a" * 64,
             requested_by="test-suite",
             correlation_id=corr_id,
         )
@@ -448,8 +454,24 @@ class TestRedeployKafkaGoldenChain:
         assert cmd["correlation_id"] == corr_id
         assert cmd["scope"] == "runtime"
         assert cmd["git_ref"] == "origin/develop"
+        assert cmd["runtime_lane"] == "stability-test"
+        assert cmd["build_source"] == "workspace"
+        assert cmd["image_ref"] == "ghcr.io/omninode/omninode-runtime:dev"
+        assert cmd["image_digest"] == "sha256:" + "a" * 64
         assert cmd["services"] == ["omninode-runtime"]
         assert cmd["requested_by"] == "test-suite"
+
+        await bus.close()
+
+    async def test_prod_command_requires_digest(self) -> None:
+        """Prod deploy-agent commands fail closed without a pinned digest."""
+        bus = EventBusInmemory(environment="test", group="redeploy-test")
+        await bus.start()
+
+        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=0.1)
+
+        with pytest.raises(ValueError, match="image_digest"):
+            await handler.execute(runtime_lane=EnumRuntimeLane.PROD)
 
         await bus.close()
 
@@ -535,6 +557,54 @@ class TestRedeployWorkflowRunnerGoldenChain:
         assert result.rebuild_result is not None
         assert result.rebuild_result.success is True
         assert result.rebuild_result.git_sha == "workflow-sha"
+
+        await bus.close()
+
+    async def test_workflow_propagates_lane_fields_to_deploy_agent(self) -> None:
+        """Workflow input fields survive through the Kafka deploy-agent command."""
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+        bus = EventBusInmemory(environment="test", group="workflow-test")
+        await bus.start()
+
+        received_commands: list[dict[str, object]] = []
+
+        async def _capturing_agent(message: object) -> None:
+            payload = json.loads(message.value)  # type: ignore[union-attr]
+            received_commands.append(payload)
+            completion = _make_completed_event(
+                correlation_id=payload["correlation_id"],
+                git_sha="workflow-sha",
+            )
+            await bus.publish(
+                _EVT_TOPIC,
+                key=payload["correlation_id"].encode(),
+                value=json.dumps(completion.model_dump(mode="json")).encode(),
+            )
+
+        await bus.subscribe(
+            _CMD_TOPIC, on_message=_capturing_agent, group_id="fake-agent"
+        )
+
+        workflow_input = ModelRedeployWorkflowInput(
+            correlation_id=uuid4(),
+            scope="runtime",
+            git_ref="origin/dev",
+            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
+            build_source=EnumBuildSource.WORKSPACE,
+            image_ref="ghcr.io/omninode/omninode-runtime:dev",
+            image_digest="sha256:" + "b" * 64,
+            dry_run=False,
+        )
+        result = await run_redeploy_workflow(workflow_input, event_bus=bus)
+
+        assert result.success is True
+        assert len(received_commands) == 1
+        cmd = received_commands[0]
+        assert cmd["runtime_lane"] == "stability-test"
+        assert cmd["build_source"] == "workspace"
+        assert cmd["image_ref"] == "ghcr.io/omninode/omninode-runtime:dev"
+        assert cmd["image_digest"] == "sha256:" + "b" * 64
 
         await bus.close()
 

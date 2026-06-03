@@ -21,6 +21,10 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
+    ModelDeployRebuildCommand,
+)
 from omnimarket.nodes.node_redeploy.models.model_occ_evidence_draft import (
     EnumEvidenceLifecycleState,
     ModelOccEvidenceDraft,
@@ -99,6 +103,53 @@ def test_redeploy_command_requires_prod_pins() -> None:
             requested_at=datetime.now(tz=UTC),
             runtime_lane=EnumRuntimeLane.PROD,
             image_digest="sha256:deadbeef",
+        )
+
+
+@pytest.mark.unit
+def test_deploy_agent_command_round_trips_lane_payload() -> None:
+    command = ModelDeployRebuildCommand(
+        correlation_id=str(uuid4()),
+        requested_by="node_redeploy",
+        scope="runtime",
+        runtime_lane=EnumRuntimeLane.STABILITY_TEST,
+        build_source=EnumBuildSource.WORKSPACE,
+        services=["omninode-runtime"],
+        git_ref="origin/dev",
+        image_ref="ghcr.io/omninode/omninode-runtime:dev",
+        image_digest="sha256:" + "a" * 64,
+    )
+
+    dumped = command.model_dump(mode="json")
+    restored = ModelDeployRebuildCommand.model_validate(dumped)
+
+    assert restored.runtime_lane is EnumRuntimeLane.STABILITY_TEST
+    assert restored.build_source is EnumBuildSource.WORKSPACE
+    assert dumped["runtime_lane"] == "stability-test"
+    assert dumped["build_source"] == "workspace"
+    assert dumped["image_digest"] == "sha256:" + "a" * 64
+
+
+@pytest.mark.unit
+def test_deploy_agent_command_requires_runtime_lane() -> None:
+    with pytest.raises(ValidationError, match="runtime_lane"):
+        ModelDeployRebuildCommand(
+            correlation_id=str(uuid4()),
+            requested_by="node_redeploy",
+            scope="runtime",
+            git_ref="origin/dev",
+        )
+
+
+@pytest.mark.unit
+def test_deploy_agent_command_requires_prod_digest() -> None:
+    with pytest.raises(ValidationError, match="image_digest"):
+        ModelDeployRebuildCommand(
+            correlation_id=str(uuid4()),
+            requested_by="node_redeploy",
+            scope="runtime",
+            runtime_lane=EnumRuntimeLane.PROD,
+            git_ref="origin/main",
         )
 
 
