@@ -1,0 +1,17 @@
+{
+  "chain_name": "error_d9_missing_wheel_module",
+  "defect_id": "D9",
+  "description": "Error chain: runtime imports a contract module absent from the deployed wheel. Manifests as ImportError for omnibase_compat.contracts.evidence_pipeline at startup. OMN-12660.",
+  "trigger": "Runtime container's wheel does not include a contract module referenced by a handler at import time",
+  "observable_event": {
+    "type": "ImportError",
+    "module": "omnibase_compat.contracts.evidence_pipeline",
+    "when": "handler module import during node startup"
+  },
+  "failure_mode": "Node fails to start; handler not registered in DI container; consumer group absent from bus; upstream publish silently dropped",
+  "expected_error_type": "ModuleNotFoundError",
+  "expected_error_path": "node startup failure — no consumer group registered",
+  "regression_guard": "If the deployed wheel does not contain the module, the node must fail at startup with a typed ImportError, not silently drop events",
+  "source_check": "omnibase_compat.contracts.evidence_pipeline must exist in deployed image; verify with: python -c 'import omnibase_compat.contracts.evidence_pipeline'",
+  "related_tickets": ["OMN-12660", "OMN-12588"]
+}
