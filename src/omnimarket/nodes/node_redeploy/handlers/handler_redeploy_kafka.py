@@ -368,14 +368,20 @@ class HandlerRedeployKafka:
 
         try:
             from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+            from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
-            bus = EventBusKafka(
-                bootstrap_servers=bootstrap,
-                environment=os.environ.get(  # contract-config-ok: config
+            config_values = {
+                "bootstrap_servers": bootstrap,
+                "environment": os.environ.get(  # contract-config-ok: config
                     "KAFKA_ENVIRONMENT", "production"
                 ),
-                group="node-redeploy",
-            )
+            }
+            if os.environ.get("KAFKA_API_VERSION") and "api_version" in getattr(
+                ModelKafkaEventBusConfig, "model_fields", {}
+            ):
+                config_values["api_version"] = os.environ["KAFKA_API_VERSION"]
+            config = ModelKafkaEventBusConfig(**config_values)
+            bus = EventBusKafka(config=config)
         except ImportError as exc:
             raise RuntimeError(  # error-ok: missing optional dependency
                 f"omnibase_infra not available: {exc}. "
