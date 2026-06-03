@@ -8,6 +8,8 @@ Verifies:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -414,13 +416,17 @@ class TestRedeployKafkaGoldenChain:
 
         await bus.close()
 
-    async def test_command_payload_fields(self) -> None:
+    async def test_command_payload_fields(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Published command payload contains all required deploy agent fields."""
         bus = EventBusInmemory(environment="test", group="redeploy-test")
         await bus.start()
 
         received_commands: list[dict[str, object]] = []
         corr_id = str(uuid4())
+        secret = "test-deploy-agent-secret"
+        monkeypatch.setenv("DEPLOY_AGENT_HMAC_SECRET", secret)
         handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
 
         async def _capturing_agent(message: object) -> None:
@@ -460,6 +466,14 @@ class TestRedeployKafkaGoldenChain:
         assert cmd["image_digest"] == "sha256:" + "a" * 64
         assert cmd["services"] == ["omninode-runtime"]
         assert cmd["requested_by"] == "test-suite"
+        assert isinstance(cmd["_signature"], str)
+        body = json.dumps(
+            {k: v for k, v in cmd.items() if k != "_signature"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        expected_signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        assert cmd["_signature"] == expected_signature
 
         await bus.close()
 

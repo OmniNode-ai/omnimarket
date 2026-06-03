@@ -22,8 +22,11 @@ succeeding.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
+import os
 import time
 from typing import Any
 from uuid import uuid4
@@ -50,6 +53,19 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_S = 600
 _POLL_INTERVAL_S = 2.0
+_DEPLOY_AGENT_HMAC_SECRET_ENV = "DEPLOY_AGENT_HMAC_SECRET"
+
+
+def _sign_deploy_agent_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    """Attach deploy-agent HMAC signature when the shared secret is available."""
+    secret = os.environ.get(_DEPLOY_AGENT_HMAC_SECRET_ENV, "").strip()
+    if not secret:
+        return payload
+
+    body_dict = {k: v for k, v in payload.items() if k != "_signature"}
+    body = json.dumps(body_dict, sort_keys=True, separators=(",", ":")).encode()
+    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return {**body_dict, "_signature": signature}
 
 
 class HandlerRedeployKafka:
@@ -203,7 +219,8 @@ class HandlerRedeployKafka:
             group_id=f"node-redeploy-{corr_id[:8]}",
         )
 
-        cmd_payload = json.dumps(command.model_dump(mode="json")).encode()
+        command_payload = _sign_deploy_agent_envelope(command.model_dump(mode="json"))
+        cmd_payload = json.dumps(command_payload).encode()
         await self._bus.publish(
             TOPIC_DEPLOY_REBUILD_REQUESTED,
             key=corr_id.encode(),
