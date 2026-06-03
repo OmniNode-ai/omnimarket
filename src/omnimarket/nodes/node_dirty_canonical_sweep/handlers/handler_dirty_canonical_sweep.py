@@ -172,6 +172,20 @@ class HandlerDirtyCanonicalSweep:
         # Porcelain v1: "XY filename" where XY is exactly 2 chars + space separator
         return [line[3:] for line in lines if len(line) > 3]
 
+    def _canonical_head(self, repo_path: Path) -> str:
+        """Return the canonical clone's current HEAD commit SHA.
+
+        The dirty changes are relative to this commit, so the rescue worktree
+        must branch from it (OMN-12636).
+        """
+        result = self._git.run(
+            ["rev-parse", "HEAD"],
+            cwd=repo_path,
+            check=True,
+            capture_output=True,
+        )
+        return result.stdout.strip()
+
     def _ship_repo(
         self,
         *,
@@ -187,7 +201,16 @@ class HandlerDirtyCanonicalSweep:
         worktree_path = worktrees_root / f"auto-ship-{timestamp}" / repo
 
         try:
-            # Step 1: create worktree from the configured integration branch.
+            # Step 0: resolve the canonical clone's actual HEAD. The dirty
+            # changes are relative to THIS commit, not origin/<base>. Basing the
+            # rescue worktree on origin/<base> when the canonical clone is behind
+            # that branch conflates "uncommitted local work" with "clone is
+            # behind base", which produces a regressive partial PR that reverts
+            # already-merged work (OMN-12636). Branch from the canonical HEAD so
+            # the diff captures only the uncommitted local changes.
+            head_sha = self._canonical_head(repo_path)
+
+            # Step 1: create worktree from the canonical clone's HEAD.
             worktree_path.parent.mkdir(parents=True, exist_ok=True)
             self._git.run(
                 [
@@ -196,16 +219,29 @@ class HandlerDirtyCanonicalSweep:
                     str(worktree_path),
                     "-b",
                     branch,
-                    f"origin/{base_branch}",
+                    head_sha,
                 ],
                 cwd=repo_path,
             )
 
-            # Step 2: copy dirty files from canonical to worktree
+            # Step 2: copy dirty files from canonical to worktree. A dirty entry
+            # may be an untracked directory (e.g. ``evidence/OMN-12584/``);
+            # read_bytes() on a directory raises "[Errno 21] Is a directory" and
+            # the ship fails (OMN-12635). Expand directories to their
+            # constituent files so every dirty path is copied byte-for-byte.
             for rel_path in dirty_files:
                 src = repo_path / rel_path
-                dst = worktree_path / rel_path
-                if src.exists():
+                if not src.exists():
+                    continue
+                if src.is_dir():
+                    for file_path in sorted(src.rglob("*")):
+                        if not file_path.is_file():
+                            continue
+                        dst = worktree_path / file_path.relative_to(repo_path)
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        dst.write_bytes(file_path.read_bytes())
+                else:
+                    dst = worktree_path / rel_path
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     dst.write_bytes(src.read_bytes())
 

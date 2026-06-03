@@ -138,7 +138,13 @@ def test_ship_calls_git_in_correct_sequence(
     dirty_file.parent.mkdir(parents=True)
     dirty_file.write_text("# changed\n", encoding="utf-8")
 
-    git = _FakeGitRunner(outputs={("status", "myrepo"): " M src/changed.py\n"})
+    head_sha = "1111111122222222333333334444444455555555"
+    git = _FakeGitRunner(
+        outputs={
+            ("status", "myrepo"): " M src/changed.py\n",
+            ("rev-parse", "myrepo"): f"{head_sha}\n",
+        }
+    )
     gh = _FakeGhRunner()
     monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
@@ -157,8 +163,10 @@ def test_ship_calls_git_in_correct_sequence(
     assert shipped.pr_url == "https://github.com/OmniNode-ai/myrepo/pull/999"
 
     git_subcommands = [call[0][0] for call in git.calls]
-    # Must include: status, worktree add, add -A, commit, push, checkout --
+    # Must include: status, rev-parse, worktree add, add -A, commit, push,
+    # checkout --
     assert "status" in git_subcommands
+    assert "rev-parse" in git_subcommands
     assert "worktree" in git_subcommands
     assert "add" in git_subcommands
     assert "commit" in git_subcommands
@@ -172,8 +180,12 @@ def test_ship_calls_git_in_correct_sequence(
     ]
     assert checkout_canonical_calls, "checkout -- . on canonical not called"
     assert all(idx > push_idx for idx in checkout_canonical_calls)
+    # Worktree is based on the canonical HEAD SHA (the commit the dirty changes
+    # are relative to), NOT origin/dev (which can be ahead and cause a
+    # regressive partial PR).
     worktree_call = next(call for call in git.calls if call[0][0] == "worktree")
-    assert "origin/dev" in worktree_call[0]
+    assert head_sha in worktree_call[0]
+    assert "origin/dev" not in worktree_call[0]
 
     # gh pr create must have been called
     assert any("pr" in call[0] and "create" in call[0] for call in gh.calls)
@@ -200,3 +212,98 @@ def test_handler_skips_dirs_without_dot_git(
     assert result.repos_checked == 1
     assert result.repos_dirty == 0
     assert git.calls == []
+
+
+@pytest.mark.unit
+def test_worktree_based_on_canonical_head_not_origin_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-12636: rescue worktree must branch from the canonical clone's actual
+    HEAD (the commit the dirty changes are relative to), NOT origin/<base>.
+
+    Basing on origin/dev when the canonical clone is behind dev conflates
+    "uncommitted local work" with "clone is behind dev" and produces a
+    regressive partial PR that reverts already-merged dev work.
+    """
+    omni_home = tmp_path / "omni_home"
+    repo_dir = omni_home / "myrepo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / ".git").mkdir()
+    dirty_file = repo_dir / "src" / "changed.py"
+    dirty_file.parent.mkdir(parents=True)
+    dirty_file.write_text("# changed\n", encoding="utf-8")
+
+    head_sha = "abc123def4567890abc123def4567890abc123de"
+    git = _FakeGitRunner(
+        outputs={
+            ("status", "myrepo"): " M src/changed.py\n",
+            ("rev-parse", "myrepo"): f"{head_sha}\n",
+        }
+    )
+    gh = _FakeGhRunner()
+    monkeypatch.setenv("OMNI_HOME", str(omni_home))
+
+    cmd = ModelDirtyCanonicalSweepCommand(
+        omni_home=str(omni_home),
+        worktrees_root=str(tmp_path / "worktrees"),
+        repos=["myrepo"],
+        dry_run=False,
+    )
+    result = HandlerDirtyCanonicalSweep(git=git, gh=gh).handle(cmd)
+
+    assert result.repos_shipped == 1, result.results[0].error
+    worktree_call = next(call for call in git.calls if call[0][0] == "worktree")
+    # The worktree must be created from the canonical HEAD SHA, never origin/dev.
+    assert head_sha in worktree_call[0], (
+        f"worktree must branch from canonical HEAD {head_sha}, got {worktree_call[0]}"
+    )
+    assert "origin/dev" not in worktree_call[0], (
+        "worktree must NOT branch from origin/dev (stale-base regression)"
+    )
+
+
+@pytest.mark.unit
+def test_dirty_untracked_directory_is_expanded_to_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-12635: a dirty entry may be an untracked DIRECTORY (e.g.
+    ``evidence/OMN-12584/``). read_bytes() on a directory raises
+    ``[Errno 21] Is a directory`` and the ship fails. The copy loop must
+    recurse into directories and copy each constituent file.
+    """
+    omni_home = tmp_path / "omni_home"
+    repo_dir = omni_home / "myrepo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / ".git").mkdir()
+
+    # Untracked directory with nested files (git porcelain reports the dir).
+    evidence_dir = repo_dir / "evidence" / "OMN-12584"
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "receipt.json").write_text('{"ok": true}\n', encoding="utf-8")
+    nested = evidence_dir / "logs"
+    nested.mkdir()
+    (nested / "run.log").write_text("line1\nline2\n", encoding="utf-8")
+
+    git = _FakeGitRunner(
+        outputs={
+            ("status", "myrepo"): "?? evidence/OMN-12584/\n",
+            ("rev-parse", "myrepo"): "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n",
+        }
+    )
+    gh = _FakeGhRunner()
+    monkeypatch.setenv("OMNI_HOME", str(omni_home))
+
+    cmd = ModelDirtyCanonicalSweepCommand(
+        omni_home=str(omni_home),
+        worktrees_root=str(tmp_path / "worktrees"),
+        repos=["myrepo"],
+        dry_run=False,
+    )
+    result = HandlerDirtyCanonicalSweep(git=git, gh=gh).handle(cmd)
+
+    assert result.repos_shipped == 1, result.results[0].error
+    assert result.repos_failed == 0
+    # The worktree is created from the canonical HEAD; the _FakeGitRunner does
+    # not materialize files, so verify no "Is a directory" error was raised
+    # (the bug surfaced as a failed ship with that errno message).
+    assert "Is a directory" not in result.results[0].error
