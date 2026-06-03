@@ -29,6 +29,7 @@ from typing import Any
 from uuid import uuid4
 
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
     EnumRedeployScope,
     EnumRedeployStatus,
     ModelDeployPhaseResults,
@@ -36,6 +37,7 @@ from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
     ModelDeployRebuildCompleted,
     ModelRedeployResult,
 )
+from omnimarket.nodes.node_redeploy.models.model_redeploy_command import EnumRuntimeLane
 
 TOPIC_DEPLOY_REBUILD_COMPLETED = (
     "onex.evt.deploy.rebuild-completed.v1"  # onex-topic-allow: contract-declared
@@ -94,7 +96,11 @@ class HandlerRedeployKafka:
         self,
         scope: str = "full",
         git_ref: str = "origin/main",
+        runtime_lane: str | EnumRuntimeLane = EnumRuntimeLane.DEV,
+        build_source: str | EnumBuildSource = EnumBuildSource.RELEASE,
         services: list[str] | None = None,
+        image_ref: str | None = None,
+        image_digest: str | None = None,
         requested_by: str = "node_redeploy",
         correlation_id: str | None = None,
     ) -> ModelRedeployResult:
@@ -103,7 +109,11 @@ class HandlerRedeployKafka:
         Args:
             scope: Rebuild scope ("full", "runtime", "core").
             git_ref: Git ref for deploy agent to pull.
+            runtime_lane: Target runtime lane ("dev", "stability-test", "prod").
+            build_source: Artifact source ("workspace" or "release").
             services: Optional service filter. Empty = scope default.
+            image_ref: Optional mutable image reference.
+            image_digest: Optional immutable image digest. Required for prod.
             requested_by: Identity label emitted in the command.
             correlation_id: Override generated UUID (for testing).
 
@@ -122,12 +132,40 @@ class HandlerRedeployKafka:
                 f"Unknown scope {scope!r}. Valid values: {[s.value for s in EnumRedeployScope]}"
             ) from None
 
+        try:
+            lane_enum = (
+                runtime_lane
+                if isinstance(runtime_lane, EnumRuntimeLane)
+                else EnumRuntimeLane(runtime_lane)
+            )
+        except ValueError:
+            raise ValueError(  # error-ok: caller supplied invalid lane
+                f"Unknown runtime_lane {runtime_lane!r}. "
+                f"Valid values: {[lane.value for lane in EnumRuntimeLane]}"
+            ) from None
+
+        try:
+            build_source_enum = (
+                build_source
+                if isinstance(build_source, EnumBuildSource)
+                else EnumBuildSource(build_source)
+            )
+        except ValueError:
+            raise ValueError(  # error-ok: caller supplied invalid build source
+                f"Unknown build_source {build_source!r}. "
+                f"Valid values: {[source.value for source in EnumBuildSource]}"
+            ) from None
+
         command = ModelDeployRebuildCommand(
             correlation_id=corr_id,
             requested_by=requested_by,
             scope=scope_enum,
+            runtime_lane=lane_enum,
+            build_source=build_source_enum,
             services=services or [],
             git_ref=git_ref,
+            image_ref=image_ref,
+            image_digest=image_digest,
         )
 
         completion_future: asyncio.Future[ModelDeployRebuildCompleted] = (
@@ -177,7 +215,10 @@ class HandlerRedeployKafka:
             extra={
                 "correlation_id": corr_id,
                 "scope": scope,
+                "runtime_lane": lane_enum.value,
+                "build_source": build_source_enum.value,
                 "git_ref": git_ref,
+                "image_digest": image_digest,
                 "topic": TOPIC_DEPLOY_REBUILD_REQUESTED,
             },
         )
@@ -252,6 +293,9 @@ class HandlerRedeployKafka:
             status=completed_event.status,
             duration_seconds=duration,
             git_sha=completed_event.git_sha,
+            runtime_lane=completed_event.runtime_lane,
+            image_ref=completed_event.image_ref,
+            image_digest=completed_event.image_digest,
             services_restarted=completed_event.services_restarted,
             phase_results=phase_results,
             errors=completed_event.errors,
@@ -276,7 +320,11 @@ class HandlerRedeployKafka:
                 if hasattr(command.scope, "value")
                 else str(command.scope),
                 git_ref=command.git_ref,
+                runtime_lane=command.runtime_lane,
+                build_source=command.build_source,
                 services=list(command.services) if command.services else None,
+                image_ref=command.image_ref,
+                image_digest=command.image_digest,
                 requested_by=command.requested_by,
                 correlation_id=command.correlation_id,
             )

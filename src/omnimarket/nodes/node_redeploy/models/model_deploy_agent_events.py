@@ -16,7 +16,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.nodes.node_redeploy.models.model_redeploy_command import EnumRuntimeLane
 
 
 class EnumRedeployScope(StrEnum):
@@ -25,6 +27,13 @@ class EnumRedeployScope(StrEnum):
     FULL = "full"
     RUNTIME = "runtime"
     CORE = "core"
+
+
+class EnumBuildSource(StrEnum):
+    """Artifact source accepted by the deploy-agent wire contract."""
+
+    WORKSPACE = "workspace"
+    RELEASE = "release"
 
 
 class EnumPhaseResult(StrEnum):
@@ -71,6 +80,14 @@ class ModelDeployRebuildCommand(BaseModel):
         default=EnumRedeployScope.FULL,
         description="Scope of rebuild.",
     )
+    runtime_lane: EnumRuntimeLane = Field(
+        ...,
+        description="Target runtime lane consumed by the deploy agent.",
+    )
+    build_source: EnumBuildSource = Field(
+        default=EnumBuildSource.RELEASE,
+        description="Whether the agent builds workspace code or release-promoted code.",
+    )
     services: list[str] = Field(
         default_factory=list,
         description="Optional service filter. Empty = scope default.",
@@ -79,6 +96,24 @@ class ModelDeployRebuildCommand(BaseModel):
         default="origin/main",
         description="Git ref to deploy.",
     )
+    image_ref: str | None = Field(
+        default=None,
+        description="Mutable image reference. The digest is authoritative when present.",
+    )
+    image_digest: str | None = Field(
+        default=None,
+        description="Pinned image digest. Required for prod deployments.",
+    )
+
+    @model_validator(mode="after")
+    def validate_prod_digest(self) -> ModelDeployRebuildCommand:
+        """Production deploy-agent commands must pin the proven artifact."""
+        if self.runtime_lane is EnumRuntimeLane.PROD and not self.image_digest:
+            raise ValueError(
+                "prod runtime_lane requires image_digest: production deploys the "
+                "exact stability-proven digest"
+            )
+        return self
 
 
 class ModelDeployPhaseResults(BaseModel):
@@ -110,6 +145,17 @@ class ModelDeployRebuildCompleted(BaseModel):
     completed_at: datetime | None = Field(default=None, description="Rebuild end time.")
     duration_seconds: float = Field(default=0.0, description="Total duration.")
     scope: str = Field(default="full", description="Scope that was rebuilt.")
+    runtime_lane: EnumRuntimeLane | None = Field(
+        default=None,
+        description="Lane reported by the deploy agent.",
+    )
+    image_ref: str | None = Field(
+        default=None, description="Image ref reported by the agent."
+    )
+    image_digest: str | None = Field(
+        default=None,
+        description="Image digest reported by the agent.",
+    )
     services_restarted: list[str] = Field(
         default_factory=list,
         description="Services that were restarted.",
@@ -142,6 +188,17 @@ class ModelRedeployResult(BaseModel):
     status: EnumRedeployStatus = Field(..., description="success | failed")
     duration_seconds: float = Field(default=0.0, description="Total wall-clock time.")
     git_sha: str = Field(default="", description="Git SHA deployed.")
+    runtime_lane: EnumRuntimeLane | None = Field(
+        default=None,
+        description="Lane reported by the deploy agent.",
+    )
+    image_ref: str | None = Field(
+        default=None, description="Image ref reported by the agent."
+    )
+    image_digest: str | None = Field(
+        default=None,
+        description="Image digest reported by the agent.",
+    )
     services_restarted: list[str] = Field(
         default_factory=list,
         description="Services restarted by the deploy agent.",
@@ -165,6 +222,7 @@ class ModelRedeployResult(BaseModel):
 
 
 __all__: list[str] = [
+    "EnumBuildSource",
     "EnumPhaseResult",
     "EnumRedeployScope",
     "EnumRedeployStatus",
