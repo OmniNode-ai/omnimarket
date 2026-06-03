@@ -11,7 +11,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import sys
 from datetime import UTC, datetime
+from types import ModuleType
 from uuid import uuid4
 
 import pytest
@@ -386,6 +388,90 @@ class TestRedeployKafkaGoldenChain:
         """Passing None as event_bus raises RuntimeError immediately."""
         with pytest.raises(RuntimeError, match="requires an event_bus"):
             HandlerRedeployKafka(event_bus=None)
+
+    async def test_from_env_wires_typed_kafka_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """from_env wires EventBusKafka with the current typed config model."""
+        kafka_module = ModuleType("omnibase_infra.event_bus.event_bus_kafka")
+        config_module = ModuleType("omnibase_infra.event_bus.models.config")
+
+        class FakeModelKafkaEventBusConfig:
+            model_fields = {
+                "bootstrap_servers": object(),
+                "environment": object(),
+                "api_version": object(),
+            }
+
+            def __init__(self, **kwargs: object) -> None:
+                self.bootstrap_servers = kwargs["bootstrap_servers"]
+                self.environment = kwargs["environment"]
+                self.api_version = kwargs["api_version"]
+
+        class FakeEventBusKafka:
+            def __init__(self, config: FakeModelKafkaEventBusConfig) -> None:
+                self._config = config
+                self._bootstrap_servers = config.bootstrap_servers
+                self._environment = config.environment
+
+        kafka_module.EventBusKafka = FakeEventBusKafka  # type: ignore[attr-defined]
+        config_module.ModelKafkaEventBusConfig = FakeModelKafkaEventBusConfig  # type: ignore[attr-defined]
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.event_bus_kafka", kafka_module
+        )
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.models.config", config_module
+        )
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker:19092")
+        monkeypatch.setenv("KAFKA_ENVIRONMENT", "dev")
+        monkeypatch.setenv("KAFKA_API_VERSION", "2.8.0")
+
+        handler = HandlerRedeployKafka.from_env()
+
+        assert handler.bus._bootstrap_servers == "broker:19092"
+        assert handler.bus._environment == "dev"
+        assert handler.bus._config.api_version == "2.8.0"
+
+    async def test_from_env_omits_api_version_for_older_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """from_env remains compatible with older ModelKafkaEventBusConfig."""
+        kafka_module = ModuleType("omnibase_infra.event_bus.event_bus_kafka")
+        config_module = ModuleType("omnibase_infra.event_bus.models.config")
+
+        class FakeModelKafkaEventBusConfig:
+            model_fields = {
+                "bootstrap_servers": object(),
+                "environment": object(),
+            }
+
+            def __init__(self, **kwargs: object) -> None:
+                assert "api_version" not in kwargs
+                self.bootstrap_servers = kwargs["bootstrap_servers"]
+                self.environment = kwargs["environment"]
+
+        class FakeEventBusKafka:
+            def __init__(self, config: FakeModelKafkaEventBusConfig) -> None:
+                self._config = config
+                self._bootstrap_servers = config.bootstrap_servers
+                self._environment = config.environment
+
+        kafka_module.EventBusKafka = FakeEventBusKafka  # type: ignore[attr-defined]
+        config_module.ModelKafkaEventBusConfig = FakeModelKafkaEventBusConfig  # type: ignore[attr-defined]
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.event_bus_kafka", kafka_module
+        )
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.models.config", config_module
+        )
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker:19092")
+        monkeypatch.setenv("KAFKA_ENVIRONMENT", "dev")
+        monkeypatch.setenv("KAFKA_API_VERSION", "2.8.0")
+
+        handler = HandlerRedeployKafka.from_env()
+
+        assert handler.bus._bootstrap_servers == "broker:19092"
+        assert handler.bus._environment == "dev"
 
     async def test_duration_from_agent_preferred(self) -> None:
         """Duration from deploy agent is used when > 0, else wall-clock."""
