@@ -181,7 +181,7 @@ class TestRegistryIntegrationWithSweep:
         projected_rows["sea_acceptance"]["delegated_to"] = "claude-sonnet-4-6"
         # OMN-12660 WS-G: d3_local_routing additional required fields
         projected_rows["d3_local_routing"]["base_url"] = (
-            "http://192.168.86.201:8000"  # onex-allow-internal-ip: test fixture for D3 local-first guard
+            "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-12660 reason="D3 sweep fixture: reference local-first endpoint"
         )
         projected_rows["d3_local_routing"]["model"] = "qwen3-coder-30b"
         # OMN-12660 WS-G: d1_d2_scaffold additional required fields

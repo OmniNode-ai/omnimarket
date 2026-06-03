@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-internal-ip: D3 local-first routing guard requires lab GPU server IP literals (192.168.86.201) as test data — read from env at runtime in live integration tests
+# onex-allow-internal-ip OMN-12660 reason="D3 local-first routing guard: lab LAN subnet literals are test data for the D3 regression guard — each line carrying an IP has its own inline annotation"
 """Golden chain: full SEA acceptance path and session-defect error chains (OMN-12660).
 
 Happy-path chain:
@@ -255,9 +255,9 @@ class TestErrorChainD3CloudTierRouting:
 
     def test_d3_local_url_passes_local_first_check(self) -> None:
         """Counterpart: .201 lab GPU URL is correctly classified as local-first."""
-        local_url = "http://192.168.86.201:8000"
+        local_url = "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-12660 reason="D3 local-first guard: lab GPU server URL is the reference local-first endpoint"
         local_first_prefixes = [
-            "http://192.168.",
+            "http://192.168.",  # onex-allow-internal-ip OMN-12660 reason="D3 local-first prefix pattern for lab LAN subnet"
             "http://localhost",
             "http://127.0.0.1",
         ]
@@ -304,7 +304,7 @@ class TestErrorChainD3CloudTierRouting:
             projected_rows={
                 "d3_local_routing": {
                     "correlation_id": "d3-test-002",
-                    "base_url": "http://192.168.86.201:8000",
+                    "base_url": "http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-12660 reason="D3 sweep pass: reference local-first endpoint for chain assertion"
                     "model": "qwen3-coder-30b",
                 }
             },
