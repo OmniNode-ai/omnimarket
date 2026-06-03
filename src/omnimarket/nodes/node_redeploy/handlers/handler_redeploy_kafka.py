@@ -56,6 +56,42 @@ _POLL_INTERVAL_S = 2.0
 _DEPLOY_AGENT_HMAC_SECRET_ENV = "DEPLOY_AGENT_HMAC_SECRET"
 
 
+def _normalize_deploy_agent_completion_payload(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize deploy-agent payloads to the node_redeploy completion model."""
+    normalized = dict(payload)
+    phase_results = dict(normalized.get("phase_results") or {})
+    errors = list(normalized.get("errors") or [])
+
+    status = normalized.get("status")
+    if status is None:
+        non_publish_in_progress = any(
+            phase != "publish" and result == "in_progress"
+            for phase, result in phase_results.items()
+        )
+        failed_phase = any(result == "failed" for result in phase_results.values())
+        status = (
+            EnumRedeployStatus.FAILED.value
+            if errors or failed_phase or non_publish_in_progress
+            else EnumRedeployStatus.SUCCESS.value
+        )
+        normalized["status"] = status
+
+    normalized_phase_results = {}
+    for phase, result in phase_results.items():
+        if result == "in_progress":
+            if phase == "publish":
+                result = "success"
+            elif status == EnumRedeployStatus.FAILED.value:
+                result = "failed"
+            else:
+                result = "pending"
+        normalized_phase_results[phase] = result
+    normalized["phase_results"] = normalized_phase_results
+    return normalized
+
+
 def _sign_deploy_agent_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     """Attach deploy-agent HMAC signature when the shared secret is available."""
     secret = os.environ.get(_DEPLOY_AGENT_HMAC_SECRET_ENV, "").strip()
@@ -204,6 +240,7 @@ class HandlerRedeployKafka:
                 if event_corr_id != corr_id:
                     return  # Different rebuild, ignore
 
+                payload = _normalize_deploy_agent_completion_payload(payload)
                 completed = ModelDeployRebuildCompleted(**payload)
                 completion_future.set_result(completed)
             except Exception as exc:

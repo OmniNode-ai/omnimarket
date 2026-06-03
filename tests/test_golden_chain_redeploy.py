@@ -310,6 +310,59 @@ class TestRedeployKafkaGoldenChain:
 
         await bus.close()
 
+    async def test_deploy_agent_payload_without_status_is_normalized(self) -> None:
+        """Deployed agent payload shape without computed status still completes."""
+        bus = EventBusInmemory(environment="test", group="redeploy-test")
+        await bus.start()
+
+        corr_id = str(uuid4())
+        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
+
+        async def _agent_sends_deployed_shape(message: object) -> None:
+            payload = json.loads(message.value)  # type: ignore[union-attr]
+            completion_payload = {
+                "correlation_id": payload["correlation_id"],
+                "requested_git_ref": "origin/dev",
+                "git_sha": "abc123",
+                "started_at": "2026-06-03T19:24:36.000000+00:00",
+                "completed_at": "2026-06-03T19:24:39.000000+00:00",
+                "duration_seconds": 3.0,
+                "scope": "runtime",
+                "runtime_lane": "dev",
+                "services_restarted": ["omninode-runtime"],
+                "phase_results": {
+                    "preflight": "success",
+                    "git": "success",
+                    "compose_gen": "in_progress",
+                    "publish": "in_progress",
+                },
+                "errors": ["No such file or directory: 'uv'"],
+                "health_checks": [],
+            }
+            await bus.publish(
+                _EVT_TOPIC,
+                key=payload["correlation_id"].encode(),
+                value=json.dumps(completion_payload).encode(),
+            )
+
+        await bus.subscribe(
+            _CMD_TOPIC, on_message=_agent_sends_deployed_shape, group_id="fake-agent"
+        )
+
+        result = await handler.execute(
+            scope="runtime",
+            runtime_lane=EnumRuntimeLane.DEV,
+            correlation_id=corr_id,
+        )
+
+        assert result.success is False
+        assert result.status == EnumRedeployStatus.FAILED
+        assert result.errors == ["No such file or directory: 'uv'"]
+        assert result.phase_results["git"] == "success"
+        assert result.phase_results["publish"] == "success"
+
+        await bus.close()
+
     async def test_timeout_when_no_agent_responds(self) -> None:
         """No deploy agent responds -> timeout -> timed_out=True."""
         bus = EventBusInmemory(environment="test", group="redeploy-test")
