@@ -19,9 +19,9 @@ from typing import Any
 import pytest
 import yaml
 
-# Each entry maps an omnimarket shim import path to the canonical compat path.
+# Each entry maps an omnimarket shim import path to its canonical core path.
 # The test verifies that following the shim yields the exact same class object
-# as importing directly from compat.
+# as importing directly from core.
 DTO_IMPORTS = {
     "omnimarket.events.delegation.ModelDelegationRequest": "omnibase_core.models.delegation.wire.model_delegation_wire_request.ModelDelegationRequest",
     "omnimarket.events.delegation.ModelDelegationResult": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationResult",
@@ -49,6 +49,9 @@ DELEGATION_CONTRACTS = [
     "node_delegation_quality_gate_reducer",
     "node_delegation_routing_reducer",
 ]
+FORBIDDEN_COMPAT_WIRE_PREFIX = "omnibase_compat.contracts.delegation.wire"
+FORBIDDEN_COMPAT_WIRE_BYTES = FORBIDDEN_COMPAT_WIRE_PREFIX.encode()
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _resolve(dotted_ref: str) -> Any:
@@ -95,8 +98,19 @@ def test_bifrost_delegation_config_adapter_shim_is_deleted() -> None:
 
 
 @pytest.mark.unit
+def test_no_omnibase_compat_delegation_wire_refs_under_src() -> None:
+    forbidden_refs = sorted(
+        path
+        for path in (REPO_ROOT / "src").rglob("*")
+        if path.is_file() and FORBIDDEN_COMPAT_WIRE_BYTES in path.read_bytes()
+    )
+
+    assert forbidden_refs == []
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("node_name", DELEGATION_CONTRACTS)
-def test_delegation_contract_model_refs_keep_compatibility_paths(
+def test_delegation_contract_model_refs_resolve_to_core_paths(
     node_name: str,
 ) -> None:
     """Contract model refs resolve through omnimarket shims to core wire DTOs (OMN-12659)."""
