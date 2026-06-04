@@ -72,6 +72,7 @@ event_bus:
 model_routing:
   provider: local
   endpoint_env: LLM_CODER_URL
+  endpoint_mode: complete_endpoint
   served_model_id_env: LLM_CODER_MODEL_NAME
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
@@ -83,11 +84,9 @@ dependencies:
     key: LLM_CODER_URL
     description: >
       Endpoint URL for the generation LLM. Set via overlay from Infisical.
-      Provider-specific full endpoints (e.g. Gemini's
-      https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)
-      must be the COMPLETE URL — the handler posts them verbatim via endpoint_url
-      (no path appended). An origin-only base (e.g. http://host:8000) keeps the
-      legacy /v1/chat/completions append.
+      model_routing.endpoint_mode declares whether this value is a complete
+      endpoint posted verbatim via endpoint_url or an OpenAI-compatible base URL
+      that keeps the /v1/chat/completions append.
     required: true
   - name: llm_coder_model_name
     type: environment

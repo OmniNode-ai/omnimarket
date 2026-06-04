@@ -30,7 +30,6 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 import yaml
 
@@ -63,7 +62,11 @@ _REQUIRED_CONTRACT_FIELDS = [
 
 # Contract model_routing keys — resolved at construction from contract.yaml
 _MODEL_ROUTING_ENDPOINT_ENV_KEY = "endpoint_env"
+_MODEL_ROUTING_ENDPOINT_MODE_KEY = "endpoint_mode"
 _MODEL_ROUTING_MODEL_ID_ENV_KEY = "served_model_id_env"
+_ENDPOINT_MODE_COMPLETE = "complete_endpoint"
+_ENDPOINT_MODE_OPENAI_BASE = "openai_compatible_base"
+_ALLOWED_ENDPOINT_MODES = {_ENDPOINT_MODE_COMPLETE, _ENDPOINT_MODE_OPENAI_BASE}
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an ONEX node generator. Generate a valid ONEX contract.yaml and Python handler.\n"
@@ -82,21 +85,6 @@ def _noop_publisher(topic: str, payload: bytes) -> None:
     logger.debug(
         "[generation-consumer] noop publish to %s (%d bytes)", topic, len(payload)
     )
-
-
-def _endpoint_url_is_complete(url: str) -> bool:
-    """True when the configured URL is a complete endpoint to POST to as-is.
-
-    Provider-neutral, path-based — never sniffs the host. A complete endpoint
-    carries a non-trivial path segment beyond the origin (e.g. Gemini's
-    ``https://generativelanguage.googleapis.com/v1beta/openai/``); such URLs are
-    routed through ``endpoint_url`` so the infra adapter posts them verbatim and
-    does NOT append ``/v1/chat/completions``. An origin-only value (e.g.
-    ``http://llm-host:8000`` or ``https://host.example.com/``) has no
-    meaningful path and keeps the legacy ``base_url`` + path-append behavior.
-    """
-    path = urlsplit(url).path.strip("/")
-    return bool(path)
 
 
 def _load_contract(path: Path | None = None) -> dict[str, Any]:
@@ -217,8 +205,9 @@ class HandlerGenerationConsumer:
 
     Endpoint resolution order (contract-first, no bespoke env vars):
         1. contract.yaml model_routing.endpoint_env names the env var to read
-        2. That env var (e.g. LLM_CODER_URL) is populated by the overlay system
-        3. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay
+        2. contract.yaml model_routing.endpoint_mode declares how to post it
+        3. That env var (e.g. LLM_CODER_URL) is populated by the overlay system
+        4. MixinLlmHttpTransport enforces CIDR allowlist + HMAC from the same overlay
     """
 
     def __init__(
@@ -254,6 +243,9 @@ class HandlerGenerationConsumer:
         self._endpoint_env: str = model_routing.get(
             _MODEL_ROUTING_ENDPOINT_ENV_KEY, "LLM_CODER_URL"
         )
+        self._endpoint_mode: str = str(
+            model_routing.get(_MODEL_ROUTING_ENDPOINT_MODE_KEY, "")
+        )
         self._model_id_env: str = str(
             model_routing.get(_MODEL_ROUTING_MODEL_ID_ENV_KEY, "")
         )
@@ -261,6 +253,12 @@ class HandlerGenerationConsumer:
             raise ValueError(
                 "contract.yaml model_routing.served_model_id_env is required; "
                 "served model IDs must come from overlays, not handler defaults"
+            )
+        if self._endpoint_mode not in _ALLOWED_ENDPOINT_MODES:
+            allowed = ", ".join(sorted(_ALLOWED_ENDPOINT_MODES))
+            raise ValueError(
+                "contract.yaml model_routing.endpoint_mode must be one of "
+                f"{allowed}; got {self._endpoint_mode!r}"
             )
 
     def _resolve_model_id(self) -> str:
@@ -321,15 +319,7 @@ class HandlerGenerationConsumer:
             endpoint = os.environ[self._endpoint_env]
             assert self._effect is not None
 
-            # The contract may declare either the complete endpoint URL
-            # (e.g. Gemini's ".../v1beta/openai/chat/completions")
-            # or an origin-only base URL (e.g. "http://llm-host:8000").
-            # A full endpoint carries a non-trivial path and must be posted as-is
-            # via endpoint_url so the infra adapter does not append
-            # "/v1/chat/completions" (which yields a 404 against providers that
-            # use a different chat path). An origin-only value keeps the legacy
-            # base_url append. The distinction is the URL path, not the provider.
-            if _endpoint_url_is_complete(endpoint):
+            if self._endpoint_mode == _ENDPOINT_MODE_COMPLETE:
                 request = ModelLlmInferenceRequest(
                     base_url=endpoint,
                     endpoint_url=endpoint,
@@ -341,7 +331,7 @@ class HandlerGenerationConsumer:
                     ),
                     timeout_seconds=120.0,
                 )
-            else:
+            elif self._endpoint_mode == _ENDPOINT_MODE_OPENAI_BASE:
                 request = ModelLlmInferenceRequest(
                     base_url=endpoint,
                     operation_type=EnumLlmOperationType.CHAT_COMPLETION,
@@ -351,6 +341,10 @@ class HandlerGenerationConsumer:
                         {"role": "user", "content": user_content},
                     ),
                     timeout_seconds=120.0,
+                )
+            else:
+                raise RuntimeError(
+                    "contract.yaml model_routing.endpoint_mode was not validated"
                 )
             response = await self._effect.handle(request)
 
