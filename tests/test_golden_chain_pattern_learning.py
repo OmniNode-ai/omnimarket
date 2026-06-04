@@ -149,6 +149,31 @@ class TestPatternLearningChainValidation:
         projected_rows["d9_wheel_module"]["node_startup_ok"] = True
         # OMN-12660 WS-G: f1_publish_loop additional required fields
         projected_rows["f1_publish_loop"]["published_at"] = "2026-06-03T00:00:00Z"
+        # OMN-12687 WS I-A: inference request/response round-trip fields
+        projected_rows["delegation_inference_round_trip"].update(
+            {
+                "content": "Generated node code...",
+                "model_used": "qwen3-coder-30b",
+                "llm_call_id": "chatcmpl-proof",
+                "prompt_tokens": 144,
+                "completion_tokens": 593,
+                "total_tokens": 737,
+            }
+        )
+        # OMN-12687 WS I-A: terminal reducer materialization fields
+        projected_rows["delegation_projection_materialization"].update(
+            {
+                "task_type": "research",
+                "delegated_to": "qwen3-coder-30b",
+                "model_name": "qwen3-coder-30b",
+                "quality_gate_passed": True,
+                "response_text": "Generated node code...",
+                "tokens_input": 144,
+                "tokens_output": 593,
+                "tokens_to_compliance": 737,
+                "compliance_attempts": 1,
+            }
+        )
 
         request = GoldenChainSweepRequest(
             chains=chains,
