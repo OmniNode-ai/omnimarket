@@ -121,7 +121,9 @@ metadata:
     - "hackathon"
     - "llm"
     - "node-generation"
+    - "OMN-12683"
     - "OMN-11092"
   related_tickets:
+    - "OMN-12683"
     - "OMN-11092"
     - "OMN-11091"
