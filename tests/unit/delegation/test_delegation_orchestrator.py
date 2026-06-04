@@ -84,6 +84,7 @@ def _make_request(
 def _make_routing_decision(
     correlation_id: UUID,
     task_type: str = "test",
+    api_key_ref: str | None = None,
 ) -> ModelRoutingDecision:
     from uuid import NAMESPACE_DNS, uuid5
 
@@ -95,6 +96,7 @@ def _make_routing_decision(
             NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
         ),
         endpoint_url="http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for local AIPC LLM endpoint"
+        api_key_ref=api_key_ref,
         cost_tier="low",
         max_context_tokens=65536,
         system_prompt="You are a test generation assistant.",
@@ -177,6 +179,21 @@ class TestHappyPath:
         assert isinstance(intents[0], ModelInferenceIntent)
         assert intents[0].intent == "llm_inference"
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+
+    def test_routing_decision_passes_api_key_ref_not_secret_value(self) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        request = _make_request(correlation_id=cid)
+        handler.handle_delegation_request(request)
+
+        intents = handler.handle_routing_decision(
+            _make_routing_decision(cid, api_key_ref="GEMINI_API_KEY")
+        )
+
+        assert len(intents) == 1
+        assert isinstance(intents[0], ModelInferenceIntent)
+        assert intents[0].api_key_ref == "GEMINI_API_KEY"
+        assert not hasattr(intents[0], "api_key")
 
         # Step 3: Handle inference response -> emits quality gate intent
         response = _make_inference_response(

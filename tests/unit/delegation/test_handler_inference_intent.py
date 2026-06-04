@@ -176,9 +176,12 @@ class TestHandlerInferenceIntent:
         assert messages[0]["content"] == "Be precise."
         assert messages[1]["role"] == "user"
 
-    def test_api_key_added_to_headers(self) -> None:
+    def test_api_key_ref_resolved_at_effect_boundary(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("TEST_MODEL_API_KEY", "sk-test-key")
         handler = HandlerInferenceIntent()
-        intent = _make_intent(api_key="sk-test-key")
+        intent = _make_intent(api_key_ref="TEST_MODEL_API_KEY")
 
         captured_headers: list[dict[str, str]] = []
 
@@ -202,6 +205,19 @@ class TestHandlerInferenceIntent:
 
         assert len(captured_headers) == 1
         assert captured_headers[0].get("Authorization") == "Bearer sk-test-key"
+
+    def test_missing_api_key_ref_returns_error_response(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("TEST_MODEL_API_KEY", raising=False)
+        handler = HandlerInferenceIntent()
+        intent = _make_intent(api_key_ref="TEST_MODEL_API_KEY")
+
+        result = handler.handle(intent)
+
+        assert result.correlation_id == intent.correlation_id
+        assert result.content == ""
+        assert "TEST_MODEL_API_KEY" in result.error_message
 
     def test_contract_declares_inference_response_publish_topic(self) -> None:
         from pathlib import Path

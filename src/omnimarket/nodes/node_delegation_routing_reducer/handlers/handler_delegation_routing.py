@@ -290,8 +290,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
 
         api_key_ref: str | None = None
         if backend.api_key_env:
-            env_value = os.environ.get(backend.api_key_env)  # ONEX_FLAG_EXEMPT: bifrost
-            if not env_value:
+            if backend.api_key_env not in os.environ:  # ONEX_FLAG_EXEMPT: presence only
                 continue
             api_key_ref = backend.api_key_env
 

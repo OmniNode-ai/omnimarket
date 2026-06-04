@@ -23,8 +23,8 @@ description: |
   cost telemetry derived from the pricing manifest, and typed terminal event
   emission on success, escalation, or total failure.
 
-  Endpoints are resolved from env vars declared in this contract — no raw
-  URL strings in handler code.
+  Endpoint authority is resolved by routing/contract configuration before this
+  effect runs; the handler consumes the route-supplied endpoint URL.
 
 # === RUNTIME PROFILES ===
 descriptor:
@@ -61,24 +61,10 @@ output_state:
   required: ["success", "request_id"]
   optional: ["content", "tokens_in", "tokens_out", "latency_ms", "actual_cost_usd", "failure_class", "error_message"]
 
-# === ENV VARS (resolved at runtime — never hardcoded URLs) ===
-# Each endpoint_ref in ModelLlmDelegationCallRequest is the name of one of these env vars.
-env_vars:
-  - name: "LLM_LOCAL_PRIMARY_URL"
-    required: false
-    description: "Base URL for primary local inference endpoint"
-  - name: "LLM_LOCAL_FAST_URL"
-    required: false
-    description: "Base URL for fast local inference endpoint"
-  - name: "LLM_CODER_FAST_URL"
-    required: false
-    description: "Base URL for fast coder inference endpoint"
-  - name: "LLM_GLM_URL"
-    required: false
-    description: "Base URL for GLM cloud endpoint"
-  - name: "LLM_REMOTE_FRONTIER_URL"
-    required: false
-    description: "Base URL for frontier remote endpoint"
+# Endpoint authority is resolved by the routing/contract layer before this
+# effect runs. ModelLlmDelegationCallRequest.endpoint_ref carries the resolved
+# endpoint URL for compatibility with the existing wire field name.
+env_vars: []
 
 # =============================================================================
 # EVENT BUS SUBCONTRACT - Runtime Routing Layer
@@ -103,7 +89,7 @@ event_bus:
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.delegation-execute.v1":
       schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request.ModelLlmDelegationCallRequest"
-      description: "Command to execute a single LLM delegation call for the given model/endpoint."
+      description: "Command to execute a single LLM delegation call for the given model and route-supplied endpoint URL."
     "onex.cmd.omnibase-infra.delegation-inference-request.v1":
       schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceIntent"
       description: "Inference intent from the delegation orchestrator. Handler resolves base_url directly."

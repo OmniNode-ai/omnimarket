@@ -23,7 +23,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import time
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
@@ -108,26 +107,6 @@ _TASK_TEMPERATURE: dict[str, float] = {
 }
 
 _logger = logging.getLogger(__name__)
-
-
-def _resolve_api_key(decision: ModelRoutingDecision) -> str | None:
-    """Resolve api_key from the routing decision's api_key_ref env var name.
-
-    Returns None for local backends (no api_key_ref) or when the env var
-    is unset. Logs a warning when a ref is declared but the env var is missing.
-    """
-    ref = decision.api_key_ref
-    if not ref:
-        return None
-    value = os.environ.get(
-        ref
-    )  # ONEX_FLAG_EXEMPT: resolves contract-declared api_key_ref at runtime
-    if not value:
-        _logger.warning(
-            "api_key_ref=%s declared but env var is unset; proceeding without api_key",
-            ref,
-        )
-    return value or None
 
 
 # Valid state transitions: from_state -> set of valid to_states
@@ -257,7 +236,7 @@ def _evaluate_compliance(
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
-            api_key=_resolve_api_key(workflow.routing_decision),
+            api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
         )
     ]
@@ -436,7 +415,7 @@ class HandlerDelegationWorkflow:
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,
-                api_key=_resolve_api_key(decision),
+                api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
             )
         ]
