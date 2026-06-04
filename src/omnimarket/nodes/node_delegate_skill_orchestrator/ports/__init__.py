@@ -7,6 +7,11 @@ from __future__ import annotations
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
     RuntimeDelegationDispatchPort,
+    load_runtime_delegation_dispatch_config,
 )
 
-__all__ = ["ProtocolDelegationEventBus", "RuntimeDelegationDispatchPort"]
+__all__ = [
+    "ProtocolDelegationEventBus",
+    "RuntimeDelegationDispatchPort",
+    "load_runtime_delegation_dispatch_config",
+]
