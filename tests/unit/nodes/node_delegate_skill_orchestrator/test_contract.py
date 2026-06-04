@@ -18,6 +18,9 @@ from omnimarket.models.delegation.wire.model_token_limits import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    load_runtime_delegation_dispatch_config,
+)
 
 _NODE_DIR = (
     Path(__file__).resolve().parents[4]
@@ -49,6 +52,19 @@ def test_contract_declares_named_topic_fields() -> None:
     )
     assert rd["default_timeout_ms"] == 300000
     assert rd["max_timeout_ms"] == 900000
+
+
+@pytest.mark.unit
+def test_contract_declares_delegation_runtime_dispatch_config() -> None:
+    config = load_runtime_delegation_dispatch_config(_CONTRACT_PATH)
+
+    assert config.topics.command == "onex.cmd.omnibase-infra.delegation-request.v1"
+    assert config.topics.completed == "onex.evt.omnibase-infra.delegation-completed.v1"
+    assert config.topics.failed == "onex.evt.omnibase-infra.delegation-failed.v1"
+    assert config.request_message_type == "omnibase-infra.delegation-request"
+    assert config.source_tool == "delegate-skill-runtime-port"
+    assert config.consumer_group_prefix == "delegate-skill-runtime-port"
+    assert config.wait_timeout_seconds == 300
 
 
 @pytest.mark.unit
