@@ -91,6 +91,39 @@ class TestHandlerInferenceIntent:
         assert result.error_message != ""
         assert result.model_used == "test-model"
 
+    @pytest.mark.parametrize("content", [None, "   "])
+    def test_empty_message_content_returns_error_response(
+        self, content: str | None
+    ) -> None:
+        handler = HandlerInferenceIntent()
+        intent = _make_intent()
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "id": "chatcmpl-empty",
+            "choices": [{"message": {"content": content}}],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 0,
+                "total_tokens": 10,
+            },
+        }
+        mock_response.raise_for_status.return_value = None
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = handler.handle(intent)
+
+        assert result.correlation_id == intent.correlation_id
+        assert result.content == ""
+        assert result.model_used == "test-model"
+        assert "empty message content" in result.error_message
+
     def test_returns_response_for_runtime_autopublish(self) -> None:
         # The runtime dispatch-result applier publishes the RETURNED model to the
         # contract's publish_topics; handle() must return ModelInferenceResponseData.

@@ -147,7 +147,11 @@ class HandlerInferenceIntent:
         if not choices:
             raise ValueError("API returned empty choices array")
 
-        content: str = choices[0].get("message", {}).get("content") or ""
+        content_raw = choices[0].get("message", {}).get("content")
+        content = content_raw.strip() if isinstance(content_raw, str) else ""
+        if not content:
+            raise ValueError("API returned empty message content")
+
         usage = data.get("usage") or {}
         prompt_tokens = int(usage.get("prompt_tokens") or 0)
         completion_tokens = int(usage.get("completion_tokens") or 0)
