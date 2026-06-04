@@ -268,7 +268,7 @@ def test_pr_title_and_body_satisfy_required_ci_gates(
     # Must not emit a free-text receipt-gate bypass token: the validator
     # hard-fails unapproved skip tokens, so the node must rely on ticket
     # citation, not a skip line.
-    forbidden_token = "[" "skip-" "receipt-gate:"
+    forbidden_token = "[" + "skip" + "-receipt-gate:"
     assert forbidden_token not in body
 
 
