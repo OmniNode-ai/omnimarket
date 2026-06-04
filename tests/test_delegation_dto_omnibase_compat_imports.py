@@ -41,13 +41,6 @@ DTO_IMPORTS = {
     "omnimarket.nodes.node_delegation_routing_reducer.models.ModelDelegationConfig": "omnibase_core.models.delegation.wire.model_routing_config.ModelDelegationConfig",
     "omnimarket.nodes.node_delegation_routing_reducer.models.ModelRoutingTier": "omnibase_core.models.delegation.wire.model_routing_config.ModelRoutingTier",
     "omnimarket.nodes.node_delegation_routing_reducer.models.ModelTierModel": "omnibase_core.models.delegation.wire.model_routing_config.ModelTierModel",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelBifrostDelegationConfig": "omnibase_core.models.delegation.wire.model_bifrost_delegation_config.ModelBifrostDelegationConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationBackendConfig": "omnibase_core.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationBackendConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationCircuitBreakerConfig": "omnibase_core.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationCircuitBreakerConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationFailoverConfig": "omnibase_core.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationFailoverConfig",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationFallbackPolicy": "omnibase_core.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationFallbackPolicy",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationRoutingRule": "omnibase_core.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationRoutingRule",
-    "omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config.ModelDelegationShadowConfig": "omnibase_core.models.delegation.wire.model_bifrost_delegation_config.ModelDelegationShadowConfig",
     "omnimarket.nodes.node_budget_policy_compute.models.model_budget_limits.ModelBudgetLimits": "omnibase_core.models.delegation.wire.model_budget.ModelBudgetLimits",
 }
 
@@ -93,6 +86,12 @@ def test_delegation_dto_market_paths_resolve_to_core(
 
     assert market_model is canonical_model
     assert market_model.__module__.startswith("omnibase_core.models.delegation.wire.")
+
+
+@pytest.mark.unit
+def test_bifrost_delegation_config_adapter_shim_is_deleted() -> None:
+    with pytest.raises(ModuleNotFoundError):
+        import_module("omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config")
 
 
 @pytest.mark.unit

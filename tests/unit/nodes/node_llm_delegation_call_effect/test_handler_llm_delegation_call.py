@@ -37,7 +37,7 @@ def _make_request(**overrides: object) -> ModelLlmDelegationCallRequest:
         "correlation_id": "corr-001",
         "causation_id": "caus-001",
         "model_id": "Qwen/Qwen3-Coder-30B",
-        "endpoint_ref": "LLM_LOCAL_PRIMARY_URL",
+        "endpoint_ref": "http://localhost:8000",
         "prompt": "Write a hello world function.",
         "prompt_hash": "abc123",
         "task_type": "codegen",
@@ -127,12 +127,9 @@ class TestHandlerLlmDelegationCall:
         assert TOPIC_DELEGATION_MODEL_DEGRADED in publish_topics
 
     @pytest.mark.unit
-    def test_missing_endpoint_env_var_returns_failure(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.delenv("LLM_LOCAL_PRIMARY_URL", raising=False)
+    def test_invalid_endpoint_ref_returns_failure(self) -> None:
         handler = HandlerLlmDelegationCall()
-        request = _make_request()
+        request = _make_request(endpoint_ref="LLM_LOCAL_PRIMARY_URL")
 
         result = handler(request)
 
@@ -142,9 +139,8 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_unhealthy_endpoint_returns_failure_and_emits_all_tiers_failed(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
         publisher = MagicMock()
 
         with patch(
@@ -163,9 +159,8 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_successful_call_returns_result_with_cost_telemetry(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
         publisher = MagicMock()
         api_resp = _make_api_response(
             "def hello(): return 'world'", tokens_in=50, tokens_out=30
@@ -202,10 +197,46 @@ class TestHandlerLlmDelegationCall:
         assert result.output_hash is not None
 
     @pytest.mark.unit
+    def test_complete_chat_completions_endpoint_is_not_double_appended(self) -> None:
+        api_resp = _make_api_response("ok", tokens_in=1, tokens_out=1)
+        complete_endpoint = (
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        )
+        captured_urls: list[str] = []
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = api_resp
+        mock_response.raise_for_status.return_value = None
+
+        with (
+            patch(
+                "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
+                return_value=True,
+            ),
+            patch("httpx.Client") as mock_client_cls,
+        ):
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+
+            def _capture_post(url: str, **kwargs: object) -> MagicMock:
+                captured_urls.append(url)
+                return mock_response
+
+            mock_client.post.side_effect = _capture_post
+            mock_client_cls.return_value = mock_client
+
+            result = HandlerLlmDelegationCall()(
+                _make_request(endpoint_ref=complete_endpoint)
+            )
+
+        assert result.success is True
+        assert captured_urls == [complete_endpoint]
+
+    @pytest.mark.unit
     def test_successful_call_emits_completed_event(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
         publisher = MagicMock()
         api_resp = _make_api_response("result text", tokens_in=10, tokens_out=5)
 
@@ -238,10 +269,8 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_timeout_returns_timeout_failure(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
-
         with (
             patch(
                 "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call._is_endpoint_healthy",
@@ -263,10 +292,8 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_rate_limit_returns_rate_limited_failure(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
-
         mock_resp = MagicMock()
         mock_resp.status_code = 429
         http_error = httpx.HTTPStatusError(
@@ -294,10 +321,8 @@ class TestHandlerLlmDelegationCall:
 
     @pytest.mark.unit
     def test_empty_choices_returns_invalid_json_failure(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
-
         mock_response = MagicMock()
         mock_response.json.return_value = {"choices": [], "usage": {}}
         mock_response.raise_for_status.return_value = None
@@ -322,8 +347,7 @@ class TestHandlerLlmDelegationCall:
         assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
 
     @pytest.mark.unit
-    def test_no_publisher_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
+    def test_no_publisher_does_not_raise(self) -> None:
         api_resp = _make_api_response("ok", tokens_in=5, tokens_out=5)
 
         mock_response = MagicMock()
@@ -349,9 +373,7 @@ class TestHandlerLlmDelegationCall:
         assert result.success is True
 
     @pytest.mark.unit
-    def test_emit_escalation_publishes_correct_topic(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_emit_escalation_publishes_correct_topic(self) -> None:
         publisher = MagicMock()
         handler = HandlerLlmDelegationCall()
         request = _make_request(attempt_number=2)
@@ -372,11 +394,8 @@ class TestHandlerLlmDelegationCall:
         assert event.attempt_number == 2
 
     @pytest.mark.unit
-    def test_cost_calculation_nonzero_for_nonzero_tokens(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_cost_calculation_nonzero_for_nonzero_tokens(self) -> None:
         """cheap_cloud tier has nonzero pricing in registry → actual_cost_usd > 0."""
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
         api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
 
         mock_response = MagicMock()
@@ -405,11 +424,8 @@ class TestHandlerLlmDelegationCall:
         assert result.savings_usd > Decimal("0")
 
     @pytest.mark.unit
-    def test_cost_calculation_uses_registry_price_for_local_tier(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_cost_calculation_uses_registry_price_for_local_tier(self) -> None:
         """Local tier has cost_per_1k_tokens=0.0 in registry → actual_cost should be 0."""
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
         api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
 
         mock_response = MagicMock()
@@ -445,7 +461,6 @@ class TestHandlerLlmDelegationCall:
             handler_llm_delegation_call as h,
         )
 
-        monkeypatch.setenv("LLM_LOCAL_PRIMARY_URL", "http://localhost:8000")
         api_resp = _make_api_response("content", tokens_in=1000, tokens_out=500)
 
         mock_response = MagicMock()

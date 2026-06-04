@@ -6,7 +6,7 @@
 Health probe results are cached per endpoint URL with a 60-second TTL to avoid
 hammering unhealthy endpoints on every call.
 
-Endpoint URLs are resolved from env vars at call time (fail-fast on missing).
+Endpoint URLs are supplied by routing/contract resolution before this effect runs.
 Raw prompt is NEVER logged, persisted, or emitted to Kafka — only prompt_hash.
 
 Pricing for cost telemetry is resolved from routing_tiers.yaml (the model
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import time
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -103,6 +102,7 @@ __all__ = ["HandlerLlmDelegationCall"]
 logger = logging.getLogger(__name__)
 
 _HEALTH_CACHE_TTL_SECONDS = 60
+_CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
 # (base_url, timestamp_of_check, is_healthy)
 _health_cache: dict[str, tuple[float, bool]] = {}
 
@@ -161,11 +161,18 @@ def _get_tier_price_per_1m(tier_name: str) -> tuple[Decimal, Decimal] | None:
 
 
 def _resolve_endpoint(endpoint_ref: str) -> str:
-    """Resolve env var name to base URL. Raises KeyError on missing var."""
-    value = os.environ.get(endpoint_ref)
-    if not value:
-        raise KeyError(f"Required env var '{endpoint_ref}' is not set or empty")
-    return value.rstrip("/")
+    """Validate the route-supplied endpoint URL."""
+    value = endpoint_ref.strip().rstrip("/")
+    if not value.startswith(("http://", "https://")):
+        raise ValueError("endpoint_ref must be a resolved http(s) endpoint URL")
+    return value
+
+
+def _chat_completions_url(endpoint_url: str) -> str:
+    """Return an OpenAI-compatible chat completions URL without double-appending."""
+    if endpoint_url.endswith(_CHAT_COMPLETIONS_SUFFIX):
+        return endpoint_url
+    return f"{endpoint_url}/v1/chat/completions"
 
 
 def _is_endpoint_healthy(base_url: str, client: httpx.Client) -> bool:
@@ -274,7 +281,7 @@ class HandlerLlmDelegationCall:
         """
         try:
             base_url = _resolve_endpoint(request.endpoint_ref)
-        except KeyError as exc:
+        except (KeyError, ValueError) as exc:
             logger.error("endpoint resolution failed: %s", exc)
             return self._failure_result(
                 request,
@@ -304,7 +311,7 @@ class HandlerLlmDelegationCall:
         """
         try:
             base_url = _resolve_endpoint(request.endpoint_ref)
-        except KeyError as exc:
+        except (KeyError, ValueError) as exc:
             logger.error("endpoint resolution failed: %s", exc)
             return self._failure_result(
                 request,
@@ -363,7 +370,7 @@ class HandlerLlmDelegationCall:
         t0 = time.monotonic()
         try:
             response = client.post(
-                f"{base_url}/v1/chat/completions",
+                _chat_completions_url(base_url),
                 json=payload,
                 timeout=120.0,
             )

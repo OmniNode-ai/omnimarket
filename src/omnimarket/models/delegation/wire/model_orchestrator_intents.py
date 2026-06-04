@@ -46,6 +46,18 @@ class ModelInferenceIntent(BaseModel):
         description="Backend-owned timeout for the downstream inference call.",
     )
     correlation_id: UUID
+    api_key_ref: str | None = Field(
+        default=None,
+        description=(
+            "Secret reference for authenticated model backends. The effect "
+            "boundary resolves the referenced secret value immediately before "
+            "making the outbound provider call."
+        ),
+    )
+    extra_headers: dict[str, str] | None = Field(
+        default=None,
+        description="Additional HTTP headers required by the selected backend.",
+    )
 
 
 class ModelQualityGateIntent(BaseModel):

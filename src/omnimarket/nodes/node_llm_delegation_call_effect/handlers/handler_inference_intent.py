@@ -15,6 +15,7 @@ chain — the orchestrator publishes the intent, this node consumes it (OMN-1229
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,16 @@ def _build_messages(intent: ModelInferenceIntent) -> list[dict[str, str]]:
         messages.append({"role": "system", "content": intent.system_prompt})
     messages.append({"role": "user", "content": intent.prompt})
     return messages
+
+
+def _resolve_api_key(api_key_ref: str | None) -> str | None:
+    """Resolve an API-key reference at the provider-call effect boundary."""
+    if not api_key_ref:
+        return None
+    value = os.environ.get(api_key_ref)
+    if not value:
+        raise KeyError(f"Required env var '{api_key_ref}' is not set or empty")
+    return value
 
 
 class HandlerInferenceIntent:
@@ -124,8 +135,9 @@ class HandlerInferenceIntent:
         }
 
         headers: dict[str, str] = {}
-        if intent.api_key:
-            headers["Authorization"] = f"Bearer {intent.api_key}"
+        api_key = _resolve_api_key(intent.api_key_ref)
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         if intent.extra_headers:
             headers.update(intent.extra_headers)
 

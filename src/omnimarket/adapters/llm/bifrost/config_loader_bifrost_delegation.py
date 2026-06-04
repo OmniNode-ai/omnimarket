@@ -21,11 +21,10 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from pydantic import ValidationError
-
-from omnimarket.adapters.llm.bifrost.model_bifrost_delegation_config import (
+from omnibase_core.models.delegation.wire import (
     ModelBifrostDelegationConfig,
 )
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
