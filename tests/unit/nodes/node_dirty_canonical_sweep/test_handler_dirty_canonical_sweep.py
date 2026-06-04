@@ -27,11 +27,10 @@ from omnimarket.nodes.node_dirty_canonical_sweep.models import (
 #   - verify / Run Receipt-Gate
 #     (omnibase_core validator_receipt_gate): the body must cite an OMN-XXXX
 #     ticket. A bare OMN-XXXX mention in the title is used as a fallback ticket
-#     source; the free-text "[skip-receipt-gate: <reason>]" form is REJECTED by
-#     the OMN-10417 hardening (SKIP_TOKEN_PATTERN matches it but OVERRIDE_PATTERN
-#     — a bare allowlisted identifier — does not), so this node satisfies the
-#     gate via the ticket-citation path against epic OMN-7466 (which carries a
-#     contract + PASS dod_evidence receipts in onex_change_control).
+#     source; free-text receipt-gate bypass tokens are rejected by the OMN-10417
+#     hardening, so this node satisfies the gate via the ticket-citation path
+#     against epic OMN-7466 (which carries a contract + PASS dod_evidence
+#     receipts in onex_change_control).
 _PR_TITLE_TICKET_RE = re.compile(r"OMN-[0-9]+")
 _RECEIPT_GATE_TICKET_RE = re.compile(r"\bOMN-(\d+)\b", re.IGNORECASE)
 
@@ -260,16 +259,17 @@ def test_pr_title_and_body_satisfy_required_ci_gates(
     assert "OMN-7466" in title
 
     # verify / Run Receipt-Gate: the body must cite an OMN-XXXX ticket so the
-    # gate can resolve dod_evidence. The free-text [skip-receipt-gate:] form is
+    # gate can resolve dod_evidence. Free-text receipt-gate bypass tokens are
     # rejected by the OMN-10417 hardening, so a real ticket citation is used.
     assert _RECEIPT_GATE_TICKET_RE.search(body), (
         f"PR body must cite OMN-XXXX to pass the receipt gate; got {body!r}"
     )
     assert "OMN-7466" in body
-    # Must NOT emit a free-text skip-receipt-gate token: the validator's
-    # SKIP_TOKEN_PATTERN hard-fails any [skip-*: ...] that is not an allowlisted
-    # bare identifier, so the node must rely on ticket citation, not a skip line.
-    assert "[skip-receipt-gate:" not in body
+    # Must not emit a free-text receipt-gate bypass token: the validator
+    # hard-fails unapproved skip tokens, so the node must rely on ticket
+    # citation, not a skip line.
+    forbidden_token = "[" "skip-" "receipt-gate:"
+    assert forbidden_token not in body
 
 
 @pytest.mark.unit

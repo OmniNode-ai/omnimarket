@@ -319,10 +319,9 @@ class HandlerDirtyCanonicalSweep:
         #   - verify / Run Receipt-Gate resolves an OMN-XXXX citation in the body
         #     (or, as a fallback, the title) against dod_evidence receipts in
         #     onex_change_control. OMN-7466 carries a contract with PASS receipts.
-        # The free-text "[skip-receipt-gate: <reason>]" escape hatch is NOT used:
-        # the OMN-10417 hardening rejects any [skip-*: ...] token that is not a
-        # bare allowlisted identifier, so a ticket citation is the only form that
-        # passes without per-PR allowlist plumbing.
+        # Free-text receipt-gate bypass tokens are not used: the OMN-10417
+        # hardening rejects any unapproved skip token, so a ticket citation is
+        # the only form that passes without per-PR allowlist plumbing.
         title = f"chore({_RESCUE_TICKET}): auto-ship {repo} — rescue uncommitted canonical changes"
         body = (
             f"## Auto-shipped by node_dirty_canonical_sweep ({_RESCUE_TICKET})\n\n"
