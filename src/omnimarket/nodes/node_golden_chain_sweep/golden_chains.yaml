@@ -41,10 +41,22 @@ chains:
   - name: sea_acceptance
     head_topic: onex.cmd.omnibase-infra.delegation-request.v1
     tail_table: delegation_events
+    proof_classification: diagnostic
+    replay_status: replay-not-applicable
     expected_fields:
       - correlation_id
       - task_type
       - delegated_to
+    stages:
+      - name: routing_decision
+        handler: node_delegation_routing_reducer.HandlerRoutingIntent
+        topic: onex.evt.omnibase-infra.routing-decision.v1
+      - name: inference_response
+        handler: node_llm_delegation_call_effect.HandlerInferenceIntent
+        topic: onex.evt.omnibase-infra.inference-response.v1
+      - name: terminal_projection
+        handler: node_projection_delegation.HandlerProjectionDelegation
+        topic: onex.evt.omnibase-infra.delegation-completed.v1
 
   # OMN-12660: WS-G — Error chain D3 (cloud tier routing regression guard)
   - name: d3_local_routing
@@ -89,3 +101,50 @@ chains:
     expected_fields:
       - correlation_id
       - published_at
+
+  # OMN-12687: WS I-A — inference request/response behavioral chain
+  - name: delegation_inference_round_trip
+    head_topic: onex.cmd.omnibase-infra.delegation-inference-request.v1
+    tail_table: event_bus:onex.evt.omnibase-infra.inference-response.v1
+    proof_classification: diagnostic
+    replay_status: replay-not-applicable
+    expected_fields:
+      - correlation_id
+      - content
+      - model_used
+      - llm_call_id
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
+    stages:
+      - name: inference_request
+        handler: node_llm_delegation_call_effect.HandlerInferenceIntent
+        topic: onex.cmd.omnibase-infra.delegation-inference-request.v1
+      - name: inference_response
+        handler: node_llm_delegation_call_effect.HandlerInferenceIntent
+        topic: onex.evt.omnibase-infra.inference-response.v1
+
+  # OMN-12687: WS I-A — terminal reducer materialization chain
+  - name: delegation_projection_materialization
+    head_topic: onex.evt.omnibase-infra.delegation-completed.v1
+    tail_table: delegation_events
+    proof_classification: diagnostic
+    replay_status: replay-proven
+    expected_fields:
+      - correlation_id
+      - task_type
+      - delegated_to
+      - model_name
+      - quality_gate_passed
+      - response_text
+      - tokens_input
+      - tokens_output
+      - tokens_to_compliance
+      - compliance_attempts
+    stages:
+      - name: delegation_completed
+        handler: node_projection_delegation.HandlerProjectionDelegation
+        topic: onex.evt.omnibase-infra.delegation-completed.v1
+      - name: delegation_events_row
+        handler: node_projection_delegation.HandlerProjectionDelegation
+        table: delegation_events

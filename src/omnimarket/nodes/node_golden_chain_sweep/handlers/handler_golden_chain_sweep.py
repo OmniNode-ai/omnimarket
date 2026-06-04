@@ -51,6 +51,15 @@ class ModelChainDefinition(BaseModel):
     tail_table: str
     expected_fields: list[str] = Field(default_factory=list)
     correlation_id: str | None = None
+    proof_classification: str = Field(
+        default="diagnostic",
+        description=(
+            "proof-ready only when the exact live code, bus, and projection lane "
+            "are traversed; deterministic unit/fixture chains stay diagnostic."
+        ),
+    )
+    replay_status: str = Field(default="replay-not-applicable")
+    stages: list[dict[str, object]] = Field(default_factory=list)
 
 
 class ModelChainResult(BaseModel):
