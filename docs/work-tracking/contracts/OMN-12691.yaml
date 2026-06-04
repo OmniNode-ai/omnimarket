@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12691"
+title: "Golden-chain coverage enforcement gate"
+summary: >
+  Adds a baseline-friendly CI and pre-commit gate that blocks changed active
+  market nodes from shipping without matching golden-chain coverage.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-golden-chain-coverage-unit"
+    description: "Focused unit tests prove active-node failure, matching coverage pass, deprecated-node skip, and non-node no-op behavior."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/scripts/test_check_golden_chain_coverage.py -q"
+  - id: "dod-golden-chain-coverage-lint"
+    description: "Ruff validates the new gate and focused tests."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run ruff check scripts/ci/check_golden_chain_coverage.py tests/unit/scripts/test_check_golden_chain_coverage.py"
+      - check_type: "command"
+        check_value: "uv run ruff format --check scripts/ci/check_golden_chain_coverage.py tests/unit/scripts/test_check_golden_chain_coverage.py"
+  - id: "dod-golden-chain-coverage-precommit"
+    description: "Pre-commit mode scans staged node changes and passes when no staged live-path node requires enforcement."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_golden_chain_coverage.py --staged"
+  - id: "dod-contract-parse"
+    description: "Repo-local OMN-12691 evidence contract parses as YAML."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python - <<'PY'\nfrom pathlib import Path\nimport yaml\np = Path('docs/work-tracking/contracts/OMN-12691.yaml')\ndata = yaml.safe_load(p.read_text())\nassert data['ticket_id'] == 'OMN-12691'\nprint('contract ok')\nPY"
+  - id: "dod-deploy"
+    description: >
+      CI/pre-commit enforcement only; no live deploy, runtime restart, .201
+      mutation, service config change, or production data migration is required.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: no live deploy, restart, .201 mutation, or production data mutation required for OMN-12691'"

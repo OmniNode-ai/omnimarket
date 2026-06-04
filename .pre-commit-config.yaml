@@ -90,6 +90,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-12691: live-path node changes must ship with golden-chain coverage.
+      # SYNC with ci.yml step "Golden-chain coverage gate".
+      - id: golden-chain-coverage-gate
+        name: Golden-chain coverage gate
+        language: system
+        entry: uv run python scripts/ci/check_golden_chain_coverage.py --staged
+        files: ^(src/omnimarket/nodes/node_.*/|tests/.*/?test_golden_chain.*\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Ruff — standalone pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
   # because uv.sources relative paths (../omnibase_core) resolve against the worktree

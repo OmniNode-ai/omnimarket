@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Clone omnibase_core
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
@@ -83,6 +85,17 @@ jobs:
       # cannot be wired by the DI container and are silently absent from the pipeline.
       - name: Unimported-handler check
         run: uv run python scripts/ci/check_unimported_handlers.py
+      - name: Golden-chain coverage gate
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$PR_BASE_SHA" ]; then
+            base="$PR_BASE_SHA"
+            git fetch --no-tags --depth=1 origin "$base" || true
+          else
+            base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+          fi
+          uv run python scripts/ci/check_golden_chain_coverage.py --changed-ref "$base"
 
   typecheck:
     needs: zone-filter
