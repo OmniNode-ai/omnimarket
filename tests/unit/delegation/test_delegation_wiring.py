@@ -27,6 +27,9 @@ from omnibase_infra.event_bus.topic_constants import (
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_request import (
     DispatcherDelegationRequest,
 )
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_workflow import (
+    DispatcherDelegationWorkflow,
+)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_routing_decision import (
     DispatcherRoutingDecision,
 )
@@ -143,8 +146,8 @@ class TestWireDelegationDispatchers:
     ) -> None:
         result = await wire_delegation_dispatchers(mock_container, mock_engine)
 
-        assert len(result["dispatchers"]) == 6
-        assert mock_engine.register_dispatcher.call_count == 6
+        assert result["dispatchers"] == ["dispatcher.delegation.workflow"]
+        assert mock_engine.register_dispatcher.call_count == 1
 
     @pytest.mark.asyncio
     async def test_registers_routes(
@@ -174,12 +177,7 @@ class TestWireDelegationDispatchers:
     ) -> None:
         result = await wire_delegation_dispatchers(mock_container, mock_engine)
 
-        assert "dispatcher.delegation.request" in result["dispatchers"]
-        assert "dispatcher.delegation.invocation" in result["dispatchers"]
-        assert "dispatcher.delegation.routing-decision" in result["dispatchers"]
-        assert "dispatcher.delegation.inference-response" in result["dispatchers"]
-        assert "dispatcher.delegation.quality-gate-result" in result["dispatchers"]
-        assert "dispatcher.delegation.agent-task-lifecycle" in result["dispatchers"]
+        assert result["dispatchers"] == ["dispatcher.delegation.workflow"]
 
     @pytest.mark.asyncio
     async def test_status_is_success(
@@ -214,8 +212,25 @@ class TestWireDelegationDispatchers:
             for call in mock_engine.register_dispatcher.call_args_list
         ]
 
-        assert len(dispatcher_handlers) == 6
+        assert len(dispatcher_handlers) == 1
         assert len({id(handler) for handler in dispatcher_handlers}) == 1
+
+    @pytest.mark.asyncio
+    async def test_all_routes_point_to_canonical_workflow_dispatcher(
+        self, mock_container: MagicMock, mock_engine: MagicMock
+    ) -> None:
+        await wire_delegation_dispatchers(mock_container, mock_engine)
+
+        route_dispatcher_ids = {
+            call.args[0].dispatcher_id
+            for call in mock_engine.register_route.call_args_list
+        }
+
+        assert route_dispatcher_ids == {"dispatcher.delegation.workflow"}
+        registered_dispatcher = mock_engine.register_dispatcher.call_args.kwargs[
+            "dispatcher"
+        ].__self__
+        assert isinstance(registered_dispatcher, DispatcherDelegationWorkflow)
 
     @pytest.mark.asyncio
     async def test_wire_handlers_reuses_process_shared_workflow_handler(self) -> None:

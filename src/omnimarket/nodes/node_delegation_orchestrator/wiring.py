@@ -122,23 +122,8 @@ async def wire_delegation_dispatchers(
     """
     from omnibase_infra.models.dispatch.model_dispatch_route import ModelDispatchRoute
 
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_agent_task_lifecycle import (
-        DispatcherAgentTaskLifecycle,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_request import (
-        DispatcherDelegationRequest,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_inference_response import (
-        DispatcherInferenceResponse,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_invocation_command import (
-        DispatcherInvocationCommand,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_quality_gate_result import (
-        DispatcherQualityGateResult,
-    )
-    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_routing_decision import (
-        DispatcherRoutingDecision,
+    from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_workflow import (
+        DispatcherDelegationWorkflow,
     )
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
         HandlerDelegationWorkflow,
@@ -152,121 +137,70 @@ async def wire_delegation_dispatchers(
         await container.service_registry.resolve_service(HandlerDelegationWorkflow)
     )
 
-    # 1. DispatcherDelegationRequest — handles incoming delegation commands
-    dispatcher_request = DispatcherDelegationRequest(handler, event_bus=event_bus)
+    dispatcher_workflow = DispatcherDelegationWorkflow(handler, event_bus=event_bus)
     engine.register_dispatcher(
-        dispatcher_id=dispatcher_request.dispatcher_id,
-        dispatcher=dispatcher_request.handle,
-        category=dispatcher_request.category,
-        message_types=dispatcher_request.message_types,
+        dispatcher_id=dispatcher_workflow.dispatcher_id,
+        dispatcher=dispatcher_workflow.handle,
+        category=dispatcher_workflow.category,
+        message_types=dispatcher_workflow.message_types,
     )
-    dispatchers_registered.append(dispatcher_request.dispatcher_id)
+    dispatchers_registered.append(dispatcher_workflow.dispatcher_id)
 
     route_delegation_request = ModelDispatchRoute(
         route_id=ROUTE_ID_DELEGATION_REQUEST,
         topic_pattern="*.cmd.*.delegation-request.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=dispatcher_request.dispatcher_id,
+        dispatcher_id=dispatcher_workflow.dispatcher_id,
         message_type="omnibase-infra.delegation-request",
     )
     engine.register_route(route_delegation_request)
     routes_registered.append(route_delegation_request.route_id)
 
-    # 2. DispatcherInvocationCommand — handles reducer output for A2A dispatch
-    dispatcher_invocation = DispatcherInvocationCommand(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_invocation.dispatcher_id,
-        dispatcher=dispatcher_invocation.handle,
-        category=dispatcher_invocation.category,
-        message_types=dispatcher_invocation.message_types,
-    )
-    dispatchers_registered.append(dispatcher_invocation.dispatcher_id)
-
     route_invocation_command = ModelDispatchRoute(
         route_id=ROUTE_ID_INVOCATION_COMMAND,
         topic_pattern="*.cmd.*.invocation.*",
         message_category=EnumMessageCategory.COMMAND,
-        dispatcher_id=dispatcher_invocation.dispatcher_id,
+        dispatcher_id=dispatcher_workflow.dispatcher_id,
         message_type="omnibase-infra.invocation",
     )
     engine.register_route(route_invocation_command)
     routes_registered.append(route_invocation_command.route_id)
 
-    # 3. DispatcherRoutingDecision — handles routing decisions from reducer
-    dispatcher_routing = DispatcherRoutingDecision(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_routing.dispatcher_id,
-        dispatcher=dispatcher_routing.handle,
-        category=dispatcher_routing.category,
-        message_types=dispatcher_routing.message_types,
-    )
-    dispatchers_registered.append(dispatcher_routing.dispatcher_id)
-
     route_routing_decision = ModelDispatchRoute(
         route_id=ROUTE_ID_ROUTING_DECISION,
         topic_pattern="*.evt.*.routing-decision.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_routing.dispatcher_id,
+        dispatcher_id=dispatcher_workflow.dispatcher_id,
         message_type="omnibase-infra.routing-decision",
     )
     engine.register_route(route_routing_decision)
     routes_registered.append(route_routing_decision.route_id)
 
-    # 4. DispatcherInferenceResponse — handles inference responses from the LLM call effect
-    dispatcher_inference = DispatcherInferenceResponse(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_inference.dispatcher_id,
-        dispatcher=dispatcher_inference.handle,
-        category=dispatcher_inference.category,
-        message_types=dispatcher_inference.message_types,
-    )
-    dispatchers_registered.append(dispatcher_inference.dispatcher_id)
-
     route_inference_response = ModelDispatchRoute(
         route_id=ROUTE_ID_INFERENCE_RESPONSE,
         topic_pattern="*.evt.*.inference-response.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_inference.dispatcher_id,
+        dispatcher_id=dispatcher_workflow.dispatcher_id,
         message_type="omnibase-infra.inference-response",
     )
     engine.register_route(route_inference_response)
     routes_registered.append(route_inference_response.route_id)
 
-    # 5. DispatcherQualityGateResult — handles quality gate results
-    dispatcher_gate = DispatcherQualityGateResult(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_gate.dispatcher_id,
-        dispatcher=dispatcher_gate.handle,
-        category=dispatcher_gate.category,
-        message_types=dispatcher_gate.message_types,
-    )
-    dispatchers_registered.append(dispatcher_gate.dispatcher_id)
-
     route_quality_gate = ModelDispatchRoute(
         route_id=ROUTE_ID_QUALITY_GATE_RESULT,
         topic_pattern="*.evt.*.quality-gate-result.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_gate.dispatcher_id,
+        dispatcher_id=dispatcher_workflow.dispatcher_id,
         message_type="omnibase-infra.quality-gate-result",
     )
     engine.register_route(route_quality_gate)
     routes_registered.append(route_quality_gate.route_id)
 
-    # 6. DispatcherAgentTaskLifecycle — handles A2A lifecycle events
-    dispatcher_lifecycle = DispatcherAgentTaskLifecycle(handler, event_bus=event_bus)
-    engine.register_dispatcher(
-        dispatcher_id=dispatcher_lifecycle.dispatcher_id,
-        dispatcher=dispatcher_lifecycle.handle,
-        category=dispatcher_lifecycle.category,
-        message_types=dispatcher_lifecycle.message_types,
-    )
-    dispatchers_registered.append(dispatcher_lifecycle.dispatcher_id)
-
     route_agent_task_lifecycle = ModelDispatchRoute(
         route_id=ROUTE_ID_AGENT_TASK_LIFECYCLE,
         topic_pattern="*.evt.*.agent-task-lifecycle.*",
         message_category=EnumMessageCategory.EVENT,
-        dispatcher_id=dispatcher_lifecycle.dispatcher_id,
+        dispatcher_id=dispatcher_workflow.dispatcher_id,
         message_type="omnibase-infra.agent-task-lifecycle",
     )
     engine.register_route(route_agent_task_lifecycle)

@@ -949,11 +949,42 @@ class HandlerDelegationWorkflow:
             compat_event,
         ]
 
-    async def handle(self, payload: object) -> None:
-        # Auto-wired by handler_routing for delegation.orchestrate alias generation.
-        # PluginDelegation's DispatcherDelegationRequest processes the real request
-        # first; this async no-op prevents TypeError when auto-wired dispatcher fires.
-        return None
+    async def handle(self, payload: object) -> list[BaseModel]:
+        """Route supported workflow payloads through the canonical FSM methods."""
+        if isinstance(payload, dict):
+            payload = self._coerce_payload_dict(payload)
+        if isinstance(payload, ModelDelegationRequest):
+            return list(self.handle_delegation_request(payload))
+        if isinstance(payload, ModelInvocationCommand):
+            return list(self.handle_invocation_command(payload))
+        if isinstance(payload, ModelRoutingDecision):
+            return list(self.handle_routing_decision(payload))
+        if isinstance(payload, ModelInferenceResponseData):
+            return list(self.handle_inference_response(payload))
+        if isinstance(payload, ModelQualityGateResult):
+            return list(self.handle_gate_result(payload))
+        if isinstance(payload, ModelAgentTaskLifecycleEvent):
+            return list(self.handle_agent_task_lifecycle(payload))
+        msg = f"Unsupported delegation workflow payload: {type(payload).__name__}"
+        raise ValueError(msg)
+
+    @staticmethod
+    def _coerce_payload_dict(payload: dict[str, object]) -> BaseModel:
+        """Convert raw event-bus payload dictionaries into workflow models."""
+        if "lifecycle_type" in payload:
+            return ModelAgentTaskLifecycleEvent.model_validate(payload)
+        if "invocation_kind" in payload or "target_ref" in payload:
+            return ModelInvocationCommand.model_validate(payload)
+        if "selected_model" in payload or "selected_backend_id" in payload:
+            return ModelRoutingDecision.model_validate(payload)
+        if "model_used" in payload or "llm_call_id" in payload:
+            return ModelInferenceResponseData.model_validate(payload)
+        if "quality_score" in payload or "passed" in payload:
+            return ModelQualityGateResult.model_validate(payload)
+        if "prompt" in payload and "task_type" in payload:
+            return ModelDelegationRequest.model_validate(payload)
+        msg = "Unsupported delegation workflow payload dictionary"
+        raise ValueError(msg)
 
     @staticmethod
     def _render_lifecycle_content(
