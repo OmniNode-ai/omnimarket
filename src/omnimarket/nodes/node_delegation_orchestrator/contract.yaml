@@ -152,11 +152,11 @@ handler_routing:
         name: "ModelComplianceLoopResult"
         module: "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result"
         description: "Per-attempt directive emitted by the compliance loop."
-# PluginDelegation registers DispatcherDelegationRequest and custom dispatchers that
-# handle all real delegation FSM events. The auto-wired dispatchers generated from
-# handler_routing above call .handle() on these handlers. Both handlers expose a
-# .handle() no-op that returns SUCCESS so the auto-wired dispatcher succeeds without
-# double-processing (PluginDelegation's custom dispatchers fire first). See OMN-12249.
+# PluginDelegation registers one contract-backed workflow dispatcher. All six
+# subscribed topics route through HandlerDelegationWorkflow.handle(), which performs
+# payload-type dispatch into the FSM methods declared by handler_routing. The
+# legacy per-payload dispatcher classes are retained only for backward-compatible
+# tests and are no longer the live wiring authority (OMN-12688).
 # Cross-repo topic ownership declarations.
 # Topics published by this node that are consumed by nodes in other repos.
 # The dependency-health sweep runs per-repo-root; these declarations suppress

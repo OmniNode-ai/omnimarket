@@ -148,12 +148,31 @@ def _make_gate_result(
 
 
 @pytest.mark.unit
-def test_auto_wired_handle_methods_are_awaitable_noops() -> None:
+def test_canonical_handle_routes_supported_payloads() -> None:
     assert inspect.iscoroutinefunction(HandlerDelegationWorkflow.handle)
     assert inspect.iscoroutinefunction(HandlerComplianceLoop.handle)
 
-    assert asyncio.run(HandlerDelegationWorkflow().handle(object())) is None
+    handler = HandlerDelegationWorkflow()
+    request = _make_request(correlation_id=uuid4())
+
+    output_events = asyncio.run(handler.handle(request))
+
+    assert len(output_events) == 1
+    assert isinstance(output_events[0], ModelRoutingIntent)
+    with pytest.raises(ValueError, match="Unsupported delegation workflow payload"):
+        asyncio.run(handler.handle(object()))
     assert asyncio.run(HandlerComplianceLoop().handle(object())) is None
+
+
+@pytest.mark.unit
+def test_canonical_handle_coerces_raw_payload_dicts() -> None:
+    handler = HandlerDelegationWorkflow()
+    request = _make_request(correlation_id=uuid4())
+
+    output_events = asyncio.run(handler.handle(request.model_dump(mode="json")))
+
+    assert len(output_events) == 1
+    assert isinstance(output_events[0], ModelRoutingIntent)
 
 
 @pytest.mark.unit

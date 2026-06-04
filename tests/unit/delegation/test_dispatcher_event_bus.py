@@ -37,6 +37,9 @@ from omnibase_infra.event_bus.topic_constants import (
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_agent_task_lifecycle import (
     DispatcherAgentTaskLifecycle,
 )
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_workflow import (
+    DispatcherDelegationWorkflow,
+)
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_quality_gate_result import (
     DispatcherQualityGateResult,
 )
@@ -166,6 +169,54 @@ def _start_agent_invocation(
 # ---------------------------------------------------------------------------
 # DispatcherQualityGateResult — bus publish assertion
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestDispatcherDelegationWorkflowBusPublish:
+    """Canonical workflow dispatcher publishes topic-bearing terminal events."""
+
+    async def test_quality_gate_result_publishes_terminal_events(self) -> None:
+        bus = _make_mock_bus()
+        handler = HandlerDelegationWorkflow()
+        dispatcher = DispatcherDelegationWorkflow(handler, event_bus=bus)  # type: ignore[arg-type]
+
+        _cid, gate_envelope = _run_workflow_to_gate(handler)
+        result = await dispatcher.handle(gate_envelope)
+
+        assert result.status == EnumDispatchStatus.SUCCESS
+        assert bus.publish_envelope.called
+
+        published_topics = [
+            c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
+        ]
+        assert TOPIC_DELEGATION_COMPLETED in published_topics
+        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
+        for event in result.output_events:
+            assert not hasattr(event, "topic") or event.topic is None  # type: ignore[union-attr]
+
+    async def test_agent_lifecycle_result_publishes_terminal_events(self) -> None:
+        bus = _make_mock_bus()
+        handler = HandlerDelegationWorkflow()
+        dispatcher = DispatcherDelegationWorkflow(handler, event_bus=bus)  # type: ignore[arg-type]
+        cid = uuid4()
+        _start_agent_invocation(handler, cid)
+
+        lifecycle = ModelAgentTaskLifecycleEvent(
+            task_id=uuid4(),
+            correlation_id=cid,
+            lifecycle_type=EnumAgentTaskLifecycleType.COMPLETED,
+            remote_task_handle="remote-123",
+            occurred_at=datetime.now(UTC),
+        )
+        result = await dispatcher.handle(_make_envelope(lifecycle, cid))
+
+        assert result.status == EnumDispatchStatus.SUCCESS
+        published_topics = [
+            c.kwargs["topic"] for c in bus.publish_envelope.call_args_list
+        ]
+        assert TOPIC_DELEGATION_COMPLETED in published_topics
+        assert TOPIC_DELEGATION_TASK_DELEGATED in published_topics
 
 
 @pytest.mark.unit
