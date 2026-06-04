@@ -16,6 +16,8 @@ Exit codes:
 Flags:
   --check-all             Validate every node_* directory (used locally)
   --check-changed <ref>   Validate only nodes modified since <ref> (used by CI)
+  --check-orphan-nodes    Fail one-sided/unwired event_bus contracts unless
+                          explicitly annotated experimental/deprecated
   --strict                Promote WARN violations to FAIL (use with --check-changed)
   --json                  Output machine-readable JSON to stdout
 """
@@ -43,6 +45,8 @@ REQUIRED_CONTRACT_FIELDS_ALWAYS = {"name", "node_type"}
 # Workflow-package types (workflow, *_GENERIC, orchestrator variants) use
 # handler_routing instead and are not required to have a handler block.
 NODE_TYPES_REQUIRING_HANDLER = {"compute", "effect", "reducer"}
+
+LIFECYCLE_EXEMPTIONS = {"deprecated", "experimental"}
 
 # Nodes with pre-existing violations on main as of 2026-04-25 (F0 audit OMN-9718 + F3 scan).
 # These receive WARN (not FAIL) in non-strict mode so --check-all exits 0 on current main.
@@ -186,12 +190,89 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str]]:
     return nodes, directly_modified
 
 
+def _topic_strings(raw_topics: object) -> list[str]:
+    topics: list[str] = []
+    if isinstance(raw_topics, str):
+        return [raw_topics]
+    if not isinstance(raw_topics, list):
+        return []
+    for raw_topic in raw_topics:
+        if isinstance(raw_topic, str):
+            topics.append(raw_topic)
+        elif isinstance(raw_topic, dict):
+            topic = raw_topic.get("topic") or raw_topic.get("name")
+            if isinstance(topic, str):
+                topics.append(topic)
+    return topics
+
+
 def _extract_contract_topics(contract: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """Return (subscribe_topics, publish_topics) from contract event_bus block."""
+    """Return (subscribe_topics, publish_topics) from known contract topic shapes."""
     event_bus = contract.get("event_bus", {}) or {}
-    subscribe = event_bus.get("subscribe_topics", []) or []
-    publish = event_bus.get("publish_topics", []) or []
-    return list(subscribe), list(publish)
+    subscribe = _topic_strings(event_bus.get("subscribe_topics"))
+    publish = _topic_strings(event_bus.get("publish_topics"))
+
+    subscribe_legacy = event_bus.get("subscribe")
+    if isinstance(subscribe_legacy, dict):
+        subscribe.extend(_topic_strings(subscribe_legacy.get("topic")))
+    publish_legacy = event_bus.get("publish")
+    if isinstance(publish_legacy, dict):
+        publish.extend(
+            _topic_strings(
+                [
+                    publish_legacy.get("topic"),
+                    publish_legacy.get("success_topic"),
+                    publish_legacy.get("failure_topic"),
+                ]
+            )
+        )
+
+    subscribe.extend(_topic_strings(contract.get("subscribe_topics")))
+    publish.extend(_topic_strings(contract.get("publish_topics")))
+
+    topics_block = contract.get("topics")
+    if isinstance(topics_block, dict):
+        subscribe.extend(_topic_strings(topics_block.get("subscribes")))
+        publish.extend(_topic_strings(topics_block.get("publishes")))
+
+    return subscribe, publish
+
+
+def _contract_lifecycle(contract: dict[str, Any]) -> str:
+    """Return normalized contract lifecycle/status annotation, if present."""
+    candidates: list[Any] = [
+        contract.get("lifecycle"),
+        contract.get("status"),
+    ]
+    for nested_key in ("metadata", "descriptor"):
+        nested = contract.get(nested_key)
+        if isinstance(nested, dict):
+            candidates.extend([nested.get("lifecycle"), nested.get("status")])
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip().lower()
+    return ""
+
+
+def _orphan_node_classification(contract: dict[str, Any]) -> str | None:
+    """Classify contracts with incomplete event_bus producer/consumer shape.
+
+    Gate 2 intentionally checks the contract-level shape, not every terminal
+    topic's in-repo subscriber. Many valid command inputs are externally
+    produced and many terminal events are externally consumed, but a live node
+    contract must still declare both sides unless explicitly experimental or
+    deprecated.
+    """
+    subscribe_topics, publish_topics = _extract_contract_topics(contract)
+    has_subscribe = bool(subscribe_topics)
+    has_publish = bool(publish_topics)
+    if has_subscribe and has_publish:
+        return None
+    if has_subscribe:
+        return "CONSUMER_ONLY"
+    if has_publish:
+        return "PRODUCER_ONLY"
+    return "UNWIRED_NODE"
 
 
 def _find_handler_source_files(node_dir: Path) -> list[Path]:
@@ -218,6 +299,7 @@ def validate_node(
     entry_points: set[str],
     *,
     strict: bool = False,
+    check_orphan_nodes: bool = False,
 ) -> NodeResult:
     node_name = node_dir.name
     result = NodeResult(node=node_name)
@@ -287,6 +369,23 @@ def validate_node(
                     )
                 )
 
+    if check_orphan_nodes:
+        lifecycle = _contract_lifecycle(contract)
+        orphan_class = _orphan_node_classification(contract)
+        if orphan_class and lifecycle not in LIFECYCLE_EXEMPTIONS:
+            result.findings.append(
+                NodeFinding(
+                    node=node_name,
+                    check="node_liveness",
+                    level="FAIL",
+                    message=(
+                        f"{orphan_class}: contract event_bus must declare both "
+                        "subscribe_topics and publish_topics, or set lifecycle/status "
+                        "to experimental or deprecated"
+                    ),
+                )
+            )
+
     return result
 
 
@@ -333,6 +432,7 @@ def run(
     *,
     changed_ref: str | None,
     strict: bool,
+    check_orphan_nodes: bool,
     output_json: bool,
 ) -> int:
     entry_points = _load_entry_points(PYPROJECT)
@@ -359,7 +459,14 @@ def run(
         node_strict = strict and (
             strict_eligible is None or node_dir.name in strict_eligible
         )
-        results.append(validate_node(node_dir, entry_points, strict=node_strict))
+        results.append(
+            validate_node(
+                node_dir,
+                entry_points,
+                strict=node_strict,
+                check_orphan_nodes=check_orphan_nodes,
+            )
+        )
 
     fail_results = [r for r in results if not r.passed]
     warn_results = [r for r in results if r.passed and r.has_warn]
@@ -427,13 +534,24 @@ def main() -> int:
         help="promote WARN violations to FAIL (use with --check-changed in CI)",
     )
     parser.add_argument(
+        "--check-orphan-nodes",
+        action="store_true",
+        help=(
+            "fail contracts with one-sided or empty event_bus wiring unless "
+            "lifecycle/status is experimental or deprecated"
+        ),
+    )
+    parser.add_argument(
         "--json", action="store_true", dest="output_json", help="output JSON"
     )
     args = parser.parse_args()
 
     changed_ref = args.check_changed if not args.check_all else None
     return run(
-        changed_ref=changed_ref, strict=args.strict, output_json=args.output_json
+        changed_ref=changed_ref,
+        strict=args.strict,
+        check_orphan_nodes=args.check_orphan_nodes,
+        output_json=args.output_json,
     )
 
 
