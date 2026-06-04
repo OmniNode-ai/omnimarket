@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -81,6 +82,21 @@ def _noop_publisher(topic: str, payload: bytes) -> None:
     logger.debug(
         "[generation-consumer] noop publish to %s (%d bytes)", topic, len(payload)
     )
+
+
+def _endpoint_url_is_complete(url: str) -> bool:
+    """True when the configured URL is a complete endpoint to POST to as-is.
+
+    Provider-neutral, path-based — never sniffs the host. A complete endpoint
+    carries a non-trivial path segment beyond the origin (e.g. Gemini's
+    ``https://generativelanguage.googleapis.com/v1beta/openai/``); such URLs are
+    routed through ``endpoint_url`` so the infra adapter posts them verbatim and
+    does NOT append ``/v1/chat/completions``. An origin-only value (e.g.
+    ``http://llm-host:8000`` or ``https://host.example.com/``) has no
+    meaningful path and keeps the legacy ``base_url`` + path-append behavior.
+    """
+    path = urlsplit(url).path.strip("/")
+    return bool(path)
 
 
 def _load_contract(path: Path | None = None) -> dict[str, Any]:
@@ -305,16 +321,37 @@ class HandlerGenerationConsumer:
             endpoint = os.environ[self._endpoint_env]
             assert self._effect is not None
 
-            request = ModelLlmInferenceRequest(
-                base_url=endpoint,
-                operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                model=self._resolve_model_id(),
-                messages=(
-                    {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content},
-                ),
-                timeout_seconds=120.0,
-            )
+            # The contract may declare either the complete endpoint URL
+            # (e.g. Gemini's ".../v1beta/openai/chat/completions")
+            # or an origin-only base URL (e.g. "http://llm-host:8000").
+            # A full endpoint carries a non-trivial path and must be posted as-is
+            # via endpoint_url so the infra adapter does not append
+            # "/v1/chat/completions" (which yields a 404 against providers that
+            # use a different chat path). An origin-only value keeps the legacy
+            # base_url append. The distinction is the URL path, not the provider.
+            if _endpoint_url_is_complete(endpoint):
+                request = ModelLlmInferenceRequest(
+                    base_url=endpoint,
+                    endpoint_url=endpoint,
+                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+                    model=self._resolve_model_id(),
+                    messages=(
+                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ),
+                    timeout_seconds=120.0,
+                )
+            else:
+                request = ModelLlmInferenceRequest(
+                    base_url=endpoint,
+                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+                    model=self._resolve_model_id(),
+                    messages=(
+                        {"role": "system", "content": _DEFAULT_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content},
+                    ),
+                    timeout_seconds=120.0,
+                )
             response = await self._effect.handle(request)
 
         raw = response.generated_text or ""

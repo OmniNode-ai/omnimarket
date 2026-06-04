@@ -81,7 +81,13 @@ dependencies:
   - name: llm_coder_url
     type: environment
     key: LLM_CODER_URL
-    description: "Base URL for the generation LLM endpoint — set via overlay from Infisical"
+    description: >
+      Endpoint URL for the generation LLM. Set via overlay from Infisical.
+      Provider-specific full endpoints (e.g. Gemini's
+      https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)
+      must be the COMPLETE URL — the handler posts them verbatim via endpoint_url
+      (no path appended). An origin-only base (e.g. http://host:8000) keeps the
+      legacy /v1/chat/completions append.
     required: true
   - name: llm_coder_model_name
     type: environment
