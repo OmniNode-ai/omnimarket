@@ -105,7 +105,7 @@ event_bus:
       schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request.ModelLlmDelegationCallRequest"
       description: "Command to execute a single LLM delegation call for the given model/endpoint."
     "onex.cmd.omnibase-infra.delegation-inference-request.v1":
-      schema_ref: "omnibase_compat.contracts.delegation.wire.ModelInferenceIntent"
+      schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceIntent"
       description: "Inference intent from the delegation orchestrator. Handler resolves base_url directly."
 
   publish_topic_metadata:
@@ -122,7 +122,7 @@ event_bus:
       schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event.ModelLlmDelegationModelDegradedEvent"
       description: "Emitted when a model exceeds the escalation rate threshold for a task type."
     "onex.evt.omnibase-infra.inference-response.v1":
-      schema_ref: "omnibase_compat.contracts.delegation.wire.ModelInferenceResponseData"
+      schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceResponseData"
       description: "Inference response published to the orchestrator's subscribe topic after handling ModelInferenceIntent."
 
 externally_consumed_topics:
@@ -146,7 +146,7 @@ handler_routing:
     - operation: "execute_inference_intent"
       event_model:
         name: "ModelInferenceIntent"
-        module: "omnibase_compat.contracts.delegation.wire"
+        module: "omnibase_core.models.delegation.wire"
       handler:
         name: "HandlerInferenceIntent"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"

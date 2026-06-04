@@ -67,7 +67,7 @@ handler_routing:
     # reach this handler.
     - event_model:
         name: "ModelRoutingIntent"
-        module: "omnibase_compat.contracts.delegation.wire"
+        module: "omnibase_core.models.delegation.wire"
       handler:
         name: "HandlerRoutingIntent"
         module: "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent"

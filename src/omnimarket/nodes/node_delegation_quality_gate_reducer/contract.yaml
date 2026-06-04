@@ -66,7 +66,7 @@ handler_routing:
     # handle() AND type-scopes the dispatcher.
     - event_model:
         name: "ModelQualityGateIntent"
-        module: "omnibase_compat.contracts.delegation.wire"
+        module: "omnibase_core.models.delegation.wire"
       handler:
         name: "HandlerQualityGateIntent"
         module: "omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent"
