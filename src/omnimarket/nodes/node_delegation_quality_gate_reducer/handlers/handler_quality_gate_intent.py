@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from omnibase_compat.contracts.delegation.wire import ModelQualityGateIntent
+from omnibase_core.models.delegation.wire import ModelQualityGateIntent
 
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (

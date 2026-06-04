@@ -21,7 +21,7 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
-from omnibase_compat.contracts.delegation.wire import (
+from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
     ModelInferenceResponseData,
 )

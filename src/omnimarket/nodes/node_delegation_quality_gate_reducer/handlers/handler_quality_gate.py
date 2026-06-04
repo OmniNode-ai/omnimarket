@@ -446,7 +446,11 @@ def _run_legacy_checks(
     fallback_recommended = not passed and (
         math.isclose(no_refusal_score, 0.0) or quality_score < 0.3
     )
-    fail_category: EnumQualityGateCategory = "pass" if passed else "fail_heuristic"
+    fail_category: EnumQualityGateCategory = (
+        EnumQualityGateCategory.PASS
+        if passed
+        else EnumQualityGateCategory.FAIL_HEURISTIC
+    )
 
     return ModelQualityGateResult(
         correlation_id=gate_input.correlation_id,
