@@ -26,6 +26,9 @@ class TestChainRegistryEntry:
             head_topic="onex.evt.test.v1",
             tail_table="test_table",
             expected_fields=["correlation_id"],
+            proof_classification="proof-ready",
+            replay_status="replay-proven",
+            stages=[{"name": "head", "topic": "onex.evt.test.v1"}],
         )
         model = entry.to_model()
         assert isinstance(model, ModelChainDefinition)
@@ -33,10 +36,16 @@ class TestChainRegistryEntry:
         assert model.head_topic == "onex.evt.test.v1"
         assert model.tail_table == "test_table"
         assert model.expected_fields == ["correlation_id"]
+        assert model.proof_classification == "proof-ready"
+        assert model.replay_status == "replay-proven"
+        assert model.stages == [{"name": "head", "topic": "onex.evt.test.v1"}]
 
     def test_default_expected_fields(self) -> None:
         entry = ChainRegistryEntry(name="x", head_topic="t", tail_table="tt")
         assert entry.expected_fields == []
+        assert entry.proof_classification == "diagnostic"
+        assert entry.replay_status == "replay-not-applicable"
+        assert entry.stages == []
 
 
 @pytest.mark.unit
@@ -60,8 +69,10 @@ class TestLoadRegistry:
             "d4_blank_content",
             "d9_wheel_module",
             "f1_publish_loop",
+            "delegation_inference_round_trip",
+            "delegation_projection_materialization",
         }.issubset(names)
-        assert len(chains) == 11
+        assert len(chains) == 13
 
     def test_loads_custom_yaml(self, tmp_path: Path) -> None:
         registry_file = tmp_path / "golden_chains.yaml"
@@ -74,6 +85,9 @@ class TestLoadRegistry:
                             "head_topic": "onex.evt.custom.v1",
                             "tail_table": "custom_table",
                             "expected_fields": ["id"],
+                            "proof_classification": "proof-ready",
+                            "replay_status": "runtime-observed-only",
+                            "stages": [{"name": "custom-stage"}],
                         }
                     ]
                 }
@@ -83,6 +97,9 @@ class TestLoadRegistry:
         assert len(chains) == 1
         assert chains[0].name == "custom"
         assert chains[0].expected_fields == ["id"]
+        assert chains[0].proof_classification == "proof-ready"
+        assert chains[0].replay_status == "runtime-observed-only"
+        assert chains[0].stages == [{"name": "custom-stage"}]
 
     def test_fallback_when_file_missing(self, tmp_path: Path) -> None:
         missing = tmp_path / "nonexistent.yaml"
@@ -149,6 +166,37 @@ class TestLoadRegistry:
         # OMN-10793 — compliance counters are first-class chain-validated fields.
         assert "tokens_to_compliance" in chain_map["delegation"].expected_fields
         assert "compliance_attempts" in chain_map["delegation"].expected_fields
+        assert (
+            chain_map["delegation_inference_round_trip"].head_topic
+            == "onex.cmd.omnibase-infra.delegation-inference-request.v1"
+        )
+        assert (
+            chain_map["delegation_inference_round_trip"].tail_table
+            == "event_bus:onex.evt.omnibase-infra.inference-response.v1"
+        )
+        assert (
+            chain_map["delegation_projection_materialization"].tail_table
+            == "delegation_events"
+        )
+
+    def test_i_a_proof_path_chains_are_diagnostic_until_live_packet(self) -> None:
+        chain_map = {c.name: c for c in load_registry()}
+
+        inference = chain_map["delegation_inference_round_trip"]
+        assert inference.proof_classification == "diagnostic"
+        assert inference.replay_status == "replay-not-applicable"
+        assert [stage["name"] for stage in inference.stages] == [
+            "inference_request",
+            "inference_response",
+        ]
+
+        projection = chain_map["delegation_projection_materialization"]
+        assert projection.proof_classification == "diagnostic"
+        assert projection.replay_status == "replay-proven"
+        assert [stage["name"] for stage in projection.stages] == [
+            "delegation_completed",
+            "delegation_events_row",
+        ]
 
     def test_empty_fallback_default(self, tmp_path: Path) -> None:
         missing = tmp_path / "no.yaml"
@@ -195,10 +243,35 @@ class TestRegistryIntegrationWithSweep:
         projected_rows["d9_wheel_module"]["node_startup_ok"] = True
         # OMN-12660 WS-G: f1_publish_loop additional required fields
         projected_rows["f1_publish_loop"]["published_at"] = "2026-06-03T00:00:00Z"
+        # OMN-12687 WS I-A: inference request/response round-trip fields
+        projected_rows["delegation_inference_round_trip"].update(
+            {
+                "content": "Generated node code...",
+                "model_used": "qwen3-coder-30b",
+                "llm_call_id": "chatcmpl-proof",
+                "prompt_tokens": 144,
+                "completion_tokens": 593,
+                "total_tokens": 737,
+            }
+        )
+        # OMN-12687 WS I-A: terminal reducer materialization fields
+        projected_rows["delegation_projection_materialization"].update(
+            {
+                "task_type": "research",
+                "delegated_to": "qwen3-coder-30b",
+                "model_name": "qwen3-coder-30b",
+                "quality_gate_passed": True,
+                "response_text": "Generated node code...",
+                "tokens_input": 144,
+                "tokens_output": 593,
+                "tokens_to_compliance": 737,
+                "compliance_attempts": 1,
+            }
+        )
 
         request = GoldenChainSweepRequest(chains=chains, projected_rows=projected_rows)
         result = NodeGoldenChainSweep().handle(request)
 
         assert result.overall_status == EnumSweepStatus.PASS
-        assert result.chains_total == 11
-        assert result.chains_passed == 11
+        assert result.chains_total == 13
+        assert result.chains_passed == 13

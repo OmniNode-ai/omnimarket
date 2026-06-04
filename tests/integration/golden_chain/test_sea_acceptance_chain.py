@@ -25,11 +25,21 @@ terminal event — they fail when the defect is present and pass when fixed.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    ModelDelegationRequest,
+    ModelInferenceIntent,
+    ModelRoutingIntent,
+)
 
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
+    HandlerRoutingIntent,
+)
 from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep import (
     EnumChainStatus,
     EnumSweepStatus,
@@ -37,6 +47,13 @@ from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_swee
     ModelChainDefinition,
     NodeGoldenChainSweep,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
+    HandlerInferenceIntent,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    HandlerProjectionDelegation,
+)
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 # ---------------------------------------------------------------------------
 # Fixture paths
@@ -51,6 +68,46 @@ _FIXTURE_D1_D2 = _HERE / "expected_error_chain_d1_d2_scaffold_stub.json"
 _FIXTURE_D4 = _HERE / "expected_error_chain_d4_blank_content.json"
 _FIXTURE_F1 = _HERE / "expected_error_chain_f1_publish_and_wait_loop.json"
 
+_BIFROST_CONTRACT = (
+    "config_version: '2.0.0'\n"
+    "schema_version: bifrost_delegation.v1\n"
+    "backends:\n"
+    "  - backend_id: local-coder\n"
+    '    endpoint_url: "http://test-coder:8000"\n'
+    '    model_name: "qwen3-coder-30b"\n'
+    "    tier: local\n"
+    "    timeout_ms: 30000\n"
+    "    capabilities: [research]\n"
+    "routing_rules:\n"
+    '  - rule_id: "11111111-1111-4111-8111-111111111111"\n'
+    "    priority: 10\n"
+    "    task_class: research\n"
+    '    task_class_contract_version: "1.0.0"\n'
+    '    backend_policy_version: "2.0.0"\n'
+    "    match_operation_types: [chat_completion]\n"
+    "    match_capabilities: [research]\n"
+    "    backend_ids: [local-coder]\n"
+    "    fallback_policy:\n"
+    "      action: return_error\n"
+    "      max_retries: 0\n"
+    "      on_exhaust: return_error\n"
+    '    shadow_policy_id: "22222222-2222-4222-8222-222222222222"\n'
+    "default_backends:\n"
+    "  - local-coder\n"
+    "circuit_breaker:\n"
+    "  failure_threshold: 5\n"
+    "  window_seconds: 30\n"
+    "failover:\n"
+    "  max_attempts: 1\n"
+    "  backoff_base_ms: 500\n"
+    "shadow_mode:\n"
+    "  enabled: false\n"
+    '  policy_version: "test"\n'
+    "  log_sample_rate: 1.0\n"
+    "  comparison_logging_enabled: true\n"
+    "  max_shadow_latency_ms: 5.0\n"
+)
+
 
 def _load_fixture(path: Path) -> dict[str, object]:
     return json.loads(path.read_text())  # type: ignore[no-any-return]
@@ -64,6 +121,26 @@ def _raise_on_blank(content: str) -> None:
     """
     if not content:
         raise ValueError("API returned blank content")
+
+
+def _install_bifrost_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing as routing_module
+
+    routing_module._config = None
+    routing_module._load_bifrost_endpoints.cache_clear()
+    contract_path = tmp_path / "bifrost_delegation.yaml"
+    contract_path.write_text(_BIFROST_CONTRACT, encoding="utf-8")
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+
+
+def _reset_bifrost_contract_cache() -> None:
+    import omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing as routing_module
+
+    routing_module._config = None
+    routing_module._load_bifrost_endpoints.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +280,175 @@ class TestSeaAcceptanceGoldenChain:
         result = handler.handle(request)
         assert result.chain_results[0].status == EnumChainStatus.FAIL
         assert "task_type" in result.chain_results[0].missing_fields
+
+    def test_i_a_minimum_proof_path_executes_routing_inference_and_projection(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """OMN-12687: execute the minimum SEA lane through real handlers.
+
+        This is still diagnostic because HTTP and DB are mocked/in-memory, but it
+        no longer only validates fixture shape: the test exercises the routing
+        handler, the inference effect handler, and the delegation projection
+        reducer on one correlation ID.
+        """
+        _install_bifrost_contract(tmp_path, monkeypatch)
+        correlation_id = uuid4()
+
+        try:
+            delegation_request = ModelDelegationRequest(
+                prompt="Generate a tiny ONEX node.",
+                task_type="research",
+                correlation_id=correlation_id,
+                max_tokens=512,
+                emitted_at=datetime.now(UTC),
+            )
+            routing_decision = HandlerRoutingIntent().handle(
+                ModelRoutingIntent(payload=delegation_request)
+            )
+
+            assert routing_decision.correlation_id == correlation_id
+            assert routing_decision.endpoint_url == "http://test-coder:8000"
+            assert routing_decision.selected_model == "qwen3-coder-30b"
+
+            inference_intent = ModelInferenceIntent(
+                base_url=routing_decision.endpoint_url,
+                model=routing_decision.selected_model,
+                system_prompt=routing_decision.system_prompt,
+                prompt=delegation_request.prompt,
+                max_tokens=delegation_request.max_tokens,
+                temperature=0.3,
+                timeout_seconds=max(
+                    1.0, min(600.0, routing_decision.timeout_ms / 1000.0)
+                ),
+                correlation_id=correlation_id,
+                api_key_ref=routing_decision.api_key_ref,
+                extra_headers=routing_decision.extra_headers,
+            )
+
+            captured_urls: list[str] = []
+            mock_response = MagicMock()
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.return_value = {
+                "id": "chatcmpl-omn-12687",
+                "choices": [
+                    {"message": {"content": "class HandlerGeneratedNode: pass"}}
+                ],
+                "usage": {
+                    "prompt_tokens": 144,
+                    "completion_tokens": 593,
+                    "total_tokens": 737,
+                },
+            }
+
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.__enter__ = MagicMock(return_value=mock_client)
+                mock_client.__exit__ = MagicMock(return_value=False)
+
+                def _capture_post(url: str, **_kwargs: object) -> MagicMock:
+                    captured_urls.append(url)
+                    return mock_response
+
+                mock_client.post.side_effect = _capture_post
+                mock_client_cls.return_value = mock_client
+
+                inference_response = HandlerInferenceIntent().handle(inference_intent)
+
+            assert captured_urls == ["http://test-coder:8000/v1/chat/completions"]
+            assert inference_response.correlation_id == correlation_id
+            assert inference_response.error_message == ""
+            assert inference_response.content == "class HandlerGeneratedNode: pass"
+            assert inference_response.total_tokens == 737
+
+            db = InmemoryDatabaseAdapter()
+            projection_result = HandlerProjectionDelegation().handle(
+                {
+                    "_db": db,
+                    "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
+                    "correlation_id": str(correlation_id),
+                    "task_type": delegation_request.task_type,
+                    "model_used": inference_response.model_used,
+                    "content": inference_response.content,
+                    "quality_passed": True,
+                    "latency_ms": inference_response.latency_ms,
+                    "prompt_text": delegation_request.prompt,
+                    "prompt_tokens": inference_response.prompt_tokens,
+                    "completion_tokens": inference_response.completion_tokens,
+                    "tokens_to_compliance": inference_response.total_tokens,
+                    "compliance_attempts": 1,
+                }
+            )
+
+            assert projection_result["rows_upserted"] == 1
+            projected_row = db.query("delegation_events")[0]
+            assert projected_row["correlation_id"] == str(correlation_id)
+            assert projected_row["task_type"] == "research"
+            assert projected_row["delegated_to"] == "qwen3-coder-30b"
+            assert projected_row["model_name"] == "qwen3-coder-30b"
+            assert projected_row["quality_gate_passed"] is True
+            assert projected_row["prompt_text"] == "Generate a tiny ONEX node."
+            assert projected_row["response_text"] == "class HandlerGeneratedNode: pass"
+            assert projected_row["tokens_input"] == 144
+            assert projected_row["tokens_output"] == 593
+            assert projected_row["tokens_to_compliance"] == 737
+            assert projected_row["compliance_attempts"] == 1
+
+            sweep = NodeGoldenChainSweep().handle(
+                GoldenChainSweepRequest(
+                    chains=[
+                        ModelChainDefinition(
+                            name="delegation_inference_round_trip",
+                            head_topic="onex.cmd.omnibase-infra.delegation-inference-request.v1",
+                            tail_table="event_bus:onex.evt.omnibase-infra.inference-response.v1",
+                            expected_fields=[
+                                "correlation_id",
+                                "content",
+                                "model_used",
+                                "llm_call_id",
+                                "prompt_tokens",
+                                "completion_tokens",
+                                "total_tokens",
+                            ],
+                        ),
+                        ModelChainDefinition(
+                            name="delegation_projection_materialization",
+                            head_topic="onex.evt.omnibase-infra.delegation-completed.v1",
+                            tail_table="delegation_events",
+                            expected_fields=[
+                                "correlation_id",
+                                "task_type",
+                                "delegated_to",
+                                "model_name",
+                                "quality_gate_passed",
+                                "response_text",
+                                "tokens_input",
+                                "tokens_output",
+                                "tokens_to_compliance",
+                                "compliance_attempts",
+                            ],
+                        ),
+                    ],
+                    projected_rows={
+                        "delegation_inference_round_trip": {
+                            "correlation_id": str(inference_response.correlation_id),
+                            "content": inference_response.content,
+                            "model_used": inference_response.model_used,
+                            "llm_call_id": inference_response.llm_call_id,
+                            "prompt_tokens": inference_response.prompt_tokens,
+                            "completion_tokens": inference_response.completion_tokens,
+                            "total_tokens": inference_response.total_tokens,
+                        },
+                        "delegation_projection_materialization": projected_row,
+                    },
+                )
+            )
+
+            assert sweep.overall_status == EnumSweepStatus.PASS
+            assert sweep.chains_passed == 2
+        finally:
+            _reset_bifrost_contract_cache()
 
 
 # ---------------------------------------------------------------------------
