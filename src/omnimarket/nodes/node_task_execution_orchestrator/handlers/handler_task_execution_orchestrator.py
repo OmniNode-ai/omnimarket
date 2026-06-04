@@ -45,7 +45,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Protocol
 
 from omnibase_core.enums.enum_check_type import EnumCheckType
@@ -69,8 +69,10 @@ from omnimarket.nodes.node_task_execution_orchestrator.models.model_task_executi
 _log = logging.getLogger(__name__)
 
 # Deterministic mechanical-check -> route mapping. Every EnumCheckType value is
-# present so an added enum member without a mapping fails the exhaustiveness
-# guard below rather than silently skipping.
+# present so an added enum member without a mapping fails the runtime guard in
+# ``_plan_check`` (``_CHECK_TYPE_ROUTE.get(...) is None -> raise``) rather than
+# silently skipping. This is a runtime check, not a compile-time exhaustiveness
+# guarantee.
 _CHECK_TYPE_ROUTE: dict[EnumCheckType, EnumTaskRoute] = {
     EnumCheckType.COMMAND_EXIT_0: EnumTaskRoute.VERIFICATION,
     EnumCheckType.FILE_EXISTS: EnumTaskRoute.VERIFICATION,
@@ -139,14 +141,25 @@ class HandlerTaskExecutionOrchestrator:
     # ------------------------------------------------------------------
     # Direct in-process surface
     # ------------------------------------------------------------------
-    def handle(self, request: ModelTaskExecutionRequest) -> ModelTaskExecutionResult:
+    def handle(
+        self,
+        request: ModelTaskExecutionRequest,
+        *,
+        generated_at: datetime,
+    ) -> ModelTaskExecutionResult:
         """Normalize input into a contract and return a deterministic route plan.
+
+        ``generated_at`` is the timestamp stamped onto a contract normalized from
+        a raw prompt. The caller supplies it from the originating command's
+        ``created_at`` so identical input envelopes produce byte-identical
+        terminal payloads (true idempotency); it is unused when a fully formed
+        ``task_contract`` is supplied (that contract is reused verbatim).
 
         Raises UnsupportedTaskActionError for unsupported actions so the caller
         (CLI / bus consumer) decides how to surface the typed failure.
         """
         self._validate_supported(request)
-        contract = self._normalize_contract(request)
+        contract = self._normalize_contract(request, generated_at=generated_at)
         route_plan = self._plan_routes(contract)
         return ModelTaskExecutionResult(
             ok=True,
@@ -184,7 +197,7 @@ class HandlerTaskExecutionOrchestrator:
         """Plan the command payload and reduce it to a Pattern-B terminal result."""
         try:
             request = self._request_from_command(command)
-            result = self.handle(request)
+            result = self.handle(request, generated_at=command.created_at)
         except UnsupportedTaskActionError as exc:
             return ModelDispatchBusTerminalResult(
                 correlation_id=command.correlation_id,
@@ -233,9 +246,18 @@ class HandlerTaskExecutionOrchestrator:
             )
 
     def _normalize_contract(
-        self, request: ModelTaskExecutionRequest
+        self,
+        request: ModelTaskExecutionRequest,
+        *,
+        generated_at: datetime,
     ) -> ModelTaskContract:
-        """Return the supplied contract verbatim or build one from the prompt."""
+        """Return the supplied contract verbatim or build one from the prompt.
+
+        A prompt-normalized contract derives ``generated_at`` from the caller's
+        timestamp (the originating command's ``created_at``) rather than
+        wall-clock, so identical input produces an identical contract — keeping
+        the contract's ``idempotent: true`` claim honest and replay byte-stable.
+        """
         if request.task_contract is not None:
             return request.task_contract
 
@@ -247,7 +269,7 @@ class HandlerTaskExecutionOrchestrator:
             task_id=task_id,
             parent_ticket=request.ticket_id,
             repo=request.target_repo,
-            generated_at=datetime.now(UTC),
+            generated_at=generated_at,
             generated_by="node_task_execution_orchestrator",
             requirements=[prompt],
         )

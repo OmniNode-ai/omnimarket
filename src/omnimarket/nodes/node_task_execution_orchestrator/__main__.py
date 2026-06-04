@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from datetime import UTC, datetime
 
 from omnimarket.nodes.node_task_execution_orchestrator.handlers.handler_task_execution_orchestrator import (
     HandlerTaskExecutionOrchestrator,
@@ -63,7 +64,7 @@ def main() -> None:
 
     handler = HandlerTaskExecutionOrchestrator()
     try:
-        result = handler.handle(request)
+        result = handler.handle(request, generated_at=datetime.now(UTC))
     except UnsupportedTaskActionError as exc:
         sys.stderr.write(f"unsupported: {exc.reason}\n")
         sys.exit(1)

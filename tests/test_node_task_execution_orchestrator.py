@@ -77,7 +77,8 @@ class TestRawPromptNormalization:
                 prompt="add a CLI flag to the importer",
                 target_repo="omnimarket",
                 ticket_id="OMN-12702",
-            )
+            ),
+            generated_at=_FIXED_GENERATED_AT,
         )
 
         assert result.ok is True
@@ -98,7 +99,10 @@ class TestSuppliedContractPassthrough:
     def test_supplied_contract_maps_requirements_and_checks(self) -> None:
         handler = HandlerTaskExecutionOrchestrator()
         contract = _sample_contract()
-        result = handler.handle(ModelTaskExecutionRequest(task_contract=contract))
+        result = handler.handle(
+            ModelTaskExecutionRequest(task_contract=contract),
+            generated_at=_FIXED_GENERATED_AT,
+        )
 
         assert result.ok is True
         assert result.task_contract == contract
@@ -124,7 +128,9 @@ class TestUnsupportedRequests:
     def test_neither_prompt_nor_contract(self) -> None:
         handler = HandlerTaskExecutionOrchestrator()
         with pytest.raises(UnsupportedTaskActionError) as excinfo:
-            handler.handle(ModelTaskExecutionRequest())
+            handler.handle(
+                ModelTaskExecutionRequest(), generated_at=_FIXED_GENERATED_AT
+            )
         assert "exactly one of prompt or task_contract" in excinfo.value.reason
 
     def test_both_prompt_and_contract(self) -> None:
@@ -134,14 +140,16 @@ class TestUnsupportedRequests:
                 ModelTaskExecutionRequest(
                     prompt="do something",
                     task_contract=_sample_contract(),
-                )
+                ),
+                generated_at=_FIXED_GENERATED_AT,
             )
 
     def test_non_dry_run_unsupported(self) -> None:
         handler = HandlerTaskExecutionOrchestrator()
         with pytest.raises(UnsupportedTaskActionError) as excinfo:
             handler.handle(
-                ModelTaskExecutionRequest(prompt="do something", dry_run=False)
+                ModelTaskExecutionRequest(prompt="do something", dry_run=False),
+                generated_at=_FIXED_GENERATED_AT,
             )
         assert "non-dry-run" in excinfo.value.reason
 
@@ -152,7 +160,8 @@ class TestUnsupportedRequests:
                 ModelTaskExecutionRequest(
                     prompt="do something",
                     allowed_side_effects=("create_pr",),
-                )
+                ),
+                generated_at=_FIXED_GENERATED_AT,
             )
 
 
@@ -163,8 +172,14 @@ class TestDeterminism:
     def test_same_contract_same_plan(self) -> None:
         handler = HandlerTaskExecutionOrchestrator()
         contract = _sample_contract()
-        first = handler.handle(ModelTaskExecutionRequest(task_contract=contract))
-        second = handler.handle(ModelTaskExecutionRequest(task_contract=contract))
+        first = handler.handle(
+            ModelTaskExecutionRequest(task_contract=contract),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+        second = handler.handle(
+            ModelTaskExecutionRequest(task_contract=contract),
+            generated_at=_FIXED_GENERATED_AT,
+        )
 
         assert first.route_plan == second.route_plan
         assert first.contract_fingerprint == second.contract_fingerprint
@@ -175,10 +190,56 @@ class TestDeterminism:
         later = base.model_copy(
             update={"generated_at": datetime(2026, 12, 31, 23, 59, tzinfo=UTC)}
         )
-        first = handler.handle(ModelTaskExecutionRequest(task_contract=base))
-        second = handler.handle(ModelTaskExecutionRequest(task_contract=later))
+        first = handler.handle(
+            ModelTaskExecutionRequest(task_contract=base),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+        second = handler.handle(
+            ModelTaskExecutionRequest(task_contract=later),
+            generated_at=_FIXED_GENERATED_AT,
+        )
         assert first.contract_fingerprint == second.contract_fingerprint
         assert first.route_plan == second.route_plan
+
+    def test_prompt_path_terminal_payload_is_replay_stable(self) -> None:
+        """Two process() calls on the SAME command yield an identical plan payload.
+
+        The prompt path derives generated_at from the command's created_at (not
+        wall-clock), so an identical input envelope produces an identical
+        normalized contract — including generated_at — and thus an identical
+        terminal ``payload`` (the planning result). This is what makes the
+        contract's ``idempotent: true`` claim honest for the prompt path.
+
+        The terminal envelope's ``completed_at`` is an observability field (when
+        the result envelope was created) carried by the reused core model
+        ModelDispatchBusTerminalResult; it is deliberately excluded from the
+        idempotency claim, which governs the planning output, not envelope
+        creation time.
+        """
+        import asyncio
+
+        handler = HandlerTaskExecutionOrchestrator()
+        command = ModelDispatchBusCommand(
+            command_name="task.execute",
+            requester="pytest",
+            payload={"prompt": "refactor the config loader", "dry_run": True},
+            correlation_id=uuid4(),
+            response_topic=TOPIC_TASK_EXECUTE_RESPONSE,
+            created_at=_FIXED_GENERATED_AT,
+        )
+        encoded = command.model_dump_json().encode("utf-8")
+
+        first = json.loads(asyncio.run(handler.process(encoded)))
+        second = json.loads(asyncio.run(handler.process(encoded)))
+
+        assert first["status"] == "completed"
+        # The planning result (normalized contract incl. generated_at + route
+        # plan) is byte-for-byte stable across identical input.
+        assert first["payload"] == second["payload"]
+        assert (
+            datetime.fromisoformat(first["payload"]["task_contract"]["generated_at"])
+            == _FIXED_GENERATED_AT
+        )
 
 
 @pytest.mark.unit

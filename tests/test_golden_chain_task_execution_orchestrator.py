@@ -154,7 +154,8 @@ class TestTaskExecutionOrchestratorGoldenChain:
         prompt = "refactor the config loader"
 
         from_prompt = handler.handle(
-            ModelTaskExecutionRequest(prompt=prompt, target_repo="omnibase_core")
+            ModelTaskExecutionRequest(prompt=prompt, target_repo="omnibase_core"),
+            generated_at=_FIXED_GENERATED_AT,
         )
         equivalent_contract = ModelTaskContract(
             task_id=from_prompt.task_contract.task_id,
@@ -164,7 +165,8 @@ class TestTaskExecutionOrchestratorGoldenChain:
             requirements=[prompt],
         )
         from_contract = handler.handle(
-            ModelTaskExecutionRequest(task_contract=equivalent_contract)
+            ModelTaskExecutionRequest(task_contract=equivalent_contract),
+            generated_at=_FIXED_GENERATED_AT,
         )
 
         assert from_prompt.contract_fingerprint == from_contract.contract_fingerprint
