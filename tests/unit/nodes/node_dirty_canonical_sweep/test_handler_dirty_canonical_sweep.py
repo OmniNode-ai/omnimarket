@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -15,6 +16,23 @@ from omnimarket.nodes.node_dirty_canonical_sweep.handlers import (
 from omnimarket.nodes.node_dirty_canonical_sweep.models import (
     ModelDirtyCanonicalSweepCommand,
 )
+
+# Mirrors the accepted forms enforced by the two required CI gates the
+# auto-ship rescue PR must satisfy (OMN-12638):
+#
+#   - pr-title / check-title
+#     (onex_change_control/.github/workflows/pr-title-check-reusable.yml):
+#     a title passes when it contains an OMN-XXXX reference (or an exempt
+#     deps/release prefix, which auto-ship is not).
+#   - verify / Run Receipt-Gate
+#     (omnibase_core validator_receipt_gate): the body must cite an OMN-XXXX
+#     ticket. A bare OMN-XXXX mention in the title is used as a fallback ticket
+#     source; free-text receipt-gate bypass tokens are rejected by the OMN-10417
+#     hardening, so this node satisfies the gate via the ticket-citation path
+#     against epic OMN-7466 (which carries a contract + PASS dod_evidence
+#     receipts in onex_change_control).
+_PR_TITLE_TICKET_RE = re.compile(r"OMN-[0-9]+")
+_RECEIPT_GATE_TICKET_RE = re.compile(r"\bOMN-(\d+)\b", re.IGNORECASE)
 
 
 class _FakeGitRunner:
@@ -192,6 +210,66 @@ def test_ship_calls_git_in_correct_sequence(
     pr_call = next(call for call in gh.calls if "pr" in call[0] and "create" in call[0])
     assert "--base" in pr_call[0]
     assert pr_call[0][pr_call[0].index("--base") + 1] == "dev"
+
+
+@pytest.mark.unit
+def test_pr_title_and_body_satisfy_required_ci_gates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Auto-ship PRs must be mergeable by design (OMN-12638).
+
+    Regression for omniclaude PR #1722, which was titled
+    ``auto-ship(omniclaude): rescue uncommitted changes`` and cited no ticket in
+    its body. That PR failed both ``pr-title / check-title`` and
+    ``verify / Run Receipt-Gate`` and could never merge. The generated title
+    must carry an OMN-XXXX reference, and the body must cite an OMN-XXXX ticket
+    so the receipt gate accepts it via the ticket-citation path.
+    """
+    omni_home = tmp_path / "omni_home"
+    repo_dir = omni_home / "myrepo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / ".git").mkdir()
+    dirty_file = repo_dir / "uv.lock"
+    dirty_file.write_text("# changed\n", encoding="utf-8")
+
+    git = _FakeGitRunner(outputs={("status", "myrepo"): " M uv.lock\n"})
+    gh = _FakeGhRunner()
+    monkeypatch.setenv("OMNI_HOME", str(omni_home))
+
+    cmd = ModelDirtyCanonicalSweepCommand(
+        omni_home=str(omni_home),
+        worktrees_root=str(tmp_path / "worktrees"),
+        repos=["myrepo"],
+        dry_run=False,
+    )
+    result = HandlerDirtyCanonicalSweep(git=git, gh=gh).handle(cmd)
+    assert result.repos_shipped == 1
+
+    pr_call = next(call for call in gh.calls if "pr" in call[0] and "create" in call[0])
+    args = pr_call[0]
+    title = args[args.index("--title") + 1]
+    body = args[args.index("--body") + 1]
+
+    # pr-title / check-title: the title must contain an OMN-XXXX reference
+    # (auto-ship is not an exempt deps/release prefix).
+    assert _PR_TITLE_TICKET_RE.search(title), (
+        f"PR title must contain OMN-XXXX to pass pr-title gate; got {title!r}"
+    )
+    # The cited ticket is the tracking epic OMN-7466.
+    assert "OMN-7466" in title
+
+    # verify / Run Receipt-Gate: the body must cite an OMN-XXXX ticket so the
+    # gate can resolve dod_evidence. Free-text receipt-gate bypass tokens are
+    # rejected by the OMN-10417 hardening, so a real ticket citation is used.
+    assert _RECEIPT_GATE_TICKET_RE.search(body), (
+        f"PR body must cite OMN-XXXX to pass the receipt gate; got {body!r}"
+    )
+    assert "OMN-7466" in body
+    # Must not emit a free-text receipt-gate bypass token: the validator
+    # hard-fails unapproved skip tokens, so the node must rely on ticket
+    # citation, not a skip line.
+    forbidden_token = "[" + "skip" + "-receipt-gate:"
+    assert forbidden_token not in body
 
 
 @pytest.mark.unit

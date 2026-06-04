@@ -43,15 +43,25 @@ class TestChainRegistryEntry:
 class TestLoadRegistry:
     def test_loads_bundled_registry(self) -> None:
         chains = load_registry()
-        assert len(chains) == 5
         names = {c.name for c in chains}
-        assert names == {
+        # Core chains (pre-OMN-12660)
+        assert {
             "registration",
             "pattern_learning",
             "delegation",
             "routing",
             "evaluation",
-        }
+        }.issubset(names)
+        # OMN-12660 WS-G error + acceptance chains
+        assert {
+            "sea_acceptance",
+            "d3_local_routing",
+            "d1_d2_scaffold",
+            "d4_blank_content",
+            "d9_wheel_module",
+            "f1_publish_loop",
+        }.issubset(names)
+        assert len(chains) == 11
 
     def test_loads_custom_yaml(self, tmp_path: Path) -> None:
         registry_file = tmp_path / "golden_chains.yaml"
@@ -166,10 +176,29 @@ class TestRegistryIntegrationWithSweep:
         projected_rows["delegation"]["compliance_attempts"] = 1
         # evaluation expects session_id (not correlation_id) per contract.yaml
         projected_rows["evaluation"]["session_id"] = "test-evaluation"
+        # OMN-12660 WS-G: sea_acceptance additional required fields
+        projected_rows["sea_acceptance"]["task_type"] = "generate_onex_node"
+        projected_rows["sea_acceptance"]["delegated_to"] = "claude-sonnet-4-6"
+        # OMN-12660 WS-G: d3_local_routing additional required fields
+        projected_rows["d3_local_routing"]["base_url"] = (
+            "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-12660 reason="D3 sweep fixture: reference local-first endpoint"
+        )
+        projected_rows["d3_local_routing"]["model"] = "qwen3-coder-30b"
+        # OMN-12660 WS-G: d1_d2_scaffold additional required fields
+        projected_rows["d1_d2_scaffold"]["node_name"] = "NodeExampleCompute"
+        projected_rows["d1_d2_scaffold"]["contract_passed"] = True
+        projected_rows["d1_d2_scaffold"]["content"] = "class HandlerExample: ..."
+        # OMN-12660 WS-G: d4_blank_content additional required fields
+        projected_rows["d4_blank_content"]["content"] = "Generated node code..."
+        projected_rows["d4_blank_content"]["model_used"] = "qwen3-coder-30b"
+        # OMN-12660 WS-G: d9_wheel_module additional required fields
+        projected_rows["d9_wheel_module"]["node_startup_ok"] = True
+        # OMN-12660 WS-G: f1_publish_loop additional required fields
+        projected_rows["f1_publish_loop"]["published_at"] = "2026-06-03T00:00:00Z"
 
         request = GoldenChainSweepRequest(chains=chains, projected_rows=projected_rows)
         result = NodeGoldenChainSweep().handle(request)
 
         assert result.overall_status == EnumSweepStatus.PASS
-        assert result.chains_total == 5
-        assert result.chains_passed == 5
+        assert result.chains_total == 11
+        assert result.chains_passed == 11

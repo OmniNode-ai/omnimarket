@@ -1,0 +1,28 @@
+{
+  "chain_name": "error_d1_d2_scaffold_stub",
+  "defect_ids": ["D1", "D2"],
+  "description": "Error chain: scaffold stub node_name='unknown' / registration flipping contract_passed. D1: scaffold_onex_node returns stub instead of raising on validation failure. D2: run_agent derives contract_passed from registration flag, not scaffold validation. OMN-12660.",
+  "defects": {
+    "D1": {
+      "trigger": "scaffold_onex_node receives a prompt that produces an invalid/incomplete node spec",
+      "wrong_behavior": "Returns stub with node_name='unknown', empty contract/handler fields",
+      "correct_behavior": "Raises a typed GenerationError with structured all_errors and correlation_id"
+    },
+    "D2": {
+      "trigger": "run_agent checks register_generated_tool returned registered=True after D1 stub",
+      "wrong_behavior": "Sets _contract_passed=True because registration succeeded (stub accepted)",
+      "correct_behavior": "contract_passed is authoritative only from scaffold validation result, not registration"
+    }
+  },
+  "observable_signal": {
+    "field": "node_name",
+    "value": "unknown",
+    "in_event": "onex.evt.omnibase-infra.delegation-completed.v1"
+  },
+  "failure_mode": "Delegation reports success with node_name='unknown', empty content, $0.00 cost — masking the real generation failure",
+  "expected_error_type": "GenerationError",
+  "expected_error_path": "onex.evt.omnibase-infra.delegation-failed.v1",
+  "regression_guard": "node_name='unknown' in any terminal delegation event is a permanent hard failure. contract_passed=True with node_name='unknown' is a contradiction and must not occur.",
+  "authority_rule": "registration status is NOT authoritative proof of contract validity; scaffold validation owns contract_passed truth",
+  "related_tickets": ["OMN-12660", "OMN-12640", "OMN-12588"]
+}
