@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from omnibase_compat.contracts.delegation.wire.model_delegation_request import (
+from omnibase_core.models.delegation.wire.model_delegation_wire_request import (
     ModelDelegationRequest,
 )
-from omnibase_compat.contracts.delegation.wire.model_task_delegated_event import (
+from omnibase_core.models.delegation.wire.model_task_delegated_event import (
     TASK_DELEGATED_TOPIC_V1,
 )
 

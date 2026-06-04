@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from omnibase_compat.contracts.delegation.wire import (
+from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
     ModelInferenceResponseData,
 )
