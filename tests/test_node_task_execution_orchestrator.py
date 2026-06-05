@@ -497,6 +497,77 @@ class TestCodingDelegation:
         assert len(captured) == 1
         assert captured[0].prompt == "generate a parser for the config file"
         assert captured[0].task_type == "code_generation"
+        assert captured[0].source == "codex"
+        assert captured[0].metadata == {
+            "task_contract_id": result.task_contract.task_id,
+            "requirement_index": "0",
+            "generated_by": "node_task_execution_orchestrator",
+        }
+
+    def test_delegation_request_derives_task_type_and_source(self) -> None:
+        """Delegated requirements preserve contract provenance in the request."""
+        import asyncio
+
+        from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+            ModelDelegateSkillRequest,
+        )
+        from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+            ModelDelegateSkillResponse,
+        )
+
+        captured: list[ModelDelegateSkillRequest] = []
+
+        class _StubDelegationExecutor:
+            async def handle(
+                self, request: ModelDelegateSkillRequest
+            ) -> ModelDelegateSkillResponse:
+                captured.append(request)
+                return ModelDelegateSkillResponse(
+                    status="completed",
+                    correlation_id=request.correlation_id,
+                    task_type=request.task_type,
+                    response="ok",
+                    quality_gate_passed=True,
+                )
+
+        contract = _sample_contract().model_copy(
+            update={
+                "generated_by": "claude-code",
+                "requirements": [
+                    "refactor the config loader",
+                    "perform a code review of the parser",
+                    "document the migration runbook",
+                ],
+            }
+        )
+        handler = HandlerTaskExecutionOrchestrator(
+            delegation_executor=_StubDelegationExecutor()
+        )
+        result = asyncio.run(
+            handler.handle_async(
+                ModelTaskExecutionRequest(
+                    task_contract=contract,
+                    dry_run=False,
+                    execute_delegation=True,
+                ),
+                generated_at=_FIXED_GENERATED_AT,
+            )
+        )
+
+        assert result.ok is True
+        assert [request.task_type for request in captured] == [
+            "refactor",
+            "code_review",
+            "document",
+        ]
+        assert {request.source for request in captured} == {"claude-code"}
+        assert captured[0].metadata == {
+            "task_contract_id": "task-1",
+            "requirement_index": "0",
+            "generated_by": "claude-code",
+            "parent_ticket": "OMN-12702",
+            "repo": "omnibase_core",
+        }
 
     def test_failed_delegation_stays_typed_failure_owned_by_route(self) -> None:
         """A failed delegation status is surfaced, never reinterpreted as success."""
@@ -544,6 +615,81 @@ class TestCodingDelegation:
         # Deterministic reason reads the route's own status — no free-text summary.
         assert result.failure_reason == (
             f"delegation failed: code_generation:failed:{failing_id}"
+        )
+
+    def test_mechanical_and_delegation_failures_are_both_reported(self) -> None:
+        """Delegation failures are not hidden by an existing verification failure."""
+        import asyncio
+        from uuid import uuid4 as _uuid4
+
+        from omnimarket.events.verification import (
+            ModelCheckEvidence,
+            ModelVerificationReceipt,
+            ModelVerificationReceiptRequest,
+        )
+        from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+            ModelDelegateSkillRequest,
+        )
+        from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+            ModelDelegateSkillResponse,
+        )
+        from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
+            HandlerVerificationReceiptGenerator,
+        )
+
+        failing_receipt = ModelVerificationReceipt(
+            task_id="task-1",
+            claim="task.execute mechanical DoD verification",
+            overall_pass=False,
+            checks=[
+                ModelCheckEvidence(
+                    dimension="mechanical_check:tests pass",
+                    passed=False,
+                    summary="command_exit_0 exit_code=1",
+                ),
+            ],
+            verified_at=_FIXED_GENERATED_AT,
+        )
+        failing_delegation_id = _uuid4()
+        failing_delegation = ModelDelegateSkillResponse(
+            status="failed",
+            correlation_id=failing_delegation_id,
+            task_type="refactor",
+            error_message="quality gate rejected output",
+        )
+
+        class _StubMechanicalExecutor(HandlerVerificationReceiptGenerator):
+            def handle(  # type: ignore[override]
+                self, request: ModelVerificationReceiptRequest
+            ) -> ModelVerificationReceipt:
+                return failing_receipt
+
+        class _StubDelegationExecutor:
+            async def handle(
+                self, request: ModelDelegateSkillRequest
+            ) -> ModelDelegateSkillResponse:
+                return failing_delegation
+
+        handler = HandlerTaskExecutionOrchestrator(
+            mechanical_check_executor=_StubMechanicalExecutor(),
+            delegation_executor=_StubDelegationExecutor(),
+        )
+        result = asyncio.run(
+            handler.handle_async(
+                ModelTaskExecutionRequest(
+                    task_contract=_sample_contract(),
+                    dry_run=False,
+                    execute_mechanical_checks=True,
+                    execute_delegation=True,
+                ),
+                generated_at=_FIXED_GENERATED_AT,
+            )
+        )
+
+        assert result.ok is False
+        assert result.failure_reason == (
+            "mechanical checks failed: mechanical_check:tests pass; "
+            f"delegation failed: refactor:failed:{failing_delegation_id}"
         )
 
     def test_sync_handle_rejects_delegation(self) -> None:

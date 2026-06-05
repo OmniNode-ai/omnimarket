@@ -59,7 +59,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from omnibase_core.enums.enum_check_type import EnumCheckType
 from omnibase_core.models.dispatch.model_dispatch_bus_command import (
@@ -105,6 +105,23 @@ _CHECK_TYPE_ROUTE: dict[EnumCheckType, EnumTaskRoute] = {
     EnumCheckType.GREP_ABSENT: EnumTaskRoute.VERIFICATION,
     EnumCheckType.GREP_PRESENT: EnumTaskRoute.VERIFICATION,
 }
+
+_DelegateTaskType = Literal[
+    "test",
+    "document",
+    "research",
+    "code_generation",
+    "code_review",
+    "refactor",
+    "reasoning",
+    "complex_reasoning",
+    "planning",
+    "review",
+    "summarization",
+    "agent_delegation",
+    "escalation",
+]
+_DelegateSource = Literal["claude-code", "codex"]
 
 
 class UnsupportedTaskActionError(Exception):
@@ -208,6 +225,81 @@ def _delegation_failure_reason(
         if r.status != "completed"
     ]
     return "delegation failed: " + ", ".join(failed)
+
+
+def _combine_failure_reasons(*reasons: str | None) -> str | None:
+    """Additively aggregate typed failure reasons without dropping dimensions."""
+    present = [reason for reason in reasons if reason]
+    if not present:
+        return None
+    return "; ".join(present)
+
+
+def _classify_delegate_task_type(requirement: str) -> _DelegateTaskType:
+    """Map requirement text to the delegation route's allowed task taxonomy."""
+    text = requirement.lower()
+    if any(
+        token in text
+        for token in (
+            "code review",
+            "review code",
+            "review the code",
+            "audit",
+            "security review",
+        )
+    ):
+        return "code_review"
+    if any(
+        token in text
+        for token in ("refactor", "restructure", "clean up", "cleanup", "simplify")
+    ):
+        return "refactor"
+    if any(
+        token in text
+        for token in ("test", "pytest", "unit test", "integration test", "coverage")
+    ):
+        return "test"
+    if any(
+        token in text
+        for token in ("document", "documentation", "readme", "runbook", "changelog")
+    ):
+        return "document"
+    if any(token in text for token in ("research", "investigate", "spike")):
+        return "research"
+    if any(token in text for token in ("plan", "design", "proposal")):
+        return "planning"
+    if any(token in text for token in ("summarize", "summary")):
+        return "summarization"
+    if "review" in text:
+        return "review"
+    return "code_generation"
+
+
+def _delegate_source(contract: ModelTaskContract) -> _DelegateSource:
+    """Derive a registered delegation adapter source from task provenance."""
+    generated_by = contract.generated_by.lower().replace("_", "-")
+    if "claude" in generated_by:
+        return "claude-code"
+    return "codex"
+
+
+def _delegate_metadata(
+    contract: ModelTaskContract,
+    requirement_index: int,
+) -> dict[str, str]:
+    """Stable provenance metadata for the delegation route request."""
+    metadata = {
+        "task_contract_id": contract.task_id,
+        "requirement_index": str(requirement_index),
+        "generated_by": contract.generated_by,
+    }
+    if contract.parent_ticket:
+        metadata["parent_ticket"] = contract.parent_ticket
+    if contract.repo:
+        metadata["repo"] = contract.repo
+    if contract.branch:
+        metadata["branch"] = contract.branch
+    return metadata
 
 
 class HandlerTaskExecutionOrchestrator:
@@ -352,12 +444,14 @@ class HandlerTaskExecutionOrchestrator:
         """
         executor = self._get_delegation_executor()
         responses: list[ModelDelegateSkillResponse] = []
-        for requirement in base.task_contract.requirements:
+        source = _delegate_source(base.task_contract)
+        for index, requirement in enumerate(base.task_contract.requirements):
             delegate_request = ModelDelegateSkillRequest(
                 prompt=requirement,
-                task_type="code_generation",
-                source="claude-code",
+                task_type=_classify_delegate_task_type(requirement),
+                source=source,
                 wait=True,
+                metadata=_delegate_metadata(base.task_contract, index),
             )
             responses.append(await executor.handle(delegate_request))
 
@@ -367,9 +461,10 @@ class HandlerTaskExecutionOrchestrator:
         # only when the prior flow passed AND every delegation reported completed
         # by its own status. A failed/timeout response is a typed failure owned by
         # the delegation route; we surface it, never re-decide it.
-        failure_reason = base.failure_reason
-        if failure_reason is None and not all_completed:
-            failure_reason = _delegation_failure_reason(delegation_responses)
+        failure_reason = _combine_failure_reasons(
+            base.failure_reason,
+            None if all_completed else _delegation_failure_reason(delegation_responses),
+        )
 
         return base.model_copy(
             update={
