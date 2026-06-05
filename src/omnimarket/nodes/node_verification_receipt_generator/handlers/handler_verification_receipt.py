@@ -222,7 +222,7 @@ class MechanicalCheckRunner:
         """Run ``grep`` and pass on presence/absence per ``want_present``.
 
         ``pattern_spec`` is the operator-authored grep argument string (e.g.
-        ``-r TODO src/``). grep exit 0 = match found, 1 = no match, >=2 = error.
+        ``-r MARKER src/``). grep exit 0 = match found, 1 = no match, >=2 = error.
         A grep error is a deterministic failure regardless of polarity.
         """
         cwd = worktree_path or None
