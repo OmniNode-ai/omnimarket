@@ -154,12 +154,15 @@ class TestUnsupportedRequests:
         assert "non-dry-run" in excinfo.value.reason
 
     def test_side_effects_unsupported(self) -> None:
+        # Any side-effect token other than the single allowed 'create_pr' (added
+        # in OMN-12705) is unsupported in this slice; create_pr is covered by the
+        # PR-creation-path tests below.
         handler = HandlerTaskExecutionOrchestrator()
         with pytest.raises(UnsupportedTaskActionError):
             handler.handle(
                 ModelTaskExecutionRequest(
                     prompt="do something",
-                    allowed_side_effects=("create_pr",),
+                    allowed_side_effects=("delete_branch",),
                 ),
                 generated_at=_FIXED_GENERATED_AT,
             )
@@ -774,6 +777,258 @@ class TestCodingDelegation:
         assert data["correlation_id"] == str(correlation_id)
         assert len(data["payload"]["delegation_responses"]) == 1
         assert data["payload"]["delegation_responses"][0]["status"] == "completed"
+
+
+@pytest.mark.unit
+class TestPrCreationPath:
+    """task.execute COMPOSES the PR creation authority (OMN-12705).
+
+    NON-BLOCKING V1, isolated/optional. node_ticket_work cannot be invoked
+    cleanly (it needs a Linear ticket id + drives a 7-phase FSM), so a narrow
+    create_pr port (ProtocolPrCreationExecutor, structurally the git client's
+    create_pr behind node_ticket_work) is composed. Dry-run plans the intended
+    branch/title/body with NO side effects; non-dry-run is gated behind explicit
+    allowance + an injected executor and aggregates the result UNCHANGED.
+    """
+
+    @staticmethod
+    def _branch_contract() -> ModelTaskContract:
+        return ModelTaskContract(
+            task_id="task-pr",
+            parent_ticket="OMN-12705",
+            repo="omnimarket",
+            branch="jonah/omn-12705-pr-path",
+            generated_at=_FIXED_GENERATED_AT,
+            requirements=["add the PR creation path"],
+            definition_of_done=[
+                ModelMechanicalCheck(
+                    criterion="tests pass",
+                    check="uv run pytest tests/",
+                    check_type=EnumCheckType.COMMAND_EXIT_0,
+                ),
+            ],
+        )
+
+    def test_dry_run_returns_plan_with_no_side_effects(self) -> None:
+        """Dry-run create_pr returns intended branch/title/body, no executor call."""
+
+        class _ExplodingExecutor:
+            def create_pr(self, worktree_path: str, title: str, body: str) -> object:
+                raise AssertionError("dry-run must NOT call the create_pr authority")
+
+        handler = HandlerTaskExecutionOrchestrator(
+            pr_creation_executor=_ExplodingExecutor()
+        )
+        result = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=self._branch_contract(),
+                create_pr=True,
+                dry_run=True,
+                worktree_path="/work/tree",
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+
+        assert result.ok is True
+        assert result.dry_run is True
+        assert result.pr_result is None
+        assert result.pr_plan is not None
+        assert result.pr_plan.branch == "jonah/omn-12705-pr-path"
+        assert result.pr_plan.worktree_path == "/work/tree"
+        assert result.pr_plan.title.startswith("OMN-12705:")
+        assert "add the PR creation path" in result.pr_plan.body
+        assert "## Definition of Done" in result.pr_plan.body
+
+    def test_dry_run_plan_is_replay_stable(self) -> None:
+        """The same contract yields a byte-identical PR plan (no wall-clock)."""
+        handler = HandlerTaskExecutionOrchestrator()
+        contract = self._branch_contract()
+        first = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=contract, create_pr=True, dry_run=True
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+        second = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=contract, create_pr=True, dry_run=True
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+        assert first.pr_plan == second.pr_plan
+
+    def test_non_dry_run_dispatches_through_injected_executor(self) -> None:
+        """Non-dry-run create_pr composes the authority and aggregates verbatim."""
+        from omnimarket.nodes.node_ticket_work.protocols.protocol_git_client import (
+            ModelRunResult,
+        )
+
+        captured: dict[str, str] = {}
+        sentinel = ModelRunResult(
+            command="gh pr create",
+            exit_code=0,
+            stdout="https://github.com/OmniNode-ai/omnimarket/pull/123",
+        )
+
+        class _StubPrExecutor:
+            def create_pr(
+                self, worktree_path: str, title: str, body: str
+            ) -> ModelRunResult:
+                captured["worktree_path"] = worktree_path
+                captured["title"] = title
+                captured["body"] = body
+                return sentinel
+
+        handler = HandlerTaskExecutionOrchestrator(
+            pr_creation_executor=_StubPrExecutor()
+        )
+        result = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=self._branch_contract(),
+                create_pr=True,
+                dry_run=False,
+                allowed_side_effects=("create_pr",),
+                worktree_path="/work/tree",
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+
+        assert result.ok is True
+        assert result.failure_reason is None
+        # Result aggregated verbatim — same object, never transformed.
+        assert result.pr_result is sentinel
+        assert result.pr_plan is not None
+        # The plan that was executed matches what the authority received.
+        assert captured["worktree_path"] == "/work/tree"
+        assert captured["title"] == result.pr_plan.title
+        assert captured["body"] == result.pr_plan.body
+
+    def test_failed_pr_stays_typed_failure_owned_by_authority(self) -> None:
+        """A failed create_pr result is surfaced, never reinterpreted as success."""
+        from omnimarket.nodes.node_ticket_work.protocols.protocol_git_client import (
+            ModelRunResult,
+        )
+
+        failing = ModelRunResult(
+            command="gh pr create",
+            exit_code=1,
+            stderr="a pull request already exists",
+        )
+
+        class _StubPrExecutor:
+            def create_pr(
+                self, worktree_path: str, title: str, body: str
+            ) -> ModelRunResult:
+                return failing
+
+        handler = HandlerTaskExecutionOrchestrator(
+            pr_creation_executor=_StubPrExecutor()
+        )
+        result = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=self._branch_contract(),
+                create_pr=True,
+                dry_run=False,
+                allowed_side_effects=("create_pr",),
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+
+        assert result.ok is False
+        assert result.pr_result is failing
+        # Deterministic reason read off the authority's own exit/stderr.
+        assert result.failure_reason == (
+            "pr creation failed: exit_code=1 a pull request already exists"
+        )
+
+    def test_non_dry_run_requires_allowance(self) -> None:
+        """Non-dry-run create_pr without the allowance token is a typed failure."""
+        from omnimarket.nodes.node_ticket_work.protocols.protocol_git_client import (
+            ModelRunResult,
+        )
+
+        class _StubPrExecutor:
+            def create_pr(
+                self, worktree_path: str, title: str, body: str
+            ) -> ModelRunResult:
+                return ModelRunResult(command="gh pr create", exit_code=0)
+
+        handler = HandlerTaskExecutionOrchestrator(
+            pr_creation_executor=_StubPrExecutor()
+        )
+        with pytest.raises(UnsupportedTaskActionError) as excinfo:
+            handler.handle(
+                ModelTaskExecutionRequest(
+                    task_contract=self._branch_contract(),
+                    create_pr=True,
+                    dry_run=False,
+                ),
+                generated_at=_FIXED_GENERATED_AT,
+            )
+        assert "allowed_side_effects" in excinfo.value.reason
+
+    def test_non_dry_run_requires_injected_executor(self) -> None:
+        """Non-dry-run create_pr without an executor is a typed failure, not silent."""
+        handler = HandlerTaskExecutionOrchestrator()
+        with pytest.raises(UnsupportedTaskActionError) as excinfo:
+            handler.handle(
+                ModelTaskExecutionRequest(
+                    task_contract=self._branch_contract(),
+                    create_pr=True,
+                    dry_run=False,
+                    allowed_side_effects=("create_pr",),
+                ),
+                generated_at=_FIXED_GENERATED_AT,
+            )
+        assert "pr_creation_executor" in excinfo.value.reason
+
+    def test_create_pr_requires_branch(self) -> None:
+        """A contract without a branch is a typed failure (no invented branch)."""
+        contract = self._branch_contract().model_copy(update={"branch": None})
+        handler = HandlerTaskExecutionOrchestrator()
+        with pytest.raises(UnsupportedTaskActionError) as excinfo:
+            handler.handle(
+                ModelTaskExecutionRequest(task_contract=contract, create_pr=True),
+                generated_at=_FIXED_GENERATED_AT,
+            )
+        assert "declare a branch" in excinfo.value.reason
+
+    def test_unrelated_side_effect_token_rejected(self) -> None:
+        """allowed_side_effects may only contain 'create_pr' in this slice."""
+        handler = HandlerTaskExecutionOrchestrator()
+        with pytest.raises(UnsupportedTaskActionError):
+            handler.handle(
+                ModelTaskExecutionRequest(
+                    task_contract=self._branch_contract(),
+                    allowed_side_effects=("delete_branch",),
+                ),
+                generated_at=_FIXED_GENERATED_AT,
+            )
+
+    def test_bus_path_dry_run_returns_plan(self) -> None:
+        """Pattern-B bus path returns the PR plan under dry-run with no side effects."""
+        import asyncio
+
+        handler = HandlerTaskExecutionOrchestrator()
+        correlation_id = uuid4()
+        command = ModelDispatchBusCommand(
+            command_name="task.execute",
+            requester="pytest",
+            payload={
+                "task_contract": self._branch_contract().model_dump(mode="json"),
+                "create_pr": True,
+                "dry_run": True,
+            },
+            correlation_id=correlation_id,
+            response_topic=TOPIC_TASK_EXECUTE_RESPONSE,
+            created_at=_FIXED_GENERATED_AT,
+        )
+        data = json.loads(
+            asyncio.run(handler.process(command.model_dump_json().encode("utf-8")))
+        )
+        assert data["status"] == "completed"
+        assert data["payload"]["pr_plan"]["branch"] == "jonah/omn-12705-pr-path"
+        assert data["payload"]["pr_result"] is None
 
 
 @pytest.mark.unit
