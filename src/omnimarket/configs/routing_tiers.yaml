@@ -55,6 +55,17 @@ tiers:
           - review
           - document
         fast_path_threshold_tokens: 8192
+      - id: Qwen3.6-27B-MTP-IQ4_XS.gguf
+        backend_id: local-reasoner
+        max_context_tokens: 24576
+        use_for:
+          - test
+          - research
+          - reasoning
+          - planning
+          - review
+          - document
+        fast_path_threshold_tokens: 24576
       - id: ds-v4-flash
         backend_id: local-ds-v4-flash
         max_context_tokens: 65536
