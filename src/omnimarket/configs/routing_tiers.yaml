@@ -44,6 +44,20 @@ tiers:
           - review
           - document
         fast_path_threshold_tokens: 24576
+      # Served-model alias for the .201 local-reasoner backend. SEA resolves
+      # max_context_tokens from served_model_id, so the explicit alias keeps
+      # inference token bounds contract-owned instead of adding client fallbacks.
+      - id: Qwen3.6-27B-MTP-IQ4_XS.gguf
+        backend_id: local-reasoner
+        max_context_tokens: 24576
+        use_for:
+          - test
+          - research
+          - reasoning
+          - planning
+          - review
+          - document
+        fast_path_threshold_tokens: 24576
       - id: qwen3.6-35b
         backend_id: local-heavy-reasoning
         max_context_tokens: 8192
