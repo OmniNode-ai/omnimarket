@@ -9,7 +9,12 @@ it must NOT become a new authority:
   ``ModelTaskContract`` (reused verbatim from omnibase_core — never duplicated).
 - It deterministically maps each requirement and each mechanical DoD check to an
   existing route NAME (``delegation`` / ``verification``) WITHOUT executing it.
-- In dry-run (the only V1 mode) it returns the route plan with NO side effects.
+- When ``execute_mechanical_checks`` is set, it dispatches the contract's
+  mechanical DoD checks to ``node_verification_receipt_generator`` (the execution
+  authority) and aggregates the returned receipt UNCHANGED. task.execute PLANS
+  checks; the verification node EXECUTES them. Terminal status is derived from
+  the receipt's ``overall_pass`` — never re-decided here (OMN-12703).
+- Otherwise (the V1 default) it returns the route plan with NO side effects.
 - An unsupported action produces a typed, deterministic failure — never a silent
   skip and never a free-text summary.
 
@@ -58,12 +63,19 @@ from omnibase_core.models.dispatch.model_dispatch_bus_terminal_result import (
 from omnibase_core.models.task.model_mechanical_check import ModelMechanicalCheck
 from omnibase_core.models.task.model_task_contract import ModelTaskContract
 
+from omnimarket.events.verification import (
+    ModelVerificationReceipt,
+    ModelVerificationReceiptRequest,
+)
 from omnimarket.nodes.node_task_execution_orchestrator.models.model_task_execution import (
     EnumRouteItemKind,
     EnumTaskRoute,
     ModelRouteDecision,
     ModelTaskExecutionRequest,
     ModelTaskExecutionResult,
+)
+from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
+    HandlerVerificationReceiptGenerator,
 )
 
 _log = logging.getLogger(__name__)
@@ -104,6 +116,19 @@ class ProtocolTaskExecutionPublisher(Protocol):
     ) -> None: ...
 
 
+class ProtocolMechanicalCheckExecutor(Protocol):
+    """Execution authority for mechanical DoD checks.
+
+    Implemented by node_verification_receipt_generator's handler. task.execute
+    PLANS checks then dispatches them through this port; it never executes a
+    check itself and never transforms the returned receipt.
+    """
+
+    def handle(
+        self, request: ModelVerificationReceiptRequest
+    ) -> ModelVerificationReceipt: ...
+
+
 def _fingerprint(contract: ModelTaskContract) -> str:
     """Deterministic SHA-256 over requirements + DoD checks (not timestamps).
 
@@ -127,16 +152,37 @@ def _fingerprint(contract: ModelTaskContract) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _mechanical_failure_reason(receipt: ModelVerificationReceipt) -> str:
+    """Deterministic failure reason naming each failed verification dimension.
+
+    Read directly off the receipt's check evidence (never recomputed), so the
+    reason is a faithful, additive summary of the verification authority's own
+    pass/fail — task.execute does not reinterpret outcomes.
+    """
+    failed = [c.dimension for c in receipt.checks if not c.passed]
+    return "mechanical checks failed: " + ", ".join(failed)
+
+
 class HandlerTaskExecutionOrchestrator:
     """Generic ``task.execute`` route planner (V1: deterministic, no side effects)."""
 
     def __init__(
         self,
         event_bus: ProtocolTaskExecutionPublisher | None = None,
+        mechanical_check_executor: ProtocolMechanicalCheckExecutor | None = None,
     ) -> None:
         # event_bus is required for the Pattern-B publish path; the test-only
         # in-process path (handle / process-return) works without it.
         self._event_bus = event_bus
+        # The verification node is the execution authority for mechanical checks.
+        # Injected for tests; defaults to the real handler so the runtime path
+        # composes the canonical authority rather than reimplementing it.
+        self._mechanical_check_executor = mechanical_check_executor
+
+    def _get_mechanical_check_executor(self) -> ProtocolMechanicalCheckExecutor:
+        if self._mechanical_check_executor is not None:
+            return self._mechanical_check_executor
+        return HandlerVerificationReceiptGenerator()
 
     # ------------------------------------------------------------------
     # Direct in-process surface
@@ -161,13 +207,54 @@ class HandlerTaskExecutionOrchestrator:
         self._validate_supported(request)
         contract = self._normalize_contract(request, generated_at=generated_at)
         route_plan = self._plan_routes(contract)
+
+        if not request.execute_mechanical_checks:
+            return ModelTaskExecutionResult(
+                ok=True,
+                dry_run=request.dry_run,
+                task_contract=contract,
+                contract_fingerprint=_fingerprint(contract),
+                route_plan=route_plan,
+            )
+
+        receipt = self._execute_mechanical_checks(contract, request.worktree_path)
+        # Evidence aggregation is additive only: the receipt is stored verbatim
+        # and the terminal status is derived from its overall_pass — task.execute
+        # never re-decides a check outcome. A failed check yields a deterministic
+        # failure_reason naming the failed dimensions.
+        failure_reason = (
+            None if receipt.overall_pass else _mechanical_failure_reason(receipt)
+        )
         return ModelTaskExecutionResult(
-            ok=True,
+            ok=receipt.overall_pass,
             dry_run=request.dry_run,
             task_contract=contract,
             contract_fingerprint=_fingerprint(contract),
             route_plan=route_plan,
+            verification_receipt=receipt,
+            failure_reason=failure_reason,
         )
+
+    def _execute_mechanical_checks(
+        self, contract: ModelTaskContract, worktree_path: str
+    ) -> ModelVerificationReceipt:
+        """Dispatch the contract's mechanical checks to the verification node.
+
+        task.execute composes the verification authority: it builds the request
+        from the contract's DoD (unchanged) and returns whatever receipt the
+        node produces. CI and pytest dimensions are disabled here — only the
+        contract-declared mechanical checks are executed.
+        """
+        executor = self._get_mechanical_check_executor()
+        verification_request = ModelVerificationReceiptRequest(
+            task_id=contract.task_id,
+            claim="task.execute mechanical DoD verification",
+            worktree_path=worktree_path,
+            verify_ci=False,
+            verify_tests=False,
+            mechanical_checks=tuple(contract.definition_of_done),
+        )
+        return executor.handle(verification_request)
 
     # ------------------------------------------------------------------
     # Pattern-B bus consumer surface
@@ -318,6 +405,7 @@ class HandlerTaskExecutionOrchestrator:
 
 __all__ = [
     "HandlerTaskExecutionOrchestrator",
+    "ProtocolMechanicalCheckExecutor",
     "ProtocolTaskExecutionPublisher",
     "UnsupportedTaskActionError",
 ]

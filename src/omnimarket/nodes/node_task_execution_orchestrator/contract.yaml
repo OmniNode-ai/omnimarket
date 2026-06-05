@@ -57,11 +57,25 @@ inputs:
     type: str
     description: "Optional parent ticket applied when normalizing a prompt"
     required: false
+  execute_mechanical_checks:
+    type: bool
+    description: >
+      Dispatch the contract's mechanical DoD checks to
+      node_verification_receipt_generator (execution authority) and aggregate
+      its receipt unchanged. Read-only verification, permitted under dry_run.
+    required: false
+    default: false
+  worktree_path:
+    type: str
+    description: "Worktree the verification node runs mechanical checks in"
+    required: false
 
 outputs:
   ok:
     type: bool
-    description: "True iff every requirement and DoD check mapped to a route"
+    description: >
+      True iff every requirement/DoD check mapped to a route and (when
+      mechanical checks ran) the verification receipt passed
   task_contract:
     type: dict
     description: "Normalized ModelTaskContract"
@@ -71,9 +85,16 @@ outputs:
   route_plan:
     type: list
     description: "Deterministic, ordered route decisions for this contract"
+  verification_receipt:
+    type: dict
+    description: >
+      Receipt returned UNCHANGED by node_verification_receipt_generator when
+      mechanical checks were executed (aggregated, never transformed)
   failure_reason:
     type: str
-    description: "Typed deterministic reason when an action is unsupported"
+    description: >
+      Typed deterministic reason when an action is unsupported or a mechanical
+      check failed
 
 terminal_event: onex.evt.omnimarket.task-execute-completed.v1
 

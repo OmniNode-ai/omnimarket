@@ -24,6 +24,10 @@ from enum import StrEnum
 from omnibase_core.models.task.model_task_contract import ModelTaskContract
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.verification import (
+    ModelVerificationReceipt,
+)
+
 
 class EnumTaskRoute(StrEnum):
     """Existing route NAMES that task.execute composes.
@@ -99,6 +103,22 @@ class ModelTaskExecutionRequest(BaseModel):
         default=None,
         description="Optional parent ticket applied when normalizing a prompt.",
     )
+    execute_mechanical_checks: bool = Field(
+        default=False,
+        description=(
+            "When True, dispatch the contract's mechanical DoD checks to "
+            "node_verification_receipt_generator (the execution authority) and "
+            "aggregate its receipt unchanged. This is read-only verification, "
+            "not a code/PR side effect, so it is permitted under dry_run."
+        ),
+    )
+    worktree_path: str = Field(
+        default="",
+        description=(
+            "Worktree the verification node runs mechanical checks in; passed "
+            "through unchanged. Empty runs checks in the current directory."
+        ),
+    )
 
 
 class ModelTaskExecutionResult(BaseModel):
@@ -126,10 +146,23 @@ class ModelTaskExecutionResult(BaseModel):
     route_plan: tuple[ModelRouteDecision, ...] = Field(
         description="Deterministic, ordered route decisions for this contract.",
     )
+    verification_receipt: ModelVerificationReceipt | None = Field(
+        default=None,
+        description=(
+            "Receipt returned UNCHANGED by node_verification_receipt_generator "
+            "when mechanical checks were executed. Aggregated additively; "
+            "task.execute never transforms or reinterprets its pass/fail."
+        ),
+    )
     failure_reason: str | None = Field(
         default=None,
         description="Typed deterministic reason when an action is unsupported.",
     )
+
+
+# ``from __future__ import annotations`` defers the ModelVerificationReceipt
+# annotation to a string; rebuild so Pydantic resolves the imported model.
+ModelTaskExecutionResult.model_rebuild()
 
 
 __all__ = [

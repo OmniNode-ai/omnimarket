@@ -10,14 +10,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from omnimarket.events.verification import (
+    ModelFileTestResult,
+    ModelVerificationReceiptRequest,
+)
 from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
     GhClientProtocol,
     HandlerVerificationReceiptGenerator,
     PytestRunnerProtocol,
-)
-from omnimarket.nodes.node_verification_receipt_generator.models.model_verification_receipt import (
-    ModelFileTestResult,
-    ModelVerificationReceiptRequest,
 )
 
 

@@ -243,6 +243,172 @@ class TestDeterminism:
 
 
 @pytest.mark.unit
+class TestMechanicalCheckExecution:
+    """task.execute COMPOSES the verification authority for mechanical checks.
+
+    It dispatches the contract's mechanical checks to
+    node_verification_receipt_generator, aggregates the receipt UNCHANGED, and
+    derives terminal status from the receipt — it never executes a check itself
+    nor reinterprets a sub-result (OMN-12703).
+    """
+
+    def test_passing_checks_aggregate_receipt_unchanged(self) -> None:
+        from omnimarket.events.verification import (
+            ModelCheckEvidence,
+            ModelVerificationReceipt,
+            ModelVerificationReceiptRequest,
+        )
+        from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
+            HandlerVerificationReceiptGenerator,
+        )
+
+        captured: dict[str, ModelVerificationReceiptRequest] = {}
+        sentinel = ModelVerificationReceipt(
+            task_id="task-1",
+            claim="task.execute mechanical DoD verification",
+            overall_pass=True,
+            checks=[
+                ModelCheckEvidence(
+                    dimension="mechanical_check:tests pass",
+                    passed=True,
+                    summary="command_exit_0 exit_code=0",
+                ),
+            ],
+            verified_at=_FIXED_GENERATED_AT,
+        )
+
+        class _StubExecutor(HandlerVerificationReceiptGenerator):
+            def handle(  # type: ignore[override]
+                self, request: ModelVerificationReceiptRequest
+            ) -> ModelVerificationReceipt:
+                captured["request"] = request
+                return sentinel
+
+        handler = HandlerTaskExecutionOrchestrator(
+            mechanical_check_executor=_StubExecutor()
+        )
+        result = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=_sample_contract(),
+                execute_mechanical_checks=True,
+                worktree_path="/work/tree",
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+
+        assert result.ok is True
+        assert result.failure_reason is None
+        # Receipt is aggregated verbatim — same object, never transformed.
+        assert result.verification_receipt is sentinel
+        # The orchestrator dispatched the contract's DoD checks unchanged,
+        # disabling CI/pytest dimensions, with the worktree passed through.
+        dispatched = captured["request"]
+        assert dispatched.verify_ci is False
+        assert dispatched.verify_tests is False
+        assert dispatched.worktree_path == "/work/tree"
+        assert dispatched.mechanical_checks == tuple(
+            _sample_contract().definition_of_done
+        )
+
+    def test_failed_check_yields_deterministic_failure_reason(self) -> None:
+        from omnimarket.events.verification import (
+            ModelCheckEvidence,
+            ModelVerificationReceipt,
+            ModelVerificationReceiptRequest,
+        )
+        from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
+            HandlerVerificationReceiptGenerator,
+        )
+
+        failing = ModelVerificationReceipt(
+            task_id="task-1",
+            claim="task.execute mechanical DoD verification",
+            overall_pass=False,
+            checks=[
+                ModelCheckEvidence(
+                    dimension="mechanical_check:tests pass",
+                    passed=True,
+                    summary="command_exit_0 exit_code=0",
+                ),
+                ModelCheckEvidence(
+                    dimension="mechanical_check:no TODO markers remain",
+                    passed=False,
+                    summary="grep_absent found=True",
+                ),
+            ],
+            verified_at=_FIXED_GENERATED_AT,
+        )
+
+        class _StubExecutor(HandlerVerificationReceiptGenerator):
+            def handle(  # type: ignore[override]
+                self, request: ModelVerificationReceiptRequest
+            ) -> ModelVerificationReceipt:
+                return failing
+
+        handler = HandlerTaskExecutionOrchestrator(
+            mechanical_check_executor=_StubExecutor()
+        )
+        result = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=_sample_contract(),
+                execute_mechanical_checks=True,
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+
+        assert result.ok is False
+        assert result.verification_receipt is failing
+        # Deterministic reason names exactly the failed dimension, read off the
+        # receipt — never a free-text summary.
+        assert result.failure_reason == (
+            "mechanical checks failed: mechanical_check:no TODO markers remain"
+        )
+
+    def test_real_executor_end_to_end(self, tmp_path: object) -> None:
+        """End-to-end against the real verification handler (no network)."""
+        from pathlib import Path
+
+        from omnibase_core.models.task.model_task_contract import ModelTaskContract
+
+        work = tmp_path
+        assert isinstance(work, Path)
+        (work / "code.py").write_text("clean code\n")
+
+        contract = ModelTaskContract(
+            task_id="task-real",
+            generated_at=_FIXED_GENERATED_AT,
+            requirements=["keep it clean"],
+            definition_of_done=[
+                ModelMechanicalCheck(
+                    criterion="command ok",
+                    check="true",
+                    check_type=EnumCheckType.COMMAND_EXIT_0,
+                ),
+                ModelMechanicalCheck(
+                    criterion="no TODO markers",
+                    check="-r TODO .",
+                    check_type=EnumCheckType.GREP_ABSENT,
+                ),
+            ],
+        )
+
+        handler = HandlerTaskExecutionOrchestrator()
+        result = handler.handle(
+            ModelTaskExecutionRequest(
+                task_contract=contract,
+                execute_mechanical_checks=True,
+                worktree_path=str(work),
+            ),
+            generated_at=_FIXED_GENERATED_AT,
+        )
+
+        assert result.ok is True
+        assert result.verification_receipt is not None
+        assert result.verification_receipt.overall_pass is True
+        assert len(result.verification_receipt.checks) == 2
+
+
+@pytest.mark.unit
 def test_pattern_b_payload_must_be_object() -> None:
     """A non-object Pattern-B payload fails deterministically, not silently."""
     handler = HandlerTaskExecutionOrchestrator()

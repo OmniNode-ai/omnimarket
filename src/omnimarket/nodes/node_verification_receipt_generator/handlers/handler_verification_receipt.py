@@ -2,16 +2,22 @@
 # SPDX-License-Identifier: MIT
 """HandlerVerificationReceiptGenerator — generates evidence receipts for task claims.
 
-Runs two verification dimensions:
+Runs three verification dimensions:
 1. CI checks: shells out to `gh pr checks` and collects conclusions.
 2. Pytest: runs `uv run pytest` in the worktree and captures exit code.
+3. Mechanical checks: executes ``ModelMechanicalCheck`` DoD checks
+   (command_exit_0 / file_exists / grep_present / grep_absent) in the worktree.
 
-Both dimensions are individually skippable via request flags.
+All dimensions are individually skippable via request flags / empty inputs.
 When dry_run=True, returns a receipt with no evidence (all checks pass vacuously).
+
+This node is the EXECUTION authority for mechanical DoD checks; the
+``task.execute`` orchestrator PLANS checks and dispatches them here — it never
+executes a check itself (OMN-12703).
 
 Protocol-compliant: accepts GH_PAT from env (fail-fast, no fallback).
 
-OMN-9403.
+OMN-9403, OMN-12703.
 """
 
 from __future__ import annotations
@@ -19,11 +25,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from omnimarket.nodes.node_verification_receipt_generator.models.model_verification_receipt import (
+from omnibase_core.enums.enum_check_type import EnumCheckType
+from omnibase_core.models.task.model_mechanical_check import ModelMechanicalCheck
+
+from omnimarket.events.verification import (
     ModelCheckEvidence,
     ModelFileTestResult,
     ModelVerificationReceipt,
@@ -34,6 +45,7 @@ _log = logging.getLogger(__name__)
 
 _GH_CHECKS_TIMEOUT = 30
 _PYTEST_TIMEOUT = 300
+_MECHANICAL_CHECK_TIMEOUT = 300
 
 
 @runtime_checkable
@@ -50,6 +62,20 @@ class PytestRunnerProtocol(Protocol):
     def run_pytest(
         self, worktree_path: str
     ) -> tuple[int, str, list[ModelFileTestResult]]: ...
+
+
+@runtime_checkable
+class MechanicalCheckRunnerProtocol(Protocol):
+    """Protocol for executing a single mechanical DoD check — injectable.
+
+    Returns ``(passed, summary)``. ``summary`` is a deterministic,
+    human-readable explanation of the outcome (exit code, missing path,
+    grep hit/miss) so a failed check carries a deterministic failure reason.
+    """
+
+    def run_check(
+        self, check: ModelMechanicalCheck, worktree_path: str
+    ) -> tuple[bool, str]: ...
 
 
 class GhClient:
@@ -135,21 +161,108 @@ class PytestRunner:
             return 1, f"pytest invocation failed: {exc}", []
 
 
+class MechanicalCheckRunner:
+    """Real executor for the four ``EnumCheckType`` mechanical DoD checks.
+
+    Each check is deterministic given (check, worktree). Shell commands run via
+    ``shell=True`` with the worktree as cwd so a check like ``uv run pytest``
+    behaves exactly as it would for an operator. file/grep checks are evaluated
+    in-process without a shell so their outcome is unambiguous.
+    """
+
+    def run_check(
+        self, check: ModelMechanicalCheck, worktree_path: str
+    ) -> tuple[bool, str]:
+        """Execute one mechanical check and return (passed, deterministic summary)."""
+        if check.check_type is EnumCheckType.COMMAND_EXIT_0:
+            return self._run_command_exit_0(check.check, worktree_path)
+        if check.check_type is EnumCheckType.FILE_EXISTS:
+            return self._run_file_exists(check.check, worktree_path)
+        if check.check_type is EnumCheckType.GREP_PRESENT:
+            return self._run_grep(check.check, worktree_path, want_present=True)
+        if check.check_type is EnumCheckType.GREP_ABSENT:
+            return self._run_grep(check.check, worktree_path, want_present=False)
+        # Unreachable: EnumCheckType is closed and every member is handled above.
+        # An added member without a branch fails here deterministically rather
+        # than silently passing.
+        raise RuntimeError(
+            f"no mechanical check executor for check_type {check.check_type.value!r}"
+        )
+
+    def _run_command_exit_0(self, command: str, worktree_path: str) -> tuple[bool, str]:
+        """Pass iff ``command`` exits 0 (e.g. a pytest gate running uv run pytest)."""
+        cwd = worktree_path or None
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=_MECHANICAL_CHECK_TIMEOUT,
+                cwd=cwd,
+            )
+        except subprocess.TimeoutExpired:
+            return False, f"command timed out after {_MECHANICAL_CHECK_TIMEOUT}s"
+        except OSError as exc:
+            return False, f"command invocation failed: {exc}"
+        passed = result.returncode == 0
+        return passed, f"command_exit_0 exit_code={result.returncode}"
+
+    def _run_file_exists(self, target: str, worktree_path: str) -> tuple[bool, str]:
+        """Pass iff ``target`` exists (resolved against the worktree when relative)."""
+        path = Path(target)
+        if not path.is_absolute() and worktree_path:
+            path = Path(worktree_path) / path
+        exists = path.exists()
+        return exists, f"file_exists path={path} exists={exists}"
+
+    def _run_grep(
+        self, pattern_spec: str, worktree_path: str, *, want_present: bool
+    ) -> tuple[bool, str]:
+        """Run ``grep`` and pass on presence/absence per ``want_present``.
+
+        ``pattern_spec`` is the operator-authored grep argument string (e.g.
+        ``-r TODO src/``). grep exit 0 = match found, 1 = no match, >=2 = error.
+        A grep error is a deterministic failure regardless of polarity.
+        """
+        cwd = worktree_path or None
+        try:
+            result = subprocess.run(
+                ["grep", *shlex.split(pattern_spec)],
+                capture_output=True,
+                text=True,
+                timeout=_MECHANICAL_CHECK_TIMEOUT,
+                cwd=cwd,
+            )
+        except subprocess.TimeoutExpired:
+            return False, f"grep timed out after {_MECHANICAL_CHECK_TIMEOUT}s"
+        except OSError as exc:
+            return False, f"grep invocation failed: {exc}"
+        if result.returncode >= 2:
+            return False, f"grep error exit_code={result.returncode}"
+        found = result.returncode == 0
+        polarity = "grep_present" if want_present else "grep_absent"
+        passed = found if want_present else not found
+        return passed, f"{polarity} found={found}"
+
+
 class HandlerVerificationReceiptGenerator:
     """Generates evidence receipts for task-completed claims.
 
-    Verifies CI checks and/or pytest results depending on request flags.
-    Both dimensions are individually skippable. Dry-run returns vacuously
-    passing receipt.
+    Verifies CI checks, pytest results, and/or mechanical DoD checks depending
+    on request flags / supplied checks. Every dimension is individually
+    skippable. Dry-run returns a vacuously passing receipt.
     """
 
     def __init__(
         self,
         gh_client: GhClientProtocol | None = None,
         pytest_runner: PytestRunnerProtocol | None = None,
+        mechanical_check_runner: MechanicalCheckRunnerProtocol | None = None,
     ) -> None:
         self._gh_client = gh_client
         self._pytest_runner = pytest_runner
+        self._mechanical_check_runner = mechanical_check_runner
 
     def _get_gh_client(self) -> GhClientProtocol:
         if self._gh_client is not None:
@@ -160,6 +273,11 @@ class HandlerVerificationReceiptGenerator:
         if self._pytest_runner is not None:
             return self._pytest_runner
         return PytestRunner()
+
+    def _get_mechanical_check_runner(self) -> MechanicalCheckRunnerProtocol:
+        if self._mechanical_check_runner is not None:
+            return self._mechanical_check_runner
+        return MechanicalCheckRunner()
 
     def handle(
         self, request: ModelVerificationReceiptRequest
@@ -214,6 +332,10 @@ class HandlerVerificationReceiptGenerator:
                     )
                 )
 
+        # Dimension 3: Mechanical DoD checks (one evidence entry per check)
+        for check in request.mechanical_checks:
+            checks.append(self._verify_mechanical_check(check, request.worktree_path))
+
         overall = all(c.passed for c in checks) if checks else True
 
         return ModelVerificationReceipt(
@@ -249,6 +371,28 @@ class HandlerVerificationReceiptGenerator:
             summary=f"pytest exit_code={exit_code}: {summary}",
             details=details,
             file_results=file_results,
+        )
+
+    def _verify_mechanical_check(
+        self, check: ModelMechanicalCheck, worktree_path: str
+    ) -> ModelCheckEvidence:
+        """Execute one mechanical DoD check and capture structured evidence.
+
+        The dimension is the check's ``criterion`` so the evidence is traceable
+        back to the DoD line. A failed check carries a deterministic summary
+        (exit code / missing path / grep hit-or-miss) — never a free-text guess.
+        """
+        runner = self._get_mechanical_check_runner()
+        passed, summary = runner.run_check(check, worktree_path)
+        return ModelCheckEvidence(
+            dimension=f"mechanical_check:{check.criterion}",
+            passed=passed,
+            summary=summary,
+            details={
+                "check_type": check.check_type.value,
+                "check": check.check,
+                "criterion": check.criterion,
+            },
         )
 
     def _verify_ci(self, repo: str, pr_number: int) -> ModelCheckEvidence:
@@ -350,5 +494,7 @@ def _parse_pytest_per_file(stdout: str) -> list[ModelFileTestResult]:
 __all__: list[str] = [
     "GhClientProtocol",
     "HandlerVerificationReceiptGenerator",
+    "MechanicalCheckRunner",
+    "MechanicalCheckRunnerProtocol",
     "PytestRunnerProtocol",
 ]
