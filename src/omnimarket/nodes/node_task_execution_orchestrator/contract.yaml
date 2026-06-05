@@ -80,6 +80,17 @@ inputs:
       reinterprets delegation success.
     required: false
     default: false
+  create_pr:
+    type: bool
+    description: >
+      Run the PR creation path (NON-BLOCKING V1; isolated/optional). Under
+      dry_run it returns the intended branch/title/body (pr_plan) with no side
+      effects. Non-dry-run create_pr is a real side effect: requires
+      dry_run=false AND 'create_pr' in allowed_side_effects, then composes the
+      PR creation authority (git client behind node_ticket_work) and aggregates
+      its result unchanged. task.execute never reinterprets the PR outcome.
+    required: false
+    default: false
 
 outputs:
   ok:
@@ -108,11 +119,22 @@ outputs:
       when requirements were delegated (one per requirement; aggregated, never
       reinterpreted). Each carries the delegation route's quality-gate result,
       model/backend selection, correlation id, and output content
+  pr_plan:
+    type: dict
+    description: >
+      Intended PR identity (branch/title/body/worktree_path) when the create_pr
+      path ran. Populated on both dry-run and non-dry-run create_pr; the dry-run
+      plan performs no side effects
+  pr_result:
+    type: dict
+    description: >
+      Result returned UNCHANGED by the PR creation authority (git client) on a
+      non-dry-run create_pr (aggregated, never reinterpreted); null on dry-run
   failure_reason:
     type: str
     description: >
-      Typed deterministic reason when an action is unsupported or a mechanical
-      check failed
+      Typed deterministic reason when an action is unsupported, a mechanical
+      check failed, or PR creation failed
 
 terminal_event: onex.evt.omnimarket.task-execute-completed.v1
 
