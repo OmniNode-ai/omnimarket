@@ -37,6 +37,8 @@ from tests.constants import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+_LOCAL_REASONER_ENDPOINT = "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-12721 reason="test fixture for stale local alias regression against lab AIPC endpoint"
+
 _MINIMAL_BIFROST = textwrap.dedent("""\
     config_version: "2.0.0"
     schema_version: "bifrost_delegation.v1"
@@ -385,12 +387,12 @@ class TestDeltaContractRouting:
         )
         bifrost_file = tmp_path / "bifrost_delegation.yaml"
         bifrost_file.write_text(
-            textwrap.dedent("""\
+            textwrap.dedent(f"""\
                 config_version: "2.0.0"
                 schema_version: "bifrost_delegation.v1"
                 backends:
                   - backend_id: local-reasoner
-                    endpoint_url: "http://192.168.86.201:8001"
+                    endpoint_url: "{_LOCAL_REASONER_ENDPOINT}"
                     model_name: "Qwen3.6-27B"
                     tier: local
                     timeout_ms: 30000
@@ -435,7 +437,7 @@ class TestDeltaContractRouting:
         try:
             decision = delta(self._make_request("test"))
             assert decision.selected_model == MODEL_QWEN3_27B_MTP
-            assert decision.endpoint_url == "http://192.168.86.201:8001"
+            assert decision.endpoint_url == _LOCAL_REASONER_ENDPOINT
         finally:
             if prev_routing_path is None:
                 os.environ.pop("DELEGATION_ROUTING_TIERS_PATH", None)
