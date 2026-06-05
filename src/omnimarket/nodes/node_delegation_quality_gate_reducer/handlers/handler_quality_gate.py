@@ -142,6 +142,11 @@ def _extract_fenced_code_blocks(content: str) -> list[str]:
     return _MARKDOWN_FENCE_RE.findall(content)
 
 
+def _remove_fenced_code_blocks(content: str) -> str:
+    """Return response text outside fenced code blocks."""
+    return _MARKDOWN_FENCE_RE.sub("", content).strip()
+
+
 def _check_output_parses(content: str) -> str | None:
     """Deterministic: content must be non-empty and not a bare error trace."""
     if not content.strip():
@@ -190,6 +195,13 @@ def _check_compiles_without_errors(content: str) -> str | None:
             ast.parse(candidate)
         except SyntaxError as exc:
             return f"MALFORMED: response does not compile as Python: {exc.msg}"
+    return None
+
+
+def _check_final_artifact_only(content: str) -> str | None:
+    """Deterministic: code/test tasks must return the artifact, not deliberation."""
+    if _extract_fenced_code_blocks(content) and _remove_fenced_code_blocks(content):
+        return "TASK_MISMATCH: response includes non-artifact prose outside code block"
     return None
 
 
@@ -301,6 +313,8 @@ def _evaluate_deterministic_checks(
             reason = _check_signature_preserved(content)
         elif check == "compiles_without_errors":
             reason = _check_compiles_without_errors(content)
+        elif check == "final_artifact_only":
+            reason = _check_final_artifact_only(content)
         elif check == "uses_pytest_mark_unit":
             reason = _check_uses_pytest_mark_unit(content)
         elif check == "docstring_present":

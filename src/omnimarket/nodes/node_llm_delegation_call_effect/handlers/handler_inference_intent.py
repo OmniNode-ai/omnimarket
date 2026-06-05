@@ -159,7 +159,12 @@ class HandlerInferenceIntent:
         if not choices:
             raise ValueError("API returned empty choices array")
 
-        content_raw = choices[0].get("message", {}).get("content")
+        choice = choices[0]
+        finish_reason = choice.get("finish_reason")
+        if finish_reason == "length":
+            raise ValueError("API response truncated: finish_reason=length")
+
+        content_raw = choice.get("message", {}).get("content")
         content = content_raw.strip() if isinstance(content_raw, str) else ""
         if not content:
             raise ValueError("API returned empty message content")
