@@ -20,11 +20,13 @@
 name: node-drift-gate
 
 on:
+  # No paths filter: as of OMN-12693 (#1044) the job runs `--check-all
+  # --check-orphan-nodes --strict` on every event, so it must report a status on
+  # every PR to main/dev — otherwise a required `node-drift-gate` check stays
+  # permanently "expected" on PRs that touch neither src/omnimarket/nodes/** nor
+  # pyproject.toml (e.g. test-only PRs), blocking the merge queue. (OMN-12706)
   pull_request:
     branches: [main, dev]
-    paths:
-      - "src/omnimarket/nodes/**"
-      - "pyproject.toml"
   merge_group:
   workflow_dispatch:
 
