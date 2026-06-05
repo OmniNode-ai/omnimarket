@@ -1,11 +1,18 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models for node_verification_receipt_generator."""
+"""Shared verification receipt event models (cross-node, OMN-12703).
+
+node_verification_receipt_generator is the execution authority for these; the
+task.execute orchestrator composes that node and aggregates its receipt
+unchanged. Because the receipt is now a cross-node shared contract, it lives in
+omnimarket.events.* rather than a single node's private models package.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
 
+from omnibase_core.models.task.model_mechanical_check import ModelMechanicalCheck
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -37,6 +44,14 @@ class ModelVerificationReceiptRequest(BaseModel):
     verify_tests: bool = Field(
         default=True,
         description="Whether to run pytest and capture exit code.",
+    )
+    mechanical_checks: tuple[ModelMechanicalCheck, ...] = Field(
+        default=(),
+        description=(
+            "Mechanical DoD checks (command_exit_0/file_exists/grep_present/"
+            "grep_absent) to execute. Each produces one evidence entry; checks "
+            "run in the worktree (worktree_path) when supplied."
+        ),
     )
     dry_run: bool = Field(
         default=False,
@@ -92,3 +107,11 @@ class ModelVerificationReceipt(BaseModel):
         default="node_verification_receipt_generator",
         description="Node that produced this receipt.",
     )
+
+
+__all__ = [
+    "ModelCheckEvidence",
+    "ModelFileTestResult",
+    "ModelVerificationReceipt",
+    "ModelVerificationReceiptRequest",
+]
