@@ -447,7 +447,8 @@ class HandlerDelegationWorkflow:
             return []
 
         assert workflow.request is not None
-        assert workflow.routing_decision is not None
+        if workflow.routing_decision is None:
+            return []
 
         if response.error_message:
             elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000

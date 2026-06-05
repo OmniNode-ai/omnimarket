@@ -778,6 +778,26 @@ class TestInferenceErrorEscalation:
         assert handler.workflows[cid].state == EnumDelegationState.ROUTED
         assert handler.workflows[cid].escalation_count == 1
 
+    def test_late_inference_response_during_escalation_is_ignored(self) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(cid, tier_name="local")
+        )
+        handler.handle_inference_response(
+            _make_error_inference_response(cid, "timed out")
+        )
+
+        intents = handler.handle_inference_response(
+            _make_inference_response(correlation_id=cid, content="late success")
+        )
+
+        assert intents == []
+        assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+        assert handler.workflows[cid].routing_decision is None
+
     def test_escalation_history_captures_infra_failure(self) -> None:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()

@@ -319,6 +319,39 @@ def test_test_quality_gate_accepts_final_fenced_unit_tests() -> None:
 
 
 @pytest.mark.unit
+def test_test_quality_gate_accepts_predicate_failure_path_assertions() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="test",
+        llm_response_content=(
+            "```python\n"
+            "import pytest\n\n"
+            "@pytest.mark.unit\n"
+            "def test_normalize_status_valid_cases():\n"
+            "    assert normalize_status('ok') is True\n"
+            "    assert normalize_status('OK') is True\n"
+            "    assert normalize_status('healthy') is True\n\n"
+            "@pytest.mark.unit\n"
+            "def test_normalize_status_rejects_invalid_cases():\n"
+            "    assert normalize_status(None) is False\n"
+            "    assert normalize_status('') is False\n"
+            "    assert normalize_status('unknown') is False\n"
+            "```\n"
+        ),
+        dod_deterministic=(
+            "compiles_without_errors",
+            "final_artifact_only",
+            "uses_pytest_mark_unit",
+        ),
+        dod_heuristic=("no_refusal", "covers_edge_cases", "covers_error_paths"),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is True
+
+
+@pytest.mark.unit
 def test_request_quality_contract_can_replace_task_class_dod() -> None:
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),

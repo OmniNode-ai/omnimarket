@@ -97,7 +97,18 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
     "covers_error_paths": (
         "TASK_MISMATCH",
-        ("error", "exception", "raises", "failure"),
+        (
+            "error",
+            "exception",
+            "raises",
+            "failure",
+            "fail",
+            "false",
+            "invalid",
+            "none",
+            "unknown",
+            "empty",
+        ),
     ),
     "step_by_step_explanation": ("TASK_MISMATCH", ("step", "1.", "first", "then")),
     "accurate": (

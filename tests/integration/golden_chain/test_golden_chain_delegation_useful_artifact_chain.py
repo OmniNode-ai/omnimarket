@@ -104,6 +104,25 @@ def test_normalize_unit_state_rejects_blank_input():
         normalize_unit_state("   ")
 """
 
+_PREDICATE_TEST_ARTIFACT = """\
+import pytest
+
+
+@pytest.mark.unit
+def test_normalize_status_valid_inputs():
+    assert normalize_status("ok") is True
+    assert normalize_status("OK") is True
+    assert normalize_status("HeAlThY") is True
+    assert normalize_status("pAsS") is True
+
+
+@pytest.mark.unit
+def test_normalize_status_invalid_inputs():
+    assert normalize_status("unknown") is False
+    assert normalize_status("") is False
+    assert normalize_status(None) is False
+"""
+
 _CODE_GENERATION_ARTIFACT = """\
 def normalize_status(value: str) -> str:
     stripped = value.strip()
@@ -176,6 +195,15 @@ def _httpx_response(content: str) -> MagicMock:
             ),
             _TEST_ARTIFACT,
             ("@pytest.mark.unit", "with pytest.raises", "Edge case"),
+        ),
+        (
+            "test",
+            (
+                "Write pytest unit tests for normalize_status(status: str) -> bool "
+                "covering valid statuses and invalid predicate cases."
+            ),
+            _PREDICATE_TEST_ARTIFACT,
+            ("@pytest.mark.unit", "None", "unknown", "False"),
         ),
         (
             "code_generation",
