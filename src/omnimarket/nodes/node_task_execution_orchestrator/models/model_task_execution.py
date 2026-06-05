@@ -27,6 +27,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.events.verification import (
     ModelVerificationReceipt,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
+)
 
 
 class EnumTaskRoute(StrEnum):
@@ -119,6 +122,15 @@ class ModelTaskExecutionRequest(BaseModel):
             "through unchanged. Empty runs checks in the current directory."
         ),
     )
+    execute_delegation: bool = Field(
+        default=False,
+        description=(
+            "When True, dispatch each requirement (coding/refactor/review work) "
+            "through node_delegate_skill_orchestrator (the delegation route "
+            "authority) and aggregate its typed responses unchanged. This is a "
+            "real side effect, so it requires dry_run=False."
+        ),
+    )
 
 
 class ModelTaskExecutionResult(BaseModel):
@@ -154,14 +166,27 @@ class ModelTaskExecutionResult(BaseModel):
             "task.execute never transforms or reinterprets its pass/fail."
         ),
     )
+    delegation_responses: tuple[ModelDelegateSkillResponse, ...] = Field(
+        default=(),
+        description=(
+            "Typed responses returned UNCHANGED by node_delegate_skill_orchestrator "
+            "when requirements were delegated, one per requirement in route-plan "
+            "order. Each carries the delegation route's own quality-gate result, "
+            "model/backend selection, correlation id, and output content. "
+            "Aggregated additively; task.execute never reinterprets delegation "
+            "success — a failed/timeout status remains a typed failure owned by "
+            "the delegation route."
+        ),
+    )
     failure_reason: str | None = Field(
         default=None,
         description="Typed deterministic reason when an action is unsupported.",
     )
 
 
-# ``from __future__ import annotations`` defers the ModelVerificationReceipt
-# annotation to a string; rebuild so Pydantic resolves the imported model.
+# ``from __future__ import annotations`` defers the ModelVerificationReceipt and
+# ModelDelegateSkillResponse annotations to strings; rebuild so Pydantic resolves
+# the imported models.
 ModelTaskExecutionResult.model_rebuild()
 
 

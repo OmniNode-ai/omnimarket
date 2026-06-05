@@ -69,6 +69,17 @@ inputs:
     type: str
     description: "Worktree the verification node runs mechanical checks in"
     required: false
+  execute_delegation:
+    type: bool
+    description: >
+      Dispatch each requirement (coding/refactor/review work) through
+      node_delegate_skill_orchestrator (the delegation route authority) and
+      aggregate its typed responses unchanged. Real side effect: requires
+      dry_run=false. The delegation route owns model/backend selection, the
+      quality gate, correlation id, and output content; task.execute never
+      reinterprets delegation success.
+    required: false
+    default: false
 
 outputs:
   ok:
@@ -90,6 +101,13 @@ outputs:
     description: >
       Receipt returned UNCHANGED by node_verification_receipt_generator when
       mechanical checks were executed (aggregated, never transformed)
+  delegation_responses:
+    type: list
+    description: >
+      Typed responses returned UNCHANGED by node_delegate_skill_orchestrator
+      when requirements were delegated (one per requirement; aggregated, never
+      reinterpreted). Each carries the delegation route's quality-gate result,
+      model/backend selection, correlation id, and output content
   failure_reason:
     type: str
     description: >

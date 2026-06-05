@@ -14,6 +14,14 @@ it must NOT become a new authority:
   authority) and aggregates the returned receipt UNCHANGED. task.execute PLANS
   checks; the verification node EXECUTES them. Terminal status is derived from
   the receipt's ``overall_pass`` — never re-decided here (OMN-12703).
+- When ``execute_delegation`` is set (non-dry-run), it dispatches each
+  requirement (coding/refactor/review work) through ``node_delegate_skill_
+  orchestrator`` (the delegation route authority) and aggregates the route's
+  typed responses UNCHANGED. The delegation route owns model/backend selection,
+  the quality gate, the correlation id, and the output content; task.execute
+  never reinterprets delegation success — a failed/timeout response stays a typed
+  failure owned by the route (OMN-12704). Delegation is async, so it is only
+  available on the ``handle_async`` / bus surfaces.
 - Otherwise (the V1 default) it returns the route plan with NO side effects.
 - An unsupported action produces a typed, deterministic failure — never a silent
   skip and never a free-text summary.
@@ -66,6 +74,12 @@ from omnibase_core.models.task.model_task_contract import ModelTaskContract
 from omnimarket.events.verification import (
     ModelVerificationReceipt,
     ModelVerificationReceiptRequest,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
 )
 from omnimarket.nodes.node_task_execution_orchestrator.models.model_task_execution import (
     EnumRouteItemKind,
@@ -129,6 +143,22 @@ class ProtocolMechanicalCheckExecutor(Protocol):
     ) -> ModelVerificationReceipt: ...
 
 
+class ProtocolDelegationExecutor(Protocol):
+    """Execution authority for coding/refactor/review delegation.
+
+    Implemented by node_delegate_skill_orchestrator's handler. task.execute
+    PLANS each requirement onto the delegation route then dispatches it through
+    this port; it never selects a model/backend, never enforces a quality gate,
+    and never transforms the returned response. The delegation route owns
+    success/failure — a failed/timeout response is a typed failure owned there,
+    not reinterpreted here.
+    """
+
+    async def handle(
+        self, request: ModelDelegateSkillRequest
+    ) -> ModelDelegateSkillResponse: ...
+
+
 def _fingerprint(contract: ModelTaskContract) -> str:
     """Deterministic SHA-256 over requirements + DoD checks (not timestamps).
 
@@ -163,6 +193,23 @@ def _mechanical_failure_reason(receipt: ModelVerificationReceipt) -> str:
     return "mechanical checks failed: " + ", ".join(failed)
 
 
+def _delegation_failure_reason(
+    responses: tuple[ModelDelegateSkillResponse, ...],
+) -> str:
+    """Deterministic failure reason naming each non-completed delegation.
+
+    Read directly off each response's own ``status`` (never recomputed), so the
+    reason faithfully reflects the delegation route's own success/failure —
+    task.execute does not reinterpret delegation outcomes.
+    """
+    failed = [
+        f"{r.task_type}:{r.status}:{r.correlation_id}"
+        for r in responses
+        if r.status != "completed"
+    ]
+    return "delegation failed: " + ", ".join(failed)
+
+
 class HandlerTaskExecutionOrchestrator:
     """Generic ``task.execute`` route planner (V1: deterministic, no side effects)."""
 
@@ -170,6 +217,7 @@ class HandlerTaskExecutionOrchestrator:
         self,
         event_bus: ProtocolTaskExecutionPublisher | None = None,
         mechanical_check_executor: ProtocolMechanicalCheckExecutor | None = None,
+        delegation_executor: ProtocolDelegationExecutor | None = None,
     ) -> None:
         # event_bus is required for the Pattern-B publish path; the test-only
         # in-process path (handle / process-return) works without it.
@@ -178,11 +226,28 @@ class HandlerTaskExecutionOrchestrator:
         # Injected for tests; defaults to the real handler so the runtime path
         # composes the canonical authority rather than reimplementing it.
         self._mechanical_check_executor = mechanical_check_executor
+        # node_delegate_skill_orchestrator is the execution authority for
+        # coding/refactor/review delegation. Injected (stubbed) for tests;
+        # defaults to the real handler so the runtime path composes the canonical
+        # delegation route rather than routing around base dispatch.
+        self._delegation_executor = delegation_executor
 
     def _get_mechanical_check_executor(self) -> ProtocolMechanicalCheckExecutor:
         if self._mechanical_check_executor is not None:
             return self._mechanical_check_executor
         return HandlerVerificationReceiptGenerator()
+
+    def _get_delegation_executor(self) -> ProtocolDelegationExecutor:
+        if self._delegation_executor is not None:
+            return self._delegation_executor
+        from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
+            HandlerDelegateSkill,
+        )
+
+        # Defaults to the canonical delegation handler, which resolves its own
+        # runtime dispatch port. The runtime DI container injects a bus-wired
+        # delegation_executor; task.execute never selects transport itself.
+        return HandlerDelegateSkill()
 
     # ------------------------------------------------------------------
     # Direct in-process surface
@@ -202,8 +267,43 @@ class HandlerTaskExecutionOrchestrator:
         ``task_contract`` is supplied (that contract is reused verbatim).
 
         Raises UnsupportedTaskActionError for unsupported actions so the caller
-        (CLI / bus consumer) decides how to surface the typed failure.
+        (CLI / bus consumer) decides how to surface the typed failure. Delegation
+        execution requires the async surface (``handle_async``); requesting it
+        here is a typed failure rather than a silent skip.
         """
+        if request.execute_delegation:
+            raise UnsupportedTaskActionError(
+                "execute_delegation requires the async surface; call handle_async "
+                "(or dispatch via the bus) so the delegation route can be awaited."
+            )
+        return self._plan_and_verify(request, generated_at=generated_at)
+
+    async def handle_async(
+        self,
+        request: ModelTaskExecutionRequest,
+        *,
+        generated_at: datetime,
+    ) -> ModelTaskExecutionResult:
+        """Async surface: planning + mechanical checks + coding delegation.
+
+        Delegates each requirement (coding/refactor/review work) to the existing
+        delegation route when ``execute_delegation`` is set, aggregating the
+        route's typed responses UNCHANGED. The non-delegation flow is identical
+        to ``handle`` so dry-run planning and mechanical checks behave the same on
+        both surfaces.
+        """
+        base = self._plan_and_verify(request, generated_at=generated_at)
+        if not request.execute_delegation:
+            return base
+        return await self._execute_delegation(request, base)
+
+    def _plan_and_verify(
+        self,
+        request: ModelTaskExecutionRequest,
+        *,
+        generated_at: datetime,
+    ) -> ModelTaskExecutionResult:
+        """Shared sync flow: validate, normalize, plan, optionally verify checks."""
         self._validate_supported(request)
         contract = self._normalize_contract(request, generated_at=generated_at)
         route_plan = self._plan_routes(contract)
@@ -233,6 +333,50 @@ class HandlerTaskExecutionOrchestrator:
             route_plan=route_plan,
             verification_receipt=receipt,
             failure_reason=failure_reason,
+        )
+
+    async def _execute_delegation(
+        self,
+        request: ModelTaskExecutionRequest,
+        base: ModelTaskExecutionResult,
+    ) -> ModelTaskExecutionResult:
+        """Dispatch each requirement through the delegation route, aggregate verbatim.
+
+        Each requirement maps to one ``ModelDelegateSkillRequest`` dispatched to
+        node_delegate_skill_orchestrator. The route owns model/backend selection,
+        the quality gate, the correlation id, and the output content; task.execute
+        stores each typed response UNCHANGED (additive) and never reinterprets
+        success. A non-completed response keeps ``base.ok`` semantics intact and
+        contributes a deterministic ``failure_reason`` read off the route's own
+        status.
+        """
+        executor = self._get_delegation_executor()
+        responses: list[ModelDelegateSkillResponse] = []
+        for requirement in base.task_contract.requirements:
+            delegate_request = ModelDelegateSkillRequest(
+                prompt=requirement,
+                task_type="code_generation",
+                source="claude-code",
+                wait=True,
+            )
+            responses.append(await executor.handle(delegate_request))
+
+        delegation_responses = tuple(responses)
+        all_completed = all(r.status == "completed" for r in delegation_responses)
+        # task.execute does NOT reinterpret delegation success: ``ok`` stays true
+        # only when the prior flow passed AND every delegation reported completed
+        # by its own status. A failed/timeout response is a typed failure owned by
+        # the delegation route; we surface it, never re-decide it.
+        failure_reason = base.failure_reason
+        if failure_reason is None and not all_completed:
+            failure_reason = _delegation_failure_reason(delegation_responses)
+
+        return base.model_copy(
+            update={
+                "ok": base.ok and all_completed,
+                "delegation_responses": delegation_responses,
+                "failure_reason": failure_reason,
+            }
         )
 
     def _execute_mechanical_checks(
@@ -267,7 +411,7 @@ class HandlerTaskExecutionOrchestrator:
         result is also published to the command's response_topic.
         """
         command = ModelDispatchBusCommand.model_validate_json(value)
-        terminal = self._terminal_from_command(command)
+        terminal = await self._terminal_from_command(command)
 
         if self._event_bus is not None:
             await self._event_bus.publish(
@@ -277,14 +421,18 @@ class HandlerTaskExecutionOrchestrator:
             )
         return terminal.model_dump_json().encode("utf-8")
 
-    def _terminal_from_command(
+    async def _terminal_from_command(
         self,
         command: ModelDispatchBusCommand,
     ) -> ModelDispatchBusTerminalResult:
-        """Plan the command payload and reduce it to a Pattern-B terminal result."""
+        """Plan the command payload and reduce it to a Pattern-B terminal result.
+
+        Uses the async surface so a delegation request dispatched over the bus is
+        awaited through the delegation route.
+        """
         try:
             request = self._request_from_command(command)
-            result = self.handle(request, generated_at=command.created_at)
+            result = await self.handle_async(request, generated_at=command.created_at)
         except UnsupportedTaskActionError as exc:
             return ModelDispatchBusTerminalResult(
                 correlation_id=command.correlation_id,
@@ -321,10 +469,18 @@ class HandlerTaskExecutionOrchestrator:
             raise UnsupportedTaskActionError(
                 "exactly one of prompt or task_contract must be supplied."
             )
-        if not request.dry_run:
+        # Delegation is the one supported non-dry-run side effect: the work is
+        # owned and executed by the delegation route, not by task.execute. Every
+        # other non-dry-run action remains unsupported (no PR/branch side effects
+        # in this slice).
+        if not request.dry_run and not request.execute_delegation:
             raise UnsupportedTaskActionError(
-                "non-dry-run task.execute is unsupported in the first vertical slice; "
-                "V1 performs no side effects."
+                "non-dry-run task.execute is only supported for execute_delegation; "
+                "no other side effects are performed in this slice."
+            )
+        if request.dry_run and request.execute_delegation:
+            raise UnsupportedTaskActionError(
+                "execute_delegation is a real side effect and requires dry_run=False."
             )
         if request.allowed_side_effects:
             raise UnsupportedTaskActionError(
@@ -405,6 +561,7 @@ class HandlerTaskExecutionOrchestrator:
 
 __all__ = [
     "HandlerTaskExecutionOrchestrator",
+    "ProtocolDelegationExecutor",
     "ProtocolMechanicalCheckExecutor",
     "ProtocolTaskExecutionPublisher",
     "UnsupportedTaskActionError",
