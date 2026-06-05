@@ -95,6 +95,25 @@ class TestPrLifecycleParseCommand:
         assert cmd["enable_auto_rebase"] is False
         assert cmd["use_dag_ordering"] is False
 
+    def test_typed_event_envelope_payload_unwrapped(self) -> None:
+        cmd = _parse_command(
+            {
+                "event_type": "omnimarket.pr-lifecycle-orchestrator-start",
+                "correlation_id": "outer-corr",
+                "payload": {
+                    "correlation_id": "inner-corr",
+                    "run_id": "merge-sweep-omn-12708",
+                    "repos": ["omnimarket", "onex_change_control"],
+                    "inventory_only": True,
+                },
+            }
+        )
+
+        assert cmd["correlation_id"] == "inner-corr"
+        assert cmd["run_id"] == "merge-sweep-omn-12708"
+        assert cmd["repos"] == "omnimarket,onex_change_control"
+        assert cmd["inventory_only"] is True
+
     def test_correlation_id_generated_when_missing(self) -> None:
         cmd1 = _parse_command({})
         cmd2 = _parse_command({})

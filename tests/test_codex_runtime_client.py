@@ -415,6 +415,83 @@ class _ContractTerminalTopicTransport:
         return _unsubscribe
 
 
+class _NativePrLifecycleContractTransport:
+    def __init__(self) -> None:
+        self.callbacks: dict[str, object] = {}
+        self.subscribe_topics: list[str] = []
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+        self.started = False
+        self.closed = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        assert headers is None
+        assert topic == "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
+        self.published.append((topic, key, value))
+
+        raw = json.loads(value)
+        assert raw["event_type"] == "omnimarket.pr-lifecycle-orchestrator-start"
+        command = ModelPrLifecycleStartCommand.model_validate(raw["payload"])
+        assert command.repos == "omnimarket,onex_change_control"
+
+        terminal_topic = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
+        assert terminal_topic in self.callbacks
+        response = ModelEventEnvelope[object](
+            payload={
+                "correlation_id": str(command.correlation_id),
+                "run_id": command.run_id,
+                "prs_inventoried": 2,
+                "prs_merged": 0,
+                "prs_fixed": 0,
+                "prs_skipped": 2,
+                "final_state": "COMPLETE",
+            },
+            correlation_id=command.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=terminal_topic,
+            source_tool="pr-lifecycle-test",
+        )
+        message = ModelEventMessage(
+            topic=terminal_topic,
+            key=None,
+            value=response.model_dump_json().encode("utf-8"),
+            headers=ModelEventHeaders(
+                timestamp=datetime.now(UTC),
+                source="pr-lifecycle-test",
+                event_type=terminal_topic,
+                correlation_id=command.correlation_id,
+            ),
+        )
+        callback = self.callbacks[terminal_topic]
+        await callback(message)  # type: ignore[misc]
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        self.subscribe_topics.append(topic)
+        self.callbacks[topic] = on_message
+
+        async def _unsubscribe() -> None:
+            return None
+
+        return _unsubscribe
+
+
 async def _install_adapter_worker(
     bus: EventBusInmemory,
     *,
@@ -1107,6 +1184,42 @@ def test_parse_terminal_result_accepts_node_terminal_complete_event() -> None:
     }
 
 
+def test_parse_terminal_result_infers_completed_status_from_pr_lifecycle_event() -> (
+    None
+):
+    correlation_id = uuid4()
+    envelope = ModelEventEnvelope[object](
+        payload={
+            "correlation_id": str(correlation_id),
+            "run_id": "merge-sweep-test",
+            "prs_inventoried": 2,
+            "prs_merged": 0,
+            "prs_fixed": 0,
+            "prs_skipped": 2,
+            "final_state": "COMPLETE",
+        },
+        correlation_id=correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
+    )
+
+    result = runtime_client._parse_terminal_result(
+        envelope.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "completed"
+    assert result.payload == {
+        "run_id": "merge-sweep-test",
+        "prs_inventoried": 2,
+        "prs_merged": 0,
+        "prs_fixed": 0,
+        "prs_skipped": 2,
+        "final_state": "COMPLETE",
+    }
+
+
 def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONEX_PATTERN_B_REQUESTER", "codex-test")
     assert default_requester() == "codex-test"
@@ -1316,7 +1429,66 @@ async def test_dispatch_async_uses_contract_terminal_topic_for_default_response_
     )
     assert transport.subscribe_topics == [
         "onex.evt.omnimarket.session-orchestrator-completed.v1",
+        "onex.evt.omnimarket.session-orchestrator-failed.v1",
     ]
+
+
+@pytest.mark.asyncio
+async def test_pr_lifecycle_default_deployed_route_uses_native_contract_topic() -> None:
+    correlation_id = uuid4()
+    transport = _NativePrLifecycleContractTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="pr_lifecycle_orchestrator",
+        payload={
+            "correlation_id": str(correlation_id),
+            "run_id": "merge-sweep-omn-12708",
+            "repos": ["omnimarket", "onex_change_control"],
+            "dry_run": False,
+            "inventory_only": True,
+            "fix_only": False,
+            "merge_only": False,
+            "enable_auto_rebase": True,
+            "verify": False,
+            "verify_timeout_seconds": 30,
+        },
+        correlation_id=correlation_id,
+        timeout_ms=2000,
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is True
+    assert result.command_topic == (
+        "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
+    )
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
+    )
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
+    )
+    assert transport.subscribe_topics == [
+        "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
+        "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1",
+    ]
+    assert result.output_payloads == [
+        {
+            "run_id": "merge-sweep-omn-12708",
+            "prs_inventoried": 2,
+            "prs_merged": 0,
+            "prs_fixed": 0,
+            "prs_skipped": 2,
+            "final_state": "COMPLETE",
+        }
+    ]
+    assert len(transport.published) == 1
 
 
 @pytest.mark.asyncio

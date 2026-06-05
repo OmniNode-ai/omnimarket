@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -165,6 +165,13 @@ class ModelPrLifecycleStartCommand(BaseModel):
         ge=1,
         description="Hard per-PR verification timeout in seconds.",
     )
+
+    @field_validator("repos", mode="before")
+    @classmethod
+    def _coerce_repos(cls, value: object) -> str:
+        if isinstance(value, list | tuple):
+            return ",".join(str(item).strip() for item in value if str(item).strip())
+        return str(value or "")
 
 
 class ModelPrLifecycleResult(BaseModel):
