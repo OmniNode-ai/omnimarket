@@ -8,15 +8,39 @@ DelegationIntentBridge.handle_inference_intent() path.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import NAMESPACE_DNS, uuid4, uuid5
 
+import httpx
 import pytest
 from omnibase_core.models.delegation.wire import (
+    ModelDelegationRequest,
     ModelInferenceIntent,
     ModelInferenceResponseData,
 )
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.runtime.auto_wiring.handler_wiring import _make_dispatch_callback
+from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRef
+from omnibase_infra.runtime.service_dispatch_result_applier import (
+    DispatchResultApplier,
+)
 
+from omnimarket.nodes.node_delegation_orchestrator.enums import (
+    EnumDelegationState,
+)
+from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+    HandlerDelegationWorkflow,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
+    ModelDelegationEvent,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationResult,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
+    ModelRoutingDecision,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     TOPIC_INFERENCE_RESPONSE,
     HandlerInferenceIntent,
@@ -43,6 +67,42 @@ _SUCCESSFUL_HTTPX_RESPONSE = {
     "choices": [{"message": {"content": "def test_foo(): pass"}}],
     "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
 }
+
+
+def _make_delegation_request(correlation_id: object) -> ModelDelegationRequest:
+    return ModelDelegationRequest(
+        prompt="Write unit tests for verify_registration.py",
+        task_type="test",
+        correlation_id=correlation_id,  # type: ignore[arg-type]
+        max_tokens=512,
+        emitted_at=datetime.now(UTC),
+    )
+
+
+def _make_terminal_routing_decision(correlation_id: object) -> ModelRoutingDecision:
+    """Return a routing decision that cannot escalate after inference failure."""
+    return ModelRoutingDecision(
+        correlation_id=correlation_id,  # type: ignore[arg-type]
+        task_type="test",
+        selected_model="Qwen3.6-27B",
+        selected_backend_id=uuid5(NAMESPACE_DNS, "omninode.ai/backends/qwen3.6-27b"),
+        endpoint_url="http://192.168.86.201:8001",  # onex-allow-internal-ip OMN-12720 reason="live probe endpoint reproduced in failure-chain unit test"
+        cost_tier="local",
+        max_context_tokens=65536,
+        system_prompt="You are a test generation assistant.",
+        rationale="Live probe selected the local Qwen endpoint.",
+        tier_name="claude",
+        timeout_ms=30000,
+        dod_deterministic=("final_artifact_only",),
+        dod_heuristic=("uses_pytest_mark_unit",),
+    )
+
+
+def _inference_event_model_ref() -> ModelHandlerRef:
+    return ModelHandlerRef(
+        name="ModelInferenceIntent",
+        module="omnibase_core.models.delegation.wire",
+    )
 
 
 @pytest.mark.unit
@@ -90,6 +150,82 @@ class TestHandlerInferenceIntent:
         assert result.content == ""
         assert result.error_message != ""
         assert result.model_used == "test-model"
+
+    @pytest.mark.asyncio
+    async def test_provider_timeout_publishes_inference_response_and_terminal_failure(
+        self,
+    ) -> None:
+        workflow = HandlerDelegationWorkflow(workflows={})
+        correlation_id = uuid4()
+        workflow.handle_delegation_request(_make_delegation_request(correlation_id))
+        decision = _make_terminal_routing_decision(correlation_id)
+        inference_intents = workflow.handle_routing_decision(decision)
+        assert len(inference_intents) == 1
+        inference_intent = inference_intents[0]
+        assert inference_intent.correlation_id == correlation_id
+        assert inference_intent.base_url == decision.endpoint_url
+
+        callback = _make_dispatch_callback(
+            HandlerInferenceIntent(),  # type: ignore[arg-type]
+            event_model=_inference_event_model_ref(),
+        )
+        envelope = ModelEventEnvelope[object](
+            payload=inference_intent,
+            correlation_id=correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type="ModelInferenceIntent",
+            payload_type="ModelInferenceIntent",
+            source_tool="test-handler-inference-intent",
+        )
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.side_effect = httpx.TimeoutException("provider timed out")
+            mock_client_cls.return_value = mock_client
+
+            dispatch_result = await callback(envelope)
+
+        assert dispatch_result is not None
+        assert dispatch_result.correlation_id == correlation_id
+        assert len(dispatch_result.output_events) == 1
+        response = dispatch_result.output_events[0]
+        assert isinstance(response, ModelInferenceResponseData)
+        assert response.correlation_id == correlation_id
+        assert response.model_used == "Qwen3.6-27B"
+        assert response.content == ""
+        assert "provider timed out" in response.error_message
+
+        bus = AsyncMock()
+        applier = DispatchResultApplier(
+            event_bus=bus,
+            output_topic="onex.evt.omnibase-infra.delegation-completed.v1",
+            output_topic_map={"InferenceResponseData": TOPIC_INFERENCE_RESPONSE},
+        )
+        await applier.apply(dispatch_result, correlation_id=correlation_id)
+
+        bus.publish_envelope.assert_awaited_once()
+        publish_kwargs = bus.publish_envelope.call_args.kwargs
+        assert publish_kwargs["topic"] == TOPIC_INFERENCE_RESPONSE
+        published_response = publish_kwargs["envelope"].payload
+        assert isinstance(published_response, ModelInferenceResponseData)
+        assert published_response.correlation_id == correlation_id
+
+        terminal_events = workflow.handle_inference_response(published_response)
+
+        failure_event = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationEvent)
+        )
+        assert failure_event.topic == "onex.evt.omnibase-infra.delegation-failed.v1"
+        assert workflow.workflows[correlation_id].state == EnumDelegationState.FAILED
+        failure_payload = failure_event.payload
+        assert isinstance(failure_payload, ModelDelegationResult)
+        assert failure_payload.correlation_id == correlation_id
+        assert failure_payload.quality_passed is False
+        assert "provider timed out" in failure_payload.failure_reason
 
     @pytest.mark.parametrize("content", [None, "   "])
     def test_empty_message_content_returns_error_response(
