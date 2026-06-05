@@ -24,7 +24,7 @@ tiers:
   - name: local
     cost_per_1k_tokens: 0.0
     models:
-      - id: qwen3-coder-30b
+      - id: Qwen3.6-35B-A3B
         backend_id: local-coder
         max_context_tokens: 65536
         use_for:
@@ -33,28 +33,6 @@ tiers:
           - refactor
           - test
           - research
-      - id: deepseek-r1-14b
-        backend_id: local-reasoner
-        max_context_tokens: 24576
-        use_for:
-          - test
-          - research
-          - reasoning
-          - planning
-          - review
-          - document
-        fast_path_threshold_tokens: 24576
-      - id: qwen3.6-35b
-        backend_id: local-heavy-reasoning
-        max_context_tokens: 8192
-        use_for:
-          - research
-          - reasoning
-          - complex_reasoning
-          - planning
-          - review
-          - document
-        fast_path_threshold_tokens: 8192
       - id: Qwen3.6-27B-MTP-IQ4_XS.gguf
         backend_id: local-reasoner
         max_context_tokens: 24576
@@ -66,6 +44,17 @@ tiers:
           - review
           - document
         fast_path_threshold_tokens: 24576
+      - id: Qwen3.6-35B-A3B
+        backend_id: local-heavy-reasoning
+        max_context_tokens: 8192
+        use_for:
+          - research
+          - reasoning
+          - complex_reasoning
+          - planning
+          - review
+          - document
+        fast_path_threshold_tokens: 8192
       - id: ds-v4-flash
         backend_id: local-ds-v4-flash
         max_context_tokens: 65536

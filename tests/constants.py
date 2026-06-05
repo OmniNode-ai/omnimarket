@@ -26,6 +26,8 @@ MODEL_CLAUDE_OPUS_4_6: str = "claude-opus-4-6"
 MODEL_DS_V4_FLASH: str = "ds-v4-flash"
 MODEL_GEMINI_2_0_FLASH: str = "gemini-2.0-flash"
 MODEL_OPENROUTER_QWEN3_CODER_480B: str = "openrouter-qwen3-coder-480b"
+MODEL_QWEN3_35B_A3B: str = "Qwen3.6-35B-A3B"
+MODEL_QWEN3_27B_MTP: str = "Qwen3.6-27B-MTP-IQ4_XS.gguf"
 
 # Convenience aliases for the most common test pairings
 MODEL_LOCAL_PRIMARY: str = MODEL_QWEN3_CODER_30B
