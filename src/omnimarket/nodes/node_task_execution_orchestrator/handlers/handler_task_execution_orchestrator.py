@@ -22,6 +22,16 @@ it must NOT become a new authority:
   never reinterprets delegation success — a failed/timeout response stays a typed
   failure owned by the route (OMN-12704). Delegation is async, so it is only
   available on the ``handle_async`` / bus surfaces.
+- When ``create_pr`` is set, it runs the PR creation path (OMN-12705),
+  NON-BLOCKING for V1 and fully isolated/optional. node_ticket_work cannot be
+  invoked cleanly here (it requires a Linear ticket id and drives a 7-phase FSM
+  keyed on ``ModelTicketWorkCommand``; task.execute only holds a normalized
+  ``ModelTaskContract``), so per the DoD escape hatch a narrow create_pr port is
+  added: ``ProtocolPrCreationExecutor`` (structurally the git client's
+  ``create_pr`` behind node_ticket_work). Dry-run returns the intended
+  branch/title/body (``ModelPrPlan``) with NO side effects. Non-dry-run is gated
+  behind ``dry_run=False`` + ``'create_pr'`` in ``allowed_side_effects`` + an
+  injected executor, then aggregates the returned ``ModelRunResult`` UNCHANGED.
 - Otherwise (the V1 default) it returns the route plan with NO side effects.
 - An unsupported action produces a typed, deterministic failure — never a silent
   skip and never a free-text summary.
@@ -82,11 +92,16 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
 from omnimarket.nodes.node_task_execution_orchestrator.models.model_task_execution import (
+    SIDE_EFFECT_CREATE_PR,
     EnumRouteItemKind,
     EnumTaskRoute,
+    ModelPrPlan,
     ModelRouteDecision,
     ModelTaskExecutionRequest,
     ModelTaskExecutionResult,
+)
+from omnimarket.nodes.node_ticket_work.protocols.protocol_git_client import (
+    ModelRunResult,
 )
 from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
     HandlerVerificationReceiptGenerator,
@@ -159,6 +174,25 @@ class ProtocolDelegationExecutor(Protocol):
     ) -> ModelDelegateSkillResponse: ...
 
 
+class ProtocolPrCreationExecutor(Protocol):
+    """Execution authority for PR creation.
+
+    Structurally compatible with ``ProtocolGitClient.create_pr`` (node_ticket_work),
+    so the real subprocess-backed git client is injected verbatim at runtime.
+    task.execute PLANS the PR (branch/title/body) then dispatches it through this
+    port; it never runs ``gh`` itself and never transforms the returned result.
+    The create_pr authority owns the PR URL and any failure — a failed result is
+    a typed failure owned there, not reinterpreted here. NON-BLOCKING for V1.
+    """
+
+    def create_pr(
+        self,
+        worktree_path: str,
+        title: str,
+        body: str,
+    ) -> ModelRunResult: ...
+
+
 def _fingerprint(contract: ModelTaskContract) -> str:
     """Deterministic SHA-256 over requirements + DoD checks (not timestamps).
 
@@ -210,6 +244,38 @@ def _delegation_failure_reason(
     return "delegation failed: " + ", ".join(failed)
 
 
+def _pr_failure_reason(result: ModelRunResult) -> str:
+    """Deterministic failure reason read off the create_pr authority's result.
+
+    Reads the authority's own exit code and stderr (never recomputed), so the
+    reason faithfully reflects the create_pr authority's own outcome —
+    task.execute does not reinterpret PR creation success/failure.
+    """
+    return f"pr creation failed: exit_code={result.exit_code} {result.stderr.strip()}"
+
+
+def _build_pr_body(contract: ModelTaskContract) -> str:
+    """Deterministic PR body summarizing the contract's requirements and DoD.
+
+    Read straight off the normalized contract (never wall-clock or external
+    state) so the same contract yields a byte-stable body — keeping the dry-run
+    plan replay-stable. task.execute plans the PR text; it does not own the PR.
+    """
+    lines: list[str] = []
+    if contract.parent_ticket is not None:
+        lines.append(f"Ticket: {contract.parent_ticket}")
+    lines.append(f"Contract fingerprint: {_fingerprint(contract)}")
+    lines.append("")
+    lines.append("## Requirements")
+    for requirement in contract.requirements:
+        lines.append(f"- {requirement}")
+    lines.append("")
+    lines.append("## Definition of Done")
+    for check in contract.definition_of_done:
+        lines.append(f"- [{check.check_type.value}] {check.criterion}: `{check.check}`")
+    return "\n".join(lines)
+
+
 class HandlerTaskExecutionOrchestrator:
     """Generic ``task.execute`` route planner (V1: deterministic, no side effects)."""
 
@@ -218,6 +284,7 @@ class HandlerTaskExecutionOrchestrator:
         event_bus: ProtocolTaskExecutionPublisher | None = None,
         mechanical_check_executor: ProtocolMechanicalCheckExecutor | None = None,
         delegation_executor: ProtocolDelegationExecutor | None = None,
+        pr_creation_executor: ProtocolPrCreationExecutor | None = None,
     ) -> None:
         # event_bus is required for the Pattern-B publish path; the test-only
         # in-process path (handle / process-return) works without it.
@@ -231,6 +298,13 @@ class HandlerTaskExecutionOrchestrator:
         # defaults to the real handler so the runtime path composes the canonical
         # delegation route rather than routing around base dispatch.
         self._delegation_executor = delegation_executor
+        # The git client behind node_ticket_work is the execution authority for
+        # PR creation. There is NO default here: non-dry-run create_pr requires an
+        # explicitly injected executor (the runtime DI container wires the real
+        # subprocess-backed git client). Dry-run create_pr needs no executor — it
+        # only plans branch/title/body. This keeps PR creation NON-BLOCKING for V1
+        # (a missing executor is a typed failure, never an implicit side effect).
+        self._pr_creation_executor = pr_creation_executor
 
     def _get_mechanical_check_executor(self) -> ProtocolMechanicalCheckExecutor:
         if self._mechanical_check_executor is not None:
@@ -276,7 +350,8 @@ class HandlerTaskExecutionOrchestrator:
                 "execute_delegation requires the async surface; call handle_async "
                 "(or dispatch via the bus) so the delegation route can be awaited."
             )
-        return self._plan_and_verify(request, generated_at=generated_at)
+        base = self._plan_and_verify(request, generated_at=generated_at)
+        return self._apply_pr_path(request, base)
 
     async def handle_async(
         self,
@@ -293,9 +368,9 @@ class HandlerTaskExecutionOrchestrator:
         both surfaces.
         """
         base = self._plan_and_verify(request, generated_at=generated_at)
-        if not request.execute_delegation:
-            return base
-        return await self._execute_delegation(request, base)
+        if request.execute_delegation:
+            base = await self._execute_delegation(request, base)
+        return self._apply_pr_path(request, base)
 
     def _plan_and_verify(
         self,
@@ -377,6 +452,80 @@ class HandlerTaskExecutionOrchestrator:
                 "delegation_responses": delegation_responses,
                 "failure_reason": failure_reason,
             }
+        )
+
+    # ------------------------------------------------------------------
+    # PR creation path (NON-BLOCKING V1; isolated/optional)
+    # ------------------------------------------------------------------
+    def _apply_pr_path(
+        self,
+        request: ModelTaskExecutionRequest,
+        base: ModelTaskExecutionResult,
+    ) -> ModelTaskExecutionResult:
+        """Plan (always) and, on non-dry-run, execute the PR creation path.
+
+        This is additive and isolated: when ``create_pr`` is not requested the
+        base result is returned unchanged. The dry-run plan is pure (intended
+        branch/title/body, no side effects). The non-dry-run path COMPOSES the PR
+        creation authority (git client) — already validated as injected + allowed
+        in ``_validate_supported`` — and aggregates its ``ModelRunResult``
+        UNCHANGED. task.execute never reinterprets the PR outcome; a failed result
+        contributes a deterministic ``failure_reason`` read off the authority's
+        own exit code/stderr.
+        """
+        if not request.create_pr:
+            return base
+
+        pr_plan = self._build_pr_plan(base.task_contract, request.worktree_path)
+        if request.dry_run:
+            # Dry-run: return the intended PR identity with NO side effects.
+            return base.model_copy(update={"pr_plan": pr_plan})
+
+        # Non-dry-run: executor presence + allowance were enforced in
+        # _validate_supported; assert narrows the type for mypy without a default.
+        executor = self._pr_creation_executor
+        assert executor is not None
+        pr_result = executor.create_pr(
+            worktree_path=pr_plan.worktree_path,
+            title=pr_plan.title,
+            body=pr_plan.body,
+        )
+        failure_reason = base.failure_reason
+        if failure_reason is None and not pr_result.success:
+            failure_reason = _pr_failure_reason(pr_result)
+        return base.model_copy(
+            update={
+                "ok": base.ok and pr_result.success,
+                "pr_plan": pr_plan,
+                "pr_result": pr_result,
+                "failure_reason": failure_reason,
+            }
+        )
+
+    def _build_pr_plan(
+        self, contract: ModelTaskContract, worktree_path: str
+    ) -> ModelPrPlan:
+        """Derive a deterministic PR identity (branch/title/body) from the contract.
+
+        Identity is read straight off the normalized contract so the same contract
+        always yields the same plan (replay-stable). The branch is required for a
+        PR; a contract without one is a typed failure rather than an invented
+        default. The title/body summarize the contract's requirements and DoD —
+        task.execute plans the PR text; the create_pr authority owns the push.
+        """
+        if not contract.branch:
+            raise UnsupportedTaskActionError(
+                "create_pr requires the task contract to declare a branch; "
+                "task.execute never invents a branch name."
+            )
+        ticket = contract.parent_ticket or contract.task_id
+        title = f"{ticket}: task.execute PR ({len(contract.requirements)} requirements)"
+        body = _build_pr_body(contract)
+        return ModelPrPlan(
+            branch=contract.branch,
+            title=title,
+            body=body,
+            worktree_path=worktree_path,
         )
 
     def _execute_mechanical_checks(
@@ -469,24 +618,45 @@ class HandlerTaskExecutionOrchestrator:
             raise UnsupportedTaskActionError(
                 "exactly one of prompt or task_contract must be supplied."
             )
-        # Delegation is the one supported non-dry-run side effect: the work is
-        # owned and executed by the delegation route, not by task.execute. Every
-        # other non-dry-run action remains unsupported (no PR/branch side effects
-        # in this slice).
-        if not request.dry_run and not request.execute_delegation:
+        # Delegation and create_pr are the supported non-dry-run side effects: the
+        # work is owned and executed by the composed authority (delegation route /
+        # git client), not by task.execute. Every other non-dry-run action remains
+        # unsupported.
+        if (
+            not request.dry_run
+            and not request.execute_delegation
+            and not request.create_pr
+        ):
             raise UnsupportedTaskActionError(
-                "non-dry-run task.execute is only supported for execute_delegation; "
-                "no other side effects are performed in this slice."
+                "non-dry-run task.execute is only supported for execute_delegation "
+                "or create_pr; no other side effects are performed in this slice."
             )
         if request.dry_run and request.execute_delegation:
             raise UnsupportedTaskActionError(
                 "execute_delegation is a real side effect and requires dry_run=False."
             )
-        if request.allowed_side_effects:
+        # allowed_side_effects is constrained to the single PR-creation allowance
+        # token; any other token remains unsupported in this slice.
+        if set(request.allowed_side_effects) - {SIDE_EFFECT_CREATE_PR}:
             raise UnsupportedTaskActionError(
-                "allowed_side_effects must be empty in the first vertical slice; "
-                "V1 performs no side effects."
+                "allowed_side_effects may only contain 'create_pr' in this slice; "
+                "no other side effects are performed."
             )
+        # Non-dry-run create_pr is a real side effect gated behind explicit
+        # allowance AND an injected executor — never implicit (DoD: non-dry-run
+        # gated behind explicit side-effect allowance + fixtures). Dry-run
+        # create_pr only plans (no allowance / executor required).
+        if request.create_pr and not request.dry_run:
+            if SIDE_EFFECT_CREATE_PR not in request.allowed_side_effects:
+                raise UnsupportedTaskActionError(
+                    "non-dry-run create_pr requires 'create_pr' in "
+                    "allowed_side_effects; PR creation is never implicit."
+                )
+            if self._pr_creation_executor is None:
+                raise UnsupportedTaskActionError(
+                    "non-dry-run create_pr requires an injected pr_creation_executor; "
+                    "the create_pr path is NON-BLOCKING and never self-executes."
+                )
 
     def _normalize_contract(
         self,
@@ -563,6 +733,7 @@ __all__ = [
     "HandlerTaskExecutionOrchestrator",
     "ProtocolDelegationExecutor",
     "ProtocolMechanicalCheckExecutor",
+    "ProtocolPrCreationExecutor",
     "ProtocolTaskExecutionPublisher",
     "UnsupportedTaskActionError",
 ]

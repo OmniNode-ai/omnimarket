@@ -30,6 +30,16 @@ from omnimarket.events.verification import (
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
+from omnimarket.nodes.node_ticket_work.protocols.protocol_git_client import (
+    ModelRunResult,
+)
+
+# Side-effect allowance token that opts a non-dry-run request into the PR
+# creation path. task.execute COMPOSES the PR creation authority (the git
+# client behind node_ticket_work's ProtocolGitClient.create_pr); it never
+# becomes that authority. The token is explicit so PR creation can never happen
+# implicitly (DoD: non-dry-run gated behind explicit side-effect allowance).
+SIDE_EFFECT_CREATE_PR = "create_pr"
 
 
 class EnumTaskRoute(StrEnum):
@@ -70,6 +80,33 @@ class ModelRouteDecision(BaseModel):
     detail: str = Field(
         default="",
         description="Deterministic explanation of why this route was chosen.",
+    )
+
+
+class ModelPrPlan(BaseModel):
+    """Intended PR identity (branch / title / body) for the create_pr path.
+
+    This is the dry-run output of the PR creation path: the exact branch, title,
+    and body task.execute WOULD pass to the PR creation authority. It performs no
+    side effects. It is a thin plan, NOT a new DoD/envelope authority — the actual
+    PR is created by the composed git client (ProtocolGitClient.create_pr behind
+    node_ticket_work), never here. ``worktree_path`` is the path the create_pr
+    authority would run ``gh`` in (echoed from the request; never inferred).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    branch: str = Field(
+        description="Branch the PR would be opened from (from the contract).",
+    )
+    title: str = Field(
+        description="Deterministic PR title derived from the contract.",
+    )
+    body: str = Field(
+        description="Deterministic PR body derived from the contract.",
+    )
+    worktree_path: str = Field(
+        description="Worktree the create_pr authority would run gh in (echoed).",
     )
 
 
@@ -131,6 +168,17 @@ class ModelTaskExecutionRequest(BaseModel):
             "real side effect, so it requires dry_run=False."
         ),
     )
+    create_pr: bool = Field(
+        default=False,
+        description=(
+            "When True, run the PR creation path. Under dry_run it returns the "
+            "intended branch/title/body (ModelPrPlan) with NO side effects. "
+            "Non-dry-run create_pr is a real side effect: it requires "
+            "dry_run=False AND 'create_pr' present in allowed_side_effects, then "
+            "composes the PR creation authority (git client) and aggregates its "
+            "ModelRunResult unchanged. NON-BLOCKING for V1; isolated/optional."
+        ),
+    )
 
 
 class ModelTaskExecutionResult(BaseModel):
@@ -178,6 +226,23 @@ class ModelTaskExecutionResult(BaseModel):
             "the delegation route."
         ),
     )
+    pr_plan: ModelPrPlan | None = Field(
+        default=None,
+        description=(
+            "Intended PR identity (branch/title/body) when the create_pr path "
+            "ran. Always populated when create_pr is requested (dry-run AND "
+            "non-dry-run) so the plan is auditable regardless of side effects."
+        ),
+    )
+    pr_result: ModelRunResult | None = Field(
+        default=None,
+        description=(
+            "Result returned UNCHANGED by the PR creation authority (git client) "
+            "on a non-dry-run create_pr. None on dry-run (no side effect). "
+            "Aggregated additively; task.execute never reinterprets it — PR URL "
+            "or failure is owned by the create_pr authority."
+        ),
+    )
     failure_reason: str | None = Field(
         default=None,
         description="Typed deterministic reason when an action is unsupported.",
@@ -191,8 +256,10 @@ ModelTaskExecutionResult.model_rebuild()
 
 
 __all__ = [
+    "SIDE_EFFECT_CREATE_PR",
     "EnumRouteItemKind",
     "EnumTaskRoute",
+    "ModelPrPlan",
     "ModelRouteDecision",
     "ModelTaskExecutionRequest",
     "ModelTaskExecutionResult",
