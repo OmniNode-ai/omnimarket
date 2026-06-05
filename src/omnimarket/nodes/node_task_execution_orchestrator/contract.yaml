@@ -1,0 +1,89 @@
+---
+name: node_task_execution_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Generic task.execute route planner (first vertical slice). Normalizes a raw
+  prompt or a fully formed ModelTaskContract into one ModelTaskContract, then
+  deterministically maps each requirement and mechanical DoD check to an
+  existing route NAME (delegation, verification) WITHOUT executing it. Dry-run
+  only: returns the route plan with no side effects. task.execute COMPOSES
+  existing authorities; it must not become a new authority.
+
+handler:
+  module: omnimarket.nodes.node_task_execution_orchestrator.handlers.handler_task_execution_orchestrator
+  class: HandlerTaskExecutionOrchestrator
+  input_model: omnimarket.nodes.node_task_execution_orchestrator.models.model_task_execution.ModelTaskExecutionRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: plan
+      handler:
+        name: HandlerTaskExecutionOrchestrator
+        module: omnimarket.nodes.node_task_execution_orchestrator.handlers.handler_task_execution_orchestrator
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  prompt:
+    type: str
+    description: "Raw coding/mechanical task prompt to normalize into a contract"
+    required: false
+  task_contract:
+    type: dict
+    description: "Fully formed ModelTaskContract (reused verbatim, never duplicated)"
+    required: false
+  dry_run:
+    type: bool
+    description: "V1 supports dry-run only: plan routes, perform no side effects"
+    required: false
+    default: true
+  allowed_side_effects:
+    type: list
+    description: "Side-effect allowances; must be empty in the first vertical slice"
+    required: false
+  target_repo:
+    type: str
+    description: "Optional target repo applied when normalizing a prompt"
+    required: false
+  ticket_id:
+    type: str
+    description: "Optional parent ticket applied when normalizing a prompt"
+    required: false
+
+outputs:
+  ok:
+    type: bool
+    description: "True iff every requirement and DoD check mapped to a route"
+  task_contract:
+    type: dict
+    description: "Normalized ModelTaskContract"
+  contract_fingerprint:
+    type: str
+    description: "Deterministic fingerprint of the normalized contract"
+  route_plan:
+    type: list
+    description: "Deterministic, ordered route decisions for this contract"
+  failure_reason:
+    type: str
+    description: "Typed deterministic reason when an action is unsupported"
+
+terminal_event: onex.evt.omnimarket.task-execute-completed.v1
+
+event_bus:
+  consumer_group: omnimarket.task-execution.consume.v1
+  subscribe_topics:
+    - onex.cmd.omnimarket.task-execute-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.task-execute-completed.v1
+    - onex.evt.omnimarket.task-execute-failed.v1
+
+metadata:
+  transport_type: kafka
