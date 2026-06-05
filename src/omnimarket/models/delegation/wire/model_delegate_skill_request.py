@@ -1,0 +1,120 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Consumer-facing delegation request model (shared delegation wire contract).
+
+Distinct from the runtime-internal ``ModelDelegationRequest``: consumers supply
+``source``, ``cwd``, ``wait``, and ``metadata`` and never set the runtime-internal
+``emitted_at`` / ``output_schema_key`` / ``compliance_budget``. The ``task_type``
+Literal is the MVP taxonomy and must match the delegate node contract.yaml
+``allowed_task_types`` field.
+
+This lives in the shared delegation wire package (alongside
+``ModelDelegateSkillResponse``) so any node composing the delegation route can
+reference it without reaching into a sibling node's private models package
+(OMN-12704). ``node_delegate_skill_orchestrator`` re-exports it for compatibility.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from omnimarket.events.delegation import (
+    EnumQualityContractMode,
+    validate_acceptance_criteria,
+)
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+)
+
+
+class ModelDelegateSkillRequest(BaseModel):
+    """Typed delegation request from a registered adapter source."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prompt: str = Field(..., min_length=1, description="User prompt to delegate.")
+    task_type: Literal[
+        "test",
+        "document",
+        "research",
+        "code_generation",
+        "code_review",
+        "refactor",
+        "reasoning",
+        "complex_reasoning",
+        "planning",
+        "review",
+        "summarization",
+        "agent_delegation",
+        "escalation",
+    ] = Field(
+        ...,
+        description=(
+            "Task classification for routing. Must match contract allowed_task_types."
+        ),
+    )
+    source: Literal["claude-code", "codex"] = Field(
+        ...,
+        description="Registered adapter source.",
+    )
+    cwd: str | None = Field(default=None, description="Caller current directory.")
+    source_file_path: str | None = Field(
+        default=None,
+        description="File context for the delegation, if any.",
+    )
+    working_directory: str | None = Field(
+        default=None,
+        description="Worker working directory requested by the caller.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Session that originated the delegation request.",
+    )
+    recipient: str | None = Field(
+        default=None,
+        description="Requested delegation recipient surface.",
+    )
+    codex_sandbox_mode: str | None = Field(
+        default=None,
+        description="Codex sandbox mode requested by the caller.",
+    )
+    wait: bool = Field(default=True, description="Wait for synchronous result.")
+    max_tokens: int = Field(
+        default=DELEGATION_DEFAULT_MAX_TOKENS,
+        gt=0,
+        le=DELEGATION_MAX_TOKENS_HARD_LIMIT,
+    )
+    correlation_id: UUID = Field(default_factory=uuid4)
+    metadata: dict[str, str] = Field(default_factory=dict)
+    quality_contract_mode: EnumQualityContractMode = Field(
+        default="extend_task_class",
+        description=(
+            "How request-level acceptance criteria interact with task-class DoD."
+        ),
+    )
+    acceptance_criteria: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Request-level quality criteria validated before dispatch and enforced "
+            "by the delegation quality gate."
+        ),
+    )
+
+    @field_validator("acceptance_criteria")
+    @classmethod
+    def _validate_supported_acceptance_criteria(
+        cls, criteria: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        return validate_acceptance_criteria(criteria)
+
+
+__all__: list[str] = [
+    "DELEGATION_DEFAULT_MAX_TOKENS",
+    "DELEGATION_MAX_TOKENS_HARD_LIMIT",
+    "EnumQualityContractMode",
+    "ModelDelegateSkillRequest",
+]

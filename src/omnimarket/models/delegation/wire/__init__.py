@@ -59,6 +59,9 @@ from omnibase_core.models.delegation.wire.model_task_delegated_event import (
 )
 
 # --- Omnimarket-specific projection models (not in core) ---
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
@@ -87,6 +90,7 @@ __all__: list[str] = [
     "ModelBifrostDelegationConfig",
     "ModelBudgetLimits",
     "ModelComplianceLoopResult",
+    "ModelDelegateSkillRequest",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
     "ModelDelegateSkillSavingsProjection",

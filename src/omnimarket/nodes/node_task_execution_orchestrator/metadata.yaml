@@ -1,6 +1,6 @@
 name: node_task_execution_orchestrator
 version: "1.0.0"
-description: "Generic task.execute route planner — normalizes prompt/contract and maps to existing routes (dry-run, no side effects)"
+description: "Generic task.execute route planner — normalizes prompt/contract, maps to existing routes, and composes the verification and delegation route authorities (opt-in)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
