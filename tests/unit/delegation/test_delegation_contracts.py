@@ -150,3 +150,21 @@ class TestQualityGateReducerContract:
         data = self._load()
         deps = data.get("config_dependencies", [])
         assert len(deps) == 0, "Quality gate is pure compute -- no config deps expected"
+
+
+@pytest.mark.unit
+class TestTaskClassContracts:
+    """Task-class contracts must keep artifact-generating tasks strict."""
+
+    def _load(self) -> dict:
+        path = Path("src/omnimarket/configs/task_class_contracts.v1.yaml")
+        with path.open() as f:
+            return yaml.safe_load(f)
+
+    def test_code_artifact_tasks_require_final_artifact_only(self) -> None:
+        data = self._load()
+        for task_type in ("code_generation", "test"):
+            deterministic = data["task_classes"][task_type]["definition_of_done"][
+                "deterministic"
+            ]
+            assert "final_artifact_only" in deterministic

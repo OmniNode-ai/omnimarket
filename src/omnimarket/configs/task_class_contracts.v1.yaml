@@ -53,6 +53,7 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        - final_artifact_only
         - passes_existing_tests
       heuristic:
         - no_refusal
@@ -130,6 +131,7 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        - final_artifact_only
         - uses_pytest_mark_unit
       heuristic:
         - no_refusal
