@@ -79,6 +79,16 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # OMN-12693: contract-level producer/consumer shape gate.
+      # SYNC with node-drift-gate.yml full strict check.
+      - id: node-orphan-graph
+        name: Node orphan graph gate
+        language: system
+        entry: uv run python scripts/validate_node_drift.py --check-all --check-orphan-nodes --strict
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|pyproject\.toml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-10909: stricter topic-literal gate (delegation thin-shim plan, Task 8).
       # Allowlist: topics.py, test_*/conftest* files, inline `# onex-topic-allow`
       # annotations. SYNC with ci.yml step "Topic-literal guardrail (annotation allowlist)".

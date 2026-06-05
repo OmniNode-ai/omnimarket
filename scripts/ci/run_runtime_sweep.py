@@ -18,6 +18,8 @@ from pathlib import Path
 
 import yaml
 
+LIFECYCLE_EXEMPTIONS = {"deprecated", "experimental"}
+
 
 def _import_dotted_path(dotted_path: str) -> None:
     module_path, _, attr = dotted_path.rpartition(".")
@@ -27,6 +29,38 @@ def _import_dotted_path(dotted_path: str) -> None:
         )
     module = import_module(module_path)
     getattr(module, attr)
+
+
+def _is_dotted_import_path(value: str) -> bool:
+    module_path, _, attr = value.rpartition(".")
+    return bool(module_path and attr)
+
+
+def _import_model_ref(raw_ref: object) -> None:
+    """Import contract model refs when they include an importable module path."""
+    if isinstance(raw_ref, str):
+        if _is_dotted_import_path(raw_ref):
+            _import_dotted_path(raw_ref)
+        return
+    if not isinstance(raw_ref, dict):
+        return
+
+    module = raw_ref.get("module")
+    class_name = raw_ref.get("class") or raw_ref.get("name")
+    if isinstance(module, str) and isinstance(class_name, str):
+        _import_dotted_path(f"{module}.{class_name}")
+
+
+def _contract_lifecycle(content: dict[object, object]) -> str:
+    candidates: list[object] = [content.get("lifecycle"), content.get("status")]
+    for nested_key in ("metadata", "descriptor"):
+        nested = content.get(nested_key)
+        if isinstance(nested, dict):
+            candidates.extend([nested.get("lifecycle"), nested.get("status")])
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip().lower()
+    return ""
 
 
 def main() -> int:
@@ -91,6 +125,9 @@ def main() -> int:
         if not args.import_check:
             continue
 
+        if _contract_lifecycle(content) in LIFECYCLE_EXEMPTIONS:
+            continue
+
         try:
             import_module(module_path)
         except Exception as exc:
@@ -116,12 +153,17 @@ def main() -> int:
             continue
 
         input_model = handler.get("input_model")
-        if isinstance(input_model, str) and input_model:
+        try:
+            _import_model_ref(input_model)
+        except Exception as exc:
+            broken.append((node_name, module_path, f"input_model import failed: {exc}"))
+
+        for model_key in ("input_model", "output_model"):
             try:
-                _import_dotted_path(input_model)
+                _import_model_ref(content.get(model_key))
             except Exception as exc:
                 broken.append(
-                    (node_name, module_path, f"input_model import failed: {exc}")
+                    (node_name, module_path, f"{model_key} import failed: {exc}")
                 )
 
     total = len(entry_points)

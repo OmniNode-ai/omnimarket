@@ -9,6 +9,8 @@
 #   2. contract.yaml has required fields (name, node_type, handler for classic types)
 #   3. Node is registered in pyproject.toml [project.entry-points."onex.nodes"]
 #   4. Declared subscribe topics appear in handler source (best-effort WARN)
+#   5. Event-bus contracts declare both producer and consumer sides unless
+#      explicitly annotated experimental/deprecated.
 #
 # Pre-existing violations on main (as of 2026-04-25) are catalogued in
 # scripts/validate_node_drift.py::KNOWN_MAIN_VIOLATIONS and produce WARN,
@@ -59,14 +61,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
-      - name: Run node drift gate (changed nodes, strict)
+      - name: Run node drift gate (all nodes, strict)
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [[ "$EVENT_NAME" == "merge_group" ]]; then
-            echo "::notice::merge_group event — running full check (non-strict) to confirm no new regressions."
-            uv run python scripts/validate_node_drift.py --check-all
+            echo "::notice::merge_group event — running full strict check."
+            uv run python scripts/validate_node_drift.py --check-all --check-orphan-nodes --strict
           else
-            echo "Validating changed nodes (strict mode) against origin/main..."
-            uv run python scripts/validate_node_drift.py --check-changed origin/main --strict
+            echo "Validating all nodes (strict mode) against contract liveness..."
+            uv run python scripts/validate_node_drift.py --check-all --check-orphan-nodes --strict
           fi
