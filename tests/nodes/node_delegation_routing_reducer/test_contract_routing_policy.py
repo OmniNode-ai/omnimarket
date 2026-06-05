@@ -26,7 +26,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     parse_delegation_config_yaml,
 )
-from tests.constants import MODEL_DEEPSEEK_R1_14B, MODEL_QWEN3_CODER_30B
+from tests.constants import (
+    MODEL_DEEPSEEK_R1_14B,
+    MODEL_QWEN3_27B_MTP,
+    MODEL_QWEN3_35B_A3B,
+    MODEL_QWEN3_CODER_30B,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -148,9 +153,11 @@ def _clear_lru_caches() -> Generator[None, None, None]:
         handler_delegation_routing as h,
     )
 
+    h._config = None
     h._get_task_class_contract.cache_clear()
     h._load_bifrost_endpoints.cache_clear()
     yield
+    h._config = None
     h._get_task_class_contract.cache_clear()
     h._load_bifrost_endpoints.cache_clear()
 
@@ -308,7 +315,7 @@ class TestDeltaContractRouting:
         )
 
     def test_code_tasks_route_to_qwen3_coder(self, tmp_path: Path) -> None:
-        """test task_type routes to qwen3-coder (default_task_model_ref), not deepseek-r1."""
+        """test task_type routes to the contract default, not deepseek-r1."""
         from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
             delta,
         )
@@ -320,16 +327,120 @@ class TestDeltaContractRouting:
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
 
         try:
-            # "test" has no task_model_overrides entry → uses default_task_model_ref (qwen3-coder-30b)
+            # "test" has no matching local override in this fixture, so it
+            # falls back to the first local served model for test tasks.
             decision = delta(self._make_request("test"))
-            assert "qwen" in decision.selected_model.lower(), (
-                f"Expected qwen3-coder for test task, got: {decision.selected_model!r} "
-                f"rationale: {decision.rationale!r}"
-            )
+            assert decision.selected_model == MODEL_QWEN3_27B_MTP
             assert "deepseek" not in decision.selected_model.lower(), (
                 f"Did not expect deepseek for test task, got: {decision.selected_model!r}"
             )
         finally:
+            if prev_task_contract_path is None:
+                os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
+            else:
+                os.environ["TASK_CLASS_CONTRACT_PATH"] = prev_task_contract_path
+            if prev_bifrost_contract_path is None:
+                os.environ.pop("BIFROST_CONTRACT_PATH", None)
+            else:
+                os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
+
+    def test_local_route_uses_served_model_id_over_stale_bifrost_name(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-12721: local provider id comes from routing_tiers, not stale overlay."""
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            delta,
+        )
+
+        routing_file = tmp_path / "routing_tiers.yaml"
+        routing_file.write_text(
+            textwrap.dedent(f"""\
+                tiers:
+                  - name: local
+                    models:
+                      - id: {MODEL_QWEN3_27B_MTP}
+                        backend_id: local-reasoner
+                        max_context_tokens: 24576
+                        use_for: [test]
+                        fast_path_threshold_tokens: 24576
+                    eval_before_accept: true
+                    eval_model: {MODEL_QWEN3_27B_MTP}
+                    max_retries: 2
+            """)
+        )
+        contract_file = tmp_path / "task_class_contracts.yaml"
+        contract_file.write_text(
+            textwrap.dedent(f"""\
+                version: "1.0"
+                default_task_model_ref: "{MODEL_QWEN3_35B_A3B}"
+                task_model_overrides:
+                  test: "{MODEL_QWEN3_27B_MTP}"
+                task_classes:
+                  test:
+                    pricing_ceiling_per_1k_tokens: 0.015
+                    cloud_routing_policy: allowed
+                    escalation_policy:
+                      tier_order: [local]
+            """)
+        )
+        bifrost_file = tmp_path / "bifrost_delegation.yaml"
+        bifrost_file.write_text(
+            textwrap.dedent("""\
+                config_version: "2.0.0"
+                schema_version: "bifrost_delegation.v1"
+                backends:
+                  - backend_id: local-reasoner
+                    endpoint_url: "http://192.168.86.201:8001"
+                    model_name: "Qwen3.6-27B"
+                    tier: local
+                    timeout_ms: 30000
+                    capabilities: [research]
+                routing_rules:
+                  - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+                    priority: 10
+                    task_class: test
+                    task_class_contract_version: "1.0.0"
+                    backend_policy_version: "2.0.0"
+                    match_operation_types: [chat_completion]
+                    match_capabilities: [research]
+                    backend_ids: [local-reasoner]
+                    fallback_policy:
+                      action: escalate_to_next_tier
+                      max_retries: 1
+                      on_exhaust: return_error
+                    shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
+                default_backends:
+                  - local-reasoner
+                circuit_breaker:
+                  failure_threshold: 5
+                  window_seconds: 30
+                failover:
+                  max_attempts: 3
+                  backoff_base_ms: 500
+                shadow_mode:
+                  enabled: false
+                  policy_version: "unknown"
+                  log_sample_rate: 1.0
+                  comparison_logging_enabled: true
+                  max_shadow_latency_ms: 5.0
+            """)
+        )
+        prev_routing_path = os.environ.get("DELEGATION_ROUTING_TIERS_PATH")
+        prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
+        prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
+        os.environ["DELEGATION_ROUTING_TIERS_PATH"] = str(routing_file)
+        os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
+        os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
+
+        try:
+            decision = delta(self._make_request("test"))
+            assert decision.selected_model == MODEL_QWEN3_27B_MTP
+            assert decision.endpoint_url == "http://192.168.86.201:8001"
+        finally:
+            if prev_routing_path is None:
+                os.environ.pop("DELEGATION_ROUTING_TIERS_PATH", None)
+            else:
+                os.environ["DELEGATION_ROUTING_TIERS_PATH"] = prev_routing_path
             if prev_task_contract_path is None:
                 os.environ.pop("TASK_CLASS_CONTRACT_PATH", None)
             else:
@@ -352,12 +463,9 @@ class TestDeltaContractRouting:
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
 
         try:
-            # "research" is in task_model_overrides → deepseek-r1-14b
+            # "research" resolves to the live served .201:8001 model id.
             decision = delta(self._make_request("research"))
-            assert "deepseek" in decision.selected_model.lower(), (
-                f"Expected deepseek for research task, got: {decision.selected_model!r} "
-                f"rationale: {decision.rationale!r}"
-            )
+            assert decision.selected_model == MODEL_QWEN3_27B_MTP
             assert "coder" not in decision.selected_model.lower(), (
                 f"Did not expect qwen3-coder for research task, got: {decision.selected_model!r}"
             )

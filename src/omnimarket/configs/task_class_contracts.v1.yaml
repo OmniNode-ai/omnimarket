@@ -30,18 +30,18 @@
 #   - OMN-10615: Wire routing reducer to read task-class contracts
 #   - OMN-10942: Task routing policy from contract with model defaults
 version: "1.0"
-default_task_model_ref: "qwen3-coder-30b"
+default_task_model_ref: "Qwen3.6-35B-A3B"
 task_model_overrides:
   # OMN-7980: OpenRouter GLM Flash is the primary code-gen backend (preferred in cheap_cloud tier).
-  # Local Qwen3-Coder-30B is the fallback when OPENROUTER_API_KEY is absent.
+  # Local .201 served models are the fallback when OPENROUTER_API_KEY is absent.
   code_generation: "openrouter-glm-flash"
   test: "openrouter-glm-flash"
   refactor: "openrouter-glm-flash"
-  reasoning: "qwen3.6-35b"
-  complex_reasoning: "qwen3.6-35b"
-  planning: "qwen3.6-35b"
-  review: "qwen3.6-35b"
-  research: "qwen3.6-35b"
+  reasoning: "Qwen3.6-35B-A3B"
+  complex_reasoning: "Qwen3.6-35B-A3B"
+  planning: "Qwen3.6-35B-A3B"
+  review: "Qwen3.6-35B-A3B"
+  research: "Qwen3.6-35B-A3B"
 task_classes:
   code_generation:
     required_capabilities:

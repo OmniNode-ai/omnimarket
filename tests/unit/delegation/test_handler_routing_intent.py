@@ -26,6 +26,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+from tests.constants import MODEL_QWEN3_27B_MTP, MODEL_QWEN3_35B_A3B
 
 _BIFROST_CONTRACT = (
     "config_version: '2.0.0'\n"
@@ -113,10 +114,7 @@ class TestHandlerRoutingIntent:
         assert isinstance(decision, ModelRoutingDecision)
         assert decision.correlation_id == intent.payload.correlation_id
         assert decision.task_type == "research"
-        assert decision.selected_model in {
-            "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",
-            "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ",
-        }
+        assert decision.selected_model in {MODEL_QWEN3_35B_A3B, MODEL_QWEN3_27B_MTP}
 
     def test_returns_decision_for_runtime_autopublish(self) -> None:
         # The runtime dispatch-result applier publishes the RETURNED model to the

@@ -219,7 +219,11 @@ _config: ModelDelegationConfig | None = None
 def _get_config() -> ModelDelegationConfig:
     global _config
     if _config is None:
-        yaml_text = _DEFAULT_CONFIG_PATH.read_text()
+        env_path = os.environ.get(  # contract-config-ok: config
+            "DELEGATION_ROUTING_TIERS_PATH", ""
+        )  # ONEX_EXCLUDE: env_access - contract path override for testing
+        config_path = Path(env_path) if env_path else _DEFAULT_CONFIG_PATH
+        yaml_text = config_path.read_text()
         _config = parse_delegation_config_yaml(yaml_text)
     return _config
 
@@ -585,9 +589,10 @@ def delta(
             f"You are a helpful assistant completing a {task_type} task.",
         )
 
-        # Use the bifrost model_name (full vLLM model ID) when available,
-        # fall back to the routing_tiers short ID.
-        model_name = backend.model_name or selected.id
+        # Local endpoints use the served model id declared in routing_tiers.yaml.
+        # Cloud/CLI backends keep using bifrost model_name because provider model
+        # names can differ from stable routing keys such as openrouter-glm-flash.
+        model_name = selected.id if tier.name in _LOCAL_TIERS else backend.model_name
 
         rationale = (
             f"Task '{task_type}' (~{estimated_tokens} tokens) routed to "
