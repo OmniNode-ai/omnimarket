@@ -407,9 +407,20 @@ class TestNextEligibleTier:
     """Task 10, tests 10-11: next_eligible_tier helper logic."""
 
     def test_next_eligible_tier_excludes_cli_agents(self) -> None:
-        """next_eligible_tier('cheap_cloud', {'cli_agents'}) -> 'claude' (not cli_agents)."""
+        """next_eligible_tier('cheap_cloud', {'cli_agents'}) -> 'cheap_frontier'.
+
+        OMN-12492 added cheap_frontier between cheap_cloud and claude.
+        Escalation from cheap_cloud now lands on cheap_frontier (not claude directly).
+        cli_agents is excluded but that does not skip cheap_frontier.
+        """
         result = next_eligible_tier("cheap_cloud", frozenset({"cli_agents"}))
-        # Should return 'claude' since cli_agents is excluded
+        # cheap_frontier is the next declared tier after cheap_cloud; cli_agents
+        # is excluded but cheap_frontier is not, so it is returned.
+        assert result == "cheap_frontier"
+
+    def test_next_eligible_tier_from_cheap_frontier(self) -> None:
+        """next_eligible_tier('cheap_frontier', {'cli_agents'}) -> 'claude'."""
+        result = next_eligible_tier("cheap_frontier", frozenset({"cli_agents"}))
         assert result == "claude"
 
     def test_next_eligible_tier_last_eligible_returns_none(self) -> None:

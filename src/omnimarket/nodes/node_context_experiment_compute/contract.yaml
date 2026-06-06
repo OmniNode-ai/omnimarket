@@ -3,6 +3,7 @@ name: node_context_experiment_compute
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
 description: >
   Pure deterministic compute node that assembles ModelContextPackExtended
   instances for context-factor experimentation. Given a task, model ID, and

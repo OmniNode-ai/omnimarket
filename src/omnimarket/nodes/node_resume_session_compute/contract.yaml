@@ -1,0 +1,64 @@
+---
+name: node_resume_session_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+description: >
+  Load the projected session state for a given task_id and agent_id. Returns
+  the current phase, progress percentage, and full session state projection.
+  Pure deterministic transform over the event projection — no LLM calls.
+
+handler:
+  module: omnimarket.nodes.node_resume_session_compute.handlers.handler_resume_session_compute
+  class: HandlerResumeSessionCompute
+  input_model: omnimarket.nodes.node_resume_session_compute.models.model_resume_session_compute_request.ModelResumeSessionComputeRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerResumeSessionCompute
+        module: omnimarket.nodes.node_resume_session_compute.handlers.handler_resume_session_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  task_id:
+    type: str
+    required: true
+    description: "Unique task identifier to resume"
+  agent_id:
+    type: str
+    required: true
+    description: "Agent identifier whose session state to load"
+
+outputs:
+  session_state:
+    type: object
+    description: "Full projected session state snapshot"
+  phase:
+    type: str
+    description: "Current session phase (e.g. planning, executing, review)"
+  progress_pct:
+    type: float
+    description: "Estimated completion percentage (0.0–1.0)"
+  status:
+    type: str
+    enum: [ok, not_found, error]
+
+terminal_event: onex.evt.omnimarket.resume-session-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.resume-session-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.resume-session-completed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12231", "OMN-12340"]

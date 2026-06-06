@@ -186,12 +186,19 @@ def test_probe_container_health_pass() -> None:
     mock_result.stderr = ""
 
     host = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+    run_mock = MagicMock(return_value=mock_result)
     with patch(
         "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
-        return_value=mock_result,
+        run_mock,
     ):
         result = probe_container_health(host)
 
+    args = run_mock.call_args.args[0]
+    assert args == [
+        "ssh",
+        f"jonah@{host}",
+        "docker ps --format '{{.Names}}\t{{.Status}}'",
+    ]
     assert result["surface"] == "CONTAINER_HEALTH"
     assert result["status"] == "pass"
     assert result["details"]["total_containers"] == 2

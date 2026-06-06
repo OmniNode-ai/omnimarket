@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Compatibility imports for canonical delegation quality contract primitives."""
 
-from omnibase_compat.contracts.delegation.wire import (
+from omnibase_core.models.delegation.wire import (
     MAX_WORDS_PER_SENTENCE_RE,
     SUPPORTED_ACCEPTANCE_CRITERIA,
     EnumQualityContractMode,

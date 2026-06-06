@@ -8,14 +8,18 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_infra.event_bus.models.model_event_headers import ModelEventHeaders
-from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+from omnibase_infra.event_bus.models import (
+    ModelEventBusReadiness,
+    ModelEventHeaders,
+    ModelEventMessage,
+)
 
 from omnimarket.adapters.codex import runtime_client
 from omnimarket.adapters.codex.runtime_client import (
@@ -37,6 +41,7 @@ from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage 
     ModelCoderabbitTriageCommand,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
@@ -47,6 +52,12 @@ from omnimarket.nodes.node_local_review.handlers.handler_local_review import (
 )
 from omnimarket.nodes.node_local_review.models.model_local_review_start_command import (
     ModelLocalReviewStartCommand,
+)
+from omnimarket.nodes.node_pattern_b_broker.models import (
+    EnumPatternBBrokerEventType,
+    EnumPatternBBrokerState,
+    EnumPatternBBrokerTerminalStatus,
+    ModelPatternBBrokerTerminalEvent,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
@@ -177,6 +188,292 @@ class _DirectDelegateSkillTransport:
             ),
         )
         callback = self.callbacks["onex.evt.omnimarket.delegate-skill-completed.v1"]
+        await callback(message)  # type: ignore[misc]
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        self.subscribe_topics.append(topic)
+        self.callbacks[topic] = on_message
+
+        async def _unsubscribe() -> None:
+            return None
+
+        return _unsubscribe
+
+
+class _ReadinessDelayedTerminalTransport:
+    def __init__(self) -> None:
+        self.callbacks: dict[str, object] = {}
+        self.subscribe_kwargs: list[dict[str, object]] = []
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+        self.readiness_checks = 0
+        self.publish_readiness_checks = 0
+        self.started = False
+        self.closed = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def get_readiness_status(self) -> ModelEventBusReadiness:
+        self.readiness_checks += 1
+        ready = self.readiness_checks >= 2
+        return ModelEventBusReadiness(
+            is_ready=ready,
+            consumers_started=self.started,
+            assignments={"terminal": [0]} if ready else {},
+            consume_tasks_alive={"terminal": ready},
+            required_topics=("terminal",),
+            required_topics_ready=ready,
+        )
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        self.publish_readiness_checks = self.readiness_checks
+        assert self.publish_readiness_checks >= 2
+        assert headers is None
+        self.published.append((topic, key, value))
+
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            value
+        )
+        terminal = ModelDispatchBusTerminalResult(
+            correlation_id=envelope.payload.correlation_id,
+            status="completed",
+            payload={"status": "ready-before-publish"},
+        )
+        response = ModelEventEnvelope[ModelDispatchBusTerminalResult](
+            payload=terminal,
+            correlation_id=terminal.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=envelope.payload.response_topic,
+            source_tool="readiness-delayed-test",
+        )
+        message = ModelEventMessage(
+            topic=envelope.payload.response_topic,
+            key=None,
+            value=response.model_dump_json().encode("utf-8"),
+            headers=ModelEventHeaders(
+                timestamp=datetime.now(UTC),
+                source="readiness-delayed-test",
+                event_type=envelope.payload.response_topic,
+                correlation_id=terminal.correlation_id,
+            ),
+        )
+        callback = self.callbacks[envelope.payload.response_topic]
+        await callback(message)  # type: ignore[misc]
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        self.callbacks[topic] = on_message
+        self.subscribe_kwargs.append(dict(kwargs))
+
+        async def _unsubscribe() -> None:
+            return None
+
+        return _unsubscribe
+
+
+class _NeverReadyTerminalTransport(_ReadinessDelayedTerminalTransport):
+    async def get_readiness_status(self) -> ModelEventBusReadiness:
+        self.readiness_checks += 1
+        return ModelEventBusReadiness(
+            is_ready=False,
+            consumers_started=self.started,
+            assignments={},
+            consume_tasks_alive={},
+            required_topics=("terminal",),
+            required_topics_ready=False,
+        )
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        raise AssertionError("command must not publish before terminal readiness")
+
+
+class _FakeDirectKafkaConsumer:
+    created_kwargs: list[dict[str, object]] = []
+    fail_start = False
+
+    def __init__(self, *topics: str, **kwargs: object) -> None:
+        self.topics = topics
+        self.stopped = False
+        self.created_kwargs.append(dict(kwargs))
+
+    async def start(self) -> None:
+        if self.fail_start:
+            raise RuntimeError("direct listener failed")
+
+    def assignment(self) -> set[object]:
+        return {object()}
+
+    async def seek_to_end(self, *assignment: object) -> None:
+        assert assignment
+
+    async def getmany(
+        self,
+        *,
+        timeout_ms: int,
+        max_records: int,
+    ) -> dict[object, list[object]]:
+        await asyncio.sleep(timeout_ms / 1000)
+        assert max_records > 0
+        return {}
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+
+class _ContractTerminalTopicTransport:
+    def __init__(self) -> None:
+        self.callbacks: dict[str, object] = {}
+        self.subscribe_topics: list[str] = []
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+        self.started = False
+        self.closed = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        assert headers is None
+        self.published.append((topic, key, value))
+        envelope = ModelEventEnvelope[ModelDispatchBusCommand].model_validate_json(
+            value
+        )
+        terminal_topic = "onex.evt.omnimarket.session-orchestrator-completed.v1"
+        assert terminal_topic in self.callbacks
+        response = ModelEventEnvelope[object](
+            payload={
+                "correlation_id": str(envelope.payload.correlation_id),
+                "status": "completed",
+                "payload": {"status": "contract-terminal"},
+            },
+            correlation_id=envelope.payload.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=terminal_topic,
+            source_tool="session-orchestrator-test",
+        )
+        message = ModelEventMessage(
+            topic=terminal_topic,
+            key=None,
+            value=response.model_dump_json().encode("utf-8"),
+            headers=ModelEventHeaders(
+                timestamp=datetime.now(UTC),
+                source="session-orchestrator-test",
+                event_type=terminal_topic,
+                correlation_id=envelope.payload.correlation_id,
+            ),
+        )
+        callback = self.callbacks[terminal_topic]
+        await callback(message)  # type: ignore[misc]
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: object,
+        on_message: object = None,
+        **kwargs: object,
+    ) -> object:
+        self.subscribe_topics.append(topic)
+        self.callbacks[topic] = on_message
+
+        async def _unsubscribe() -> None:
+            return None
+
+        return _unsubscribe
+
+
+class _NativePrLifecycleContractTransport:
+    def __init__(self) -> None:
+        self.callbacks: dict[str, object] = {}
+        self.subscribe_topics: list[str] = []
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+        self.started = False
+        self.closed = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: object = None,
+    ) -> None:
+        assert headers is None
+        assert topic == "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
+        self.published.append((topic, key, value))
+
+        raw = json.loads(value)
+        assert raw["event_type"] == "omnimarket.pr-lifecycle-orchestrator-start"
+        command = ModelPrLifecycleStartCommand.model_validate(raw["payload"])
+        assert command.repos == "omnimarket,onex_change_control"
+
+        terminal_topic = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
+        assert terminal_topic in self.callbacks
+        response = ModelEventEnvelope[object](
+            payload={
+                "correlation_id": str(command.correlation_id),
+                "run_id": command.run_id,
+                "prs_inventoried": 2,
+                "prs_merged": 0,
+                "prs_fixed": 0,
+                "prs_skipped": 2,
+                "final_state": "COMPLETE",
+            },
+            correlation_id=command.correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type=terminal_topic,
+            source_tool="pr-lifecycle-test",
+        )
+        message = ModelEventMessage(
+            topic=terminal_topic,
+            key=None,
+            value=response.model_dump_json().encode("utf-8"),
+            headers=ModelEventHeaders(
+                timestamp=datetime.now(UTC),
+                source="pr-lifecycle-test",
+                event_type=terminal_topic,
+                correlation_id=command.correlation_id,
+            ),
+        )
+        callback = self.callbacks[terminal_topic]
         await callback(message)  # type: ignore[misc]
 
     async def subscribe(
@@ -752,34 +1049,34 @@ async def _install_session_bootstrap_adapter_worker(
     )
 
 
-def test_default_command_topic_is_omnibase_infra_namespace(
+def test_default_command_topic_is_omnimarket_namespace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OMN-11065: default command topic must target the runtime-consumed omnibase-infra topic.
+    """OMN-12443: default command topic must target the runtime-consumed omnimarket topic.
 
-    The .201 runtime consumers are active on onex.cmd.omnibase-infra.pattern-b-dispatch.v1.
-    Publishing to the omnimarket-namespaced topic sends messages to an unconsumed topic.
+    The stability runtime broker is active on onex.cmd.omnimarket.pattern-b-dispatch.v1.
+    Publishing to the stale omnibase-infra topic sends messages to an unconsumed topic.
     """
     monkeypatch.delenv("ONEX_PATTERN_B_COMMAND_TOPIC", raising=False)
     topic = default_command_topic()
-    assert topic == "onex.cmd.omnibase-infra.pattern-b-dispatch.v1", (
-        f"default_command_topic() returned {topic!r} — must be the omnibase-infra "
-        "namespace consumed by the .201 runtime (OMN-11065)"
+    assert topic == "onex.cmd.omnimarket.pattern-b-dispatch.v1", (
+        f"default_command_topic() returned {topic!r} — must be the omnimarket "
+        "namespace consumed by the stability runtime (OMN-12443)"
     )
 
 
-def test_default_response_topic_is_omnibase_infra_namespace(
+def test_default_response_topic_is_omnimarket_namespace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OMN-11065: default response topic must target the runtime-consumed omnibase-infra topic.
+    """OMN-12443: default response topic must target the runtime-consumed omnimarket topic.
 
     The terminal completion topic must match the namespace the runtime emits on.
     """
     monkeypatch.delenv("ONEX_PATTERN_B_RESPONSE_TOPIC", raising=False)
     topic = default_response_topic()
-    assert topic == "onex.evt.omnibase-infra.pattern-b-dispatch-completed.v1", (
-        f"default_response_topic() returned {topic!r} — must be the omnibase-infra "
-        "namespace consumed by the .201 runtime (OMN-11065)"
+    assert topic == "onex.evt.omnimarket.pattern-b-dispatch-completed.v1", (
+        f"default_response_topic() returned {topic!r} — must be the omnimarket "
+        "namespace consumed by the stability runtime (OMN-12443)"
     )
 
 
@@ -803,6 +1100,124 @@ def test_default_response_topic_env(monkeypatch: pytest.MonkeyPatch) -> None:
         default_response_topic()
         == "onex.evt.omnibase-infra.custom-pattern-b-dispatch-completed.v1"
     )
+
+
+def test_parse_terminal_result_accepts_deployed_dict_payload() -> None:
+    correlation_id = uuid4()
+    terminal_payload = {
+        "correlation_id": str(correlation_id),
+        "status": "completed",
+        "payload": {"status": "halted", "dispatch_queue": []},
+        "error_message": None,
+        "completed_at": datetime.now(UTC).isoformat(),
+    }
+    envelope = ModelEventEnvelope[object](
+        payload=terminal_payload,
+        correlation_id=correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="onex.evt.omnimarket.pattern-b-dispatch-completed.v1",
+        source_tool="pattern-b-broker",
+        target_tool="pattern-b-client",
+        payload_type="ModelDispatchBusTerminalResult",
+    )
+
+    result = runtime_client._parse_terminal_result(
+        envelope.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "completed"
+    assert result.payload == {"status": "halted", "dispatch_queue": []}
+
+
+def test_parse_terminal_result_accepts_raw_pattern_b_broker_terminal_event() -> None:
+    correlation_id = uuid4()
+    terminal = ModelPatternBBrokerTerminalEvent(
+        request_id=uuid4(),
+        correlation_id=correlation_id,
+        event_type=EnumPatternBBrokerEventType.terminal_completed,
+        state=EnumPatternBBrokerState.completed,
+        status=EnumPatternBBrokerTerminalStatus.completed,
+        result={"summary": "broker-complete"},
+    )
+
+    result = runtime_client._parse_terminal_result(
+        terminal.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "completed"
+    assert result.payload == {"summary": "broker-complete"}
+
+
+def test_parse_terminal_result_accepts_node_terminal_complete_event() -> None:
+    correlation_id = uuid4()
+    envelope = ModelEventEnvelope[object](
+        payload={
+            "session_id": "sess-test",
+            "correlation_id": str(correlation_id),
+            "status": "complete",
+            "dispatch_queue": [],
+            "dispatch_receipts": [],
+            "dry_run": True,
+        },
+        correlation_id=correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="onex.evt.omnimarket.session-orchestrator-completed.v1",
+    )
+
+    result = runtime_client._parse_terminal_result(
+        envelope.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "complete"
+    assert result.payload == {
+        "session_id": "sess-test",
+        "status": "complete",
+        "dispatch_queue": [],
+        "dispatch_receipts": [],
+        "dry_run": True,
+    }
+
+
+def test_parse_terminal_result_infers_completed_status_from_pr_lifecycle_event() -> (
+    None
+):
+    correlation_id = uuid4()
+    envelope = ModelEventEnvelope[object](
+        payload={
+            "correlation_id": str(correlation_id),
+            "run_id": "merge-sweep-test",
+            "prs_inventoried": 2,
+            "prs_merged": 0,
+            "prs_fixed": 0,
+            "prs_skipped": 2,
+            "final_state": "COMPLETE",
+        },
+        correlation_id=correlation_id,
+        envelope_timestamp=datetime.now(UTC),
+        event_type="onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
+    )
+
+    result = runtime_client._parse_terminal_result(
+        envelope.model_dump_json().encode("utf-8")
+    )
+
+    assert result is not None
+    assert result.correlation_id == correlation_id
+    assert result.status == "completed"
+    assert result.payload == {
+        "run_id": "merge-sweep-test",
+        "prs_inventoried": 2,
+        "prs_merged": 0,
+        "prs_fixed": 0,
+        "prs_skipped": 2,
+        "final_state": "COMPLETE",
+    }
 
 
 def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -858,6 +1273,222 @@ async def test_dispatch_async_round_trip() -> None:
         received_commands[0].target_runtime_address
         == "runtime://omninode-pc/stability-test/main"
     )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_waits_for_terminal_subscription_readiness() -> None:
+    transport = _ReadinessDelayedTerminalTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True},
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.session-orchestrator-completed.v1",
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is True
+    assert result.output_payloads == [{"status": "ready-before-publish"}]
+    assert transport.subscribe_kwargs == [
+        {
+            "group_id": f"codex-adapter-{result.correlation_id}",
+            "required_for_readiness": True,
+        }
+    ]
+    assert transport.publish_readiness_checks >= 2
+    assert len(transport.published) == 1
+
+
+@pytest.mark.asyncio
+async def test_direct_terminal_listener_uses_transport_api_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _FakeDirectKafkaConsumer.created_kwargs = []
+    _FakeDirectKafkaConsumer.fail_start = False
+    monkeypatch.setitem(
+        sys.modules,
+        "aiokafka",
+        SimpleNamespace(AIOKafkaConsumer=_FakeDirectKafkaConsumer),
+    )
+    transport = _ReadinessDelayedTerminalTransport()
+    transport._bootstrap_servers = "broker:9092"  # type: ignore[attr-defined]
+    transport._config = SimpleNamespace(api_version="2.8.0")  # type: ignore[attr-defined]
+    adapter = runtime_client._CodexDispatchBusAdapter(transport, source="codex-test")
+
+    unsubscribe, _ = await adapter._try_direct_kafka_terminal_listener(
+        topics=("onex.evt.omnimarket.session-orchestrator-completed.v1",),
+        correlation_id=str(uuid4()),
+        queue=asyncio.Queue(),
+        timeout_seconds=1.0,
+    )
+
+    assert _FakeDirectKafkaConsumer.created_kwargs == [
+        {
+            "bootstrap_servers": "broker:9092",
+            "group_id": None,
+            "enable_auto_commit": False,
+            "auto_offset_reset": "latest",
+            "api_version": "2.8.0",
+        }
+    ]
+    await unsubscribe()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_falls_back_when_direct_terminal_listener_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _FakeDirectKafkaConsumer.created_kwargs = []
+    _FakeDirectKafkaConsumer.fail_start = True
+    monkeypatch.setitem(
+        sys.modules,
+        "aiokafka",
+        SimpleNamespace(AIOKafkaConsumer=_FakeDirectKafkaConsumer),
+    )
+    transport = _ReadinessDelayedTerminalTransport()
+    transport._bootstrap_servers = "broker:9092"  # type: ignore[attr-defined]
+    transport._config = SimpleNamespace(api_version="2.8.0")  # type: ignore[attr-defined]
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True},
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.session-orchestrator-completed.v1",
+    )
+
+    assert result.ok is True
+    assert len(transport.published) == 1
+    assert _FakeDirectKafkaConsumer.created_kwargs[0]["api_version"] == "2.8.0"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_times_out_before_publish_when_terminal_never_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        runtime_client,
+        "_TERMINAL_SUBSCRIPTION_READY_TIMEOUT_SECONDS",
+        0.01,
+    )
+    transport = _NeverReadyTerminalTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True},
+        timeout_ms=2000,
+        response_topic="onex.evt.omnimarket.session-orchestrator-completed.v1",
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "runtime_timeout"
+    assert not transport.published
+
+
+@pytest.mark.asyncio
+async def test_dispatch_async_uses_contract_terminal_topic_for_default_response_topic() -> (
+    None
+):
+    transport = _ContractTerminalTopicTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="session_orchestrator",
+        payload={"dry_run": True, "skip_health": True},
+        timeout_ms=2000,
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is True
+    assert result.output_payloads == [{"status": "contract-terminal"}]
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.session-orchestrator-completed.v1"
+    )
+    assert transport.subscribe_topics == [
+        "onex.evt.omnimarket.session-orchestrator-completed.v1",
+        "onex.evt.omnimarket.session-orchestrator-failed.v1",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pr_lifecycle_default_deployed_route_uses_native_contract_topic() -> None:
+    correlation_id = uuid4()
+    transport = _NativePrLifecycleContractTransport()
+    client = CodexRuntimeRequestAdapter(
+        event_bus_factory=lambda: transport,
+        requester="codex-test",
+    )
+
+    result = await client.dispatch_async(
+        command_name="pr_lifecycle_orchestrator",
+        payload={
+            "correlation_id": str(correlation_id),
+            "run_id": "merge-sweep-omn-12708",
+            "repos": ["omnimarket", "onex_change_control"],
+            "dry_run": False,
+            "inventory_only": True,
+            "fix_only": False,
+            "merge_only": False,
+            "enable_auto_rebase": True,
+            "verify": False,
+            "verify_timeout_seconds": 30,
+        },
+        correlation_id=correlation_id,
+        timeout_ms=2000,
+        target_runtime_address="runtime://omninode-pc/stability-test/main",
+    )
+
+    assert transport.started is True
+    assert transport.closed is True
+    assert result.ok is True
+    assert result.command_topic == (
+        "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
+    )
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
+    )
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
+    )
+    assert transport.subscribe_topics == [
+        "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
+        "onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1",
+    ]
+    assert result.output_payloads == [
+        {
+            "run_id": "merge-sweep-omn-12708",
+            "prs_inventoried": 2,
+            "prs_merged": 0,
+            "prs_fixed": 0,
+            "prs_skipped": 2,
+            "final_state": "COMPLETE",
+        }
+    ]
+    assert len(transport.published) == 1
 
 
 @pytest.mark.asyncio
@@ -959,6 +1590,7 @@ async def test_delegate_skill_direct_dispatch_publishes_contract_payload() -> No
     assert raw["payload"]["task_type"] == "test"
     assert raw["payload"]["source"] == "codex"
     assert raw["payload"]["correlation_id"] == str(cid)
+    assert raw["payload"]["max_tokens"] == DELEGATION_DEFAULT_MAX_TOKENS
     assert "command_name" not in raw["payload"]
     assert "response_topic" not in raw["payload"]
     assert (
@@ -1197,6 +1829,92 @@ def test_aislop_sweep_explicit_local_runtime_preserves_node_contract_topics(
     )
     assert result.output_payloads is not None
     assert result.output_payloads[0]["status"] == "findings"
+
+
+def test_observability_sink_local_runtime_smoke_uses_contract_topics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    correlation_id = uuid4()
+    session_id = uuid4()
+    event_id = uuid4()
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+
+    client = CodexRuntimeRequestAdapter(requester="codex-test")
+    result = client.dispatch_sync(
+        command_name="observability_sink_effect",
+        payload={
+            "correlation_id": str(correlation_id),
+            "session_id": str(session_id),
+            "events": [
+                {
+                    "event_id": str(event_id),
+                    "agent_name": "codex-test",
+                    "action_type": "runtime_smoke",
+                    "action_name": "observability_sink",
+                    "action_details": {"ticket": "OMN-12325"},
+                    "duration_ms": 0,
+                    "emitted_at": datetime.now(UTC).isoformat(),
+                }
+            ],
+            "sink_kafka": False,
+            "sink_postgres": False,
+            "submitted_at": datetime.now(UTC).isoformat(),
+        },
+        timeout_ms=5000,
+        runtime_selection="local",
+    )
+
+    assert result.ok is True
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.node_contract is not None
+    assert result.runtime_evidence.node_contract.endswith(
+        "node_observability_sink_effect/contract.yaml"
+    )
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.observability-sink.v1"
+    )
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.observability-persisted.v1"
+    )
+    assert result.output_payloads is not None
+    payload = result.output_payloads[0]
+    assert payload["correlation_id"] == str(result.correlation_id)
+    assert payload["correlation_id"] != str(correlation_id)
+    assert payload["session_id"] == str(session_id)
+    assert payload["persisted_event_count"] == 0
+    assert payload["kafka_trace_ids"] == []
+    assert payload["postgres_row_ids"] == []
+
+
+def test_emit_daemon_local_runtime_lifecycle_uses_typed_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+
+    client = CodexRuntimeRequestAdapter(requester="codex-test")
+    result = client.dispatch_sync(
+        command_name="node_emit_daemon",
+        payload={"action": "health"},
+        timeout_ms=5000,
+        runtime_selection="local",
+    )
+
+    assert result.ok is True
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.node_contract is not None
+    assert result.runtime_evidence.node_contract.endswith(
+        "node_emit_daemon/contract.yaml"
+    )
+    assert result.runtime_evidence.command_topic == (
+        "onex.cmd.omnimarket.emit-daemon-lifecycle.v1"
+    )
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.emit-daemon-lifecycle-completed.v1"
+    )
+    assert result.output_payloads is not None
+    assert result.output_payloads[0]["phase"] == "idle"
 
 
 @pytest.mark.asyncio
@@ -1852,6 +2570,10 @@ async def test_session_orchestrator_pattern_b_runs_node_end_to_end(
         "pr_lifecycle_orchestrator",
         "session_bootstrap",
         "session_orchestrator",
+        "recall_compute",
+        "observability_sink_effect",
+        "dep_cascade_dedup_orchestrator",
+        "adversarial_pipeline_orchestrator",
     ],
 )
 @pytest.mark.asyncio
@@ -1908,6 +2630,10 @@ async def test_market_plugin_commands_can_target_addressed_runtime(
         "pr_lifecycle_orchestrator",
         "session_bootstrap",
         "session_orchestrator",
+        "recall_compute",
+        "observability_sink_effect",
+        "dep_cascade_dedup_orchestrator",
+        "adversarial_pipeline_orchestrator",
     ],
 )
 def test_market_plugin_commands_compile_without_event_bus(

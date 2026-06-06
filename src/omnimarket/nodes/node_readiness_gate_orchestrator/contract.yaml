@@ -3,12 +3,23 @@ name: node_readiness_gate_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: ORCHESTRATOR_GENERIC
 node_version: {major: 0, minor: 1, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 description: >
-  Contract-only Wave 2 node for the production deployment readiness gate. The
+  Native node for the production deployment readiness gate. The
   gate consumes projection surfaces from deployment evidence reducers, scores
   deployment eligibility, and emits the authoritative deployment readiness
-  decision. Handlers are added in Wave 3.
+  decision through typed node ports.
+
+handler:
+  module: omnimarket.nodes.node_readiness_gate_orchestrator.handlers.handler_readiness_gate_orchestrator
+  class: HandlerReadinessGateOrchestrator
+  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report.ModelGapReport
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerReadinessGateOrchestrator
+        module: omnimarket.nodes.node_readiness_gate_orchestrator.handlers.handler_readiness_gate_orchestrator
 
 input_model:
   name: ModelGapReport
@@ -65,6 +76,5 @@ dependencies:
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 3
-  related_tickets: ["OMN-11443"]
+  implementation_wave: 3
+  related_tickets: ["OMN-11443", "OMN-12395"]

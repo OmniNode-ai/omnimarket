@@ -11,8 +11,15 @@ import pytest
 import yaml
 
 from omnimarket.adapters.claude_code.delegate import _ALLOWED_TASK_TYPES
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    load_runtime_delegation_dispatch_config,
 )
 
 _NODE_DIR = (
@@ -48,6 +55,19 @@ def test_contract_declares_named_topic_fields() -> None:
 
 
 @pytest.mark.unit
+def test_contract_declares_delegation_runtime_dispatch_config() -> None:
+    config = load_runtime_delegation_dispatch_config(_CONTRACT_PATH)
+
+    assert config.topics.command == "onex.cmd.omnibase-infra.delegation-request.v1"
+    assert config.topics.completed == "onex.evt.omnibase-infra.delegation-completed.v1"
+    assert config.topics.failed == "onex.evt.omnibase-infra.delegation-failed.v1"
+    assert config.request_message_type == "omnibase-infra.delegation-request"
+    assert config.source_tool == "delegate-skill-runtime-port"
+    assert config.consumer_group_prefix == "delegate-skill-runtime-port"
+    assert config.wait_timeout_seconds == 300
+
+
+@pytest.mark.unit
 def test_contract_declares_runtime_profile() -> None:
     contract = _load_contract()
     assert "main" in contract["runtime_profiles"]
@@ -62,6 +82,7 @@ def test_contract_declares_allowed_task_types() -> None:
         "document",
         "research",
         "code_generation",
+        "code_review",
         "refactor",
         "reasoning",
         "complex_reasoning",
@@ -81,6 +102,14 @@ def test_contract_model_and_adapter_task_types_match() -> None:
     )
     assert set(contract["allowed_task_types"]) == model_task_types
     assert set(_ALLOWED_TASK_TYPES) == model_task_types
+
+
+@pytest.mark.unit
+def test_contract_declares_max_tokens_boundary() -> None:
+    max_tokens = _load_contract()["inputs"]["max_tokens"]
+
+    assert max_tokens["default"] == DELEGATION_DEFAULT_MAX_TOKENS
+    assert max_tokens["maximum"] == DELEGATION_MAX_TOKENS_HARD_LIMIT
 
 
 @pytest.mark.unit

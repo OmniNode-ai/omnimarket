@@ -6,14 +6,16 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Generates evidence receipts for task-completed claims. Verifies CI checks
-  via gh pr checks and/or runs pytest in the worktree. Returns a structured
-  receipt with per-dimension evidence. Feeds overseer-verify with real
-  evidence — kills rubber-stamping at the source.
+  via gh pr checks, runs pytest in the worktree, and/or executes mechanical DoD
+  checks (command_exit_0/file_exists/grep_present/grep_absent). Returns a
+  structured receipt with per-dimension evidence. Sole EXECUTION authority for
+  mechanical checks routed by the task.execute orchestrator. Feeds
+  overseer-verify with real evidence — kills rubber-stamping at the source.
 
 handler:
   module: omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt
   class: HandlerVerificationReceiptGenerator
-  input_model: omnimarket.nodes.node_verification_receipt_generator.models.model_verification_receipt.ModelVerificationReceiptRequest
+  input_model: omnimarket.events.verification.ModelVerificationReceiptRequest
 
 handler_routing:
   routing_strategy: operation_match
@@ -60,6 +62,12 @@ inputs:
     description: "Run pytest and capture exit code"
     required: false
     default: true
+  mechanical_checks:
+    type: list
+    description: >
+      Mechanical DoD checks (ModelMechanicalCheck) to execute; each yields one
+      evidence entry. Types: command_exit_0/file_exists/grep_present/grep_absent.
+    required: false
   dry_run:
     type: bool
     description: "Return receipt without running verification"

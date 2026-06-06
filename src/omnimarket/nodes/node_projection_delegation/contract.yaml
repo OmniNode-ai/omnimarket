@@ -3,6 +3,7 @@ name: projection_delegation
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
 description: >
   Projects delegation terminal events into the delegation_events table.
   Dedup by correlation_id. Sources include legacy task-delegated events,
@@ -24,6 +25,7 @@ handler_routing:
         name: HandlerProjectionDelegation
         module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
       handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
+      event_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 
@@ -39,7 +41,7 @@ golden_path:
 db_io:
   db_tables:
     - name: delegation_events
-      migration: "0009_delegate_skill_projection_metrics.sql"
+      migration: "0011_delegation_event_projection_versions.sql"
       access: write
       database: omnidash_analytics
       role: events
@@ -61,32 +63,165 @@ event_bus:
     - onex.evt.omnimarket.node-generation-completed.v1
     - onex.evt.omnimarket.delegate-skill-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
+    - onex.evt.omnibase-infra.delegation-completed.v1
+    - onex.evt.omnibase-infra.delegation-failed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
 
 projection_api:
   expose: true
-  topic: onex.evt.omnimarket.projection-delegation-events.v1
-  table: delegation_events
-  schema: public
-  columns:
-    - correlation_id
-    - timestamp
-    - task_type
-    - delegated_to
-    - model_name
-    - quality_gate_passed
-    - cost_usd
-    - cost_savings_usd
-    - delegation_latency_ms
-    - tokens_input
-    - tokens_output
-    - tokens_to_compliance
-    - compliance_attempts
-    - pricing_manifest_version
-  order_by: timestamp DESC
-  freshness_column: timestamp
-  limit: 100
+  exposures:
+    - topic: delegation
+      table: delegation_events
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - session_id
+        - task_type
+        - delegated_to
+        - model_name
+        - quality_gate_passed
+        - quality_gate_detail
+        - latency_ms
+        - delegation_latency_ms
+        - tokens_input
+        - tokens_output
+        - tokens_to_compliance
+        - compliance_attempts
+        - cost_usd
+        - cost_savings_usd
+        - pricing_manifest_version
+        - timestamp
+        - created_at
+      order_by: created_at DESC
+      freshness_column: created_at
+      limit: 500
+    - topic: onex.evt.omnimarket.projection-delegation-events.v1
+      table: delegation_events
+      schema: public
+      columns:
+        - correlation_id
+        - timestamp
+        - task_type
+        - delegated_to
+        - model_name
+        - quality_gate_passed
+        - cost_usd
+        - cost_savings_usd
+        - delegation_latency_ms
+        - tokens_input
+        - tokens_output
+        - tokens_to_compliance
+        - compliance_attempts
+        - pricing_manifest_version
+      order_by: timestamp DESC
+      freshness_column: timestamp
+      limit: 100
+    - topic: onex.snapshot.projection.delegation.decisions.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: delegation_events
+      schema: public
+      columns:
+        - id
+        - correlation_id
+        - session_id
+        - task_type
+        - delegated_to
+        - model_name
+        - quality_gate_passed
+        - quality_gate_detail
+        - latency_ms
+        - tokens_input
+        - tokens_output
+        - tokens_to_compliance
+        - created_at
+      order_by: created_at DESC
+      freshness_column: created_at
+      limit: 500
+    - topic: onex.snapshot.projection.delegation.summary.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_delegation_summary
+      schema: public
+      columns:
+        - '"totalDelegations"'
+        - '"qualityGatePassRate"'
+        - '"qualityGatePassed"'
+        - '"qualityGateTotal"'
+        - '"totalSavingsUsd"'
+        - '"avgLatencyMs"'
+        - '"latestEventAt"'
+        - total_events
+        - quality_passed_count
+        - quality_failed_count
+        - avg_latency_ms
+        - latest_event_at
+        - '"byTaskType"'
+        - '"byModel"'
+        - latest_projection_updated_at
+      json_columns:
+        - byTaskType
+        - byModel
+      freshness_column: latest_projection_updated_at
+      limit: 1
+    - topic: onex.snapshot.projection.delegation.model-routing.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_delegation_model_routing
+      schema: public
+      columns:
+        - total_delegations
+        - rows
+        - by_model
+        - decision_traces
+        - captured_at
+        - provisioned
+        - latest_projection_updated_at
+      json_columns:
+        - rows
+        - by_model
+        - decision_traces
+      freshness_column: latest_projection_updated_at
+      limit: 1
+    - topic: onex.snapshot.projection.delegation.quality-gate.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_delegation_quality_gate
+      schema: public
+      columns:
+        - overall_pass_rate
+        - total_passed
+        - total_failed
+        - total_checks
+        - escalation_count
+        - escalation_rate
+        - by_check_type
+        - failure_categories
+        - avg_tokens_to_compliance
+        - median_tokens_to_compliance
+        - avg_compliance_attempts
+        - tokens_to_compliance_by_model
+        - captured_at
+        - provisioned
+        - latest_projection_updated_at
+      json_columns:
+        - by_check_type
+        - failure_categories
+        - tokens_to_compliance_by_model
+      freshness_column: latest_projection_updated_at
+      limit: 1
+    - topic: onex.snapshot.projection.delegation.token-usage.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: projection_delegation_token_usage
+      schema: public
+      columns:
+        - total_prompt_tokens
+        - total_completion_tokens
+        - total_tokens
+        - total_estimated_cost_usd
+        - provenance_summary
+        - by_model
+        - captured_at
+        - provisioned
+        - latest_projection_updated_at
+      json_columns:
+        - provenance_summary
+        - by_model
+      freshness_column: latest_projection_updated_at
+      limit: 1
 
 metadata:
   transport_type: kafka

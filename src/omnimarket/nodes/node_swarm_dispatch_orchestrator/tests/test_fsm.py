@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -31,8 +31,10 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def handler() -> HandlerSwarmDispatchOrchestrator:
+    mock_bus = MagicMock()
+    mock_bus.publish = AsyncMock()
     return HandlerSwarmDispatchOrchestrator(
-        event_bus=cast("ProtocolEventBusPublisher", MagicMock())
+        event_bus=cast("ProtocolEventBusPublisher", mock_bus)
     )
 
 
@@ -240,10 +242,12 @@ class TestFSMHappyPath:
 
     def test_full_chain_via_handle(
         self,
-        handler: HandlerSwarmDispatchOrchestrator,
         request_fixture: ModelSwarmDispatchRequest,
     ) -> None:
-        result = handler.handle(request_fixture)
+        # Sync path: no event_bus injected → handle() returns ModelSwarmDispatchResult
+        sync_handler = HandlerSwarmDispatchOrchestrator()
+        result = sync_handler.handle(request_fixture)
+        assert result is not None
         assert result.run_id == "run-001"
         assert result.correlation_id == "corr-001"
 

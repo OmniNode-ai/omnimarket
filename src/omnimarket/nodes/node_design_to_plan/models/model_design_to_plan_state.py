@@ -9,13 +9,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnumDesignToPlanPhase(StrEnum):
-    """FSM phases for the design-to-plan workflow."""
+    """FSM phases for the design-to-plan workflow.
+
+    Phase 3 (LAUNCH) builds native downstream dispatch commands.
+    When no_launch=True callers should skip launch routing.
+    """
 
     IDLE = "idle"
     BRAINSTORM = "brainstorm"
     STRUCTURE = "structure"
     REVIEW = "review"
     FINALIZE = "finalize"
+    LAUNCH = "launch"
     DONE = "done"
     FAILED = "failed"
 
@@ -25,6 +30,7 @@ _PHASE_SEQUENCE: tuple[EnumDesignToPlanPhase, ...] = (
     EnumDesignToPlanPhase.STRUCTURE,
     EnumDesignToPlanPhase.REVIEW,
     EnumDesignToPlanPhase.FINALIZE,
+    EnumDesignToPlanPhase.LAUNCH,
     EnumDesignToPlanPhase.DONE,
 )
 
@@ -55,6 +61,7 @@ class ModelDesignToPlanState(BaseModel):
     plan_path: str | None = Field(default=None)
     dry_run: bool = Field(default=False)
     no_launch: bool = Field(default=False)
+    plan_only: bool = Field(default=False)
     consecutive_failures: int = Field(default=0, ge=0)
     max_consecutive_failures: int = Field(default=3, ge=1)
     error_message: str | None = Field(default=None)

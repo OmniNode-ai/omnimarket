@@ -8,8 +8,12 @@ Verifies:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import sys
 from datetime import UTC, datetime
+from types import ModuleType
 from uuid import uuid4
 
 import pytest
@@ -24,11 +28,13 @@ from omnimarket.nodes.node_redeploy.handlers.handler_workflow_runner import (
     run_redeploy_workflow,
 )
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
     EnumRedeployStatus,
     ModelDeployPhaseResults,
     ModelDeployRebuildCompleted,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_command import (
+    EnumRuntimeLane,
     ModelRedeployCommand,
 )
 from omnimarket.nodes.node_redeploy.models.model_redeploy_state import (
@@ -304,6 +310,59 @@ class TestRedeployKafkaGoldenChain:
 
         await bus.close()
 
+    async def test_deploy_agent_payload_without_status_is_normalized(self) -> None:
+        """Deployed agent payload shape without computed status still completes."""
+        bus = EventBusInmemory(environment="test", group="redeploy-test")
+        await bus.start()
+
+        corr_id = str(uuid4())
+        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
+
+        async def _agent_sends_deployed_shape(message: object) -> None:
+            payload = json.loads(message.value)  # type: ignore[union-attr]
+            completion_payload = {
+                "correlation_id": payload["correlation_id"],
+                "requested_git_ref": "origin/dev",
+                "git_sha": "abc123",
+                "started_at": "2026-06-03T19:24:36.000000+00:00",
+                "completed_at": "2026-06-03T19:24:39.000000+00:00",
+                "duration_seconds": 3.0,
+                "scope": "runtime",
+                "runtime_lane": "dev",
+                "services_restarted": ["omninode-runtime"],
+                "phase_results": {
+                    "preflight": "success",
+                    "git": "success",
+                    "compose_gen": "in_progress",
+                    "publish": "in_progress",
+                },
+                "errors": ["No such file or directory: 'uv'"],
+                "health_checks": [],
+            }
+            await bus.publish(
+                _EVT_TOPIC,
+                key=payload["correlation_id"].encode(),
+                value=json.dumps(completion_payload).encode(),
+            )
+
+        await bus.subscribe(
+            _CMD_TOPIC, on_message=_agent_sends_deployed_shape, group_id="fake-agent"
+        )
+
+        result = await handler.execute(
+            scope="runtime",
+            runtime_lane=EnumRuntimeLane.DEV,
+            correlation_id=corr_id,
+        )
+
+        assert result.success is False
+        assert result.status == EnumRedeployStatus.FAILED
+        assert result.errors == ["No such file or directory: 'uv'"]
+        assert result.phase_results["git"] == "success"
+        assert result.phase_results["publish"] == "success"
+
+        await bus.close()
+
     async def test_timeout_when_no_agent_responds(self) -> None:
         """No deploy agent responds -> timeout -> timed_out=True."""
         bus = EventBusInmemory(environment="test", group="redeploy-test")
@@ -383,6 +442,90 @@ class TestRedeployKafkaGoldenChain:
         with pytest.raises(RuntimeError, match="requires an event_bus"):
             HandlerRedeployKafka(event_bus=None)
 
+    async def test_from_env_wires_typed_kafka_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """from_env wires EventBusKafka with the current typed config model."""
+        kafka_module = ModuleType("omnibase_infra.event_bus.event_bus_kafka")
+        config_module = ModuleType("omnibase_infra.event_bus.models.config")
+
+        class FakeModelKafkaEventBusConfig:
+            model_fields = {
+                "bootstrap_servers": object(),
+                "environment": object(),
+                "api_version": object(),
+            }
+
+            def __init__(self, **kwargs: object) -> None:
+                self.bootstrap_servers = kwargs["bootstrap_servers"]
+                self.environment = kwargs["environment"]
+                self.api_version = kwargs["api_version"]
+
+        class FakeEventBusKafka:
+            def __init__(self, config: FakeModelKafkaEventBusConfig) -> None:
+                self._config = config
+                self._bootstrap_servers = config.bootstrap_servers
+                self._environment = config.environment
+
+        kafka_module.EventBusKafka = FakeEventBusKafka  # type: ignore[attr-defined]
+        config_module.ModelKafkaEventBusConfig = FakeModelKafkaEventBusConfig  # type: ignore[attr-defined]
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.event_bus_kafka", kafka_module
+        )
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.models.config", config_module
+        )
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker:19092")
+        monkeypatch.setenv("KAFKA_ENVIRONMENT", "dev")
+        monkeypatch.setenv("KAFKA_API_VERSION", "2.8.0")
+
+        handler = HandlerRedeployKafka.from_env()
+
+        assert handler.bus._bootstrap_servers == "broker:19092"
+        assert handler.bus._environment == "dev"
+        assert handler.bus._config.api_version == "2.8.0"
+
+    async def test_from_env_omits_api_version_for_older_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """from_env remains compatible with older ModelKafkaEventBusConfig."""
+        kafka_module = ModuleType("omnibase_infra.event_bus.event_bus_kafka")
+        config_module = ModuleType("omnibase_infra.event_bus.models.config")
+
+        class FakeModelKafkaEventBusConfig:
+            model_fields = {
+                "bootstrap_servers": object(),
+                "environment": object(),
+            }
+
+            def __init__(self, **kwargs: object) -> None:
+                assert "api_version" not in kwargs
+                self.bootstrap_servers = kwargs["bootstrap_servers"]
+                self.environment = kwargs["environment"]
+
+        class FakeEventBusKafka:
+            def __init__(self, config: FakeModelKafkaEventBusConfig) -> None:
+                self._config = config
+                self._bootstrap_servers = config.bootstrap_servers
+                self._environment = config.environment
+
+        kafka_module.EventBusKafka = FakeEventBusKafka  # type: ignore[attr-defined]
+        config_module.ModelKafkaEventBusConfig = FakeModelKafkaEventBusConfig  # type: ignore[attr-defined]
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.event_bus_kafka", kafka_module
+        )
+        monkeypatch.setitem(
+            sys.modules, "omnibase_infra.event_bus.models.config", config_module
+        )
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker:19092")
+        monkeypatch.setenv("KAFKA_ENVIRONMENT", "dev")
+        monkeypatch.setenv("KAFKA_API_VERSION", "2.8.0")
+
+        handler = HandlerRedeployKafka.from_env()
+
+        assert handler.bus._bootstrap_servers == "broker:19092"
+        assert handler.bus._environment == "dev"
+
     async def test_duration_from_agent_preferred(self) -> None:
         """Duration from deploy agent is used when > 0, else wall-clock."""
         bus = EventBusInmemory(environment="test", group="redeploy-test")
@@ -412,13 +555,17 @@ class TestRedeployKafkaGoldenChain:
 
         await bus.close()
 
-    async def test_command_payload_fields(self) -> None:
+    async def test_command_payload_fields(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Published command payload contains all required deploy agent fields."""
         bus = EventBusInmemory(environment="test", group="redeploy-test")
         await bus.start()
 
         received_commands: list[dict[str, object]] = []
         corr_id = str(uuid4())
+        secret = "test-deploy-agent-secret"
+        monkeypatch.setenv("DEPLOY_AGENT_HMAC_SECRET", secret)
         handler = HandlerRedeployKafka(event_bus=bus, timeout_s=5.0)
 
         async def _capturing_agent(message: object) -> None:
@@ -438,7 +585,11 @@ class TestRedeployKafkaGoldenChain:
         await handler.execute(
             scope="runtime",
             git_ref="origin/develop",
+            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
+            build_source=EnumBuildSource.WORKSPACE,
             services=["omninode-runtime"],
+            image_ref="ghcr.io/omninode/omninode-runtime:dev",
+            image_digest="sha256:" + "a" * 64,
             requested_by="test-suite",
             correlation_id=corr_id,
         )
@@ -448,8 +599,32 @@ class TestRedeployKafkaGoldenChain:
         assert cmd["correlation_id"] == corr_id
         assert cmd["scope"] == "runtime"
         assert cmd["git_ref"] == "origin/develop"
+        assert cmd["runtime_lane"] == "stability-test"
+        assert cmd["build_source"] == "workspace"
+        assert cmd["image_ref"] == "ghcr.io/omninode/omninode-runtime:dev"
+        assert cmd["image_digest"] == "sha256:" + "a" * 64
         assert cmd["services"] == ["omninode-runtime"]
         assert cmd["requested_by"] == "test-suite"
+        assert isinstance(cmd["_signature"], str)
+        body = json.dumps(
+            {k: v for k, v in cmd.items() if k != "_signature"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        expected_signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        assert cmd["_signature"] == expected_signature
+
+        await bus.close()
+
+    async def test_prod_command_requires_digest(self) -> None:
+        """Prod deploy-agent commands fail closed without a pinned digest."""
+        bus = EventBusInmemory(environment="test", group="redeploy-test")
+        await bus.start()
+
+        handler = HandlerRedeployKafka(event_bus=bus, timeout_s=0.1)
+
+        with pytest.raises(ValueError, match="image_digest"):
+            await handler.execute(runtime_lane=EnumRuntimeLane.PROD)
 
         await bus.close()
 
@@ -535,6 +710,54 @@ class TestRedeployWorkflowRunnerGoldenChain:
         assert result.rebuild_result is not None
         assert result.rebuild_result.success is True
         assert result.rebuild_result.git_sha == "workflow-sha"
+
+        await bus.close()
+
+    async def test_workflow_propagates_lane_fields_to_deploy_agent(self) -> None:
+        """Workflow input fields survive through the Kafka deploy-agent command."""
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+        bus = EventBusInmemory(environment="test", group="workflow-test")
+        await bus.start()
+
+        received_commands: list[dict[str, object]] = []
+
+        async def _capturing_agent(message: object) -> None:
+            payload = json.loads(message.value)  # type: ignore[union-attr]
+            received_commands.append(payload)
+            completion = _make_completed_event(
+                correlation_id=payload["correlation_id"],
+                git_sha="workflow-sha",
+            )
+            await bus.publish(
+                _EVT_TOPIC,
+                key=payload["correlation_id"].encode(),
+                value=json.dumps(completion.model_dump(mode="json")).encode(),
+            )
+
+        await bus.subscribe(
+            _CMD_TOPIC, on_message=_capturing_agent, group_id="fake-agent"
+        )
+
+        workflow_input = ModelRedeployWorkflowInput(
+            correlation_id=uuid4(),
+            scope="runtime",
+            git_ref="origin/dev",
+            runtime_lane=EnumRuntimeLane.STABILITY_TEST,
+            build_source=EnumBuildSource.WORKSPACE,
+            image_ref="ghcr.io/omninode/omninode-runtime:dev",
+            image_digest="sha256:" + "b" * 64,
+            dry_run=False,
+        )
+        result = await run_redeploy_workflow(workflow_input, event_bus=bus)
+
+        assert result.success is True
+        assert len(received_commands) == 1
+        cmd = received_commands[0]
+        assert cmd["runtime_lane"] == "stability-test"
+        assert cmd["build_source"] == "workspace"
+        assert cmd["image_ref"] == "ghcr.io/omninode/omninode-runtime:dev"
+        assert cmd["image_digest"] == "sha256:" + "b" * 64
 
         await bus.close()
 

@@ -1,9 +1,4 @@
-"""Unit tests for node_refill_sprint_orchestrator.
-
-Wave 1 contract-first stub: verifies importability, model validation,
-and that the handler correctly raises NotImplementedError per
-contract.yaml `node_not_implemented: true`.
-"""
+"""Unit tests for node_refill_sprint_orchestrator."""
 
 from __future__ import annotations
 
@@ -313,23 +308,73 @@ class TestModelRefillSprintResult:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub — must raise NotImplementedError
+# Handler
 # ---------------------------------------------------------------------------
 
 
-class TestHandlerRefillSprintOrchestratorStub:
+class _BacklogAdapter:
+    def current_capacity(self) -> float:
+        return 1.0
+
+    def candidate_tickets(
+        self, backlog_filter: ModelBacklogFilter
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "ticket_id": "OMN-1",
+                "title": "Narrow any type",
+                "tier": 1,
+                "age_weeks": 2,
+                "scope_verified": True,
+            },
+            {
+                "ticket_id": "OMN-2",
+                "title": "Large rewrite",
+                "tier": 2,
+                "estimate_too_large": True,
+            },
+        ]
+
+    def pull_ticket(self, ticket_id: str) -> None:
+        raise AssertionError("dry_run must not pull tickets")
+
+
+class TestHandlerRefillSprintOrchestrator:
     @pytest.mark.unit
-    def test_handle_raises_not_implemented(self) -> None:
+    def test_dry_run_without_adapter_returns_empty_exhausted_result(self) -> None:
         handler = HandlerRefillSprintOrchestrator()
-        req = ModelRefillSprintRequest()
-        with pytest.raises(NotImplementedError) as exc_info:
-            handler.handle(req)
-        assert (
-            "node_not_implemented" in str(exc_info.value).lower()
-            or "wave" in str(exc_info.value).lower()
+        req = ModelRefillSprintRequest(
+            capacity_config=ModelSprintCapacityConfig(dry_run=True)
         )
+        result = handler.handle(req)
+
+        assert result.dry_run is True
+        assert result.exhausted is True
+        assert result.pulled_count == 0
 
     @pytest.mark.unit
     def test_handler_instantiates_without_args(self) -> None:
         handler = HandlerRefillSprintOrchestrator()
         assert handler is not None
+
+    @pytest.mark.unit
+    def test_live_without_adapter_requires_adapter(self) -> None:
+        handler = HandlerRefillSprintOrchestrator()
+
+        with pytest.raises(RuntimeError, match="backlog adapter required"):
+            handler.handle(ModelRefillSprintRequest())
+
+    @pytest.mark.unit
+    def test_dry_run_scores_injected_candidates_without_mutation(self) -> None:
+        handler = HandlerRefillSprintOrchestrator(adapter=_BacklogAdapter())
+        req = ModelRefillSprintRequest(
+            capacity_config=ModelSprintCapacityConfig(dry_run=True, batch_size=1)
+        )
+
+        result = handler.handle(req)
+
+        assert result.dry_run is True
+        assert result.pulled_count == 1
+        assert result.pulled[0].ticket_id == "OMN-1"
+        assert result.pulled[0].priority_score == 4.0
+        assert result.skipped_count == 1

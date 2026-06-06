@@ -18,12 +18,14 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionTableConfig
 from scripts.projection_api_server import (
+    _cors_origins_from_env,
     _dsn,
     app,
     compute_freshness,
@@ -168,17 +170,54 @@ def _with_pool(
 
 
 class TestPostgresDsn:
-    def test_dsn_requires_contract_db_url(self, monkeypatch) -> None:
+    def test_dsn_requires_projection_or_contract_db_url(self, monkeypatch) -> None:
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
         monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
 
-        with pytest.raises(RuntimeError, match="OMNIBASE_INFRA_DB_URL is required"):
+        with pytest.raises(
+            RuntimeError,
+            match="OMNIDASH_ANALYTICS_DB_URL or OMNIBASE_INFRA_DB_URL is required",
+        ):
             _dsn()
 
-    def test_dsn_uses_contract_db_url(self, monkeypatch) -> None:
+    def test_dsn_prefers_analytics_db_url(self, monkeypatch) -> None:
+        expected = "postgresql://projection:pw@db.internal:15436/omnidash_analytics"
+        fallback = "postgresql://projection:pw@db.internal:15436/omnibase_infra"
+        monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", expected)
+        monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", fallback)
+
+        assert _dsn() == expected
+
+    def test_dsn_falls_back_to_contract_db_url(self, monkeypatch) -> None:
         expected = "postgresql://projection:pw@db.internal:15436/omnibase_infra"
+        monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
         monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", expected)
 
         assert _dsn() == expected
+
+
+class TestCorsConfiguration:
+    def test_projection_api_cors_origins_use_projection_specific_env(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setenv(
+            "PROJECTION_API_CORS_ORIGINS",
+            "http://localhost:5173, https://dash.example.com ",
+        )
+        monkeypatch.setenv("CORS_ORIGINS", "https://registry.example.com")
+
+        assert _cors_origins_from_env() == [
+            "http://localhost:5173",
+            "https://dash.example.com",
+        ]
+
+    def test_projection_api_cors_origins_fall_back_to_shared_env(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.delenv("PROJECTION_API_CORS_ORIGINS", raising=False)
+        monkeypatch.setenv("CORS_ORIGINS", "https://dash.example.com")
+
+        assert _cors_origins_from_env() == ["https://dash.example.com"]
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +401,57 @@ class TestProjectionRoutes:
         assert row["cost_savings_usd"] == "0.00525"
         assert row["pricing_manifest_version"] == 1
 
+    def test_raw_delegation_topic_serialises_uuid_columns(self) -> None:
+        """A raw projection row exposing a UUID column must serialise to its
+        string form without raising (regression: OMN-12558).
+
+        ``public.delegation_events`` has UUID column(s); a populated row crashed
+        ``json.dumps`` with ``TypeError: Object of type UUID is not JSON
+        serializable`` because ``_json_value`` had no UUID branch. datetime and
+        Decimal are exercised alongside it to assert full typed serialisation.
+        """
+        topic = "delegation"
+        cfg = ProjectionTableConfig(
+            topic=topic,
+            table="delegation_events",
+            schema_name="public",
+            columns=(
+                "id",
+                "correlation_id",
+                "cost_savings_usd",
+                "created_at",
+            ),
+            order_by="created_at DESC",
+            freshness_column="created_at",
+            limit=100,
+            source_contract="projection_delegation",
+        )
+        event_id = UUID("12345678-1234-5678-1234-567812345678")
+        corr_id = UUID("87654321-4321-8765-4321-876543218765")
+        created = datetime.now(UTC) - timedelta(minutes=1)
+        rows = [
+            {
+                "id": event_id,
+                "correlation_id": corr_id,
+                "cost_savings_usd": Decimal("0.00525"),
+                "created_at": created,
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=created.isoformat())
+
+        with _with_pool(pool, topic_map={topic: cfg}) as client:
+            resp = client.get(f"/projection/{topic}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        _assert_envelope(body, topic)
+        assert body["row_count"] == 1
+        row = body["rows"][0]
+        assert row["id"] == str(event_id)
+        assert row["correlation_id"] == str(corr_id)
+        assert row["cost_savings_usd"] == "0.00525"
+        assert row["created_at"] == created.isoformat()
+
     def test_registration_envelope_shape(self) -> None:
         rows = [
             {
@@ -380,6 +470,45 @@ class TestProjectionRoutes:
         assert resp.status_code == 200
         _assert_envelope(resp.json(), "onex.snapshot.projection.registration.v1")
         assert resp.json()["row_count"] == 1
+
+    def test_json_columns_are_decoded_for_dashboard_projection_rows(self) -> None:
+        topic = "onex.snapshot.projection.delegation.model-routing.v1"
+        cfg = ProjectionTableConfig(
+            topic=topic,
+            table="projection_delegation_model_routing",
+            schema_name="public",
+            columns=(
+                "total_delegations",
+                "rows",
+                "by_model",
+                "decision_traces",
+                "latest_projection_updated_at",
+            ),
+            json_columns=("rows", "by_model", "decision_traces"),
+            freshness_column="latest_projection_updated_at",
+            limit=1,
+            source_contract="projection_delegation",
+        )
+        rows = [
+            {
+                "total_delegations": 1,
+                "rows": '[{"model_name":"qwen","task_type":"test","count":1}]',
+                "by_model": '[{"model_name":"qwen","total_count":1}]',
+                "decision_traces": '[{"correlation_id":"corr-json"}]',
+                "latest_projection_updated_at": _ts(timedelta(minutes=1)),
+            }
+        ]
+        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
+
+        with _with_pool(pool, topic_map={topic: cfg}) as client:
+            resp = client.get(f"/projection/{topic}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        _assert_envelope(body, topic)
+        assert body["rows"][0]["rows"][0]["model_name"] == "qwen"
+        assert body["rows"][0]["by_model"][0]["total_count"] == 1
+        assert body["rows"][0]["decision_traces"][0]["correlation_id"] == "corr-json"
 
     def test_freshness_fresh(self) -> None:
         pool = _make_pool([], latest_ts=_ts(timedelta(minutes=1)))

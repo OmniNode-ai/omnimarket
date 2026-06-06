@@ -676,7 +676,10 @@ async def check_coverage(
         return _wrap_exception(dimension, evidence_source, exc)
 
 
-# Map from EnumDiagnosticDimension to the async check function
+# Map from EnumDiagnosticDimension to the async check function.
+# NOTE: static analysis tools (e.g. Repowise) see zero direct callers for the
+# individual check_* functions because they are dispatched via this dict inside
+# run_dimension_checks(). Do not treat them as dead code — they are all live.
 DIMENSION_CHECK_MAP = {
     EnumDiagnosticDimension.CONTRACT_HEALTH: check_contract_health,
     EnumDiagnosticDimension.GOLDEN_CHAIN: check_golden_chain,

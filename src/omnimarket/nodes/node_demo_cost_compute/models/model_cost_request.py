@@ -13,26 +13,24 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.demo_pipeline import (
-    ModelDemoCostEntry as ModelDemoCostEntry,
-)
-from omnimarket.events.demo_pipeline import (
-    ModelDemoCostResult as ModelDemoCostResult,
-)
-from omnimarket.events.demo_pipeline import (
-    ModelDemoInferenceResult as ModelDemoInferenceResult,
-)
-from omnimarket.events.demo_pipeline import (
-    ModelDemoModelPricing as ModelDemoModelPricing,
+from omnimarket.events.demo import (
+    ModelDemoCostEntry,
+    ModelDemoCostResult,
+    ModelDemoInferenceResult,
 )
 
-__all__ = [
-    "ModelDemoCostEntry",
-    "ModelDemoCostRequest",
-    "ModelDemoCostResult",
-    "ModelDemoInferenceResult",
-    "ModelDemoModelPricing",
-]
+
+class ModelDemoModelPricing(BaseModel):
+    """Per-model pricing config in USD per 1k tokens."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    prompt_cost_per_1k: float = Field(
+        ge=0.0, description="Cost per 1k prompt tokens in USD"
+    )
+    completion_cost_per_1k: float = Field(
+        ge=0.0, description="Cost per 1k completion tokens in USD"
+    )
 
 
 class ModelDemoCostRequest(BaseModel):
@@ -44,3 +42,12 @@ class ModelDemoCostRequest(BaseModel):
     pricing_table: dict[str, ModelDemoModelPricing] = Field(
         description="Keyed by model_id; models missing from table are assigned zero cost"
     )
+
+
+__all__ = [
+    "ModelDemoCostEntry",
+    "ModelDemoCostRequest",
+    "ModelDemoCostResult",
+    "ModelDemoInferenceResult",
+    "ModelDemoModelPricing",
+]

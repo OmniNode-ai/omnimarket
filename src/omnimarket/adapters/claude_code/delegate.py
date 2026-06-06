@@ -28,12 +28,17 @@ from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
 )
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+)
 
 _ALLOWED_TASK_TYPES = (
     "test",
     "document",
     "research",
     "code_generation",
+    "code_review",
     "refactor",
     "reasoning",
     "complex_reasoning",
@@ -128,7 +133,7 @@ def build_delegation_payload(
     quality_contract_mode: EnumQualityContractMode = "extend_task_class",
     acceptance_criteria: tuple[str, ...] = (),
     wait: bool = True,
-    max_tokens: int = 2048,
+    max_tokens: int = DELEGATION_DEFAULT_MAX_TOKENS,
     correlation_id: str | UUID | None = None,
     metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -139,8 +144,12 @@ def build_delegation_payload(
         not isinstance(max_tokens, int)
         or isinstance(max_tokens, bool)
         or max_tokens < 1
+        or max_tokens > DELEGATION_MAX_TOKENS_HARD_LIMIT
     ):
-        raise ValueError("max_tokens must be a positive integer")
+        raise ValueError(
+            "max_tokens must be a positive integer no greater than "
+            f"{DELEGATION_MAX_TOKENS_HARD_LIMIT}"
+        )
     cid = _coerce_correlation_id(correlation_id)
     payload: dict[str, Any] = {
         "prompt": prompt,
@@ -377,7 +386,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Request-level quality criterion. May be repeated.",
     )
     parser.add_argument(
-        "--max-tokens", type=int, default=2048, help="Max output tokens."
+        "--max-tokens",
+        type=int,
+        default=DELEGATION_DEFAULT_MAX_TOKENS,
+        help="Max output tokens.",
     )
     parser.add_argument(
         "--correlation-id", default=None, help="Optional correlation UUID."

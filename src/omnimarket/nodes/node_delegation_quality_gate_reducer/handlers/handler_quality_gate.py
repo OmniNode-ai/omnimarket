@@ -97,7 +97,18 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
     "covers_error_paths": (
         "TASK_MISMATCH",
-        ("error", "exception", "raises", "failure"),
+        (
+            "error",
+            "exception",
+            "raises",
+            "failure",
+            "fail",
+            "false",
+            "invalid",
+            "none",
+            "unknown",
+            "empty",
+        ),
     ),
     "step_by_step_explanation": ("TASK_MISMATCH", ("step", "1.", "first", "then")),
     "accurate": (
@@ -123,6 +134,9 @@ def _strip_thinking_traces(content: str) -> str:
     return _THINKING_TRACE_RE.sub("", content)
 
 
+_MARKDOWN_FENCE_RE = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
+
+
 def _strip_markdown_code_fence(content: str) -> str:
     """Return fenced code body when content is a single markdown code block."""
     stripped = content.strip()
@@ -132,6 +146,16 @@ def _strip_markdown_code_fence(content: str) -> str:
     if len(lines) >= 2 and lines[-1].strip() == "```":
         return "\n".join(lines[1:-1])
     return content
+
+
+def _extract_fenced_code_blocks(content: str) -> list[str]:
+    """Return all fenced code block bodies from mixed content."""
+    return _MARKDOWN_FENCE_RE.findall(content)
+
+
+def _remove_fenced_code_blocks(content: str) -> str:
+    """Return response text outside fenced code blocks."""
+    return _MARKDOWN_FENCE_RE.sub("", content).strip()
 
 
 def _check_output_parses(content: str) -> str | None:
@@ -169,12 +193,26 @@ def _check_min_length(content: str, threshold: int) -> str | None:
 
 
 def _check_compiles_without_errors(content: str) -> str | None:
-    """Deterministic: Python-like delegated code must parse successfully."""
-    candidate = _strip_markdown_code_fence(content)
-    try:
-        ast.parse(candidate)
-    except SyntaxError as exc:
-        return f"MALFORMED: response does not compile as Python: {exc.msg}"
+    """Deterministic: Python-like delegated code must parse successfully.
+
+    Extracts fenced code blocks (```python ... ```) from mixed content before
+    parsing. If multiple blocks are present, all must compile. Falls back to
+    raw content when no fenced blocks are found.
+    """
+    blocks = _extract_fenced_code_blocks(content)
+    candidates = blocks if blocks else [_strip_markdown_code_fence(content)]
+    for candidate in candidates:
+        try:
+            ast.parse(candidate)
+        except SyntaxError as exc:
+            return f"MALFORMED: response does not compile as Python: {exc.msg}"
+    return None
+
+
+def _check_final_artifact_only(content: str) -> str | None:
+    """Deterministic: code/test tasks must return the artifact, not deliberation."""
+    if _extract_fenced_code_blocks(content) and _remove_fenced_code_blocks(content):
+        return "TASK_MISMATCH: response includes non-artifact prose outside code block"
     return None
 
 
@@ -286,6 +324,8 @@ def _evaluate_deterministic_checks(
             reason = _check_signature_preserved(content)
         elif check == "compiles_without_errors":
             reason = _check_compiles_without_errors(content)
+        elif check == "final_artifact_only":
+            reason = _check_final_artifact_only(content)
         elif check == "uses_pytest_mark_unit":
             reason = _check_uses_pytest_mark_unit(content)
         elif check == "docstring_present":
@@ -431,7 +471,11 @@ def _run_legacy_checks(
     fallback_recommended = not passed and (
         math.isclose(no_refusal_score, 0.0) or quality_score < 0.3
     )
-    fail_category: EnumQualityGateCategory = "pass" if passed else "fail_heuristic"
+    fail_category: EnumQualityGateCategory = (
+        EnumQualityGateCategory.PASS
+        if passed
+        else EnumQualityGateCategory.FAIL_HEURISTIC
+    )
 
     return ModelQualityGateResult(
         correlation_id=gate_input.correlation_id,

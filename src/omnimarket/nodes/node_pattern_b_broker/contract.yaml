@@ -3,6 +3,7 @@ name: pattern_b_broker
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelPatternBBrokerDispatchRequest
 
 description: >
   Contract boundary for the Pattern B cross-CLI broker. The broker accepts
@@ -15,6 +16,7 @@ handler_routing:
     - handler:
         name: AdapterPatternBBrokerPublish
         module: omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_publish
+      input_model: ModelPatternBBrokerDispatchRequest
     - handler:
         name: AdapterPatternBBrokerTerminalConsumer
         module: omnimarket.nodes.node_pattern_b_broker.handlers.adapter_broker_terminal_consumer

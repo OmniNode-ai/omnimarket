@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12730"
+title: "Delegation passed quality gate but terminal completion event is not published"
+summary: >-
+  The OCC evidence draft orchestrator subscribed to broad delegation lifecycle topics and could intercept
+  delegation quality-gate results/completion flow. PR #1061 scopes the OCC draft orchestrator to its
+  explicit start command so delegation lifecycle events remain owned by the delegation orchestrator.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "delegation workflow lifecycle"
+  - "OCC evidence draft subscriptions"
+evidence_requirements:
+  - kind: "tests"
+    description: "OCC draft subscription guard tests and useful-artifact golden-chain tests pass."
+    command: "uv run pytest tests/test_occ_evidence_draft_orchestrator.py tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py -q"
+  - kind: "manual"
+    description: "Live .201 hotpatch proves useful delegation completion after OCC subscriptions are scoped."
+    command: "delegation correlation 05a59d83-924a-4e95-a3d2-3dd5659d15db completed on onex.evt.omnimarket.delegate-skill-completed.v1 with quality_gate_passed=true and useful pytest artifact content"
+  - kind: "deploy"
+    description: "Runtime contract subscription change requires post-merge dev-lane redeploy and validation."
+    command: "post-merge deploy .201 dev lane, verify OCC only subscribes to occ-evidence-draft-start, and rerun useful delegation test generation"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-local-validation"
+    description: "OCC draft subscription guard tests and useful-artifact golden-chain tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_occ_evidence_draft_orchestrator.py tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py -q"
+  - id: "dod-live-useful-delegation-proof"
+    description: "Live .201 hotpatch proves useful delegation completion after OCC subscriptions are scoped."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q '05a59d83-924a-4e95-a3d2-3dd5659d15db' central OCC receipt && grep -q 'OCC draft subscriptions limited' central OCC receipt"
+  - id: "dod-deploy-assessment"
+    description: "Post-merge deploy and validation are required because this changes runtime contract subscriptions."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "post-merge deploy .201 dev lane, verify OCC subscriptions, and rerun useful delegation test generation"

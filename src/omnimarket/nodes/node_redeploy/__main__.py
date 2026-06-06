@@ -24,8 +24,10 @@ import sys
 from uuid import uuid4
 
 from omnimarket.nodes.node_redeploy.models.model_deploy_agent_events import (
+    EnumBuildSource,
     ModelRedeployResult,
 )
+from omnimarket.nodes.node_redeploy.models.model_redeploy_command import EnumRuntimeLane
 
 _log = logging.getLogger(__name__)
 
@@ -44,8 +46,12 @@ async def _run_dry(args: argparse.Namespace) -> int:
         correlation_id=str(uuid4()),
         requested_by="node_redeploy-cli",
         scope=args.scope,
+        runtime_lane=args.runtime_lane,
+        build_source=args.build_source,
         services=services,
         git_ref=args.git_ref,
+        image_ref=args.image_ref,
+        image_digest=args.image_digest,
     )
     sys.stdout.write(
         json.dumps(
@@ -84,7 +90,11 @@ async def _run_kafka(args: argparse.Namespace) -> int:
         result: ModelRedeployResult = await handler.execute(
             scope=args.scope,
             git_ref=args.git_ref,
+            runtime_lane=args.runtime_lane,
+            build_source=args.build_source,
             services=services,
+            image_ref=args.image_ref,
+            image_digest=args.image_digest,
             requested_by="node_redeploy-cli",
         )
     finally:
@@ -121,9 +131,31 @@ def main() -> None:
         help="Git ref for deploy agent to pull (default: origin/main)",
     )
     parser.add_argument(
+        "--runtime-lane",
+        choices=[lane.value for lane in EnumRuntimeLane],
+        default=EnumRuntimeLane.DEV.value,
+        help="Runtime lane to deploy (default: dev)",
+    )
+    parser.add_argument(
+        "--build-source",
+        choices=[source.value for source in EnumBuildSource],
+        default=EnumBuildSource.RELEASE.value,
+        help="Artifact source passed to deploy-agent (default: release)",
+    )
+    parser.add_argument(
         "--services",
         default="",
         help="Comma-separated service filter. Empty = scope default.",
+    )
+    parser.add_argument(
+        "--image-ref",
+        default=None,
+        help="Mutable image reference to pass through to deploy-agent.",
+    )
+    parser.add_argument(
+        "--image-digest",
+        default=None,
+        help="Immutable image digest to deploy. Required for prod.",
     )
     parser.add_argument(
         "--dry-run",

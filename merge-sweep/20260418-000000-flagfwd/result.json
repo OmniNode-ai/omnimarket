@@ -1,0 +1,13 @@
+{
+  "skill_name": "merge-sweep",
+  "status": "success",
+  "run_id": "20260418-000000-flagfwd",
+  "correlation_id": "7a3026ef-30f5-4bfb-9bc0-2ffe5d220922",
+  "final_state": "COMPLETE",
+  "prs_inventoried": 1,
+  "prs_merged": 0,
+  "prs_fixed": 1,
+  "prs_skipped": 0,
+  "prs_verified": 0,
+  "error_message": null
+}

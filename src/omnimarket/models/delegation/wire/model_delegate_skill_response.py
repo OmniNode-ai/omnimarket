@@ -38,6 +38,7 @@ class ModelDelegateSkillResponse(BaseModel):
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")
     pricing_manifest_version: int = Field(default=0, ge=0)
+    prompt_text: str = Field(default="")
     response: str = Field(default="")
     quality_gate_passed: bool = Field(default=False)
     quality_score: float = Field(default=0.0, ge=0.0, le=1.0)

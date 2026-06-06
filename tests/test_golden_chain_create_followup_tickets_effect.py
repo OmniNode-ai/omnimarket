@@ -1,8 +1,4 @@
-"""Golden chain tests for node_create_followup_tickets_effect.
-
-Wave 1 coverage: model validation, severity enum, stub handler raises NotImplementedError,
-and EventBusInmemory topic wiring.
-"""
+"""Golden chain tests for node_create_followup_tickets_effect."""
 
 from __future__ import annotations
 
@@ -98,25 +94,51 @@ class TestCreateFollowupTicketsEffectGoldenChain:
         with pytest.raises(ValidationError):
             cmd.correlation_id = "mutated"  # type: ignore[misc]
 
-    def test_handler_raises_not_implemented(self) -> None:
-        """Wave 1 stub always raises NotImplementedError."""
+    def test_handler_dry_run_returns_preview_tickets(self) -> None:
+        """Dry-run mode returns deterministic ticket refs without an adapter."""
         handler = HandlerCreateFollowupTicketsEffect()
         cmd = ModelCreateFollowupTicketsCommand(
+            correlation_id="corr-1",
+            dry_run=True,
             findings=(
                 ModelReviewFinding(
                     severity=EnumFindingSeverity.MAJOR,
                     description="Some review finding.",
                 ),
+                ModelReviewFinding(
+                    severity=EnumFindingSeverity.NIT,
+                    description="Formatting nit.",
+                ),
+            ),
+        )
+
+        result = handler.handle(cmd)
+
+        assert result.status == "dry_run"
+        assert result.correlation_id == "corr-1"
+        assert [ticket.ticket_id for ticket in result.created_tickets] == ["DRY-RUN-1"]
+        assert result.skipped_nit_count == 1
+        assert result.failures == ()
+
+    def test_handler_without_adapter_fails_safely(self) -> None:
+        """Live mode does not call external services without an adapter."""
+        handler = HandlerCreateFollowupTicketsEffect()
+        result = handler.handle(
+            ModelCreateFollowupTicketsCommand(
+                findings=(
+                    ModelReviewFinding(
+                        severity=EnumFindingSeverity.MAJOR,
+                        description="Some review finding.",
+                    ),
+                )
             )
         )
-        with pytest.raises(NotImplementedError):
-            handler.handle(cmd)
 
-    def test_handler_raises_on_empty_command(self) -> None:
-        """Stub raises NotImplementedError even for an empty command."""
-        handler = HandlerCreateFollowupTicketsEffect()
-        with pytest.raises(NotImplementedError):
-            handler.handle(ModelCreateFollowupTicketsCommand())
+        assert result.status == "error"
+        assert result.created_tickets == ()
+        assert (
+            result.failures[0].reason == "linear adapter required when dry_run is false"
+        )
 
     async def test_event_bus_topics_defined(self, event_bus: EventBusInmemory) -> None:
         """CMD and EVT topics conform to the onex topic naming convention."""

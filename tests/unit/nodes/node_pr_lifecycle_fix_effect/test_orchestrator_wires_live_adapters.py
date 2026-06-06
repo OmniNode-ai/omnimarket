@@ -38,7 +38,7 @@ class TestOrchestratorWiresLiveAdapters:
     ) -> None:
         from unittest.mock import MagicMock
 
-        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / ".onex_state"))
+        monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
         orch = HandlerPrLifecycleOrchestrator(event_bus=MagicMock())
         orch._ensure_sub_handlers()
 

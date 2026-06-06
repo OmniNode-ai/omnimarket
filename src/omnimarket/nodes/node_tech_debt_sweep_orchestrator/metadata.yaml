@@ -1,6 +1,6 @@
 name: node_tech_debt_sweep_orchestrator
 version: "1.0.0"
-description: "Tech debt sweep orchestrator — scans repos, deduplicates, creates Linear epics + tickets (STUB)"
+description: "Tech debt sweep orchestrator — scans repos, deduplicates, creates Linear epics + tickets"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:

@@ -21,6 +21,9 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimemory.persona-snapshot-created.v1"
 
+externally_consumed_topics:
+  - "onex.evt.omnimemory.persona-snapshot-created.v1"
+
 handler_routing:
   version:
     major: 1
@@ -30,12 +33,14 @@ handler_routing:
   handlers:
     - routing_key: "on_tick"
       handler_module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
+      handler_class: "HandlerPersonaRebuild"
       handler_key: "HandlerPersonaRebuild.on_tick"
       priority: 0
       output_events:
         - "onex.evt.omnimemory.persona-snapshot-created.v1"
     - routing_key: "on_demand"
       handler_module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
+      handler_class: "HandlerPersonaRebuild"
       handler_key: "HandlerPersonaRebuild.on_demand"
       priority: 0
       output_events:

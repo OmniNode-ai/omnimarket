@@ -9,7 +9,7 @@ name: node_demo_fanout_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Demo fan-out orchestrator. Accepts a list of tasks and model configs,
@@ -47,6 +47,16 @@ inputs:
     type: list[ModelDemoModelConfig]
     description: "List of model configurations to fan out across"
     required: true
+  dry_run:
+    type: bool
+    description: "Use deterministic provider fixtures and skip live providers"
+    required: false
+    default: false
+  provider_fixtures:
+    type: dict[str, ModelDemoProviderFixture]
+    description: "Dry-run provider fixtures keyed by model_id"
+    required: false
+    default: {}
 
 outputs:
   results:
@@ -65,10 +75,7 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.demo-fanout.v1
 
-externally_consumed_topics:
-  - onex.cmd.omnimarket.demo-inference-request.v1
-
 metadata:
   transport_type: kafka
   implementation_wave: 7
-  related_tickets: ["OMN-12235"]
+  related_tickets: ["OMN-9359", "OMN-12235"]

@@ -1,0 +1,9 @@
+name: node_dirty_canonical_sweep
+version: 0.1.0
+description: Detect dirty canonical repo clones and auto-ship to worktree + PR.
+pack: orchestration
+display_name: Dirty Canonical Sweep
+node_role: effect
+entry_points:
+  onex.nodes:
+    node_dirty_canonical_sweep: "omnimarket.nodes.node_dirty_canonical_sweep"

@@ -552,3 +552,67 @@ async def test_event_bus_wiring() -> None:
     history = await event_bus.get_event_history(topic=EVT_TOPIC)
     assert len(history) == 1
     await event_bus.close()
+
+
+# ---------------------------------------------------------------------------
+# OMN-8325: Proof-of-life — programmatic equivalents of the CLI steps
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_proof_of_life_entry_points_step1() -> None:
+    """Step 1: entry_points subsystem produces check_count > 0 and valid status."""
+    handler = NodeEnvironmentHealthScanner()
+    result = handler.handle(
+        EnvironmentHealthRequest(
+            subsystems=["entry_points"], omni_home="", ssh_target=None
+        )
+    )
+    assert "overall" in result.model_fields_set or result.overall is not None
+    assert len(result.subsystem_results) == 1
+    sub = result.subsystem_results[0]
+    assert sub.subsystem == EnumSubsystem.ENTRY_POINTS
+    assert sub.check_count > 0
+    assert sub.status in (
+        EnumReadinessStatus.PASS,
+        EnumReadinessStatus.WARN,
+        EnumReadinessStatus.FAIL,
+    )
+
+
+@pytest.mark.unit
+def test_proof_of_life_hooks_step2(tmp_path: Path) -> None:
+    """Step 2: hooks subsystem runs without error and returns a valid status."""
+    import os
+
+    handler = NodeEnvironmentHealthScanner()
+    with patch.dict(os.environ, {"ONEX_STATE_DIR": str(tmp_path)}, clear=False):
+        result = handler.handle(
+            EnvironmentHealthRequest(
+                subsystems=["hooks"], omni_home="", ssh_target=None
+            )
+        )
+    assert len(result.subsystem_results) == 1
+    sub = result.subsystem_results[0]
+    assert sub.subsystem == EnumSubsystem.HOOKS
+    assert sub.status in (
+        EnumReadinessStatus.PASS,
+        EnumReadinessStatus.WARN,
+        EnumReadinessStatus.FAIL,
+    )
+
+
+@pytest.mark.unit
+def test_all_seven_subsystems_covered() -> None:
+    """Step 3 structural: all 7 subsystem enum values are defined."""
+    expected = {
+        "emit_daemon",
+        "hooks",
+        "kafka",
+        "containers",
+        "projections",
+        "entry_points",
+        "model_endpoints",
+    }
+    actual = {s.value for s in EnumSubsystem}
+    assert expected == actual, f"Subsystem mismatch: expected {expected}, got {actual}"

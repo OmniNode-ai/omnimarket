@@ -1,23 +1,24 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Golden-chain guardrails for node_adversarial_pipeline_orchestrator [OMN-12215].
-
-This node is intentionally not implemented yet. The golden chain verifies:
-- contract marks the node as not implemented
-- typed models are strict (extra="forbid")
-- entry point loads
-- handler fails loudly with NotImplementedError
-"""
+"""Golden-chain guardrails for node_adversarial_pipeline_orchestrator [OMN-12215]."""
 
 from __future__ import annotations
 
 from importlib import import_module
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 from pydantic import ValidationError
+
+from omnimarket.nodes.node_adversarial_pipeline_orchestrator.handlers.handler_adversarial_pipeline_orchestrator import (
+    HandlerAdversarialPipelineOrchestrator,
+)
+from omnimarket.nodes.node_adversarial_pipeline_orchestrator.models.model_adversarial_pipeline_request import (
+    ModelAdversarialPipelineRequest,
+)
 
 NODE_NAME = "node_adversarial_pipeline_orchestrator"
 HANDLER_MODULE = (
@@ -33,6 +34,41 @@ REQUEST_CLASS = "ModelAdversarialPipelineRequest"
 RESULT_CLASS = "ModelAdversarialPipelineResult"
 
 
+class FakeDesignAdapter:
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def create_plan(self, payload: dict[str, Any]) -> dict[str, str]:
+        self.payloads.append(payload)
+        return {"plan_path": "/tmp/native-plan.md"}
+
+
+class FakeReviewAdapter:
+    def __init__(self, findings_count: int) -> None:
+        self.findings_count = findings_count
+        self.payloads: list[dict[str, Any]] = []
+
+    def review_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.payloads.append(payload)
+        return {
+            "findings_count": self.findings_count,
+            "findings_summary": f"{self.findings_count} findings",
+        }
+
+
+class FakeTicketAdapter:
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def create_tickets(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.payloads.append(payload)
+        return {
+            "created_ticket_ids": ("OMN-1", "OMN-2"),
+            "tickets_created": 2,
+            "epic_url": "https://linear.app/omninode/issue/OMN-EPIC",
+        }
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -42,10 +78,10 @@ def _contract_path() -> Path:
 
 
 @pytest.mark.unit
-def test_contract_marks_node_not_implemented() -> None:
+def test_contract_marks_node_implemented() -> None:
     raw = yaml.safe_load(_contract_path().read_text(encoding="utf-8"))
 
-    assert raw["node_not_implemented"] is True
+    assert raw["node_not_implemented"] is False
     assert raw["node_type"] == "orchestrator"
     assert raw["handler"]["module"] == HANDLER_MODULE
     assert raw["handler"]["class"] == HANDLER_CLASS
@@ -132,17 +168,140 @@ def test_result_model_is_strict() -> None:
 
 
 @pytest.mark.unit
-def test_handler_raises_not_implemented() -> None:
-    mod = import_module(HANDLER_MODULE)
-    HandlerAdversarialPipelineOrchestrator = getattr(mod, HANDLER_CLASS)  # noqa: N806
+def test_handler_runs_all_stages_through_adapters() -> None:
+    design = FakeDesignAdapter()
+    review = FakeReviewAdapter(findings_count=4)
+    tickets = FakeTicketAdapter()
 
-    req_mod = import_module(REQUEST_MODULE)
-    ModelAdversarialPipelineRequest = getattr(req_mod, REQUEST_CLASS)  # noqa: N806
-
-    handler = HandlerAdversarialPipelineOrchestrator()
-    request = ModelAdversarialPipelineRequest(
-        topic="design a unified auth layer",
+    result = HandlerAdversarialPipelineOrchestrator(
+        design_adapter=design,
+        review_adapter=review,
+        ticket_adapter=tickets,
+    ).handle(
+        ModelAdversarialPipelineRequest(
+            topic="design a unified auth layer",
+            min_findings_gate=3,
+            linear_project="Tech Debt Remediation",
+        )
     )
 
-    with pytest.raises(NotImplementedError, match="OMN-12215"):
-        handler.handle(request)
+    assert result.plan_path == "/tmp/native-plan.md"
+    assert result.findings_count == 4
+    assert result.gate_passed is True
+    assert result.created_ticket_ids == ("OMN-1", "OMN-2")
+    assert result.tickets_created == 2
+    assert result.stage_reached == 3
+    assert design.payloads[0]["linear_project"] == "Tech Debt Remediation"
+    assert review.payloads[0]["plan_path"] == "/tmp/native-plan.md"
+    assert tickets.payloads[0]["findings_count"] == 4
+
+
+@pytest.mark.unit
+def test_handler_skips_design_when_plan_path_supplied() -> None:
+    design = FakeDesignAdapter()
+    review = FakeReviewAdapter(findings_count=2)
+
+    result = HandlerAdversarialPipelineOrchestrator(
+        design_adapter=design,
+        review_adapter=review,
+    ).handle(
+        ModelAdversarialPipelineRequest(
+            topic="review existing plan",
+            plan_path="/tmp/existing.md",
+            min_findings_gate=3,
+        )
+    )
+
+    assert result.plan_path == "/tmp/existing.md"
+    assert result.gate_passed is False
+    assert result.stage_reached == 2
+    assert design.payloads == []
+
+
+@pytest.mark.unit
+def test_handler_dry_run_gate_passes_without_ticket_adapter() -> None:
+    result = HandlerAdversarialPipelineOrchestrator(
+        design_adapter=FakeDesignAdapter(),
+        review_adapter=FakeReviewAdapter(findings_count=3),
+    ).handle(
+        ModelAdversarialPipelineRequest(
+            topic="dry run",
+            min_findings_gate=3,
+            dry_run=True,
+        )
+    )
+
+    assert result.gate_passed is True
+    assert result.dry_run is True
+    assert result.stage_reached == 3
+    assert result.tickets_created == 0
+    assert result.created_ticket_ids == ()
+
+
+@pytest.mark.unit
+def test_handler_requires_design_adapter_without_plan_path() -> None:
+    with pytest.raises(RuntimeError, match="design adapter required"):
+        HandlerAdversarialPipelineOrchestrator(
+            review_adapter=FakeReviewAdapter(findings_count=3)
+        ).handle(ModelAdversarialPipelineRequest(topic="missing design"))
+
+
+@pytest.mark.unit
+def test_handler_requires_review_adapter() -> None:
+    with pytest.raises(RuntimeError, match="review adapter required"):
+        HandlerAdversarialPipelineOrchestrator(
+            design_adapter=FakeDesignAdapter()
+        ).handle(ModelAdversarialPipelineRequest(topic="missing review"))
+
+
+@pytest.mark.unit
+def test_handler_requires_ticket_adapter_for_live_gate_pass() -> None:
+    with pytest.raises(RuntimeError, match="ticket adapter required"):
+        HandlerAdversarialPipelineOrchestrator(
+            design_adapter=FakeDesignAdapter(),
+            review_adapter=FakeReviewAdapter(findings_count=3),
+        ).handle(
+            ModelAdversarialPipelineRequest(
+                topic="missing tickets",
+                min_findings_gate=3,
+            )
+        )
+
+
+@pytest.mark.unit
+def test_handler_rejects_design_adapter_without_plan_path() -> None:
+    class BadDesignAdapter:
+        def create_plan(self, payload: dict[str, Any]) -> dict[str, str]:
+            return {}
+
+    with pytest.raises(RuntimeError, match="did not return plan_path"):
+        HandlerAdversarialPipelineOrchestrator(
+            design_adapter=BadDesignAdapter(),
+            review_adapter=FakeReviewAdapter(findings_count=3),
+            ticket_adapter=FakeTicketAdapter(),
+        ).handle(
+            ModelAdversarialPipelineRequest(
+                topic="bad design",
+                min_findings_gate=3,
+            )
+        )
+
+
+@pytest.mark.unit
+def test_handler_gate_failure_does_not_create_tickets() -> None:
+    tickets = FakeTicketAdapter()
+
+    result = HandlerAdversarialPipelineOrchestrator(
+        design_adapter=FakeDesignAdapter(),
+        review_adapter=FakeReviewAdapter(findings_count=1),
+        ticket_adapter=tickets,
+    ).handle(
+        ModelAdversarialPipelineRequest(
+            topic="gate fail",
+            min_findings_gate=3,
+        )
+    )
+
+    assert result.gate_passed is False
+    assert result.stage_reached == 2
+    assert tickets.payloads == []

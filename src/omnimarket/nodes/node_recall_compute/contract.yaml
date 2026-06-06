@@ -1,0 +1,81 @@
+---
+name: node_recall_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  Unified knowledge query interface. Federates queries across agent learnings,
+  architecture (Repowise + Memgraph), and antipattern (Qdrant) backends.
+  Replaces the recall skill's direct HTTP calls to localhost:8085. The handler
+  owns backend selection, ranking, deduplication, and response shaping; retrieval
+  is supplied by injected Onex-native backend adapters.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: recall
+      handler:
+        name: NodeRecallCompute
+        module: omnimarket.nodes.node_recall_compute.handlers.handler_recall
+
+handler:
+  module: omnimarket.nodes.node_recall_compute.handlers.handler_recall
+  class: NodeRecallCompute
+  input_model: omnimarket.nodes.node_recall_compute.models.model_recall_request.ModelRecallRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 15000
+
+inputs:
+  query:
+    type: str
+    description: "Free-text query to resolve against knowledge backends"
+    required: true
+  scope:
+    type: str
+    description: "Which backends to query: learnings, architecture, antipatterns, all"
+    required: false
+    default: "all"
+  filters:
+    type: object | null
+    description: "Optional key-value filters (repo, task_type) for the learnings backend"
+    required: false
+    default: null
+  max_results:
+    type: int
+    description: "Maximum number of results to return per backend"
+    required: false
+    default: 5
+
+outputs:
+  results:
+    type: list[KnowledgeResult]
+    description: "Federated results with per-result source attribution"
+  sources:
+    type: list[str]
+    description: "Backend names that contributed results"
+  confidence:
+    type: str
+    description: "Aggregate retrieval confidence: high, medium, low, none"
+  partial:
+    type: bool
+    description: "True if one or more backends failed or timed out"
+
+terminal_event: onex.evt.omnimarket.recall-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.recall-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.recall-completed.v1
+    - onex.evt.omnimarket.recall-result.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 4
+  related_tickets: ["OMN-12216", "OMN-12333"]

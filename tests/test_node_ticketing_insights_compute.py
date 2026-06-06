@@ -1,9 +1,4 @@
-"""Unit tests for node_ticketing_insights_compute.
-
-Wave 1 contract-first stub: verifies importability, model validation,
-and that the handler correctly raises NotImplementedError per
-contract.yaml `node_not_implemented: true`.
-"""
+"""Unit tests for node_ticketing_insights_compute."""
 
 from __future__ import annotations
 
@@ -181,24 +176,92 @@ class TestModelCompletionEstimate:
 
 
 # ---------------------------------------------------------------------------
-# Handler stub — must raise NotImplementedError
+# Handler behavior
 # ---------------------------------------------------------------------------
 
 
-class TestNodeTicketingInsightsComputeStub:
+class TestNodeTicketingInsightsComputeBehavior:
     @pytest.mark.unit
-    def test_handle_raises_not_implemented(self) -> None:
+    def test_handle_computes_metrics_from_prefetched_data(self) -> None:
         handler = NodeTicketingInsightsCompute()
-        req = TicketingInsightsRequest()
-        with pytest.raises(NotImplementedError) as exc_info:
-            handler.handle(req)
-        assert (
-            "node_not_implemented" in str(exc_info.value).lower()
-            or "wave" in str(exc_info.value).lower()
+        req = TicketingInsightsRequest(
+            mode="all",
+            date_to="2026-05-28",
+            ticket_data=[
+                {
+                    "identifier": "OMN-1",
+                    "project": "Runtime",
+                    "state": "Done",
+                    "startedAt": "2026-05-25T00:00:00",
+                    "completedAt": "2026-05-27T00:00:00",
+                    "labels": ["feature"],
+                },
+                {
+                    "identifier": "OMN-2",
+                    "project": "Runtime",
+                    "state": "In Progress",
+                    "labels": ["blocked"],
+                },
+            ],
+            pr_data=[
+                {
+                    "merged": True,
+                    "repo": "omnimarket",
+                    "changedFiles": 3,
+                    "additions": 10,
+                    "deletions": 2,
+                    "ciPassed": True,
+                    "mergedAt": "2026-05-27T00:00:00",
+                }
+            ],
+            git_commit_data=[{"author": "dev"}],
         )
+
+        result = handler.handle(req)
+
+        assert result.velocity_metrics is not None
+        assert result.velocity_metrics.velocity_7d == round(1 / 7, 3)
+        assert result.pipeline_metrics is not None
+        assert result.pipeline_metrics.cycle_time_p50_hours == 48.0
+        assert result.github_metrics is not None
+        assert result.github_metrics.total_prs_merged == 1
+        assert result.completion_estimates[0].remaining_issues == 1
+        assert result.summary is not None
+        assert result.summary.blockers == ["OMN-2"]
+        assert result.report_markdown is not None
 
     @pytest.mark.unit
     def test_handler_instantiates_without_args(self) -> None:
         # Pure compute — no dependencies injected
         handler = NodeTicketingInsightsCompute()
         assert handler is not None
+
+    @pytest.mark.unit
+    def test_missing_date_to_uses_supplied_data_not_wall_clock(self) -> None:
+        handler = NodeTicketingInsightsCompute()
+        req = TicketingInsightsRequest(
+            ticket_data=[
+                {
+                    "identifier": "OMN-1",
+                    "project": "Runtime",
+                    "state": "Done",
+                    "completedAt": "2026-05-20T00:00:00",
+                },
+                {
+                    "identifier": "OMN-2",
+                    "project": "Runtime",
+                    "state": "Done",
+                    "completedAt": "2026-05-10T00:00:00",
+                },
+            ],
+        )
+
+        result = handler.handle(req)
+
+        assert result.velocity_metrics is not None
+        assert result.velocity_metrics.velocity_7d == round(1 / 7, 3)
+        assert result.trend_data is not None
+        assert result.trend_data.daily_velocity[-1] == {
+            "date": "2026-05-20",
+            "velocity": 1.0,
+        }

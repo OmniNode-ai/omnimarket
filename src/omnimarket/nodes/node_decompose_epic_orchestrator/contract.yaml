@@ -8,15 +8,13 @@
 name: node_decompose_epic_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
-node_not_implemented: true
+node_not_implemented: false
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Decompose-epic orchestrator. Fetches a Linear epic by ID, analyzes its
-  description and goals via LLM to generate atomic sub-ticket specs, creates
-  each sub-ticket as a Linear child of the epic, and optionally generates OCC
-  contract YAML stubs for each created ticket. Implements the algorithm
-  described in the decompose_epic skill (SKILL.md).
+  Decompose-epic orchestrator. Dry-run planning is deterministic over injected
+  planner output. Live Linear child ticket creation and OCC contract generation
+  require injected adapters.
 
 handler:
   module: omnimarket.nodes.node_decompose_epic_orchestrator.handlers.handler_decompose_epic
@@ -49,9 +47,6 @@ event_bus:
     - onex.cmd.omnimarket.contract-generate.v1
   dlq_topics:
     - onex.dlq.omnimarket.decompose-epic.v1
-
-externally_consumed_topics:
-  - onex.cmd.omnimarket.contract-generate.v1
 
 metadata:
   transport_type: kafka

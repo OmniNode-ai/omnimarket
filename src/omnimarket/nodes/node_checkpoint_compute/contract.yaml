@@ -1,0 +1,71 @@
+---
+name: node_checkpoint_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+description: >
+  Deterministic checkpoint projection access for session checkpoints. Supports
+  save, load, and list operations over checkpoint data stored under the Onex
+  state directory. No LLM calls.
+
+handler:
+  module: omnimarket.nodes.node_checkpoint_compute.handlers.handler_checkpoint_compute
+  class: HandlerCheckpointCompute
+  input_model: omnimarket.nodes.node_checkpoint_compute.models.model_checkpoint_request.ModelCheckpointRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerCheckpointCompute
+        module: omnimarket.nodes.node_checkpoint_compute.handlers.handler_checkpoint_compute
+
+descriptor:
+  node_archetype: compute
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+inputs:
+  checkpoint_id:
+    type: str
+    description: "Unique identifier for the checkpoint"
+    required: true
+  action:
+    type: str
+    description: "Operation to perform: save | load | list"
+    required: true
+  payload:
+    type: object | null
+    description: "Checkpoint payload for save operations; null for load/list"
+    required: false
+    default: null
+
+outputs:
+  checkpoint_id:
+    type: str
+    description: "Checkpoint identifier (echoed or resolved)"
+  action:
+    type: str
+    description: "Action that was executed"
+  data:
+    type: object | null
+    description: "Deserialized checkpoint data for load; null for save/list"
+  checkpoint_list:
+    type: list[str]
+    description: "List of checkpoint IDs for list action; empty otherwise"
+
+terminal_event: onex.evt.omnimarket.checkpoint-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.checkpoint-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.checkpoint-completed.v1
+
+metadata:
+  transport_type: kafka
+  implementation_wave: 6
+  related_tickets: ["OMN-12226", "OMN-12340"]

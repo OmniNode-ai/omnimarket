@@ -258,6 +258,100 @@ def test_test_quality_gate_rejects_missing_pytest_unit_marker() -> None:
 
 
 @pytest.mark.unit
+def test_code_generation_quality_gate_rejects_prose_wrapped_code() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="code_generation",
+        llm_response_content=(
+            "We need to implement the function first.\n\n"
+            "```python\n"
+            "def normalize_status(value: str) -> str:\n"
+            "    stripped = value.strip()\n"
+            "    if not stripped:\n"
+            "        raise ValueError('blank input')\n"
+            "    return stripped.lower()\n"
+            "```\n"
+        ),
+        dod_deterministic=(
+            "compiles_without_errors",
+            "final_artifact_only",
+            "passes_existing_tests",
+        ),
+        dod_heuristic=("no_refusal",),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
+    assert any("non-artifact prose" in r for r in result.failure_reasons)
+
+
+@pytest.mark.unit
+def test_test_quality_gate_accepts_final_fenced_unit_tests() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="test",
+        llm_response_content=(
+            "```python\n"
+            "import pytest\n\n"
+            "@pytest.mark.unit\n"
+            "def test_normalize_unit_state_maps_running_to_healthy():\n"
+            "    assert normalize_unit_state(' running ') == 'healthy'\n\n"
+            "@pytest.mark.unit\n"
+            "def test_normalize_unit_state_rejects_blank_input():\n"
+            "    # Edge case: empty input should raise an error.\n"
+            "    with pytest.raises(ValueError):\n"
+            "        normalize_unit_state('   ')\n"
+            "```\n"
+        ),
+        dod_deterministic=(
+            "compiles_without_errors",
+            "final_artifact_only",
+            "uses_pytest_mark_unit",
+        ),
+        dod_heuristic=("no_refusal", "covers_edge_cases", "covers_error_paths"),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is True
+
+
+@pytest.mark.unit
+def test_test_quality_gate_accepts_predicate_failure_path_assertions() -> None:
+    gate_input = ModelQualityGateInput(
+        correlation_id=uuid4(),
+        task_type="test",
+        llm_response_content=(
+            "```python\n"
+            "import pytest\n\n"
+            "@pytest.mark.unit\n"
+            "def test_normalize_status_valid_cases():\n"
+            "    assert normalize_status('ok') is True\n"
+            "    assert normalize_status('OK') is True\n"
+            "    assert normalize_status('healthy') is True\n\n"
+            "@pytest.mark.unit\n"
+            "def test_normalize_status_rejects_invalid_cases():\n"
+            "    assert normalize_status(None) is False\n"
+            "    assert normalize_status('') is False\n"
+            "    assert normalize_status('unknown') is False\n"
+            "```\n"
+        ),
+        dod_deterministic=(
+            "compiles_without_errors",
+            "final_artifact_only",
+            "uses_pytest_mark_unit",
+        ),
+        dod_heuristic=("no_refusal", "covers_edge_cases", "covers_error_paths"),
+    )
+
+    result = quality_gate_delta(gate_input)
+
+    assert result.passed is True
+
+
+@pytest.mark.unit
 def test_request_quality_contract_can_replace_task_class_dod() -> None:
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),

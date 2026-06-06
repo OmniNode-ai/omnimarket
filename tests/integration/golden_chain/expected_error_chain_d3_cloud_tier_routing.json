@@ -1,0 +1,16 @@
+{
+  "chain_name": "error_d3_cloud_tier_routing",
+  "defect_id": "D3",
+  "description": "Error chain: SEA --agent resolves a cloud tier instead of local-first routing. The inference request base_url points to a cloud endpoint (not .201:8000) when local-first is configured. OMN-12660.",
+  "trigger": "routing policy selects cloud tier despite local-first policy being configured",
+  "observable_event": {
+    "topic": "onex.cmd.omnibase-infra.delegation-inference-request.v1",
+    "required_fields": ["correlation_id", "base_url"],
+    "invariant_violated": "base_url must match local-first endpoint pattern (not cloud provider)"
+  },
+  "failure_mode": "Inference routed to cloud endpoint → 404 or empty response → empty content emitted as success envelope",
+  "expected_error_type": "RoutingTierError",
+  "expected_error_path": "onex.evt.omnibase-infra.delegation-failed.v1",
+  "regression_guard": "Any delegation inference request where base_url is a cloud tier URL while local-first is configured must route to error path, not success",
+  "related_tickets": ["OMN-12660", "OMN-12286", "OMN-12642"]
+}

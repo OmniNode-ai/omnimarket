@@ -10,7 +10,7 @@ name: node_wave_scheduler_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Wave scheduler orchestrator. Consumes a ModelWaveSchedulerRequest carrying
@@ -19,8 +19,9 @@ description: >
   sort (Kahn's algorithm), and dispatches parallel ticket-pipeline workers per
   wave. Serialises dependent work across waves; detects cycles and dependency
   violations; propagates failure cascades so blocked tickets are not dispatched.
-  Integrates with agent_healthcheck for stall detection. Handlers are deferred
-  to the implementation wave (OMN-12210 stub).
+  Integrates with agent_healthcheck for stall detection. Bounded handler slice
+  parses plans, validates dependencies, computes dry-run waves, and requires an
+  injected dispatcher for live ticket-pipeline execution.
 
 handler:
   module: omnimarket.nodes.node_wave_scheduler_orchestrator.handlers.handler_wave_scheduler_orchestrator

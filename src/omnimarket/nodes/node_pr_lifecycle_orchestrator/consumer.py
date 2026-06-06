@@ -42,6 +42,10 @@ _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _parse_command(raw: dict[str, Any]) -> dict[str, Any]:
+    envelope_payload = raw.get("payload")
+    if isinstance(envelope_payload, dict):
+        raw = envelope_payload
+
     correlation_id = raw.get("correlation_id") or str(uuid4())
     run_id_raw = (
         raw.get("run_id")
@@ -58,11 +62,17 @@ def _parse_command(raw: dict[str, Any]) -> dict[str, Any]:
         "inventory_only": bool(raw.get("inventory_only", False)),
         "fix_only": bool(raw.get("fix_only", False)),
         "merge_only": bool(raw.get("merge_only", False)),
-        "repos": str(raw.get("repos", "")),
+        "repos": _parse_repos(raw.get("repos", "")),
         "max_parallel_polish": int(raw.get("max_parallel_polish", 20)),
         "enable_auto_rebase": bool(raw.get("enable_auto_rebase", True)),
         "use_dag_ordering": bool(raw.get("use_dag_ordering", True)),
     }
+
+
+def _parse_repos(value: Any) -> str:
+    if isinstance(value, list | tuple):
+        return ",".join(str(item).strip() for item in value if str(item).strip())
+    return str(value or "")
 
 
 async def _invoke_pr_lifecycle(cmd: dict[str, Any]) -> dict[str, Any]:

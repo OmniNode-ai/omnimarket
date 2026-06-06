@@ -13,6 +13,7 @@ contract.yaml files discovered via ``onex.nodes`` entry points.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -20,9 +21,11 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 from fastapi import Depends, FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from omnimarket.projection.discovery import build_projection_topic_map
@@ -67,11 +70,18 @@ def compute_freshness(latest_ts: str | None) -> str:
         return "degraded"
 
 
-def _json_value(value: Any) -> Any:
+def _json_value(value: Any, *, decode_json: bool = False) -> Any:
     if hasattr(value, "isoformat"):
         return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
     if isinstance(value, Decimal):
         return str(value)
+    if decode_json and isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
     return value
 
 
@@ -81,9 +91,13 @@ def _json_value(value: Any) -> Any:
 
 
 def _dsn() -> str:
-    dsn = os.environ.get("OMNIBASE_INFRA_DB_URL")
+    dsn = os.environ.get("OMNIDASH_ANALYTICS_DB_URL") or os.environ.get(
+        "OMNIBASE_INFRA_DB_URL"
+    )
     if not dsn:
-        raise RuntimeError("OMNIBASE_INFRA_DB_URL is required for projection API")
+        raise RuntimeError(
+            "OMNIDASH_ANALYTICS_DB_URL or OMNIBASE_INFRA_DB_URL is required for projection API"
+        )
     return dsn
 
 
@@ -137,6 +151,37 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Projection Query API", version=_PROJECTION_VERSION, lifespan=_lifespan
 )
+
+
+def _cors_origins_from_env() -> list[str]:
+    raw = os.environ.get("PROJECTION_API_CORS_ORIGINS") or os.environ.get(
+        "CORS_ORIGINS", ""
+    )
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def _configure_cors(application: FastAPI) -> None:
+    origins = _cors_origins_from_env()
+    if not origins:
+        log.info(
+            "Projection API CORS not configured; browser reads are same-origin only"
+        )
+        return
+    if "*" in origins:
+        log.warning(
+            "Projection API CORS configured with wildcard origin '*'; "
+            "restrict this in production"
+        )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["GET", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+
+_configure_cors(app)
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +239,7 @@ async def list_projections(
             "schema": cfg.schema_name,
             "status": cfg.status,
             "columns": list(cfg.columns),
+            "json_columns": list(cfg.json_columns),
             "order_by": cfg.order_by,
             "freshness_column": cfg.freshness_column,
             "cursor_column": cfg.cursor_column,
@@ -309,7 +355,12 @@ async def projection_query(
 
     serialisable_rows: list[dict[str, Any]] = []
     for row in rows:
-        serialisable_rows.append({k: _json_value(v) for k, v in row.items()})
+        serialisable_rows.append(
+            {
+                k: _json_value(v, decode_json=k in cfg.json_columns)
+                for k, v in row.items()
+            }
+        )
 
     return JSONResponse(
         {
@@ -518,7 +569,10 @@ async def _evidence_projection_response(
         )
 
     rows = [dict(r) if not isinstance(r, dict) else r for r in raw_rows]
-    serialisable_rows = [{k: _json_value(v) for k, v in row.items()} for row in rows]
+    serialisable_rows = [
+        {k: _json_value(v, decode_json=k in cfg.json_columns) for k, v in row.items()}
+        for row in rows
+    ]
     latest_row = serialisable_rows[0] if serialisable_rows else {}
     next_cursor = (
         str(serialisable_rows[-1].get(cfg.cursor_column))

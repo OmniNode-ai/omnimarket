@@ -281,6 +281,19 @@ def _parse_projection_api_section(
 
     columns: tuple[str, ...] = tuple(raw_columns)
 
+    raw_json_columns = section.get("json_columns", [])
+    if not isinstance(raw_json_columns, list) or any(
+        not isinstance(column, str) or not column for column in raw_json_columns
+    ):
+        logger.error(
+            "Contract %r (path: %s): projection_api.json_columns must be a "
+            "list of strings when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+    json_columns: tuple[str, ...] = tuple(raw_json_columns)
+
     # Schema resolution: honour explicit schema field; fall back to "public".
     raw_schema = section.get("schema", "public")
     if not isinstance(raw_schema, str):
@@ -378,6 +391,7 @@ def _parse_projection_api_section(
         table=table,
         schema_name=schema_name,
         columns=columns,
+        json_columns=json_columns,
         order_by=order_by,
         freshness_column=freshness_column,
         cursor_column=cursor_column,

@@ -1,0 +1,34 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-12213
+title: "Create dep cascade dedup orchestrator contract and handler stub"
+summary: >
+  Adds the node_dep_cascade_dedup_orchestrator contract, typed request/result
+  models, handler stub, thin skill metadata, and golden-chain coverage for the
+  post-release dependency cascade dedup workflow. The node is marked
+  node_not_implemented, so this slice establishes contract surfaces only and
+  does not require a live runtime deploy before merge.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-tests"
+    description: "Golden-chain test for node_dep_cascade_dedup_orchestrator passes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_dep_cascade_dedup_orchestrator.py -v"
+  - id: "dod-deploy"
+    description: >
+      Contract and handler-stub slice only. The node is explicitly marked
+      node_not_implemented and is not a daemon lifecycle change; no live deploy
+      or runtime restart is required before merge. Runtime pickup occurs on the
+      next normal omnimarket deployment after the implementation wave.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "printf '%s\n' 'deploy gate: OMN-12213 is contract + stub only; no live deploy or runtime restart required before merge'"

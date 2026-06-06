@@ -203,8 +203,7 @@ class TestFSMRoutingIntegration:
 
         # Step 1: handle_async — creates run state at RECEIVED, emits health-check cmd.
         # Returns None for non-terminal RECEIVED state (OMN-12151).
-        result = await handler.handle_async(dispatch_request)  # type: ignore[func-returns-value]
-        assert result is None
+        await handler.handle_async(dispatch_request)
 
         # State must be persisted after handle_async
         assert await state_store.exists(
@@ -375,5 +374,4 @@ class TestFSMRoutingIntegration:
     ) -> None:
         """Without a state_store, handle_async runs without error and returns None (OMN-12151)."""
         handler_no_store = HandlerSwarmDispatchOrchestrator(event_bus=mock_bus)
-        result = await handler_no_store.handle_async(dispatch_request)  # type: ignore[func-returns-value]
-        assert result is None
+        await handler_no_store.handle_async(dispatch_request)

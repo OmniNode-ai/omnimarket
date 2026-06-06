@@ -13,6 +13,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.delegation.wire.model_budget import ModelBudgetLimits
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_DEFAULT_MAX_TOKENS,
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+)
 
 EnumQualityContractMode = Literal["extend_task_class", "replace_task_class"]
 
@@ -79,7 +83,9 @@ class ModelDelegationRequest(BaseModel):
         description="Unique identifier for tracking through the pipeline.",
     )
     max_tokens: int = Field(
-        default=2048,
+        default=DELEGATION_DEFAULT_MAX_TOKENS,
+        gt=0,
+        le=DELEGATION_MAX_TOKENS_HARD_LIMIT,
         description="Maximum tokens for the LLM response.",
     )
     emitted_at: datetime = Field(
@@ -124,6 +130,8 @@ class ModelDelegationRequest(BaseModel):
 
 
 __all__: list[str] = [
+    "DELEGATION_DEFAULT_MAX_TOKENS",
+    "DELEGATION_MAX_TOKENS_HARD_LIMIT",
     "MAX_WORDS_PER_SENTENCE_RE",
     "SUPPORTED_ACCEPTANCE_CRITERIA",
     "EnumQualityContractMode",

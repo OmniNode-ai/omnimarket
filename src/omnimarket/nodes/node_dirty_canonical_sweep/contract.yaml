@@ -1,0 +1,69 @@
+version: 0.1.0
+name: node_dirty_canonical_sweep
+node_type: effect
+description: >
+  Detect dirty (uncommitted) files in canonical omni_home repo clones and
+  auto-ship each dirty repo to a fresh dev-based worktree + PR. The canonical clone is
+  restored to a clean state after the worktree is created. Designed to run as
+  a 15-minute build-loop cron (OMN-7466).
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: false
+  timeout_ms: 900000
+
+handler:
+  module: omnimarket.nodes.node_dirty_canonical_sweep.handlers.handler_dirty_canonical_sweep
+  class: HandlerDirtyCanonicalSweep
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - handler:
+        name: HandlerDirtyCanonicalSweep
+        module: omnimarket.nodes.node_dirty_canonical_sweep.handlers.handler_dirty_canonical_sweep
+
+models:
+  input:
+    module: omnimarket.nodes.node_dirty_canonical_sweep.models.model_dirty_canonical_sweep_command
+    class: ModelDirtyCanonicalSweepCommand
+  output:
+    module: omnimarket.nodes.node_dirty_canonical_sweep.models.model_dirty_canonical_sweep_result
+    class: ModelDirtyCanonicalSweepResult
+
+terminal_event: onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dirty-canonical-sweep.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+    failure: onex.evt.omnimarket.dirty-canonical-sweep-failed.v1
+  default_timeout_ms: 900000
+  max_timeout_ms: 3600000
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dirty-canonical-sweep.v1
+  publish_topics:
+    - onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+    - onex.evt.omnimarket.dirty-canonical-sweep-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dirty-canonical-sweep-completed.v1
+  - onex.evt.omnimarket.dirty-canonical-sweep-failed.v1
+
+capabilities:
+  - detect_dirty_canonical_repos
+  - auto_ship_to_worktree_and_pr
+
+invariants:
+  - never_commits_to_canonical_repo
+  - restores_canonical_to_clean_state_on_success
+  - one_worktree_per_dirty_repo
+
+verification:
+  focused_tests:
+    command: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_dirty_canonical_sweep -v

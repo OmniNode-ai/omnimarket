@@ -1,0 +1,62 @@
+---
+name: node_insights_to_plan_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+description: >
+  Parse an HTML insights document, extract structured insights, and produce a
+  prioritised implementation plan with action items. Pure deterministic transform
+  — no LLM calls, same input always yields identical output.
+  The supported deterministic extraction reads title, h1-h3 headings,
+  paragraphs, and list items that look like action items.
+
+handler:
+  module: omnimarket.nodes.node_insights_to_plan_compute.handlers.handler_insights_to_plan_compute
+  class: HandlerInsightsToPlanCompute
+  input_model: omnimarket.nodes.node_insights_to_plan_compute.models.model_insights_to_plan_compute_request.ModelInsightsToPlanComputeRequest
+
+handler_routing:
+  handlers:
+    - handler:
+        name: HandlerInsightsToPlanCompute
+        module: omnimarket.nodes.node_insights_to_plan_compute.handlers.handler_insights_to_plan_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+inputs:
+  html_path:
+    type: str
+    required: true
+    description: "Absolute path to the HTML insights document to parse"
+  source_type:
+    type: str
+    required: false
+    default: "generic"
+    description: "Source document type hint (e.g. 'ticketing_insights', 'generic')"
+
+outputs:
+  plan:
+    type: object
+    description: "Structured plan derived from the extracted insights"
+  action_items:
+    type: list[object]
+    description: "Prioritised list of action items with owner, priority, and description"
+  status:
+    type: str
+    enum: [ok, error]
+
+terminal_event: onex.evt.omnimarket.insights-to-plan-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.insights-to-plan-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.insights-to-plan-completed.v1
+
+metadata:
+  transport_type: kafka

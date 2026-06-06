@@ -20,6 +20,13 @@ class ModelDesignToPlanCommand(BaseModel):
     )
     no_launch: bool = Field(default=False, description="Stop after plan save.")
     dry_run: bool = Field(default=False, description="No side effects if true.")
+    plan_only: bool = Field(
+        default=False,
+        description=(
+            "Build the Phase 3 native dispatch plan without publishing downstream "
+            "commands."
+        ),
+    )
     requested_at: datetime = Field(..., description="When the command was issued.")
 
 

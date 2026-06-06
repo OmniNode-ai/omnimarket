@@ -505,10 +505,8 @@ class HandlerBuildLoopExecutor:
         accumulated_cost: float = 0.0
         halt_reason: str | None = None
         consecutive_failures = 0
-        # OMN-8371: per-phase evidence: phase_name -> {outcome_name -> satisfied}
         evidence: dict[str, dict[str, bool]] = {}
 
-        # OMN-8371: log standing_orders at session start so agents can observe them
         if contract is not None and contract.standing_orders:
             logger.info(
                 "[OVERNIGHT] standing_orders for session %s:", contract.session_id
@@ -516,9 +514,8 @@ class HandlerBuildLoopExecutor:
             for order in contract.standing_orders:
                 logger.info("[OVERNIGHT]   • %s", order)
 
-        # OMN-8375: stamp .onex_state/overseer-active.flag on contract load so
-        # the sibling PreToolUse hook (OMN-8376) can block foreground drift.
-        # Removed in the finally block regardless of outcome.
+        # OMN-8375: stamp .onex_state/overseer-active.flag so the sibling
+        # PreToolUse hook (OMN-8376) can block foreground drift.
         flag_written = False
         if contract is not None:
             write_overseer_flag(
@@ -533,21 +530,13 @@ class HandlerBuildLoopExecutor:
 
         try:
             for phase in _PHASE_SEQUENCE:
-                skipped = self._should_skip(phase, command)
-
-                if skipped:
+                if self._should_skip(phase, command):
                     results.append(
-                        ModelPhaseResult(
-                            phase=phase,
-                            success=True,
-                            skipped=True,
-                        )
+                        ModelPhaseResult(phase=phase, success=True, skipped=True)
                     )
                     continue
 
-                # OMN-8405: phase-start envelope before dispatch so downstream
-                # consumers (overseer tick loop, delegation pipeline) can observe
-                # an overnight run advancing.
+                # OMN-8405: phase-start envelope before dispatch
                 self._publish(
                     self._topic_overnight_phase_start,
                     {
@@ -571,92 +560,23 @@ class HandlerBuildLoopExecutor:
                         logger.error("[OVERNIGHT] %s", halt_reason)
                         break
 
-                if dispatch_phases and phase not in overrides:
-                    success, error_msg = self._dispatch_phase(phase, command, contract)
-                elif command.dry_run:
-                    success = True
-                    error_msg = None
-                else:
-                    success = overrides.get(phase, True)
-                    error_msg = None if success else f"Phase {phase.value} failed"
-
+                success, error_msg = self._run_phase(
+                    phase, command, contract, overrides, dispatch_phases
+                )
                 accumulated_cost += costs.get(phase, 0.0)
                 duration_ms = int((monotonic() - phase_started_mono) * 1000)
 
-                # OMN-8371: enforce phase timeout_seconds — treat exceeded timeout as failure
-                if contract is not None and success:
-                    _phase_spec_timeout = next(
-                        (p for p in contract.phases if p.phase_name == phase.value),
-                        None,
-                    )
-                    if (
-                        _phase_spec_timeout is not None
-                        and duration_ms / 1000.0 >= _phase_spec_timeout.timeout_seconds
-                    ):
-                        timeout_msg = (
-                            f"phase timeout exceeded: "
-                            f"{duration_ms}ms >= "
-                            f"{_phase_spec_timeout.timeout_seconds * 1000}ms"
-                        )
-                        logger.warning("[OVERNIGHT] %s: %s", phase.value, timeout_msg)
-                        success = False
-                        error_msg = timeout_msg
+                success, error_msg = self._enforce_phase_timeout(
+                    phase, contract, success, error_msg, duration_ms
+                )
 
-                # OMN-8375: probe required_outcomes for the current phase.
-                # Phase only advances when outcomes satisfied — downgrades
-                # success to False when any outcome is missing.
-                # Must run BEFORE consecutive_failures increment so a probe
-                # failure is correctly counted rather than a successful dispatch
-                # being miscounted when the probe flips mid-tick.
-                phase_outcomes: dict[str, bool] = {}
-                outcomes_gate_passed = True
-                if contract is not None:
-                    phase_spec = next(
-                        (p for p in contract.phases if p.phase_name == phase.value),
-                        None,
+                # OMN-8375: probe outcomes — must run before consecutive_failures
+                # increment so a probe failure is counted correctly.
+                success, error_msg, phase_outcomes, outcomes_gate_passed = (
+                    self._evaluate_phase_outcomes(
+                        phase, contract, success, error_msg, evidence
                     )
-                    if phase_spec is not None and phase_spec.required_outcomes:
-                        phase_outcomes = probe_required_outcomes(
-                            phase_spec.required_outcomes,
-                            self._outcome_probe,
-                        )
-                        if not all(phase_outcomes.values()):
-                            outcomes_gate_passed = False
-                            missing = [k for k, v in phase_outcomes.items() if not v]
-                            msg = (
-                                f"required_outcomes not satisfied: {', '.join(missing)}"
-                            )
-                            logger.warning("[OVERSEER] %s: %s", phase.value, msg)
-                            success = False
-                            error_msg = msg
-                    # OMN-8371: evaluate success_criteria via outcome probe
-                    if (
-                        phase_spec is not None
-                        and phase_spec.success_criteria
-                        and success
-                    ):
-                        criteria_results = probe_required_outcomes(
-                            tuple(phase_spec.success_criteria),
-                            self._outcome_probe,
-                        )
-                        if not all(criteria_results.values()):
-                            unmet = [k for k, v in criteria_results.items() if not v]
-                            criteria_msg = (
-                                f"success_criteria not met: {', '.join(unmet)}"
-                            )
-                            logger.warning(
-                                "[OVERSEER] %s: %s", phase.value, criteria_msg
-                            )
-                            success = False
-                            error_msg = criteria_msg
-                    # OMN-8371: collect evidence for this phase
-                    combined: dict[str, bool] = dict(phase_outcomes)
-                    if phase_spec is not None and phase_spec.success_criteria:
-                        for c in phase_spec.success_criteria:
-                            if c not in combined:
-                                combined[c] = False
-                    if combined:
-                        evidence[phase.value] = combined
+                )
 
                 is_skipped = (
                     not success
@@ -677,15 +597,10 @@ class HandlerBuildLoopExecutor:
                     )
                 )
 
-                # OMN-8405: phase-end envelope after the phase settles (before
-                # halt-condition evaluation so we always emit a terminal signal
-                # even when a halt breaks the loop on the next line).
-                if is_skipped:
-                    _phase_status = "skipped"
-                elif success:
-                    _phase_status = "success"
-                else:
-                    _phase_status = "failed"
+                # OMN-8405: phase-end envelope after the phase settles
+                _phase_status = (
+                    "skipped" if is_skipped else ("success" if success else "failed")
+                )
                 self._publish(
                     self._topic_overnight_phase_end,
                     {
@@ -699,75 +614,29 @@ class HandlerBuildLoopExecutor:
                     },
                 )
 
-                # OMN-8375: emit tick snapshot and refresh the flag file.
                 if contract is not None:
-                    snapshot = build_tick_snapshot(
-                        contract=contract,
-                        contract_path=self._contract_path,
-                        current_phase=phase.value,
-                        phase_progress=1.0 if success and outcomes_gate_passed else 0.5,
-                        phase_outcomes=phase_outcomes,
-                        accumulated_cost=accumulated_cost,
-                        started_at=phase_started_at_wall,
-                    )
-                    write_overseer_flag(
-                        contract_path=self._contract_path,
-                        current_phase=phase.value,
-                        session_id=contract.session_id,
-                        started_at=started_at,
-                        snapshot=snapshot,
-                        state_root=self._state_root,
-                    )
-                    append_tick_log(snapshot, state_root=self._state_root)
-                    if self._tick_emitter is not None:
-                        try:
-                            self._tick_emitter(snapshot)
-                        except Exception as exc:
-                            logger.warning("[OVERSEER] tick_emitter raised: %s", exc)
-
-                    # Evaluate declarative halt conditions (new OMN-8375 types).
-                    triggered = evaluate_halt_conditions(
-                        contract=contract,
-                        current_phase=phase.value,
-                        phase_outcomes=phase_outcomes,
-                        accumulated_cost=accumulated_cost,
-                        consecutive_failures=consecutive_failures,
-                        phase_started_at=phase_started_at_wall,
-                    )
-                    halt_decision, halt_msg = self._process_halt_triggers(
-                        triggered, snapshot
+                    halt_decision, halt_reason, should_continue = (
+                        self._emit_tick_and_evaluate_halt(
+                            phase=phase,
+                            contract=contract,
+                            command=command,
+                            started_at=started_at,
+                            phase_started_at_wall=phase_started_at_wall,
+                            success=success,
+                            outcomes_gate_passed=outcomes_gate_passed,
+                            phase_outcomes=phase_outcomes,
+                            accumulated_cost=accumulated_cost,
+                            consecutive_failures=consecutive_failures,
+                            error_msg=error_msg,
+                            halt_reason=halt_reason,
+                        )
                     )
                     if halt_decision == EnumHaltDecision.HALT:
-                        halt_reason = halt_msg
-                        logger.error("Overnight halt triggered: %s", halt_reason)
                         break
-
-                    if halt_decision == EnumHaltDecision.RECOVERED:
-                        # Action handler resolved the condition — skip legacy gates
-                        # for this phase so a recovered failure does not trigger
-                        # halt_on_failure or the critical-phase stop.
-                        logger.info(
-                            "[OVERSEER] halt condition recovered for %s — continuing",
-                            phase.value,
-                        )
+                    if should_continue:
                         continue
 
-                    # Legacy halt checks (cost ceiling aggregate + halt_on_failure).
-                    halt = self._check_halt_conditions(
-                        contract=contract,
-                        phase=phase,
-                        phase_success=success,
-                        accumulated_cost=accumulated_cost,
-                        error_msg=error_msg,
-                    )
-                    if halt is not None:
-                        halt_reason = halt
-                        logger.error("Overnight halt triggered: %s", halt_reason)
-                        break
-
                 if not success and not is_skipped:
-                    # On failure, stop the pipeline unless it's a non-critical phase.
-                    # nightly_loop or build_loop failure stops everything; other phases continue.
                     if phase in (EnumPhase.NIGHTLY_LOOP, EnumPhase.BUILD_LOOP):
                         logger.warning(
                             "%s failed — halting overnight pipeline", phase.value
@@ -786,29 +655,9 @@ class HandlerBuildLoopExecutor:
         ]
         phases_skipped = [r.phase.value for r in results if r.skipped]
 
-        # OMN-8371: validate session-level required_outcomes at the end of the run.
-        # Only enforced when an outcome_probe is wired — without a probe, outcomes
-        # cannot be checked and the session proceeds (backwards-compatible).
-        missing_required_outcomes: list[str] = []
-        if (
-            contract is not None
-            and contract.required_outcomes
-            and halt_reason is None
-            and self._outcome_probe is not None
-        ):
-            for outcome_name in contract.required_outcomes:
-                satisfied = probe_required_outcomes(
-                    (outcome_name,), self._outcome_probe
-                ).get(outcome_name, False)
-                if not satisfied:
-                    missing_required_outcomes.append(outcome_name)
-            if missing_required_outcomes:
-                outcomes_fail_reason = (
-                    f"required_outcomes not satisfied at session end: "
-                    f"{', '.join(missing_required_outcomes)}"
-                )
-                logger.error("[OVERNIGHT] %s", outcomes_fail_reason)
-                halt_reason = outcomes_fail_reason
+        missing_required_outcomes, halt_reason = self._validate_session_outcomes(
+            contract, halt_reason
+        )
 
         if halt_reason is not None:
             status = EnumOvernightStatus.FAILED
@@ -821,9 +670,7 @@ class HandlerBuildLoopExecutor:
 
         completed_at = datetime.now(tz=UTC)
 
-        # OMN-8405: session-complete envelope published exactly once when the
-        # pipeline exits (success, halt, or phase failure — all paths reach
-        # here). Downstream consumers key off this for end-of-run analytics.
+        # OMN-8405: session-complete envelope published exactly once on all exit paths.
         self._publish(
             self._topic_overnight_complete,
             {
@@ -840,12 +687,7 @@ class HandlerBuildLoopExecutor:
             },
         )
 
-        # OMN-8407: self-perpetuating loop trigger. After every completed run
-        # (including partial/failed — the loop must keep turning), re-emit the
-        # start command with a delay so the omninode-runtime delivers it after
-        # loop_delay_seconds. This creates a self-driving overseer loop on .201
-        # without Claude Code crons. Only fires when enable_self_loop=True AND
-        # an event_bus is wired — dry_run or no-bus callers are unaffected.
+        # OMN-8407: self-perpetuating loop — re-emit start command after every run.
         if command.enable_self_loop:
             import uuid
 
@@ -883,6 +725,216 @@ class HandlerBuildLoopExecutor:
             missing_required_outcomes=missing_required_outcomes,
             evidence=evidence,
         )
+
+    def _run_phase(
+        self,
+        phase: EnumPhase,
+        command: ModelOvernightCommand,
+        contract: ModelOvernightContract | None,
+        overrides: dict[EnumPhase, bool],
+        dispatch_phases: bool,
+    ) -> tuple[bool, str | None]:
+        """Determine success/error for a phase via dispatch, dry-run, or override."""
+        if dispatch_phases and phase not in overrides:
+            return self._dispatch_phase(phase, command, contract)
+        if command.dry_run:
+            return True, None
+        success = overrides.get(phase, True)
+        return success, None if success else f"Phase {phase.value} failed"
+
+    def _enforce_phase_timeout(
+        self,
+        phase: EnumPhase,
+        contract: ModelOvernightContract | None,
+        success: bool,
+        error_msg: str | None,
+        duration_ms: int,
+    ) -> tuple[bool, str | None]:
+        """Downgrade success to failure when phase exceeded its timeout_seconds."""
+        if contract is None or not success:
+            return success, error_msg
+        phase_spec = next(
+            (p for p in contract.phases if p.phase_name == phase.value), None
+        )
+        if (
+            phase_spec is not None
+            and duration_ms / 1000.0 >= phase_spec.timeout_seconds
+        ):
+            msg = (
+                f"phase timeout exceeded: "
+                f"{duration_ms}ms >= {phase_spec.timeout_seconds * 1000}ms"
+            )
+            logger.warning("[OVERNIGHT] %s: %s", phase.value, msg)
+            return False, msg
+        return success, error_msg
+
+    def _evaluate_phase_outcomes(
+        self,
+        phase: EnumPhase,
+        contract: ModelOvernightContract | None,
+        success: bool,
+        error_msg: str | None,
+        evidence: dict[str, dict[str, bool]],
+    ) -> tuple[bool, str | None, dict[str, bool], bool]:
+        """Probe required_outcomes and success_criteria; collect evidence.
+
+        Returns (success, error_msg, phase_outcomes, outcomes_gate_passed).
+        """
+        phase_outcomes: dict[str, bool] = {}
+        outcomes_gate_passed = True
+
+        if contract is None:
+            return success, error_msg, phase_outcomes, outcomes_gate_passed
+
+        phase_spec = next(
+            (p for p in contract.phases if p.phase_name == phase.value), None
+        )
+
+        if phase_spec is not None and phase_spec.required_outcomes:
+            phase_outcomes = probe_required_outcomes(
+                phase_spec.required_outcomes, self._outcome_probe
+            )
+            if not all(phase_outcomes.values()):
+                outcomes_gate_passed = False
+                missing = [k for k, v in phase_outcomes.items() if not v]
+                msg = f"required_outcomes not satisfied: {', '.join(missing)}"
+                logger.warning("[OVERSEER] %s: %s", phase.value, msg)
+                success = False
+                error_msg = msg
+
+        if phase_spec is not None and phase_spec.success_criteria and success:
+            criteria_results = probe_required_outcomes(
+                tuple(phase_spec.success_criteria), self._outcome_probe
+            )
+            if not all(criteria_results.values()):
+                unmet = [k for k, v in criteria_results.items() if not v]
+                criteria_msg = f"success_criteria not met: {', '.join(unmet)}"
+                logger.warning("[OVERSEER] %s: %s", phase.value, criteria_msg)
+                success = False
+                error_msg = criteria_msg
+
+        combined: dict[str, bool] = dict(phase_outcomes)
+        if phase_spec is not None and phase_spec.success_criteria:
+            for c in phase_spec.success_criteria:
+                if c not in combined:
+                    combined[c] = False
+        if combined:
+            evidence[phase.value] = combined
+
+        return success, error_msg, phase_outcomes, outcomes_gate_passed
+
+    def _emit_tick_and_evaluate_halt(
+        self,
+        *,
+        phase: EnumPhase,
+        contract: ModelOvernightContract,
+        command: ModelOvernightCommand,
+        started_at: datetime,
+        phase_started_at_wall: datetime,
+        success: bool,
+        outcomes_gate_passed: bool,
+        phase_outcomes: dict[str, bool],
+        accumulated_cost: float,
+        consecutive_failures: int,
+        error_msg: str | None,
+        halt_reason: str | None,
+    ) -> tuple[EnumHaltDecision, str | None, bool]:
+        """Emit the overseer tick and evaluate declarative + legacy halt conditions.
+
+        Returns (halt_decision, updated_halt_reason, should_continue).
+        should_continue=True means the loop should `continue` (halt was recovered).
+        """
+        snapshot = build_tick_snapshot(
+            contract=contract,
+            contract_path=self._contract_path,
+            current_phase=phase.value,
+            phase_progress=1.0 if success and outcomes_gate_passed else 0.5,
+            phase_outcomes=phase_outcomes,
+            accumulated_cost=accumulated_cost,
+            started_at=phase_started_at_wall,
+        )
+        write_overseer_flag(
+            contract_path=self._contract_path,
+            current_phase=phase.value,
+            session_id=contract.session_id,
+            started_at=started_at,
+            snapshot=snapshot,
+            state_root=self._state_root,
+        )
+        append_tick_log(snapshot, state_root=self._state_root)
+        if self._tick_emitter is not None:
+            try:
+                self._tick_emitter(snapshot)
+            except Exception as exc:
+                logger.warning("[OVERSEER] tick_emitter raised: %s", exc)
+
+        triggered = evaluate_halt_conditions(
+            contract=contract,
+            current_phase=phase.value,
+            phase_outcomes=phase_outcomes,
+            accumulated_cost=accumulated_cost,
+            consecutive_failures=consecutive_failures,
+            phase_started_at=phase_started_at_wall,
+        )
+        halt_decision, halt_msg = self._process_halt_triggers(triggered, snapshot)
+        if halt_decision == EnumHaltDecision.HALT:
+            logger.error("Overnight halt triggered: %s", halt_msg)
+            return EnumHaltDecision.HALT, halt_msg, False
+
+        if halt_decision == EnumHaltDecision.RECOVERED:
+            logger.info(
+                "[OVERSEER] halt condition recovered for %s — continuing", phase.value
+            )
+            return EnumHaltDecision.RECOVERED, halt_reason, True
+
+        # Legacy halt checks (cost ceiling + halt_on_failure)
+        legacy_halt = self._check_halt_conditions(
+            contract=contract,
+            phase=phase,
+            phase_success=success,
+            accumulated_cost=accumulated_cost,
+            error_msg=error_msg,
+        )
+        if legacy_halt is not None:
+            logger.error("Overnight halt triggered: %s", legacy_halt)
+            return EnumHaltDecision.HALT, legacy_halt, False
+
+        return EnumHaltDecision.NO_HALT, halt_reason, False
+
+    def _validate_session_outcomes(
+        self,
+        contract: ModelOvernightContract | None,
+        halt_reason: str | None,
+    ) -> tuple[list[str], str | None]:
+        """Check session-level required_outcomes after all phases complete.
+
+        Returns (missing_required_outcomes, updated_halt_reason).
+        Only enforced when an outcome_probe is wired (backwards-compatible).
+        """
+        missing: list[str] = []
+        if (
+            contract is None
+            or not contract.required_outcomes
+            or halt_reason is not None
+            or self._outcome_probe is None
+        ):
+            return missing, halt_reason
+
+        for outcome_name in contract.required_outcomes:
+            satisfied = probe_required_outcomes(
+                (outcome_name,), self._outcome_probe
+            ).get(outcome_name, False)
+            if not satisfied:
+                missing.append(outcome_name)
+
+        if missing:
+            reason = (
+                f"required_outcomes not satisfied at session end: {', '.join(missing)}"
+            )
+            logger.error("[OVERNIGHT] %s", reason)
+            return missing, reason
+
+        return missing, halt_reason
 
     def _process_halt_triggers(
         self,

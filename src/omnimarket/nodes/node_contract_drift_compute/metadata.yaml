@@ -1,0 +1,23 @@
+name: node_contract_drift_compute
+version: "1.0.0"
+description: "Compute cross-repo contract-vs-handler topic drift with field-level classification"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_contract_drift_compute: "omnimarket.nodes.node_contract_drift_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "contracts", "drift", "cross-repo", "health-check"]
+pack: "sweep"
+display_name: "Contract Drift Compute"
+node_role: "compute"

@@ -35,6 +35,7 @@ class ProjectionTableConfig(BaseModel):
     schema_name: str = "public"
     # tuple[str, ...] for declared columns; tuple[Literal["*"]] for SELECT *
     columns: tuple[str, ...] | tuple[Literal["*"]]
+    json_columns: tuple[str, ...] = ()
     order_by: str | None = None  # None means ordering is undefined
     freshness_column: str | None = None  # None means freshness is unknown
     cursor_column: str | None = None

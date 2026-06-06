@@ -1,9 +1,9 @@
-"""Golden chain e2e test: evaluation (OMN-11769).
+"""Golden chain e2e test: evaluation.
 
-Chain: onex.evt.omniintelligence.run-evaluated.v1 -> session_outcomes
+Chain: onex.evt.omniclaude.session-outcome.v1 -> session_outcomes
 
-Validates that a run-evaluated event is projected into the session_outcomes
-table with correlation_id as the session key.  Topics and table names are
+Validates that a session-outcome event is projected into the session_outcomes
+table with session_id as the projection key.  Topics and table names are
 read from golden_chains.yaml — never hardcoded.
 """
 
@@ -48,22 +48,22 @@ class TestEvaluationGoldenChainContract:
 
     def test_evaluation_chain_head_topic(self) -> None:
         head_topic, _, _ = _load_evaluation_chain()
-        assert head_topic == "onex.evt.omniintelligence.run-evaluated.v1"
+        assert head_topic == "onex.evt.omniclaude.session-outcome.v1"
 
     def test_evaluation_chain_tail_table(self) -> None:
         _, tail_table, _ = _load_evaluation_chain()
         assert tail_table == "session_outcomes"
 
-    def test_evaluation_chain_expected_fields_contain_correlation_id(self) -> None:
+    def test_evaluation_chain_expected_fields_contain_session_id(self) -> None:
         _, _, expected_fields = _load_evaluation_chain()
-        assert "correlation_id" in expected_fields, (
-            f"expected_fields must include correlation_id; got: {expected_fields}"
+        assert "session_id" in expected_fields, (
+            f"expected_fields must include session_id; got: {expected_fields}"
         )
 
 
 @pytest.mark.unit
 class TestEvaluationProjection:
-    """Projection: run-evaluated payload -> session_outcomes row."""
+    """Projection: session-outcome payload -> session_outcomes row."""
 
     def _make_runner(
         self,
@@ -163,7 +163,7 @@ class TestEvaluationProjection:
 class TestEvaluationGoldenChainSweepIntegration:
     """Sweep handler validates evaluation chain against projected rows."""
 
-    def test_sweep_passes_when_row_has_correlation_id(self) -> None:
+    def test_sweep_passes_when_row_has_session_id(self) -> None:
         from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep import (
             EnumSweepStatus,
             GoldenChainSweepRequest,
@@ -184,7 +184,6 @@ class TestEvaluationGoldenChainSweepIntegration:
             ],
             projected_rows={
                 "evaluation": {
-                    "correlation_id": "eval-sweep-pass-001",
                     "session_id": "sess-sweep-001",
                     "outcome": "success",
                 }
@@ -196,7 +195,7 @@ class TestEvaluationGoldenChainSweepIntegration:
         assert result.chains_passed == 1
         assert result.chains_failed == 0
 
-    def test_sweep_fails_when_correlation_id_missing_from_row(self) -> None:
+    def test_sweep_fails_when_session_id_missing_from_row(self) -> None:
         from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep import (
             EnumChainStatus,
             EnumSweepStatus,
@@ -218,9 +217,8 @@ class TestEvaluationGoldenChainSweepIntegration:
             ],
             projected_rows={
                 "evaluation": {
-                    "session_id": "sess-no-corr",
                     "outcome": "success",
-                    # correlation_id intentionally absent
+                    # session_id intentionally absent
                 }
             },
         )
@@ -228,7 +226,7 @@ class TestEvaluationGoldenChainSweepIntegration:
 
         assert result.overall_status == EnumSweepStatus.FAIL
         assert result.chain_results[0].status == EnumChainStatus.FAIL
-        assert "correlation_id" in result.chain_results[0].missing_fields
+        assert "session_id" in result.chain_results[0].missing_fields
 
     def test_sweep_times_out_when_no_row_projected(self) -> None:
         from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep import (

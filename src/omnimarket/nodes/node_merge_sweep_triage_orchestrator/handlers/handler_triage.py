@@ -208,17 +208,13 @@ class HandlerTriageOrchestrator:
         pr = classified.pr
         track = classified.track
 
-        # Rule 1: draft PRs are inert — always skip
+        # Rules 1, 11-13: universal skip gates
         if pr.is_draft:
             _log.debug("PR %s/%s: SKIP (is_draft)", pr.repo, pr.number)
             return None
-
-        # Rule 13: CHANGES_REQUESTED — do not mutate
         if pr.review_decision == "CHANGES_REQUESTED":
             _log.debug("PR %s/%s: SKIP (CHANGES_REQUESTED)", pr.repo, pr.number)
             return None
-
-        # Rule 11: unknown mergeable — wait for GitHub to compute
         if pr.mergeable == "UNKNOWN":
             _log.warning(
                 "PR %s/%s: SKIP (mergeable=UNKNOWN) — GitHub still computing",
@@ -226,8 +222,6 @@ class HandlerTriageOrchestrator:
                 pr.number,
             )
             return None
-
-        # Rule 12: unknown merge_state_status — wait
         if pr.merge_state_status == "UNKNOWN":
             _log.warning(
                 "PR %s/%s: SKIP (merge_state_status=UNKNOWN) — GitHub still computing",
@@ -236,196 +230,27 @@ class HandlerTriageOrchestrator:
             )
             return None
 
-        # Rule 5: A_RESOLVE — Phase 2: emit ModelThreadReplyCommand
+        # Rule 5: A_RESOLVE
         if track == EnumPRTrack.A_RESOLVE:
-            thread_ids = await self._resolve_open_thread_comment_ids(pr.repo, pr.number)
-            if not thread_ids:
-                _log.debug(
-                    "PR %s/%s: SKIP A_RESOLVE — no open thread comment IDs resolved",
-                    pr.repo,
-                    pr.number,
-                )
-                return None
-            return ModelThreadReplyCommand(
-                pr_number=pr.number,
-                repo=pr.repo,
-                thread_comment_ids=thread_ids,
-                correlation_id=correlation_id,
-                run_id=str(run_id),
-                routing_policy=_DEFAULT_ROUTING_POLICY,
-            )
+            return await self._classify_a_resolve(classified, run_id, correlation_id)
 
         # Rule 10: explicit SKIP track
         if track == EnumPRTrack.SKIP:
             _log.debug("PR %s/%s: SKIP (SKIP track)", pr.repo, pr.number)
             return None
 
-        # Track A/A_UPDATE rules. Compute emits CLEAN merge-ready PRs as Track A;
-        # older orchestrator fixtures use A_UPDATE for the same auto-merge arm path.
+        # Track A/A_UPDATE rules (Rules 2-4). Compute emits CLEAN merge-ready PRs
+        # as Track A; older orchestrator fixtures use A_UPDATE for the same path.
         if track in {EnumPRTrack.A_MERGE, EnumPRTrack.A_UPDATE}:
-            approval_cleared = _approval_gate_cleared(
-                pr.review_decision, pr.required_approving_review_count
+            return await self._classify_track_a(
+                classified, run_id, correlation_id, total_prs
             )
-            # Rule 2: CLEAN + approval-cleared + checks passing → arm auto-merge.
-            # approval-cleared = APPROVED OR branch-protection doesn't require approval
-            # (OMN-9106: solo-dev repos have required_approving_review_count in {0, None}).
-            if (
-                pr.mergeable == "MERGEABLE"
-                and pr.merge_state_status == "CLEAN"
-                and approval_cleared
-                and pr.required_checks_pass
-            ):
-                pr_node_id, head_ref_name = await self._resolve_pr_graphql_id(
-                    pr.repo, pr.number
-                )
-                if pr_node_id is None:
-                    _log.error(
-                        "PR %s/%s: SKIP — failed to resolve GraphQL node ID",
-                        pr.repo,
-                        pr.number,
-                    )
-                    return None
-                return ModelAutoMergeArmCommand(
-                    pr_number=pr.number,
-                    repo=pr.repo,
-                    pr_node_id=pr_node_id,
-                    head_ref_name=head_ref_name or "",
-                    correlation_id=correlation_id,
-                    run_id=run_id,
-                    total_prs=total_prs,
-                )
 
-            # Rule 3: BEHIND + approval-cleared + checks passing → rebase.
-            # Same approval-cleared semantic as Rule 2 (OMN-9106).
-            if (
-                pr.mergeable == "MERGEABLE"
-                and pr.merge_state_status == "BEHIND"
-                and approval_cleared
-                and pr.required_checks_pass
-            ):
-                refs = await self._resolve_pr_refs(pr.repo, pr.number)
-                if refs is None:
-                    _log.error(
-                        "PR %s/%s: SKIP — failed to resolve PR refs for rebase",
-                        pr.repo,
-                        pr.number,
-                    )
-                    return None
-                head_ref, base_ref, head_oid = refs
-                return ModelRebaseCommand(
-                    pr_number=pr.number,
-                    repo=pr.repo,
-                    head_ref_name=head_ref,
-                    base_ref_name=base_ref,
-                    head_ref_oid=head_oid,
-                    correlation_id=correlation_id,
-                    run_id=run_id,
-                    total_prs=total_prs,
-                )
-
-            # Rule 4: BEHIND but not APPROVED — needs human review
-            if pr.mergeable == "MERGEABLE" and pr.merge_state_status == "BEHIND":
-                _log.debug(
-                    "PR %s/%s: SKIP A_UPDATE BEHIND — needs human review before mutation",
-                    pr.repo,
-                    pr.number,
-                )
-                return None
-
-        # Track B_POLISH rules
+        # Track B_POLISH rules (Rules 6-9)
         if track == EnumPRTrack.B_POLISH:
-            # Rule 7: CONFLICTING + DIRTY → Phase 2: emit ModelConflictHunkCommand
-            if pr.mergeable == "CONFLICTING" and pr.merge_state_status == "DIRTY":
-                refs = await self._resolve_pr_refs(pr.repo, pr.number)
-                if refs is None:
-                    _log.error(
-                        "PR %s/%s: SKIP B_POLISH CONFLICTING/DIRTY — failed to resolve PR refs",
-                        pr.repo,
-                        pr.number,
-                    )
-                    return None
-                head_ref, base_ref, _ = refs
-                conflict_files = await self._resolve_conflict_files(pr.repo, pr.number)
-                return ModelConflictHunkCommand(
-                    pr_number=pr.number,
-                    repo=pr.repo,
-                    head_ref_name=head_ref,
-                    base_ref_name=base_ref,
-                    conflict_files=conflict_files,
-                    correlation_id=correlation_id,
-                    run_id=str(run_id),
-                    routing_policy=_DEFAULT_ROUTING_POLICY,
-                )
-
-            # Rule 9: DIRTY (not CONFLICTING) → Phase 2: emit ModelCiFixCommand
-            if pr.merge_state_status == "DIRTY":
-                run_id_github = await self._resolve_failing_run_id(pr.repo, pr.number)
-                if run_id_github is None:
-                    _log.warning(
-                        "PR %s/%s: SKIP B_POLISH DIRTY — no failing run ID resolved",
-                        pr.repo,
-                        pr.number,
-                    )
-                    return None
-                failing_job = await self._resolve_failing_job_name(pr.repo, pr.number)
-                return ModelCiFixCommand(
-                    pr_number=pr.number,
-                    repo=pr.repo,
-                    run_id_github=run_id_github,
-                    failing_job_name=failing_job or "unknown",
-                    correlation_id=correlation_id,
-                    run_id=str(run_id),
-                    routing_policy=_DEFAULT_ROUTING_POLICY,
-                )
-
-            # Rule 6: MERGEABLE + BLOCKED + checks failing → CI rerun
-            if (
-                pr.mergeable == "MERGEABLE"
-                and pr.merge_state_status == "BLOCKED"
-                and _has_terminal_check_failure(classified)
-            ):
-                run_id_github = await self._resolve_failing_run_id(pr.repo, pr.number)
-                if run_id_github is None:
-                    _log.warning(
-                        "PR %s/%s: SKIP B_POLISH BLOCKED — no failing run found",
-                        pr.repo,
-                        pr.number,
-                    )
-                    return None
-                return ModelCiRerunCommand(
-                    pr_number=pr.number,
-                    repo=pr.repo,
-                    run_id_github=run_id_github,
-                    correlation_id=correlation_id,
-                    run_id=run_id,
-                    total_prs=total_prs,
-                )
-
-            # Rule 8: MERGEABLE + BEHIND + checks failing → rebase first
-            if (
-                pr.mergeable == "MERGEABLE"
-                and pr.merge_state_status == "BEHIND"
-                and _has_terminal_check_failure(classified)
-            ):
-                refs = await self._resolve_pr_refs(pr.repo, pr.number)
-                if refs is None:
-                    _log.error(
-                        "PR %s/%s: SKIP B_POLISH BEHIND — failed to resolve PR refs",
-                        pr.repo,
-                        pr.number,
-                    )
-                    return None
-                head_ref, base_ref, head_oid = refs
-                return ModelRebaseCommand(
-                    pr_number=pr.number,
-                    repo=pr.repo,
-                    head_ref_name=head_ref,
-                    base_ref_name=base_ref,
-                    head_ref_oid=head_oid,
-                    correlation_id=correlation_id,
-                    run_id=run_id,
-                    total_prs=total_prs,
-                )
+            return await self._classify_track_b(
+                classified, run_id, correlation_id, total_prs
+            )
 
         # Rule 14: fallthrough — unclassified combination
         _log.warning(
@@ -434,6 +259,221 @@ class HandlerTriageOrchestrator:
             pr.number,
             track,
         )
+        return None
+
+    async def _classify_a_resolve(
+        self,
+        classified: ModelClassifiedPR,
+        run_id: Any,
+        correlation_id: Any,
+    ) -> ModelThreadReplyCommand | None:
+        """Rule 5: A_RESOLVE — emit ModelThreadReplyCommand for open threads."""
+        pr = classified.pr
+        thread_ids = await self._resolve_open_thread_comment_ids(pr.repo, pr.number)
+        if not thread_ids:
+            _log.debug(
+                "PR %s/%s: SKIP A_RESOLVE — no open thread comment IDs resolved",
+                pr.repo,
+                pr.number,
+            )
+            return None
+        return ModelThreadReplyCommand(
+            pr_number=pr.number,
+            repo=pr.repo,
+            thread_comment_ids=thread_ids,
+            correlation_id=correlation_id,
+            run_id=str(run_id),
+            routing_policy=_DEFAULT_ROUTING_POLICY,
+        )
+
+    async def _classify_track_a(
+        self,
+        classified: ModelClassifiedPR,
+        run_id: Any,
+        correlation_id: Any,
+        total_prs: int,
+    ) -> ModelAutoMergeArmCommand | ModelRebaseCommand | None:
+        """Rules 2-4: Track A/A_UPDATE — auto-merge arm or rebase."""
+        pr = classified.pr
+        approval_cleared = _approval_gate_cleared(
+            pr.review_decision, pr.required_approving_review_count
+        )
+
+        # Rule 2: CLEAN + approval-cleared + checks passing → arm auto-merge.
+        # approval-cleared = APPROVED OR branch-protection doesn't require approval
+        # (OMN-9106: solo-dev repos have required_approving_review_count in {0, None}).
+        if (
+            pr.mergeable == "MERGEABLE"
+            and pr.merge_state_status == "CLEAN"
+            and approval_cleared
+            and pr.required_checks_pass
+        ):
+            pr_node_id, head_ref_name = await self._resolve_pr_graphql_id(
+                pr.repo, pr.number
+            )
+            if pr_node_id is None:
+                _log.error(
+                    "PR %s/%s: SKIP — failed to resolve GraphQL node ID",
+                    pr.repo,
+                    pr.number,
+                )
+                return None
+            return ModelAutoMergeArmCommand(
+                pr_number=pr.number,
+                repo=pr.repo,
+                pr_node_id=pr_node_id,
+                head_ref_name=head_ref_name or "",
+                correlation_id=correlation_id,
+                run_id=run_id,
+                total_prs=total_prs,
+            )
+
+        # Rule 3: BEHIND + approval-cleared + checks passing → rebase.
+        # Same approval-cleared semantic as Rule 2 (OMN-9106).
+        if (
+            pr.mergeable == "MERGEABLE"
+            and pr.merge_state_status == "BEHIND"
+            and approval_cleared
+            and pr.required_checks_pass
+        ):
+            refs = await self._resolve_pr_refs(pr.repo, pr.number)
+            if refs is None:
+                _log.error(
+                    "PR %s/%s: SKIP — failed to resolve PR refs for rebase",
+                    pr.repo,
+                    pr.number,
+                )
+                return None
+            head_ref, base_ref, head_oid = refs
+            return ModelRebaseCommand(
+                pr_number=pr.number,
+                repo=pr.repo,
+                head_ref_name=head_ref,
+                base_ref_name=base_ref,
+                head_ref_oid=head_oid,
+                correlation_id=correlation_id,
+                run_id=run_id,
+                total_prs=total_prs,
+            )
+
+        # Rule 4: BEHIND but not approval-cleared — needs human review
+        if pr.mergeable == "MERGEABLE" and pr.merge_state_status == "BEHIND":
+            _log.debug(
+                "PR %s/%s: SKIP A_UPDATE BEHIND — needs human review before mutation",
+                pr.repo,
+                pr.number,
+            )
+        return None
+
+    async def _classify_track_b(
+        self,
+        classified: ModelClassifiedPR,
+        run_id: Any,
+        correlation_id: Any,
+        total_prs: int,
+    ) -> (
+        ModelConflictHunkCommand
+        | ModelCiFixCommand
+        | ModelCiRerunCommand
+        | ModelRebaseCommand
+        | None
+    ):
+        """Rules 6-9: Track B_POLISH — conflict resolution, CI fix, rerun, or rebase."""
+        pr = classified.pr
+
+        # Rule 7: CONFLICTING + DIRTY → Phase 2: emit ModelConflictHunkCommand
+        if pr.mergeable == "CONFLICTING" and pr.merge_state_status == "DIRTY":
+            refs = await self._resolve_pr_refs(pr.repo, pr.number)
+            if refs is None:
+                _log.error(
+                    "PR %s/%s: SKIP B_POLISH CONFLICTING/DIRTY — failed to resolve PR refs",
+                    pr.repo,
+                    pr.number,
+                )
+                return None
+            head_ref, base_ref, _ = refs
+            conflict_files = await self._resolve_conflict_files(pr.repo, pr.number)
+            return ModelConflictHunkCommand(
+                pr_number=pr.number,
+                repo=pr.repo,
+                head_ref_name=head_ref,
+                base_ref_name=base_ref,
+                conflict_files=conflict_files,
+                correlation_id=correlation_id,
+                run_id=str(run_id),
+                routing_policy=_DEFAULT_ROUTING_POLICY,
+            )
+
+        # Rule 9: DIRTY (not CONFLICTING) → Phase 2: emit ModelCiFixCommand
+        if pr.merge_state_status == "DIRTY":
+            run_id_github = await self._resolve_failing_run_id(pr.repo, pr.number)
+            if run_id_github is None:
+                _log.warning(
+                    "PR %s/%s: SKIP B_POLISH DIRTY — no failing run ID resolved",
+                    pr.repo,
+                    pr.number,
+                )
+                return None
+            failing_job = await self._resolve_failing_job_name(pr.repo, pr.number)
+            return ModelCiFixCommand(
+                pr_number=pr.number,
+                repo=pr.repo,
+                run_id_github=run_id_github,
+                failing_job_name=failing_job or "unknown",
+                correlation_id=correlation_id,
+                run_id=str(run_id),
+                routing_policy=_DEFAULT_ROUTING_POLICY,
+            )
+
+        # Rule 6: MERGEABLE + BLOCKED + checks failing → CI rerun
+        if (
+            pr.mergeable == "MERGEABLE"
+            and pr.merge_state_status == "BLOCKED"
+            and _has_terminal_check_failure(classified)
+        ):
+            run_id_github = await self._resolve_failing_run_id(pr.repo, pr.number)
+            if run_id_github is None:
+                _log.warning(
+                    "PR %s/%s: SKIP B_POLISH BLOCKED — no failing run found",
+                    pr.repo,
+                    pr.number,
+                )
+                return None
+            return ModelCiRerunCommand(
+                pr_number=pr.number,
+                repo=pr.repo,
+                run_id_github=run_id_github,
+                correlation_id=correlation_id,
+                run_id=run_id,
+                total_prs=total_prs,
+            )
+
+        # Rule 8: MERGEABLE + BEHIND + checks failing → rebase first
+        if (
+            pr.mergeable == "MERGEABLE"
+            and pr.merge_state_status == "BEHIND"
+            and _has_terminal_check_failure(classified)
+        ):
+            refs = await self._resolve_pr_refs(pr.repo, pr.number)
+            if refs is None:
+                _log.error(
+                    "PR %s/%s: SKIP B_POLISH BEHIND — failed to resolve PR refs",
+                    pr.repo,
+                    pr.number,
+                )
+                return None
+            head_ref, base_ref, head_oid = refs
+            return ModelRebaseCommand(
+                pr_number=pr.number,
+                repo=pr.repo,
+                head_ref_name=head_ref,
+                base_ref_name=base_ref,
+                head_ref_oid=head_oid,
+                correlation_id=correlation_id,
+                run_id=run_id,
+                total_prs=total_prs,
+            )
+
         return None
 
     async def _resolve_pr_graphql_id(

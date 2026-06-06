@@ -73,6 +73,7 @@ async def test_handler_dispatches_and_returns_typed_response(
     assert response.model_name == "Qwen3-Coder-30B"
     assert response.quality_gate_passed is True
     assert response.quality_score == 0.95
+    assert response.prompt_text == "Write tests for payment webhook"
     assert response.response == "Generated test code..."
     assert response.metrics.cost_usd == 0.001
     assert response.metrics.cost_savings_usd == 0.15

@@ -1,6 +1,6 @@
 name: node_readiness_scorer_compute
 version: "0.1.0"
-description: "Contract-only package for deterministic deployment readiness scoring."
+description: "Native package for deterministic deployment readiness scoring."
 pack: evidence_pipeline
 node_role: compute
 display_name: "Readiness Scorer Compute"
@@ -16,7 +16,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: none
-dependencies: []
+dependencies:
+  - "omnibase-compat>=0.3.1"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["compute", "readiness-gate", "evidence-pipeline", "OMN-11443"]

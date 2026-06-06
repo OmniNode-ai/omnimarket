@@ -42,19 +42,36 @@ event_bus:
   subscribe_topics:
     - "onex.cmd.omnibase-infra.delegation-routing-request.v1"
   publish_topics:
+    - "onex.evt.omnibase-infra.routing-decision.v1"
     - "onex.cmd.omnibase-infra.invocation.v1"
+# Maps the handler's returned model to its publish topic so the runtime
+# dispatch-result applier routes ModelRoutingDecision to routing-decision.v1
+# (and not the legacy invocation.v1). event_type is the Model-prefix-stripped
+# short class name the applier looks up (OMN-12294).
+published_events:
+  - event_type: "RoutingDecision"
+    topic: "onex.evt.omnibase-infra.routing-decision.v1"
+    description: "Routing decision emitted by HandlerRoutingIntent for the delegation orchestrator."
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
-    - operation: "delegation.route"
+    # The reducer's pure routing logic (handler_delegation_routing.delta) is
+    # invoked by HandlerRoutingIntent below. The bridge-era "delegation.route"
+    # entry was removed in OMN-12294: it named a HandlerDelegationRouting class
+    # that never existed (the module exposes only delta()), and only ever ran
+    # via the in-process bridge calling delta() directly. With the bridge gone
+    # the orchestrator publishes ModelRoutingIntent and this node consumes it.
+    # event_model makes the runtime validate the payload to ModelRoutingIntent
+    # before calling handle() AND type-scopes the dispatcher so only
+    # ModelRoutingIntent payloads (not the orchestrator's ModelDelegationRequest)
+    # reach this handler.
+    - event_model:
+        name: "ModelRoutingIntent"
+        module: "omnibase_core.models.delegation.wire"
       handler:
-        name: "HandlerDelegationRouting"
-        module: "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing"
-      description: "Map task type and prompt length to routing decision"
-      input_model:
-        name: "ModelDelegationRequest"
-        module: "omnimarket.nodes.node_delegation_orchestrator.models"
-        description: "Delegation request to route."
+        name: "HandlerRoutingIntent"
+        module: "omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent"
+      description: "Unwrap ModelRoutingIntent from the orchestrator and publish ModelRoutingDecision to routing-decision.v1 (OMN-12294 — Kafka-native routing-intent consumer for the pure-bus delegation chain)."
 routing_rules:
   - capability: tech_debt_triage
     invocation_kind: agent

@@ -10,7 +10,7 @@ name: node_refill_sprint_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
-node_not_implemented: true
+node_not_implemented: false
 
 description: >
   Sprint refill orchestrator. When Active Sprint capacity falls below a configurable
@@ -26,6 +26,8 @@ description: >
     3. Scope verification — verify referenced files/APIs exist; flag stale DoD checklists.
     4. Pull and label — move tickets to Active Sprint, set priority, add `auto-pulled` label.
     5. Notification — emit sprint.auto-pull.completed Kafka event; optional Discord notification.
+  Bounded handler slice scores injected backlog candidates deterministically;
+  live Linear mutation requires an injected adapter.
 
 handler:
   module: omnimarket.nodes.node_refill_sprint_orchestrator.handlers.handler_refill_sprint

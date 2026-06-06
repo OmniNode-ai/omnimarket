@@ -3,6 +3,7 @@ name: projection_session_outcome
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_session_outcome.handlers.handler_projection_session_outcome.ModelSessionOutcomeEvent
 description: >
   Projects session-outcome events into the session_outcomes table.
   UPSERT by session_id (latest-state-wins). Source topic:
@@ -19,6 +20,7 @@ handler_routing:
         name: HandlerProjectionSessionOutcome
         module: omnimarket.nodes.node_projection_session_outcome.handlers.handler_projection_session_outcome
       handler_module: omnimarket.nodes.node_projection_session_outcome.handlers.handler_projection_session_outcome
+      event_model: omnimarket.nodes.node_projection_session_outcome.handlers.handler_projection_session_outcome.ModelSessionOutcomeEvent
     - handler:
         name: SessionOutcomeProjectionRunner
         module: omnimarket.nodes.node_projection_session_outcome.handlers.handler_session_outcome
@@ -39,6 +41,9 @@ event_bus:
     - onex.evt.omniclaude.session-outcome.v1
   publish_topics:
     - onex.evt.omnimarket.projection-session-outcome-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-session-outcome-applied.v1
 
 metadata:
   transport_type: kafka

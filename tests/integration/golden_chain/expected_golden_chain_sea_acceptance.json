@@ -1,0 +1,64 @@
+{
+  "chain_name": "sea_acceptance",
+  "description": "Happy-path golden chain: SEA --agent -> omnimarket routing -> delegation -> real node -> contract gate -> terminal -> projection -> render. OMN-12660.",
+  "stages": [
+    {
+      "stage": "sea_agent_command",
+      "topic": "onex.cmd.omnibase-infra.delegation-request.v1",
+      "required_fields": ["correlation_id", "task_type", "prompt"]
+    },
+    {
+      "stage": "routing_decision",
+      "topic": "onex.evt.omniclaude.llm-routing-decision.v1",
+      "required_fields": ["correlation_id", "selected_agent", "model"]
+    },
+    {
+      "stage": "delegation_orchestrated",
+      "topic": "onex.cmd.omnibase-infra.delegation-routing-request.v1",
+      "required_fields": ["correlation_id"]
+    },
+    {
+      "stage": "inference_request",
+      "topic": "onex.cmd.omnibase-infra.delegation-inference-request.v1",
+      "required_fields": ["correlation_id", "model", "base_url"]
+    },
+    {
+      "stage": "inference_response",
+      "topic": "onex.evt.omnibase-infra.inference-response.v1",
+      "required_fields": ["correlation_id", "content"],
+      "invariants": ["content is non-empty string"]
+    },
+    {
+      "stage": "contract_gate",
+      "topic": "onex.evt.omnibase-infra.quality-gate-result.v1",
+      "required_fields": ["correlation_id", "passed"],
+      "invariants": ["passed == true"]
+    },
+    {
+      "stage": "terminal_delegation_completed",
+      "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
+      "required_fields": ["correlation_id", "content"],
+      "invariants": [
+        "content is non-empty",
+        "node_name != 'unknown'",
+        "contract_passed == true"
+      ]
+    },
+    {
+      "stage": "task_delegated_projection",
+      "topic": "onex.evt.omniclaude.task-delegated.v1",
+      "required_fields": ["correlation_id", "task_type", "delegated_to"],
+      "tail_table": "delegation_events",
+      "projection_key": "correlation_id"
+    }
+  ],
+  "success_definition": {
+    "node_name_not_unknown": true,
+    "content_non_empty": true,
+    "contract_passed": true,
+    "projection_row_written": true
+  },
+  "replay_idempotent": true,
+  "dedup_key": "correlation_id",
+  "related_tickets": ["OMN-12660", "OMN-12588", "OMN-12488"]
+}

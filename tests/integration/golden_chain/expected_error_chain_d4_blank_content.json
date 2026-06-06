@@ -1,0 +1,20 @@
+{
+  "chain_name": "error_d4_blank_content",
+  "defect_id": "D4",
+  "description": "Error chain: inference handler publishes content='' as a success envelope when message.content is null/blank. OMN-12660.",
+  "trigger": "LLM API returns a choice where message.content is None or empty string",
+  "location": "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent:150",
+  "wrong_behavior": "content = choices[0].get('message', {}).get('content') or '' → ModelInferenceResponseData(content='') treated as success",
+  "correct_behavior": "blank content raises ValueError('API returned blank content') and routes to error_message path, never a success envelope",
+  "observable_signal": {
+    "field": "content",
+    "value": "",
+    "in_model": "ModelInferenceResponseData"
+  },
+  "failure_mode": "Delegation pipeline receives ModelInferenceResponseData(content='') as a success response; quality gate may pass on empty output; SEA renders node_name='unknown' from empty scaffold",
+  "expected_error_type": "ValueError",
+  "expected_error_path": "error_message envelope -> delegation-failed.v1",
+  "regression_guard": "ModelInferenceResponseData.content must never be empty string in a success envelope. blank content -> typed failure, always.",
+  "compatibility_note": "Before adding Field(min_length=1) to ModelInferenceResponseData.content, audit all consumers to confirm no legitimate empty-content usage",
+  "related_tickets": ["OMN-12660", "OMN-12554", "OMN-12555", "OMN-12588"]
+}

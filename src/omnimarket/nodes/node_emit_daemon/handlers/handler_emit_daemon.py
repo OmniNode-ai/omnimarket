@@ -134,15 +134,19 @@ class HandlerEmitDaemon:
             error=error,
         )
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def handle(self, input_data: dict[str, Any] | object) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to the appropriate lifecycle transition based on the
         'action' field in input_data.
         """
+        if hasattr(input_data, "model_dump"):
+            input_data = input_data.model_dump(mode="json", exclude_none=True)
+        if not isinstance(input_data, dict):
+            raise TypeError("Emit daemon lifecycle command must be an object")
         action = input_data.get("action", "status")
         if action == "start":
-            socket_path = input_data.get("socket_path", "/tmp/omni-emit.sock")
+            socket_path = input_data.get("socket_path", "/tmp/onex-emit.sock")
             pid = input_data.get("pid", 0)
             self.transition_to_binding(socket_path, pid)
             self.transition_to_listening()
