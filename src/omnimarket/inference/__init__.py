@@ -29,6 +29,7 @@ from omnimarket.inference.protocol_config import (
     ModelInferencePromptDirective,
     ModelInferenceProtocolConfig,
     ModelInferenceProtocolProfile,
+    apply_inference_protocol,
     apply_inference_protocol_directives,
     load_inference_protocol_config,
 )
@@ -43,6 +44,7 @@ __all__: list[str] = [
     "ModelInferenceProtocolConfig",
     "ModelInferenceProtocolProfile",
     "ModelOpenRouterModelConfig",
+    "apply_inference_protocol",
     "apply_inference_protocol_directives",
     "get_openrouter_models",
     "load_inference_bridge_config_from_env",

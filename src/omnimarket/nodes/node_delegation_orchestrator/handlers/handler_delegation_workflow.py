@@ -27,7 +27,7 @@ import time
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import ClassVar
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
@@ -45,7 +45,7 @@ from omnibase_infra.event_bus.topic_constants import (
 )
 from pydantic import BaseModel
 
-from omnimarket.inference.protocol_config import apply_inference_protocol_directives
+from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -184,6 +184,39 @@ def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
     return max(1.0, min(600.0, workflow.routing_decision.timeout_ms / 1000.0))
 
 
+def _build_model_inference_intent(
+    *,
+    base_url: str,
+    model: str,
+    system_prompt: str,
+    prompt: str,
+    max_tokens: int,
+    temperature: float,
+    timeout_seconds: float,
+    correlation_id: UUID,
+    api_key_ref: str | None,
+    extra_headers: dict[str, str] | None,
+    provider_request_options: dict[str, Any],
+) -> ModelInferenceIntent:
+    payload: dict[str, Any] = {
+        "base_url": base_url,
+        "model": model,
+        "system_prompt": system_prompt,
+        "prompt": prompt,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "timeout_seconds": timeout_seconds,
+        "correlation_id": correlation_id,
+        "api_key_ref": api_key_ref,
+        "extra_headers": extra_headers,
+    }
+    if provider_request_options and "provider_request_options" in getattr(
+        ModelInferenceIntent, "model_fields", {}
+    ):
+        payload["provider_request_options"] = provider_request_options
+    return ModelInferenceIntent.model_validate(payload)
+
+
 def _evaluate_compliance(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
@@ -243,14 +276,14 @@ def _evaluate_compliance(
     workflow.compliance_attempts += 1
     workflow.inference_intent_in_flight = True
     temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
-    system_prompt, prompt = apply_inference_protocol_directives(
+    system_prompt, prompt, provider_request_options = apply_inference_protocol(
         system_prompt=workflow.routing_decision.system_prompt,
         prompt=result.repair_prompt,
         model=workflow.routing_decision.selected_model,
         task_type=workflow.request.task_type,
     )
     return [
-        ModelInferenceIntent(
+        _build_model_inference_intent(
             base_url=workflow.routing_decision.endpoint_url,
             model=workflow.routing_decision.selected_model,
             system_prompt=system_prompt,
@@ -261,6 +294,7 @@ def _evaluate_compliance(
             correlation_id=workflow.correlation_id,
             api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
+            provider_request_options=provider_request_options,
         )
     ]
 
@@ -433,14 +467,14 @@ class HandlerDelegationWorkflow:
 
         assert workflow.request is not None
         temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
-        system_prompt, prompt = apply_inference_protocol_directives(
+        system_prompt, prompt, provider_request_options = apply_inference_protocol(
             system_prompt=decision.system_prompt,
             prompt=workflow.request.prompt,
             model=decision.selected_model,
             task_type=workflow.request.task_type,
         )
         return [
-            ModelInferenceIntent(
+            _build_model_inference_intent(
                 base_url=decision.endpoint_url,
                 model=decision.selected_model,
                 system_prompt=system_prompt,
@@ -451,6 +485,7 @@ class HandlerDelegationWorkflow:
                 correlation_id=cid,
                 api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
+                provider_request_options=provider_request_options,
             )
         ]
 

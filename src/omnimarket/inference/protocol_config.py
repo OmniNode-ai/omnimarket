@@ -8,7 +8,7 @@ import fnmatch
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -58,6 +58,7 @@ class ModelInferenceProtocolProfile(BaseModel):
     model_name_patterns: tuple[str, ...] = Field(default_factory=tuple)
     system_prompt_contains: tuple[str, ...] = Field(default_factory=tuple)
     directive: ModelInferencePromptDirective
+    request_options: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelInferenceProtocolConfig(BaseModel):
@@ -110,9 +111,32 @@ def apply_inference_protocol_directives(
 ) -> tuple[str, str]:
     """Return outbound ``(system_prompt, prompt)`` after configured directives."""
 
+    next_system_prompt, next_prompt, _ = apply_inference_protocol(
+        system_prompt=system_prompt,
+        prompt=prompt,
+        model=model,
+        task_type=task_type,
+        backend_id=backend_id,
+        config=config,
+    )
+    return next_system_prompt, next_prompt
+
+
+def apply_inference_protocol(
+    *,
+    system_prompt: str,
+    prompt: str,
+    model: str,
+    task_type: str | None = None,
+    backend_id: str | None = None,
+    config: ModelInferenceProtocolConfig | None = None,
+) -> tuple[str, str, dict[str, Any]]:
+    """Return outbound prompt data and provider request options."""
+
     resolved_config = config or load_inference_protocol_config()
     next_system_prompt = system_prompt
     next_prompt = prompt
+    request_options: dict[str, Any] = {}
     for profile in resolved_config.profiles:
         if not _profile_matches(
             profile,
@@ -127,7 +151,25 @@ def apply_inference_protocol_directives(
             system_prompt=next_system_prompt,
             prompt=next_prompt,
         )
-    return next_system_prompt, next_prompt
+        request_options = _merge_request_options(
+            request_options,
+            profile.request_options,
+        )
+    return next_system_prompt, next_prompt, request_options
+
+
+def _merge_request_options(
+    base: dict[str, Any],
+    overlay: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overlay.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _merge_request_options(existing, value)
+        else:
+            merged[key] = value
+    return merged
 
 
 def _profile_matches(
@@ -180,6 +222,7 @@ __all__ = [
     "ModelInferencePromptDirective",
     "ModelInferenceProtocolConfig",
     "ModelInferenceProtocolProfile",
+    "apply_inference_protocol",
     "apply_inference_protocol_directives",
     "load_inference_protocol_config",
 ]

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from omnimarket.inference.protocol_config import (
+    apply_inference_protocol,
     apply_inference_protocol_directives,
     load_inference_protocol_config,
 )
@@ -35,3 +36,31 @@ def test_default_protocol_config_does_not_rewrite_non_qwen_model() -> None:
     )
 
     assert prompt == "Write pytest unit tests."
+
+
+def test_default_protocol_config_adds_qwen_provider_non_thinking_options() -> None:
+    system_prompt, prompt, request_options = apply_inference_protocol(
+        system_prompt="You are a production-quality code generation assistant.",
+        prompt="Create a hello world effect node.",
+        model="Qwen3.6-35B-A3B",
+        task_type="code_generation",
+        backend_id="local-coder",
+    )
+
+    assert system_prompt == "You are a production-quality code generation assistant."
+    assert prompt.startswith("/no_think\n")
+    assert request_options == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_default_protocol_config_suppresses_qwen_summarization_reasoning() -> None:
+    system_prompt, prompt, request_options = apply_inference_protocol(
+        system_prompt="You are a summarization assistant.",
+        prompt="Summarize the verified evidence.",
+        model="Qwen3.6-35B-A3B",
+        task_type="summarization",
+        backend_id="local-coder",
+    )
+
+    assert system_prompt == "You are a summarization assistant."
+    assert prompt.startswith("/no_think\n")
+    assert request_options == {"chat_template_kwargs": {"enable_thinking": False}}
