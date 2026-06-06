@@ -25,6 +25,13 @@ from omnimarket.inference.openrouter_models import (
     ModelOpenRouterModelConfig,
     get_openrouter_models,
 )
+from omnimarket.inference.protocol_config import (
+    ModelInferencePromptDirective,
+    ModelInferenceProtocolConfig,
+    ModelInferenceProtocolProfile,
+    apply_inference_protocol_directives,
+    load_inference_protocol_config,
+)
 
 __all__: list[str] = [
     "AdapterInferenceBridge",
@@ -32,7 +39,12 @@ __all__: list[str] = [
     "EnumOpenRouterTier",
     "ModelInferenceAdapter",
     "ModelInferenceBridgeConfig",
+    "ModelInferencePromptDirective",
+    "ModelInferenceProtocolConfig",
+    "ModelInferenceProtocolProfile",
     "ModelOpenRouterModelConfig",
+    "apply_inference_protocol_directives",
     "get_openrouter_models",
     "load_inference_bridge_config_from_env",
+    "load_inference_protocol_config",
 ]

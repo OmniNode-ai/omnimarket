@@ -158,6 +158,11 @@ delegation_runtime_dispatch:
   consumer_group_prefix: delegate-skill-runtime-port
   wait_timeout_seconds: 300
 
+config_dependencies:
+  - key: INFERENCE_PROTOCOL_CONFIG_PATH
+    required: false
+    description: Optional override for typed provider request-shaping profiles used by direct local dispatch.
+
 runtime_profiles:
   - main
 

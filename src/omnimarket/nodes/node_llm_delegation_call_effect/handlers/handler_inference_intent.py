@@ -27,6 +27,7 @@ from omnibase_core.models.delegation.wire import (
     ModelInferenceResponseData,
 )
 
+from omnimarket.inference.protocol_config import apply_inference_protocol_directives
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
@@ -63,10 +64,15 @@ TOPIC_INFERENCE_RESPONSE: str = _get_inference_response_topic()
 
 
 def _build_messages(intent: ModelInferenceIntent) -> list[dict[str, str]]:
+    system_prompt, prompt = apply_inference_protocol_directives(
+        system_prompt=intent.system_prompt,
+        prompt=intent.prompt,
+        model=intent.model,
+    )
     messages: list[dict[str, str]] = []
-    if intent.system_prompt:
-        messages.append({"role": "system", "content": intent.system_prompt})
-    messages.append({"role": "user", "content": intent.prompt})
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
     return messages
 
 
