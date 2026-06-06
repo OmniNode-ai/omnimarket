@@ -28,7 +28,7 @@ import contextlib
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import yaml
 from omnibase_infra.runtime.contract_topic_router import (
@@ -69,7 +69,8 @@ _DELEGATION_CONSUMER_RUNTIME_PROFILES = frozenset({"main", "default"})
 
 
 def _configured_runtime_profile(config: ModelDomainPluginConfig) -> str:
-    return config.runtime_profile.strip().lower()
+    runtime_profile = cast("str", config.runtime_profile)
+    return runtime_profile.strip().lower()
 
 
 def _owns_delegation_orchestration_consumers(profile: str) -> bool:
