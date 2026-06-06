@@ -7,6 +7,20 @@ CONTRACT_PATH = (
     / "src/omnimarket/nodes/node_projection_delegation/api_contract.yaml"
 )
 
+NODE_CONTRACT_PATH = (
+    Path(__file__).parent.parent
+    / "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+)
+
+
+def _exposure_columns(topic: str) -> list[str]:
+    data = yaml.safe_load(NODE_CONTRACT_PATH.read_text())
+    for exposure in data["projection_api"]["exposures"]:
+        if exposure["topic"] == topic:
+            return list(exposure["columns"])
+    raise AssertionError(f"No projection_api exposure declared for topic {topic!r}")
+
+
 REQUIRED_ENDPOINTS = [
     "delegation-summary",
     "recent-delegations",
@@ -47,3 +61,31 @@ def test_api_contract_endpoint_paths_are_valid():
         assert "method" in ep, f"Endpoint {name} missing 'method'"
         assert ep["method"] == "GET", f"Endpoint {name} must use GET"
         assert "response_schema" in ep, f"Endpoint {name} missing 'response_schema'"
+
+
+# OMN-12748: the dashboard renders the delegated prompt/response by reading the
+# contract-declared per-correlation detail projection
+# (/projection/onex.snapshot.projection.delegation.correlation-trace.v1?correlation_id=...),
+# not a bespoke REST route. That detail exposure must carry the delegation_events
+# content columns, while the high-frequency list poll (decisions.v1) stays lean.
+
+CORRELATION_TRACE_TOPIC = "onex.snapshot.projection.delegation.correlation-trace.v1"
+
+
+def test_correlation_trace_exposure_includes_prompt_and_response():
+    columns = _exposure_columns(CORRELATION_TRACE_TOPIC)
+    assert "prompt_text" in columns, "correlation-trace.v1 must expose prompt_text"
+    assert "response_text" in columns, "correlation-trace.v1 must expose response_text"
+    assert "correlation_id" in columns, (
+        "correlation-trace.v1 must expose correlation_id for ?correlation_id= filtering"
+    )
+
+
+def test_decisions_summary_exposure_excludes_content():
+    columns = _exposure_columns("onex.snapshot.projection.delegation.decisions.v1")
+    assert "prompt_text" not in columns, (
+        "decisions.v1 is the high-frequency list poll; it must not carry prompt_text"
+    )
+    assert "response_text" not in columns, (
+        "decisions.v1 is the high-frequency list poll; it must not carry response_text"
+    )
