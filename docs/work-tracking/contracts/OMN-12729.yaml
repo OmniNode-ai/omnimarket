@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-12729"
+title: "Delegation inference-response re-enters routing instead of quality gate/completion"
+summary: >-
+  Delegation inference response-shape errors such as truncated responses and empty message content
+  must fail terminally instead of being converted back into fresh routing intents. PR #1060 keeps
+  nonretryable response errors out of the routing loop and preserves the normal quality-gate path for
+  valid useful artifacts.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "delegation workflow lifecycle"
+  - "inference response handling"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused nonretryable inference error and useful-artifact golden-chain tests pass."
+    command: "uv run pytest tests/unit/delegation/test_delegation_orchestrator.py::TestInferenceErrorEscalation tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py -q"
+  - kind: "manual"
+    description: "Live .201 hotpatch proves useful delegation completion, not merely a model response."
+    command: "delegation correlation 05a59d83-924a-4e95-a3d2-3dd5659d15db completed on onex.evt.omnimarket.delegate-skill-completed.v1 with quality_gate_passed=true and useful pytest artifact content"
+  - kind: "deploy"
+    description: "Runtime-impacting delegation handler change requires post-merge dev-lane redeploy and validation."
+    command: "post-merge deploy .201 dev lane, verify /health on main/effects, and rerun useful delegation test generation"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-local-validation"
+    description: "Focused nonretryable inference error and useful-artifact golden-chain tests pass."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_orchestrator.py::TestInferenceErrorEscalation tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py -q"
+  - id: "dod-live-useful-delegation-proof"
+    description: "Live .201 hotpatch proves useful delegation completion, not merely a model response."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q '05a59d83-924a-4e95-a3d2-3dd5659d15db' central OCC receipt && grep -q 'quality_gate_passed=true' central OCC receipt"
+  - id: "dod-deploy-assessment"
+    description: "Post-merge deploy and validation are required because this changes runtime delegation handler behavior."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "post-merge deploy .201 dev lane and rerun useful delegation test generation"
