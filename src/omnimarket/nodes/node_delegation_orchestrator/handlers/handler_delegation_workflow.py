@@ -45,6 +45,7 @@ from omnibase_infra.event_bus.topic_constants import (
 )
 from pydantic import BaseModel
 
+from omnimarket.inference.protocol_config import apply_inference_protocol_directives
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -242,12 +243,18 @@ def _evaluate_compliance(
     workflow.compliance_attempts += 1
     workflow.inference_intent_in_flight = True
     temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+    system_prompt, prompt = apply_inference_protocol_directives(
+        system_prompt=workflow.routing_decision.system_prompt,
+        prompt=result.repair_prompt,
+        model=workflow.routing_decision.selected_model,
+        task_type=workflow.request.task_type,
+    )
     return [
         ModelInferenceIntent(
             base_url=workflow.routing_decision.endpoint_url,
             model=workflow.routing_decision.selected_model,
-            system_prompt=workflow.routing_decision.system_prompt,
-            prompt=result.repair_prompt,
+            system_prompt=system_prompt,
+            prompt=prompt,
             max_tokens=workflow.request.max_tokens,
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
@@ -426,12 +433,18 @@ class HandlerDelegationWorkflow:
 
         assert workflow.request is not None
         temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+        system_prompt, prompt = apply_inference_protocol_directives(
+            system_prompt=decision.system_prompt,
+            prompt=workflow.request.prompt,
+            model=decision.selected_model,
+            task_type=workflow.request.task_type,
+        )
         return [
             ModelInferenceIntent(
                 base_url=decision.endpoint_url,
                 model=decision.selected_model,
-                system_prompt=decision.system_prompt,
-                prompt=workflow.request.prompt,
+                system_prompt=system_prompt,
+                prompt=prompt,
                 max_tokens=workflow.request.max_tokens,
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),

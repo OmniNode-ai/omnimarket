@@ -50,6 +50,11 @@ service_configuration:
   is_persistent_service: false
   requires_external_dependencies: true
 
+config_dependencies:
+  - key: "INFERENCE_PROTOCOL_CONFIG_PATH"
+    required: false
+    description: "Optional override for typed provider request-shaping profiles (defaults to configs/inference_protocols.v1.yaml)."
+
 # === INPUT/OUTPUT STATE ===
 input_state:
   object_type: "object"

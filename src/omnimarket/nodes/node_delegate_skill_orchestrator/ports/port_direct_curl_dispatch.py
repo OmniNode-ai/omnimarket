@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from omnimarket.inference.protocol_config import apply_inference_protocol_directives
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_EVIDENCE_DB_PATH = (
@@ -305,6 +307,13 @@ class DirectCurlDelegationDispatchPort:
         system_prompt = _TASK_TYPE_SYSTEM_PROMPTS.get(
             task_type, _TASK_TYPE_SYSTEM_PROMPTS["research"]
         )
+        outbound_system_prompt, outbound_prompt = apply_inference_protocol_directives(
+            system_prompt=system_prompt,
+            prompt=prompt,
+            model=str(backend["model_name"]),
+            task_type=task_type,
+            backend_id=str(backend["backend_id"]),
+        )
 
         logger.info(
             "DirectCurlDispatch: task_type=%s backend=%s model=%s correlation=%s",
@@ -317,8 +326,8 @@ class DirectCurlDelegationDispatchPort:
         result = _call_via_curl(
             endpoint_url=backend["endpoint_url"],
             model=backend["model_name"],
-            system_prompt=system_prompt,
-            prompt=prompt,
+            system_prompt=outbound_system_prompt,
+            prompt=outbound_prompt,
             max_tokens=max_tokens,
         )
 
