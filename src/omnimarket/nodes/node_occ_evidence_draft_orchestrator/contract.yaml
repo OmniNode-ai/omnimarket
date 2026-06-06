@@ -7,11 +7,10 @@ description: >
   Orchestrator that drafts OCC evidence via local-model delegation (OMN-12580,
   Phase 5). Consumes onex.cmd.omnimarket.occ-evidence-draft-start.v1, delegates
   artifact generation over the live delegation surface
-  (onex.cmd.omnibase-infra.delegation-request.v1) — it never calls a model
-  directly — and reacts to inference-response/routing-decision/quality-gate-result
-  to materialize a PROVISIONAL ModelOccEvidenceDraft, publishing
-  occ-evidence-draft-created.v1 or occ-evidence-draft-failed.v1. The draft is
-  always PROVISIONAL; acceptance is decided by node_occ_evidence_validator_compute.
+  (onex.cmd.omnibase-infra.delegation-request.v1). It never calls a model
+  directly. Delegation lifecycle events stay owned by the delegation
+  orchestrator; this node must not subscribe broadly to shared delegation
+  inference/routing/quality topics until dispatch is scoped per contract.
 
 handler_routing:
   routing_strategy: operation_match
@@ -45,9 +44,6 @@ terminal_event: onex.evt.omnimarket.occ-evidence-draft-created.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.occ-evidence-draft-start.v1
-    - onex.evt.omnibase-infra.inference-response.v1
-    - onex.evt.omnibase-infra.routing-decision.v1
-    - onex.evt.omnibase-infra.quality-gate-result.v1
   publish_topics:
     - onex.cmd.omnibase-infra.delegation-request.v1
     - onex.evt.omnimarket.occ-evidence-draft-created.v1
