@@ -8,11 +8,8 @@
 # budget.
 schema_version: inference_protocols.v1
 profiles:
-  - profile_id: local-qwen-code-artifact-no-think
+  - profile_id: local-qwen-no-think
     enabled: true
-    task_types:
-      - test
-      - code_generation
     model_name_patterns:
       - "*qwen*"
     system_prompt_contains:
