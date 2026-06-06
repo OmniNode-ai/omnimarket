@@ -80,6 +80,59 @@ class TestOrchestratorContract:
         assert "onex.cmd.omnibase-infra.delegation-request.v1" in topics
         assert "onex.cmd.omnibase-infra.invocation.v1" in topics
 
+    def test_orchestrator_consumers_are_plugin_managed(self) -> None:
+        data = self._load()
+        assert data["event_bus"]["plugin_managed"] is True
+
+    def test_orchestrator_workflow_routes_are_typed(self) -> None:
+        data = self._load()
+        workflow_handlers = [
+            item
+            for item in data["handler_routing"]["handlers"]
+            if item["handler"]["name"] == "HandlerDelegationWorkflow"
+        ]
+        event_models = {
+            item["event_model"]["name"]: item["event_model"]["module"]
+            for item in workflow_handlers
+        }
+        categories = {
+            item["event_model"]["name"]: item["message_category"]
+            for item in workflow_handlers
+        }
+
+        assert event_models == {
+            "ModelDelegationRequest": "omnibase_core.models.delegation.wire",
+            "ModelInvocationCommand": (
+                "omnibase_core.models.delegation.model_invocation_command"
+            ),
+            "ModelRoutingDecision": (
+                "omnimarket.nodes.node_delegation_routing_reducer.models."
+                "model_routing_decision"
+            ),
+            "ModelInferenceResponseData": "omnibase_core.models.delegation.wire",
+            "ModelAgentTaskLifecycleEvent": (
+                "omnibase_core.models.delegation.model_agent_task_lifecycle_event"
+            ),
+            "ModelQualityGateResult": "omnibase_core.models.delegation.wire",
+        }
+        assert categories == {
+            "ModelDelegationRequest": "command",
+            "ModelInvocationCommand": "command",
+            "ModelRoutingDecision": "event",
+            "ModelInferenceResponseData": "event",
+            "ModelAgentTaskLifecycleEvent": "event",
+            "ModelQualityGateResult": "event",
+        }
+
+    def test_orchestrator_bus_routes_are_not_catch_all(self) -> None:
+        data = self._load()
+        handlers = data["handler_routing"]["handlers"]
+
+        for item in handlers:
+            assert item["handler"]["name"] != "HandlerComplianceLoop"
+            assert "event_model" in item
+            assert "message_category" in item
+
     def test_publishes_completed_and_failed(self) -> None:
         data = self._load()
         topics = data["event_bus"]["publish_topics"]

@@ -27,6 +27,22 @@ def _plugin_config() -> ModelDomainPluginConfig:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_dispatcher_routes_are_contract_managed() -> None:
+    plugin = PluginDelegation()
+    config = _plugin_config()
+    config.dispatch_engine = MagicMock()
+
+    result = await plugin.wire_dispatchers(config)
+
+    assert result.success
+    assert result.message == "Delegation dispatcher routes are contract-managed"
+    assert plugin._dispatcher_wiring_succeeded is True
+    config.dispatch_engine.register_dispatcher.assert_not_called()
+    config.dispatch_engine.register_route.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_effects_profile_does_not_start_delegation_orchestration_consumers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
