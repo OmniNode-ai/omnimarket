@@ -94,9 +94,9 @@ class LlmCallerDelegation:
         provider = AdapterLlmProviderOpenai(
             base_url=intent.base_url,
             default_model=intent.model,
-            api_key=intent.api_key,
+            api_key=None,
             provider_name=f"delegation-{intent.model}",
-            provider_type="local" if intent.api_key is None else "external_trusted",
+            provider_type="local" if intent.api_key_ref is None else "external_trusted",
         )
 
         t0 = time.monotonic()
