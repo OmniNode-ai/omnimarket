@@ -41,6 +41,7 @@ def _patch_curl(monkeypatch: pytest.MonkeyPatch) -> None:
         system_prompt: str,
         prompt: str,
         max_tokens: int,
+        provider_request_options: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return {
             "content": "def reverse(s): return s[::-1]",
