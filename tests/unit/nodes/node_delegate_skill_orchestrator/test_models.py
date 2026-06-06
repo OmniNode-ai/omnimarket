@@ -148,6 +148,7 @@ def test_response_includes_provider_and_metrics() -> None:
         task_type="test",
         provider="qwen-coder",
         model_name="Qwen3-Coder-30B",
+        prompt_text="Write tests for the webhook",
         quality_gate_passed=True,
         quality_score=0.9,
         metrics=ModelDelegateSkillResponseMetrics(
@@ -161,6 +162,7 @@ def test_response_includes_provider_and_metrics() -> None:
     assert resp.correlation_id == cid
     assert resp.provider == "qwen-coder"
     assert resp.model_name == "Qwen3-Coder-30B"
+    assert resp.prompt_text == "Write tests for the webhook"
     assert resp.quality_gate_passed is True
     assert resp.quality_score == 0.9
     assert resp.metrics.cost_usd == 0.001
@@ -179,6 +181,7 @@ def test_response_defaults() -> None:
     )
     assert resp.provider == ""
     assert resp.model_name == ""
+    assert resp.prompt_text == ""
     assert resp.quality_gate_passed is False
     assert resp.quality_score == 0.0
     assert resp.metrics.cost_usd == 0.0

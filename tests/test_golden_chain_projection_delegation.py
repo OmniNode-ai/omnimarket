@@ -177,6 +177,55 @@ class TestDelegationProjection:
         assert row["cost_savings_usd"] == Decimal("0.009327")
         assert row["pricing_manifest_version"] == 1
 
+    def test_sparse_task_delegated_event_does_not_clear_terminal_evidence(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        correlation_id = "4ae8556b-af7c-4e85-a7f5-9388d60cebb5"
+        terminal_payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "delegate-skill-completed",
+            "status": "completed",
+            "correlation_id": correlation_id,
+            "task_type": "test",
+            "provider": "local-qwen",
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "prompt_text": "write useful unit tests",
+            "response": "useful pytest proof",
+            "quality_gate_passed": True,
+            "quality_gates_failed": [],
+            "metrics": {
+                "input_tokens": 144,
+                "output_tokens": 593,
+                "total_tokens": 737,
+                "tokens_to_compliance": 737,
+                "compliance_attempts": 1,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.009327,
+                "latency_ms": 1250,
+            },
+            "pricing_manifest_version": 1,
+        }
+        sparse_compat_payload: dict[str, object] = {
+            "_db": db,
+            "_event_type": "task-delegated",
+            "correlation_id": correlation_id,
+            "task_type": "test",
+            "delegated_to": _DELEGATE_SKILL_TEST_MODEL,
+            "model_name": _DELEGATE_SKILL_TEST_MODEL,
+            "quality_gate_passed": True,
+        }
+
+        HANDLER.handle(terminal_payload)
+        HANDLER.handle(sparse_compat_payload)
+
+        row = db.query("delegation_events")[0]
+        assert row["prompt_text"] == "write useful unit tests"
+        assert row["response_text"] == "useful pytest proof"
+        assert row["tokens_input"] == 144
+        assert row["tokens_output"] == 593
+        assert row["tokens_to_compliance"] == 737
+        assert row["cost_savings_usd"] == Decimal("0.009327")
+        assert row["pricing_manifest_version"] == 1
+
     def test_sync_handler_projects_canonical_delegation_terminal_event(self) -> None:
         db = InmemoryDatabaseAdapter()
         payload: dict[str, object] = {
