@@ -3,21 +3,15 @@
 This orchestrator owns prompt construction and draft lifecycle for local-model
 OCC drafting. It does NOT call any model directly: it builds a typed
 ``ModelDelegationRequest`` published on
-``onex.cmd.omnibase-infra.delegation-request.v1`` (the live delegation surface)
-and reacts to ``onex.evt.omnibase-infra.inference-response.v1`` by materializing a
-PROVISIONAL ``ModelOccEvidenceDraft``. It never marks a draft authoritative;
-acceptance is decided downstream by ``node_occ_evidence_validator_compute``.
+``onex.cmd.omnibase-infra.delegation-request.v1`` (the live delegation surface).
+The node no longer subscribes broadly to shared delegation lifecycle topics;
+those events stay owned by the delegation orchestrator until runtime dispatch is
+scoped per contract. It never marks a draft authoritative; acceptance is decided
+downstream by ``node_occ_evidence_validator_compute``.
 
 Flow:
 1. consume ``onex.cmd.omnimarket.occ-evidence-draft-start.v1`` (ModelOccEvidenceDraftRequest)
    -> build ModelDelegationRequest (publish on delegation-request.v1).
-2. consume ``onex.evt.omnibase-infra.inference-response.v1`` (ModelInferenceResponseData)
-   -> parse content -> publish ``onex.evt.omnimarket.occ-evidence-draft-created.v1``
-      (ModelOccEvidenceDraft, PROVISIONAL) or
-      ``onex.evt.omnimarket.occ-evidence-draft-failed.v1`` (ModelOccEvidenceDraftFailed).
-
-routing-decision.v1 and quality-gate-result.v1 are consumed for delegation
-lifecycle observability; they do not change the draft content.
 """
 
 from __future__ import annotations

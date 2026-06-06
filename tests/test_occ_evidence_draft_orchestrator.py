@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 import pytest
+import yaml
 from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result import (
     ModelEvidenceValidationResult,
 )
@@ -137,6 +139,25 @@ def test_build_delegation_request_uses_delegation_surface() -> None:
     assert SOURCE_SHA in command.prompt
     assert IMAGE_DIGEST in command.prompt
     assert TICKET_ID in command.prompt
+
+
+@pytest.mark.unit
+def test_contract_does_not_subscribe_to_delegation_lifecycle_topics() -> None:
+    contract_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_occ_evidence_draft_orchestrator"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    subscribe_topics = set(contract["event_bus"]["subscribe_topics"])
+
+    assert subscribe_topics == {"onex.cmd.omnimarket.occ-evidence-draft-start.v1"}
+    assert "onex.evt.omnibase-infra.inference-response.v1" not in subscribe_topics
+    assert "onex.evt.omnibase-infra.routing-decision.v1" not in subscribe_topics
+    assert "onex.evt.omnibase-infra.quality-gate-result.v1" not in subscribe_topics
 
 
 @pytest.mark.unit
