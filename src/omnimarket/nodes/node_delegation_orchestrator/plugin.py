@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -69,8 +68,8 @@ _TOPIC_ROUTER: dict[str, str] = build_topic_router_from_contract(_CONTRACT_DATA)
 _DELEGATION_CONSUMER_RUNTIME_PROFILES = frozenset({"main", "default"})
 
 
-def _current_runtime_profile() -> str:
-    return os.environ.get("RUNTIME_PROFILE", "main").strip().lower() or "main"
+def _configured_runtime_profile(config: ModelDomainPluginConfig) -> str:
+    return config.runtime_profile.strip().lower()
 
 
 def _owns_delegation_orchestration_consumers(profile: str) -> bool:
@@ -224,7 +223,7 @@ class PluginDelegation:
         """Start event consumers via EventBusSubcontractWiring."""
         start_time = time.time()
         correlation_id = config.correlation_id
-        runtime_profile = _current_runtime_profile()
+        runtime_profile = _configured_runtime_profile(config)
 
         if not _owns_delegation_orchestration_consumers(runtime_profile):
             logger.info(

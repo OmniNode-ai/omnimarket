@@ -13,7 +13,7 @@ from omnibase_infra.runtime.models import ModelDomainPluginConfig
 from omnimarket.nodes.node_delegation_orchestrator.plugin import PluginDelegation
 
 
-def _plugin_config() -> ModelDomainPluginConfig:
+def _plugin_config(runtime_profile: str = "main") -> ModelDomainPluginConfig:
     return ModelDomainPluginConfig(
         container=MagicMock(),
         event_bus=MagicMock(),
@@ -22,6 +22,7 @@ def _plugin_config() -> ModelDomainPluginConfig:
         output_topic="onex.evt.omnibase-infra.delegation-completed.v1",
         consumer_group="local.runtime_config.delegation-orchestrator.consume.1.0.0",
         dispatch_engine=None,
+        runtime_profile=runtime_profile,
     )
 
 
@@ -43,15 +44,14 @@ async def test_dispatcher_routes_are_contract_managed() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_effects_profile_does_not_start_delegation_orchestration_consumers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_effects_profile_does_not_start_delegation_orchestration_consumers() -> (
+    None
+):
     plugin = PluginDelegation()
     plugin._handler_wiring_succeeded = True
     plugin._dispatcher_wiring_succeeded = True
-    monkeypatch.setenv("RUNTIME_PROFILE", "effects")
 
-    result = await plugin.start_consumers(_plugin_config())
+    result = await plugin.start_consumers(_plugin_config(runtime_profile="effects"))
 
     assert result.success
     assert "runtime profile does not own delegation orchestration consumers" in (
@@ -61,15 +61,12 @@ async def test_effects_profile_does_not_start_delegation_orchestration_consumers
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_main_profile_keeps_delegation_orchestration_consumer_ownership(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_main_profile_keeps_delegation_orchestration_consumer_ownership() -> None:
     plugin = PluginDelegation()
     plugin._handler_wiring_succeeded = True
     plugin._dispatcher_wiring_succeeded = True
-    monkeypatch.setenv("RUNTIME_PROFILE", "main")
 
-    result = await plugin.start_consumers(_plugin_config())
+    result = await plugin.start_consumers(_plugin_config(runtime_profile="main"))
 
     assert result.success
     assert "dispatch_engine not available" in result.message
@@ -77,15 +74,14 @@ async def test_main_profile_keeps_delegation_orchestration_consumer_ownership(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_legacy_default_profile_keeps_delegation_orchestration_ownership(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_legacy_default_profile_keeps_delegation_orchestration_ownership() -> (
+    None
+):
     plugin = PluginDelegation()
     plugin._handler_wiring_succeeded = True
     plugin._dispatcher_wiring_succeeded = True
-    monkeypatch.setenv("RUNTIME_PROFILE", "default")
 
-    result = await plugin.start_consumers(_plugin_config())
+    result = await plugin.start_consumers(_plugin_config(runtime_profile="default"))
 
     assert result.success
     assert "dispatch_engine not available" in result.message
