@@ -9,7 +9,7 @@
         "detail": "Contract-referenced handler 'handler_orphan_handler' has no test file and no golden-chain fixture coverage.",
         "rule_id": "UNTESTED_HANDLER",
         "rule_version": "v1",
-        "captured_at": "2026-06-04T08:50:56.463012+00:00",
+        "captured_at": "2026-06-04T08:50:56.463012+00:00"
     },
     {
         "run_id": "proof-of-life-001-projection",
@@ -21,6 +21,6 @@
         "detail": "Topic 'onex.cmd.test.orphan-cmd.v1' is published but has no subscriber and is not declared as externally consumed.",
         "rule_id": "MISSING_TOPIC_EDGE",
         "rule_version": "v1",
-        "captured_at": "2026-06-04T08:50:56.463012+00:00",
-    },
+        "captured_at": "2026-06-04T08:50:56.463012+00:00"
+    }
 ]
