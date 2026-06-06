@@ -1010,9 +1010,8 @@ class HandlerDelegationWorkflow:
     def _coerce_payload_dict(payload: dict[str, object]) -> BaseModel:
         """Convert raw event-bus payload dictionaries into workflow models."""
         nested_payload = payload.get("payload")
-        if (
-            isinstance(nested_payload, dict)
-            and ("event_type" in payload or "envelope_id" in payload)
+        if isinstance(nested_payload, dict) and (
+            "event_type" in payload or "envelope_id" in payload
         ):
             return HandlerDelegationWorkflow._coerce_payload_dict(nested_payload)
         if "lifecycle_type" in payload:
