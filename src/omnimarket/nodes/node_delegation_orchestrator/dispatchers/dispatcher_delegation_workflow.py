@@ -17,6 +17,11 @@ from omnibase_infra.enums import (
     EnumMessageCategory,
 )
 from omnibase_infra.errors import InfraUnavailableError
+from omnibase_infra.event_bus.topic_constants import (
+    TOPIC_DELEGATION_INFERENCE_REQUEST,
+    TOPIC_DELEGATION_QUALITY_GATE_REQUEST,
+    TOPIC_DELEGATION_ROUTING_REQUEST,
+)
 from omnibase_infra.mixins import MixinAsyncCircuitBreaker
 from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
 from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envelope_extract import (
@@ -27,6 +32,15 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils import (
     derive_event_type_from_topic,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
+    ModelInferenceIntent,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_intent import (
+    ModelQualityGateIntent,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
+    ModelRoutingIntent,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +55,11 @@ __all__ = ["DispatcherDelegationWorkflow"]
 logger = logging.getLogger(__name__)
 
 TOPIC_ID_DELEGATION_WORKFLOW = "delegation.workflow"
+_INTENT_TOPICS = {
+    ModelRoutingIntent: TOPIC_DELEGATION_ROUTING_REQUEST,
+    ModelInferenceIntent: TOPIC_DELEGATION_INFERENCE_REQUEST,
+    ModelQualityGateIntent: TOPIC_DELEGATION_QUALITY_GATE_REQUEST,
+}
 
 
 class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[misc]
@@ -101,6 +120,8 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[mi
         unpublished: list[BaseModel] = []
         for idx, event in enumerate(events):
             topic = getattr(event, "topic", None)
+            if topic is None:
+                topic = _INTENT_TOPICS.get(type(event))
             if topic is None:
                 unpublished.append(event)
                 continue

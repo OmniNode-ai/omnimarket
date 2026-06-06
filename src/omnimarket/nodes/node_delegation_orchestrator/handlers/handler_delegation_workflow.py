@@ -373,6 +373,11 @@ class HandlerDelegationWorkflow:
         cid = decision.correlation_id
         workflow = self._workflows.get(cid)
         if workflow is None:
+            _logger.warning(
+                "Ignoring routing decision without active delegation workflow "
+                "(correlation_id=%s)",
+                cid,
+            )
             return []
 
         if workflow.state == EnumDelegationState.RECEIVED:

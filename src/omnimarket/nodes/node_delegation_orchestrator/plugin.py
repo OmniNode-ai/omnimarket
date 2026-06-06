@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -65,6 +66,15 @@ _CONTRACT_DATA: dict[str, object] = (
     _contract_raw if isinstance(_contract_raw, dict) else {}
 )
 _TOPIC_ROUTER: dict[str, str] = build_topic_router_from_contract(_CONTRACT_DATA)
+_DELEGATION_CONSUMER_RUNTIME_PROFILES = frozenset({"main", "default"})
+
+
+def _current_runtime_profile() -> str:
+    return os.environ.get("RUNTIME_PROFILE", "main").strip().lower() or "main"
+
+
+def _owns_delegation_orchestration_consumers(profile: str) -> bool:
+    return profile.strip().lower() in _DELEGATION_CONSUMER_RUNTIME_PROFILES
 
 
 class PluginDelegation:
@@ -244,6 +254,22 @@ class PluginDelegation:
         """Start event consumers via EventBusSubcontractWiring."""
         start_time = time.time()
         correlation_id = config.correlation_id
+        runtime_profile = _current_runtime_profile()
+
+        if not _owns_delegation_orchestration_consumers(runtime_profile):
+            logger.info(
+                "Skipping delegation orchestration consumer startup for runtime "
+                "profile '%s' (correlation_id=%s)",
+                runtime_profile,
+                correlation_id,
+            )
+            return ModelDomainPluginResult.skipped(
+                plugin_id=self.plugin_id,
+                reason=(
+                    "runtime profile does not own delegation orchestration "
+                    f"consumers: {runtime_profile}"
+                ),
+            )
 
         if not (self._handler_wiring_succeeded and self._dispatcher_wiring_succeeded):
             logger.warning(

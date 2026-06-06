@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Runtime-profile ownership tests for delegation plugin consumers."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+from uuid import uuid4
+
+import pytest
+from omnibase_infra.runtime.models import ModelDomainPluginConfig
+
+from omnimarket.nodes.node_delegation_orchestrator.plugin import PluginDelegation
+
+
+def _plugin_config() -> ModelDomainPluginConfig:
+    return ModelDomainPluginConfig(
+        container=MagicMock(),
+        event_bus=MagicMock(),
+        correlation_id=uuid4(),
+        input_topic="onex.cmd.omnibase-infra.delegation-request.v1",
+        output_topic="onex.evt.omnibase-infra.delegation-completed.v1",
+        consumer_group="local.runtime_config.delegation-orchestrator.consume.1.0.0",
+        dispatch_engine=None,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_effects_profile_does_not_start_delegation_orchestration_consumers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = PluginDelegation()
+    plugin._handler_wiring_succeeded = True
+    plugin._dispatcher_wiring_succeeded = True
+    monkeypatch.setenv("RUNTIME_PROFILE", "effects")
+
+    result = await plugin.start_consumers(_plugin_config())
+
+    assert result.success
+    assert "runtime profile does not own delegation orchestration consumers" in (
+        result.message
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_main_profile_keeps_delegation_orchestration_consumer_ownership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = PluginDelegation()
+    plugin._handler_wiring_succeeded = True
+    plugin._dispatcher_wiring_succeeded = True
+    monkeypatch.setenv("RUNTIME_PROFILE", "main")
+
+    result = await plugin.start_consumers(_plugin_config())
+
+    assert result.success
+    assert "dispatch_engine not available" in result.message
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_legacy_default_profile_keeps_delegation_orchestration_ownership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = PluginDelegation()
+    plugin._handler_wiring_succeeded = True
+    plugin._dispatcher_wiring_succeeded = True
+    monkeypatch.setenv("RUNTIME_PROFILE", "default")
+
+    result = await plugin.start_consumers(_plugin_config())
+
+    assert result.success
+    assert "dispatch_engine not available" in result.message
